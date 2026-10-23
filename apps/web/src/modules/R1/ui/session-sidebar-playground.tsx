@@ -155,7 +155,7 @@ function createCatalog(): SessionCatalogModel {
         sessions: fixtureSessions.filter((file) => file.cwd === folder),
         nextCursor: null,
       }),
-      readSession: async ({
+      readSessionRow: async ({
         sessionFile,
       }: {
         sessionFile: SessionFilePath;

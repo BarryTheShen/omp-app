@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { type SessionBackgroundEvent, SessionFileStore } from "./store";
 import { summarizeSessionFile } from "./summary";
 import { SUMMARY_CACHE_FILE, SUMMARY_SCHEMA } from "./summary-cache";
+import { readSummary } from "./summary-resume";
 import type { SessionListResult } from "./types";
 
 const WORKTREE_DATA = path.resolve(import.meta.dir, "../../../../../../.data");
@@ -555,9 +556,9 @@ describe("SessionFileStore summary cache", () => {
       const held = gate();
       const deleting = new SessionFileStore({
         ...options,
-        summarizeFile: async (file) => {
+        summarizeFile: async (file, size, prior) => {
           await held.wait;
-          return summarizeSessionFile(file);
+          return readSummary(file, size, prior);
         },
       });
       const events: SessionBackgroundEvent[] = [];
@@ -593,9 +594,9 @@ describe("SessionFileStore summary cache", () => {
       const held = gate();
       const closing = new SessionFileStore({
         ...options,
-        summarizeFile: async (file) => {
+        summarizeFile: async (file, size, prior) => {
           await held.wait;
-          return summarizeSessionFile(file);
+          return readSummary(file, size, prior);
         },
       });
       const events: SessionBackgroundEvent[] = [];
@@ -643,6 +644,121 @@ describe("SessionFileStore summary cache", () => {
       expect(listed.sessions.map((session) => session.id)).toEqual(["kept"]);
       await next.close();
       expect(await storedPaths(cacheFile)).toEqual([await fs.realpath(kept)]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Lists a folder with a store opened on `options`, and records whether each read of a chat carried a resume state. A
+   * listing after a restart serves the cached facts, and its background refresh is awaited before the second listing.
+   */
+  async function listAfterRestart(
+    options: Fixture["options"],
+    cwd: string,
+  ): Promise<{ readonly priors: boolean[]; readonly messageCount: number | undefined }> {
+    const priors: boolean[] = [];
+    const store = new SessionFileStore({
+      ...options,
+      summarizeFile: async (file, size, prior) => {
+        priors.push(prior !== undefined);
+        return readSummary(file, size, prior);
+      },
+    });
+    try {
+      const refreshed = nextBackground(store, "refreshed");
+      await store.listSessions({ folder: cwd });
+      await refreshed;
+      const listed = await store.listSessions({ folder: cwd });
+      return { priors, messageCount: listed.sessions[0]?.messageCount };
+    } finally {
+      await store.close();
+    }
+  }
+
+  /** Removes the resume state of every cache entry: what a cache written before resume states holds. */
+  async function dropResumeStates(file: string): Promise<void> {
+    const cache = JSON.parse(await readFile(file, "utf8")) as {
+      entries: Record<string, unknown>[];
+    };
+    for (const entry of cache.entries) delete entry.resume;
+    await writeFile(file, JSON.stringify(cache), "utf8");
+  }
+
+  test("a restart reads a grown chat from the cache's resume state: the background refresh folds only the appended line", async () => {
+    const { root, cwd, bucket, options } = await fixture();
+    try {
+      const chat = path.join(bucket, "2026-10-01_resumes.jsonl");
+      await writeChat(chat, headerLine("resumes", cwd, at(1)) + userLine("u1", at(1, 1), "one"));
+      const first = new SessionFileStore(options);
+      await first.listSessions({ folder: cwd });
+      await first.close();
+      await appendFile(chat, assistantLine("a1", at(1, 2), "two"));
+
+      const restarted = await listAfterRestart(options, cwd);
+      expect(restarted.priors).toEqual([true]);
+      expect(restarted.messageCount).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a cache entry written before resume states gets one whole read at its next change, then resumes", async () => {
+    const { root, cwd, bucket, options } = await fixture();
+    try {
+      const chat = path.join(bucket, "2026-10-01_legacy.jsonl");
+      await writeChat(chat, headerLine("legacy", cwd, at(1)) + userLine("u1", at(1, 1), "one"));
+      const first = new SessionFileStore(options);
+      await first.listSessions({ folder: cwd });
+      await first.close();
+      await dropResumeStates(path.join(options.appDataDir, SUMMARY_CACHE_FILE));
+
+      await appendFile(chat, assistantLine("a1", at(1, 2), "two"));
+      const whole = await listAfterRestart(options, cwd);
+      expect(whole.priors).toEqual([false]);
+      expect(whole.messageCount).toBe(2);
+
+      await appendFile(chat, userLine("u2", at(1, 3), "three"));
+      const resumed = await listAfterRestart(options, cwd);
+      expect(resumed.priors).toEqual([true]);
+      expect(resumed.messageCount).toBe(3);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat that grows in one run is read from its resume state; a chat replaced by a new file is read whole", async () => {
+    const { root, cwd, bucket, options } = await fixture();
+    try {
+      const chat = path.join(bucket, "2026-10-01_replaced.jsonl");
+      await writeChat(chat, headerLine("replaced", cwd, at(1)) + userLine("u1", at(1, 1), "one"));
+      const priors: boolean[] = [];
+      const store = new SessionFileStore({
+        ...options,
+        summarizeFile: async (file, size, prior) => {
+          priors.push(prior !== undefined);
+          return readSummary(file, size, prior);
+        },
+      });
+      try {
+        await store.listSessions({ folder: cwd });
+        await appendFile(chat, assistantLine("a1", at(1, 2), "two"));
+        expect((await store.listSessions({ folder: cwd })).sessions[0]?.messageCount).toBe(2);
+
+        const replacement = path.join(root, "replacement.jsonl");
+        await writeChat(
+          replacement,
+          headerLine("replaced", cwd, at(1)) +
+            userLine("u1", at(1, 1), "one") +
+            assistantLine("a1", at(1, 2), "two") +
+            userLine("u2", at(1, 3), "three"),
+        );
+        await rename(replacement, chat);
+        expect((await store.listSessions({ folder: cwd })).sessions[0]?.messageCount).toBe(3);
+      } finally {
+        await store.close();
+      }
+      expect(priors).toEqual([false, true, false]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

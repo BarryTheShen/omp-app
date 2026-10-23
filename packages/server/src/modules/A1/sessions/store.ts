@@ -30,10 +30,12 @@ import {
   type StoredSummary,
   SUMMARY_CACHE_FILE,
   SummaryCache,
+  type SummaryCacheEntry,
   sameIdentity,
   storedSummaryOf,
   summaryOf,
 } from "./summary-cache";
+import { type ResumeState, readSummary, type SummaryRead } from "./summary-resume";
 import type {
   ListFoldersArgs,
   ListSessionsArgs,
@@ -232,6 +234,21 @@ function placeTag(file: string): string {
   return createHash("sha256").update(file).digest("hex").slice(0, 16);
 }
 
+/** The same file: a file keeps its device and inode while it is appended to, and a rewrite gives it a new inode. */
+function sameInode(cached: FileIdentity | undefined, current: FileIdentity): boolean {
+  return cached !== undefined && cached.dev === current.dev && cached.ino === current.ino;
+}
+
+/** The state an earlier read kept for a file: only while the file keeps its inode. The state's own checks decide the rest. */
+function priorOf(
+  cached: SummaryCacheEntry | undefined,
+  identity: FileIdentity,
+): ResumeState | undefined {
+  return cached?.resume !== undefined && sameInode(cached.identity, identity)
+    ? cached.resume
+    : undefined;
+}
+
 /** The listing's order: newest first by the whole milliseconds of the update time, then by base name, then tag. */
 function newestFirst(left: ListingPlace, right: ListingPlace): number {
   const leftTime = Math.trunc(left.activityMs);
@@ -315,7 +332,11 @@ export class SessionFileStore {
   /** Set by `close`: no refresh starts, and nothing is cached, after it. */
   #closed = false;
   /** Reads a chat's summary for a listing and a background refresh: the store's own reader unless one is given. */
-  readonly #summarize: (sessionFile: string) => Promise<SessionSummary>;
+  readonly #summarize: (
+    sessionFile: string,
+    size: number,
+    prior?: ResumeState,
+  ) => Promise<SummaryRead>;
   readonly #backgroundListeners = new Set<(event: SessionBackgroundEvent) => void>();
 
   /** A worker's own session lease, read by `collectSubagentTranscripts`: `free` once no live omp holds that session. */
@@ -324,7 +345,7 @@ export class SessionFileStore {
 
   constructor(options: SessionFileStoreOptions = {}) {
     this.#options = options;
-    this.#summarize = options.summarizeFile ?? summarizeSessionFile;
+    this.#summarize = options.summarizeFile ?? readSummary;
     this.sessionsRoot = path.resolve(
       options.sessionsRoot ?? defaultSessionsRoot({ home: options.home }),
     );
@@ -832,6 +853,30 @@ export class SessionFileStore {
     throw appFailure("invalid_args", "Session file has no valid session header", false);
   }
 
+  /**
+   * One chat's row, as `listSessions` lists it, from the same cached facts. A chat that did not change reads no chat bytes;
+   * a chat that only grew folds the lines appended to it (`#summary`).
+   */
+  async readSessionRow(args: ReadSessionArgs | string): Promise<SessionFile> {
+    const sessionFile = normalizeSessionFile(typeof args === "string" ? args : args.sessionFile);
+    let stat: Stats;
+    try {
+      stat = await fs.stat(sessionFile);
+    } catch (error) {
+      if (isMissing(error)) throw appFailure("not_found", "Session file was not found", false);
+      throw appFailure("permission", "Unable to read omp session file", true, error);
+    }
+    const real = await this.#realPathOf(sessionFile);
+    if (real === undefined) throw appFailure("not_found", "Session file was not found", false);
+    const outcome = await this.#listingEntry(await this.#candidateOf(sessionFile, real, stat));
+    if (outcome.file) return outcome.file;
+    if (outcome.missing) throw appFailure("not_found", "Session file was not found", false);
+    if (outcome.parseWarnings.some((warning) => warning.code === "read_error")) {
+      throw appFailure("permission", "Unable to read omp session file", true);
+    }
+    throw appFailure("invalid_args", "Session file has no valid session header", false);
+  }
+
   /** Alias used by direct store callers. */
   async getSession(args: ReadSessionArgs | string): Promise<SessionFile> {
     return this.readSession(args);
@@ -918,23 +963,7 @@ export class SessionFileStore {
       names,
       async ({ file, real }): Promise<SessionCandidate | undefined> => {
         try {
-          const stat = await fs.stat(file);
-          const updatedAt = withActivity
-            ? await this.#updatedAt(file, real, stat)
-            : new Date(stat.mtimeMs).toISOString();
-          const activityMs = Date.parse(updatedAt);
-          return {
-            file,
-            real,
-            size: stat.size,
-            mtimeMs: stat.mtimeMs,
-            dev: stat.dev,
-            ino: stat.ino,
-            updatedAt,
-            activityMs: Number.isNaN(activityMs) ? stat.mtimeMs : activityMs,
-            name: path.basename(file),
-            tag: placeTag(file),
-          };
+          return await this.#candidateOf(file, real, await fs.stat(file), withActivity);
         } catch (error) {
           // A file that vanished between listing and stat is simply not listed.
           if (!isMissing(error)) warnings.push(warningForReadFailure(file, error));
@@ -948,6 +977,31 @@ export class SessionFileStore {
     // Newest first, then by base name and tag: the order every listing cursor is a place in.
     candidates.sort(newestFirst);
     return candidates;
+  }
+
+  /** A listing's view of a stat-ed file. Its update time is read unless the caller does not need it. */
+  async #candidateOf(
+    file: string,
+    real: string,
+    stat: Stats,
+    withActivity = true,
+  ): Promise<SessionCandidate> {
+    const updatedAt = withActivity
+      ? await this.#updatedAt(file, real, stat)
+      : new Date(stat.mtimeMs).toISOString();
+    const activityMs = Date.parse(updatedAt);
+    return {
+      file,
+      real,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      dev: stat.dev,
+      ino: stat.ino,
+      updatedAt,
+      activityMs: Number.isNaN(activityMs) ? stat.mtimeMs : activityMs,
+      name: path.basename(file),
+      tag: placeTag(file),
+    };
   }
 
   /**
@@ -994,28 +1048,40 @@ export class SessionFileStore {
 
   /**
    * Stores what was read from a file in `identity`. Facts read from the same state of the file are kept with them; facts that
-   * were read from another state describe a file that has since changed, so they are dropped.
+   * were read from another state describe a file that has since changed, so they are dropped. The resume state is kept while
+   * the file keeps its inode: its own checks decide whether it still fits the bytes. A summary read passes `null` when it
+   * could not check its state against the file.
    */
   #remember(
     real: string,
     identity: FileIdentity,
-    read: { readonly updatedAt?: string; readonly summary?: StoredSummary },
+    read: {
+      readonly updatedAt?: string;
+      readonly summary?: StoredSummary;
+      readonly resume?: ResumeState | null;
+    },
   ): void {
     const cached = this.#cache.get(real);
     const kept = sameIdentity(cached?.identity, identity) ? cached : undefined;
     const updatedAt = read.updatedAt ?? kept?.updatedAt;
     const summary = read.summary ?? kept?.summary;
+    const resume =
+      read.resume === null
+        ? undefined
+        : (read.resume ?? (sameInode(cached?.identity, identity) ? cached?.resume : undefined));
     this.#cache.put({
       realpath: real,
       identity,
       ...(updatedAt === undefined ? {} : { updatedAt }),
       ...(summary === undefined ? {} : { summary }),
+      ...(resume === undefined ? {} : { resume }),
     });
   }
 
   /**
    * A listed file's summary: its cached one while the file is as it was when the summary was read. A file changed since a
-   * summary loaded from the cache file is served as cached and refreshed in the background; any other change is read now.
+   * summary loaded from the cache file is served as cached and refreshed in the background. Any other change is read now,
+   * from the state the last read kept for the file: a file that only grew folds the lines appended to it.
    */
   async #summary(candidate: SessionCandidate): Promise<SessionSummary> {
     const identity = identityOf(candidate);
@@ -1030,15 +1096,17 @@ export class SessionFileStore {
         return summaryOf(cached.summary, candidate.file);
       }
     }
-    let summary: SessionSummary;
+    let read: SummaryRead;
     try {
-      summary = await this.#budget.run(candidate.size, () => this.#summarize(candidate.file));
+      read = await this.#budget.run(candidate.size, () =>
+        this.#summarize(candidate.file, candidate.size, priorOf(cached, identity)),
+      );
     } catch (error) {
       if (isMissing(error)) this.#cache.delete(candidate.real);
       throw error;
     }
-    const stored = storedSummaryOf(summary);
-    this.#remember(candidate.real, identity, { summary: stored });
+    const stored = storedSummaryOf(read.summary);
+    this.#remember(candidate.real, identity, { summary: stored, resume: read.resume ?? null });
     return summaryOf(stored, candidate.file);
   }
 
@@ -1062,16 +1130,20 @@ export class SessionFileStore {
     let report: SessionBackgroundEvent | undefined;
     try {
       const stat = await fs.stat(file);
+      const identity = identityOf(stat);
+      const prior = priorOf(this.#cache.get(real), identity);
       const updatedAt = await this.#readUpdatedAt(file, stat, this.#refreshBudget);
-      const summary = storedSummaryOf(
-        await this.#refreshBudget.run(stat.size, () => this.#summarize(file)),
+      const read = await this.#refreshBudget.run(stat.size, () =>
+        this.#summarize(file, stat.size, prior),
       );
+      const summary = storedSummaryOf(read.summary);
       if (!job.cancelled) {
         this.#cache.put({
           realpath: real,
-          identity: identityOf(stat),
+          identity,
           ...(updatedAt === undefined ? {} : { updatedAt }),
           summary,
+          ...(read.resume === undefined ? {} : { resume: read.resume }),
         });
         if (summary.header !== null) {
           report = {

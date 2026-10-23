@@ -86,9 +86,40 @@ const StoredSummarySchema = z.strictObject({
   parseWarnings: z.array(StoredWarningSchema),
 });
 
+/** A hash as the cache keeps it: 32 lowercase hex digits (`hashOf` in summary-resume.ts). */
+const HashSchema = z.string().regex(/^[0-9a-f]{32}$/);
+
+/** A fold's title slot as a summary reads it: its padding is never kept. */
+const FoldTitleSlotSchema = z.strictObject({
+  title: z.string(),
+  source: z.enum(["auto", "user"]).optional(),
+  updatedAt: z.string(),
+});
+
+/** A fold's state (`SummaryFoldState` in summary.ts): everything a summary keeps of the lines it has read. */
+const FoldStateSchema = z.strictObject({
+  lineIndex: z.int().nonnegative(),
+  entryCount: z.int().nonnegative(),
+  titleSlot: FoldTitleSlotSchema.optional(),
+  header: z.record(z.string(), z.unknown()).optional(),
+  messageCount: z.int().nonnegative(),
+  assistantTurns: z.int().nonnegative(),
+  firstPrompt: z.string().max(FIRST_PROMPT_MAX).nullable(),
+  status: z.enum(SESSION_STATUSES),
+  warnings: z.array(StoredWarningSchema),
+});
+
+/** The state that resumes a summary (`ResumeState` in summary-resume.ts). */
+const ResumeSchema = z.strictObject({
+  offset: z.int().nonnegative(),
+  prefixHash: HashSchema,
+  tailHash: HashSchema,
+  fold: FoldStateSchema,
+});
+
 /**
- * The cached facts of one chat file, keyed by its real path. `updatedAt` and `summary` are each optional, and both were
- * read from the file in `identity`.
+ * The cached facts of one chat file, keyed by its real path. `updatedAt`, `summary` and `resume` are each optional. The
+ * first two were read from the file in `identity`; `resume` is checked against the file's bytes before it is used.
  */
 const SummaryCacheEntrySchema = z
   .strictObject({
@@ -96,8 +127,12 @@ const SummaryCacheEntrySchema = z
     identity: FileIdentitySchema,
     updatedAt: z.string().optional(),
     summary: StoredSummarySchema.optional(),
+    resume: ResumeSchema.optional(),
   })
-  .refine((entry) => entry.updatedAt !== undefined || entry.summary !== undefined);
+  .refine(
+    (entry) =>
+      entry.updatedAt !== undefined || entry.summary !== undefined || entry.resume !== undefined,
+  );
 
 const CacheFileSchema = z.strictObject({
   summarySchema: z.literal(SUMMARY_SCHEMA),

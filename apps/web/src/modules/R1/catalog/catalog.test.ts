@@ -90,7 +90,7 @@ describe("SessionCatalogModel list/sort/filter", () => {
           calls.push(args);
           return { sessions, nextCursor: "cursor-2" };
         },
-        readSession: async ({ sessionFile }) =>
+        readSessionRow: async ({ sessionFile }) =>
           sessions.find((item) => item.sessionFile === sessionFile) as SessionFile,
       },
       pins: {
@@ -121,7 +121,7 @@ describe("SessionCatalogModel list/sort/filter", () => {
           folders.push(selected);
           return { sessions, nextCursor: null };
         },
-        readSession: async () => sessions[0] as SessionFile,
+        readSessionRow: async () => sessions[0] as SessionFile,
       },
       gitState: { read: async () => workspace() },
     });
@@ -186,7 +186,7 @@ describe("R1 folder and project scope boundaries", () => {
       scope: aliasedScope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [listed], nextCursor: null }),
-        readSession: async () => updated,
+        readSessionRow: async () => updated,
       },
     });
 
@@ -209,7 +209,7 @@ describe("R1 folder and project scope boundaries", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [listed], nextCursor: null }),
-        readSession: async () => nested,
+        readSessionRow: async () => nested,
       },
     });
 
@@ -258,7 +258,7 @@ describe("R1 folder and project scope boundaries", () => {
           selected === linkedWorktree
             ? { sessions: [listed], nextCursor: null }
             : { sessions: [], nextCursor: null },
-        readSession: async () => updated,
+        readSessionRow: async () => updated,
       },
       gitState: { read: async () => ({ ...workspace(), folder: repositoryRoot, git }) },
     });
@@ -297,7 +297,7 @@ function pagedFolder(total: number) {
       const end = Math.min(start + (limit ?? 100), total);
       return { sessions: all.slice(start, end), nextCursor: end < total ? String(end) : null };
     },
-    readSession: async () => all[0] as SessionFile,
+    readSessionRow: async () => all[0] as SessionFile,
   };
   return { requests, sessionFiles };
 }
@@ -462,7 +462,7 @@ describe("SessionCatalogModel older pages", () => {
           calls += 1;
           return calls === 1 ? { sessions: [], nextCursor: null } : pendingRefresh.promise;
         },
-        readSession: async () => session("unused", "2026-10-01T00:00:00.000Z"),
+        readSessionRow: async () => session("unused", "2026-10-01T00:00:00.000Z"),
       },
     });
     const args = { filter: { scope, query: "" }, limit: 50 };
@@ -508,7 +508,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [original], nextCursor: null }),
-        readSession: async () => renamed,
+        readSessionRow: async () => renamed,
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -532,7 +532,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [running], nextCursor: null }),
-        readSession: async () => settled,
+        readSessionRow: async () => settled,
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -554,7 +554,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [running], nextCursor: null }),
-        readSession: async () => ({ ...running, title: "Renamed while running" }),
+        readSessionRow: async () => ({ ...running, title: "Renamed while running" }),
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -579,7 +579,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [match], nextCursor: null }),
-        readSession: async () => other,
+        readSessionRow: async () => other,
       },
     });
     await model.list({ filter: { scope, query: "alpha" }, limit: 20 });
@@ -605,7 +605,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [original], nextCursor: null }),
-        readSession: async () => renamed,
+        readSessionRow: async () => renamed,
       },
     });
     await model.list({ filter: { scope, query: "alpha" }, limit: 20 });
@@ -627,7 +627,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [match], nextCursor: null }),
-        readSession: async () => added,
+        readSessionRow: async () => added,
       },
     });
     await model.list({ filter: { scope, query: "alpha" }, limit: 20 });
@@ -652,7 +652,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [original], nextCursor: null }),
-        readSession: async () => pending,
+        readSessionRow: async () => pending,
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -685,7 +685,7 @@ describe("SessionCatalogModel reconciliation", () => {
           listCalls += 1;
           return { sessions: listCalls === 1 ? [original] : [original], nextCursor: null };
         },
-        readSession: async () => original,
+        readSessionRow: async () => original,
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -707,7 +707,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [], nextCursor: null }),
-        readSession: async () => first,
+        readSessionRow: async () => first,
       },
     });
     for (let index = 0; index <= 1_000; index += 1) {
@@ -734,7 +734,7 @@ describe("SessionCatalogModel reconciliation", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [], nextCursor: null }),
-        readSession: async () => session("outside", "2026-10-03T00:00:00.000Z"),
+        readSessionRow: async () => session("outside", "2026-10-03T00:00:00.000Z"),
       },
     });
     await model.reconcile({
@@ -756,7 +756,7 @@ describe("SessionCatalogModel errors and immutable snapshots", () => {
         listSessions: async () => {
           throw failure;
         },
-        readSession: async () => session("never", "2026-10-03T00:00:00.000Z"),
+        readSessionRow: async () => session("never", "2026-10-03T00:00:00.000Z"),
       },
     });
 
@@ -771,7 +771,7 @@ describe("SessionCatalogModel errors and immutable snapshots", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [one], nextCursor: null }),
-        readSession: async () => one,
+        readSessionRow: async () => one,
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -796,7 +796,7 @@ describe("SessionCatalogModel refresh after a rename", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [renamed, other], nextCursor: null }),
-        readSession: async ({ sessionFile }) =>
+        readSessionRow: async ({ sessionFile }) =>
           sessionFile === renamed.sessionFile ? saved : other,
       },
     });
@@ -819,7 +819,7 @@ describe("SessionCatalogModel refresh after a rename", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [listed], nextCursor: null }),
-        readSession: async () => {
+        readSessionRow: async () => {
           reads += 1;
           return unlisted;
         },
@@ -847,7 +847,7 @@ describe("SessionCatalogModel refresh after a rename", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [listed], nextCursor: null }),
-        readSession: async () => {
+        readSessionRow: async () => {
           throw new AppFailure({
             code: "not_found",
             message: "The file is gone.",
@@ -874,7 +874,7 @@ describe("SessionCatalogModel: a list or an update that overlaps another", () =>
       scope,
       sessionFiles: {
         listSessions: () => listed.promise,
-        readSession: async () => ended,
+        readSessionRow: async () => ended,
       },
     });
     const pending = model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -898,7 +898,7 @@ describe("SessionCatalogModel: a list or an update that overlaps another", () =>
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [before], nextCursor: null }),
-        readSession: () => read.promise,
+        readSessionRow: () => read.promise,
       },
     });
     const update = model.reconcile({
@@ -924,7 +924,7 @@ describe("SessionCatalogModel: a list or an update that overlaps another", () =>
       scope,
       sessionFiles: {
         listSessions: () => listed.promise,
-        readSession: async () => gone,
+        readSessionRow: async () => gone,
       },
     });
     const pending = model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -944,7 +944,7 @@ describe("SessionCatalogModel: a list or an update that overlaps another", () =>
       sessionFiles: {
         listSessions: () =>
           failing ? held.promise : Promise.resolve({ sessions: [listed], nextCursor: null }),
-        readSession: async () => listed,
+        readSessionRow: async () => listed,
       },
     });
     await model.list({ filter: { scope, query: "" }, limit: 20 });
@@ -976,7 +976,7 @@ describe("SessionCatalogModel running chats", () => {
           nextCursor: null,
           running: [{ id: ThreadIdSchema.parse("first-reply"), folder }],
         }),
-        readSession: async () => {
+        readSessionRow: async () => {
           throw new Error("No chat has a session file to read yet.");
         },
       },
@@ -1004,7 +1004,7 @@ describe("SessionCatalogModel running chats", () => {
                 nextCursor: null,
                 running: [{ id: ThreadIdSchema.parse("later"), folder }],
               },
-        readSession: async () => {
+        readSessionRow: async () => {
           throw new Error("No chat has a session file to read in this test.");
         },
       },

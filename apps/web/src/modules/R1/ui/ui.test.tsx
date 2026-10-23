@@ -63,7 +63,7 @@ function modelWithSessions(
     scope,
     sessionFiles: {
       listSessions: async () => ({ sessions: files, nextCursor: null }),
-      readSession: async ({ sessionFile }) =>
+      readSessionRow: async ({ sessionFile }) =>
         files.find((file) => file.sessionFile === sessionFile) as SessionFile,
     },
   });
@@ -82,7 +82,7 @@ function modelWithRunning(
         nextCursor: null,
         running: running.map((id) => ({ id: ThreadIdSchema.parse(id), folder: listed })),
       }),
-      readSession: async ({ sessionFile }) =>
+      readSessionRow: async ({ sessionFile }) =>
         files.find((file) => file.sessionFile === sessionFile) as SessionFile,
     },
   });
@@ -198,7 +198,7 @@ describe("SessionCatalogSidebar", () => {
           listCalls += 1;
           return { sessions: files, nextCursor: null };
         },
-        readSession: async ({ sessionFile }) =>
+        readSessionRow: async ({ sessionFile }) =>
           files.find((file) => file.sessionFile === sessionFile) as SessionFile,
       },
     });
@@ -311,7 +311,7 @@ describe("SessionCatalogSidebar", () => {
           calls += 1;
           return calls === 1 ? { sessions: files, nextCursor: null } : refreshResult.promise;
         },
-        readSession: async ({ sessionFile }) => {
+        readSessionRow: async ({ sessionFile }) => {
           const file = files.find((item) => item.sessionFile === sessionFile);
           if (!file) throw new Error("The session was not found");
           return file;
@@ -359,7 +359,7 @@ describe("SessionCatalogSidebar", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: files, nextCursor: null }),
-        readSession: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
+        readSessionRow: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
       },
     });
     renderSidebar({ catalog });
@@ -377,7 +377,7 @@ describe("SessionCatalogSidebar", () => {
           if (failRefresh) throw new Error("disk busy");
           return { sessions: files, nextCursor: null };
         },
-        readSession: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
+        readSessionRow: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
       },
     });
     renderSidebar({ catalog });
@@ -874,7 +874,7 @@ describe("SessionCatalogSidebar", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: files, nextCursor: null }),
-        readSession: async ({ sessionFile }) =>
+        readSessionRow: async ({ sessionFile }) =>
           files.find((file) => file.sessionFile === sessionFile) as SessionFile,
       },
     });
@@ -1132,7 +1132,7 @@ describe("SessionCatalogSidebar", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: [], nextCursor: null }),
-        readSession: async () => session("never", "2026-10-01T00:00:00.000Z"),
+        readSessionRow: async () => session("never", "2026-10-01T00:00:00.000Z"),
       },
     });
     const calls: string[] = [];
@@ -1211,7 +1211,7 @@ describe("SessionCatalogSidebar", () => {
             nextCursor: end < all.length ? String(end) : null,
           };
         },
-        readSession: async () => all[0] as SessionFile,
+        readSessionRow: async () => all[0] as SessionFile,
       },
     });
     renderSidebar({ catalog: model });
@@ -1248,7 +1248,7 @@ describe("SessionCatalogSidebar", () => {
             nextCursor: end < all.length ? String(end) : null,
           };
         },
-        readSession: async () => all[0] as SessionFile,
+        readSessionRow: async () => all[0] as SessionFile,
       },
     });
     renderSidebar({ catalog: model });
@@ -1296,7 +1296,7 @@ describe("SessionCatalogSidebar", () => {
             nextCursor: stale ? "stale" : end < all.length ? String(end) : null,
           };
         },
-        readSession: async () => all[0] as SessionFile,
+        readSessionRow: async () => all[0] as SessionFile,
       },
     });
     renderSidebar({ catalog: model });
@@ -1340,7 +1340,7 @@ describe("SessionCatalogSidebar", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: files, nextCursor: null }),
-        readSession: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
+        readSessionRow: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
       },
     });
     const { calls } = renderSidebar({ catalog, renameAvailable: true });
@@ -1420,7 +1420,7 @@ describe("SessionCatalogSidebar", () => {
       scope,
       sessionFiles: {
         listSessions: async () => ({ sessions: files, nextCursor: null }),
-        readSession: async ({ sessionFile }) =>
+        readSessionRow: async ({ sessionFile }) =>
           files.find((file) => file.sessionFile === sessionFile) as SessionFile,
       },
     });
@@ -1522,7 +1522,7 @@ describe("SessionCatalogSidebar", () => {
             retryable: true,
           });
         },
-        readSession: async () => {
+        readSessionRow: async () => {
           throw new Error("No session is read in this test");
         },
       },
@@ -2033,7 +2033,7 @@ describe("SessionCatalogSidebar focus across a refresh", () => {
           nextCursor: null,
           running: state.running.map((id) => ({ id: ThreadIdSchema.parse(id), folder: listed })),
         }),
-        readSession: async ({ sessionFile }) => {
+        readSessionRow: async ({ sessionFile }) => {
           const file = state.files.find((item) => item.sessionFile === sessionFile);
           if (!file) throw new Error(`No session file ${sessionFile}.`);
           return file;

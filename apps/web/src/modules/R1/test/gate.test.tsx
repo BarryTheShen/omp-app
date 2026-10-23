@@ -59,7 +59,9 @@ interface CatalogFixtureClients {
       readonly cursor?: string;
       readonly limit?: number;
     }): Promise<{ readonly sessions: SessionFile[]; readonly nextCursor: string | null }>;
-    readSession(args: { readonly sessionFile: SessionFile["sessionFile"] }): Promise<SessionFile>;
+    readSessionRow(args: {
+      readonly sessionFile: SessionFile["sessionFile"];
+    }): Promise<SessionFile>;
   };
   readonly gitState: {
     read(args: { readonly folder: FolderPath }): Promise<typeof R1_WORKSPACE_STATE>;
@@ -98,7 +100,7 @@ function createCatalogFixtureClients(options: { readonly paged: boolean }): Cata
         }
         return { sessions: [...sessions], nextCursor: null };
       },
-      async readSession({ sessionFile }) {
+      async readSessionRow({ sessionFile }) {
         const session = bySessionFile[sessionFile];
         if (!session) {
           throw new AppFailure({
@@ -323,7 +325,7 @@ describe("R1 native catalog fixture", () => {
       scope: folderScope,
       sessionFiles: {
         ...clients.sessionFiles,
-        readSession: async () => current,
+        readSessionRow: async () => current,
       },
     });
     await catalog.list({ filter: { scope: folderScope, query: "" }, limit: 50 });

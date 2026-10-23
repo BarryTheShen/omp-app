@@ -2,7 +2,13 @@ import * as fs from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
 import { firstPromptTextOf, MESSAGE_PART_SEPARATOR } from "@omp-app/contracts";
 import { isJsonObject, normalizeHeader, parseTitleSlotLine } from "./parser";
-import type { ParseWarning, SessionHeader, SessionStatus, SessionTitleSlot } from "./types";
+import type {
+  ParseWarning,
+  SessionHeader,
+  SessionStatus,
+  SessionTitleSlot,
+  SessionTitleSource,
+} from "./types";
 
 /**
  * What a session list needs from a file, found in one pass that keeps only counters: a session file
@@ -88,28 +94,91 @@ function warn(
   };
 }
 
+/** A parse warning without its path: the path is the key of the cached facts that hold it. */
+function withoutPath(warning: ParseWarning): Omit<ParseWarning, "sessionFile"> {
+  return {
+    code: warning.code,
+    message: warning.message,
+    ...(warning.line === undefined ? {} : { line: warning.line }),
+    ...(warning.partial === undefined ? {} : { partial: warning.partial }),
+  };
+}
+
 /**
- * Applies `parseSessionContent`'s rules to one physical line at a time, keeping counters instead of
- * records. `summary.test.ts` holds the two implementations to the same answers.
+ * Everything a summary keeps of the lines it has read, as plain data, so that a later read can carry on from it. The
+ * title slot's padding is left out: a summary never reads it.
  */
-class SessionScanner {
+export interface SummaryFoldState {
+  /** Physical lines fed so far, the title slot included. */
+  readonly lineIndex: number;
+  /** Logical records parsed so far. */
+  readonly entryCount: number;
+  readonly titleSlot?: {
+    readonly title: string;
+    readonly source?: SessionTitleSource;
+    readonly updatedAt: string;
+  };
+  readonly header?: Readonly<Record<string, unknown>>;
+  readonly messageCount: number;
+  readonly assistantTurns: number;
+  readonly firstPrompt: string | null;
+  readonly status: SessionStatus;
+  readonly warnings: Omit<ParseWarning, "sessionFile">[];
+}
+
+/** One summary pass over a session file, fed one physical line at a time. */
+export interface SummaryFold {
+  /** Feeds one complete physical line, without its newline. */
+  push(raw: string): void;
+  /**
+   * The summary of the lines pushed so far, with `rest` (the text after the last newline) read as a last record the way a
+   * file's end is read. Changes nothing: the fold can go on from where it was.
+   */
+  result(rest?: string): SessionSummary;
+  /** The state after the lines pushed so far, for `summaryFoldFrom`. */
+  state(): SummaryFoldState;
+}
+
+/**
+ * Applies `parseSessionContent`'s rules to one physical line at a time, keeping counters instead of records.
+ * `summary.test.ts` holds the two implementations to the same answers.
+ */
+class SessionFold implements SummaryFold {
   readonly #sessionFile: string;
-  readonly #warnings: ParseWarning[] = [];
-  #lineIndex = 0;
-  #entryCount = 0;
+  #warnings: ParseWarning[];
+  #lineIndex: number;
+  #entryCount: number;
   #titleSlot: SessionTitleSlot | undefined;
   #header: SessionHeader | undefined;
-  #messageCount = 0;
-  #assistantTurns = 0;
-  #firstPrompt: string | null = null;
-  #status: SessionStatus = "unknown";
+  #messageCount: number;
+  #assistantTurns: number;
+  #firstPrompt: string | null;
+  #status: SessionStatus;
 
-  constructor(sessionFile: string) {
+  constructor(sessionFile: string, state?: SummaryFoldState) {
     this.#sessionFile = sessionFile;
+    this.#warnings = (state?.warnings ?? []).map((warning) => ({ ...warning, sessionFile }));
+    this.#lineIndex = state?.lineIndex ?? 0;
+    this.#entryCount = state?.entryCount ?? 0;
+    this.#titleSlot =
+      state?.titleSlot === undefined
+        ? undefined
+        : {
+            type: "title",
+            v: 1,
+            title: state.titleSlot.title,
+            ...(state.titleSlot.source === undefined ? {} : { source: state.titleSlot.source }),
+            updatedAt: state.titleSlot.updatedAt,
+            pad: "",
+          };
+    this.#header = state?.header === undefined ? undefined : (state.header as SessionHeader);
+    this.#messageCount = state?.messageCount ?? 0;
+    this.#assistantTurns = state?.assistantTurns ?? 0;
+    this.#firstPrompt = state?.firstPrompt ?? null;
+    this.#status = state?.status ?? "unknown";
   }
 
-  /** A physical line that ended with a newline. */
-  line(raw: string): void {
+  push(raw: string): void {
     const index = this.#lineIndex++;
     if (index === 0) {
       const slot = parseTitleSlotLine(raw);
@@ -121,17 +190,40 @@ class SessionScanner {
     this.#logical(raw, index, false);
   }
 
-  /** The text after the last newline: empty for a file that ends with one, else the final line. */
-  finish(rest: string): void {
-    if (rest.length > 0) this.#logical(rest, this.#lineIndex++, true);
-    if (this.#header === undefined) {
-      this.#warnings.push(
+  result(rest = ""): SessionSummary {
+    const view = new SessionFold(this.#sessionFile, this.state());
+    if (rest.length > 0) view.#logical(rest, view.#lineIndex++, true);
+    if (view.#header === undefined) {
+      view.#warnings.push(
         warn("invalid_header", "No valid session header found", undefined, this.#sessionFile),
       );
     }
+    return view.#summary();
   }
 
-  summary(): SessionSummary {
+  state(): SummaryFoldState {
+    return {
+      lineIndex: this.#lineIndex,
+      entryCount: this.#entryCount,
+      ...(this.#titleSlot === undefined
+        ? {}
+        : {
+            titleSlot: {
+              title: this.#titleSlot.title,
+              ...(this.#titleSlot.source === undefined ? {} : { source: this.#titleSlot.source }),
+              updatedAt: this.#titleSlot.updatedAt,
+            },
+          }),
+      ...(this.#header === undefined ? {} : { header: { ...this.#header } }),
+      messageCount: this.#messageCount,
+      assistantTurns: this.#assistantTurns,
+      firstPrompt: this.#firstPrompt,
+      status: this.#status,
+      warnings: this.#warnings.map(withoutPath),
+    };
+  }
+
+  #summary(): SessionSummary {
     let header = this.#header;
     if (this.#titleSlot && header) {
       const folded: Record<string, unknown> = { ...header };
@@ -196,42 +288,82 @@ class SessionScanner {
   }
 }
 
+/** A summary over `sessionFile` from its first line. */
+export function createSummaryFold(sessionFile: string): SummaryFold {
+  return new SessionFold(sessionFile);
+}
+
+/** A summary over `sessionFile` that goes on from `state`, the state of an earlier fold over the same lines. */
+export function summaryFoldFrom(sessionFile: string, state: SummaryFoldState): SummaryFold {
+  return new SessionFold(sessionFile, state);
+}
+
 /**
- * Reads a session file in CHUNK_BYTES pieces and returns its summary. Memory stays near the size of the longest single
- * line; the file is never held whole. Throws the file system's error if it can't be opened or read.
- *
- * A long line's pieces are joined once, when its newline arrives: the carried text was re-split on every read, which
- * copied a long line once per read. Each read gets a buffer of its own: on a 30-chat first page, one reused buffer let
- * the decoded text of long lines wait for the collector, and the peak resident size was about a third higher (measured
- * with `summary-cache-memory.test.ts`).
+ * Where a fold read stopped: `offset` is the byte offset after the last complete line that was fed, and `rest` is the text
+ * from there to the end of the read (a line without its newline yet, possibly empty).
  */
-export async function summarizeSessionFile(sessionFile: string): Promise<SessionSummary> {
+export interface FoldRead {
+  readonly offset: number;
+  readonly rest: string;
+}
+
+/**
+ * Feeds the complete lines of bytes [from, until) of `sessionFile` to `fold`, in CHUNK_BYTES pieces. Only whole lines are
+ * fed: the text after the last newline is returned as `rest`, and `offset` is where it starts. A line is split on the
+ * newline byte, which never occurs inside a UTF-8 character, so each line decodes whole. Memory stays near the size of the
+ * longest line.
+ */
+export async function foldSessionFile(
+  sessionFile: string,
+  fold: SummaryFold,
+  from = 0,
+  until = Number.POSITIVE_INFINITY,
+): Promise<FoldRead> {
   const handle = await fs.open(sessionFile, "r");
   try {
-    const scanner = new SessionScanner(sessionFile);
+    let position = from;
+    let lineStart = from;
+    // A line's pieces are joined as strings, the way the streaming reader always joined them. Joining Buffers instead kept
+    // each long line's bytes outside the JS heap, where the collector runs less often, and the first page of 30 chats peaked
+    // about 40 MiB higher (summary-cache-memory.test.ts). A newline byte never occurs inside a UTF-8 character, so each line's
+    // decoder is ended at its newline and the next line starts clean.
     const decoder = new StringDecoder("utf8");
-    let pieces: string[] = [];
-    for (;;) {
-      const buffer = Buffer.allocUnsafe(CHUNK_BYTES);
-      const { bytesRead } = await handle.read(buffer, 0, CHUNK_BYTES, null);
+    let text = "";
+    while (position < until) {
+      const want = Math.min(CHUNK_BYTES, until - position);
+      const buffer = Buffer.allocUnsafe(want);
+      const { bytesRead } = await handle.read(buffer, 0, want, position);
       if (bytesRead === 0) break;
-      const text = decoder.write(buffer.subarray(0, bytesRead));
-      let from = 0;
-      let newline = text.indexOf("\n");
+      const chunkStart = position;
+      position += bytesRead;
+      const chunk = buffer.subarray(0, bytesRead);
+      let start = 0;
+      let newline = chunk.indexOf(0x0a);
       while (newline !== -1) {
-        pieces.push(text.slice(from, newline));
-        scanner.line(pieces.length === 1 ? (pieces[0] ?? "") : pieces.join(""));
-        pieces = [];
-        from = newline + 1;
-        newline = text.indexOf("\n", from);
+        text += decoder.write(chunk.subarray(start, newline));
+        text += decoder.end();
+        fold.push(text);
+        text = "";
+        start = newline + 1;
+        lineStart = chunkStart + start;
+        newline = chunk.indexOf(0x0a, start);
       }
-      if (from < text.length) pieces.push(text.slice(from));
+      if (start < chunk.length) text += decoder.write(chunk.subarray(start));
     }
-    scanner.finish(pieces.join("") + decoder.end());
-    return scanner.summary();
+    return { offset: lineStart, rest: text + decoder.end() };
   } finally {
     await handle.close();
   }
+}
+
+/**
+ * Reads a session file in CHUNK_BYTES pieces and returns its summary. Memory stays near the size of the longest single
+ * line; the file is never held whole. Throws the file system's error if it can't be opened or read.
+ */
+export async function summarizeSessionFile(sessionFile: string): Promise<SessionSummary> {
+  const fold = createSummaryFold(sessionFile);
+  const read = await foldSessionFile(sessionFile, fold);
+  return fold.result(read.rest);
 }
 
 /**

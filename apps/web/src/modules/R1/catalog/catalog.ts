@@ -30,7 +30,7 @@ export interface SessionFilesClient {
     readonly cursor?: string;
     readonly limit?: number;
   }): Promise<SessionListResult>;
-  readSession(args: SessionReadArgs): Promise<SessionFile>;
+  readSessionRow(args: SessionReadArgs): Promise<SessionFile>;
 }
 
 export interface GitStateClient {
@@ -379,7 +379,7 @@ export class SessionCatalogModel {
 
   public async fetch(threadId: ThreadId): Promise<SessionMetadata> {
     try {
-      const file = await this.options.sessionFiles.readSession({
+      const file = await this.options.sessionFiles.readSessionRow({
         sessionFile: this.requireSessionFile(threadId),
       });
       return metadataFromFile(file, this.snapshot.scope, this.pins);
@@ -417,7 +417,9 @@ export class SessionCatalogModel {
     const begun = ++this.updateCount;
     this.reconcileBegun.set(change.id, begun);
     try {
-      const file = await this.options.sessionFiles.readSession({ sessionFile: change.sessionFile });
+      const file = await this.options.sessionFiles.readSessionRow({
+        sessionFile: change.sessionFile,
+      });
       if (this.reconcileBegun.get(change.id) !== begun || this.tombstones.has(change.id)) return;
       const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
       this.endTurnRefusal(metadata.id, metadata.turn);
@@ -483,7 +485,7 @@ export class SessionCatalogModel {
     const listed = this.snapshot.sessions.find((session) => session.id === threadId);
     if (!listed || this.tombstones.has(threadId)) return;
     try {
-      const file = await this.options.sessionFiles.readSession({
+      const file = await this.options.sessionFiles.readSessionRow({
         sessionFile: listed.sessionFile,
       });
       const current = this.snapshot.sessions.find((session) => session.id === threadId);

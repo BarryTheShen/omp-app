@@ -236,6 +236,10 @@ describe("A1 SessionFileStore and session pins", () => {
       SessionFileStore.methods.readSession.result.safeParse({ ...session, sizeBytes: -1 }).success,
     ).toBe(false);
     expect(
+      SessionFileStore.methods.readSessionRow.result.safeParse({ ...session, sizeBytes: -1 })
+        .success,
+    ).toBe(false);
+    expect(
       SessionFileChanged.safeParse({
         folder,
         sessionFile,

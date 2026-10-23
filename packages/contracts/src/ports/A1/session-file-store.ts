@@ -228,6 +228,11 @@ export const SessionFileStore = definePort({
       result: SessionFile,
       capability: "host.session-files",
     },
+    readSessionRow: {
+      args: SessionReadArgs,
+      result: SessionFile,
+      capability: "host.session-files",
+    },
     listSubagents: {
       args: SessionReadArgs,
       result: SessionSubagentsResult,

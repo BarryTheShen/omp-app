@@ -203,6 +203,10 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
         assertNotAborted(handlerContext);
         return mapSession(await context.sessionFileStore.readSession(args));
       },
+      readSessionRow: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return mapSession(await context.sessionFileStore.readSessionRow(args));
+      },
       listSubagents: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
         const result = await context.sessionFileStore.listSubagents(args);

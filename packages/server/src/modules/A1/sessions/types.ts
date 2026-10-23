@@ -1,6 +1,6 @@
 /** Read-only metadata exposed by the omp session-file adapter. */
 
-import type { SessionSummary } from "./summary";
+import type { ResumeState, SummaryRead } from "./summary-resume";
 
 export type SessionTitleSource = "auto" | "user";
 
@@ -224,10 +224,14 @@ export interface SessionFileStoreOptions {
    */
   readonly appDataDir?: string;
   /**
-   * Reads a chat's summary for a listing and for a background refresh. The store's streaming reader unless a test replaces it,
-   * to hold or fail a read at a known point.
+   * Reads a chat's summary for a listing and for a background refresh, from the state an earlier read kept for it when there
+   * is one. The store's resumable reader unless a test replaces it, to hold or fail a read at a known point.
    */
-  readonly summarizeFile?: (sessionFile: string) => Promise<SessionSummary>;
+  readonly summarizeFile?: (
+    sessionFile: string,
+    size: number,
+    prior?: ResumeState,
+  ) => Promise<SummaryRead>;
 }
 
 /** The views on the server's chats, as the app port counts them. */

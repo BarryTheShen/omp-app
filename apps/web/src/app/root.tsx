@@ -2412,7 +2412,7 @@ function ConnectedApp({
       scope: { kind: "folder", folder },
       sessionFiles: {
         listSessions: catalogCache.sessionFiles.listSessions,
-        readSession: catalogCache.sessionFiles.readSession,
+        readSessionRow: catalogCache.sessionFiles.readSessionRow,
       },
     });
     catalogCache.models.set(folder, created);
