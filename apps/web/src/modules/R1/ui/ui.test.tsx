@@ -2139,6 +2139,8 @@ describe("SessionCatalogSidebar entrance fade", () => {
     });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
     expect(fadesIn(rowOf("Fresh chat"))).toBe(true);
+    // The fade is drawn and then ends: the row is an ordinary row before the later update, which must not replay it.
+    await waitFor(() => expect(fadesIn(rowOf("Fresh chat"))).toBe(false));
     expect(fadesIn(rowOf("Old chat"))).toBe(false);
 
     const joined = session("joined", "2026-10-05T00:00:00.000Z", "Joined by a refresh");

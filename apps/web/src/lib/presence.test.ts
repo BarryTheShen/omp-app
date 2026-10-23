@@ -1,5 +1,6 @@
-import { renderHook } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ENTER_MS, LEAVE_MS } from "./motion";
 import { mergePresence, type Presence, useEnteringItems, usePresentItems } from "./presence";
 
 type Row = { readonly id: string };
@@ -11,6 +12,34 @@ function labels(list: readonly Presence<Row>[]): string[] {
     (entry) => `${entry.item.id}${entry.leaving ? "-leaving" : ""}${entry.entering ? "+" : ""}`,
   );
 }
+
+/** The frames the hooks have asked the browser to draw. A test draws one by running the callbacks queued so far. */
+let frames = new Map<number, FrameRequestCallback>();
+let nextFrameId = 1;
+
+function drawFrame(): void {
+  const pending = [...frames.values()];
+  frames = new Map();
+  for (const callback of pending) callback(0);
+}
+
+beforeEach(() => {
+  frames = new Map();
+  vi.useFakeTimers();
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    const id = nextFrameId++;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+    frames.delete(id);
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("mergePresence", () => {
   test("the first draw keeps the list's order and enters nothing", () => {
@@ -55,7 +84,18 @@ describe("useEnteringItems", () => {
     rerender({ items: [{ id: "a" }, { id: "b" }] });
     expect(labels(result.current)).toEqual(["a", "b+"]);
 
+    // The list changes again before b's fade has been drawn: a is dropped at once, and b still enters.
     rerender({ items: [{ id: "b" }] });
+    expect(labels(result.current)).toEqual(["b+"]);
+
+    // Two frames draw the fade's start, then its time runs: b is an ordinary row again.
+    act(() => {
+      drawFrame();
+      drawFrame();
+    });
+    act(() => {
+      vi.advanceTimersByTime(ENTER_MS);
+    });
     expect(labels(result.current)).toEqual(["b"]);
   });
 
@@ -72,11 +112,12 @@ describe("useEnteringItems", () => {
     expect(labels(result.current)).toEqual(["a", "b", "c+"]);
   });
 });
-describe("usePresentItems armed state", () => {
+
+describe("usePresentItems", () => {
   test("rows loaded while the catalog is unarmed do not enter, but later rows do", () => {
     const { result, rerender } = renderHook(
       ({ items, armed }: { readonly items: readonly Row[]; readonly armed: boolean }) =>
-        usePresentItems(items, key, 200, armed),
+        usePresentItems(items, key, LEAVE_MS, armed),
       { initialProps: { items: [] as Row[], armed: false } },
     );
     rerender({ items: [{ id: "a" }], armed: true });
@@ -84,5 +125,54 @@ describe("usePresentItems armed state", () => {
 
     rerender({ items: [{ id: "a" }, { id: "b" }], armed: true });
     expect(labels(result.current)).toEqual(["a", "b+"]);
+  });
+
+  test("a row that joins keeps its entering class until its fade has been drawn, though the list changes first", () => {
+    const { result, rerender } = renderHook(
+      ({ items }: { readonly items: readonly Row[] }) => usePresentItems(items, key, LEAVE_MS),
+      { initialProps: { items: [{ id: "a" }] } },
+    );
+    rerender({ items: [{ id: "a" }, { id: "b" }] });
+    expect(labels(result.current)).toEqual(["a", "b+"]);
+
+    rerender({ items: [{ id: "a" }, { id: "b" }, { id: "c" }] });
+    expect(labels(result.current)).toEqual(["a", "b+", "c+"]);
+
+    act(() => {
+      drawFrame();
+      drawFrame();
+    });
+    act(() => {
+      vi.advanceTimersByTime(ENTER_MS);
+    });
+    expect(labels(result.current)).toEqual(["a", "b", "c"]);
+  });
+
+  test("a leaving row is removed only after two frames have been drawn and its fade has run", () => {
+    const { result, rerender } = renderHook(
+      ({ items }: { readonly items: readonly Row[] }) => usePresentItems(items, key, LEAVE_MS),
+      { initialProps: { items: [{ id: "a" }, { id: "b" }] } },
+    );
+    rerender({ items: [{ id: "a" }] });
+    expect(labels(result.current)).toEqual(["a", "b-leaving"]);
+
+    // A timer alone does not remove the row: its fade must have been drawn first.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(labels(result.current)).toEqual(["a", "b-leaving"]);
+
+    act(() => {
+      drawFrame();
+      drawFrame();
+    });
+    act(() => {
+      vi.advanceTimersByTime(LEAVE_MS - 1);
+    });
+    expect(labels(result.current)).toEqual(["a", "b-leaving"]);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(labels(result.current)).toEqual(["a"]);
   });
 });

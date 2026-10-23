@@ -18,8 +18,14 @@ export const ENTER_FADE =
 export const LEAVE_FADE =
   "opacity-0 transition-opacity duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none";
 
-/** How long a leaving row stays drawn: the base token plus a margin, so its fade always ends first. */
+/** How long a leaving row stays drawn after its fade has been drawn: the base token plus a margin, so its fade ends first. */
 export const LEAVE_MS = 200;
+
+/**
+ * How long a row that joined live keeps its entering class after its fade has been drawn, so the class goes only once the
+ * fade has ended. The same margin as `LEAVE_MS`.
+ */
+export const ENTER_MS = 200;
 
 /**
  * A notice has no time of its own, so a notice counts as live only after its stack has been drawn this long. A notice

@@ -7,10 +7,27 @@ import { NotificationFeedback, NotificationNotices } from "../../feedback";
 import { TOAST_LIFETIME_MS } from "../../feedback/notices";
 import { NotificationProjector } from "../../notifications";
 
-/** The fade a removed notice plays before it leaves the page: advance past it (fake timers only). */
+/** The fade a removed notice plays before it leaves the page: two drawn frames, then the fade's time (fake timers with frames). */
 function leave(): void {
   act(() => {
-    vi.advanceTimersByTime(LEAVE_MS);
+    vi.advanceTimersByTime(LEAVE_MS * 2);
+  });
+}
+
+/** Fake timers that also step animation frames, so a removed notice leaves after its two frames and its fade. */
+function fakeTimersWithFrames(): void {
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+      "setImmediate",
+      "clearImmediate",
+      "Date",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+    ],
   });
 }
 
@@ -232,7 +249,7 @@ describe("NotificationFeedback", () => {
   });
 
   test("a banner stays until it is dismissed, and a toast leaves after its lifetime", () => {
-    vi.useFakeTimers();
+    fakeTimersWithFrames();
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
 
@@ -300,7 +317,7 @@ describe("NotificationFeedback", () => {
   });
 
   test("dismissing the line dismisses every informational notice in it, and the line fades out before it hides", () => {
-    vi.useFakeTimers();
+    fakeTimersWithFrames();
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
     notify(projector, "Build cache warmed", "info");
@@ -329,7 +346,7 @@ describe("NotificationFeedback", () => {
   });
 
   test("a warning stays until it is dismissed, and only a success notice leaves by its lifetime", () => {
-    vi.useFakeTimers();
+    fakeTimersWithFrames();
     try {
       const projector = makeProjector();
       render(<NotificationFeedback projector={projector} />);
@@ -352,7 +369,7 @@ describe("NotificationFeedback", () => {
 
 describe("a pointer dismissal does not hold the next notice", () => {
   test("focus goes to the browser after a click, so the remaining toast still leaves on its lifetime", () => {
-    vi.useFakeTimers();
+    fakeTimersWithFrames();
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
     toast(projector, "Update 1");
@@ -376,7 +393,7 @@ describe("a pointer dismissal does not hold the next notice", () => {
 
 describe("notice stacks keep focus and pause on their own terms", () => {
   test("hovering and focusing are separate: a notice with focus stays after the pointer leaves", () => {
-    vi.useFakeTimers();
+    fakeTimersWithFrames();
     try {
       const projector = makeProjector();
       render(<NotificationFeedback projector={projector} />);
