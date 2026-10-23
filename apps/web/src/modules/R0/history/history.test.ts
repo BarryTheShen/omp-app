@@ -3,10 +3,11 @@ import type {
   OmpWire,
   RpcSessionEvent,
   RpcSessionSend,
+  SessionEntryWindow,
   SessionEntryWindowArgs,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure, EntryId as EntryIdSchema } from "@omp-app/contracts";
+import { AppFailure, EntryId as EntryIdSchema, SessionFilePath } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import {
@@ -222,11 +223,71 @@ describe("SessionHistoryLoader.loadInitial", () => {
     await loader.loadInitial();
 
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
-    expect(windowCalls).toEqual([{ sessionFile: "/work/s1.jsonl" }]);
+    expect(windowCalls[0]).toEqual({ sessionFile: "/work/s1.jsonl", byteBudget: 256 * 1024 });
     const snapshot = store.getSnapshot();
     expect(snapshot.transcript.order).toEqual(["b", "c"]);
     expect(snapshot.transcript.head).toBe("c");
     expect(snapshot.transcript.hasOlder).toBe(true);
+    loader.dispose();
+  });
+
+  test("fills the default window in the background after the small first page", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const sessionFile = SessionFilePath.parse("/work/s1.jsonl");
+    const windowCalls: SessionEntryWindowArgs[] = [];
+    const names = Array.from({ length: 80 }, (_, index) => `e${index}`);
+    const file = names.map((id, index) =>
+      fileEntry(id, index === 0 ? null : (names[index - 1] ?? null), id),
+    );
+    const backgroundRequest = createDeferred<SessionEntryWindowArgs>();
+    const backgroundResponse = createDeferred<SessionEntryWindow>();
+    const smallReader = windowsOf(file, names.length);
+    const readWindow: SessionWindowReader = async (args, options) => {
+      windowCalls.push(args);
+      if (args.byteBudget !== undefined) return smallReader(args, options);
+      backgroundRequest.resolve(args);
+      return backgroundResponse.promise;
+    };
+    const defaultWindow = await windowsOf(file, 60)(
+      { sessionFile, leafId: EntryIdSchema.parse("e79") },
+      { signal: new AbortController().signal },
+    );
+    const { send } = makeSend({
+      get_state: () => ({ sessionId: "s1", sessionFile }),
+      get_entries: () => ({ entries: [], leafId: "e79" }),
+    });
+    const loader = new SessionHistoryLoader({ send, threadId, store, readWindow });
+    try {
+      await loader.loadInitial();
+
+      expect(windowCalls[0]).toEqual({
+        sessionFile,
+        byteBudget: 256 * 1024,
+      });
+      expect(store.getSnapshot().transcript.order).toEqual(names.slice(30));
+      expect(store.getSnapshot().transcript.hasOlder).toBe(true);
+
+      const fillArgs = await backgroundRequest.promise;
+      expect(fillArgs).toEqual({
+        sessionFile,
+        leafId: EntryIdSchema.parse("e79"),
+      });
+      expect(store.getSnapshot().transcript.order).toEqual(names.slice(30));
+      backgroundResponse.resolve(defaultWindow);
+      await flushMicrotasks();
+
+      const order = store.getSnapshot().transcript.order;
+      expect(order).toEqual(defaultWindow.entries.map((item) => item.id));
+      expect(new Set(order).size).toBe(defaultWindow.entries.length);
+      expect(store.getSnapshot().transcript.hasOlder).toBe(defaultWindow.hasOlder);
+      expect(windowCalls).toEqual([
+        { sessionFile, byteBudget: 256 * 1024 },
+        { sessionFile, leafId: EntryIdSchema.parse("e79") },
+      ]);
+    } finally {
+      backgroundResponse.resolve(defaultWindow);
+      loader.dispose();
+    }
   });
 
   test("reads the window again from omp's leaf when that is not the file's newest branch", async () => {
@@ -251,7 +312,10 @@ describe("SessionHistoryLoader.loadInitial", () => {
 
     await loader.loadInitial();
 
-    expect(windowCalls.map((call) => call.leafId)).toEqual([undefined, "b"]);
+    expect(windowCalls).toEqual([
+      { sessionFile: "/work/s1.jsonl", byteBudget: 256 * 1024 },
+      { sessionFile: "/work/s1.jsonl", leafId: EntryIdSchema.parse("b"), byteBudget: 256 * 1024 },
+    ]);
     expect(store.getSnapshot().transcript.order).toEqual(["a", "b"]);
     expect(store.getSnapshot().transcript.head).toBe("b");
   });
@@ -459,12 +523,14 @@ describe("SessionHistoryLoader.loadOlder", () => {
 
     await loader.loadOlder();
     expect(windowCalls.at(-1)).toMatchObject({ leafId: "e", before: "d" });
+    expect(windowCalls.at(-1)).not.toHaveProperty("byteBudget");
     expect(store.getSnapshot().transcript.order).toEqual(["b", "c", "d", "e"]);
     expect(store.getSnapshot().transcript.head).toBe("e");
     expect(store.getSnapshot().transcript.hasOlder).toBe(true);
 
     await loader.loadOlder();
     expect(windowCalls.at(-1)).toMatchObject({ leafId: "e", before: "b" });
+    expect(windowCalls.at(-1)).not.toHaveProperty("byteBudget");
     expect(store.getSnapshot().transcript.order).toEqual(["a", "b", "c", "d", "e"]);
     expect(store.getSnapshot().transcript.hasOlder).toBe(false);
     expect(store.getSnapshot().messageOrder).toEqual(
@@ -618,6 +684,10 @@ describe("SessionHistoryLoader.refetch", () => {
     await loader.refetch();
 
     expect(windowCalls).toHaveLength(2);
+    expect(windowCalls).toEqual([
+      { sessionFile: "/work/s1.jsonl", byteBudget: 256 * 1024 },
+      { sessionFile: "/work/s1.jsonl" },
+    ]);
     expect(calls.filter((call) => call.type === "get_entries")).toHaveLength(3);
     expect(store.getSnapshot().transcript.order).toEqual(["a", "x", "y"]);
     expect(store.getSnapshot().transcript.head).toBe("y");

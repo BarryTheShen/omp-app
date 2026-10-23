@@ -253,7 +253,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
     await controller.openExisting(threadOne);
 
-    expect(windowArgs).toEqual([{ sessionFile }]);
+    expect(windowArgs).toEqual([{ sessionFile, byteBudget: 256 * 1024 }]);
   });
 
   test("opens new and latest sessions with explicit folder start intents", async () => {

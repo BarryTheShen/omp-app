@@ -14,9 +14,10 @@ import {
 const MESSAGE_CHARACTERS = 1_500_000;
 
 /**
- * Three long user messages in one session file. The newest window (4 MB) holds the last two, so the
- * chat opens with a "Show earlier messages" control, and the oldest message is paged in on request.
+ * Three long user messages in one session file. The 256 KiB first window paints the newest oversized entry; the
+ * background default window adds the middle message, and the oldest pages in on request.
  */
+
 function sessionLines(folder: string): string[] {
   const header = {
     type: "session",
@@ -86,6 +87,7 @@ realTest(
     await expect(earlier).toBeVisible({ timeout: 60_000 });
     const thread = page.locator('[data-slot="u1-thread-viewport"]');
     await expect(thread.getByText("NEWEST-MARK")).toBeVisible();
+    await expect(thread.getByText("MIDDLE-MARK")).toBeVisible({ timeout: 60_000 });
     await expect(thread.getByText("OLDEST-MARK")).toHaveCount(0);
 
     // Captures of the control where it sits, at the top of the transcript, before paging.
@@ -108,6 +110,7 @@ realTest(
       }
     });
     await expect(thread.getByText("OLDEST-MARK")).toBeVisible({ timeout: 60_000 });
+    await expect(thread.getByText("MIDDLE-MARK")).toBeVisible();
     await expect(earlier).toBeHidden();
     await expect(thread).toBeFocused();
 

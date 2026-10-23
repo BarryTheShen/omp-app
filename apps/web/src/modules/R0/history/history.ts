@@ -25,6 +25,20 @@ interface InFlight {
 const SUPERSEDED_MESSAGE = "A newer history request superseded this one";
 const CANCELLED_MESSAGE = "The history request was cancelled";
 
+const INITIAL_WINDOW_BYTE_BUDGET = 256 * 1024;
+const INITIAL_WINDOW_ENTRY_LIMIT = 50;
+
+/** Lets the bounded first page paint before the larger default-window read begins. */
+function afterPaint(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setTimeout(resolve, 0));
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
+}
+
 /** Reads one window of a session file's branch: the A1 `readEntryWindow` method. */
 export type SessionWindowReader = (
   args: SessionEntryWindowArgs,
@@ -64,6 +78,19 @@ function cancelledFailure(message: string): AppFailure {
 function asEntryIdOrNull(value: string | null): EntryId | null {
   return value === null ? null : (value as EntryId);
 }
+
+function limitInitialWindow(window: SessionEntryWindow): SessionEntryWindow {
+  if (window.entries.length <= INITIAL_WINDOW_ENTRY_LIMIT) return window;
+  const entries = window.entries.slice(-INITIAL_WINDOW_ENTRY_LIMIT);
+  const oldest = entries[0]?.id;
+  return {
+    ...window,
+    entries,
+    oldestId: typeof oldest === "string" ? asEntryIdOrNull(oldest) : null,
+    hasOlder: true,
+  };
+}
+
 /** omp v18.9.1 records `/clear` as a `reset_boundary` entry with no payload; its context starts after the latest one (`packages/coding-agent/src/session/session-entries.ts:158-168`, `packages/coding-agent/src/session/session-context.ts:461-480`). */
 function entriesAfterResetBoundary(entries: readonly unknown[]): readonly unknown[] {
   let boundary = -1;
@@ -87,11 +114,11 @@ export function isUnknownSinceError(error: unknown): boolean {
 
 /**
  * Loads one open thread's history and feeds it to R0.1's `OmpRuntimeStore`. A thread's history is
- * not read whole: the newest window of the branch omp is on comes from its session file (A1's
- * `readEntryWindow`, bounded in bytes), omp confirms the leaf with a `get_entries since` on the
- * window's last entry, and older windows are read on demand (`loadOlder`). Without a session file
- * (an in-memory session) omp's `get_entries` supplies the entries. `get_tree` is not called: it
- * returns the same entries nested.
+ * not read whole: an initial page of the branch omp is on comes from its session file (A1's
+ * `readEntryWindow`, bounded in bytes); omp confirms the leaf with `get_entries since` on that
+ * page's last entry; then the rest of A1's default window fills after the first paint. Pages older
+ * than that are read on demand (`loadOlder`). Without a session file (an in-memory session), omp's
+ * `get_entries` supplies the entries. `get_tree` is not called: it returns the same entries nested.
  * `refetch` drives the store's own `needsRefetch` → refetch → `resetSequence` cycle;
  * `watchNeedsRefetch` arms that cycle automatically. Exactly one load or refetch is in flight at a
  * time: starting a new one cancels whichever is already running, and every rejection is a typed
@@ -110,6 +137,9 @@ export class SessionHistoryLoader {
   private sessionFile: SessionFilePath | undefined;
   private olderLoad: Promise<void> | undefined;
   private olderController: AbortController | undefined;
+  private backgroundFillPromise: Promise<void> | undefined;
+  private backgroundFillController: AbortController | undefined;
+  private backgroundFillFailure: AppFailure | undefined;
 
   public constructor(options: SessionHistoryLoaderOptions) {
     this.send = options.send;
@@ -123,13 +153,15 @@ export class SessionHistoryLoader {
 
   /** The newest part of the thread's history, for a freshly opened store. */
   public async loadInitial(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
+    let initialWindow: SessionEntryWindow | undefined;
     await this.run("refetch", options?.signal, async (signal) => {
       await this.applyState(signal);
       // Entries last, right before the cursor moves: anything persisted after this read arrives as a
       // live event once the gap is cleared.
-      await this.applyWindow(signal);
+      initialWindow = await this.applyWindow(signal, true);
       this.store.resetSequence();
     });
+    if (initialWindow !== undefined) this.scheduleDefaultWindowFill(initialWindow);
   }
 
   /** Reloads history after the store reports `needsRefetch`, then clears the gap. */
@@ -153,10 +185,28 @@ export class SessionHistoryLoader {
   }
 
   /**
-   * Loads the page of entries older than the oldest one loaded on the branch the transcript shows.
-   * A page already loading is shared by every caller; `dispose()` cancels it.
+   * Finishes the initial default-window fill before asking for an even older page. Concurrent callers
+   * share either operation; `dispose()` cancels it.
    */
   public loadOlder(): Promise<void> {
+    const backgroundFill = this.backgroundFillPromise;
+    if (backgroundFill !== undefined) {
+      return backgroundFill.then(
+        () => this.loadOlder(),
+        (error: unknown) => {
+          const failure =
+            this.backgroundFillFailure ??
+            toAppFailure(error, "Loading older session history failed");
+          this.backgroundFillFailure = undefined;
+          throw failure;
+        },
+      );
+    }
+    if (this.backgroundFillFailure !== undefined) {
+      const failure = this.backgroundFillFailure;
+      this.backgroundFillFailure = undefined;
+      return Promise.reject(failure);
+    }
     this.olderLoad ??= this.fetchOlder().finally(() => {
       this.olderLoad = undefined;
     });
@@ -228,12 +278,16 @@ export class SessionHistoryLoader {
     return unsubscribe;
   }
 
-  /** Cancels any in-flight request or older page; safe to call repeatedly. */
+  /** Cancels any in-flight request, older page, or default-window fill; safe to call repeatedly. */
   public dispose(): void {
     this.inFlight?.controller.abort(SUPERSEDED_MESSAGE);
     this.inFlight = undefined;
     this.olderController?.abort(CANCELLED_MESSAGE);
     this.olderController = undefined;
+    this.backgroundFillController?.abort(CANCELLED_MESSAGE);
+    this.backgroundFillController = undefined;
+    this.backgroundFillPromise = undefined;
+    this.backgroundFillFailure = undefined;
   }
 
   private async applyState(signal: AbortSignalLike): Promise<void> {
@@ -254,23 +308,29 @@ export class SessionHistoryLoader {
    * what omp holds. When omp is on another leaf than the window walked, the window is read again
    * from that leaf.
    */
-  private async applyWindow(signal: AbortSignalLike): Promise<void> {
+  private async applyWindow(
+    signal: AbortSignalLike,
+    forInitialLoad = false,
+  ): Promise<SessionEntryWindow | undefined> {
     const sessionFile = this.sessionFile;
     if (sessionFile === undefined) {
       await this.applyEntries(undefined, signal);
       this.store.setHasOlder(false);
-      return;
+      return undefined;
     }
+    const windowArgs: SessionEntryWindowArgs = forInitialLoad
+      ? { sessionFile, byteBudget: INITIAL_WINDOW_BYTE_BUDGET }
+      : { sessionFile };
     let newest: SessionEntryWindow;
     try {
-      newest = await this.windows({ sessionFile }, { signal });
+      newest = await this.windows(windowArgs, { signal });
     } catch (error) {
       // omp writes a new chat's session file with its first entry: until then the session store does
       // not list it, and omp's own entries are the whole history.
       if (!(error instanceof AppFailure) || error.appError.code !== "not_found") throw error;
       await this.applyEntries(undefined, signal);
       this.store.setHasOlder(false);
-      return;
+      return undefined;
     }
     const live = await this.getEntries(newest.fileLastId ?? undefined, signal);
     const leafId = asEntryIdOrNull(live.leafId);
@@ -278,15 +338,18 @@ export class SessionHistoryLoader {
       const visible = entriesAfterResetBoundary(live.entries);
       this.store.pairEndedMessages(visible, null);
       this.store.setHasOlder(false);
-      return;
+      return undefined;
     }
     if (leafId !== newest.leafId) this.onLeafSwap?.();
-    const window =
-      leafId === newest.leafId ? newest : await this.windows({ sessionFile, leafId }, { signal });
+    const branchWindow =
+      leafId === newest.leafId ? newest : await this.windows({ ...windowArgs, leafId }, { signal });
+    const window = forInitialLoad ? limitInitialWindow(branchWindow) : branchWindow;
     const entries = [...window.entries, ...live.entries];
     const visible = entriesAfterResetBoundary(entries);
     this.store.pairEndedMessages(visible, leafId);
-    this.store.setHasOlder(window.hasOlder && visible.length === entries.length);
+    const hasOlder = window.hasOlder && visible.length === entries.length;
+    this.store.setHasOlder(hasOlder);
+    return hasOlder ? branchWindow : undefined;
   }
 
   /**
@@ -333,6 +396,51 @@ export class SessionHistoryLoader {
     }
   }
 
+  /** Reads the ordinary default window after the bounded initial page has had a paint opportunity. */
+  private scheduleDefaultWindowFill(window: SessionEntryWindow): void {
+    this.backgroundFillController?.abort(SUPERSEDED_MESSAGE);
+    const controller = new AbortController();
+    this.backgroundFillController = controller;
+    this.backgroundFillFailure = undefined;
+    let backgroundFill: Promise<void>;
+    backgroundFill = afterPaint()
+      .then(() => this.fillDefaultWindow(window, controller.signal))
+      .finally(() => {
+        if (this.backgroundFillController === controller) this.backgroundFillController = undefined;
+        if (this.backgroundFillPromise === backgroundFill) this.backgroundFillPromise = undefined;
+      });
+    this.backgroundFillPromise = backgroundFill;
+    void backgroundFill.catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      this.backgroundFillFailure = toAppFailure(error, "Loading older session history failed");
+    });
+  }
+
+  /** Prepends the default window through the store's deduplicating older-history path. */
+  private async fillDefaultWindow(
+    window: SessionEntryWindow,
+    signal: AbortSignalLike,
+  ): Promise<void> {
+    const { sessionFile, leafId } = window;
+    if (signal.aborted) throw cancelledFailure(CANCELLED_MESSAGE);
+    if (leafId === null || this.sessionFile !== sessionFile || !this.isOnCurrentBranch(leafId))
+      return;
+    const defaultWindow = await this.windows({ sessionFile, leafId }, { signal });
+    if (signal.aborted) throw cancelledFailure(CANCELLED_MESSAGE);
+    if (
+      this.sessionFile !== sessionFile ||
+      defaultWindow.leafId !== leafId ||
+      !this.isOnCurrentBranch(leafId)
+    ) {
+      return;
+    }
+    const visible = entriesAfterResetBoundary(defaultWindow.entries);
+    this.store.prependHistoryEntries(
+      visible,
+      defaultWindow.hasOlder && visible.length === defaultWindow.entries.length,
+    );
+  }
+
   /** The oldest loaded entry on the branch from the transcript's head: the paging cursor. */
   private oldestLoadedBranchEntry(): EntryId | undefined {
     const { transcript } = this.store.getSnapshot();
@@ -347,6 +455,19 @@ export class SessionHistoryLoader {
       current = entry.parentId;
     }
     return oldest;
+  }
+  private isOnCurrentBranch(entryId: EntryId): boolean {
+    const { transcript } = this.store.getSnapshot();
+    const seen = new Set<EntryId>();
+    let current = transcript.head;
+    while (current !== null && !seen.has(current)) {
+      if (current === entryId) return true;
+      seen.add(current);
+      const entry = transcript.entries[current];
+      if (entry === undefined) break;
+      current = entry.parentId;
+    }
+    return false;
   }
 
   private async getEntries(
@@ -374,6 +495,7 @@ export class SessionHistoryLoader {
     externalSignal: AbortSignalLike | undefined,
     task: (signal: AbortSignalLike) => Promise<void>,
   ): Promise<void> {
+    if (kind === "refetch") this.backgroundFillFailure = undefined;
     this.inFlight?.controller.abort(SUPERSEDED_MESSAGE);
     const controller = new AbortController();
     const operation: InFlight = { controller, kind };
