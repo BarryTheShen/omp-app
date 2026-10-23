@@ -3,9 +3,9 @@ import { join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
-/** The list the `#` opens above the message box: omp's action rows, and GitHub references when the search answers. */
-function githubList(page: Page): Locator {
-  return page.getByRole("listbox", { name: "GitHub suggestions" });
+/** The list a bare `#` opens above the message box: omp's action rows, under the heading Message actions. */
+function hashList(page: Page): Locator {
+  return page.getByRole("listbox", { name: "Message actions" });
 }
 
 /** The messages the person sent, as the chat renders them. */
@@ -44,7 +44,7 @@ realTest(
     });
     const composer = await startChat(page);
     await composer.pressSequentially("hello #");
-    await expect(githubList(page)).toBeVisible();
+    await expect(hashList(page)).toBeVisible();
     await expect(page.getByText("Move cursor to message start", { exact: true })).toBeVisible();
     await expect(page.getByText("Copy current line", { exact: true })).toBeVisible();
     await expectStyled(page);
@@ -132,11 +132,13 @@ realTest.describe("with GitHub search failing", () => {
           target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
       });
       const composer = await startChat(page);
-      await composer.pressSequentially("see #12");
+      await composer.pressSequentially("see pr #fix");
       await expect(
         page.getByRole("status").filter({ hasText: "GitHub CLI could not complete the request." }),
       ).toBeVisible({ timeout: 30_000 });
-      await expect(githubList(page).getByRole("option")).toHaveCount(0);
+      await expect(
+        page.getByRole("listbox", { name: "GitHub suggestions" }).getByRole("option"),
+      ).toHaveCount(0);
       await expectStyled(page);
       await settle(page);
       await page.screenshot({ path: join(screenshots, "fix-1335-status-light.png") });

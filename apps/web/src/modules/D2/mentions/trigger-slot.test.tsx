@@ -69,7 +69,7 @@ function heldSearch(...candidates: TriggerSearchResult["candidates"]) {
   };
 }
 
-/** The real GitHub provider on a host that finds nothing, so its five action rows are its only candidates. */
+/** The real GitHub provider on a host that finds nothing: its action rows are its only candidates for a bare #. */
 function realGithubProvider(): MentionProvider {
   const client = {
     port: () => ({ search: async () => ({ candidates: [], truncated: false }) }),
@@ -542,10 +542,35 @@ describe("D2.4 MentionTriggerSlot", () => {
     const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "#" } });
     input.setSelectionRange(1, 1);
-    expect(await screen.findByRole("listbox", { name: "GitHub suggestions" })).toBeTruthy();
+    expect(await screen.findByRole("listbox", { name: "Message actions" })).toBeTruthy();
     fireEvent.change(input, { target: { value: "# " } });
     input.setSelectionRange(2, 2);
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  });
+
+  test("the # list is named for its rows: omp's actions are Message actions, a number's rows are GitHub suggestions", async () => {
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot
+          {...quiet}
+          providers={[realGithubProvider()]}
+          onSelect={() => undefined}
+        >
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "#" } });
+    input.setSelectionRange(1, 1);
+    expect(await screen.findByRole("listbox", { name: "Message actions" })).toBeTruthy();
+    expect(await screen.findByText("Copy current line")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "#12" } });
+    input.setSelectionRange(3, 3);
+    expect(await screen.findByRole("listbox", { name: "GitHub suggestions" })).toBeTruthy();
+    expect(await screen.findByText("PR #12")).toBeTruthy();
+    expect(await screen.findByText("Issue #12")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Copy current line")).toBeNull());
   });
 
   test("a heading typed as '# Plan' opens no list, and Enter sends it instead of erasing it", async () => {

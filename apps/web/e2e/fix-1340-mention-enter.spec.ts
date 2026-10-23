@@ -1,12 +1,7 @@
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
-
-/** The fake GitHub CLI (e2e/fake-gh/gh) comes first on the server's PATH: `#12` finds issue #12. */
-realTest.use({
-  serverEnv: { PATH: `${resolve(process.cwd(), "e2e/fake-gh")}:${process.env.PATH ?? ""}` },
-});
 
 /** The GitHub suggestions list above the message box. */
 function githubList(page: Page): Locator {
@@ -49,7 +44,7 @@ realTest(
     });
     const composer = await startChat(page);
     await composer.pressSequentially("see #12");
-    await expect(page.getByText("issue #12", { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("PR #12", { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(githubList(page)).toBeVisible();
     await expectStyled(page);
     await settle(page);
@@ -106,9 +101,9 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await composer.pressSequentially("see #12");
-    await expect(page.getByText("issue #12", { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("PR #12", { exact: true })).toBeVisible({ timeout: 30_000 });
     await composer.press("Enter");
-    await expect(composer).toHaveValue("see issue://12 ", { timeout: 30_000 });
+    await expect(composer).toHaveValue("see pr://12 ", { timeout: 30_000 });
     await expect(userRows(page)).toHaveCount(0);
     expect(realApp.problems).toEqual([]);
   },

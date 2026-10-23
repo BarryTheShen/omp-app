@@ -3,9 +3,9 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
-/** The list a `#` opens in the message box: GitHub references and omp's action rows. */
-function githubList(page: Page): Locator {
-  return page.getByRole("listbox", { name: "GitHub suggestions" });
+/** The list a bare `#` opens in the message box: omp's action rows, under the heading Message actions. */
+function hashList(page: Page): Locator {
+  return page.getByRole("listbox", { name: "Message actions" });
 }
 
 /** The messages the person sent, as the chat renders them. */
@@ -39,9 +39,9 @@ realTest(
     const composer = await startChat(page);
     // A bare # opens the list; the space after it makes the # a heading, so the list closes at once.
     await composer.pressSequentially("#");
-    await expect(githubList(page)).toBeVisible();
+    await expect(hashList(page)).toBeVisible();
     await composer.pressSequentially(" Plan");
-    await expect(githubList(page)).toHaveCount(0);
+    await expect(hashList(page)).toHaveCount(0);
     await expect(composer).toHaveValue("# Plan");
     await settle(page);
     await expectStyled(page);
@@ -91,9 +91,9 @@ realTest(
     await composer.pressSequentially("Notes first");
     await composer.press("Shift+Enter");
     await composer.pressSequentially("#");
-    await expect(githubList(page)).toBeVisible();
+    await expect(hashList(page)).toBeVisible();
     await composer.pressSequentially(" Plan");
-    await expect(githubList(page)).toHaveCount(0);
+    await expect(hashList(page)).toHaveCount(0);
     await expect(composer).toHaveValue("Notes first\n# Plan");
     // The dark class is on the page before the screenshot, so the theme is dark.
     expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(

@@ -23,6 +23,7 @@ import {
   detectMentionTrigger,
   executePromptAction,
   expandMention,
+  hashListName,
   isPromptAction,
 } from "./mentions";
 import { type EditKind, kindOfTypedText, removePromptToken, TypingHistory } from "./prompt-actions";
@@ -202,6 +203,8 @@ function TriggerPopoverView({
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
   // Why the last search could not answer: shown in the list, never as a row to choose.
   const [status, setStatus] = useState<string | undefined>(undefined);
+  // The name of the `#` list: GitHub suggestions for a reference, omp's message actions otherwise.
+  const [listName, setListName] = useState<string>(() => hashListName(""));
   // The list the adapter keeps its items for. A search for it that has settled is an answer, an empty one too.
   const cacheKey = `${provider?.source ?? "none"}:${provider?.kind ?? "none"}:${trigger}`;
   const [answeredKey, setAnsweredKey] = useState<string | undefined>(undefined);
@@ -215,6 +218,7 @@ function TriggerPopoverView({
         answers.set(next.items, query);
         candidateMap.current = next.candidates;
         setStatus(next.status);
+        if (trigger === "#") setListName(hashListName(query));
         return next.items;
       } finally {
         // A search that throws has settled too: the list must not say it is searching for good.
@@ -333,7 +337,7 @@ function TriggerPopoverView({
       matcher={trigger === "#" ? hashMatcher : undefined}
       adapter={completion.adapter}
       isLoading={completion.isLoading}
-      aria-label={trigger === "@" ? "File suggestions" : "GitHub suggestions"}
+      aria-label={trigger === "@" ? "File suggestions" : listName}
       className="absolute bottom-full left-0 z-30 mb-2"
     >
       <ComposerPrimitive.Unstable_TriggerPopover.Directive

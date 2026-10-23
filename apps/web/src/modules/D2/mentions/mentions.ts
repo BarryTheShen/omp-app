@@ -119,16 +119,16 @@ function isBoundary(text: string, index: number): boolean {
   return previous === undefined || /[\s([{"'`]/u.test(previous);
 }
 
-/** The word a GitHub reference is typed with, `pr` or `issue`, just before its `#`, and where that word starts. */
+/** The word a GitHub reference is typed with, `pr` or `pull` or `issue`, just before its `#`, and where that word starts. */
 function githubWordBeforeHash(
   text: string,
   hashIndex: number,
 ): { readonly kind: GithubReferenceKind; readonly start: number } | undefined {
-  const word = /(?:^|\s)(pr|issue)\s*$/iu.exec(text.slice(0, hashIndex));
+  const word = /(?:^|\s)(pr|pull|issue)\s*$/iu.exec(text.slice(0, hashIndex));
   if (word === null) return undefined;
   const typed = word[1] ?? "";
   return {
-    kind: typed.toLocaleLowerCase() === "pr" ? "pull-request" : "issue",
+    kind: typed.toLocaleLowerCase() === "issue" ? "issue" : "pull-request",
     start: word.index + word[0].indexOf(typed),
   };
 }
@@ -369,21 +369,75 @@ export function createFileMentionProvider(options: FileMentionProviderOptions): 
     searchTyped,
   };
 }
-type GithubSearchKind = GithubReferenceKind | "all";
+/** A `#` query that names GitHub: a `#<number>` reference, or a title search (`pr <text>`, `issue <text>`). */
+type GithubQuery =
+  | {
+      readonly kind: "number";
+      readonly number: string;
+      readonly githubKinds: readonly GithubReferenceKind[];
+    }
+  | {
+      readonly kind: "search";
+      readonly githubKind: GithubReferenceKind;
+      readonly searchQuery: string;
+    };
 
-function githubKindForQuery(
-  query: string,
-): { readonly kind: GithubSearchKind; readonly searchQuery: string } | null {
+const BOTH_GITHUB_KINDS: readonly GithubReferenceKind[] = ["pull-request", "issue"];
+
+/**
+ * What a `#` query names on GitHub, or null for a query that does not (a bare `#`, or a word that is an action). `123`,
+ * `pr 123` and `issue 123` are `#<number>` references, shaped as omp's github-ref-autocomplete.ts:1-30 has them: `0` is
+ * not one (omp's `[1-9]\d*`), and naming the type constrains the rows to that kind. Other `pr <text>` and `issue <text>`
+ * queries search titles through gh.
+ */
+function githubQueryOf(query: string): GithubQuery | null {
   const normalized = query.trim();
-  const prefix = normalized.match(/^(pr|issue)\s+(.+)$/iu);
-  if (prefix) {
+  const numbered = /^(?:(pr|pull|issue)\s+)?([1-9]\d*)$/iu.exec(normalized);
+  if (numbered) {
+    const word = numbered[1]?.toLocaleLowerCase();
     return {
-      kind: prefix[1]?.toLocaleLowerCase() === "pr" ? "pull-request" : "issue",
-      searchQuery: prefix[2] ?? "",
+      kind: "number",
+      number: numbered[2] ?? "",
+      githubKinds:
+        word === undefined ? BOTH_GITHUB_KINDS : [word === "issue" ? "issue" : "pull-request"],
     };
   }
-  if (/^\d+$/u.test(normalized)) return { kind: "all", searchQuery: normalized };
+  const search = /^(pr|pull|issue)\s+(.+)$/iu.exec(normalized);
+  if (search) {
+    return {
+      kind: "search",
+      githubKind: search[1]?.toLocaleLowerCase() === "issue" ? "issue" : "pull-request",
+      searchQuery: search[2] ?? "",
+    };
+  }
   return null;
+}
+
+/**
+ * omp's `#<number>` rows, built locally: a PR and an Issue, or only the kind the type names (github-ref-autocomplete.ts:61-74).
+ * No network is asked for them, so a missing or refused gh does not touch them.
+ */
+function numberCandidates(
+  number: string,
+  githubKinds: readonly GithubReferenceKind[],
+): readonly TriggerCandidate[] {
+  return githubKinds.map((githubKind): TriggerCandidate => {
+    const scheme = githubKind === "pull-request" ? "pr" : "issue";
+    return {
+      id: `github:local:${scheme}:${number}`,
+      kind: "github",
+      source: "client",
+      label: `${scheme === "pr" ? "PR" : "Issue"} #${number}`,
+      description: scheme === "pr" ? "GitHub pull request" : "GitHub issue",
+      insertText: `${scheme}://${number} `,
+      metadata: { number: Number(number), githubKind },
+    };
+  });
+}
+
+/** The name of the `#` list: GitHub suggestions for a reference (a number, or a pr or issue search), else omp's message actions. */
+export function hashListName(query: string): "GitHub suggestions" | "Message actions" {
+  return githubQueryOf(query) === null ? "Message actions" : "GitHub suggestions";
 }
 
 /**
@@ -412,7 +466,7 @@ function githubTriggerCandidate(
     id: `github:${repository ?? "current"}:${prefix}:${candidate.number}`,
     kind: "github",
     source: "a1.github-refs",
-    label: `${prefix} #${candidate.number}`,
+    label: `${candidate.kind === "pull-request" ? "PR" : "Issue"} #${candidate.number}`,
     description: `${candidate.title}${state ? ` · ${state}` : ""}`,
     insertText: `${target} `,
     metadata: {
@@ -487,26 +541,34 @@ export function createGithubMentionProvider(
     query: string,
     position?: TriggerPosition,
   ): Promise<TriggerSearchResult> => {
-    const actions = actionCandidates(query).map((candidate) =>
-      position ? { ...candidate, position } : candidate,
-    );
-    const search = githubKindForQuery(query);
-    if (!search) return { state: "ready", candidates: actions };
+    const placed = (candidates: readonly TriggerCandidate[]): TriggerCandidate[] =>
+      position ? candidates.map((candidate) => ({ ...candidate, position })) : [...candidates];
+    const reference = githubQueryOf(query);
+    // A #<number> asks nothing: its rows are built here, so a missing or refused gh changes nothing.
+    if (reference?.kind === "number") {
+      return {
+        state: "ready",
+        candidates: placed(numberCandidates(reference.number, reference.githubKinds)),
+      };
+    }
+    const actions = placed(actionCandidates(query));
+    if (reference === null) return { state: "ready", candidates: actions };
     try {
       const result = await port.search({
         folder: options.folder,
-        query: search.searchQuery,
-        kind: search.kind,
+        query: reference.searchQuery,
+        kind: reference.githubKind,
         limit: options.limit ?? DEFAULT_GITHUB_LIMIT,
       });
       return {
         state: "ready",
         candidates: [
           ...actions,
-          ...result.candidates.map((candidate) => {
-            const mapped = githubTriggerCandidate(candidate, options.currentRepository);
-            return position ? { ...mapped, position } : mapped;
-          }),
+          ...placed(
+            result.candidates.map((candidate) =>
+              githubTriggerCandidate(candidate, options.currentRepository),
+            ),
+          ),
         ],
         ...(result.truncated ? { revision: "truncated" } : {}),
       };

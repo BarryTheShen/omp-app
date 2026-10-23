@@ -8,6 +8,7 @@ import {
   executePromptAction,
   expandMention,
   formatFileMentionInsertion,
+  hashListName,
   rankFileMentions,
 } from "./mentions";
 
@@ -48,6 +49,14 @@ describe("D2.4 mention detection and expansion", () => {
       githubKind: "pull-request",
       range: { start: 7, end: githubCursor },
       referenceRange: { start: 4, end: githubCursor },
+    });
+  });
+
+  test("'pull #12' is a pull request reference, as omp reads the pull qualifier", () => {
+    expect(detectMentionTrigger("pull #12")).toMatchObject({
+      trigger: "#",
+      query: "12",
+      githubKind: "pull-request",
     });
   });
 
@@ -253,7 +262,7 @@ describe("D2.4 host-backed providers", () => {
       return { candidates: [], truncated: false };
     });
     const provider = createGithubMentionProvider({ client, folder: "/workspace" as never });
-    const result = await provider.searchTyped("123");
+    const result = await provider.searchTyped("issue login");
     expect(result.state).toBe("unavailable");
     expect(result.error).toMatchObject({
       state: "unavailable",
@@ -282,11 +291,11 @@ describe("D2.4 host-backed providers", () => {
       return { candidates: [], truncated: false };
     });
     const crossRepository = createGithubMentionProvider({ client, folder: "/workspace" as never });
-    const crossResult = await crossRepository.searchTyped("pr 42");
+    const crossResult = await crossRepository.searchTyped("pr login");
     expect(crossResult.candidates).toEqual([
       expect.objectContaining({
         kind: "github",
-        label: "pr #42",
+        label: "PR #42",
         description: "Fix completion · open",
         insertText: "pr://BarryTheShen/omp-app/42 ",
       }),
@@ -297,8 +306,60 @@ describe("D2.4 host-backed providers", () => {
       folder: "/workspace" as never,
       currentRepository: "BarryTheShen/omp-app",
     });
-    const currentResult = await currentRepository.searchTyped("pr 42");
+    const currentResult = await currentRepository.searchTyped("pr login");
     expect(currentResult.candidates).toEqual([expect.objectContaining({ insertText: "pr://42 " })]);
+  });
+
+  test("a #<number> offers omp's PR and Issue rows, built here: GitHub is not asked, so a refused gh changes nothing", async () => {
+    const asked: string[] = [];
+    const client = fakeClient(async (name) => {
+      asked.push(name);
+      throw new AppFailure({
+        code: "unavailable",
+        message: "GitHub CLI (gh) is not available.",
+        retryable: false,
+        capability: "host.github-refs",
+      });
+    });
+    const provider = createGithubMentionProvider({ client, folder: "/workspace" as never });
+    const result = await provider.searchTyped("123");
+    expect(result.state).toBe("ready");
+    expect(result.error).toBeUndefined();
+    expect(
+      result.candidates.map(({ label, description, insertText }) => [
+        label,
+        description,
+        insertText,
+      ]),
+    ).toEqual([
+      ["PR #123", "GitHub pull request", "pr://123 "],
+      ["Issue #123", "GitHub issue", "issue://123 "],
+    ]);
+    expect(asked).toEqual([]);
+  });
+
+  test("naming the type offers only that kind: 'pr 123' is one PR row, 'issue 123' one Issue row, and 0 is no reference", async () => {
+    const client = fakeClient(async () => {
+      throw new Error("GitHub is not asked for a number");
+    });
+    const provider = createGithubMentionProvider({ client, folder: "/workspace" as never });
+    const pr = await provider.searchTyped("pr 123");
+    expect(pr.candidates.map(({ label, insertText }) => [label, insertText])).toEqual([
+      ["PR #123", "pr://123 "],
+    ]);
+    const issue = await provider.searchTyped("issue 123");
+    expect(issue.candidates.map(({ label, insertText }) => [label, insertText])).toEqual([
+      ["Issue #123", "issue://123 "],
+    ]);
+    expect((await provider.searchTyped("0")).candidates).toEqual([]);
+  });
+
+  test("the # list is named for its rows: a number or a pr or issue search is GitHub's, omp's actions are Message actions", () => {
+    expect(hashListName("")).toBe("Message actions");
+    expect(hashListName("copy")).toBe("Message actions");
+    expect(hashListName("123")).toBe("GitHub suggestions");
+    expect(hashListName("pr 123")).toBe("GitHub suggestions");
+    expect(hashListName("issue login")).toBe("GitHub suggestions");
   });
 
   test("maps file-search candidates and preserves line-range queries", async () => {

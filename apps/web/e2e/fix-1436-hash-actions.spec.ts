@@ -31,9 +31,9 @@ const DESCRIPTIONS = [
   "Moves the cursor to the end of this line",
 ];
 
-/** The list the `#` opens above the message box. */
+/** The list a bare `#` opens above the message box: omp's action rows, under the heading Message actions. */
 function actionList(page: Page): Locator {
-  return page.getByRole("listbox", { name: "GitHub suggestions" });
+  return page.getByRole("listbox", { name: "Message actions" });
 }
 
 /** Switches the page between light and dark, as the app's theme does, and lets it settle. */
