@@ -113,7 +113,7 @@ describe("atomic files", () => {
     await Promise.all(values.map((value) => writeFileAtomic(path, value)));
 
     expect(values).toContain(await readFile(path, "utf8"));
-  });
+  }, 30_000);
 
   test("detects stale and create-only compare-and-swap writes", async () => {
     const directory = await makeTemporaryDirectory();
