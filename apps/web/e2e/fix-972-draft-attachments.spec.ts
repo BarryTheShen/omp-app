@@ -102,7 +102,17 @@ async function storedAttachmentNames(
     return null;
   }
   for (const file of files) {
-    const value: unknown = JSON.parse(await readFile(join(dir, file), "utf8"));
+    // The app writes each draft through a `.omp-atomic-*` temporary file and renames it to its `.json` name: only the
+    // finished names count, and a file removed or renamed after the listing is absent (the poll asks again).
+    if (!file.endsWith(".json")) continue;
+    let text: string;
+    try {
+      text = await readFile(join(dir, file), "utf8");
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      throw error;
+    }
+    const value: unknown = JSON.parse(text);
     if (
       typeof value === "object" &&
       value !== null &&
