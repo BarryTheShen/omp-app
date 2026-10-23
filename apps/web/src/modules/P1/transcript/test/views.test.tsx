@@ -195,8 +195,25 @@ describe("the nested worker transcript", () => {
     expect(screen.queryByText("omp detail")).toBeNull();
   });
 
-  test("a finished worker with no messages says nothing was recorded", async () => {
-    const feed = new FakeFeed(agentRef({ status: "completed" }));
+  test.each(["completed", "aborted", "stopped", "failed"] as const)(
+    "a %s worker whose transcript holds no message says omp did not save it, and offers no Try again",
+    async (status) => {
+      const feed = new FakeFeed(agentRef({ status }));
+      render(
+        <InThread>
+          <NestedAgentTranscript source={nestedSource(feed)} />
+        </InThread>,
+      );
+      await awaitRead(feed);
+      feed.answer(transcriptPage({ fromByte: 0, nextByte: 0 }));
+      expect(await screen.findByText("omp did not save this worker's transcript.")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+      expect(screen.queryByText("No messages were recorded")).toBeNull();
+    },
+  );
+
+  test("a running worker with no message yet says so, and shows no notice", async () => {
+    const feed = new FakeFeed(agentRef({ status: "running" }));
     render(
       <InThread>
         <NestedAgentTranscript source={nestedSource(feed)} />
@@ -204,7 +221,8 @@ describe("the nested worker transcript", () => {
     );
     await awaitRead(feed);
     feed.answer(transcriptPage({ fromByte: 0, nextByte: 0 }));
-    expect(await screen.findByText("No messages were recorded")).toBeTruthy();
+    expect(await screen.findByText("No messages yet")).toBeTruthy();
+    expect(screen.queryByText("omp did not save this worker's transcript.")).toBeNull();
   });
 });
 

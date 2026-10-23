@@ -56,18 +56,22 @@ function reasonFor(failure: AppFailure): string {
   }
 }
 
+/**
+ * The card's words for a transcript omp never saved: its worker has ended and holds no message. No read can change
+ * that, so the card offers no Try again.
+ */
+export const UNSAVED_TRANSCRIPT_NOTICE: TranscriptFailureNotice = {
+  heading: "No transcript for this worker",
+  message: "omp did not save this worker's transcript.",
+  canRetry: false,
+};
+
 /** The card's words for a failed transcript read, and whether Try again can change the result. */
 export function transcriptFailureNotice(
   failure: AppFailure,
   worker: TranscriptWorkerFacts,
 ): TranscriptFailureNotice {
-  if (neverSaved(failure, worker)) {
-    return {
-      heading: "No transcript for this worker",
-      message: "omp did not save this worker's transcript.",
-      canRetry: false,
-    };
-  }
+  if (neverSaved(failure, worker)) return UNSAVED_TRANSCRIPT_NOTICE;
   return {
     heading: "The transcript could not be read",
     message: reasonFor(failure),

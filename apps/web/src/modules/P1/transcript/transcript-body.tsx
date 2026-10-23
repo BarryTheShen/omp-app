@@ -4,7 +4,7 @@ import { EmptyState, InlineError } from "@/components/blocks";
 import { type ToolRendererMap, ToolRunActiveContext } from "@/modules/U1/tool-slots";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import type { TranscriptView } from "./controller";
-import { transcriptFailureNotice } from "./failures";
+import { transcriptFailureNotice, UNSAVED_TRANSCRIPT_NOTICE } from "./failures";
 
 /** True inside a worker's transcript body: a task card there is a worker that a worker started. */
 export const WorkerTranscriptScope = createContext(false);
@@ -34,7 +34,15 @@ export function AgentTranscriptBody({
     transcript;
   const working = agentStatus === "running" || agentStatus === "pending";
   const worker = { finished: !working, sessionFileKnown };
-  const notice = failure === undefined ? undefined : transcriptFailureNotice(failure, worker);
+  // An empty page with nothing failed. A live worker may still write its first message; an ended one never will.
+  const emptyPage = !loading && failure === undefined && messages.length === 0;
+  const unsaved = emptyPage && !working;
+  const notice =
+    failure !== undefined
+      ? transcriptFailureNotice(failure, worker)
+      : unsaved
+        ? UNSAVED_TRANSCRIPT_NOTICE
+        : undefined;
   return (
     <WorkerTranscriptScope.Provider value>
       <div
@@ -61,14 +69,10 @@ export function AgentTranscriptBody({
             Loading the transcript…
           </p>
         ) : null}
-        {!loading && messages.length === 0 && failure === undefined ? (
+        {emptyPage && working ? (
           <EmptyState
-            hint={
-              working
-                ? "Messages appear here as the worker writes them."
-                : "This worker finished without writing a message."
-            }
-            title={working ? "No messages yet" : "No messages were recorded"}
+            hint="Messages appear here as the worker writes them."
+            title="No messages yet"
             variant="compact"
           />
         ) : null}
