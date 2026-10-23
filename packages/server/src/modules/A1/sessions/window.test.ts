@@ -32,6 +32,20 @@ function message(id: string, parentId: string | null, text: string): string {
     message: { role: "user", content: [{ type: "text", text }] },
   });
 }
+function compaction(id: string, parentId: string, firstKeptEntryId: string): string {
+  return JSON.stringify({
+    type: "compaction",
+    id,
+    parentId,
+    summary: "Keep the current goal.",
+    shortSummary: "Keep the goal.",
+    firstKeptEntryId,
+    tokensBefore: 120_000,
+    tokensAfter: 28_000,
+    method: "remote",
+    timestamp: "2026-10-04T12:00:00.000Z",
+  });
+}
 
 function toolResult(id: string, parentId: string | null, text: string): string {
   return JSON.stringify({
@@ -99,6 +113,50 @@ describe("session entry windows", () => {
     }
   });
 
+  test("walks through compaction entries as part of the branch", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "compaction.jsonl");
+      await writeFile(
+        file,
+        `${[
+          header("compaction"),
+          message("u1", null, "root"),
+          message("a2", "u1", "before compact"),
+          compaction("c3", "a2", "u4"),
+          message("u4", "c3", "after compact"),
+        ].join("\n")}\n`,
+        "utf8",
+      );
+
+      const page = await readEntryWindow(file, {});
+      expect(page.leafId).toBe(EntryId.parse("u4"));
+      expect(ids(page.entries)).toEqual(["u1", "a2", "c3", "u4"]);
+      expect(page.hasOlder).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reads an entry that crosses a reverse-scan chunk boundary", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "chunk-boundary.jsonl");
+      const text = "x".repeat(1024 * 1024 + 100);
+      await writeFile(
+        file,
+        `${[header("chunk-boundary"), message("u1", null, text)].join("\n")}\n`,
+        "utf8",
+      );
+
+      const page = await readEntryWindow(file, {});
+      expect(ids(page.entries)).toEqual(["u1"]);
+      expect(textOf(page.entries[0])).toBe(text);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("fills the byte budget newest first and pages older entries by id", async () => {
     const root = await makeTempRoot();
     try {
@@ -114,6 +172,11 @@ describe("session entry windows", () => {
 
       const pages: unknown[][] = [];
       let page = await readEntryWindow(file, { byteBudget: 3500 });
+      const explicitLatest = await readEntryWindow(file, {
+        leafId: EntryId.parse("e9"),
+        byteBudget: 3500,
+      });
+      expect(explicitLatest).toEqual(page);
       pages.push(ids(page.entries));
       while (page.hasOlder) {
         page = await readEntryWindow(file, {
@@ -125,6 +188,35 @@ describe("session entry windows", () => {
       expect(pages.length).toBeGreaterThan(1);
       expect(pages[0]).toEqual(["e7", "e8", "e9"]);
       expect(pages.reverse().flat()).toEqual(names);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("pages near the start of a middle leaf's branch like the index path", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "near-start.jsonl");
+      const names = Array.from({ length: 201 }, (_, index) => `e${index}`);
+      const lines = [header("near-start")];
+      names.forEach((name, index) => {
+        lines.push(message(name, index === 0 ? null : (names[index - 1] ?? null), name));
+      });
+      await writeFile(file, `${lines.join("\n")}\n`, "utf8");
+
+      const leafId = EntryId.parse("e100");
+      const before = EntryId.parse("e2");
+      const page = await readEntryWindow(file, { leafId, before });
+      const expected = [
+        await readEntryOutput(file, EntryId.parse("e0")),
+        await readEntryOutput(file, EntryId.parse("e1")),
+      ];
+
+      expect(page.entries).toEqual(expected);
+      expect(page.leafId).toBe(leafId);
+      expect(page.fileLastId).toBe(EntryId.parse("e200"));
+      expect(page.oldestId).toBe(EntryId.parse("e0"));
+      expect(page.hasOlder).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -203,7 +295,7 @@ describe("session entry windows", () => {
     }
   });
 
-  test("ignores an incomplete last line until it is completed, then extends the index", async () => {
+  test("ignores an incomplete last line until it is completed", async () => {
     const root = await makeTempRoot();
     try {
       const file = path.join(root, "growing.jsonl");
@@ -219,16 +311,20 @@ describe("session entry windows", () => {
       expect(first.fileLastId).toBe(EntryId.parse("u2"));
       expect(ids(first.entries)).toEqual(["u1", "u2"]);
 
+      await expect(readEntryOutput(file, EntryId.parse("u3"))).rejects.toMatchObject({
+        appError: { code: "not_found" },
+      });
       await appendFile(file, `${third.slice(30)}\n`, "utf8");
       const second = await readEntryWindow(file, {});
       expect(second.fileLastId).toBe(EntryId.parse("u3"));
       expect(ids(second.entries)).toEqual(["u1", "u2", "u3"]);
+      expect(textOf(await readEntryOutput(file, EntryId.parse("u3")))).toBe("three");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("rebuilds the index when the file is rewritten from its start", async () => {
+  test("reads a rewritten file from its current contents", async () => {
     const root = await makeTempRoot();
     try {
       const file = path.join(root, "rewritten.jsonl");

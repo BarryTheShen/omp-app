@@ -67,13 +67,12 @@ async function readBytes(handle: FileHandle, position: number, length: number): 
   return buffer.subarray(0, bytesRead);
 }
 
-/** Records one complete line. Only entries (lines with a string id) take part in a branch. */
-function recordLine(
+/** Parses one complete line. Only entries with a string id take part in a branch. */
+function parseEntryLine(
   line: Buffer,
   offset: number,
   length: number,
-  records: Map<EntryId, EntryRecord>,
-): EntryId | undefined {
+): { id: EntryId; record: EntryRecord; entry: Record<string, unknown> } | undefined {
   let value: unknown;
   try {
     value = JSON.parse(line.toString("utf8"));
@@ -88,8 +87,68 @@ function recordLine(
     typeof value.parentId === "string" && value.parentId.length > 0
       ? EntryId.parse(value.parentId)
       : null;
-  records.set(id, { parentId, offset, length });
-  return id;
+  return { id, record: { parentId, offset, length }, entry: value };
+}
+
+/** Records one complete line in a forward index. */
+function recordLine(
+  line: Buffer,
+  offset: number,
+  length: number,
+  records: Map<EntryId, EntryRecord>,
+): EntryId | undefined {
+  const parsed = parseEntryLine(line, offset, length);
+  if (parsed === undefined) return undefined;
+  records.set(parsed.id, parsed.record);
+  return parsed.id;
+}
+
+interface BackwardLine {
+  readonly line: Buffer;
+  readonly offset: number;
+  readonly length: number;
+}
+
+/** Reads complete JSONL lines newest first, leaving an incomplete final line out. */
+async function* readLinesBackwards(handle: FileHandle, size: number): AsyncGenerator<BackwardLine> {
+  let end = size;
+  let carry: Buffer | undefined;
+  let skipIncompleteTail = true;
+  while (end > 0) {
+    const from = Math.max(0, end - SCAN_CHUNK_BYTES);
+    const chunk = await readBytes(handle, from, end - from);
+    if (chunk.length === 0) return;
+    end = from;
+
+    const buffer = carry === undefined ? chunk : Buffer.concat([chunk, carry]);
+    carry = undefined;
+    let scanEnd = buffer.length;
+    if (skipIncompleteTail) {
+      const lastNewline = buffer.lastIndexOf(NEWLINE);
+      if (lastNewline === -1) {
+        carry = buffer;
+        continue;
+      }
+      scanEnd = lastNewline + 1;
+      skipIncompleteTail = false;
+    }
+
+    let lineEnd = scanEnd - 1;
+    while (lineEnd >= 0) {
+      const previousNewline = lineEnd === 0 ? -1 : buffer.lastIndexOf(NEWLINE, lineEnd - 1);
+      const lineStart = previousNewline + 1;
+      if (previousNewline === -1 && from > 0) {
+        carry = buffer.subarray(0, lineEnd + 1);
+        break;
+      }
+      yield {
+        line: buffer.subarray(lineStart, lineEnd),
+        offset: from + lineStart,
+        length: lineEnd - lineStart + 1,
+      };
+      lineEnd = previousNewline;
+    }
+  }
 }
 
 /** Scans the complete lines from `from` to `to`; a partial last line is left for the next scan. */
@@ -289,12 +348,74 @@ async function readImageBlob(blobsDir: string, hex: string): Promise<Buffer | un
   }
 }
 
-/**
- * The newest entries of one branch that fit the byte budget, oldest first. `before` asks for the
- * window of entries older than that one on the same branch. The first entry is always included, so a
- * window is never empty while entries are left.
- */
-export async function readEntryWindow(file: string, request: WindowRequest): Promise<WindowResult> {
+/** Reads the newest entries of one branch that fit the byte budget, oldest first. */
+async function readEntryWindowFromEnd(file: string, request: WindowRequest): Promise<WindowResult> {
+  const budget = request.byteBudget ?? DEFAULT_WINDOW_BYTES;
+  const chosen: Record<string, unknown>[] = [];
+  let used = 0;
+  let oldestId: EntryId | null = null;
+  let fileLastId: EntryId | null = null;
+  let leafId: EntryId | null = request.leafId ?? null;
+  let leafFound = false;
+  let nextParent: EntryId | null = null;
+  let hasOlder = false;
+
+  const handle = await open(file, "r");
+  try {
+    const { size } = await handle.stat();
+    for await (const line of readLinesBackwards(handle, size)) {
+      const parsed = parseEntryLine(line.line, line.offset, line.length);
+      if (parsed === undefined) continue;
+      if (fileLastId === null) fileLastId = parsed.id;
+      if (leafId === null) leafId = fileLastId;
+
+      if (!leafFound) {
+        if (parsed.id !== leafId) continue;
+        leafFound = true;
+      } else {
+        if (nextParent === null) break;
+        if (parsed.id !== nextParent) continue;
+      }
+
+      nextParent = parsed.record.parentId;
+      const entry = await withImageBlobs(cutOutputs(parsed.entry), request.blobsDir);
+      const size = Buffer.byteLength(JSON.stringify(entry), "utf8");
+      if (chosen.length > 0 && used + size > budget) {
+        hasOlder = true;
+        break;
+      }
+      chosen.push(entry);
+      used += size;
+      oldestId = parsed.id;
+      if (nextParent === null) break;
+    }
+
+    if (leafId === null) {
+      return {
+        leafId: null,
+        fileLastId,
+        entries: [],
+        oldestId: null,
+        hasOlder: false,
+      };
+    }
+    if (!leafFound) throw notFound("That entry is not in this session file");
+    return {
+      leafId,
+      fileLastId,
+      entries: chosen.reverse(),
+      oldestId,
+      hasOlder,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readEntryWindowFromIndex(
+  file: string,
+  request: WindowRequest,
+): Promise<WindowResult> {
   const index = await indexSessionFile(file);
   const leafId = request.leafId ?? index.fileLastId;
   if (leafId === null) {
@@ -336,6 +457,29 @@ export async function readEntryWindow(file: string, request: WindowRequest): Pro
     oldestId,
     hasOlder: from + chosen.length < path.length,
   };
+}
+
+async function readFileLastId(file: string): Promise<EntryId | null> {
+  const handle = await open(file, "r");
+  try {
+    const { size } = await handle.stat();
+    for await (const line of readLinesBackwards(handle, size)) {
+      const parsed = parseEntryLine(line.line, line.offset, line.length);
+      if (parsed !== undefined) return parsed.id;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function readEntryWindow(file: string, request: WindowRequest): Promise<WindowResult> {
+  if (request.before !== undefined) return readEntryWindowFromIndex(file, request);
+  if (request.leafId === undefined) return readEntryWindowFromEnd(file, request);
+  if ((await readFileLastId(file)) !== request.leafId) {
+    return readEntryWindowFromIndex(file, request);
+  }
+  return readEntryWindowFromEnd(file, request);
 }
 
 /** One entry as omp wrote it, with no output cut. */
