@@ -10,6 +10,13 @@ import {
   waitForFiniteAnimations,
 } from "./real-omp";
 
+declare global {
+  interface Window {
+    /** The row element the prompt showed at Enter, kept so the echo can be checked to take the same element. */
+    pendingRowNode?: Element;
+  }
+}
+
 /*
  * Issue 2307 (part of 2217): the greeting and the centred composer of an empty chat left when omp's echo of the first
  * prompt reached the transcript. On a busy machine that came long after Enter, and row 7 of the motion audit counted the
@@ -121,7 +128,7 @@ async function expectPainted(page: Page): Promise<void> {
 
 /**
  * Sends the prompt from the empty chat while the prompt's frames are held, then checks the chat between Enter and the echo:
- * the greeting is gone, the composer has moved down, the text was sent, and no message of the prompt is shown yet.
+ * the greeting is gone, the composer has moved down, the text was sent, and the prompt's row is shown before the echo.
  */
 async function sendWhileEchoHeld(
   page: Page,
@@ -136,8 +143,13 @@ async function sendWhileEchoHeld(
   await expect(page.locator('[data-empty-chat="true"]')).toHaveCount(0);
   // The composer clears once omp admits the prompt, which takes 0.2 to 2 s on the test machine under load (not the held echo).
   await expect(composer).toHaveValue("", { timeout: 60_000 });
-  await expect(page.locator(USER_ROW)).toHaveCount(0);
-  // "Edit an earlier message" appears once the message is in the transcript, as on main: not at Enter.
+  // The prompt's row shows at Enter, while omp's echo is held; the echo takes this same row (see echoArrives).
+  await expect(page.locator(USER_ROW)).toHaveCount(1);
+  await expect(page.locator(USER_ROW)).toContainText(PROMPT);
+  await page.locator(USER_ROW).evaluate((row) => {
+    window.pendingRowNode = row;
+  });
+  // "Edit an earlier message" waits for omp's echo: the pending row is not an earlier message yet.
   await expect(editEarlier(page)).toBeHidden();
   expect(hold.holding, "the prompt's frames are still held").toBe(true);
   await waitForFiniteAnimations(page);
@@ -150,11 +162,13 @@ async function sendWhileEchoHeld(
   await page.screenshot({ path: join(screenshots, `${shot}.png`), fullPage: true });
 }
 
-/** Lets the held frames through: the echo reaches the transcript and the chat shows the message. */
+/** Lets the held frames through: the echo takes the row the prompt showed at Enter, and the label opens once it has. */
 async function echoArrives(page: Page, hold: FrameHold): Promise<void> {
   hold.release();
-  await expect(page.locator(USER_ROW)).toBeVisible({ timeout: 60_000 });
-  await expect(editEarlier(page)).toBeVisible();
+  await expect(editEarlier(page)).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(USER_ROW)).toHaveCount(1);
+  const sameRow = await page.locator(USER_ROW).evaluate((row) => window.pendingRowNode === row);
+  expect(sameRow, "the echo takes the row shown at Enter, not a second row").toBe(true);
 }
 
 /** The label that opens the picker of earlier messages (P3's selector). */

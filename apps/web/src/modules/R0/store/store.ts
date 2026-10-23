@@ -38,8 +38,11 @@ type MutableSnapshot = {
   -readonly [Key in keyof RuntimeSnapshot]: RuntimeSnapshot[Key];
 };
 
-/** The lifecycle of a message received from omp's event stream. */
-export type RuntimeMessageStatus = "streaming" | "ended" | "persisted";
+/**
+ * The lifecycle of a message: `pending` is a plain prompt the person sent, shown until omp's echo of it takes its place
+ * (`markPromptSent`); the rest come from omp's event stream.
+ */
+export type RuntimeMessageStatus = "pending" | "streaming" | "ended" | "persisted";
 
 /**
  * A `!` command in this chat's omp, from its `running` event. An ended command keeps its row, with omp's answer, until the
@@ -73,10 +76,26 @@ export interface RuntimeMessage {
   readonly parentId?: EntryId | null;
   readonly interrupted?: boolean;
   /**
-   * The key of the streamed copy this message's entry replaced. The row keeps that key, so its element is not replaced
-   * when history returns the entry (issue 1047). `key` stays the message's store key.
+   * The key of the streamed copy this message's entry replaced, or of the pending row an omp echo took the place of. The row
+   * keeps that key, so its element is not replaced when history returns the entry (issue 1047). `key` stays the message's
+   * store key.
    */
   readonly rowKey?: MessageKey;
+}
+
+/**
+ * A plain prompt the person sent, whose row is shown until omp's echo of it takes the row's place. The echo must come after
+ * `afterSeq`, the last seq the store had when the row was added.
+ */
+interface PendingPrompt {
+  readonly key: ProvisionalMessageKey;
+  readonly afterSeq: number;
+}
+
+/** What a plain prompt shows while it waits for omp's echo: its text and images, as the runtime sends them to omp. */
+interface PendingPromptIntent {
+  readonly text: string;
+  readonly images?: readonly OmpWire.ImageContent[] | undefined;
 }
 
 /**
@@ -231,6 +250,8 @@ export interface RuntimeSnapshot {
   readonly messageOrder: readonly MessageKey[];
   /** Ended messages for which no matching persisted entry has arrived yet. */
   readonly pendingEnded: readonly ProvisionalMessageKey[];
+  /** Plain prompts the person sent that omp has not echoed yet, oldest first: each row is in `messages` with status `pending`, drawn after `messageOrder` until it joins it. */
+  readonly pendingPrompts: readonly PendingPrompt[];
   readonly tools: Readonly<Record<ToolCallId, ToolCallState>>;
   readonly prompt: PromptLifecycleState;
   readonly queue: QueueState;
@@ -540,6 +561,7 @@ function makeInitialSnapshot(threadId: ThreadId): RuntimeSnapshot {
     streaming: {},
     messageOrder: [],
     pendingEnded: [],
+    pendingPrompts: [],
     tools: {},
     prompt: EMPTY_PROMPT,
     queue: EMPTY_QUEUE,
@@ -690,6 +712,42 @@ function removeMessage(next: MutableSnapshot, key: MessageKey): void {
   const order = next.messageOrder as MessageKey[];
   const index = order.indexOf(key);
   if (index >= 0) order.splice(index, 1);
+}
+
+/** The row a message keeps as it streams and ends: the row it took the place of, so its element is not replaced. */
+function keptRowKey(next: MutableSnapshot, key: MessageKey): { readonly rowKey?: MessageKey } {
+  const previous: RuntimeMessage | undefined = next.messages[key];
+  const rowKey = previous?.rowKey;
+  return rowKey === undefined ? {} : { rowKey };
+}
+
+/** Takes the rows of pending prompts out of the list and the store: omp will not echo them, or the person took them back. */
+function removePendingPrompts(next: MutableSnapshot, keys: readonly MessageKey[]): void {
+  next.pendingPrompts = next.pendingPrompts.filter((pending) => !keys.includes(pending.key));
+  for (const key of keys) {
+    delete (next.messages as Record<string, RuntimeMessage>)[key];
+    delete (next.streaming as Record<string, RuntimeMessage>)[key];
+  }
+}
+
+/** The keys of the rows still waiting for omp's echo, oldest first. */
+function pendingKeysOf(next: MutableSnapshot): MessageKey[] {
+  return next.pendingPrompts.map((pending) => pending.key);
+}
+
+/** The row of a message the history already shows: one with the same role and timestamp that is not streamed; -1 when none. */
+function shownCopyIndex(next: MutableSnapshot, key: MessageKey, message: OmpMessage): number {
+  if (next.messageOrder.includes(key)) return -1;
+  const copyKey = streamedCopyKey(message);
+  if (copyKey === undefined) return -1;
+  return next.messageOrder.findIndex((shownKey) => {
+    const shown: RuntimeMessage | undefined = next.messages[shownKey];
+    return (
+      shown !== undefined &&
+      shown.streamMessageId === undefined &&
+      streamedCopyKey(shown.message) === copyKey
+    );
+  });
 }
 
 /**
@@ -1655,19 +1713,60 @@ export class OmpRuntimeStore {
 
   /**
    * Records that the person sent a prompt from this chat, from the moment the send starts. The chat is no longer empty then,
-   * not when omp's echo of the prompt reaches the transcript, so the composer moves to the bottom at Enter.
+   * not when omp's echo of the prompt reaches the transcript, so the composer moves to the bottom at Enter. A plain new
+   * prompt (`shown`) also gets its row now, with its text and images: omp's echo takes that row's place. Returns the row's
+   * key, which `unmarkPromptSent` takes back for a send that omp refuses.
    */
-  public markPromptSent(): void {
+  public markPromptSent(shown?: PendingPromptIntent): MessageKey | undefined {
     const next = mutableSnapshot(this.snapshot);
     updatePrompt(next, { sent: true });
+    const key = shown === undefined ? undefined : this.addPendingPrompt(next, shown);
+    this.commit(next);
+    return key;
+  }
+
+  /**
+   * Undoes `markPromptSent` for a send that omp refused before admitting it: the send's row goes, and the chat is empty
+   * again when no message is in it.
+   */
+  public unmarkPromptSent(pendingKey?: MessageKey): void {
+    const next = mutableSnapshot(this.snapshot);
+    if (
+      pendingKey !== undefined &&
+      next.pendingPrompts.some((pending) => pending.key === pendingKey)
+    ) {
+      removePendingPrompts(next, [pendingKey]);
+    }
+    if (next.messageOrder.length === 0 && next.pendingPrompts.length === 0) {
+      updatePrompt(next, { sent: false });
+    }
     this.commit(next);
   }
 
-  /** Undoes `markPromptSent` for a send that omp refused before admitting it: the chat is empty again. */
-  public unmarkPromptSent(): void {
-    const next = mutableSnapshot(this.snapshot);
-    updatePrompt(next, { sent: false });
-    this.commit(next);
+  /**
+   * Adds the row of a plain prompt the person sent: its text and images, with no timestamp (omp's echo carries its own, and a
+   * row that waits must not pair with a copy by it: `streamedCopyKey`). The row is drawn after the chat's messages, but it is
+   * not in `messageOrder` until omp's echo takes its place, so the chat's readers see no message until then. Nothing is added
+   * for an empty prompt.
+   */
+  private addPendingPrompt(
+    next: MutableSnapshot,
+    shown: PendingPromptIntent,
+  ): MessageKey | undefined {
+    const images = shown.images ?? [];
+    if (shown.text.length === 0 && images.length === 0) return undefined;
+    const content = [
+      ...(shown.text.length === 0 ? [] : [{ type: "text", text: shown.text }]),
+      ...images.map((image) => cloneValue(image)),
+    ];
+    const key = provisionalMessageKey(
+      next.processId,
+      `pending-prompt-${this.generatedMessageNumber++}` as OmpStreamMessageId,
+    );
+    const message = { role: "user", content } as unknown as OmpMessage;
+    addOrReplaceMessage(next, key, { key, message, status: "pending" });
+    next.pendingPrompts = [...next.pendingPrompts, { key, afterSeq: next.lastSeq }];
+    return key;
   }
 
   /**
@@ -1724,6 +1823,10 @@ export class OmpRuntimeStore {
       this.streamKeys.clear();
     }
     setProcess(next, status, error, startedAt);
+    // A process that stopped, exited or failed answers nothing more: a prompt it was given will never be echoed.
+    if (status === "stopped" || status === "exited" || status === "error") {
+      removePendingPrompts(next, pendingKeysOf(next));
+    }
     if (status === "exited") {
       this.interruptStreamingMessages(next);
       this.streamKeys.clear();
@@ -1824,6 +1927,9 @@ export class OmpRuntimeStore {
     )
       return;
     if (typeof rawEvent.sessionSettled !== "boolean") return;
+    // omp reports a prompt once its work has settled, and an admitted prompt is echoed before that. A row still waiting here
+    // is a prompt omp dropped or failed (rpc-prompt-results.ts settle()), so its row goes.
+    removePendingPrompts(next, pendingKeysOf(next));
     const result: PromptResultState = {
       type: "prompt_result",
       agentInvoked: rawEvent.agentInvoked,
@@ -1965,6 +2071,8 @@ export class OmpRuntimeStore {
         });
         return;
       case "agent_end":
+        // The turn ended with no echo for a prompt still waiting as a row: omp will not echo it (see `reduceMessageStart`).
+        removePendingPrompts(next, pendingKeysOf(next));
         updatePrompt(next, { streaming: false });
         return;
       case "turn_end":
@@ -2045,30 +2153,33 @@ export class OmpRuntimeStore {
     const key = provisionalMessageKey(this.snapshot.processId, messageId);
     this.streamKeys.set(messageId, key);
     const order = next.messageOrder as MessageKey[];
-    // A message the history already shows (the stream was replayed, or lagged behind a history load) takes that
-    // message's place instead of showing twice. The copy keeps that row's id, so a notice that follows the row still
-    // follows it (issue 1522).
-    const copyKey = order.includes(key) ? undefined : streamedCopyKey(message);
-    const shownIndex =
-      copyKey === undefined
-        ? -1
-        : order.findIndex((shownKey) => {
-            const shown = next.messages[shownKey];
-            return (
-              shown !== undefined &&
-              shown.streamMessageId === undefined &&
-              streamedCopyKey(shown.message) === copyKey
-            );
-          });
+    // The pending row this echo answers: the oldest one added before the echo's seq (`markPromptSent`). Only the person's own
+    // user message is an echo: omp marks an agent's or a synthetic one (`attribution`, `synthetic`), which they did not type.
+    const echoedKey =
+      message.role === "user" && message.attribution !== "agent" && message.synthetic !== true
+        ? next.pendingPrompts.find((pending) => seq > pending.afterSeq)?.key
+        : undefined;
+    // A message the history already shows (the stream was replayed, or lagged behind a history load) takes that message's
+    // place instead of showing twice. The copy keeps that row's id, so a notice that follows the row still follows it
+    // (issue 1522). The pending row of such an echo is a duplicate, and goes.
+    if (echoedKey !== undefined && shownCopyIndex(next, key, message) >= 0) {
+      removePendingPrompts(next, [echoedKey]);
+    }
+    const shownIndex = shownCopyIndex(next, key, message);
     const shownKey = shownIndex >= 0 ? order[shownIndex] : undefined;
     const shown = shownKey === undefined ? undefined : next.messages[shownKey];
+    // Otherwise the echo takes the pending row's place: its row id is kept, so the element is not replaced, and the echo
+    // joins the chat as its newest message.
+    const replacedKey = shown === undefined ? echoedKey : undefined;
+    const rowKey = shown === undefined ? replacedKey : rowIdOf(shown);
     const record: RuntimeMessage = {
       key,
       message,
       status: "streaming",
       streamMessageId: messageId,
-      ...(shown === undefined ? {} : { rowKey: rowIdOf(shown) }),
+      ...(rowKey === undefined ? {} : { rowKey }),
     };
+    if (replacedKey !== undefined) removePendingPrompts(next, [replacedKey]);
     addOrReplaceMessage(next, key, record);
     if (!order.includes(key)) {
       if (shownIndex >= 0) order.splice(shownIndex, 1, key);
@@ -2124,6 +2235,7 @@ export class OmpRuntimeStore {
       message,
       status: "streaming",
       streamMessageId: id,
+      ...keptRowKey(next, key),
     };
     addOrReplaceMessage(next, key, record);
     if (!next.messageOrder.includes(key)) (next.messageOrder as MessageKey[]).push(key);
@@ -2142,6 +2254,7 @@ export class OmpRuntimeStore {
       message: cloneValue(event.message) as unknown as OmpMessage,
       status: "ended",
       streamMessageId: id,
+      ...keptRowKey(next, key),
     };
     addOrReplaceMessage(next, key, record);
     if (!next.messageOrder.includes(key)) (next.messageOrder as MessageKey[]).push(key);

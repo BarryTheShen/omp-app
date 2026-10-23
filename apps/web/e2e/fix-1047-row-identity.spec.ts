@@ -98,6 +98,12 @@ realTest(
       await sendPrompt(composer, "ping");
       await expect(replies).toHaveCount(turn, { timeout: 60_000 });
     }
+    // The reader scrolls away only once the turns have settled: each send follows the newest reply for a moment, and the
+    // history of the turns comes back from the session file a few seconds later. A scroll made inside that window is
+    // followed back to the bottom, and the place saved there is not the reader's.
+    await expect
+      .poll(() => page.locator(`${ROWS}[data-store-key^="entry:"]`).count(), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(12);
     const viewport = page.getByRole("region", { name: "Messages" });
     // The reader scrolls up to the middle of the transcript, away from the newest message.
     await viewport.evaluate((element) => {

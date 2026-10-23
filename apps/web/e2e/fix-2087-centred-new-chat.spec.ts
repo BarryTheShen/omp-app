@@ -75,7 +75,7 @@ realTest(
           timeout: 60_000,
         });
         await expect(greeting).toHaveCount(0);
-        await expect(editSelector).toBeVisible();
+        await expect(editSelector).toBeVisible({ timeout: 60_000 });
         for (const viewport of VIEWPORTS) {
           await page.setViewportSize({ width: viewport.width, height: viewport.height });
           await waitForFiniteAnimations(page);

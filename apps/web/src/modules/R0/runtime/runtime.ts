@@ -730,6 +730,15 @@ function isHiddenMessage(message: OmpMessage): boolean {
 }
 
 /**
+ * The keys of the rows the transcript draws, in order: the chat's messages, then the rows of the prompts still waiting for
+ * omp's echo (they join `messageOrder` when the echo takes their place, in the store).
+ */
+function drawnRowKeys(snapshot: RuntimeSnapshot): readonly MessageKey[] {
+  if (snapshot.pendingPrompts.length === 0) return snapshot.messageOrder;
+  return [...snapshot.messageOrder, ...snapshot.pendingPrompts.map((pending) => pending.key)];
+}
+
+/**
  * The usage of the assistant turn before each assistant message: the figures a cache miss is measured from. An
  * assistant message without a usage record is not a turn to measure from.
  */
@@ -738,7 +747,7 @@ function previousAssistantUsages(
 ): ReadonlyMap<MessageKey, OmpWire.Usage> {
   const usages = new Map<MessageKey, OmpWire.Usage>();
   let previous: OmpWire.Usage | undefined;
-  for (const key of snapshot.messageOrder) {
+  for (const key of drawnRowKeys(snapshot)) {
     const record = snapshot.messages[key];
     if (!record || isHiddenMessage(record.message) || record.message.role !== "assistant") continue;
     if (previous !== undefined) usages.set(key, previous);
@@ -863,7 +872,7 @@ function projectedMessageMetadata(
     assistantEntryIds.length = 0;
     assistantToolCallIds.clear();
   };
-  for (const key of snapshot.messageOrder) {
+  for (const key of drawnRowKeys(snapshot)) {
     const record = snapshot.messages[key];
     if (!record || isHiddenMessage(record.message)) continue;
     if (record.message.role !== "assistant" && record.message.role !== "toolResult") {
@@ -936,6 +945,7 @@ class RuntimeMessageProjector {
 
   public project(snapshot: RuntimeSnapshot): readonly RuntimeMessageView[] {
     const views: RuntimeMessageView[] = [];
+    const rows = drawnRowKeys(snapshot);
     const metadata = projectedMessageMetadata(snapshot);
     const previousUsages = previousAssistantUsages(snapshot);
     const stopped = stoppedToolCallIds(snapshot);
@@ -944,7 +954,7 @@ class RuntimeMessageProjector {
     for (const reminder of snapshot.todoReminders) {
       if (reminder.afterMessage !== null) reminded.add(reminder.afterMessage);
     }
-    for (const key of snapshot.messageOrder) {
+    for (const key of rows) {
       const record = snapshot.messages[key];
       if (!record || isHiddenMessage(record.message)) continue;
       const projected = metadata[key] ?? {
@@ -1000,14 +1010,14 @@ class RuntimeMessageProjector {
       views.push(view);
     }
     if (
-      this.previousKeys.length === snapshot.messageOrder.length &&
-      this.previousKeys.every((key, index) => key === snapshot.messageOrder[index]) &&
+      this.previousKeys.length === rows.length &&
+      this.previousKeys.every((key, index) => key === rows[index]) &&
       this.previousViews.length === views.length &&
       this.previousViews.every((view, index) => view === views[index])
     ) {
       return this.previousViews;
     }
-    this.previousKeys = [...snapshot.messageOrder];
+    this.previousKeys = [...rows];
     this.previousViews = views;
     return views;
   }
@@ -1238,18 +1248,22 @@ export class OmpRuntimeController {
     // composer's position follows the chat's emptiness, so it moves at Enter. Text that starts with "/" may run a command
     // that writes no user message (omp's `prompt()` runs extension and custom commands without one), so it does not mark
     // the chat sent: a command that does write one ends the empty chat when its echo arrives. A refused send leaves the
-    // chat empty again.
+    // chat empty again, and its row goes.
     const sendsMessage = !intent.text.trimStart().startsWith("/");
-    if (sendsMessage) this.store.markPromptSent();
+    // A plain new prompt also shows its own row, from Enter, until omp's echo takes the row's place (`reduceMessageStart`).
+    // Steer and follow-up have queue rows instead.
+    const pendingKey = sendsMessage
+      ? this.store.markPromptSent(
+          intent.delivery === "new" ? { text: intent.text, images: intent.images } : undefined,
+        )
+      : undefined;
     try {
       await this.send(
         { threadId: snapshot.threadId, command: promptCommand(intent) },
         { signal: intent.signal },
       );
     } catch (error) {
-      if (sendsMessage && this.store.getSnapshot().messageOrder.length === 0) {
-        this.store.unmarkPromptSent();
-      }
+      if (sendsMessage) this.store.unmarkPromptSent(pendingKey);
       throw asFailure(error, "Prompt submission failed before admission");
     }
   }

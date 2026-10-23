@@ -140,6 +140,51 @@ describe("ThreadShell states", () => {
     expect(screen.getByText("No messages yet.")).toBeTruthy();
   });
 
+  test("a prompt waiting for omp's echo shows its row, and keeps the earlier-message label hidden", () => {
+    const store = readyStore();
+    store.markPromptSent({ text: "waiting for the echo" });
+    const { container } = renderThread(store);
+    expect(screen.getByText("waiting for the echo")).toBeTruthy();
+    expect(screen.queryByText("No messages yet.")).toBeNull();
+    expect(container.querySelector('[data-no-messages="true"]')).not.toBeNull();
+  });
+
+  test("a prompt waiting for omp's echo announces no settled status, in an empty chat", () => {
+    const store = readyStore();
+    store.markPromptSent({ text: "still waiting" });
+    renderThread(store);
+    expect(screen.queryByText("Conversation settled")).toBeNull();
+  });
+
+  test("a prompt waiting for omp's echo announces no settled status, in a chat with older messages", async () => {
+    const store = readyStore();
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "older",
+          parentId: null,
+          timestamp: new Date(1_759_600_000_000).toISOString(),
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "earlier question" }],
+            timestamp: 1_759_600_000_000,
+          },
+        },
+      ],
+      "older" as EntryId,
+    );
+    store.markPromptSent({ text: "still waiting" });
+    renderThread(store);
+    expect(screen.queryByText("Conversation settled")).toBeNull();
+    // omp ends the turn without echoing the prompt: its row goes, and the older chat is settled again.
+    store.ingest(
+      { kind: "omp", event: { type: "agent_end", messages: [] } } as unknown as RpcSessionEvent,
+      2,
+    );
+    await waitFor(() => expect(screen.getByText("Conversation settled")).toBeTruthy());
+  });
+
   test("names an extension's error under its own heading, not as a conversation that stopped", () => {
     const store = readyStore();
     store.ingest(

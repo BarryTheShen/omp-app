@@ -502,6 +502,121 @@ describe("R0.3 assistant-ui runtime", () => {
     expect(commands).toEqual([]);
   });
 
+  test("a plain new prompt shows its row before its request goes out, and a refused one takes it away", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const rowsAtSend: number[] = [];
+    const send: RpcSessionSend = async () => {
+      rowsAtSend.push(store.getSnapshot().pendingPrompts.length);
+      throw new AppFailure({
+        code: "permission",
+        message: "Prompt was refused",
+        retryable: false,
+      } satisfies AppError);
+    };
+    const controller = createOmpRuntime({ store, send, capabilities });
+    await expect(
+      controller.submitPrompt({ mode: "prompt", text: "hello", delivery: "new" }),
+    ).rejects.toBeInstanceOf(AppFailure);
+    expect(rowsAtSend).toEqual([1]);
+    expect(store.getSnapshot()).toMatchObject({
+      messageOrder: [],
+      pendingPrompts: [],
+      prompt: { sent: false },
+    });
+  });
+
+  test("the row of a plain new prompt is a user row with its text, and omp's echo takes its place", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const admitted = Promise.withResolvers<void>();
+    const send: RpcSessionSend = async () => admitted.promise as never;
+    const controller = createOmpRuntime({ store, send, capabilities });
+    const submission = controller.submitPrompt({ mode: "prompt", text: "hello", delivery: "new" });
+    const [row] = controller.messages();
+    expect(controller.messages()).toHaveLength(1);
+    expect(row?.record.status).toBe("pending");
+    expect(convertMessage(row as RuntimeMessageView)).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+    });
+    ompEvent(
+      store,
+      {
+        type: "message_start",
+        messageId: "u1",
+        message: { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 },
+      },
+      1,
+    );
+    const [echoed] = controller.messages();
+    expect(controller.messages()).toHaveLength(1);
+    expect(convertMessage(echoed as RuntimeMessageView).id).toBe(
+      convertMessage(row as RuntimeMessageView).id,
+    );
+    admitted.resolve();
+    await expect(submission).resolves.toBeUndefined();
+  });
+
+  test("a waiting row is drawn after the chat's messages, and its echo keeps its id in that place", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const earlier = assistantMessage([{ type: "text", text: "earlier answer" }]);
+    store.pairEndedMessages([
+      {
+        type: "message",
+        id: "a1",
+        parentId: null,
+        timestamp: new Date(1_759_600_000_000).toISOString(),
+        message: earlier,
+      },
+    ]);
+    const answered = Promise.withResolvers<void>();
+    const send: RpcSessionSend = async () => answered.promise as never;
+    const controller = createOmpRuntime({ store, send, capabilities });
+    void controller.submitPrompt({ mode: "prompt", text: "next question", delivery: "new" });
+    const waiting = store.getSnapshot().pendingPrompts[0]?.key;
+    expect(store.getSnapshot().messageOrder).toEqual(["entry:runtime-test-thread:a1"]);
+    expect(controller.messages().map((view) => view.record.key)).toEqual([
+      "entry:runtime-test-thread:a1",
+      waiting,
+    ]);
+    ompEvent(
+      store,
+      {
+        type: "message_start",
+        messageId: "u1",
+        message: { role: "user", content: [{ type: "text", text: "next question" }], timestamp: 3 },
+      },
+      1,
+    );
+    expect(controller.messages().map((view) => convertMessage(view).id)).toEqual([
+      "entry:runtime-test-thread:a1",
+      waiting,
+    ]);
+    answered.resolve();
+  });
+
+  test("steer, follow-up, bash, python and slash commands add no row of their own", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const bashCapabilities: CapabilityMap = {
+      ...capabilities,
+      "omp.cmd.bash": { state: "available", via: "rpc" },
+    };
+    const send: RpcSessionSend = async () => undefined as never;
+    const controller = createOmpRuntime({ store, send, capabilities: bashCapabilities });
+    await controller.submitPrompt({
+      mode: "prompt",
+      text: "also check the tests",
+      delivery: "steer",
+    });
+    await controller.submitPrompt({ mode: "prompt", text: "and then this", delivery: "followUp" });
+    await controller.submitPrompt({ mode: "bash", text: "printf hi", delivery: "new" });
+    await expect(
+      controller.submitPrompt({ mode: "python", text: "print(1)", delivery: "new" }),
+    ).rejects.toBeInstanceOf(AppFailure);
+    await controller.submitPrompt({ mode: "prompt", text: "/usage", delivery: "new" });
+    expect(store.getSnapshot().messageOrder).toEqual([]);
+    expect(store.getSnapshot().pendingPrompts).toEqual([]);
+  });
+
   test("gates a bash command that keeps its output out of the model, without sending it", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];

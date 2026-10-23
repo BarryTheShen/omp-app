@@ -396,7 +396,12 @@ function RuntimeSettledStatus({ snapshot }: { readonly snapshot: RuntimeSnapshot
       </div>
     );
   }
-  if (snapshot.messageOrder.length > 0 && snapshot.process.status === "ready") {
+  // "Settled" means no send is in flight: a prompt still waiting for omp's echo (its pending row) is not settled.
+  if (
+    snapshot.messageOrder.length > 0 &&
+    snapshot.pendingPrompts.length === 0 &&
+    snapshot.process.status === "ready"
+  ) {
     return (
       <div aria-live="polite" className="sr-only" role="status">
         Conversation settled

@@ -9,7 +9,7 @@ import type {
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { OmpRuntimeStore, rowIdOf } from "./store";
+import { OmpRuntimeStore, type RuntimeMessage, rowIdOf } from "./store";
 
 const threadId = "thread-r0" as ThreadId;
 const at = 1_759_600_000_000;
@@ -2171,5 +2171,256 @@ describe("a `!` command's row in the store", () => {
       "sleep 1",
       "echo hi",
     ]);
+  });
+});
+
+describe("the row of a plain prompt, until omp's echo takes its place", () => {
+  const image = { type: "image" as const, data: "aW1n", mimeType: "image/png" };
+  const echo = (text: string, extra: Record<string, unknown> = {}) => ({
+    role: "user",
+    content: [{ type: "text", text }],
+    timestamp: at,
+    ...extra,
+  });
+
+  /** The row a key holds in the store: the test fails when there is none. */
+  function rowOf(store: OmpRuntimeStore, key: string): RuntimeMessage {
+    const record = store.getSnapshot().messages[key as MessageKey];
+    if (record === undefined) throw new Error(`no row for ${key}`);
+    return record;
+  }
+
+  test("a plain new prompt adds its row in the same commit as markPromptSent, with its text and images", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    let commits = 0;
+    store.subscribe(() => {
+      commits += 1;
+    });
+    const key = store.markPromptSent({ text: "hello", images: [image] }) as MessageKey;
+    expect(commits).toBe(1);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.prompt.sent).toBe(true);
+    expect(snapshot.messageOrder).toEqual([]);
+    expect(snapshot.pendingPrompts).toEqual([{ key, afterSeq: 0 }]);
+    expect(snapshot.messages[key]).toMatchObject({
+      key,
+      status: "pending",
+      message: { role: "user", content: [{ type: "text", text: "hello" }, image] },
+    });
+    expect(snapshot.streaming).toEqual({});
+  });
+
+  test("a send that is not a plain new prompt adds no row, only the sent mark", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    expect(store.markPromptSent()).toBeUndefined();
+    expect(store.getSnapshot()).toMatchObject({
+      messageOrder: [],
+      pendingPrompts: [],
+      prompt: { sent: true },
+    });
+  });
+
+  test("an empty prompt adds no row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    expect(store.markPromptSent({ text: "" })).toBeUndefined();
+    expect(store.getSnapshot().messageOrder).toEqual([]);
+  });
+
+  test("omp's echo takes the row's place: the same index and row id, and no second row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "message_start", messageId: "a1", message: assistant("earlier answer") }, 1);
+    omp(store, { type: "message_end", messageId: "a1", message: assistant("earlier answer") }, 2);
+    const pending = store.markPromptSent({ text: "next question" }) as MessageKey;
+    omp(store, { type: "message_start", messageId: "u1", message: echo("next question") }, 3);
+    const echoKey = "stream:thread-r0:0:u1" as MessageKey;
+    expect(store.getSnapshot().messageOrder).toEqual(["stream:thread-r0:0:a1", echoKey]);
+    expect(store.getSnapshot().messages[pending]).toBeUndefined();
+    expect(store.getSnapshot().pendingPrompts).toEqual([]);
+    expect(store.getSnapshot().messages[echoKey]).toMatchObject({
+      key: echoKey,
+      status: "streaming",
+      rowKey: pending,
+    });
+    expect(rowIdOf(rowOf(store, echoKey))).toBe(pending);
+    // The row keeps its id when the echo ends, so its element is not replaced at message_end.
+    omp(store, { type: "message_end", messageId: "u1", message: echo("next question") }, 4);
+    expect(store.getSnapshot().messageOrder).toEqual(["stream:thread-r0:0:a1", echoKey]);
+    expect(rowIdOf(rowOf(store, echoKey))).toBe(pending);
+  });
+
+  test("an echo with a seq at or before the row's seq does not take the row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.resetSequence(5);
+    const pending = store.markPromptSent({ text: "waiting" }) as MessageKey;
+    store.resetSequence(2);
+    omp(store, { type: "message_start", messageId: "u-old", message: echo("waiting") }, 3);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.pendingPrompts).toEqual([{ key: pending, afterSeq: 5 }]);
+    expect(snapshot.messageOrder).toEqual(["stream:thread-r0:0:u-old"]);
+    expect(rowIdOf(rowOf(store, "stream:thread-r0:0:u-old"))).toBe("stream:thread-r0:0:u-old");
+  });
+
+  test("two sends in a row, each replaced by its own echo, in order", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const first = store.markPromptSent({ text: "first" }) as MessageKey;
+    const second = store.markPromptSent({ text: "second" }) as MessageKey;
+    omp(store, { type: "message_start", messageId: "u1", message: echo("first") }, 1);
+    omp(store, { type: "message_start", messageId: "u2", message: echo("second") }, 2);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual(["stream:thread-r0:0:u1", "stream:thread-r0:0:u2"]);
+    expect(rowIdOf(rowOf(store, "stream:thread-r0:0:u1"))).toBe(first);
+    expect(rowIdOf(rowOf(store, "stream:thread-r0:0:u2"))).toBe(second);
+    expect(snapshot.pendingPrompts).toEqual([]);
+  });
+
+  test("an echo that history already shows takes that row, and the pending row goes", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const pending = store.markPromptSent({ text: "saved" }) as MessageKey;
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "saved",
+          parentId: null,
+          timestamp: new Date(at).toISOString(),
+          message: echo("saved"),
+        },
+      ],
+      "saved" as EntryId,
+    );
+    omp(store, { type: "message_start", messageId: "u1", message: echo("saved") }, 1);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual(["stream:thread-r0:0:u1"]);
+    expect(snapshot.messages[pending]).toBeUndefined();
+    expect(snapshot.pendingPrompts).toEqual([]);
+    expect(rowIdOf(rowOf(store, "stream:thread-r0:0:u1"))).toBe("entry:thread-r0:saved");
+  });
+
+  test("a user message omp sends for an agent, or as synthetic, does not take the row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const pending = store.markPromptSent({ text: "mine" }) as MessageKey;
+    omp(
+      store,
+      {
+        type: "message_start",
+        messageId: "agent-note",
+        message: echo("note", { attribution: "agent" }),
+      },
+      1,
+    );
+    omp(
+      store,
+      {
+        type: "message_start",
+        messageId: "synthetic-note",
+        message: echo("continue", { synthetic: true }),
+      },
+      2,
+    );
+    expect(store.getSnapshot().pendingPrompts).toEqual([{ key: pending, afterSeq: 0 }]);
+    expect(store.getSnapshot().messageOrder).toEqual([
+      "stream:thread-r0:0:agent-note",
+      "stream:thread-r0:0:synthetic-note",
+    ]);
+  });
+
+  test("a refused send removes its row in the same commit as unmarkPromptSent", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const key = store.markPromptSent({ text: "refused" });
+    let commits = 0;
+    store.subscribe(() => {
+      commits += 1;
+    });
+    store.unmarkPromptSent(key);
+    expect(commits).toBe(1);
+    expect(store.getSnapshot()).toMatchObject({
+      messageOrder: [],
+      pendingPrompts: [],
+      prompt: { sent: false },
+    });
+    expect(Object.keys(store.getSnapshot().messages)).toEqual([]);
+  });
+
+  test("a refused send keeps the chat sent while another send's row is still in it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const first = store.markPromptSent({ text: "first" });
+    const second = store.markPromptSent({ text: "second" });
+    store.unmarkPromptSent(second);
+    expect(store.getSnapshot()).toMatchObject({ messageOrder: [], prompt: { sent: true } });
+    expect(store.getSnapshot().pendingPrompts.map((pending) => pending.key)).toEqual([first]);
+  });
+
+  test("agent_end with no echo removes the row, since omp will not echo the prompt", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.markPromptSent({ text: "unanswered" });
+    omp(store, { type: "agent_start" }, 1);
+    omp(store, { type: "agent_end", messages: [] }, 2);
+    expect(store.getSnapshot()).toMatchObject({ messageOrder: [], pendingPrompts: [] });
+  });
+
+  test("a prompt_result for a prompt omp never echoed removes the row, as for a prompt omp dropped", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.markPromptSent({ text: "dropped" });
+    ingest(
+      store,
+      {
+        kind: "prompt_result",
+        event: {
+          type: "prompt_result",
+          agentInvoked: true,
+          status: "aborted",
+          sessionSettled: false,
+        },
+      },
+      1,
+    );
+    expect(store.getSnapshot()).toMatchObject({ messageOrder: [], pendingPrompts: [] });
+  });
+
+  test.each(["exited", "stopped"])(
+    "a process that %s removes the rows of prompts it never echoed",
+    (status) => {
+      const store = new OmpRuntimeStore({ threadId });
+      store.markPromptSent({ text: "lost" });
+      ingest(store, { kind: "process", status }, 1);
+      expect(store.getSnapshot()).toMatchObject({ messageOrder: [], pendingPrompts: [] });
+    },
+  );
+
+  test("a streamed copy keeps the row it took through its updates and its end", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "answer",
+          parentId: null,
+          timestamp: new Date(at).toISOString(),
+          message: assistant("hello"),
+        },
+      ],
+      "answer" as EntryId,
+    );
+    const streamed = "stream:thread-r0:0:m1" as MessageKey;
+    omp(store, { type: "message_start", messageId: "m1", message: assistant("") }, 1);
+    expect(rowIdOf(rowOf(store, streamed))).toBe("entry:thread-r0:answer");
+    omp(
+      store,
+      {
+        type: "message_update",
+        messageId: "m1",
+        message: assistant("hello"),
+        assistantMessageEvent: {
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "hello",
+          partial: assistant("hello"),
+        },
+      },
+      2,
+    );
+    expect(rowIdOf(rowOf(store, streamed))).toBe("entry:thread-r0:answer");
+    omp(store, { type: "message_end", messageId: "m1", message: assistant("hello") }, 3);
+    expect(rowIdOf(rowOf(store, streamed))).toBe("entry:thread-r0:answer");
   });
 });

@@ -300,6 +300,30 @@ async function expectComposerValue(realApp: RealApp, page: Page, expected: strin
   }
 }
 
+/** Waits until no local draft holds `text`: the send's clear is saved, so a reload cannot bring the sent text back. */
+async function waitForLocalDraftCleared(realApp: RealApp, page: Page, text: string): Promise<void> {
+  try {
+    await expect
+      .poll(
+        async () => {
+          const state = await readDraftState(realApp, page);
+          return (
+            state.buffers.some((entry) => entry.text === text) ||
+            state.files.some((entry) => entry.text === text)
+          );
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(false);
+  } catch (error) {
+    const state = await readDraftState(realApp, page);
+    const original = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `The sent text ${JSON.stringify(text)} is still held by a local draft.\n${draftStateReport(state)}\n${original}`,
+    );
+  }
+}
+
 async function waitUntilElapsed(startedAt: number, delayMs: number): Promise<void> {
   if (delayMs <= 0) return;
   await expect
@@ -862,6 +886,9 @@ realTest(
         timeout: 120_000,
       },
     );
+    // The pending row shows before omp admits the send, so the transcript does not yet say the send went out. The draft
+    // is cleared at admission (drafts.ts admitAndClear), and that clear must be saved before the page goes offline.
+    await waitForLocalDraftCleared(realApp, page, "offline delivered once");
     await page.context().setOffline(true);
     await page.reload().catch(() => undefined);
     await page.context().setOffline(false);
