@@ -493,6 +493,18 @@ export function SessionCatalogSidebar({
     }
   };
 
+  /**
+   * A click on a session row opens its chat, unless it lands on one of the row's own controls (its title button, More, the
+   * actions menu): those act for themselves. The saved row and the running row both use it, so they cannot drift apart.
+   */
+  const openRowUnlessControl = (
+    target: EventTarget,
+    session: Pick<SessionMetadata, "id">,
+  ): void => {
+    if ((target as Element).closest("button, input, [role='menu']") === null)
+      void openSession(session);
+  };
+
   const createNewChat = async (): Promise<void> => {
     catalog.setActionError(undefined);
     const token = {};
@@ -849,6 +861,8 @@ export function SessionCatalogSidebar({
                   const title = "New chat";
                   const menuOpen = menuSessionId === chat.id;
                   return (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: the title button inside is the keyboard and screen reader control; this click only widens the pointer target to the row body, as the saved row does.
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: the same reason; Enter and Space on the title button open the chat.
                     <div
                       className={
                         presence.entering
@@ -858,6 +872,7 @@ export function SessionCatalogSidebar({
                       data-selected={shownThreadId === chat.id ? "true" : "false"}
                       data-slot="r1-running-row"
                       key={`running-${chat.id}`}
+                      onClick={(event) => openRowUnlessControl(event.target, { id: chat.id })}
                       ref={(element) => rememberRow(chat.id, element)}
                     >
                       <ListRow
@@ -992,12 +1007,7 @@ export function SessionCatalogSidebar({
                       data-slot="r1-session-row"
                       inert={leaving || undefined}
                       key={session.id}
-                      onClick={(event) => {
-                        const target = event.target as Element;
-                        if (target.closest("button, input, [role='menu']") === null) {
-                          void openSession({ id: session.id });
-                        }
-                      }}
+                      onClick={(event) => openRowUnlessControl(event.target, { id: session.id })}
                       ref={(element) => rememberRow(session.id, element)}
                     >
                       <ListRow

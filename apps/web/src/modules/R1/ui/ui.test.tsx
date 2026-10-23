@@ -1980,6 +1980,46 @@ describe("SessionCatalogSidebar running chats", () => {
     fireEvent.keyDown(running, { key: "Enter" });
     await waitFor(() => expect(opened).toEqual(["first-reply"]));
   });
+
+  test("a click on a running row's body, beside its title, opens the chat", async () => {
+    const { calls } = renderSidebar({ catalog: modelWithRunning(["first-reply"]) });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const row = document.querySelector<HTMLElement>('[data-slot="r1-running-row"]');
+    if (!row) throw new Error("Expected a running row.");
+    fireEvent.click(row);
+    await waitFor(() => expect(calls).toEqual(["initialize:first-reply"]));
+  });
+
+  test("the title button opens a running chat once, not twice, though the click also reaches the row", async () => {
+    const { calls } = renderSidebar({ catalog: modelWithRunning(["first-reply"]) });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /New chat/ }));
+    await waitFor(() => expect(calls).toEqual(["initialize:first-reply"]));
+  });
+
+  test("a running row's More actions button opens its menu, and the chat does not open", async () => {
+    const { calls } = renderSidebar({
+      catalog: modelWithRunning(["first-reply"]),
+      confirmDeleteRunning: () => true,
+      stopRunning: async () => undefined,
+      deleteAvailable: true,
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for New chat" }));
+    expect(screen.getByRole("menu", { name: "Actions for New chat" })).toBeTruthy();
+    expect(calls.filter((call) => call.startsWith("initialize:"))).toEqual([]);
+  });
+
+  test("a click on a saved row's body opens its chat, as it did before", async () => {
+    const { calls } = renderSidebar({
+      catalog: modelWithSessions([session("first", "2026-10-05T00:00:00.000Z", "First chat")]),
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /First chat/ })).toBeTruthy());
+    const row = document.querySelector<HTMLElement>('[data-slot="r1-session-row"]');
+    if (!row) throw new Error("Expected a saved row.");
+    fireEvent.click(row);
+    await waitFor(() => expect(calls).toEqual(["initialize:first"]));
+  });
 });
 
 describe("SessionCatalogSidebar focus across a refresh", () => {
