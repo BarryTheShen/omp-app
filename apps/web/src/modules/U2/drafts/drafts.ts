@@ -20,6 +20,12 @@ type DraftCallOptions = Pick<PortCallOptions, "signal">;
 const AUTOSAVE_MS = 1_000;
 const MAX_AUTOSAVE_MS = 5_000;
 
+/**
+ * The revisions this page's controllers wrote to each store, newest last. A conflict whose stored draft is one of them is
+ * this page's own earlier save (a replaced chat's last text, say), not another tab's change: this tab's text is saved over it.
+ */
+const savedRevisions = new WeakMap<DraftStoreAdapter, Revision[]>();
+
 const MOVE_CONFLICT = "The draft changed in another tab before it could move";
 type FailedStep = "load" | "save" | "clear";
 
@@ -867,7 +873,7 @@ export class DraftController {
       void this.flush().catch(() => undefined);
     }, delay);
   }
-  private async saveCurrent(): Promise<void> {
+  private async saveCurrent(rebased = false): Promise<void> {
     // A draft that has not loaded has no revision to save over: it loads first, so its save is not taken for a conflict.
     if (!this.loaded) {
       await this.load().catch(() => undefined);
@@ -900,6 +906,8 @@ export class DraftController {
       this.saveAttempts = 0;
       this.saving = null;
       this.rememberSelfRevision(this.selfSavedRevisions, saved.revision);
+      const recent = savedRevisions.get(this.store) ?? [];
+      savedRevisions.set(this.store, [...recent.slice(-15), saved.revision]);
       this.setState({
         scope: saved.scope,
         status: "ready",
@@ -911,7 +919,7 @@ export class DraftController {
       if (!unchanged) this.scheduleSave();
     } catch (error) {
       if (error instanceof AppFailure && error.appError.code === "conflict") {
-        await this.handleSaveConflict();
+        await this.handleSaveConflict(rebased);
       } else {
         const appError = failure(error, "Saving the draft failed");
         this.fail("save", appError);
@@ -961,10 +969,11 @@ export class DraftController {
 
   /**
    * A save met a revision it did not expect. When the stored draft holds exactly what is here, an earlier save of this
-   * tab was applied and only its answer was lost: the stored revision is adopted and nothing is shown. Otherwise
-   * another tab changed the draft, and the person chooses.
+   * tab was applied and only its answer was lost: the stored revision is adopted and nothing is shown. When the stored
+   * draft is a revision this page saved, this tab's text is saved over it once (`rebased`). Otherwise another tab
+   * changed the draft, and the person chooses.
    */
-  private async handleSaveConflict(): Promise<void> {
+  private async handleSaveConflict(rebased: boolean): Promise<void> {
     const result = await this.store.get({ scope: this.scope });
     const remote = result.draft;
     const local = draftInput(
@@ -986,6 +995,17 @@ export class DraftController {
         conflict: null,
         error: null,
       });
+      return;
+    }
+    // A stored draft this page saved is one write (the file holds its save time), so nothing was saved after it: this
+    // tab's text is saved over it. Once per save: a store that keeps refusing ends in the choice below.
+    if (
+      !rebased &&
+      remote !== null &&
+      (savedRevisions.get(this.store) ?? []).includes(remote.revision)
+    ) {
+      this.setState({ revision: remote.revision });
+      await this.saveCurrent(true);
       return;
     }
     await this.handleConflict("The draft changed in another tab", result);
@@ -1039,6 +1059,17 @@ export class DraftController {
         return;
       }
       if (change.draft.revision === this.snapshot.revision) return;
+      // This tab's own save in flight can reach the change stream before its answer. It is not another tab's change, and
+      // the answer sets the revision.
+      if (
+        this.saving !== null &&
+        sameInput(
+          this.saving,
+          draftInput(change.draft.text, change.draft.attachments, change.draft.failedSends),
+        )
+      ) {
+        return;
+      }
       if (this.snapshot.dirty) {
         this.setState({
           status: "conflict",

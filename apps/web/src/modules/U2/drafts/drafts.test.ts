@@ -1685,3 +1685,94 @@ describe("DraftController: an earlier draft that text typed before it loaded wou
     });
   });
 });
+
+describe("DraftController: this page's own saves are not another tab's change", () => {
+  test("this tab's save, announced on the change stream before its answer, never shows a conflict", async () => {
+    class EchoingStore extends FakeDraftStore {
+      override async save(args: Parameters<FakeDraftStore["save"]>[0]): Promise<Draft> {
+        const saved = await super.save(args);
+        this.emit(saved);
+        return saved;
+      }
+    }
+    const store = new EchoingStore();
+    const controller = new DraftController({ store, scope, timers: new FakeTimers() });
+    const statuses: string[] = [];
+    controller.subscribe((snapshot) => statuses.push(snapshot.status));
+    await controller.load();
+    controller.setDraft("typed", []);
+    await controller.flush();
+    expect(statuses).not.toContain("conflict");
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "ready",
+      conflict: null,
+      dirty: false,
+      text: "typed",
+    });
+  });
+
+  test("a save refused because of this page's own earlier save of other text is saved over it", async () => {
+    const store = new ScopedDraftStore();
+    const timers = new FakeTimers();
+    const newChat = new DraftController({ store, scope, timers });
+    const replacedChat = new DraftController({ store, scope, timers });
+    await newChat.load();
+    await replacedChat.load();
+    replacedChat.setDraft("/seance", []);
+    await replacedChat.flush();
+    const statuses: string[] = [];
+    newChat.subscribe((snapshot) => statuses.push(snapshot.status));
+    newChat.setDraft("typed in the new chat", []);
+    await newChat.flush();
+    expect(statuses).not.toContain("conflict");
+    expect(newChat.getSnapshot()).toMatchObject({
+      status: "ready",
+      conflict: null,
+      dirty: false,
+      text: "typed in the new chat",
+    });
+    expect((await store.get({ scope })).draft?.text).toBe("typed in the new chat");
+  });
+
+  test("a refused save is saved over this page's own revision once, then the choice is shown", async () => {
+    // A store that keeps refusing answers with two revisions this page saved: the save is retried over one only.
+    class ContestedStore extends FakeDraftStore {
+      refusing = false;
+      readonly history: Draft[] = [];
+      remotes: readonly Draft[] = [];
+      private reads = 0;
+      override async save(args: Parameters<FakeDraftStore["save"]>[0]): Promise<Draft> {
+        if (!this.refusing) {
+          const saved = await super.save(args);
+          this.history.push(saved);
+          return saved;
+        }
+        this.saves.push({ expectedRevision: args.expectedRevision, draft: args.draft });
+        throw new AppFailure({ code: "conflict", message: "changed", retryable: true });
+      }
+      override async get(): Promise<{ draft: Draft | null }> {
+        this.reads += 1;
+        if (this.reads > 10) throw new Error("the rebase did not stop");
+        if (!this.refusing) return super.get();
+        return { draft: this.remotes[this.reads % this.remotes.length] ?? null };
+      }
+    }
+    const store = new ContestedStore();
+    const writer = new DraftController({ store, scope, timers: idleTimers });
+    await writer.load();
+    writer.setDraft("first", []);
+    await writer.flush();
+    writer.setDraft("second", []);
+    await writer.flush();
+    expect(store.history).toHaveLength(2);
+    store.remotes = [...store.history];
+    store.refusing = true;
+    const attemptsBefore = store.saves.length;
+    const contested = new DraftController({ store, scope, timers: idleTimers });
+    await contested.load();
+    contested.setDraft("typed", []);
+    await contested.flush();
+    expect(store.saves.length - attemptsBefore).toBe(2);
+    expect(contested.getSnapshot().status).toBe("conflict");
+  });
+});
