@@ -67,11 +67,22 @@ export type ThreadId = z.infer<typeof ThreadId>;
 export const EntryId = z.string().min(1).brand<"EntryId">();
 export type EntryId = z.infer<typeof EntryId>;
 
-/** Absolute folder whose sessions a per-folder catalog lists (the session header `cwd`). */
+/** The path without the separators that end it. A root keeps its separator: `/` and `C:\` stay whole. */
+function withoutTrailingSeparator(path: string): string {
+  const root = /^[A-Za-z]:/.test(path) ? 3 : 1;
+  let end = path.length;
+  while (end > root && /[\\/]/.test(path.charAt(end - 1))) end -= 1;
+  return path.slice(0, end);
+}
+
+/**
+ * Absolute folder whose sessions a per-folder catalog lists (the session header `cwd`). A trailing separator is dropped
+ * (`/live/x/` is `/live/x`); a root keeps its separator (`/`, `C:\`).
+ */
 export const FolderPath = z
   .string()
   .regex(ABSOLUTE_PATH, "expected an absolute path")
-  .refine((path) => !/.[\\/]$/.test(path), "no trailing separator")
+  .transform(withoutTrailingSeparator)
   .brand<"FolderPath">();
 export type FolderPath = z.infer<typeof FolderPath>;
 

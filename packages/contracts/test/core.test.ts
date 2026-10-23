@@ -30,14 +30,22 @@ describe("ids", () => {
   });
 
   test("folder and session-file paths are absolute", () => {
-    for (const path of ["/home/x/project", "/", "C:\\code\\app", "D:/code"]) {
+    for (const path of ["/home/x/project", "/", "C:\\code\\app", "D:/code", "C:\\"]) {
       expect(FolderPath.safeParse(path).success).toBe(true);
     }
-    for (const path of ["project", "./project", "/home/x/project/", "C:\\code\\"]) {
+    for (const path of ["project", "./project"]) {
       expect(FolderPath.safeParse(path).success).toBe(false);
     }
     expect(SessionFilePath.safeParse("/s/2026-10-04_01a1.jsonl").success).toBe(true);
     expect(SessionFilePath.safeParse("/s/2026-10-04_01a1.json").success).toBe(false);
+  });
+
+  test("a trailing separator is dropped, and a root keeps its separator", () => {
+    expect(String(FolderPath.parse("/home/x/project/"))).toBe("/home/x/project");
+    expect(String(FolderPath.parse("/home/x/project//"))).toBe("/home/x/project");
+    expect(String(FolderPath.parse("C:\\code\\"))).toBe("C:\\code");
+    expect(String(FolderPath.parse("/"))).toBe("/");
+    expect(String(FolderPath.parse("D:/"))).toBe("D:/");
   });
 
   test("message keys separate persisted from streaming messages", () => {

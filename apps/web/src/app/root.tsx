@@ -242,6 +242,7 @@ import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-
 import { LargePasteMenuProvider } from "./large-paste-menu";
 import { type NewChatOutcome, type NewChatTicket, openNewChatTicket } from "./new-chat-outcome";
 import { deliverWhenChatOpen } from "./open-chat-delivery";
+import { otherFolderOf } from "./other-folder";
 import { useChatSessionInfo, useChatTodoStore } from "./owned-stores";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { installPerfTrace, perfMark, perfTraceEnabled, perfTraceStart } from "./perf-trace";
@@ -2723,14 +2724,14 @@ function ConnectedApp({
     writeTabValue(UNSENT_CHAT_KEY, null);
   };
   const validateOtherFolder = async (value: string): Promise<boolean> => {
-    const parsed = FolderPath.safeParse(value.trim());
-    if (!parsed.success) {
-      setFolderError("Enter an absolute folder path.");
+    const typed = otherFolderOf(value);
+    if (!typed.ok) {
+      setFolderError(typed.message);
       return false;
     }
     try {
-      await client.port(HostMetadataPort).read({ folder: parsed.data });
-      selectFolder(parsed.data);
+      await client.port(HostMetadataPort).read({ folder: typed.folder });
+      selectFolder(typed.folder);
       return true;
     } catch (error) {
       setFolderError(error instanceof Error ? error.message : "Folder is unavailable.");
