@@ -3,7 +3,7 @@ import { type FileHandle, open } from "node:fs/promises";
 import { isJsonObject } from "./parser";
 import type { RecordedWorkerStatus } from "./types";
 
-const RECORDED_OUTCOMES: ReadonlySet<string> = new Set(["completed", "failed", "aborted"]);
+const FAILED_WITH_EXIT = /^failed \(exit \d+\)$/u;
 const TASK_RESULT_OPEN = Buffer.from("<task-result", "utf8");
 const TASK_RESULT_TAG = /<task-result\b([^>]*)>/gu;
 const TAG_ATTRIBUTE = /([a-z-]+)="([^"]*)"/gu;
@@ -206,7 +206,37 @@ function recordText(content: unknown): string {
     .join("\n");
 }
 
-/** Adds the outcomes one line records, when it is an async result or a task tool result. */
+/**
+ * The outcome a worker's status word records: `completed`; `cancelled` (stopped by the user) and `aborted` (older omp)
+ * are `aborted`; `failed`, `failed (exit N)` and `merge failed` are `failed`. Any other word records nothing.
+ */
+function recordedStatusOf(status: string): RecordedWorkerStatus | undefined {
+  if (status === "completed") return "completed";
+  if (status === "cancelled" || status === "aborted") return "aborted";
+  if (status === "failed" || status === "merge failed" || FAILED_WITH_EXIT.test(status)) {
+    return "failed";
+  }
+  return undefined;
+}
+
+/**
+ * The text of a record that carries a worker's result: a `task` or `wait` tool result, an async result, or the wake relay
+ * omp sends a woken worker's re-yield through. Any other record carries none, so a `read` that quotes the tag records nothing.
+ */
+function resultTextOf(value: Record<string, unknown>): string {
+  if (value.type === "custom_message") {
+    const wakeRelay = isJsonObject(value.details) && value.details.wakeRelay === true;
+    const carriesResult =
+      value.customType === "async-result" || (value.customType === "irc:incoming" && wakeRelay);
+    return carriesResult ? recordText(value.content) : "";
+  }
+  if (value.type !== "message" || !isJsonObject(value.message)) return "";
+  const message = value.message;
+  const toolCarriesResult = message.toolName === "task" || message.toolName === "wait";
+  return message.role === "toolResult" && toolCarriesResult ? recordText(message.content) : "";
+}
+
+/** Adds the outcomes one line records, when it carries a worker's result (see `resultTextOf`). */
 function applyRecord(line: string, outcomes: Map<string, RecordedWorkerStatus>): void {
   let value: unknown;
   try {
@@ -215,23 +245,14 @@ function applyRecord(line: string, outcomes: Map<string, RecordedWorkerStatus>):
     return;
   }
   if (!isJsonObject(value)) return;
-  const message =
-    value.type === "message" && isJsonObject(value.message) ? value.message : undefined;
-  const text =
-    value.type === "custom_message" && value.customType === "async-result"
-      ? recordText(value.content)
-      : message?.role === "toolResult" && message.toolName === "task"
-        ? recordText(message.content)
-        : "";
-  for (const tag of text.matchAll(TASK_RESULT_TAG)) {
+  for (const tag of resultTextOf(value).matchAll(TASK_RESULT_TAG)) {
     const attributes = new Map<string, string>();
     for (const attribute of (tag[1] ?? "").matchAll(TAG_ATTRIBUTE)) {
       attributes.set(attribute[1] ?? "", attribute[2] ?? "");
     }
     const id = attributes.get("id");
     const status = attributes.get("status");
-    if (id !== undefined && status !== undefined && RECORDED_OUTCOMES.has(status)) {
-      outcomes.set(id, status as RecordedWorkerStatus);
-    }
+    const recorded = status === undefined ? undefined : recordedStatusOf(status);
+    if (id !== undefined && recorded !== undefined) outcomes.set(id, recorded);
   }
 }

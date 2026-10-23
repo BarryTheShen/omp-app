@@ -340,6 +340,23 @@ function reply(request: Request): Reply {
     if (done === 0) return named;
     return { text: "background job started" };
   }
+  // A worker the parent collects with `wait` (issue 2535): the task, then the wait that collects it, then a short answer.
+  if (text(messages[lastUser]?.content).includes("spawn_wait_subagent")) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0)
+      return {
+        tool: "task",
+        args: {
+          name: "WaitProbe",
+          agent: "task",
+          task: "wait_probe_child: return a short result by calling yield.",
+          solutionSpace: "one tiny task: return a short summary",
+        },
+        thinking: "I should start one child task and collect it with wait.",
+      };
+    if (done === 1) return { tool: "wait", args: {}, thinking: "I should collect the worker." };
+    return { text: "The worker is collected." };
+  }
   if (text(messages[lastUser]?.content).includes("run_stale_then_wait")) {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
     if (done === 0) return staleBackgroundStarts();
@@ -404,6 +421,7 @@ function reply(request: Request): Reply {
       },
       thinking: "I should start one child task.",
     };
+  if (prompt.includes("wait_probe_child")) return { text: "Wait probe completed." };
   if (prompt.includes("nested_probe_child"))
     return finishSubagent(
       offersYield(request),

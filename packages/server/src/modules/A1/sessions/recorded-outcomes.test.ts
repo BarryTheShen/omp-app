@@ -65,6 +65,30 @@ function taskResult(id: string, status: string): string {
   });
 }
 
+/** A tool result from `toolName`, as omp 18.12 writes a `task` or `wait` result: its text carries the worker's tag. */
+function toolResult(toolName: string, id: string, status: string): string {
+  return JSON.stringify({
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolName,
+      content: [
+        { type: "text", text: `<task-result id="${id}" status="${status}">out</task-result>` },
+      ],
+    },
+  });
+}
+
+/** The wake relay omp writes around a woken worker's re-yield: an `irc:incoming` message with `wakeRelay` set. */
+function wakeRelay(id: string, status: string, wake = true): string {
+  return JSON.stringify({
+    type: "custom_message",
+    customType: "irc:incoming",
+    details: { wakeRelay: wake },
+    content: `<task-result id="${id}" agent="task" status="${status}">\ndone\n</task-result>`,
+  });
+}
+
 function asObject(outcomes: ReadonlyMap<string, string>): Record<string, string> {
   return Object.fromEntries(outcomes);
 }
@@ -185,6 +209,53 @@ describe("scanRecordedOutcomes", () => {
 
   test("a missing file records nothing", async () => {
     const file = path.join(await makeDirectory(), "absent.jsonl");
+    expect((await recordedOutcomesOf(file)).size).toBe(0);
+  });
+
+  test("a wait result, an async result and a wake relay each record the worker's outcome, and the last record wins", async () => {
+    const file = await sessionFile([
+      toolResult("wait", "W", "completed"),
+      asyncResult("A", "completed"),
+      wakeRelay("R", "failed"),
+      toolResult("wait", "L", "failed"),
+      asyncResult("L", "completed"),
+      wakeRelay("L", "aborted"),
+    ]);
+    expect(asObject(await recordedOutcomesOf(file))).toEqual({
+      W: "completed",
+      A: "completed",
+      R: "failed",
+      L: "aborted",
+    });
+  });
+
+  test("each status word omp writes maps to its outcome, and any other word records nothing", async () => {
+    const file = await sessionFile([
+      toolResult("wait", "done", "completed"),
+      toolResult("wait", "stopped", "cancelled"),
+      toolResult("wait", "exited", "failed (exit 1)"),
+      toolResult("wait", "failed", "failed"),
+      toolResult("wait", "merged", "merge failed"),
+      toolResult("wait", "old", "aborted"),
+      toolResult("wait", "running", "running"),
+      toolResult("wait", "signal", "failed (signal 9)"),
+      toolResult("wait", "pending", "pending"),
+    ]);
+    expect(asObject(await recordedOutcomesOf(file))).toEqual({
+      done: "completed",
+      stopped: "aborted",
+      exited: "failed",
+      failed: "failed",
+      merged: "failed",
+      old: "aborted",
+    });
+  });
+
+  test("a read result that quotes a result tag records nothing, and so does an irc message that is not a wake relay", async () => {
+    const file = await sessionFile([
+      toolResult("read", "R", "completed"),
+      wakeRelay("N", "completed", false),
+    ]);
     expect((await recordedOutcomesOf(file)).size).toBe(0);
   });
 });
