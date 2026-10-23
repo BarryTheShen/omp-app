@@ -1,9 +1,9 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { recordedOutcomesOf } from "./recorded-outcomes";
-import type { ScannedSubagent } from "./subagent-scanner";
-import { scanSubagentTranscript } from "./subagent-scanner";
+import { scanRecordedOutcomes } from "./recorded-outcomes";
+import { type SubagentScanCache, sharedSubagentScanCache } from "./subagent-cache";
+import { readTranscriptFacts, type TranscriptFacts } from "./subagent-scanner";
 import type {
   ParseWarning,
   RecordedWorkerStatus,
@@ -11,6 +11,7 @@ import type {
   SubagentFinalStatus,
   SubagentTranscript,
 } from "./types";
+import { workerFailureReason } from "./worker-reason";
 
 function isAdvisorTranscriptName(name: string): boolean {
   return name === "__advisor.jsonl" || (name.startsWith("__advisor.") && name.endsWith(".jsonl"));
@@ -45,6 +46,18 @@ async function settledStatus(
   return (await leaseOf(sessionId, sessionFile)) === "free" ? "stopped" : status;
 }
 
+/**
+ * How a worker ended: its own records decide, and its abort marker decides when they say nothing. A transcript that
+ * records no end is `unknown` here; `settledStatus` may make it `stopped`.
+ */
+function finalStatusOf(facts: TranscriptFacts, aborted: boolean): SubagentFinalStatus {
+  if (facts.sawSuccessfulYield) return "completed";
+  if (facts.assistantStopReason === "error") return "failed";
+  if (aborted || facts.assistantStopReason === "aborted") return "aborted";
+  if (facts.endedNormally) return "stopped";
+  return "unknown";
+}
+
 /** The newest modification time among the files that exist, as an ISO string; null when none does. */
 async function lastWrittenAt(files: readonly string[]): Promise<string | null> {
   let newest = 0;
@@ -69,6 +82,57 @@ interface WalkContext {
   readonly output: SubagentTranscript[];
   readonly warnings: ParseWarning[];
   readonly leaseOf: WorkerLeaseProbe | undefined;
+  readonly cache: SubagentScanCache;
+}
+
+/** A path's real path, or undefined when it cannot be read. */
+async function realpathOf(file: string): Promise<string | undefined> {
+  try {
+    return await fs.realpath(file);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The outcomes a parent session records for its workers. The scan resumes where the cache's last scan of that parent
+ * ended. A parent that is missing or unreadable records none.
+ */
+async function outcomesOf(
+  parentFile: string,
+  cache: SubagentScanCache,
+): Promise<ReadonlyMap<string, RecordedWorkerStatus>> {
+  const key = await realpathOf(parentFile);
+  if (key === undefined) return new Map();
+  const state = await scanRecordedOutcomes(parentFile, cache.parent(key), {
+    onRead: (bytes) => cache.onRead?.(parentFile, bytes),
+  });
+  if (state === undefined) {
+    cache.forgetParent(key);
+    return new Map();
+  }
+  cache.putParent(key, state);
+  return state.outcomes;
+}
+
+/**
+ * A transcript's facts: from the cache while the file keeps the identity it was read with, else read again. Throws when
+ * the file cannot be read.
+ */
+async function factsOf(
+  cache: SubagentScanCache,
+  realFile: string,
+  sessionFile: string,
+): Promise<TranscriptFacts> {
+  const info = await fs.stat(sessionFile);
+  const identity = { dev: info.dev, ino: info.ino, size: info.size, mtimeMs: info.mtimeMs };
+  const known = cache.transcript(realFile, identity);
+  if (known !== undefined) return known;
+  const facts = await readTranscriptFacts(sessionFile, (bytes) =>
+    cache.onRead?.(sessionFile, bytes),
+  );
+  cache.putTranscript(realFile, identity, facts);
+  return facts;
 }
 
 async function walkSubagentDirectory(context: WalkContext): Promise<void> {
@@ -91,25 +155,30 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
     .sort();
+  if (!files.some(isCollectedTranscriptName)) return;
   const childDirectories = new Set(
     entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name),
   );
-  const parentFile = `${context.root}.jsonl`;
-  const outcomes = files.some(isCollectedTranscriptName)
-    ? await recordedOutcomesOf(parentFile)
-    : new Map<string, RecordedWorkerStatus>();
+  // A transcript's cache key is its real path: this folder's real path joined with the file's name.
+  const realRoot = await realpathOf(context.root);
+  if (realRoot === undefined) {
+    context.warnings.push({
+      code: "subagent_read_error",
+      message: "Unable to read subagent directory",
+      sessionFile: context.root,
+    });
+    return;
+  }
+  const outcomes = await outcomesOf(`${context.root}.jsonl`, context.cache);
 
   for (const name of files) {
     if (!isCollectedTranscriptName(name)) continue;
     const agentId = name.slice(0, -".jsonl".length);
     const key = context.parentKey ? `${context.parentKey}/${agentId}` : agentId;
     const sessionFile = path.join(context.root, name);
-    const aborted = files.includes(tombstoneName(name));
-    const endedAtFiles = [sessionFile, path.join(context.root, tombstoneName(name))];
-    const recordedStatus = outcomes.get(agentId);
-    let scanned: ScannedSubagent;
+    let facts: TranscriptFacts;
     try {
-      scanned = await scanSubagentTranscript(sessionFile, aborted, null);
+      facts = await factsOf(context.cache, path.join(realRoot, name), sessionFile);
     } catch {
       context.warnings.push({
         code: "subagent_read_error",
@@ -118,40 +187,41 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
       });
       continue;
     }
-    if (scanned.header !== undefined) {
-      const status = await settledStatus(
-        scanned.status,
-        scanned.header.id,
-        sessionFile,
-        context.leaseOf,
-      );
+    const transcriptWarnings: ParseWarning[] = facts.warnings.map((item) => ({
+      ...item,
+      sessionFile,
+    }));
+    if (facts.header !== undefined) {
+      const aborted = files.includes(tombstoneName(name));
+      const recordedStatus = outcomes.get(agentId);
+      const ended = finalStatusOf(facts, aborted);
+      const status = await settledStatus(ended, facts.header.id, sessionFile, context.leaseOf);
       const endedAt =
         status === "unknown" && recordedStatus === undefined
           ? null
-          : await lastWrittenAt(endedAtFiles);
-      const transcript: SubagentTranscript = {
+          : await lastWrittenAt([sessionFile, path.join(context.root, tombstoneName(name))]);
+      const reason =
+        ended === "failed" ? workerFailureReason(facts.assistantError ?? undefined) : undefined;
+      context.output.push({
         key,
         agentId,
         parent: context.parentKey,
         sessionFile,
         path: sessionFile,
-        id: scanned.header.id,
-        header: scanned.header,
-        entryCount: scanned.entryCount,
-        leafId: scanned.leafId,
+        id: facts.header.id,
+        header: facts.header,
+        entryCount: facts.entryCount,
+        leafId: facts.leafId,
         aborted,
         status,
         endedAt,
-        agent: scanned.agent,
-        ...(scanned.reason === undefined ? {} : { reason: scanned.reason }),
+        agent: facts.agent,
+        ...(reason === undefined ? {} : { reason }),
         ...(recordedStatus === undefined ? {} : { recordedStatus }),
-        parseWarnings: scanned.parseWarnings,
-      };
-      context.output.push(transcript);
-      context.warnings.push(...scanned.parseWarnings);
-    } else {
-      context.warnings.push(...scanned.parseWarnings);
+        parseWarnings: transcriptWarnings,
+      });
     }
+    context.warnings.push(...transcriptWarnings);
 
     if (childDirectories.has(agentId)) {
       await walkSubagentDirectory({
@@ -160,6 +230,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
         output: context.output,
         warnings: context.warnings,
         leaseOf: context.leaseOf,
+        cache: context.cache,
       });
     }
   }
@@ -170,12 +241,16 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
  * backups and symlinked directories are excluded exactly as omp's collector
  * does; tombstones remain visible as `aborted` metadata.
  * With `leaseOf`, a worker that records no end is stopped once no live omp holds its own session.
+ * `cache` keeps each transcript's facts and each parent's outcomes between calls; without one, the process's shared
+ * in-memory cache is used.
  */
 export async function collectSubagentTranscripts(
   sessionFile: string,
   leaseOf?: WorkerLeaseProbe,
+  cache: SubagentScanCache = sharedSubagentScanCache,
 ): Promise<SubagentCollection> {
   if (!sessionFile.endsWith(".jsonl")) return { subagents: [], parseWarnings: [] };
+  await cache.ready();
   const output: SubagentTranscript[] = [];
   const warnings: ParseWarning[] = [];
   await walkSubagentDirectory({
@@ -184,6 +259,7 @@ export async function collectSubagentTranscripts(
     output,
     warnings,
     leaseOf,
+    cache,
   });
   return { subagents: output, parseWarnings: warnings };
 }

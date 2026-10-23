@@ -15,10 +15,11 @@ const DEFAULT_CHUNK_BYTES = 256 * 1024;
  * preview, so no real record comes near this.
  */
 const MAX_RECORD_BYTES = 64 * 1024 * 1024;
-/** The leading bytes that identify a file, so a rewrite that keeps the inode but changes the head is read again. */
-const FINGERPRINT_BYTES = 4096;
-/** Files whose scan offset is kept. The least recently scanned file leaves first. */
-const MAX_SCANNED_FILES = 32;
+/**
+ * The leading bytes that identify a file: its header and the title slot omp rewrites in place. A scan resumes only when
+ * these are unchanged, so a rewritten head is read again from its start.
+ */
+const PREFIX_BYTES = 64 * 1024;
 
 export interface RecordedOutcomeReadOptions {
   /** Bytes per read. Tests use a few bytes to cross read boundaries. */
@@ -27,100 +28,91 @@ export interface RecordedOutcomeReadOptions {
   readonly onRead?: (bytes: number) => void;
 }
 
-/** What one file's last scan found, and where it stopped. */
-interface ScanState {
+/**
+ * What one scan of a parent session found, and where it stopped. The next scan of the same file resumes at `offset`
+ * when the file has grown from `size` with the same head.
+ */
+export interface RecordedOutcomeState {
   readonly dev: number;
   readonly ino: number;
-  readonly fingerprint: string;
+  /** The file's size when the scan read it. */
+  readonly size: number;
+  /** sha256 of the file's first `min(PREFIX_BYTES, size)` bytes when the scan read it. */
+  readonly prefixHash: string;
   /** The byte offset after the last complete line the scan read. A partial last line is read again by the next scan. */
-  readonly scannedTo: number;
+  readonly offset: number;
   readonly outcomes: ReadonlyMap<string, RecordedWorkerStatus>;
-}
-
-interface Span {
-  readonly start: number;
-  readonly end: number;
-}
-
-const scans = new Map<string, ScanState>();
-
-/** Forgets every file's scan, so the next call reads each file from its start. */
-export function clearRecordedOutcomeScans(): void {
-  scans.clear();
-}
-
-/** How many files keep a scan offset. */
-export function recordedOutcomeScanCount(): number {
-  return scans.size;
 }
 
 /**
  * The outcomes a parent session records for its workers: `<task-result id="…" status="…">` in an async result (a
- * `custom_message` named `async-result`) or in a `task` tool result. The last record for a worker wins. A file that
- * is missing or unreadable records none.
+ * `custom_message` named `async-result`) or in a `task` tool result. The last record for a worker wins. A file that is
+ * missing or unreadable records none, and the result is undefined.
  *
  * The file is read in chunks and never whole, so memory is one chunk plus the records that carry a result tag, and only
- * those lines are parsed. Each file keeps the offset its last scan reached, so the next call reads only the bytes
- * appended since. omp appends to a session; a rewrite either replaces the file under a new inode or shortens it, and
- * then the file is read from its start.
+ * those lines are parsed. `previous` is the state the last scan of this file ended with, when the caller kept it: the
+ * scan then reads only the bytes appended since, when the file grew and its head is unchanged. omp appends to a
+ * session; a rewrite either replaces the file under a new inode or shortens it, and then the file is read from its start.
  */
-export async function recordedOutcomesOf(
+export async function scanRecordedOutcomes(
   file: string,
+  previous: RecordedOutcomeState | undefined,
   options: RecordedOutcomeReadOptions = {},
-): Promise<ReadonlyMap<string, RecordedWorkerStatus>> {
+): Promise<RecordedOutcomeState | undefined> {
   let handle: FileHandle;
   try {
     handle = await open(file, "r");
   } catch {
-    scans.delete(file);
-    return new Map();
+    return undefined;
   }
   try {
     const info = await handle.stat();
-    const fingerprint = await fingerprintOf(handle, info.size);
-    const previous = scans.get(file);
-    const base = resumable(previous, info, fingerprint) ? previous : undefined;
+    const prefixHash = await prefixHashOf(handle, info.size);
+    const base = await resumable(previous, info, handle);
     const outcomes = new Map<string, RecordedWorkerStatus>(base?.outcomes ?? []);
-    const found = await linesWithTag(handle, base?.scannedTo ?? 0, info.size, options);
+    const found = await linesWithTag(handle, base?.offset ?? 0, info.size, options);
     for (const span of found.spans) {
       const text = await readRecord(handle, span);
       if (text !== undefined) applyRecord(text, outcomes);
     }
-    remember(file, {
+    return {
       dev: info.dev,
       ino: info.ino,
-      fingerprint,
-      scannedTo: found.scannedTo,
+      size: info.size,
+      prefixHash,
+      offset: found.scannedTo,
       outcomes,
-    });
-    return outcomes;
+    };
   } catch {
-    scans.delete(file);
-    return new Map();
+    return undefined;
   } finally {
     await handle.close();
   }
 }
 
-/** Whether the file is the one the last scan read, unchanged up to where it stopped, so the scan starts there. */
-function resumable(
-  previous: ScanState | undefined,
+/** The state to resume from: the file is the one `previous` was taken from, grown or unchanged, with the same head. */
+async function resumable(
+  previous: RecordedOutcomeState | undefined,
   info: { readonly dev: number; readonly ino: number; readonly size: number },
-  fingerprint: string,
-): previous is ScanState {
-  return (
-    previous !== undefined &&
-    previous.dev === info.dev &&
-    previous.ino === info.ino &&
-    previous.fingerprint === fingerprint &&
-    info.size >= previous.scannedTo
-  );
+  handle: FileHandle,
+): Promise<RecordedOutcomeState | undefined> {
+  if (previous === undefined || previous.dev !== info.dev || previous.ino !== info.ino) {
+    return undefined;
+  }
+  if (info.size < previous.size) return undefined;
+  return (await prefixHashOf(handle, previous.size)) === previous.prefixHash ? previous : undefined;
 }
 
-async function fingerprintOf(handle: FileHandle, size: number): Promise<string> {
-  const head = Buffer.alloc(Math.min(FINGERPRINT_BYTES, size));
+/** sha256 of the file's first `min(PREFIX_BYTES, size)` bytes. */
+async function prefixHashOf(handle: FileHandle, size: number): Promise<string> {
+  const head = Buffer.alloc(Math.min(PREFIX_BYTES, size));
   const { bytesRead } = await handle.read(head, 0, head.length, 0);
   return createHash("sha256").update(head.subarray(0, bytesRead)).digest("hex");
+}
+
+interface Span {
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -241,15 +233,5 @@ function applyRecord(line: string, outcomes: Map<string, RecordedWorkerStatus>):
     if (id !== undefined && status !== undefined && RECORDED_OUTCOMES.has(status)) {
       outcomes.set(id, status as RecordedWorkerStatus);
     }
-  }
-}
-
-/** Keeps the file's scan. When the cache is full, the least recently scanned file leaves. */
-function remember(file: string, state: ScanState): void {
-  scans.delete(file);
-  scans.set(file, state);
-  for (const oldest of scans.keys()) {
-    if (scans.size <= MAX_SCANNED_FILES) break;
-    scans.delete(oldest);
   }
 }

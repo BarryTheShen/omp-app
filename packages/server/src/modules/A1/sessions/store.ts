@@ -21,6 +21,7 @@ import {
   sessionBucketPath,
 } from "./paths";
 import { REFRESH_READ_LIMITS, ReadBudget } from "./read-budget";
+import { createSubagentScanCache, type SubagentScanCache } from "./subagent-cache";
 import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
 import { collectSubagentTranscripts, type WorkerLeaseProbe } from "./subagents";
 import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
@@ -321,6 +322,8 @@ export class SessionFileStore {
   readonly #cwds = new Map<string, { size: number; mtimeMs: number; cwd: string | undefined }>();
   /** The facts each chat file's listing read. They are kept in the app data folder between starts when it is set. */
   readonly #cache: SummaryCache;
+  /** The worker transcripts' facts and the parents' recorded outcomes, kept in the app data folder between starts when it is set. */
+  readonly #subagentScans: SubagentScanCache;
   /**
    * The file each chat a folder listing has shown was found at, by id. omp reads a folder's own bucket by its path, which
    * follows a symlinked bucket; only its all-folders scans skip one. Opening a chat that only its folder shows uses the
@@ -346,8 +349,12 @@ export class SessionFileStore {
   readonly #backgroundListeners = new Set<(event: SessionBackgroundEvent) => void>();
 
   /** A worker's own session lease, read by `collectSubagentTranscripts`: `free` once no live omp holds that session. */
-  readonly #workerLease: WorkerLeaseProbe = async (sessionId, sessionFile) =>
-    (await detectSessionLiveness(sessionId, sessionFile, this.#options.leaseProbe)).lease;
+  #workerLease(): WorkerLeaseProbe {
+    // The probe is made for this listing alone, so the socket table is read once per listing, not once per worker.
+    const probe = this.#options.leaseProbe?.forListing?.() ?? this.#options.leaseProbe;
+    return async (sessionId, sessionFile) =>
+      (await detectSessionLiveness(sessionId, sessionFile, probe)).lease;
+  }
 
   constructor(options: SessionFileStoreOptions = {}) {
     this.#options = options;
@@ -370,6 +377,15 @@ export class SessionFileStore {
       },
     });
     void this.#cache.ready();
+    this.#subagentScans = createSubagentScanCache(options.appDataDir, {
+      onError: (error) => {
+        this.#emit({
+          kind: "failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
+    void this.#subagentScans.ready();
   }
 
   /** Apply omp's exact cwd-to-bucket rule without touching the filesystem. */
@@ -505,6 +521,7 @@ export class SessionFileStore {
     for (const job of this.#refreshes.values()) job.cancelled = true;
     await Promise.allSettled([...this.#refreshing]);
     await this.#cache.close();
+    await this.#subagentScans.close();
   }
 
   /**
@@ -903,7 +920,11 @@ export class SessionFileStore {
       if (isMissing(error)) throw appFailure("not_found", "Session file was not found", false);
       throw appFailure("permission", "Unable to read omp session file", true, error);
     }
-    const collection = await collectSubagentTranscripts(sessionFile, this.#workerLease);
+    const collection = await collectSubagentTranscripts(
+      sessionFile,
+      this.#workerLease(),
+      this.#subagentScans,
+    );
     return { sessionFile, transcripts: collection.subagents };
   }
 

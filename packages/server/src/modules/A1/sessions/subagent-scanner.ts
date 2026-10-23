@@ -1,29 +1,32 @@
 import * as fs from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
 import { isJsonObject, normalizeHeader, parseTitleSlotLine } from "./parser";
-import type { ParseWarning, SessionHeader, SubagentFinalStatus } from "./types";
-import { workerFailureReason } from "./worker-reason";
+import type { ParseWarning, SessionHeader } from "./types";
 
 const CHUNK_BYTES = 1024 * 1024;
 
-const cache = new Map<
-  string,
-  {
-    readonly size: number;
-    readonly mtimeMs: number;
-    readonly result: Omit<ScannedSubagent, "endedAt">;
-  }
->();
-export interface ScannedSubagent {
+/** A parse warning as a scan records it: the listing adds the file it names. */
+export type TranscriptWarning = Omit<ParseWarning, "sessionFile">;
+
+/**
+ * What one worker transcript's records say, read once from the file. A listing needs nothing else from a transcript, so
+ * the cache keeps these facts rather than the file. How the worker ended also depends on its abort marker, which the
+ * listing reads itself (`finalStatusOf` in `subagents.ts`).
+ */
+export interface TranscriptFacts {
   readonly header?: SessionHeader;
   readonly entryCount: number;
   readonly leafId: string | null;
-  readonly aborted: boolean;
-  readonly status: SubagentFinalStatus;
-  readonly endedAt: string | null;
   readonly agent: string | null;
-  readonly reason?: string;
-  readonly parseWarnings: readonly ParseWarning[];
+  /** Whether the transcript holds a successful `yield`, the worker's own report that it finished. */
+  readonly sawSuccessfulYield: boolean;
+  /** The stop reason of the last assistant message, or null when it records none. */
+  readonly assistantStopReason: string | null;
+  /** The error text of the last assistant message, or null when it records none. */
+  readonly assistantError: string | null;
+  /** Whether the last message is an assistant message that stopped normally. */
+  readonly endedNormally: boolean;
+  readonly warnings: readonly TranscriptWarning[];
 }
 
 interface Accumulator {
@@ -33,30 +36,22 @@ interface Accumulator {
   leafId: string | null;
   agent: string | null;
   sawSuccessfulYield: boolean;
-  lastAssistantStopReason: unknown;
-  lastAssistantErrorMessage: unknown;
-  lastMessageRole: unknown;
-  lastMessageStopReason: unknown;
-  warnings: ParseWarning[];
+  assistantStopReason: string | null;
+  assistantError: string | null;
+  endedNormally: boolean;
+  warnings: TranscriptWarning[];
 }
 
 function warning(
   code: ParseWarning["code"],
   message: string,
   line: number,
-  file: string,
   partial = false,
-): ParseWarning {
-  return { code, message, line, sessionFile: file, ...(partial ? { partial: true } : {}) };
+): TranscriptWarning {
+  return { code, message, line, ...(partial ? { partial: true } : {}) };
 }
 
-function consumeLine(
-  raw: string,
-  lineNumber: number,
-  final: boolean,
-  file: string,
-  state: Accumulator,
-): void {
+function consumeLine(raw: string, lineNumber: number, final: boolean, state: Accumulator): void {
   const line = raw.replace(/\r$/, "");
   if (line.trim().length === 0) return;
   let value: unknown;
@@ -68,7 +63,6 @@ function consumeLine(
         "malformed_line",
         final ? "Incomplete JSONL record" : "Malformed JSONL record",
         lineNumber,
-        file,
         final,
       ),
     );
@@ -83,7 +77,6 @@ function consumeLine(
         code: "header_not_first",
         message: "Session header was not the first logical record",
         line: lineNumber,
-        sessionFile: file,
       });
     }
   }
@@ -96,11 +89,10 @@ function consumeLine(
   }
   if (value.type !== "message" || !isJsonObject(value.message)) return;
   const message = value.message;
-  state.lastMessageRole = message.role;
-  state.lastMessageStopReason = message.stopReason;
+  state.endedNormally = message.role === "assistant" && message.stopReason === "stop";
   if (message.role === "assistant") {
-    state.lastAssistantStopReason = message.stopReason;
-    state.lastAssistantErrorMessage = message.errorMessage;
+    state.assistantStopReason = typeof message.stopReason === "string" ? message.stopReason : null;
+    state.assistantError = typeof message.errorMessage === "string" ? message.errorMessage : null;
   }
   if (
     message.role === "toolResult" &&
@@ -113,30 +105,14 @@ function consumeLine(
   }
 }
 
-function statusOf(state: Accumulator, aborted: boolean): SubagentFinalStatus {
-  if (state.sawSuccessfulYield) return "completed";
-  if (state.lastAssistantStopReason === "error") return "failed";
-  if (aborted || state.lastAssistantStopReason === "aborted") return "aborted";
-  if (state.lastMessageRole === "assistant" && state.lastMessageStopReason === "stop")
-    return "stopped";
-  return "unknown";
-}
-
-export async function scanSubagentTranscript(
+/**
+ * Reads one worker transcript line by line and returns what its records say. `onRead` is called with the byte count of
+ * each read. Throws when the file cannot be read.
+ */
+export async function readTranscriptFacts(
   file: string,
-  aborted: boolean,
-  endedAt: string | null,
-): Promise<ScannedSubagent> {
-  const info = await fs.stat(file);
-  const cached = cache.get(file);
-  if (
-    cached !== undefined &&
-    cached.size === info.size &&
-    cached.mtimeMs === info.mtimeMs &&
-    cached.result.aborted === aborted
-  ) {
-    return { ...cached.result, endedAt };
-  }
+  onRead?: (bytes: number) => void,
+): Promise<TranscriptFacts> {
   const state: Accumulator = {
     header: undefined,
     logicalIndex: 0,
@@ -144,10 +120,9 @@ export async function scanSubagentTranscript(
     leafId: null,
     agent: null,
     sawSuccessfulYield: false,
-    lastAssistantStopReason: undefined,
-    lastAssistantErrorMessage: undefined,
-    lastMessageRole: undefined,
-    lastMessageStopReason: undefined,
+    assistantStopReason: null,
+    assistantError: null,
+    endedNormally: false,
     warnings: [],
   };
   const handle = await fs.open(file, "r");
@@ -159,52 +134,34 @@ export async function scanSubagentTranscript(
     for (;;) {
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
       if (bytesRead === 0) break;
+      onRead?.(bytesRead);
       const lines = (carry + decoder.write(buffer.subarray(0, bytesRead))).split("\n");
       carry = lines.pop() ?? "";
       for (const line of lines) {
         lineNumber += 1;
-        consumeLine(line, lineNumber, false, file, state);
+        consumeLine(line, lineNumber, false, state);
       }
     }
     carry += decoder.end();
     if (carry.length > 0) {
       lineNumber += 1;
-      consumeLine(carry, lineNumber, true, file, state);
+      consumeLine(carry, lineNumber, true, state);
     }
   } finally {
     await handle.close();
   }
   if (state.header === undefined) {
-    state.warnings.push({
-      code: "invalid_header",
-      message: "No valid session header found",
-      sessionFile: file,
-    });
+    state.warnings.push({ code: "invalid_header", message: "No valid session header found" });
   }
-  const status = statusOf(state, aborted);
-  const reason =
-    status === "failed"
-      ? workerFailureReason(
-          typeof state.lastAssistantErrorMessage === "string"
-            ? state.lastAssistantErrorMessage
-            : undefined,
-        )
-      : undefined;
-  const result: Omit<ScannedSubagent, "endedAt"> = {
+  return {
     ...(state.header === undefined ? {} : { header: state.header }),
     entryCount: state.entryCount,
     leafId: state.leafId,
-    aborted,
-    status,
     agent: state.agent,
-    ...(reason === undefined ? {} : { reason }),
-    parseWarnings: state.warnings,
+    sawSuccessfulYield: state.sawSuccessfulYield,
+    assistantStopReason: state.assistantStopReason,
+    assistantError: state.assistantError,
+    endedNormally: state.endedNormally,
+    warnings: state.warnings,
   };
-  cache.set(file, { size: info.size, mtimeMs: info.mtimeMs, result });
-  while (cache.size > 2000) {
-    const oldest = cache.keys().next().value;
-    if (oldest === undefined) break;
-    cache.delete(oldest);
-  }
-  return { ...result, endedAt };
 }

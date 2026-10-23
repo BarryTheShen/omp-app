@@ -1,24 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { appendFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import {
-  clearRecordedOutcomeScans,
-  recordedOutcomeScanCount,
-  recordedOutcomesOf,
+  type RecordedOutcomeReadOptions,
+  type RecordedOutcomeState,
+  scanRecordedOutcomes,
 } from "./recorded-outcomes";
+import type { RecordedWorkerStatus } from "./types";
 
 const WORKTREE_DATA = path.resolve(import.meta.dir, "../../../../../../.data");
 
-/** A line well past the scan's fingerprint, so an append leaves the file's head unchanged. */
+/** A first line of ordinary size; the tests append after it. */
 const PADDING = JSON.stringify({
   type: "message",
   message: { role: "assistant", content: [{ type: "text", text: "x".repeat(6000) }] },
 });
 
 const directories: string[] = [];
+/** The state each file's last scan ended with: what the subagent cache keeps between listings. */
+const kept = new Map<string, RecordedOutcomeState>();
 
 beforeEach(() => {
-  clearRecordedOutcomeScans();
+  kept.clear();
 });
 
 afterEach(async () => {
@@ -66,7 +69,21 @@ function asObject(outcomes: ReadonlyMap<string, string>): Record<string, string>
   return Object.fromEntries(outcomes);
 }
 
-describe("recordedOutcomesOf", () => {
+/** A scan the way the subagent cache makes it: it starts from the state the last scan of this file ended with. */
+async function recordedOutcomesOf(
+  file: string,
+  options: RecordedOutcomeReadOptions = {},
+): Promise<ReadonlyMap<string, RecordedWorkerStatus>> {
+  const state = await scanRecordedOutcomes(file, kept.get(file), options);
+  if (state === undefined) {
+    kept.delete(file);
+    return new Map();
+  }
+  kept.set(file, state);
+  return state.outcomes;
+}
+
+describe("scanRecordedOutcomes", () => {
   test("records each worker's outcome from its async result or task result, and the last record wins", async () => {
     const file = await sessionFile([
       asyncResult("A", "completed"),
@@ -80,7 +97,7 @@ describe("recordedOutcomesOf", () => {
   test("a result tag that a read boundary splits is found, whatever the read size", async () => {
     const file = await sessionFile([asyncResult("S", "completed"), taskResult("T", "aborted")]);
     for (const chunkBytes of [1, 2, 5, 11, 12, 13, 64]) {
-      clearRecordedOutcomeScans();
+      kept.clear();
       expect(asObject(await recordedOutcomesOf(file, { chunkBytes }))).toEqual({
         S: "completed",
         T: "aborted",
@@ -158,15 +175,16 @@ describe("recordedOutcomesOf", () => {
     expect(asObject(await recordedOutcomesOf(file))).toEqual({ A: "aborted" });
   });
 
+  test("a head rewritten in place at the same size is read from its start", async () => {
+    const file = await sessionFile([PADDING, asyncResult("A", "completed")]);
+    await recordedOutcomesOf(file);
+    const text = await readFile(file, "utf8");
+    await writeFile(file, text.replace(String.raw`id=\"A\"`, String.raw`id=\"B\"`));
+    expect(asObject(await recordedOutcomesOf(file))).toEqual({ B: "completed" });
+  });
+
   test("a missing file records nothing", async () => {
     const file = path.join(await makeDirectory(), "absent.jsonl");
     expect((await recordedOutcomesOf(file)).size).toBe(0);
-  });
-
-  test("the scan keeps an offset for at most 32 files", async () => {
-    for (let index = 0; index < 40; index += 1) {
-      await recordedOutcomesOf(await sessionFile([asyncResult(`W${index}`, "completed")]));
-    }
-    expect(recordedOutcomeScanCount()).toBeLessThanOrEqual(32);
   });
 });
