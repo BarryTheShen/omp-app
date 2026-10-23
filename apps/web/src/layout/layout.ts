@@ -1,8 +1,9 @@
 /**
  * Where every piece of the app's UI goes. To move a control to another area, hide it or change its
  * order, edit only this file: each area lists surface ids in display order. What an id renders is
- * wired once in `apps/web/src/app/root.tsx` (`sidebarSurfaces`, `threadSurfaces`); how an area lays
- * its pieces out is in `./area.tsx`.
+ * wired once in `apps/web/src/app/app-surfaces.tsx` (`sidebarSurfaces`) and in
+ * `apps/web/src/app/thread-surfaces.tsx` (`threadSurfaces`); how an area lays its pieces out is in
+ * `./area.tsx`.
  */
 
 /** The areas of the app shell. */

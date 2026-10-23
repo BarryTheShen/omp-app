@@ -26,7 +26,7 @@ const blobs: AttachmentBlobStore = {
   delete: async () => undefined,
 };
 
-/** The adapter the app gives the runtime (root.tsx): add validates and uploads, through this manager. */
+/** The adapter the app gives the runtime (use-thread-runtime.ts): add validates and uploads, through this manager. */
 function adapterFor(manager: AttachmentManager): AttachmentAdapter {
   return {
     accept: manager.accept,
