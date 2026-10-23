@@ -118,7 +118,6 @@ async function exercise(realApp: RealApp, theme: "light" | "dark"): Promise<void
   await expect(composer).toBeVisible({ timeout: 2_000 });
   const composerElement = await composer.elementHandle();
   if (composerElement === null) throw new Error("Message input element was not mounted.");
-  const threadOpening = holds.hold((args) => args.threadId !== undefined);
   await newChatButton(page).click();
   await expectStyled(page);
   await page.screenshot({ path: join(screenshots, `fix-1662-composer-${theme}.png`) });
@@ -133,9 +132,7 @@ async function exercise(realApp: RealApp, theme: "light" | "dark"): Promise<void
   await expect(composer).toHaveValue("during new chat");
 
   opening.release();
-  await expect.poll(() => threadOpening.waiting(), { timeout: 30_000 }).toBeGreaterThan(0);
   await expect.poll(() => composerElement.evaluate((element) => element.isConnected)).toBe(true);
-  threadOpening.release();
   await expect(
     page.getByRole("region", { name: "Messages" }).getByText("during new chat", { exact: true }),
   ).toBeVisible({

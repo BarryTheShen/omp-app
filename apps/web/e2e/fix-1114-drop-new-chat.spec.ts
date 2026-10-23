@@ -123,11 +123,11 @@ async function seedChatA(app: Page): Promise<void> {
 
 /**
  * Clicks New chat while chat A is on screen, and drops the picture before the new chat has opened: the New chat's omp is
- * still starting, and the transcript has not shown its empty chat yet.
+ * still starting, and the transcript already shows its empty chat (#2351).
  */
 async function dropWhileNewChatStarts(app: Page): Promise<void> {
   await newChatButton(app).click();
-  await expect(transcript(app).getByText("No messages yet.", { exact: true })).toHaveCount(0);
+  await expect(transcript(app).getByText("No messages yet.", { exact: true })).toBeVisible();
   await dispatchImageDrop(composer(app));
 }
 

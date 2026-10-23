@@ -5,6 +5,7 @@ import type {
   FolderPath,
   ModelChoice,
   OpenThreadArgs,
+  OpenThreadResult,
   PortClient,
   RpcSessionClient,
   RpcSessionEvent,
@@ -23,6 +24,14 @@ import {
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import { releaseThread } from "../release";
 import { pickedModelFor, rememberPickedModel } from "./picked-model";
+
+/** The id of a New chat's empty chat before omp answers: a key of the controller's own, which no request is keyed on. */
+const NEW_CHAT_PLACEHOLDER = "new-chat-pending:";
+
+/** Whether a chat id is a New chat's placeholder (see `showNewChat`): omp has no such chat, so nothing is asked of it. */
+export function isNewChatPlaceholder(threadId: ThreadId | undefined): boolean {
+  return threadId?.startsWith(NEW_CHAT_PLACEHOLDER) === true;
+}
 
 interface EventSubscription {
   readonly stream: string;
@@ -194,6 +203,10 @@ export class SelectedThreadHistoryController {
     | undefined;
   /** Closes asked for so far. An open that began before a close must not save its chat as the open one (see `openNow`). */
   private closes = 0;
+  /** The chat on screen before a New chat's click, kept until that New chat is adopted or cancelled (see `showNewChat`). */
+  private beforeNewChat: SelectedThreadHistoryState | undefined;
+  /** New chats clicked so far: each click's placeholder has an id of its own. */
+  private newChatClicks = 0;
 
   public constructor(options: SelectedThreadHistoryOptions) {
     this.options = options;
@@ -297,6 +310,55 @@ export class SelectedThreadHistoryController {
   public openStarted(threadId: ThreadId): Promise<OmpRuntimeStore> {
     const keepShown = this.state.store !== undefined && this.state.threadId !== undefined;
     return this.open({ threadId }, keepShown, true);
+  }
+
+  /**
+   * Shows a New chat the adapter already opened for its caller (`startNew`): the chat is committed from `started`, the
+   * open result the adapter got, so omp is not asked for it again. Its hold is this controller's from then on, and `close`
+   * lets it go as it lets go any chat. It is marked `openedNew`, as `openStarted` marks its chat.
+   */
+  public adoptStarted(threadId: ThreadId, started: OpenThreadResult): Promise<OmpRuntimeStore> {
+    const keepShown = this.state.store !== undefined && this.state.threadId !== undefined;
+    return this.open({ threadId }, keepShown, true, undefined, started);
+  }
+
+  /**
+   * A New chat's click (SP-N1): shows an empty chat before omp answers, so its greeting and composer are on screen at the
+   * click. The placeholder id is a key of this controller's: no request is keyed on it. `adoptStarted` replaces it with the
+   * chat omp started, and `cancelNewChat` shows the chat that was on screen before the click again.
+   */
+  public showNewChat(): ThreadId {
+    this.newChatClicks += 1;
+    const placeholder = `${NEW_CHAT_PLACEHOLDER}${this.newChatClicks}` as ThreadId;
+    this.beforeNewChat = this.state;
+    const store =
+      this.options.createStore?.(placeholder, this.rpc) ?? this.defaultStore(placeholder);
+    this.commit({
+      threadId: placeholder,
+      store,
+      capabilities: undefined,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+      openedNew: true,
+    });
+    return placeholder;
+  }
+
+  /** A New chat that did not open: the chat on screen before its click is shown again, and no request is made. */
+  public cancelNewChat(placeholder: ThreadId): void {
+    const before = this.beforeNewChat;
+    if (this.state.threadId !== placeholder || before === undefined) return;
+    this.beforeNewChat = undefined;
+    this.commit({
+      threadId: before.threadId,
+      store: before.store,
+      capabilities: before.capabilities,
+      openedNew: before.openedNew,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+    });
   }
 
   /**
@@ -520,8 +582,9 @@ export class SelectedThreadHistoryController {
     return watch.subscription;
   }
 
-  /** Best effort: see `releaseThread`. */
+  /** Best effort: see `releaseThread`. A New chat's placeholder is no chat of omp's, so nothing is asked of omp for it. */
   private release(threadId: ThreadId): Promise<void> {
+    if (isNewChatPlaceholder(threadId)) return Promise.resolve();
     return releaseThread(this.rpc.close, threadId);
   }
 
@@ -530,6 +593,7 @@ export class SelectedThreadHistoryController {
     keepShown = false,
     startedNew = false,
     signal?: AbortSignal,
+    opened?: OpenThreadResult,
   ): Promise<OmpRuntimeStore> {
     // Asking for a chat gives up the chat a dropped connection left. Every request takes a ticket, and an open that
     // fails is recorded for a reopen only while its ticket is the latest: a later pick or close came after it.
@@ -538,7 +602,7 @@ export class SelectedThreadHistoryController {
     this.pendingOpens += 1;
     const settle = this.openSettler();
     return this.serialize(() =>
-      this.openNow(args, settle, ticket, keepShown, startedNew, signal),
+      this.openNow(args, settle, ticket, keepShown, startedNew, signal, opened),
     ).finally(settle);
   }
 
@@ -560,9 +624,12 @@ export class SelectedThreadHistoryController {
     keepShown = false,
     startedNew = false,
     signal?: AbortSignal,
+    opened?: OpenThreadResult,
   ): Promise<OmpRuntimeStore> {
     // A pick a newer pick superseded before its turn came never reaches omp, and nothing of it is shown (issue 2212).
     if (signal?.aborted) throw supersededOpen();
+    // Any open takes the place of the chat a New chat's click kept on screen: that chat is not shown again (see `showNewChat`).
+    this.beforeNewChat = undefined;
     const openedNew = startedNew || ("start" in args && args.start === "new");
     const closesAtStart = this.closes;
     const requested = "threadId" in args ? args.threadId : undefined;
@@ -607,7 +674,8 @@ export class SelectedThreadHistoryController {
     // Set once omp opened the chat: from then on a failure ends both views.
     let openedId: ThreadId | undefined;
     try {
-      const result = await this.rpc.open(args, signal === undefined ? undefined : { signal });
+      const result =
+        opened ?? (await this.rpc.open(args, signal === undefined ? undefined : { signal }));
       answered = true;
       openedCapabilities = result.capabilities;
       this.options.onPerfMark?.("rpc_open_returned");

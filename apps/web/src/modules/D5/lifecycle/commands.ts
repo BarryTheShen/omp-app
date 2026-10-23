@@ -1,12 +1,11 @@
-import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import {
   AppFailure,
   type CapabilityKey,
   type CommandRunResult,
   type OmpCommandGateway,
+  type OpenThreadResult,
   type PortClient,
   type ThreadId,
-  ThreadId as ThreadIdSchema,
   UiRequestId as UiRequestIdSchema,
 } from "@omp-app/contracts";
 import type { DialogHost } from "../../U4/contract/dialog-host";
@@ -29,9 +28,15 @@ export const SESSION_LIFECYCLE_CAPABILITIES = Object.freeze({
 
 export type SessionLifecycleGateway = Pick<PortClient<typeof OmpCommandGateway>, "run">;
 
+/** R1's New chat start: omp starts the chat once, and the caller takes that chat over (`adopt`) to show it. */
+export interface NewSessionStart {
+  startNew(): Promise<OpenThreadResult>;
+  adopt(threadId: ThreadId): boolean;
+}
+
 export interface SessionLifecycleOptions {
-  /** Reuses R1's existing folder-scoped new-session path through A0. */
-  readonly remote: Pick<RemoteThreadListAdapter, "initialize">;
+  /** The page's New chat start (R1): omp starts the chat once, and the caller takes it over to show it, with no second open. */
+  readonly remote: NewSessionStart;
   readonly gateway: SessionLifecycleGateway;
   readonly dialogs: Pick<DialogHost, "confirm">;
   readonly capabilities: SessionCapabilitiesSource;
@@ -85,12 +90,17 @@ export class SessionLifecycleController {
     };
   }
 
-  public async newSession(): Promise<SessionCommandOutcome<ThreadId>> {
+  /**
+   * Starts a New chat the way the sidebar's New chat does: omp starts it once, and the caller shows the chat it returns.
+   * A chat that a later open let go before this one took it over is cancelled: nothing opens for it.
+   */
+  public async newSession(): Promise<SessionCommandOutcome<OpenThreadResult>> {
     const blocked = blockedByAvailability(this.getAvailability("new"));
     if (blocked) return blocked;
     try {
-      const initialized = await this.remote.initialize("new");
-      return { status: "completed", value: ThreadIdSchema.parse(initialized.remoteId) };
+      const started = await this.remote.startNew();
+      if (!this.remote.adopt(started.threadId)) return { status: "cancelled" };
+      return { status: "completed", value: started };
     } catch (error) {
       return failureOutcome(error, "Starting a new session failed.");
     }

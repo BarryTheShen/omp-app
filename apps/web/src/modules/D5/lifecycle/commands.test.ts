@@ -1,8 +1,8 @@
-import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import {
   AppFailure,
   type CapabilityMap,
   type CommandRunResult,
+  type OpenThreadResult,
   type ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
@@ -13,6 +13,7 @@ import type {
   SessionInfoSource,
 } from "../contract";
 import {
+  type NewSessionStart,
   SESSION_LIFECYCLE_CAPABILITIES,
   SessionLifecycleController,
   type SessionLifecycleGateway,
@@ -73,13 +74,23 @@ function selectableSession(initialThreadId = threadId) {
   };
 }
 
+const startedResult: OpenThreadResult = {
+  threadId,
+  sessionFile: "/workspace/project/.omp/session.jsonl" as OpenThreadResult["sessionFile"],
+  capabilities: {},
+};
+/** A New chat start whose open answers with `startedResult` and whose chat the caller takes over; parts can be overridden. */
+function newSessionStart(overrides: Partial<NewSessionStart> = {}): NewSessionStart {
+  return {
+    startNew: vi.fn<NewSessionStart["startNew"]>(async () => startedResult),
+    adopt: vi.fn<NewSessionStart["adopt"]>(() => true),
+    ...overrides,
+  };
+}
+
 function createController(overrides: Partial<SessionLifecycleOptions> = {}) {
   return new SessionLifecycleController({
-    remote: overrides.remote ?? {
-      initialize: vi.fn<Pick<RemoteThreadListAdapter, "initialize">["initialize"]>(async () => ({
-        remoteId: threadId,
-      })),
-    },
+    remote: overrides.remote ?? newSessionStart(),
     gateway: overrides.gateway ?? {
       run: vi.fn<SessionLifecycleGateway["run"]>(async () => freshResult),
     },
@@ -92,32 +103,30 @@ function createController(overrides: Partial<SessionLifecycleOptions> = {}) {
 }
 
 describe("SessionLifecycleController", () => {
-  test("starts a new session through R1's existing A0 path", async () => {
-    const initialize = vi.fn<Pick<RemoteThreadListAdapter, "initialize">["initialize"]>(
-      async () => ({
-        remoteId: threadId,
-      }),
-    );
+  test("starts a new session once, and returns the chat it started for the caller to show", async () => {
+    const remote = newSessionStart();
     const run = vi.fn<SessionLifecycleGateway["run"]>(async () => freshResult);
-    const controller = createController({ remote: { initialize }, gateway: { run } });
+    const controller = createController({ remote, gateway: { run } });
 
     await expect(controller.newSession()).resolves.toEqual({
       status: "completed",
-      value: threadId,
+      value: startedResult,
     });
-    expect(initialize).toHaveBeenCalledOnce();
-    expect(initialize).toHaveBeenCalledWith("new");
+    expect(remote.startNew).toHaveBeenCalledOnce();
+    expect(remote.adopt).toHaveBeenCalledWith(threadId);
     expect(run).not.toHaveBeenCalled();
   });
 
+  test("a new session a later open let go before it was taken over is cancelled, and nothing opens for it", async () => {
+    const controller = createController({ remote: newSessionStart({ adopt: () => false }) });
+
+    await expect(controller.newSession()).resolves.toEqual({ status: "cancelled" });
+  });
+
   test("returns an unavailable reason without opening a session when new_session is unsupported", async () => {
-    const initialize = vi.fn<Pick<RemoteThreadListAdapter, "initialize">["initialize"]>(
-      async () => ({
-        remoteId: threadId,
-      }),
-    );
+    const remote = newSessionStart();
     const controller = createController({
-      remote: { initialize },
+      remote,
       capabilities: capabilitySource({
         "omp.cmd.new_session": {
           state: "unavailable",
@@ -140,12 +149,12 @@ describe("SessionLifecycleController", () => {
         message: "This omp connection cannot start a new session.",
       },
     });
-    expect(initialize).not.toHaveBeenCalled();
+    expect(remote.startNew).not.toHaveBeenCalled();
   });
 
   test("maps R1 new-session failures to typed results", async () => {
-    const initialize = vi.fn<Pick<RemoteThreadListAdapter, "initialize">["initialize"]>(
-      async () => {
+    const remote = newSessionStart({
+      startNew: async () => {
         throw new AppFailure({
           code: "unavailable",
           message: "The selected folder is no longer available.",
@@ -153,8 +162,8 @@ describe("SessionLifecycleController", () => {
           capability: "host.session-files",
         });
       },
-    );
-    const controller = createController({ remote: { initialize } });
+    });
+    const controller = createController({ remote });
 
     await expect(controller.newSession()).resolves.toMatchObject({
       status: "unavailable",
@@ -164,8 +173,6 @@ describe("SessionLifecycleController", () => {
         message: "The selected folder is no longer available.",
       },
     });
-    expect(initialize).toHaveBeenCalledOnce();
-    expect(initialize).toHaveBeenCalledWith("new");
   });
 
   test("gates clear with a plain reason because the RPC command gateway cannot execute it", async () => {

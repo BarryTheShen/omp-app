@@ -29,25 +29,23 @@ exec "${REAL_OMP}" "$@"
 chmodSync(delayedOmp, 0o755);
 realTest.use({ ompBinary: delayedOmp });
 
-/** Clicks New chat and checks the page while omp starts: the words say so, and no step is asked of the person. */
+/** Clicks New chat and checks the page while omp starts: the empty chat shows and takes text, and no step is asked of the person. */
 async function expectOpening(page: Page): Promise<void> {
   await page
     .locator('[aria-label="Sessions"]')
     .getByRole("button", { name: "New chat" })
     .first()
     .click();
-  const note = page.getByText("Starting a new chat…");
-  await expect(note).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByText("omp is starting. This can take a few seconds.")).toBeVisible();
+  // #2351: the New chat's empty chat shows at the click, so its composer takes text while omp starts.
+  await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable({
+    timeout: 3_000,
+  });
   await expect(page.getByText("Open a session to start composing.")).toHaveCount(0);
   await expect(page.getByText("Choose a workspace folder and start a new session.")).toHaveCount(0);
-  // The token styles loaded: the composer note's own background is the app's card colour, not transparent.
-  const background = await note.evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(background).not.toBe("rgba(0, 0, 0, 0)");
 }
 
 realTest(
-  "New chat says omp is starting, and does not ask for a folder or a session, until the chat opens",
+  "New chat shows an empty, typable chat while omp starts, and does not ask for a folder or a session, until the chat opens",
   async ({ realApp }) => {
     const page = await realApp.open();
     await expectOpening(page);

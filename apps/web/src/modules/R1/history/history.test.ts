@@ -4,6 +4,7 @@ import type {
   FolderPath,
   OpenQuestionRecord,
   OpenThreadArgs,
+  OpenThreadResult,
   RpcSessionClient,
   RpcSessionEvent,
   ThreadId,
@@ -13,7 +14,7 @@ import { describe, expect, test, vi } from "vitest";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import type { SelectedThreadHistoryController } from ".";
-import { createSelectedThreadHistoryController, isSupersededOpen } from ".";
+import { createSelectedThreadHistoryController, isNewChatPlaceholder, isSupersededOpen } from ".";
 import { pickedModelFor, rememberPickedModel } from "./picked-model";
 
 const folder = "/workspace/project" as FolderPath;
@@ -2786,5 +2787,186 @@ describe("SelectedThreadHistoryController when a chat is picked while another op
       isSwitching: false,
       error: null,
     });
+  });
+});
+
+/** The open result the adapter gives a New chat it opened for its caller. */
+function startedResult(threadId: ThreadId): OpenThreadResult {
+  return {
+    threadId,
+    sessionFile: `/workspace/project/.omp/${threadId}.jsonl` as OpenThreadResult["sessionFile"],
+    capabilities: {},
+  };
+}
+
+describe("SelectedThreadHistoryController adopting a New chat the adapter started", () => {
+  test("a New chat the adapter already opened is shown with no open call, and close lets go of its hold", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const closed: ThreadId[] = [];
+    const started = startedResult(threadOne);
+    const rpc = createRpc(
+      (args) => {
+        opens.push(args);
+        return started;
+      },
+      [],
+      [],
+      undefined,
+      undefined,
+      undefined,
+      1,
+      closed,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await controller.adoptStarted(threadOne, started);
+
+    expect(opens).toEqual([]);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      isLoading: false,
+      error: null,
+      openedNew: true,
+    });
+    await controller.close();
+    expect(closed).toEqual([threadOne]);
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+
+  test("a failure while the adopted chat loads ends the way openStarted's failure does", async () => {
+    const failure = (): AppFailure =>
+      new AppFailure({
+        code: "permission",
+        message: "The chat could not be read",
+        retryable: false,
+      });
+    const started = startedResult(threadOne);
+    const byOpen = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(() => started, [], [], undefined, failure),
+        [],
+      ),
+      folder,
+    });
+    const byAdopt = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(() => started, [], [], undefined, failure),
+        [],
+      ),
+      folder,
+    });
+
+    await expect(byOpen.openStarted(threadOne)).rejects.toMatchObject({
+      appError: { code: "permission" },
+    });
+    await expect(byAdopt.adoptStarted(threadOne, started)).rejects.toMatchObject({
+      appError: { code: "permission" },
+    });
+    expect(byAdopt.getSnapshot()).toEqual(byOpen.getSnapshot());
+    expect(byAdopt.getSnapshot()).toMatchObject({
+      threadId: undefined,
+      isLoading: false,
+      error: { code: "permission" },
+    });
+  });
+
+  test("a send made while the adopted chat commits waits for it, as it does for an opened chat", async () => {
+    const started = startedResult(threadOne);
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(() => started, []),
+        [],
+      ),
+      folder,
+    });
+    const adopting = controller.adoptStarted(threadOne, started);
+    let shownWhenSettled: ThreadId | undefined;
+    const waiting = controller.whenSettled().then(() => {
+      shownWhenSettled = controller.getSnapshot().threadId;
+    });
+    await Promise.all([adopting, waiting]);
+    expect(shownWhenSettled).toBe(threadOne);
+  });
+});
+
+describe("SelectedThreadHistoryController showing a New chat before omp answers", () => {
+  test("the empty chat at the click makes no open and no request keyed on its placeholder", () => {
+    const opens: OpenThreadArgs[] = [];
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    }, calls);
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+
+    const placeholder = controller.showNewChat();
+
+    expect(isNewChatPlaceholder(placeholder)).toBe(true);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: placeholder,
+      isLoading: false,
+      openedNew: true,
+    });
+    expect(opens).toEqual([]);
+    expect(subscriptions).toEqual([]);
+    expect(calls.filter((call) => call.threadId === placeholder)).toEqual([]);
+  });
+
+  test("the chat omp started replaces the empty chat, with no second open", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const started = startedResult(threadOne);
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return started;
+    }, calls);
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    const placeholder = controller.showNewChat();
+    await controller.adoptStarted(threadOne, started);
+
+    expect(opens).toEqual([]);
+    expect(calls.filter((call) => call.threadId === placeholder)).toEqual([]);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      isLoading: false,
+      error: null,
+      openedNew: true,
+    });
+  });
+
+  test("a New chat that did not open shows the chat on screen before its click again, with no request", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    }, []);
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+    const onScreen = await controller.openExisting(threadOne);
+
+    const placeholder = controller.showNewChat();
+    controller.cancelNewChat(placeholder);
+
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+    expect(controller.getSnapshot().store).toBe(onScreen);
+    expect(opens).toEqual([{ threadId: threadOne }]);
+  });
+
+  test("only a New chat's placeholder is recognized as one", () => {
+    expect(isNewChatPlaceholder(threadOne)).toBe(false);
+    expect(isNewChatPlaceholder(undefined)).toBe(false);
   });
 });

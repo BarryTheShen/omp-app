@@ -2,6 +2,7 @@ import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import {
   type AppError,
   AppFailure,
+  type OpenThreadResult,
   type RunningSession,
   SESSION_DELETE_RUNNING_TURN,
   type ThreadId,
@@ -21,29 +22,38 @@ import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
 import { R1_SESSION_LIST_SCOPE } from "../descriptors/descriptors";
 import { pickedModelFor } from "../history/picked-model";
-import type { RemoteInitializeOptions } from "../remote";
+import type { NativeRemoteThreadListAdapter, RemoteInitializeOptions } from "../remote";
 import { useSessionListShortcuts } from "./session-list-shortcuts";
 
-/** Where a New chat click stands: opening (omp is starting the chat), idle (nothing to say), or failed, with the reason. */
+/**
+ * Where a New chat click stands: opening (omp is starting the chat), or failed, with the reason. Idle with no click: a pick
+ * ended the New chat being started, so the page ends the newest one.
+ */
 export type NewChatStatus =
   | { readonly state: "idle" }
-  | { readonly state: "opening" }
-  | { readonly state: "failed"; readonly error: AppError };
+  | { readonly state: "opening"; readonly click: object }
+  | { readonly state: "failed"; readonly click: object; readonly error: AppError };
 
 export interface SessionCatalogSidebarProps {
   readonly catalog: SessionCatalogModel;
-  readonly remote: Pick<RemoteThreadListAdapter, "rename" | "archive" | "unarchive" | "delete"> & {
-    /** The pick's open waits for the page (see `RemoteInitializeOptions`). */
-    readonly initialize: (
-      threadId: string,
-      options?: RemoteInitializeOptions,
-    ) => Promise<{ readonly remoteId: string; readonly externalId?: string }>;
-  };
+  readonly remote: Pick<RemoteThreadListAdapter, "rename" | "archive" | "unarchive" | "delete"> &
+    Pick<NativeRemoteThreadListAdapter, "startNew" | "adopt"> & {
+      /** The pick's open waits for the page (see `RemoteInitializeOptions`). */
+      readonly initialize: (
+        threadId: string,
+        options?: RemoteInitializeOptions,
+      ) => Promise<{ readonly remoteId: string; readonly externalId?: string }>;
+    };
   readonly currentThreadId?: ThreadId;
   /** Opens a picked chat through the page. It resolves false when the chat did not open, and the page has shown why. */
   readonly onOpenThread?: (threadId: ThreadId) => unknown;
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
-  readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
+  /** A New chat that started and is the newest click: the page shows it. `click` names the click for the page's record. */
+  readonly onNewChat?: (started: OpenThreadResult, click: object) => Promise<void> | void;
+  /** A New chat that started after a later click: the page keeps it for what was sent to it, and does not show it. */
+  readonly onNewChatSuperseded?: (started: OpenThreadResult, click: object) => void;
+  /** Whether a New chat click reuses the start of the New chat before it: still opening, with no message sent to it. */
+  readonly canReuseNewChat?: () => boolean;
   /** Shows why a picked chat did not open, when the chat's saved model cannot be restored (the picker offers another). */
   readonly onOpenFailed?: (threadId: ThreadId, error: AppError) => void;
   readonly onDeletedOpenThread?: () => Promise<void> | void;
@@ -105,6 +115,13 @@ async function unlessSuperseded<Opened>(pick: Promise<Opened>): Promise<Opened |
     throw error;
   }
 }
+
+/** A New chat the adapter let go because a later open finished first: the adapter's own reason (see `remote.ts`). */
+const NOT_OPENED_ERROR: AppError = {
+  code: "cancelled",
+  message: "A chat picked after this one opened first, so this one was not opened.",
+  retryable: false,
+};
 
 /** The reason a New chat that could not start gives the page. An error that is not an AppFailure is unexpected. */
 function newChatFailure(error: unknown): AppError {
@@ -204,6 +221,8 @@ export function SessionCatalogSidebar({
   currentThreadId,
   onOpenThread,
   onNewChat,
+  onNewChatSuperseded,
+  canReuseNewChat,
   onNewChatStatus,
   onOpenFailed,
   onDeletedOpenThread,
@@ -530,25 +549,37 @@ export function SessionCatalogSidebar({
   };
 
   const createNewChat = async (): Promise<void> => {
+    // A New chat still opening, with no message sent to it, takes this click (see `reusesOpeningNewChat`).
+    if (canReuseNewChat?.()) return;
     catalog.setActionError(undefined);
-    const token = {};
-    pendingNewChat.current = token;
-    onNewChatStatus?.({ state: "opening" });
-    // Reports the end unless a pick already ended this New chat, and reported that itself.
-    const finish = (status: NewChatStatus): void => {
-      if (pendingNewChat.current !== token) return;
+    const click = {};
+    pendingNewChat.current = click;
+    onNewChatStatus?.({ state: "opening", click });
+    // Ends this click's pending state, unless a pick already ended it (and reported that itself).
+    const release = (): boolean => {
+      if (pendingNewChat.current !== click) return false;
       pendingNewChat.current = null;
-      onNewChatStatus?.(status);
+      return true;
     };
     try {
-      const initialized = await unlessSuperseded(remote.initialize("new"));
-      // A chat picked since the click is the one the person wants: this New chat does not open over it.
-      if (initialized && pendingNewChat.current === token) {
-        await onNewChat?.(initialized.remoteId as ThreadId);
+      // The chat starts at the click. Its open keeps the hold it takes, and the page adopts that chat: no second open.
+      const started = await unlessSuperseded(remote.startNew());
+      if (started !== undefined && remote.adopt(started.threadId)) {
+        if (pendingNewChat.current === click) {
+          await onNewChat?.(started, click);
+          if (release()) onNewChatStatus?.({ state: "idle" });
+        } else {
+          // A later click took the New chat's place: this chat opens for what was sent to it, and is not shown.
+          onNewChatSuperseded?.(started, click);
+        }
+        return;
       }
-      finish({ state: "idle" });
+      // The adapter let this chat go, because a later open finished first: it did not open.
+      release();
+      onNewChatStatus?.({ state: "failed", click, error: NOT_OPENED_ERROR });
     } catch (error) {
-      finish({ state: "failed", error: newChatFailure(error) });
+      release();
+      onNewChatStatus?.({ state: "failed", click, error: newChatFailure(error) });
     }
   };
 

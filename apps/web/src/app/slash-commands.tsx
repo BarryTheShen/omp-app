@@ -8,6 +8,7 @@ import {
   type ModeChangeRequest,
   type ModeChangeResult,
   modeChangeFromCommand,
+  type OpenThreadResult,
   type PortCallOptions,
   type RpcSessionSend,
   SESSION_DELETE_OTHER_VIEW,
@@ -103,10 +104,10 @@ function useLatest<T>(value: T): () => T {
  */
 async function openNewChat({
   lifecycle,
-  openThread,
+  openStarted,
 }: {
   readonly lifecycle: SessionLifecycleController | null;
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly openStarted: (started: OpenThreadResult) => Promise<void>;
 }): Promise<"opened" | "cancelled"> {
   if (lifecycle === null) {
     throw new AppFailure({
@@ -118,7 +119,7 @@ async function openNewChat({
   const outcome = await lifecycle.newSession();
   if (outcome.status === "cancelled") return "cancelled";
   if (outcome.status === "completed") {
-    await openThread(outcome.value);
+    await openStarted(outcome.value);
     return "opened";
   }
   throw new AppFailure(outcome.error);
@@ -126,20 +127,20 @@ async function openNewChat({
 
 /**
  * `/new`: starts a new chat the way the command palette's New chat does, and opens it. The lifecycle
- * controller and the open-thread action come from the chat that is open.
+ * controller and the action that shows a started chat come from the chat that is open.
  */
 export function newChatSlashCommand({
   lifecycle,
-  openThread,
+  openStarted,
 }: {
   readonly lifecycle: SessionLifecycleController | null;
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly openStarted: (started: OpenThreadResult) => Promise<void>;
 }): SlashAppCommand {
   return {
     name: "new",
     description: "Start a new chat",
     run: async () => {
-      if ((await openNewChat({ lifecycle, openThread })) === "cancelled") return {};
+      if ((await openNewChat({ lifecycle, openStarted })) === "cancelled") return {};
       return { message: "Started a new chat." };
     },
   };
@@ -160,13 +161,13 @@ export const CLEAR_STARTED_NOTE: NoSwitchNote = {
  */
 export function clearSlashCommand({
   lifecycle,
-  openThread,
+  openStarted,
   isBusy,
   deliverNote,
   focusComposer,
 }: {
   readonly lifecycle: SessionLifecycleController | null;
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly openStarted: (started: OpenThreadResult) => Promise<void>;
   readonly isBusy: () => boolean;
   /** Writes a note into the chat on screen, once that chat has opened. */
   readonly deliverNote: (note: NoSwitchNote) => void;
@@ -179,7 +180,7 @@ export function clearSlashCommand({
     run: async ({ args }) => {
       if (args !== undefined) throw wordsRefusal(takesNothing("clear"));
       if (isBusy()) return { message: "Wait for this chat's turn to finish, then clear it." };
-      if ((await openNewChat({ lifecycle, openThread })) === "cancelled") return {};
+      if ((await openNewChat({ lifecycle, openStarted })) === "cancelled") return {};
       deliverNote(CLEAR_STARTED_NOTE);
       focusComposer();
       return {};
@@ -475,7 +476,7 @@ interface SessionDeleteDeps {
   readonly threadId: ThreadId;
   readonly catalog: SessionCatalogModel | null;
   readonly lifecycle: SessionLifecycleController | null;
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly openStarted: (started: OpenThreadResult) => Promise<void>;
 }
 
 /**
@@ -491,7 +492,7 @@ export function sessionDeleteSlashCommand({
   threadId,
   catalog,
   lifecycle,
-  openThread,
+  openStarted,
 }: SessionDeleteDeps): SlashAppCommand {
   return {
     name: "session delete",
@@ -505,7 +506,7 @@ export function sessionDeleteSlashCommand({
       );
       if (result.outcome === "deleted") {
         try {
-          await leaveDeletedChat(lifecycle, openThread);
+          await leaveDeletedChat(lifecycle, openStarted);
         } finally {
           // The file is gone whatever the new chat did, so the row goes even when the new chat could not open.
           removeListedChat(catalog, threadId);
@@ -747,7 +748,7 @@ export function forkSlashCommand({
  */
 async function leaveDeletedChat(
   lifecycle: SessionLifecycleController | null,
-  openThread: (threadId: ThreadId) => Promise<void>,
+  openStarted: (started: OpenThreadResult) => Promise<void>,
 ): Promise<void> {
   if (lifecycle === null) {
     throw new AppFailure({
@@ -758,7 +759,7 @@ async function leaveDeletedChat(
   }
   const outcome = await lifecycle.newSession();
   if (outcome.status === "completed") {
-    await openThread(outcome.value);
+    await openStarted(outcome.value);
     return;
   }
   if (outcome.status === "cancelled") return;
@@ -794,7 +795,7 @@ export function askFirstSlashCommands({
   gateway,
   threadId,
   lifecycle,
-  openThread,
+  openStarted,
   showReport,
 }: {
   readonly catalog: SessionCatalogModel | null;
@@ -805,7 +806,7 @@ export function askFirstSlashCommands({
   readonly threadId: ThreadId;
   /** Opens the new chat that takes the deleted chat's place, as the sidebar's own Delete does. */
   readonly lifecycle: SessionLifecycleController | null;
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly openStarted: (started: OpenThreadResult) => Promise<void>;
   /** Shows omp's words for a reply with several lines, in the command output panel. */
   readonly showReport: (report: CommandReport) => void;
 }): readonly SlashAppCommand[] {
@@ -816,7 +817,7 @@ export function askFirstSlashCommands({
     threadId,
     catalog,
     lifecycle,
-    openThread,
+    openStarted,
   };
   return [
     sessionDeleteSlashCommand(sessionDelete),

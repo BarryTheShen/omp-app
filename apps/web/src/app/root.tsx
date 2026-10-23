@@ -16,6 +16,7 @@ import {
   type ModelChoice,
   OmpCommandGateway,
   type OmpWire,
+  type OpenThreadResult,
   PasteFileStore,
   ProviderErrorPort,
   type RpcSessionClient,
@@ -120,7 +121,8 @@ import {
 } from "@/modules/P7/compaction";
 import { createQueueController, type QueueController } from "@/modules/R0/actions";
 import { type StoppedQueue, useOmpRuntime } from "@/modules/R0/runtime";
-import type { OmpRuntimeStore, RuntimeSnapshot } from "@/modules/R0/store";
+import { OmpRuntimeController } from "@/modules/R0/runtime/runtime";
+import { OmpRuntimeStore, type RuntimeSnapshot } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import {
   createSessionCatalogRefreshScheduler,
@@ -130,10 +132,12 @@ import {
 import {
   createSelectedThreadHistoryController,
   HistoryLoadFailureNotice,
+  isNewChatPlaceholder,
   isSupersededOpen,
   type SelectedThreadHistoryController,
   type SelectedThreadHistoryState,
 } from "@/modules/R1/history";
+import { releaseThread } from "@/modules/R1/release";
 import { createNativeRemoteThreadListAdapter, deleteChatFile } from "@/modules/R1/remote";
 import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
 import { LateDiagnosticsCard } from "@/modules/T2/late-diagnostics";
@@ -241,7 +245,12 @@ import {
 import { FolderSwitcher } from "./folder-switcher";
 import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-dialog";
 import { LargePasteMenuProvider } from "./large-paste-menu";
-import { type NewChatOutcome, type NewChatTicket, openNewChatTicket } from "./new-chat-outcome";
+import {
+  type NewChatOutcome,
+  type NewChatTicket,
+  openNewChatTicket,
+  reusesOpeningNewChat,
+} from "./new-chat-outcome";
 import { deliverWhenChatOpen } from "./open-chat-delivery";
 import { otherFolderOf } from "./other-folder";
 import { useChatSessionInfo, useChatTodoStore } from "./owned-stores";
@@ -581,7 +590,8 @@ function RouterBridge({
   // new omp (rpc-session.ts, #respawn). A chat picked from a list is shown at the click, before omp opens it (issue 2212),
   // so the opt-in waits for that switch to end. It ends too when the chat's load fails, and the opt-in restarts omp then.
   useEffect(() => {
-    if (!askDialogOffered || switching) return;
+    // A New chat's placeholder is not omp's chat yet, so nothing is sent for it: the chat gets the opt-in once it has its id.
+    if (!askDialogOffered || switching || isNewChatPlaceholder(threadId)) return;
     void optIntoRichAsk(send, threadId).catch((error: unknown) =>
       reportClientError({
         kind: "error",
@@ -727,18 +737,48 @@ interface SendAttachments {
   readonly complete: Parameters<typeof withPastedText>[1];
 }
 
+/** One New chat click, from the click until its chat opens, is superseded, or does not open (see `reportNewChat`). */
+interface NewChatRecord {
+  /** How the click ends: "opened" or "not-opened". */
+  readonly ticket: NewChatTicket;
+  /** Resolves when a later click takes the sidebar's New chat: the sends made to this click then go on in the background. */
+  readonly supersededNow: Promise<void>;
+  readonly supersede: () => void;
+  /** The sidebar's hold on the chat switch, released when the chat opens or the click ends. */
+  readonly hold: () => void;
+  /** The empty chat the click showed (the controller's placeholder), or null when there is no controller. */
+  readonly placeholder: ThreadId | null;
+  /** The chat omp started, once its open returns. */
+  started: OpenThreadResult | null;
+  isSuperseded: boolean;
+  ended: boolean;
+  /** A message was sent to this click's chat while it was opening: a later click then starts another New chat. */
+  sent: boolean;
+  released: boolean;
+  /** Sends admitted in the background that wait for this click's chat. */
+  waiting: number;
+}
+
+/** Puts a send's text back in the new-chat box, with the notice that says where it went (see `restoreNotSent`). */
+type LiveRestore = (text: string, refs: SendAttachments["refs"], notice: string) => void;
+
+/** The notice when a send is not sent: its text is in the new-chat box (the words `open-chat-delivery.ts` uses). */
+const NOT_SENT_NOTE =
+  "This chat did not open, so your message was not sent. It's in the message box of a new chat: press Enter there to send it.";
+
 interface ActiveThreadProps {
   readonly deliverToOpenChat: (
     intent: PromptIntent,
     attachments: SendAttachments,
-    newChatEnd: Promise<NewChatOutcome> | null,
+    newChat: NewChatRecord | null,
     keptInNewChat: boolean,
   ) => Promise<void>;
-  readonly newChatOutcomeNow: () => Promise<NewChatOutcome> | null;
+  readonly newChatOutcomeNow: () => NewChatRecord | null;
   readonly registerLiveChat: (
     threadId: ThreadId,
     deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
     notice?: (note: NoSwitchNote) => void,
+    restore?: LiveRestore,
   ) => () => void;
   /** Writes a rewind's or fork's note into the chat on screen, when it finished without switching the view. */
   readonly deliverNote: (note: NoSwitchNote) => void;
@@ -766,6 +806,8 @@ interface ActiveThreadProps {
   readonly claimReloadTarget: () => (() => void) | undefined;
   readonly onPromptSent: () => void;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly openNewChat: (started: OpenThreadResult, click: object) => Promise<void>;
+  readonly openStarted: (started: OpenThreadResult) => Promise<void>;
   /** Switches to a chat a branch or a rewind made: it is opened again, whatever its id names (PR 1645). */
   readonly switchChat: (threadId: ThreadId) => Promise<void>;
   readonly pickCount: () => number;
@@ -939,6 +981,8 @@ function ActiveThreadReady({
   claimReloadTarget,
   onPromptSent,
   openThread,
+  openNewChat,
+  openStarted,
   switchChat,
   pickCount,
   deliverNote,
@@ -1075,7 +1119,11 @@ function ActiveThreadReady({
     refreshAfterCommandRef.current = onRefreshAfterCommand;
   });
   useEffect(
-    () => watchSavedCompactions(client, threadId, () => void refreshAfterCommandRef.current?.()),
+    () =>
+      // A New chat's placeholder has no compactions: the watch starts once the chat has its id.
+      isNewChatPlaceholder(threadId)
+        ? undefined
+        : watchSavedCompactions(client, threadId, () => void refreshAfterCommandRef.current?.()),
     [client, threadId],
   );
   // Answers go through R0's queue controller (assigned below), because it forgets the request once
@@ -1241,8 +1289,8 @@ function ActiveThreadReady({
           <SessionCatalogSidebar
             catalog={catalog}
             currentThreadId={threadId}
-            onNewChat={async (newThreadId) => {
-              await openThread(newThreadId);
+            onNewChat={async (started, click) => {
+              await openNewChat(started, click);
               close("programmatic");
             }}
             onOpenThread={async (selectedThreadId) => {
@@ -1258,7 +1306,7 @@ function ActiveThreadReady({
         </div>
       ),
     });
-  }, [catalog, openThread, overlay, remote, store, threadId]);
+  }, [catalog, openThread, overlay, remote, store, threadId, openNewChat]);
   // The Agent Hub, opened by a double-tap of ← in the empty composer (omp's gesture), by Alt+A and by `/hub`. The Agents
   // tab comes to the front and its sidebar opens if it is closed; only a session with an agent to show opens it.
   const [agentsReveal, setAgentsReveal] = useState(0);
@@ -1310,7 +1358,7 @@ function ActiveThreadReady({
         .newSession()
         .then(async (outcome) => {
           if (outcome.status === "completed") {
-            await openThread(outcome.value);
+            await openStarted(outcome.value);
           } else if (outcome.status === "error" || outcome.status === "unavailable") {
             setCommandError(outcome.error.message);
           }
@@ -1413,7 +1461,7 @@ function ActiveThreadReady({
     onOpenSettings,
     openLogin,
     openSessionBrowser,
-    openThread,
+    openStarted,
     remote,
     runGoalFromPalette,
     threadId,
@@ -1806,10 +1854,10 @@ function ActiveThreadReady({
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
     () => [
-      newChatSlashCommand({ lifecycle, openThread }),
+      newChatSlashCommand({ lifecycle, openStarted }),
       clearSlashCommand({
         lifecycle,
-        openThread,
+        openStarted,
         isBusy: () => conversationBusy(store, threadRunning.current),
         deliverNote,
         focusComposer: () => composerInput()?.focus({ preventScroll: true }),
@@ -1846,7 +1894,7 @@ function ActiveThreadReady({
         overlay,
         gateway: commandGateway,
         lifecycle,
-        openThread,
+        openStarted,
         showReport: showCommandOutput,
       }),
       mcpReloadSlashCommand({ commands: client.port(McpCommandsPort), threadId }),
@@ -1870,7 +1918,7 @@ function ActiveThreadReady({
       onOpenSettings,
       openAgentHub,
       openLogin,
-      openThread,
+      openStarted,
       overlay,
       restartOmp,
       shareController,
@@ -1901,7 +1949,10 @@ function ActiveThreadReady({
   // so a stop made in one browser shows as stopped in every other browser that opens the chat.
   const loadBackgroundJobStops = useCallback(
     (threadId: ThreadId) =>
-      commandGateway.backgroundJobStops({ threadId }).then((read) => read.stops),
+      // A New chat's placeholder is not omp's chat yet, and has no background jobs: nothing is asked of omp for it.
+      isNewChatPlaceholder(threadId)
+        ? Promise.resolve([])
+        : commandGateway.backgroundJobStops({ threadId }).then((read) => read.stops),
     [commandGateway],
   );
   // What a send does in the chat it is for: a slash command, or omp's prompt. It is read at the send, so a send that
@@ -1962,9 +2013,17 @@ function ActiveThreadReady({
     (note: NoSwitchNote): void => showNoSwitchNote(notificationProjector, threadId, note),
     [notificationProjector, threadId],
   );
+  // Puts a send's text back in this new-chat box, with the notice that says where it went (see `restoreNotSent`).
+  const restoreDraft = useCallback<LiveRestore>(
+    (text, refs, notice) => {
+      draftController.setDraft(text, refs);
+      setCommandError(notice);
+    },
+    [draftController],
+  );
   useLayoutEffect(
-    () => registerLiveChat(threadId, deliver, showNote),
-    [deliver, registerLiveChat, showNote, threadId],
+    () => registerLiveChat(threadId, deliver, showNote, restoreDraft),
+    [deliver, registerLiveChat, restoreDraft, showNote, threadId],
   );
   const submit = async (intent: PromptIntent): Promise<void> => {
     onPromptSent();
@@ -1978,14 +2037,16 @@ function ActiveThreadReady({
       refs: attachmentManager.toDraftRefs(),
       complete: attachmentManager.getState().complete,
     };
-    // A send made while a New chat opens takes that New chat's outcome now, not when it is delivered.
-    const newChatEnd = newChatOutcomeNow();
+    // A send made while a New chat opens takes that New chat's outcome now, and counts as sent at once: a New chat click
+    // after it starts another New chat rather than reusing the opening one (issue 2343).
+    const newChat = newChatOutcomeNow();
+    if (newChat !== null) newChat.sent = true;
     // Where a send that is not sent keeps its text: a New chat's text stays in the folder's new-chat box (chat-draft.ts).
     await chatDraft.submit(intent, (sent) =>
       deliverToOpenChat(
         sent,
         attachments,
-        newChatEnd,
+        newChat,
         chatDraft.controller.getSnapshot().scope.kind === "folder",
       ),
     );
@@ -2682,7 +2743,7 @@ function ConnectedApp({
     }
     if (lastInstanceId.current === instanceId) return;
     lastInstanceId.current = instanceId;
-    if (controller && history.threadId)
+    if (controller && history.threadId && !isNewChatPlaceholder(history.threadId))
       void controller.openExisting(history.threadId).catch(() => undefined);
   }, [client.instanceId, connection.state, controller, history.threadId]);
   // A chat whose open lost the connection is opened again once the connection is back (issue 1617).
@@ -2804,8 +2865,10 @@ function ConnectedApp({
   );
   // The chat a New chat opened: the server started it, so it has no messages yet (see `openStarted`).
   const openStartedChat = useCallback(
-    (threadId: ThreadId): Promise<void> =>
-      openHistoryChatThrough(threadId, (history) => history.openStarted(threadId)),
+    (started: OpenThreadResult): Promise<void> =>
+      openHistoryChatThrough(started.threadId, (history) =>
+        history.adoptStarted(started.threadId, started),
+      ),
     [openHistoryChatThrough],
   );
   // A pick from the sidebar: a chat that did not open is shown where it would open (the history's error, on the empty
@@ -2833,59 +2896,148 @@ function ConnectedApp({
     },
     [openHistoryChatThrough],
   );
-  // The sidebar's New chat holds the chat switch from its click until its chat's open is requested, so a send made
-  // meanwhile waits for the new chat instead of going to the chat before it. The sidebar reports the end of only the
-  // newest New chat (an older one is superseded by a newer click and will not open), so the newest hold is the one a
-  // report ends; the holds of the New chats before it end at once.
-  const newChatHolds = useRef<Array<() => void>>([]);
-  // The newest New chat's outcome: a send made while it opens waits for it, and is not sent when it does not open.
-  const newChatTicketRef = useRef<NewChatTicket | null>(null);
-  const newChatOutcomeNow = useCallback(
-    (): Promise<NewChatOutcome> | null => newChatTicketRef.current?.outcome ?? null,
-    [],
+  // Each New chat click has a record: how it ends, its hold on the chat switch, and the sends made to it. The sidebar names
+  // a click by the object it made for it. A click that a later click takes the sidebar's New chat from is superseded: the
+  // chat it opens takes the sends made to it, in the background, and is not shown.
+  const newChatClicks = useRef(new WeakMap<object, NewChatRecord>());
+  const newestClick = useRef<object | null>(null);
+  // A send that could not go out while no view was on screen waits here until one registers (see `registerLiveChat`).
+  const orphanedSend = useRef<{
+    readonly text: string;
+    readonly refs: SendAttachments["refs"];
+  } | null>(null);
+  // The newest click's record, while that click is still opening: a send made now waits for it (see `deliverToOpenChat`).
+  const newChatOutcomeNow = useCallback((): NewChatRecord | null => {
+    const newest =
+      newestClick.current === null ? undefined : newChatClicks.current.get(newestClick.current);
+    return newest !== undefined && !newest.ended ? newest : null;
+  }, []);
+
+  // A New chat click reuses the New chat before it while that one is still on screen, opening, and unsent.
+  const canReuseNewChat = useCallback((): boolean => {
+    const newest =
+      newestClick.current === null ? undefined : newChatClicks.current.get(newestClick.current);
+    if (newest === undefined) return false;
+    return reusesOpeningNewChat({
+      ended: newest.ended,
+      sent: newest.sent,
+      shown:
+        newest.placeholder !== null && newest.placeholder === controller?.getSnapshot().threadId,
+    });
+  }, [controller]);
+  // Releases a superseded click's chat once nothing waits for it: its sends are sent, or none were made.
+  const releaseIfDone = useCallback(
+    (record: NewChatRecord): void => {
+      if (!record.isSuperseded || !record.ended || record.released || record.waiting > 0) return;
+      if (record.started === null) return;
+      record.released = true;
+      void releaseThread(rpc.close, record.started.threadId);
+    },
+    [rpc],
+  );
+  // Ends a click that did not open: its sends are not sent, and their text goes back to the new-chat box with the notice.
+  const endNewChat = useCallback(
+    (record: NewChatRecord): void => {
+      if (record.ended) return;
+      record.ended = true;
+      record.ticket.settle("not-opened");
+      record.hold();
+      if (record.placeholder !== null) controller?.cancelNewChat(record.placeholder);
+    },
+    [controller],
   );
   const reportNewChat = useCallback(
     (status: NewChatStatus): void => {
-      setNewChat(status);
       if (status.state === "opening") {
+        setNewChat(status);
+        // Until the started chat is known, the reload target is the marker: a reload in between opens a new chat.
         unsentThread.current = null;
         setNewlyStartedThread(null);
         persistUnsentChatReload();
         perfTraceStart();
         const shownThreadId = controller?.getSnapshot().threadId;
         if (shownThreadId !== undefined) setNewChatFrom(shownThreadId);
-        for (const release of newChatHolds.current.splice(0)) release();
-        newChatHolds.current.push(controller?.holdSwitch() ?? (() => undefined));
-        newChatTicketRef.current?.settle("not-opened");
-        newChatTicketRef.current = openNewChatTicket();
+        // A newer click takes the sidebar's New chat: the click before it is superseded, and its hold ends here.
+        const older =
+          newestClick.current === null ? undefined : newChatClicks.current.get(newestClick.current);
+        if (older !== undefined && !older.ended) {
+          older.isSuperseded = true;
+          older.supersede();
+        }
+        older?.hold();
+        const { promise: supersededNow, resolve: supersede } = Promise.withResolvers<void>();
+        const record: NewChatRecord = {
+          ticket: openNewChatTicket(),
+          supersededNow,
+          supersede,
+          hold: controller?.holdSwitch() ?? (() => undefined),
+          placeholder: controller?.showNewChat() ?? null,
+          started: null,
+          isSuperseded: false,
+          ended: false,
+          released: false,
+          sent: false,
+          waiting: 0,
+        };
+        newChatClicks.current.set(status.click, record);
+        newestClick.current = status.click;
         return;
       }
-      if (readTabValue(UNSENT_CHAT_KEY, "") === unsentChatReloadMarker())
-        writeTabValue(UNSENT_CHAT_KEY, null);
-      newChatTicketRef.current?.settle("not-opened");
-      newChatTicketRef.current = null;
-      newChatHolds.current.pop()?.();
+      const click = status.state === "failed" ? status.click : newestClick.current;
+      const ended = click === null ? undefined : newChatClicks.current.get(click);
+      if (ended !== undefined) endNewChat(ended);
+      // Only the newest click changes the New chat shown; a superseded click that failed changes nothing on screen.
+      if (status.state !== "failed" || newestClick.current === status.click) {
+        // The marker of the New chat that ended goes with it: a reload then shows the chat on screen again.
+        if (readTabValue(UNSENT_CHAT_KEY, "") === unsentChatReloadMarker())
+          writeTabValue(UNSENT_CHAT_KEY, null);
+        newestClick.current = null;
+        setNewChat(status);
+      }
     },
-    [controller],
+    [controller, endNewChat],
   );
+  // The sidebar opens its New chat's chat with this: the chat omp started is adopted, with no second open, and shown.
   const openNewChatFromSidebar = useCallback(
-    async (threadId: ThreadId): Promise<void> => {
-      setNewChatThreadId(threadId);
-      unsentThread.current = threadId;
-      setNewlyStartedThread(threadId);
-      persistUnsentChatReload(threadId);
-      newChatHolds.current.at(-1)?.();
-      newChatTicketRef.current?.settle("opened");
-      newChatTicketRef.current = null;
-      return openStartedChat(threadId);
+    (started: OpenThreadResult, click: object): Promise<void> => {
+      const record = newChatClicks.current.get(click);
+      if (record !== undefined && !record.ended) {
+        record.started = started;
+        record.ended = true;
+        record.ticket.settle("opened");
+        record.hold();
+      }
+      // The started chat is the unsent chat until its first prompt is sent: a reload until then opens a new chat.
+      unsentThread.current = started.threadId;
+      setNewlyStartedThread(started.threadId);
+      persistUnsentChatReload(started.threadId);
+      setNewChatThreadId(started.threadId);
+      return openStartedChat(started);
     },
     [openStartedChat],
+  );
+  // A New chat a later click superseded has opened: its chat is kept for the sends made to it, and is let go once they are sent.
+  const openNewChatSuperseded = useCallback(
+    (started: OpenThreadResult, click: object): void => {
+      const record = newChatClicks.current.get(click);
+      if (record === undefined || record.ended) {
+        // A pick or a failed click ended it before its chat opened: nothing waits for the chat.
+        void releaseThread(rpc.close, started.threadId);
+        return;
+      }
+      record.started = started;
+      record.ended = true;
+      record.ticket.settle("opened");
+      releaseIfDone(record);
+    },
+    [releaseIfDone, rpc],
   );
   // The chat on screen registers how a send reaches it: the view that shows the open chat (see `deliverToOpenChat`).
   const liveChat = useRef<{
     readonly threadId: ThreadId;
     readonly deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>;
     readonly notice?: (note: NoSwitchNote) => void;
+    readonly restore?: LiveRestore;
   } | null>(null);
   const liveChatChanged = useRef<Array<() => void>>([]);
   const registerLiveChat = useCallback(
@@ -2893,9 +3045,16 @@ function ConnectedApp({
       threadId: ThreadId,
       deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
       notice?: (note: NoSwitchNote) => void,
+      restore?: LiveRestore,
     ): (() => void) => {
-      const live = { threadId, deliver, notice };
+      const live = { threadId, deliver, notice, restore };
       liveChat.current = live;
+      // A send that could not go out while no view was on screen is put back in the box of the view that registers now.
+      const orphaned = orphanedSend.current;
+      if (orphaned !== null && restore !== undefined) {
+        orphanedSend.current = null;
+        restore(orphaned.text, orphaned.refs, NOT_SENT_NOTE);
+      }
       const waiters = liveChatChanged.current;
       liveChatChanged.current = [];
       for (const wake of waiters) wake();
@@ -2925,14 +3084,65 @@ function ConnectedApp({
     },
     [controller],
   );
+  // The text goes back to the new-chat box, with the notice that says where it went (see `registerLiveChat`).
+  const restoreNotSent = useCallback((text: string, refs: SendAttachments["refs"]): void => {
+    const live = liveChat.current;
+    if (live?.restore !== undefined) live.restore(text, refs, NOT_SENT_NOTE);
+    else orphanedSend.current = { text, refs };
+  }, []);
+  // A send a later New chat superseded is admitted at once, and goes to its own chat in the background. That chat is not
+  // shown. If it does not open, or the send cannot be sent in the background (a slash command), the text goes back to the
+  // new-chat box with the notice.
+  const deliverSupersededSend = useCallback(
+    async (
+      record: NewChatRecord,
+      intent: PromptIntent,
+      attachments: SendAttachments,
+    ): Promise<void> => {
+      try {
+        const end = await record.ticket.outcome;
+        const started = record.started;
+        if (end !== "opened" || started === null || intent.text.trimStart().startsWith("/")) {
+          restoreNotSent(intent.text, attachments.refs);
+        } else {
+          const store = new OmpRuntimeStore({
+            threadId: started.threadId,
+            transport: {
+              send: rpc.send,
+              answerExtensionUi: rpc.answerExtensionUi,
+              answerHostTool: rpc.answerHostTool,
+              answerHostUri: rpc.answerHostUri,
+            },
+          });
+          const runtime = new OmpRuntimeController({
+            store,
+            send: rpc.send,
+            capabilities: started.capabilities,
+          });
+          await runtime.submitPrompt({
+            ...intent,
+            text: withPastedText(intent.text, attachments.complete),
+            attachmentRefs: attachments.refs,
+          });
+        }
+      } catch {
+        restoreNotSent(intent.text, attachments.refs);
+      } finally {
+        record.waiting -= 1;
+        releaseIfDone(record);
+      }
+    },
+    [releaseIfDone, restoreNotSent, rpc],
+  );
   // A send goes to the chat that is open when it is delivered, through the view that shows it. While a chat is still
-  // opening, the send waits until that chat is on screen: it is never written to the chat before it. If the chat did
-  // not open, nothing is sent and the text stays in the composer.
+  // opening, the send waits until that chat is on screen: it is never written to the chat before it. If the chat did not
+  // open, nothing is sent and the text stays in the composer. A send a later New chat superseded is admitted at once and
+  // goes on in the background (see `deliverSupersededSend`).
   const deliverToOpenChat = useCallback(
     async (
       intent: PromptIntent,
       attachments: SendAttachments,
-      newChatEnd: Promise<NewChatOutcome> | null,
+      newChat: NewChatRecord | null,
       keptInNewChat: boolean,
     ): Promise<void> => {
       if (controller === null) {
@@ -2941,6 +3151,19 @@ function ConnectedApp({
           message: "Open a chat to send a message.",
           retryable: false,
         });
+      }
+      let newChatEnd: Promise<NewChatOutcome> | null = null;
+      if (newChat !== null) {
+        const end = await Promise.race([
+          newChat.ticket.outcome,
+          newChat.supersededNow.then(() => "superseded" as const),
+        ]);
+        if (end === "superseded") {
+          newChat.waiting += 1;
+          void deliverSupersededSend(newChat, intent, attachments);
+          return;
+        }
+        newChatEnd = Promise.resolve(end);
       }
       await deliverWhenChatOpen(
         {
@@ -2957,7 +3180,7 @@ function ConnectedApp({
         [intent, attachments],
       );
     },
-    [controller],
+    [controller, deliverSupersededSend],
   );
   // A new chat, started the way the sidebar's New chat starts one. Sign-in runs in a chat's omp, so this gives
   // sign-in one when no chat is open.
@@ -2970,14 +3193,21 @@ function ConnectedApp({
       });
     }
     perfTraceStart();
-    const initialized = await remote.initialize("new");
-    const started = initialized.remoteId as ThreadId;
-    unsentThread.current = started;
-    setNewlyStartedThread(started);
-    setNewChatThreadId(started);
-    persistUnsentChatReload(started);
+    const started = await remote.startNew();
+    if (!remote.adopt(started.threadId)) {
+      throw new AppFailure({
+        code: "cancelled",
+        message: "The new chat was not kept. Try again.",
+        retryable: true,
+      });
+    }
+    // The started chat is the unsent chat until its first prompt is sent: a reload until then opens a new chat.
+    unsentThread.current = started.threadId;
+    setNewlyStartedThread(started.threadId);
+    setNewChatThreadId(started.threadId);
+    persistUnsentChatReload(started.threadId);
     await openStartedChat(started);
-    return started;
+    return started.threadId;
   }, [openStartedChat, remote]);
   // Settings saves through its own runtime; the external signal refreshes only the paste reader after the exit.
   const settingsClosed = useMemo(() => createSettingsClosedSignal(), []);
@@ -3045,6 +3275,7 @@ function ConnectedApp({
             catalog={catalog}
             currentThreadId={history.threadId}
             onNewChat={openNewChatFromSidebar}
+            onNewChatSuperseded={openNewChatSuperseded}
             onOpenThread={openSidebarChat}
             confirmDelete={(_session, title, restoreFocus) =>
               openChatDeleteConfirm(overlay, title, undefined, restoreFocus)
@@ -3066,6 +3297,7 @@ function ConnectedApp({
             requestRefresh={catalogRefresh.request}
             remote={remote}
             onNewChatStatus={reportNewChat}
+            canReuseNewChat={canReuseNewChat}
             onOpenFailed={reportOpenFailure}
           />
         ) : null,
@@ -3151,6 +3383,8 @@ function ConnectedApp({
           claimReloadTarget={claimReloadTarget}
           onPromptSent={onPromptSent}
           openThread={openThread}
+          openNewChat={openNewChatFromSidebar}
+          openStarted={openStartedChat}
           switchChat={switchChat}
           pickCount={pickCount}
           deliverNote={deliverNoteToOpenChat}
