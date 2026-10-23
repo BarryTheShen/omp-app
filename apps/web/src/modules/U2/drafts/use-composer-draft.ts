@@ -8,6 +8,18 @@ interface ComposerTextTarget {
   setText(text: string): void;
 }
 
+/** The current recalled prompt is display-only; pagehide must save the controller's actual draft instead. */
+export function composerDraftForLifecycle(
+  controller: DraftController,
+  visibleText: string,
+  visibleAttachments: readonly AttachmentRef[],
+  isRecalledPrompt: (text: string) => boolean,
+): { readonly text: string; readonly attachments: readonly AttachmentRef[] } {
+  if (!isRecalledPrompt(visibleText)) return { text: visibleText, attachments: visibleAttachments };
+  const draft = controller.getSnapshot();
+  return { text: draft.text, attachments: draft.attachments };
+}
+
 interface UseComposerDraftOptions {
   /** The controller that holds the chat's draft right now. */
   readonly controller: DraftController;
@@ -16,6 +28,8 @@ interface UseComposerDraftOptions {
    * scopes, and another one once the person switches to another chat.
    */
   readonly chat: object;
+  /** True while history is replacing the chat shown in the composer. */
+  readonly switching?: boolean;
   /** The text the composer shows now. */
   readonly text: string;
   readonly composer: ComposerTextTarget;
@@ -59,6 +73,7 @@ function sameRefs(left: readonly AttachmentRef[], right: readonly AttachmentRef[
 export function useComposerDraft({
   chat,
   controller,
+  switching = false,
   text,
   composer,
   attachments,
@@ -71,10 +86,12 @@ export function useComposerDraft({
   const clearedFor = useRef<DraftController | null>(null);
   // The chat whose text the composer last cleared. A new controller of the same chat keeps the text and the caret.
   const clearedChat = useRef<object | null>(null);
+  const switchingRef = useRef(false);
   // The text and attachments the composer and the controller last agreed on: the composer's own writes set them before
   // they reach the controller, and the values the composer takes from the controller set them too. A controller value
   // that differs was changed without the composer.
   const agreedText = useRef<string | null>(null);
+  // Nothing is agreed for a chat whose draft has not loaded: its first typed value belongs to that controller.
   const agreedAttachments = useRef<readonly AttachmentRef[]>([]);
   // Attachment restores still running. While one runs the manager's list is partial, so the composer holds the list
   // being restored in its place.
@@ -101,6 +118,7 @@ export function useComposerDraft({
   const saveAttachments = useCallback(
     (owner: DraftController) => {
       // A restore that is still filling the manager's list is saved when it ends (see `restoreAttachments`).
+      // The attachments on screen are the previous chat's too until this controller's draft has loaded.
       // Before the chat's draft loads, what the manager holds is the chat's own (the previous chat's was cleared when
       // this chat opened): it is saved to the controller now, and the controller merges it with the stored draft.
       if (clearedFor.current !== owner) return;
@@ -144,33 +162,52 @@ export function useComposerDraft({
 
   useEffect(() => {
     if (hydratedFor.current !== controller) {
-      // A move of the same chat's draft to another controller keeps the text on screen: clearing it and writing it back
-      // moves the caret to the end. Only a different chat starts with an empty composer.
-      if (clearedChat.current !== chat) {
+      const sameChat = clearedChat.current === chat;
+      const movedFromFolder =
+        clearedFor.current?.getSnapshot().scope.kind === "folder" &&
+        controller.getSnapshot().scope.kind === "thread";
+      // A recalled prompt is display-only: retain it while the same chat's folder draft moves to its thread scope.
+      const keepRecalledPrompt = sameChat && movedFromFolder && isRecalledPrompt(text);
+      if (!sameChat && !keepRecalledPrompt) {
         composer.setText("");
-        // Nothing is agreed for a chat whose draft has not loaded: the text here is still the previous chat's.
         agreedText.current = null;
-        // The attachments on screen are the previous chat's too: they leave with its text until this chat's draft loads.
         restoreAttachments(controller, []);
       }
       clearedChat.current = chat;
     }
     clearedFor.current = controller;
-  }, [chat, composer, controller, restoreAttachments]);
+  }, [chat, composer, controller, isRecalledPrompt, restoreAttachments, text]);
   useEffect(() => {
-    if (snapshot.status !== "ready" || hydratedFor.current === controller) return;
+    if (!switching || switchingRef.current) {
+      switchingRef.current = switching;
+      return;
+    }
+    switchingRef.current = true;
+    const current = controller.getSnapshot();
+    if (isRecalledPrompt(text)) return;
+    // A switch signal can arrive while the person is typing; the layout effect has already put newer text in the
+    // controller, so do not clear it over that newer value.
+    if (hydratedFor.current === controller && text !== current.text) return;
+    composer.setText("");
+    agreedText.current = current.text;
+    composer.setText(current.text);
+    restoreAttachments(controller, current.attachments);
+  }, [composer, controller, isRecalledPrompt, restoreAttachments, switching, text]);
+  useEffect(() => {
+    if (snapshot.status !== "ready" || hydratedFor.current === controller || isRecalledPrompt(text))
+      return;
     hydratedFor.current = controller;
     // Read now, not from the render: the text the person typed while the draft loaded is already in the controller.
     const current = controller.getSnapshot();
     agreedText.current = current.text;
     composer.setText(current.text);
     restoreAttachments(controller, current.attachments);
-  }, [composer, controller, restoreAttachments, snapshot.status]);
+  }, [composer, controller, isRecalledPrompt, restoreAttachments, snapshot.status, text]);
   // The controller changed its text or attachments without the composer: the composer shows what it now holds.
   useEffect(
     () =>
       controller.subscribe(() => {
-        if (hydratedFor.current !== controller) return;
+        if (hydratedFor.current !== controller || isRecalledPrompt(text)) return;
         const current = controller.getSnapshot();
         if (
           current.text === agreedText.current &&
@@ -182,7 +219,7 @@ export function useComposerDraft({
         composer.setText(current.text);
         restoreAttachments(controller, current.attachments);
       }),
-    [composer, controller, restoreAttachments],
+    [composer, controller, isRecalledPrompt, restoreAttachments, text],
   );
 
   // Saves the composer's text with the attachments the draft holds now: the manager's list, plus any lost ones,

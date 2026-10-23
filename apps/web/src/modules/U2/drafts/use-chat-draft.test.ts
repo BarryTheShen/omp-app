@@ -67,6 +67,60 @@ describe("useChatDraft", () => {
     );
   });
 
+  test("a New chat keeps its folder draft and its text when its thread id arrives, and its first message moves the draft to that thread", async () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList([]);
+    const { result, rerender } = renderHook(
+      ({ threadId }: { readonly threadId: ThreadId }) =>
+        useChatDraft({
+          draftStore: store,
+          folder,
+          threadId,
+          startsUnsent: true,
+          messages,
+          loaded: true,
+        }),
+      { initialProps: { threadId: ThreadId.parse("chat-opening") } },
+    );
+    await result.current.controller.load();
+    act(() => result.current.controller.setDraft("typed while opening", []));
+    const controller = result.current.controller;
+
+    rerender({ threadId: ThreadId.parse("chat-opened") });
+    expect(result.current.controller).toBe(controller);
+    expect(controller.getSnapshot()).toMatchObject({
+      scope: { kind: "folder", folder },
+      text: "typed while opening",
+    });
+
+    act(() => messages.add("first message"));
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot()).toMatchObject({
+        scope: { kind: "thread", threadId: "chat-opened" },
+        text: "typed while opening",
+      }),
+    );
+  });
+
+  test("a saved chat's draft follows the chat when another chat is opened", () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList(["earlier message"]);
+    const { result, rerender } = renderHook(
+      ({ threadId }: { readonly threadId: ThreadId }) =>
+        useChatDraft({ draftStore: store, folder, threadId, messages, loaded: true }),
+      { initialProps: { threadId: ThreadId.parse("chat-one") } },
+    );
+    expect(result.current.controller.getSnapshot().scope).toEqual({
+      kind: "thread",
+      threadId: "chat-one",
+    });
+    rerender({ threadId: ThreadId.parse("chat-two") });
+    expect(result.current.controller.getSnapshot().scope).toEqual({
+      kind: "thread",
+      threadId: "chat-two",
+    });
+  });
+
   test("a prompt sent from a new chat is sent through the new-chat draft, and the chat is its own afterwards", async () => {
     const store = new ScopedDraftStore();
     const messages = messageList([]);

@@ -1,7 +1,7 @@
 import { AppFailure, type DraftScope, FolderPath, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
-import { ChatDraft } from "./chat-draft";
+import { ChatDraft, isCurrentUnsentChat, unsentChatReloadTarget } from "./chat-draft";
 import { createDraftBuffer, type DraftBufferStorage } from "./draft-buffer";
 import type { DraftStoreAdapter, DraftTimer } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
@@ -44,6 +44,29 @@ function chatFor(store: DraftStoreAdapter, id: string): ChatDraft {
 function prompt(text: string): PromptIntent {
   return { mode: "prompt", text, delivery: "new" };
 }
+
+describe("ChatDraft's New-chat reload target", () => {
+  test("clears the saved chat while a new chat opens and when its thread id arrives", () => {
+    const opening = unsentChatReloadTarget({
+      savedThread: "chat-saved",
+      unsentMarker: null,
+    });
+    expect(opening).toEqual({ savedThread: null, unsentMarker: "opening" });
+
+    const ready = unsentChatReloadTarget(
+      { savedThread: "chat-saved", unsentMarker: opening.unsentMarker },
+      ThreadId.parse("chat-new"),
+    );
+    expect(ready).toEqual({ savedThread: null, unsentMarker: "chat-new" });
+  });
+  test("a stale chat observer cannot replace the active New-chat marker", () => {
+    const previous = ThreadId.parse("chat-previous");
+    const current = ThreadId.parse("chat-current");
+
+    expect(isCurrentUnsentChat(current, current, current)).toBe(true);
+    expect(isCurrentUnsentChat(previous, null, previous)).toBe(false);
+  });
+});
 
 describe("ChatDraft: a chat with no prompt yet", () => {
   test("keeps its text in the folder's new-chat draft, not in a draft of its own", async () => {

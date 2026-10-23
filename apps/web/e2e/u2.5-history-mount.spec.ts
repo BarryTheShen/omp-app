@@ -37,36 +37,45 @@ realTest(
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
-    const composer = await startChat(page);
-    await sendPrompt(composer, "hello probe");
-    await expectReplies(page, 1);
-    // The issue's steps as written, with one prompt: Up fills the composer, Up again stays at the
-    // oldest prompt, and Down restores the empty draft.
-    await composer.focus();
-    await composer.press("ArrowUp");
-    await expect(composer).toHaveValue("hello probe");
-    await composer.press("ArrowUp");
-    await expect(composer).toHaveValue("hello probe");
-    await composer.press("ArrowDown");
-    await expect(composer).toHaveValue("");
-    await sendPrompt(composer, "second probe");
-    await expectReplies(page, 2);
+    try {
+      const composer = await startChat(page);
+      await sendPrompt(composer, "hello probe");
+      await expectReplies(page, 1);
+      // The issue's steps as written, with one prompt: Up fills the composer, Up again stays at the
+      // oldest prompt, and Down restores the empty draft.
+      await composer.focus();
+      await composer.press("ArrowUp");
+      await expect(composer).toHaveValue("hello probe");
+      await composer.press("ArrowUp");
+      await expect(composer).toHaveValue("hello probe");
+      await composer.press("ArrowDown");
+      await expect(composer).toHaveValue("");
+      await sendPrompt(composer, "second probe");
+      await expectReplies(page, 2);
 
-    await composer.focus();
-    await composer.press("ArrowUp");
-    await expect(composer).toHaveValue("second probe");
-    await composer.press("ArrowUp");
-    await expect(composer).toHaveValue("hello probe");
-    await expectTokenBackground(page);
-    await page.screenshot({
-      path: join(screenshots, "fix-history-light-recalled.png"),
-      fullPage: true,
-    });
+      await composer.focus();
+      await composer.press("ArrowUp");
+      await expect(composer).toHaveValue("second probe");
+      await composer.press("ArrowUp");
+      await expect(composer).toHaveValue("hello probe");
+      await expectTokenBackground(page);
+      await page.screenshot({
+        path: join(screenshots, "fix-history-light-recalled.png"),
+        fullPage: true,
+      });
 
-    await composer.press("ArrowDown");
-    await expect(composer).toHaveValue("second probe");
-    await composer.press("ArrowDown");
-    await expect(composer).toHaveValue("");
+      await composer.press("ArrowDown");
+      await expect(composer).toHaveValue("second probe");
+      await composer.press("ArrowDown");
+      await expect(composer).toHaveValue("");
+    } catch (error) {
+      const screenshotPath = testInfo.outputPath("first-failure.png");
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
+      const original = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `RUNTIME-DIAG problems=${JSON.stringify(realApp.problems)} screenshot=${screenshotPath}\n${original}`,
+      );
+    }
   },
 );
 
@@ -181,13 +190,13 @@ realTest(
     await expectReplies(page, 1);
 
     await composer.fill("my draft");
-    // The draft autosaves every 10 s; wait past one save so the saved draft is "my draft".
-    await page.waitForTimeout(11_000);
+    // The draft autosaves every 1 s; wait past one save so the stored draft is "my draft".
+    await page.waitForTimeout(2_000);
     await composer.press("Home");
     await composer.press("ArrowUp");
     await expect(composer).toHaveValue("hello probe");
-    // A recalled prompt must not be saved over the draft, so wait past the next autosave too.
-    await page.waitForTimeout(11_000);
+    // A recalled prompt must not be saved over the draft; wait past another autosave.
+    await page.waitForTimeout(2_000);
     await page.reload();
     await expect(composer).toHaveValue("my draft", { timeout: 60_000 });
   },

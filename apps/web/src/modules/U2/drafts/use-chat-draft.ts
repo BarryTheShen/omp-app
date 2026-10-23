@@ -1,5 +1,5 @@
 import type { FolderPath, ThreadId } from "@omp-app/contracts";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useDisposeWhenReplaced } from "@/modules/U4/host";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import { ChatDraft } from "./chat-draft";
@@ -9,7 +9,7 @@ import type { DraftController, DraftStoreAdapter } from "./drafts";
 /** A chat's messages as the draft needs them: whether the chat has any. Its runtime store is one. */
 export interface ChatMessagesSource {
   subscribe(listener: () => void): () => void;
-  getSnapshot(): { readonly messageOrder: readonly string[] };
+  getSnapshot(): { readonly messageOrder: readonly string[]; readonly hasUserMessage?: boolean };
 }
 
 export interface UseChatDraftOptions {
@@ -42,6 +42,8 @@ export interface UseChatDraftResult {
   readonly retry: () => void;
   /** Keeps this tab's text, or takes the other tab's, for a draft conflict the composer shows. */
   readonly resolveConflict: (choice: "local" | "remote") => Promise<void>;
+  /** The chat shows a message it did not show before: a send in progress was admitted, so its draft clears now. */
+  readonly noteSent: () => void;
 }
 
 /**
@@ -60,7 +62,12 @@ export function useChatDraft({
   const lifecycle = typeof window === "undefined" ? undefined : window;
   // A chat that starts unsent is new only while it has no messages; a chat that already has some keeps its own draft.
   // While a New chat opens over this chat, the caller passes no messages for it, so the messages source changes and the
-  // draft is built again.
+  // draft is built again. An unsent chat's draft is the folder's, so the chat is not built again when its thread id
+  // arrives: building it again would load the folder draft again and blank the composer while it loads. It takes the
+  // id with `setThreadId` instead.
+  const [staleChat, setStaleChat] = useState(0);
+  const draftThreadKey = startsUnsent && folder !== null ? null : threadId;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: an unsent chat takes its thread id through `setThreadId`, and `staleChat` builds the chat again when it cannot take the id.
   const chat = useMemo(
     () =>
       new ChatDraft({
@@ -71,17 +78,21 @@ export function useChatDraft({
         lifecycle,
         buffer,
       }),
-    [draftStore, folder, threadId, startsUnsent, messages, lifecycle, buffer],
+    [draftStore, folder, draftThreadKey, staleChat, startsUnsent, messages, lifecycle, buffer],
   );
   // The chat is disposed once it is replaced or unmounted; StrictMode's simulated remount keeps it.
   useDisposeWhenReplaced(chat);
+  useEffect(() => {
+    // A chat whose draft belongs to another thread cannot take this id: it is built again with the id.
+    if (!chat.setThreadId(threadId)) setStaleChat((count) => count + 1);
+  }, [chat, threadId]);
   const subscribeToMessages = useCallback(
     (listener: () => void) => messages.subscribe(listener),
     [messages],
   );
   const hasMessages = useSyncExternalStore(
     subscribeToMessages,
-    () => messages.getSnapshot().messageOrder.length > 0,
+    () => messages.getSnapshot().hasUserMessage ?? messages.getSnapshot().messageOrder.length > 0,
   );
   useEffect(() => {
     chat.observe({ loaded, hasMessages });
@@ -93,5 +104,6 @@ export function useChatDraft({
     submit: chat.submit,
     retry: chat.retry,
     resolveConflict: chat.resolveConflict,
+    noteSent: chat.noteSent,
   };
 }

@@ -194,6 +194,15 @@ function ComposerAttachmentProbe() {
   );
 }
 
+function ComposerTextInjector({ text }: { readonly text: string }) {
+  const composer = useAui().composer;
+  return (
+    <button onClick={() => composer.setText(text)} type="button">
+      Inject text
+    </button>
+  );
+}
+
 class MemoryDraftStore implements DraftStoreAdapter {
   public value: Draft | null = null;
   private revision = 0;
@@ -447,6 +456,41 @@ describe("U2 composer CC6 acceptance", () => {
     view.unmount();
   });
 
+  test("keeps text that arrives while a send waits for admission, and clears the composer when none did", async () => {
+    let releaseAdmission!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      releaseAdmission = resolve;
+    });
+    const runtime = createRuntime(U2_STATE_FIXTURES.idle, { beforeSend: () => admission });
+    const view = renderComposer(runtime, {
+      children: <ComposerTextInjector text="Something newer" />,
+    });
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "Sent text" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(runtime.sends).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Inject text" }));
+    await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("Something newer"));
+
+    await act(async () => {
+      releaseAdmission();
+      await admission;
+    });
+
+    await waitFor(() => expect(runtime.sends).toHaveLength(1));
+    expect((input as HTMLTextAreaElement).value).toBe("Something newer");
+    view.unmount();
+
+    const plain = createRuntime(U2_STATE_FIXTURES.idle);
+    const plainView = renderComposer(plain);
+    const plainInput = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(plainInput, { target: { value: "Sent and gone" } });
+    fireEvent.keyDown(plainInput, { key: "Enter" });
+    await waitFor(() => expect(plain.sends).toHaveLength(1));
+    await waitFor(() => expect((plainInput as HTMLTextAreaElement).value).toBe(""));
+    plainView.unmount();
+  });
+
   test("keeps the exact composer text and attachment after an admission failure", async () => {
     const runtime = createRuntime(U2_STATE_FIXTURES.idle, {
       beforeSend: async () => {
@@ -579,9 +623,13 @@ describe("U2 composer CC6 acceptance", () => {
 
     await first.load();
     first.setDraft("Autosaved composer text", refs);
-    expect(timers.scheduledDelays).toContain(10_000);
-    timers.runDue(10_000);
+    expect(timers.scheduledDelays).toContain(1_000);
+    expect(timers.scheduledDelays).toContain(5_000);
+    timers.runDue(1_000);
     await waitFor(() => expect(store.value?.text).toBe("Autosaved composer text"));
+    first.setDraft("Latest text before ceiling", refs);
+    timers.runDue(5_000);
+    await waitFor(() => expect(store.value?.text).toBe("Latest text before ceiling"));
 
     first.setDraft("Latest text flushed when hidden", refs);
     lifecycle.document.visibilityState = "hidden";

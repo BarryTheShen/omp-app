@@ -120,6 +120,86 @@ class FakeDraftStore implements DraftStoreAdapter {
     for (const listener of this.listeners) listener(change);
   }
 }
+type ClearOutcome = "success" | "notCleared";
+
+class GatedClearStore extends ScopedDraftStore {
+  clearStarted = false;
+  private readonly outcome: ClearOutcome;
+  private pending:
+    | {
+        readonly args: Parameters<ScopedDraftStore["clear"]>[0];
+        readonly resolve: (result: { cleared: boolean; revision: string | null }) => void;
+        readonly reject: (error: unknown) => void;
+      }
+    | undefined;
+
+  public constructor(outcome: ClearOutcome = "success") {
+    super();
+    this.outcome = outcome;
+  }
+  private getHeld = false;
+  private pendingGet:
+    | {
+        readonly args: Parameters<ScopedDraftStore["get"]>[0];
+        readonly resolve: (result: Awaited<ReturnType<ScopedDraftStore["get"]>>) => void;
+      }
+    | undefined;
+
+  gateGet(): void {
+    this.getHeld = true;
+  }
+
+  override get(
+    args: Parameters<ScopedDraftStore["get"]>[0],
+  ): Promise<Awaited<ReturnType<ScopedDraftStore["get"]>>> {
+    if (!this.getHeld) return super.get(args);
+    this.getStarted = true;
+    const { promise, resolve } =
+      Promise.withResolvers<Awaited<ReturnType<ScopedDraftStore["get"]>>>();
+    this.pendingGet = { args, resolve };
+    return promise;
+  }
+
+  getStarted = false;
+
+  releaseGet(): void {
+    const pending = this.pendingGet;
+    this.pendingGet = undefined;
+    this.getHeld = false;
+    if (pending === undefined) throw new Error("get was not pending");
+    void super.get(pending.args).then(pending.resolve);
+  }
+
+  override clear(
+    args: Parameters<ScopedDraftStore["clear"]>[0],
+  ): Promise<{ cleared: boolean; revision: string | null }> {
+    this.clearStarted = true;
+    const { promise, resolve, reject } = Promise.withResolvers<{
+      cleared: boolean;
+      revision: string | null;
+    }>();
+    this.pending = { args, resolve, reject };
+    return promise;
+  }
+
+  release(): void {
+    const pending = this.pending;
+    this.pending = undefined;
+    if (pending === undefined) throw new Error("clear was not pending");
+    if (this.outcome === "notCleared") {
+      pending.resolve({ cleared: false, revision: null });
+      return;
+    }
+    void super.clear(pending.args).then(pending.resolve, pending.reject);
+  }
+
+  reject(error: unknown): void {
+    const pending = this.pending;
+    this.pending = undefined;
+    if (pending === undefined) throw new Error("clear was not pending");
+    pending.reject(error);
+  }
+}
 
 function prompt(text: string): PromptIntent {
   return { mode: "prompt", text, delivery: "new" };
@@ -140,7 +220,9 @@ describe("U2.4 DraftController", () => {
 
   test("keeps text typed while the draft is still loading and saves against the stored revision", async () => {
     const timers = new FakeTimers();
+    const storage = new MemoryDraftStorage();
     const store = new FakeDraftStore();
+    const quiet = (): void => undefined;
     store.draft = {
       scope,
       text: "older draft",
@@ -158,9 +240,15 @@ describe("U2.4 DraftController", () => {
       await gate;
       return read();
     };
-    const controller = new DraftController({ store, scope, timers });
+    const controller = new DraftController({
+      store,
+      scope,
+      timers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
     const loading = controller.load();
     controller.setDraft("typed first", []);
+    expect(createDraftBuffer(storage, quiet).read(scope)?.input.text).toBe("typed first");
     release();
     await loading;
     expect(controller.getSnapshot()).toMatchObject({
@@ -218,6 +306,47 @@ describe("U2.4 DraftController", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(store.saves).toHaveLength(1);
+  });
+  test("captures the composer's current value before the pagehide flush", async () => {
+    const timers = new FakeTimers();
+    const lifecycle = new FakeLifecycle();
+    const store = new FakeDraftStore();
+    const controller = new DraftController({ store, scope, timers, lifecycle });
+    await controller.load();
+    controller.setDraft("rendered", []);
+    await timers.runAll();
+    controller.setLifecycleReader({
+      read: () => ({ text: "latest", attachments: [] }),
+    });
+    lifecycle.emit("pagehide");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.draft?.text).toBe("latest");
+  });
+
+  test("saves text typed during a slow save once that save lands, without another keystroke", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    const release = Promise.withResolvers<void>();
+    const save = store.save.bind(store);
+    let slow = true;
+    store.save = async (args: Parameters<typeof save>[0]) => {
+      if (slow) {
+        slow = false;
+        await release.promise;
+      }
+      return save(args);
+    };
+    const controller = new DraftController({ store, scope, timers });
+    await controller.load();
+    controller.setDraft("one", []);
+    await timers.runAll(); // the autosave starts the first save, which waits for release
+    controller.setDraft("one two", []); // typed while that save is in flight
+    await timers.runAll(); // its timer fires: the flush joins the save in flight and starts none
+    release.resolve();
+    await controller.flush(); // joins the save in flight: it has landed with "one" when this returns
+    await timers.runAll(); // the timer the landed save leaves behind, if any
+    expect(store.draft?.text).toBe("one two");
   });
 
   test("turns a CAS conflict into a visible local/remote choice", async () => {
@@ -301,7 +430,7 @@ describe("U2.4 DraftController", () => {
     expect(store.clearCount).toBe(0);
     expect(controller.getSnapshot().failedSends).toHaveLength(1);
     await controller.submit(prompt("admitted"), async () => undefined);
-    expect(store.clearCount).toBe(1);
+    await expect.poll(() => store.clearCount).toBe(1);
     expect(controller.getSnapshot().text).toBe("");
   });
 
@@ -318,7 +447,7 @@ describe("U2.4 DraftController", () => {
     ).rejects.toBe(failure);
     expect(controller.getSnapshot().failedSends).toHaveLength(1);
     await controller.submit({ mode: "bash", text: "pwd", delivery: "new" }, async () => undefined);
-    expect(store.clearCount).toBe(1);
+    await expect.poll(() => store.clearCount).toBe(1);
     expect(controller.getSnapshot()).toMatchObject({ text: "", failedSends: [] });
   });
 
@@ -338,7 +467,7 @@ describe("U2.4 DraftController", () => {
       { mode: "python", text: "print(1)", delivery: "new" },
       async () => undefined,
     );
-    expect(store.clearCount).toBe(1);
+    await expect.poll(() => store.clearCount).toBe(1);
     expect(controller.getSnapshot()).toMatchObject({ text: "", failedSends: [] });
   });
 
@@ -360,6 +489,28 @@ describe("U2.4 DraftController", () => {
     expect(controller.getSnapshot().failedSends[0]?.text).toBe("!!echo excluded-out");
   });
 
+  test("ignores an earlier echo of this controller's own save after a newer save", async () => {
+    const store = new FakeDraftStore();
+    const controller = new DraftController({ store, scope });
+    await controller.load();
+    controller.setDraft("first", []);
+    await controller.flush();
+    const firstSave = store.draft;
+    controller.setDraft("second", []);
+    await controller.flush();
+    expect(firstSave).not.toBeNull();
+    expect(controller.getSnapshot()).toMatchObject({
+      text: "second",
+      dirty: false,
+      status: "ready",
+    });
+    store.emit(firstSave);
+    expect(controller.getSnapshot()).toMatchObject({
+      text: "second",
+      dirty: false,
+      status: "ready",
+    });
+  });
   test("turns another tab's scoped change into a conflict while dirty and adopts it while clean", async () => {
     const store = new FakeDraftStore();
     const controller = new DraftController({ store, scope });
@@ -450,6 +601,270 @@ describe("DraftController: writes and clears across controllers", () => {
 describe("DraftController: unsaved text kept in this tab", () => {
   const folderScope: DraftScope = { kind: "folder", folder: FolderPath.parse("/workspace/app") };
   const quiet = (): void => undefined;
+  test("a reload whose stored draft already holds the kept text restores that text once", async () => {
+    const store = new FakeDraftStore();
+    const storage = new MemoryDraftStorage();
+    const first = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await first.load();
+    first.setDraft("offline send", []);
+    // The save lands, but its answer never reaches the page: the store holds the text at a newer revision than the copy kept.
+    await first.flush();
+    createDraftBuffer(storage, quiet).write(folderScope, {
+      input: { text: "offline send", attachments: [], failedSends: [] },
+      baseRevision: null,
+      saving: null,
+    });
+
+    const reloaded = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await reloaded.load();
+
+    expect(reloaded.getSnapshot().text).toBe("offline send");
+  });
+
+  test("a send the chat shows as admitted clears its local copy before the answer comes", async () => {
+    const store = new FakeDraftStore();
+    const storage = new MemoryDraftStorage();
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    let admit: () => void = () => undefined;
+    const admitted = new Promise<void>((resolve) => {
+      admit = resolve;
+    });
+    const sending = controller.submit(prompt("sent text"), () => admitted);
+    // The chat shows the send's message: the local copy goes at once, before the answer that admits the send.
+    controller.noteSent();
+    const copyAtOnce = createDraftBuffer(storage, quiet).read(folderScope);
+    const textAtOnce = controller.getSnapshot().text;
+    admit();
+    await sending;
+    expect(copyAtOnce?.input.text ?? "").toBe("");
+    expect(textAtOnce).toBe("");
+    expect(controller.getSnapshot()).toMatchObject({ text: "", status: "ready" });
+  });
+
+  test("a controller that loads while another send is in flight waits for that send, and restores none of it", async () => {
+    const store = new FakeDraftStore();
+    const storage = new MemoryDraftStorage();
+    const sender = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await sender.load();
+    sender.setDraft("sent text", []);
+    let admit: () => void = () => undefined;
+    const admitted = new Promise<void>((resolve) => {
+      admit = resolve;
+    });
+    const sending = sender.submit(prompt("sent text"), () => admitted);
+    // A later save for the scope must not hide the send that is still being admitted from a load.
+    await sender.flush();
+    const next = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    const loading = next.load();
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    admit();
+    await sending;
+    await loading;
+    expect(next.getSnapshot().text).toBe("");
+  });
+
+  test("a send that clears while the chat's own save of its text is in flight leaves no saved copy for a later load", async () => {
+    class SlowSaveStore extends ScopedDraftStore {
+      release: () => void = () => undefined;
+      private readonly gate = new Promise<void>((resolve) => {
+        this.release = resolve;
+      });
+      override async save(args: Parameters<ScopedDraftStore["save"]>[0]): Promise<Draft> {
+        await this.gate;
+        return super.save(args);
+      }
+    }
+    const store = new SlowSaveStore();
+    const storage = new MemoryDraftStorage();
+    const sender = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await sender.load();
+    sender.setDraft("sent text", []);
+    let admit: () => void = () => undefined;
+    const admitted = new Promise<void>((resolve) => {
+      admit = resolve;
+    });
+    const sending = sender.submit(prompt("sent text"), () => admitted);
+    // The chat's own save of the text starts, as when the chat is left while the send is admitted, and is still in flight.
+    const saving = sender.flush();
+    admit();
+    // The clear runs while the save is still held: its revision is read before the save lands.
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    store.release();
+    await Promise.all([sending, saving]);
+    const reader = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      // A reader with no local copy restores only what the store keeps (the buffer copy would hide a stale store copy).
+      buffer: createDraftBuffer(new MemoryDraftStorage(), quiet),
+    });
+    await reader.load();
+    expect(reader.getSnapshot().text).toBe("");
+  });
+
+  test("clears the local state before a server clear settles, and keeps the newer empty copy until the clear lands", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const buffer = createDraftBuffer(storage, quiet);
+    await store.save({
+      scope: folderScope,
+      draft: { text: "sent text", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+    buffer.write(folderScope, {
+      input: { text: "sent text", attachments: [], failedSends: [] },
+      baseRevision: controller.getSnapshot().revision,
+      saving: null,
+    });
+    const clearing = controller.clearAfterAdmission();
+    try {
+      await expect.poll(() => store.clearStarted).toBe(true);
+      expect(controller.getSnapshot().text).toBe("");
+      expect(buffer.read(folderScope)?.input.text ?? "").toBe("");
+      expect(buffer.read(folderScope)?.saving).toBeNull();
+      expect(JSON.stringify(buffer.read(folderScope))).not.toContain("sent text");
+    } finally {
+      // A failure must not leave the clear held: its write would block every later test on this scope.
+      if (store.clearStarted) store.release();
+    }
+    await clearing;
+    expect(buffer.read(folderScope)).toBeNull();
+  });
+
+  test("a server clear that rejects leaves the box empty, and the buffer keeps the newer empty copy", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const buffer = createDraftBuffer(storage, quiet);
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    await controller.flush();
+    const clearing = controller.clearAfterAdmission("sent text");
+    await expect.poll(() => store.clearStarted).toBe(true);
+    store.reject(new AppFailure({ code: "unavailable", message: "clear failed", retryable: true }));
+    await clearing;
+    expect(controller.getSnapshot().text).toBe("");
+    expect(buffer.read(folderScope)?.input.text).toBe("");
+    expect(buffer.read(folderScope)?.saving).toBeNull();
+    expect(JSON.stringify(buffer.read(folderScope))).not.toContain("sent text");
+  });
+
+  test("text typed after a failed clear is kept, and the sent text does not come back", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const buffer = createDraftBuffer(storage, quiet);
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    await controller.flush();
+    const clearing = controller.clearAfterAdmission("sent text");
+    await expect.poll(() => store.clearStarted).toBe(true);
+    controller.setDraft("typed after", []);
+    store.reject(new AppFailure({ code: "unavailable", message: "clear failed", retryable: true }));
+    await clearing;
+    expect(controller.getSnapshot().text).toBe("typed after");
+    expect(buffer.read(folderScope)?.input.text).toBe("typed after");
+  });
+
+  test("a server clear that reports a conflict leaves the box empty, and the sent text does not come back", async () => {
+    const store = new GatedClearStore("notCleared");
+    const storage = new MemoryDraftStorage();
+    const buffer = createDraftBuffer(storage, quiet);
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    await controller.flush();
+    store.gateGet();
+    const clearing = controller.clearAfterAdmission("sent text");
+    await expect.poll(() => store.clearStarted).toBe(true);
+    store.release();
+    await expect.poll(() => store.getStarted).toBe(true);
+    expect(buffer.read(folderScope)?.input.text).toBe("");
+    store.releaseGet();
+    await clearing;
+    expect(controller.getSnapshot().text).toBe("");
+    expect(buffer.read(folderScope)?.input.text).toBe("");
+    expect(controller.getSnapshot().status).toBe("conflict");
+  });
+  test("a server clear conflict leaves the box empty, without throwing", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const buffer = createDraftBuffer(storage, quiet);
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    await controller.flush();
+    store.gateGet();
+    const clearing = controller.clearAfterAdmission("sent text");
+    await expect.poll(() => store.clearStarted).toBe(true);
+    store.reject(new AppFailure({ code: "conflict", message: "changed", retryable: true }));
+    await expect.poll(() => store.getStarted).toBe(true);
+    expect(buffer.read(folderScope)?.input.text).toBe("");
+    store.releaseGet();
+    await clearing;
+    expect(controller.getSnapshot().text).toBe("");
+    expect(buffer.read(folderScope)?.input.text).toBe("");
+    expect(controller.getSnapshot().status).toBe("conflict");
+  });
 
   test("typed text is kept in the buffer until the server saves it, and the save clears it", async () => {
     const store = new ScopedDraftStore();
@@ -484,6 +899,145 @@ describe("DraftController: unsaved text kept in this tab", () => {
     await controller.submit(prompt("sent text"), async () => undefined);
 
     expect(buffer.read(folderScope)).toBeNull();
+  });
+  test("an admitted send clears its scope without waiting on its own tracked write", async () => {
+    const store = new ScopedDraftStore();
+    await store.save({
+      scope: folderScope,
+      draft: { text: "old draft", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const controller = new DraftController({ store, scope: folderScope, timers: idleTimers });
+    await controller.load();
+    controller.setDraft("sent text", []);
+
+    const submitted = controller.submit(prompt("sent text"), async () => undefined);
+    await expect.poll(() => store.clears.length).toBe(1);
+    await submitted;
+
+    await expect.poll(() => store.text(folderScope)).toBeUndefined();
+    expect(controller.getSnapshot()).toMatchObject({ text: "", dirty: false });
+  });
+
+  test("a send settles once its prompt is admitted, and its clear finishes after that", async () => {
+    const store = new GatedClearStore();
+    const controller = new DraftController({ store, scope: folderScope, timers: idleTimers });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    await controller.flush();
+    let settled = false;
+    const sending = controller
+      .submit(prompt("sent text"), async () => undefined)
+      .then(() => {
+        settled = true;
+      });
+    try {
+      await expect.poll(() => store.clearStarted).toBe(true);
+      await expect.poll(() => settled).toBe(true);
+    } finally {
+      // A failure must not leave the clear held: its write would block every later test on this scope.
+      if (store.clearStarted) store.release();
+    }
+    await sending;
+    expect(store.text(folderScope)).toBeUndefined();
+  });
+
+  test("a read that begins during an admission waits for the admitted send's clear, and restores none of the sent text", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const sender = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await sender.load();
+    sender.setDraft("sent text", []);
+    await sender.flush();
+    const admission = Promise.withResolvers<void>();
+    const sending = sender.submit(prompt("sent text"), () => admission.promise);
+    const reader = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    let loaded = false;
+    const loading = reader.load().then(() => {
+      loaded = true;
+    });
+    admission.resolve();
+    try {
+      await expect.poll(() => store.clearStarted).toBe(true);
+      for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+      expect(loaded).toBe(false);
+    } finally {
+      if (store.clearStarted) store.release();
+    }
+    await Promise.all([sending, loading]);
+    expect(reader.getSnapshot().text).toBe("");
+  });
+
+  /** A store whose first server clear fails, as a dropped connection does; the clears after it succeed. */
+  class ClearFailsOnce extends ScopedDraftStore {
+    serverClearCalls = 0;
+    override async clear(args: Parameters<ScopedDraftStore["clear"]>[0]) {
+      this.serverClearCalls += 1;
+      if (this.serverClearCalls === 1) {
+        throw new AppFailure({ code: "unavailable", message: "clear failed", retryable: true });
+      }
+      return super.clear(args);
+    }
+  }
+
+  test("a clear that fails after the send is admitted leaves the box empty, records no failed send, and is retried", async () => {
+    const store = new ClearFailsOnce();
+    await store.save({
+      scope: folderScope,
+      draft: { text: "sent text", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const timers = new FakeTimers();
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers,
+      buffer: createDraftBuffer(new MemoryDraftStorage(), quiet),
+    });
+    await controller.load();
+    await controller.submit(prompt("sent text"), async () => undefined);
+    expect(controller.getSnapshot()).toMatchObject({ text: "", failedSends: [] });
+    await expect.poll(() => store.serverClearCalls).toBe(1);
+    await timers.runAll();
+    await expect.poll(() => store.text(folderScope)).toBeUndefined();
+    expect(controller.getSnapshot()).toMatchObject({ text: "", failedSends: [], status: "ready" });
+  });
+
+  test("a reload before the clear's retry succeeds shows an empty box, not the sent text", async () => {
+    const store = new ClearFailsOnce();
+    await store.save({
+      scope: folderScope,
+      draft: { text: "sent text", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const storage = new MemoryDraftStorage();
+    const first = new DraftController({
+      store,
+      scope: folderScope,
+      timers: new FakeTimers(),
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await first.load();
+    await first.submit(prompt("sent text"), async () => undefined);
+    await expect.poll(() => store.serverClearCalls).toBe(1);
+    const reloaded = new DraftController({
+      store,
+      scope: folderScope,
+      timers: new FakeTimers(),
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await reloaded.load();
+    expect(reloaded.getSnapshot().text).toBe("");
   });
 
   test("a new controller restores text typed before the app stopped, when the server draft has not changed", async () => {
@@ -595,6 +1149,29 @@ describe("DraftController: unsaved text kept in this tab", () => {
     expect(controller.getSnapshot()).toMatchObject({ text: "first, then more", dirty: true });
     await controller.flush();
     expect(store.text(folderScope)).toBe("first, then more");
+  });
+  test("waits for an autosave before reading the revision to clear an admitted draft", async () => {
+    class GatedSaveStore extends ScopedDraftStore {
+      private readonly gate = Promise.withResolvers<void>();
+      release(): void {
+        this.gate.resolve();
+      }
+      override async save(args: Parameters<ScopedDraftStore["save"]>[0]): Promise<Draft> {
+        await this.gate.promise;
+        return super.save(args);
+      }
+    }
+    const store = new GatedSaveStore();
+    const controller = new DraftController({ store, scope: folderScope, timers: idleTimers });
+    await controller.load();
+    controller.setDraft("sent text", []);
+    const saving = controller.flush();
+    const clearing = controller.clearAfterAdmission("sent text");
+    await Promise.resolve();
+    expect(store.clears).toEqual([]);
+    store.release();
+    await Promise.all([saving, clearing]);
+    expect(store.clears).toEqual(["folder:/workspace/app"]);
   });
 
   test("a failed save keeps the text in the buffer, so it is still there after the app stops", async () => {
@@ -732,6 +1309,97 @@ describe("DraftController: unsaved text kept in this tab", () => {
 
     expect(after.getSnapshot().text).toBe("typed once");
   });
+
+  /** Lets every promise continuation that is ready run, without any wall-clock wait. */
+  async function settle(): Promise<void> {
+    for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+  }
+
+  /** A store whose read waits until `release` runs, so the test types while the draft is loading. */
+  function gatedStore(): { store: FakeDraftStore; release: () => void } {
+    const store = new FakeDraftStore();
+    const gate = Promise.withResolvers<void>();
+    const read = store.get.bind(store);
+    store.get = async () => {
+      await gate.promise;
+      return read();
+    };
+    return { store, release: () => gate.resolve() };
+  }
+
+  const OLDER = "older unsent text the server never got";
+
+  test("a key typed while the draft loads goes after the older text in the local copy, so a kill at that moment loses nothing", async () => {
+    const storage = new MemoryDraftStorage();
+    createDraftBuffer(storage, quiet).write(folderScope, {
+      input: { text: OLDER, attachments: [], failedSends: [] },
+      baseRevision: null,
+      saving: null,
+    });
+    const { store, release } = gatedStore();
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    const loading = controller.load();
+    await settle();
+
+    controller.setDraft("n", []);
+
+    expect(createDraftBuffer(storage, quiet).read(folderScope)?.input.text).toBe(`${OLDER}\n\nn`);
+    release();
+    await loading;
+    expect(controller.getSnapshot().text).toBe(`${OLDER}\n\nn`);
+  });
+
+  test("a page killed while the draft loads and a key was typed reopens with the older text and the key", async () => {
+    const storage = new MemoryDraftStorage();
+    createDraftBuffer(storage, quiet).write(folderScope, {
+      input: { text: OLDER, attachments: [], failedSends: [] },
+      baseRevision: null,
+      saving: null,
+    });
+    const { store } = gatedStore();
+    const killed = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    void killed.load();
+    await settle();
+    killed.setDraft("n", []);
+
+    const reopened = new DraftController({
+      store: new FakeDraftStore(),
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await reopened.load();
+
+    expect(reopened.getSnapshot().text).toBe(`${OLDER}\n\nn`);
+  });
+
+  test("a save that landed without its answer, tried again over its own revision, is not a conflict", async () => {
+    const store = new LandingStore();
+    const controller = new DraftController({ store, scope: folderScope, timers: idleTimers });
+    await controller.load();
+    controller.setDraft("typed once", []);
+    await expect(controller.flush()).rejects.toBeInstanceOf(AppFailure);
+
+    await controller.flush();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "ready",
+      conflict: null,
+      dirty: false,
+    });
+    expect(controller.getSnapshot().revision).not.toBeNull();
+    expect(store.text(folderScope)).toBe("typed once");
+  });
 });
 
 describe("DraftController: a failed step and a conflict", () => {
@@ -800,6 +1468,28 @@ describe("DraftController: a failed step and a conflict", () => {
     await controller.retry();
     expect(controller.getSnapshot()).toMatchObject({ status: "ready", dirty: false, error: null });
     expect(store.draft?.text).toBe("kept text");
+  });
+  test("a failed save retries itself after the store becomes available", async () => {
+    class FlakySaveStore extends FakeDraftStore {
+      failNextSave = true;
+      override async save(args: Parameters<FakeDraftStore["save"]>[0]): Promise<Draft> {
+        if (this.failNextSave) {
+          this.failNextSave = false;
+          throw new AppFailure({ code: "internal", message: "Disk full", retryable: true });
+        }
+        return super.save(args);
+      }
+    }
+    const store = new FlakySaveStore();
+    const timers = new FakeTimers();
+    const controller = new DraftController({ store, scope, timers });
+    await controller.load();
+    controller.setDraft("retry this text", []);
+
+    await expect(controller.flush()).rejects.toMatchObject({ appError: { message: "Disk full" } });
+    await timers.runAll();
+    expect(store.draft?.text).toBe("retry this text");
+    expect(controller.getSnapshot()).toMatchObject({ status: "ready", dirty: false });
   });
 
   test("a clear that conflicts while a draft moves out waits for a choice, not a dead-end error", async () => {

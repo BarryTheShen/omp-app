@@ -83,6 +83,8 @@ export interface ComposerSurfaceProps {
    * (for example `local://paste-1.md`). Without it the choice offers only the wrapped block and inline.
    */
   readonly savePasteFile?: (text: string) => Promise<string>;
+  /** Gives lifecycle persistence access to the textarea's latest DOM value. */
+  readonly onInputRef?: (input: HTMLTextAreaElement | null) => void;
 }
 
 function attachmentRef(attachment: Attachment): AttachmentRef {
@@ -207,6 +209,7 @@ export function ComposerSurface({
   showAttachmentNames = true,
   toolbar,
   savePasteFile,
+  onInputRef,
   onDoubleLeftArrow,
   children,
   placeholder = "Send a message...",
@@ -214,6 +217,8 @@ export function ComposerSurface({
   const aui = useAui();
   const composer = aui.composer;
   const text = useAuiState((state) => state.composer.text);
+  const latestText = useRef(text);
+  latestText.current = text;
   const attachments = useAuiState((state) => state.composer.attachments);
   const isStreaming = useAuiState((state) => state.thread.isRunning);
   const canCancel = useAuiState(
@@ -226,6 +231,13 @@ export function ComposerSurface({
   const composingRef = useRef(false);
   const arrowGesture = useRef<ArrowGesture>(NO_ARROW_GESTURE);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const attachInputRef = useCallback(
+    (input: HTMLTextAreaElement | null) => {
+      inputRef.current = input;
+      onInputRef?.(input);
+    },
+    [onInputRef],
+  );
   const blockedId = useId();
   // A large paste waiting for the person's choice, and a counter for the names of pasted-text chips.
   const [largePaste, setLargePaste] = useState<LargePaste | null>(null);
@@ -301,13 +313,14 @@ export function ComposerSurface({
       }
       setError(null);
       setIsSubmitting(true);
+      const submittedText = text;
       try {
         if (isCommand) {
           await submitModeInput(command, "new", capabilities, submitPrompt);
         } else {
           for (const intent of intents) await submitPrompt(intent);
         }
-        await composer.reset();
+        if (latestText.current === submittedText) await composer.reset();
         inputRef.current?.focus();
       } catch (cause) {
         setError(appFailure(cause).appError);
@@ -537,7 +550,7 @@ export function ComposerSurface({
         >
           {showAttachmentNames && <AttachmentChips manager={attachmentManager} />}
           <ComposerPrimitive.Input
-            ref={inputRef}
+            ref={attachInputRef}
             aria-label={inputLabel}
             data-focus-scope="composer-input"
             aria-describedby={notSentReason === undefined ? undefined : blockedId}

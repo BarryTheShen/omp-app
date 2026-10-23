@@ -26,7 +26,7 @@ export interface DraftBuffer {
   clearReplaced(scope: DraftScope): void;
 }
 
-/** The part of Web Storage the buffer uses. The app passes `sessionStorage`, so the copy lives in this tab. */
+/** The part of Web Storage the buffer uses. The app passes `localStorage`, so the copy survives a reload, a closed tab and a restarted browser. */
 export interface DraftBufferStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -64,6 +64,16 @@ function parseStoredReplaced(raw: string): DraftInput | null {
 
 function keyFor(scope: DraftScope): string {
   return `${KEY_PREFIX}${draftScopeStream(scope)}`;
+}
+
+/** Whether this browser holds unsent text for the scope. Storage the browser refuses to open holds none. */
+export function hasLocalDraft(scope: DraftScope): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(keyFor(scope)) !== null;
+  } catch {
+    return false;
+  }
 }
 
 function parseStored(raw: string): BufferedDraft | null {
@@ -160,9 +170,9 @@ export function createDraftBuffer(
   };
 }
 
-/** The buffer in this tab's session storage, or none outside a browser. */
-export function sessionDraftBuffer(onError: (error: unknown) => void): DraftBuffer | undefined {
+/** Keeps unsaved and replaced draft contents in local storage for this tab until saved or restored. */
+export function localDraftBuffer(onError: (error: unknown) => void): DraftBuffer | undefined {
   return typeof window === "undefined"
     ? undefined
-    : createDraftBuffer(window.sessionStorage, onError);
+    : createDraftBuffer(window.localStorage, onError);
 }

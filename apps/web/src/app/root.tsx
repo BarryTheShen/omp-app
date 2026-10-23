@@ -166,10 +166,15 @@ import type {
 } from "@/modules/U2/contract";
 import {
   type ChatMessagesSource,
+  composerDraftForLifecycle,
   createDraftStoreAdapter,
   type DraftController,
   DraftNotice,
-  sessionDraftBuffer,
+  hasLocalDraft,
+  isCurrentUnsentChat,
+  localDraftBuffer,
+  unsentChatReloadMarker,
+  unsentChatReloadTarget,
   useChatDraft,
   useComposerDraft,
 } from "@/modules/U2/drafts";
@@ -295,6 +300,11 @@ import {
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
+const UNSENT_CHAT_KEY = "omp.app.root.unsent-chat";
+
+function isSentMessageRole(role: string | undefined): boolean {
+  return role === "user" || role === "bashExecution" || role === "pythonExecution";
+}
 /**
  * The settings frame is 60 rem (960 px at the default size) and never wider than 94% of the window,
  * so a phone still shows a margin. It does not scroll: its panel's body does, so the title stays whole.
@@ -372,6 +382,35 @@ function writeSessionValue(key: string, value: string | null): void {
     // Reload persistence is best effort; the visible application remains usable.
   }
 }
+function readTabValue(key: string, fallback: string): string {
+  try {
+    return window.sessionStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeTabValue(key: string, value: string | null): void {
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    // The marker only restores the new-chat view; the local draft remains the durable copy.
+  }
+}
+
+function persistUnsentChatReload(threadId?: ThreadId): void {
+  const target = unsentChatReloadTarget(
+    {
+      savedThread: readSessionValue(THREAD_KEY, ""),
+      unsentMarker: readTabValue(UNSENT_CHAT_KEY, ""),
+    },
+    threadId,
+  );
+  writeSessionValue(THREAD_KEY, target.savedThread);
+  writeTabValue(UNSENT_CHAT_KEY, target.unsentMarker);
+}
+
 /** Runs `onExit` when its content leaves the screen: the overlay around it has closed, however it was closed. */
 function RunOnExit({
   onExit,
@@ -563,8 +602,9 @@ function DraftComposer({
   manager,
   onRetry,
   onResolve,
-  sendBlockedReason,
+  switching,
   onDoubleLeftArrow,
+  sendBlockedReason,
   savePasteFile,
   placeholder,
 }: {
@@ -585,6 +625,7 @@ function DraftComposer({
   readonly onRetry: () => void;
   /** Keeps this tab's text, or takes the other tab's, for a draft conflict. */
   readonly onResolve: (choice: "local" | "remote") => Promise<void>;
+  readonly switching: boolean;
   /** Why the composer cannot send right now; the text stays in the composer while it is set. */
   readonly sendBlockedReason?: string;
   /** Saves a large paste's full text as a file the chat's agent reads; the composer puts the reference in the box. */
@@ -605,11 +646,34 @@ function DraftComposer({
   );
 
   const text = useAuiState((state) => state.composer.text);
-  useComposerDraftOwner(controller);
+  const lifecycleText = useRef(text);
+  lifecycleText.current = text;
+  const inputElement = useRef<HTMLTextAreaElement | null>(null);
+  const setInputElement = useCallback((element: HTMLTextAreaElement | null) => {
+    inputElement.current = element;
+  }, []);
   const isRecalledPrompt = useIsRecalledPrompt();
+  const lifecycleReader = useMemo(
+    () => ({
+      read: () =>
+        composerDraftForLifecycle(
+          controller,
+          inputElement.current?.value ?? lifecycleText.current,
+          manager.toDraftRefs(),
+          isRecalledPrompt,
+        ),
+    }),
+    [controller, isRecalledPrompt, manager],
+  );
+  useLayoutEffect(() => {
+    controller.setLifecycleReader(lifecycleReader);
+    return () => controller.setLifecycleReader(undefined);
+  }, [controller, lifecycleReader]);
+  useComposerDraftOwner(controller);
   useComposerDraft({
     chat,
     controller,
+    switching,
     text,
     composer: aui.composer,
     attachments: manager,
@@ -626,6 +690,7 @@ function DraftComposer({
   return (
     <ComposerSurface
       capabilities={capabilities}
+      onInputRef={setInputElement}
       cancel={cancel}
       disabled={snapshot.status === "error"}
       replaced={editing}
@@ -691,7 +756,7 @@ interface ActiveThreadProps {
   readonly catalog: SessionCatalogModel | null;
   readonly onOpenSettings: (threadId: ThreadId | null, restoreFocus?: HTMLElement) => void;
   readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
-  /** Called when the person sends a message (the sidebar's list is fetched again once it is answered). */
+  readonly claimReloadTarget: () => (() => void) | undefined;
   readonly onPromptSent: () => void;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
   /** Switches to a chat a branch or a rewind made: it is opened again, whatever its id names (PR 1645). */
@@ -854,6 +919,7 @@ function ActiveThreadReady({
   newChat,
   newChatStarting,
   leftSidebar,
+  claimReloadTarget,
   onPromptSent,
   openThread,
   switchChat,
@@ -1540,20 +1606,50 @@ function ActiveThreadReady({
   const draftStore = useMemo(() => createDraftStoreAdapter(client), [client]);
   // Unsent text is also kept in this tab, so it survives the app's server stopping before the autosave saves it.
   const draftBuffer = useMemo(
-    () => sessionDraftBuffer(reportDraftFailure("Keeping unsent draft text in this tab failed")),
+    () => localDraftBuffer(reportDraftFailure("Keeping unsent draft text in this tab failed")),
     [],
   );
+  const chatMessages = useMemo(
+    () =>
+      newChatStarting
+        ? NO_CHAT_MESSAGES
+        : {
+            subscribe: (listener: () => void) => store.subscribe(listener),
+            getSnapshot: () => {
+              const snapshot = store.getSnapshot();
+              return {
+                messageOrder: snapshot.messageOrder,
+                hasUserMessage: snapshot.messageOrder.some((key) =>
+                  isSentMessageRole(snapshot.messages[key]?.message.role),
+                ),
+              };
+            },
+          },
+    [newChatStarting, store],
+  );
+  const startsUnsent = history.openedNew || newChatStarting;
   // The composer's draft: this chat's own draft once it has messages, the folder's new-chat draft before that.
   const chatDraft = useChatDraft({
     draftStore,
     folder,
     threadId,
     // A New chat that is starting takes the composer before its chat opens: its text and files are the folder's draft.
-    startsUnsent: history.openedNew || newChatStarting,
-    messages: newChatStarting ? NO_CHAT_MESSAGES : store,
+    startsUnsent,
+    messages: chatMessages,
     loaded: !history.isLoading,
     buffer: draftBuffer,
   });
+  // A message the chat did not have a moment ago is the send in progress, admitted: its draft clears then, not when the
+  // answer comes, so a reload that lands first cannot bring the sent text back.
+  const noteSent = chatDraft.noteSent;
+  useEffect(() => {
+    let shown = store.getSnapshot().messageOrder.length;
+    return store.subscribe(() => {
+      const count = store.getSnapshot().messageOrder.length;
+      if (count > shown) noteSent();
+      shown = count;
+    });
+  }, [noteSent, store]);
   const draftController = chatDraft.controller;
   const setEditorText = useCallback(
     (text: string) => draftController.setDraft(text, attachmentManager.toDraftRefs()),
@@ -1801,12 +1897,18 @@ function ActiveThreadReady({
         // here, just before the prompt goes out, and nothing waits for it: a worker can start only after the prompt has been
         // sent and the model has answered.
         if (agents !== null) startWorkerStream(agents);
-        await runtimeController.submitPrompt({
-          ...intent,
-          // A pasted-text chip sends its full text, from the file the composer held when Enter was pressed.
-          text: withPastedText(intent.text, attachments.complete),
-          attachmentRefs: attachments.refs,
-        });
+        const undoClaim = claimReloadTarget();
+        try {
+          await runtimeController.submitPrompt({
+            ...intent,
+            // A pasted-text chip sends its full text, from the file the composer held when Enter was pressed.
+            text: withPastedText(intent.text, attachments.complete),
+            attachmentRefs: attachments.refs,
+          });
+        } catch (error) {
+          undoClaim?.();
+          throw error;
+        }
       } else {
         await runSlashRoute({
           route,
@@ -1823,6 +1925,7 @@ function ActiveThreadReady({
     [
       agents,
       appSlashCommands,
+      claimReloadTarget,
       commandGateway,
       runtimeController,
       showCommandOutput,
@@ -2126,6 +2229,7 @@ function ActiveThreadReady({
           cancel={cancel}
           chat={chatDraft.chat}
           controller={draftController}
+          switching={history.isSwitching}
           footer={area("composerFooter")}
           footerOpen={editing !== null}
           editing={editing !== null}
@@ -2285,8 +2389,11 @@ function ConnectedApp({
   const [openFailure, setOpenFailure] = useState<OpenFailure | null>(null);
   // The sidebar starts a New chat before the history controller opens it: its state shows here meanwhile.
   const [newChat, setNewChat] = useState<NewChatStatus>({ state: "idle" });
-  // The chat on screen when a New chat started: its composer takes the new chat's draft until another chat replaces it.
+  /** The chat on screen when a New chat started: it stays visible while the new chat opens. */
   const [newChatFrom, setNewChatFrom] = useState<ThreadId | null>(null);
+  const [newlyStartedThread, setNewlyStartedThread] = useState<ThreadId | null>(null);
+  const unsentThread = useRef<ThreadId | null>(null);
+  const openingUnsentThread = useRef(false);
   const [newChatThreadId, setNewChatThreadId] = useState<ThreadId | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
@@ -2323,8 +2430,26 @@ function ConnectedApp({
     return createSelectedThreadHistoryController({
       client,
       folder,
-      onThreadIdChange: (threadId) =>
-        writeSessionValue(THREAD_KEY, threadId ? String(threadId) : null),
+      onThreadIdChange: (threadId) => {
+        const pendingUnsent = readTabValue(UNSENT_CHAT_KEY, "");
+        if (
+          pendingUnsent !== "" &&
+          threadId !== unsentThread.current &&
+          !openingUnsentThread.current
+        )
+          return;
+        if (
+          threadId !== undefined &&
+          (threadId === unsentThread.current || openingUnsentThread.current)
+        ) {
+          unsentThread.current = threadId;
+          if (openingUnsentThread.current) setNewlyStartedThread(threadId);
+          persistUnsentChatReload(threadId);
+          return;
+        }
+        writeSessionValue(THREAD_KEY, threadId ? String(threadId) : null);
+        writeTabValue(UNSENT_CHAT_KEY, null);
+      },
       onPerfMark: perfMark,
       // A chat left while its turn runs: its file is written after the turn starts, so no change event announces the
       // turn. The list is read now, and the row shows the turn as running.
@@ -2398,26 +2523,42 @@ function ConnectedApp({
         ? lastReadyHistory.current
         : EMPTY_HISTORY;
   useEffect(() => {
-    // Reopen the thread this browser had open in this folder (cleared when the folder changes). A chat nobody has
-    // sent to has no file after a restart, so the folder's new chat opens in its place.
     if (!controller) return;
+    const openNewAfterReload = (): void => {
+      openingUnsentThread.current = true;
+      void controller
+        .openNew()
+        .catch(() => undefined)
+        .finally(() => {
+          openingUnsentThread.current = false;
+        });
+    };
+    // Reopen the thread this browser had open in this folder. An unsent chat is represented by its tab marker: after
+    // reload it starts a fresh chat, whose composer restores the same folder-scoped draft.
     const saved = ThreadId.safeParse(readSessionValue(THREAD_KEY, ""));
-    if (!saved.success) return;
+    const hasUnsentChat = readTabValue(UNSENT_CHAT_KEY, "") !== "";
+    if (!saved.success) {
+      if (folder !== null && (hasUnsentChat || hasLocalDraft({ kind: "folder", folder })))
+        openNewAfterReload();
+      return;
+    }
+    writeTabValue(UNSENT_CHAT_KEY, null);
     // A reload returns the reader to the message they were reading. The place is read before the chat opens.
     setResumePlace(readStoredReadingPlace(saved.data));
     void controller
       .reopenSaved(saved.data)
       .catch((error: unknown) => {
-        // A saved chat whose model omp can no longer restore stays the chat this browser had open: its screen offers the
-        // picker, and a model remembered for the chat was already tried by the history.
+        // A saved chat whose model is unavailable stays on the empty/open-failure surface so the person can choose a model.
         if (error instanceof AppFailure && error.appError.code === "model_unavailable") {
           reportOpenFailure(saved.data, error.appError);
           return;
         }
         writeSessionValue(THREAD_KEY, null);
+        if (folder !== null && (hasUnsentChat || hasLocalDraft({ kind: "folder", folder })))
+          openNewAfterReload();
       })
       .finally(() => setResumePlace(null));
-  }, [controller, reportOpenFailure]);
+  }, [controller, folder, reportOpenFailure]);
   // The sidebar's list is fetched again after the person's message has been answered: omp writes a
   // new chat's file during its first turn, and a chat's title and time change with each turn. The
   // end of the answer is read from the messages, not from the prompt flags: a page that attaches
@@ -2428,6 +2569,35 @@ function ConnectedApp({
     before: undefined,
     started: false,
   });
+  const claimReloadTarget = useCallback((): (() => void) | undefined => {
+    const threadId = history.threadId;
+    if (
+      threadId === undefined ||
+      !isCurrentUnsentChat(threadId, unsentThread.current, newlyStartedThread)
+    )
+      return undefined;
+    const previous = {
+      savedThread: readSessionValue(THREAD_KEY, ""),
+      unsentMarker: readTabValue(UNSENT_CHAT_KEY, ""),
+      unsentThread: unsentThread.current,
+      newlyStartedThread,
+    };
+    unsentThread.current = null;
+    writeSessionValue(THREAD_KEY, String(threadId));
+    writeTabValue(UNSENT_CHAT_KEY, null);
+    setNewlyStartedThread((current) => (current === threadId ? null : current));
+    return () => {
+      if (
+        readSessionValue(THREAD_KEY, "") !== String(threadId) ||
+        readTabValue(UNSENT_CHAT_KEY, "") !== ""
+      )
+        return;
+      unsentThread.current = previous.unsentThread;
+      writeSessionValue(THREAD_KEY, previous.savedThread === "" ? null : previous.savedThread);
+      writeTabValue(UNSENT_CHAT_KEY, previous.unsentMarker === "" ? null : previous.unsentMarker);
+      setNewlyStartedThread(previous.newlyStartedThread);
+    };
+  }, [history.threadId, newlyStartedThread]);
   const onPromptSent = useCallback(() => {
     setNewChatThreadId(null);
     turnWatch.current = {
@@ -2534,6 +2704,7 @@ function ConnectedApp({
     setFolderText(nextFolder);
     writeSessionValue(FOLDER_KEY, nextFolder);
     writeSessionValue(THREAD_KEY, null);
+    writeTabValue(UNSENT_CHAT_KEY, null);
   };
   const validateOtherFolder = async (value: string): Promise<boolean> => {
     const parsed = FolderPath.safeParse(value.trim());
@@ -2573,10 +2744,19 @@ function ConnectedApp({
       try {
         await open(controller);
       } catch (error) {
+        // A selected chat whose model is unavailable reports the picker at the open surface, not as a duplicate error.
         if (error instanceof AppFailure && error.appError.code === "model_unavailable") {
           reportOpenFailure(threadId, error.appError);
         }
         throw error;
+      }
+      if (threadId === unsentThread.current) {
+        writeSessionValue(THREAD_KEY, null);
+        writeTabValue(UNSENT_CHAT_KEY, String(threadId));
+      } else {
+        unsentThread.current = null;
+        writeSessionValue(THREAD_KEY, String(threadId));
+        writeTabValue(UNSENT_CHAT_KEY, null);
       }
       setOpenFailure(null);
     },
@@ -2639,6 +2819,9 @@ function ConnectedApp({
     (status: NewChatStatus): void => {
       setNewChat(status);
       if (status.state === "opening") {
+        unsentThread.current = null;
+        setNewlyStartedThread(null);
+        persistUnsentChatReload();
         perfTraceStart();
         const shownThreadId = controller?.getSnapshot().threadId;
         if (shownThreadId !== undefined) setNewChatFrom(shownThreadId);
@@ -2648,17 +2831,20 @@ function ConnectedApp({
         newChatTicketRef.current = openNewChatTicket();
         return;
       }
+      if (readTabValue(UNSENT_CHAT_KEY, "") === unsentChatReloadMarker())
+        writeTabValue(UNSENT_CHAT_KEY, null);
       newChatTicketRef.current?.settle("not-opened");
       newChatTicketRef.current = null;
       newChatHolds.current.pop()?.();
     },
     [controller],
   );
-  // The sidebar opens its New chat's chat with this. The open holds the switch from its request on (`whenSettled` waits
-  // for it), so the New chat's own hold ends here, before the history of the chat loads.
   const openNewChatFromSidebar = useCallback(
-    (threadId: ThreadId): Promise<void> => {
+    async (threadId: ThreadId): Promise<void> => {
       setNewChatThreadId(threadId);
+      unsentThread.current = threadId;
+      setNewlyStartedThread(threadId);
+      persistUnsentChatReload(threadId);
       newChatHolds.current.at(-1)?.();
       newChatTicketRef.current?.settle("opened");
       newChatTicketRef.current = null;
@@ -2757,7 +2943,10 @@ function ConnectedApp({
     perfTraceStart();
     const initialized = await remote.initialize("new");
     const started = initialized.remoteId as ThreadId;
+    unsentThread.current = started;
+    setNewlyStartedThread(started);
     setNewChatThreadId(started);
+    persistUnsentChatReload(started);
     await openStartedChat(started);
     return started;
   }, [openStartedChat, remote]);
@@ -2913,9 +3102,10 @@ function ConnectedApp({
               displayedHistory.threadId === newChatThreadId)
           }
           newChatStarting={
-            newChatFrom !== null &&
-            newChat.state === "opening" &&
-            displayedHistory.threadId === newChatFrom
+            (newChatFrom !== null &&
+              newChat.state === "opening" &&
+              displayedHistory.threadId === newChatFrom) ||
+            displayedHistory.threadId === newlyStartedThread
           }
           resumePlace={resumePlace}
           connectionSurface={connectionSurface}
@@ -2928,6 +3118,7 @@ function ConnectedApp({
           onRetryHistory={() => controller?.retryHistory() ?? Promise.resolve()}
           leftSidebar={leftSidebar}
           onOpenSettings={openSettings}
+          claimReloadTarget={claimReloadTarget}
           onPromptSent={onPromptSent}
           openThread={openThread}
           switchChat={switchChat}

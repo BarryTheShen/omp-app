@@ -1,11 +1,17 @@
-import { AppFailure, type AttachmentRef, type DraftScope, ThreadId } from "@omp-app/contracts";
+import {
+  AppFailure,
+  type AttachmentRef,
+  type DraftScope,
+  FolderPath,
+  ThreadId,
+} from "@omp-app/contracts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { useMemo, useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { type AttachmentBlobStore, AttachmentManager, type StoredAttachment } from "../attachments";
 import { DraftController, type DraftTimer } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
-import { useComposerDraft } from "./use-composer-draft";
+import { composerDraftForLifecycle, useComposerDraft } from "./use-composer-draft";
 
 afterEach(cleanup);
 
@@ -19,11 +25,17 @@ function chatScope(id: string): DraftScope {
 /** A store whose reads wait while the store is held, so a chat's draft is still loading while the test types. */
 class HeldReadStore extends ScopedDraftStore {
   private gate = Promise.withResolvers<void>();
+  private readStarted = Promise.withResolvers<void>();
   private holding = false;
 
   hold(): void {
     this.gate = Promise.withResolvers<void>();
+    this.readStarted = Promise.withResolvers<void>();
     this.holding = true;
+  }
+
+  async waitUntilReadStarts(): Promise<void> {
+    await this.readStarted.promise;
   }
 
   release(): void {
@@ -32,7 +44,10 @@ class HeldReadStore extends ScopedDraftStore {
   }
 
   override async get(args: Parameters<ScopedDraftStore["get"]>[0]) {
-    if (this.holding) await this.gate.promise;
+    if (this.holding) {
+      this.readStarted.resolve();
+      await this.gate.promise;
+    }
     return super.get(args);
   }
 }
@@ -61,11 +76,15 @@ function Composer({
   controller,
   shown,
   attachments,
+  switching = false,
+  isRecalledPrompt = notRecalled,
 }: {
   readonly chat: object;
   readonly controller: DraftController;
   readonly shown: ShownComposer;
   readonly attachments: ComposerAttachments;
+  readonly switching?: boolean;
+  readonly isRecalledPrompt?: (text: string) => boolean;
 }) {
   const [text, setText] = useState("");
   const composer = useMemo(() => ({ setText }), []);
@@ -74,10 +93,11 @@ function Composer({
   useComposerDraft({
     chat,
     controller,
+    switching,
     text,
     composer,
     attachments,
-    isRecalledPrompt: notRecalled,
+    isRecalledPrompt,
   });
   return null;
 }
@@ -89,19 +109,33 @@ function Composer({
 function renderComposer(
   controller: DraftController,
   attachments: ComposerAttachments = noAttachments,
+  isRecalledPrompt: (text: string) => boolean = notRecalled,
 ) {
   const shown: ShownComposer = { text: "", type: () => undefined };
   const chat = {};
   const view = render(
-    <Composer attachments={attachments} chat={chat} controller={controller} shown={shown} />,
+    <Composer
+      attachments={attachments}
+      chat={chat}
+      controller={controller}
+      isRecalledPrompt={isRecalledPrompt}
+      shown={shown}
+    />,
   );
   return {
     shown,
     chat,
     /** Shows another draft: another chat by default, or the same chat (`chat`) with a moved draft. */
-    switchTo: (next: DraftController, nextChat: object = {}) =>
+    switchTo: (next: DraftController, nextChat: object = {}, switching = false) =>
       view.rerender(
-        <Composer attachments={attachments} chat={nextChat} controller={next} shown={shown} />,
+        <Composer
+          attachments={attachments}
+          chat={nextChat}
+          controller={next}
+          isRecalledPrompt={isRecalledPrompt}
+          shown={shown}
+          switching={switching}
+        />,
       ),
     unmount: () => view.unmount(),
   };
@@ -173,6 +207,157 @@ async function drop(manager: AttachmentManager, name: string) {
   return pending;
 }
 
+test("pagehide while a recalled prompt is shown keeps the typed draft and its attachments", async () => {
+  const store = new ScopedDraftStore();
+  const scope = chatScope("recalled-pagehide");
+  const controller = new DraftController({
+    store,
+    scope,
+    timers: noTimers,
+    lifecycle: window,
+  });
+  const ref: AttachmentRef = {
+    id: "draft-blob",
+    name: "draft.png",
+    mediaType: "image/png",
+    uri: "attachment://draft-blob",
+  };
+  await controller.load();
+  controller.setDraft("my draft", [ref]);
+  controller.setLifecycleReader({
+    read: () =>
+      composerDraftForLifecycle(controller, "hello probe", [], (text) => text === "hello probe"),
+  });
+
+  await act(async () => {
+    window.dispatchEvent(new Event("pagehide"));
+    await controller.flush();
+  });
+
+  expect((await store.get({ scope })).draft).toMatchObject({
+    text: "my draft",
+    attachments: [ref],
+  });
+  await controller.dispose();
+});
+
+test.each([true, false])(
+  "keeps a recalled prompt when the same chat draft moves (destination loaded first: %s)",
+  async (loadDestinationFirst) => {
+    const store = new HeldReadStore();
+    const folder = FolderPath.parse("/workspace/app");
+    const folderScope: DraftScope = { kind: "folder", folder };
+    await store.save({
+      scope: folderScope,
+      draft: { text: "my draft", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const first = new DraftController({ store, scope: folderScope, timers: noTimers });
+    await first.load();
+    const recalled = (text: string): boolean => text === "hello probe";
+    const view = renderComposer(first, noAttachments, recalled);
+    await waitFor(() => expect(view.shown.text).toBe("my draft"));
+    act(() => view.shown.type("hello probe"));
+    const next = new DraftController({
+      store,
+      scope: chatScope("recalled-move"),
+      timers: noTimers,
+    });
+
+    if (loadDestinationFirst) await next.load();
+    else store.hold();
+    view.switchTo(next, view.chat, true);
+
+    if (!loadDestinationFirst) {
+      let loading: Promise<unknown> = Promise.resolve();
+      act(() => {
+        loading = next.load();
+      });
+      await store.waitUntilReadStarts();
+      expect(view.shown.text).toBe("hello probe");
+      store.release();
+      await act(async () => loading);
+    }
+
+    expect(view.shown.text).toBe("hello probe");
+    expect(store.text(chatScope("recalled-move"))).toBeUndefined();
+    view.unmount();
+    await first.dispose();
+    await next.dispose();
+  },
+);
+test("clear and restore ordering is owned by the draft hook", async () => {
+  const store = new ScopedDraftStore();
+  const scope = chatScope("switch-order");
+  const controller = new DraftController({ store, scope, timers: noTimers });
+  await store.save({
+    scope,
+    draft: { text: "saved draft", attachments: [], failedSends: [] },
+    expectedRevision: null,
+  });
+  const shown: ShownComposer = { text: "", type: () => undefined };
+  const chat = {};
+  const view = render(
+    <Composer
+      attachments={noAttachments}
+      chat={chat}
+      controller={controller}
+      shown={shown}
+      switching={false}
+    />,
+  );
+  await act(async () => {
+    await controller.load();
+  });
+  expect(shown.text).toBe("saved draft");
+
+  view.rerender(
+    <Composer
+      attachments={noAttachments}
+      chat={chat}
+      controller={controller}
+      shown={shown}
+      switching
+    />,
+  );
+  await waitFor(() => expect(shown.text).toBe("saved draft"));
+
+  view.rerender(
+    <Composer
+      attachments={noAttachments}
+      chat={chat}
+      controller={controller}
+      shown={shown}
+      switching={false}
+    />,
+  );
+  act(() => controller.setDraft("restore before clear", []));
+  await waitFor(() => expect(shown.text).toBe("restore before clear"));
+  view.rerender(
+    <Composer
+      attachments={noAttachments}
+      chat={chat}
+      controller={controller}
+      shown={shown}
+      switching
+    />,
+  );
+  await waitFor(() => expect(shown.text).toBe("restore before clear"));
+  view.unmount();
+});
+test("a switching signal does not clear text typed after the controller value", async () => {
+  const store = new ScopedDraftStore();
+  const controller = new DraftController({
+    store,
+    scope: chatScope("switch-guard"),
+    timers: noTimers,
+  });
+  const { shown, switchTo } = renderComposer(controller);
+  await act(async () => controller.load());
+  act(() => shown.type("newer typed text"));
+  switchTo(controller, {}, true);
+  expect(shown.text).toBe("newer typed text");
+});
 describe("useComposerDraft: text typed before the chat's draft loads", () => {
   test("is still in the composer once the draft has loaded", async () => {
     const store = new HeldReadStore();

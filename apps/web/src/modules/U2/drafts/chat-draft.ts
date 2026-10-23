@@ -22,6 +22,35 @@ import {
  * its draft has been admitted and that draft cleared, so the text sent is never copied into the chat.
  */
 type Phase = "loading" | "unsent" | "sent";
+/** The reload target is known only after initialization; this marker covers the opening interval. */
+export function unsentChatReloadMarker(threadId?: ThreadId): string {
+  return threadId === undefined ? "opening" : String(threadId);
+}
+
+export interface UnsentChatReloadTarget {
+  readonly savedThread: string | null;
+  readonly unsentMarker: string | null;
+}
+
+/** Changes a saved-chat route into an unsent-chat route, including while the new session is opening. */
+export function unsentChatReloadTarget(
+  current: UnsentChatReloadTarget,
+  threadId?: ThreadId,
+): UnsentChatReloadTarget {
+  return {
+    ...current,
+    savedThread: null,
+    unsentMarker: unsentChatReloadMarker(threadId),
+  };
+}
+/** A sent observer can update reload state only while its own chat remains the active unsent chat. */
+export function isCurrentUnsentChat(
+  threadId: ThreadId,
+  activeUnsentThreadId: ThreadId | null,
+  newlyStartedThreadId: ThreadId | null,
+): boolean {
+  return threadId === activeUnsentThreadId && threadId === newlyStartedThreadId;
+}
 
 export interface ChatDraftObservation {
   /** The chat's history has finished loading. */
@@ -34,6 +63,7 @@ export interface ChatDraftOptions {
   readonly store: DraftStoreAdapter;
   /** The folder the chat belongs to; null when no folder is open, so no new-chat draft can exist. */
   readonly folder: FolderPath | null;
+  /** The thread the chat belongs to. An unsent chat's thread is named when the chat opens (see `setThreadId`). */
   readonly threadId: ThreadId;
   /** True for a chat opened as new: it has no messages yet, so its text is the folder's new-chat draft from the first keystroke. */
   readonly startsUnsent?: boolean;
@@ -45,6 +75,7 @@ export interface ChatDraftOptions {
 
 export class ChatDraft {
   private readonly options: ChatDraftOptions;
+  private threadId: ThreadId;
   private current: DraftController;
   private phase: Phase = "loading";
   private busy = false;
@@ -56,12 +87,13 @@ export class ChatDraft {
 
   public constructor(options: ChatDraftOptions) {
     this.options = options;
+    this.threadId = options.threadId;
     // A chat opened as new has no messages yet: its text belongs to the folder's new-chat draft from the first keystroke.
     if (options.startsUnsent === true && options.folder !== null) {
       this.phase = "unsent";
       this.current = this.create({ kind: "folder", folder: options.folder });
     } else {
-      this.current = this.create({ kind: "thread", threadId: options.threadId });
+      this.current = this.create({ kind: "thread", threadId: this.threadId });
     }
   }
 
@@ -94,7 +126,7 @@ export class ChatDraft {
     }
     if (this.phase === "unsent" && observation.hasMessages) {
       this.phase = "sent";
-      this.enqueueMove({ kind: "thread", threadId: this.options.threadId });
+      this.enqueueMove({ kind: "thread", threadId: this.threadId });
     }
   }
 
@@ -122,6 +154,24 @@ export class ChatDraft {
     this.disposed = true;
     this.listeners.clear();
   }
+
+  /**
+   * Names the thread the chat has now. An unsent chat's draft is the folder's until its first message, so the chat keeps
+   * that draft when its thread arrives, and a draft that moves to the chat's thread goes to the one named here. Returns
+   * false when the chat's draft belongs to another thread, so the caller must build the chat again.
+   */
+  public setThreadId(threadId: ThreadId): boolean {
+    if (this.phase === "unsent") {
+      this.threadId = threadId;
+      return true;
+    }
+    return threadId === this.threadId;
+  }
+
+  /** The chat shows a message it did not show before: a send in progress was admitted (see `DraftController.noteSent`). */
+  public noteSent = (): void => {
+    if (this.busy) this.current.noteSent();
+  };
 
   /** Runs again what failed: the move that did not finish, or the composer's own failed load or save. */
   public retry = (): void => {

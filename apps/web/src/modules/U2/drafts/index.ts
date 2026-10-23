@@ -1,14 +1,20 @@
 export type {
   ChatDraftObservation,
   ChatDraftOptions,
+  UnsentChatReloadTarget,
 } from "./chat-draft";
-export { ChatDraft } from "./chat-draft";
-export { sessionDraftBuffer } from "./draft-buffer";
+export {
+  ChatDraft,
+  isCurrentUnsentChat,
+  unsentChatReloadMarker,
+  unsentChatReloadTarget,
+} from "./chat-draft";
+export { hasLocalDraft, localDraftBuffer } from "./draft-buffer";
 export type { DraftNoticeProps } from "./draft-notice";
 export { DraftNotice } from "./draft-notice";
 export type {
-  DraftConflict,
   DraftControllerOptions,
+  DraftLifecycleReader,
   DraftLifecycleTarget,
   DraftListener,
   DraftSnapshot,
@@ -20,4 +26,4 @@ export type {
 export { createDraftStoreAdapter, DraftController } from "./drafts";
 export type { ChatMessagesSource, UseChatDraftOptions, UseChatDraftResult } from "./use-chat-draft";
 export { useChatDraft } from "./use-chat-draft";
-export { useComposerDraft } from "./use-composer-draft";
+export { composerDraftForLifecycle, useComposerDraft } from "./use-composer-draft";

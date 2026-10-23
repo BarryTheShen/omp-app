@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { type BrowserContext, expect, type Locator, type Page, test } from "@playwright/test";
 
 export const REAL_OMP = "/home/user/.bun/bin/omp";
 export const APP_ROOT = resolve(process.cwd(), "../..");
@@ -99,6 +99,8 @@ export interface OpenOptions {
   readonly beforeLoad?: (page: Page) => Promise<unknown>;
   /** Set to false to open a page that is not the app (a full-page screen such as 'omp isn't available'). */
   readonly expectApp?: boolean;
+  /** Opens the page in this browser context (the same profile, so localStorage is shared) instead of a new one. */
+  readonly context?: BrowserContext;
 }
 
 export interface RealApp {
@@ -543,6 +545,7 @@ export const realTest = test.extend<{
     let provider: ChildProcess | undefined;
     let server: { readonly process: ChildProcess; readonly url: string } | undefined;
     const pages: Page[] = [];
+    const contexts: BrowserContext[] = [];
     const extraOmp: ChildProcess[] = [];
     const problems: string[] = [];
     const allowed: RegExp[] = [];
@@ -566,7 +569,9 @@ export const realTest = test.extend<{
       const keptPort = serverPort === 0 ? Number(new URL(server.url).port) : serverPort;
       let url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
-        const page = await browser.newPage();
+        const context = options.context ?? (await browser.newContext());
+        if (!options.context) contexts.push(context);
+        const page = await context.newPage();
         pages.push(page);
         page.on("console", (message) => {
           if (message.type() === "error") problems.push(`console error: ${message.text()}`);
@@ -647,6 +652,7 @@ export const realTest = test.extend<{
       ).toEqual([]);
     } finally {
       await Promise.all(pages.map((page) => page.close().catch(() => undefined)));
+      await Promise.all(contexts.map((context) => context.close().catch(() => undefined)));
       for (const child of extraOmp) await stopChild(child);
       await stopChild(server?.process);
       if (provider?.stdin) provider.stdin.end();
