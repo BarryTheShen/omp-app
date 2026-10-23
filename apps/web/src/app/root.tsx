@@ -910,6 +910,15 @@ function RuntimeAwarePreviousMessageSelector({
   );
 }
 
+/** Keeps the composer's running flag, thread.isRunning (the flag that picks steer or follow-up), for the busy test. */
+function ThreadRunningFlag({ flag }: { readonly flag: { current: boolean } }) {
+  const running = useAuiState((state) => state.thread.isRunning);
+  useLayoutEffect(() => {
+    flag.current = running;
+  }, [flag, running]);
+  return null;
+}
+
 function ActiveThreadReady({
   client,
   capabilities,
@@ -1765,6 +1774,8 @@ function ActiveThreadReady({
     previousCommandOutputReveal.current = commandOutputReveal;
     if (diagnosticPanel !== null) closeDiagnosticPanel();
   }, [closeDiagnosticPanel, commandOutputReveal, diagnosticPanel]);
+  // The composer's running flag (thread.isRunning, a tool step included): ThreadRunningFlag keeps it current.
+  const threadRunning = useRef(false);
   // The transition port the rewind panel and `/fork` share: it rewinds, forks and branches the chat on screen.
   const transitions = useConversationTransitions({
     store,
@@ -1774,6 +1785,7 @@ function ActiveThreadReady({
     switchThread: switchChat,
     pickCount,
     deliverNote,
+    threadRunning,
   });
   // The conversation-history panel `/tree` and `/branch` open: the registry's own command, offered while omp has it.
   const historyPanel = useMemo<HistoryPanel>(
@@ -1790,7 +1802,7 @@ function ActiveThreadReady({
       clearSlashCommand({
         lifecycle,
         openThread,
-        isBusy: () => conversationBusy(store),
+        isBusy: () => conversationBusy(store, threadRunning.current),
         deliverNote,
         focusComposer: () => composerInput()?.focus({ preventScroll: true }),
       }),
@@ -1798,11 +1810,14 @@ function ActiveThreadReady({
       shareSlashCommand({ run: () => runShareCommand(shareController) }),
       copySlashCommand({ copy: () => runCopyFromChat(shortcutRegistry) }),
       treeSlashCommand({ panel: historyPanel }),
-      branchSlashCommand({ panel: historyPanel, isBusy: () => conversationBusy(store) }),
+      branchSlashCommand({
+        panel: historyPanel,
+        isBusy: () => conversationBusy(store, threadRunning.current),
+      }),
       forkSlashCommand({
         transitions,
         threadId,
-        isBusy: () => conversationBusy(store),
+        isBusy: () => conversationBusy(store, threadRunning.current),
         deliverNote,
         focusComposer: () => composerInput()?.focus({ preventScroll: true }),
       }),
@@ -1832,7 +1847,7 @@ function ActiveThreadReady({
       restartSlashCommand({
         confirm: (running) => openDestructiveCommandConfirm(overlay, restartQuestion(running)),
         restart: restartOmp,
-        isBusy: () => conversationBusy(store),
+        isBusy: () => conversationBusy(store, threadRunning.current),
       }),
     ],
     [
@@ -2223,6 +2238,7 @@ function ActiveThreadReady({
       fail={setCommandError}
     >
       <RuntimeAwarePreviousMessageSelector controller={selectorController} />
+      <ThreadRunningFlag flag={threadRunning} />
       <ComposerHistory store={store}>
         <DraftComposer
           capabilities={capabilities}

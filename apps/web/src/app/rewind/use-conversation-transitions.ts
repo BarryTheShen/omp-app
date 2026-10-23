@@ -8,7 +8,7 @@ import { createOmpBranchingController } from "@/modules/R0/branching";
 import type { PromptIntent } from "@/modules/R0/runtime/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { type NoSwitchNote, withNoSwitchNote } from "./no-switch-notice";
-import { isStreaming } from "./rewind-tree";
+import { conversationBusy } from "./rewind-tree";
 
 export interface ConversationTransitionOptions {
   readonly store: OmpRuntimeStore;
@@ -21,6 +21,8 @@ export interface ConversationTransitionOptions {
   readonly pickCount: () => number;
   /** Writes a rewind's or fork's note into the chat on screen, when it finished without switching the view. */
   readonly deliverNote: (note: NoSwitchNote) => void;
+  /** The composer's running flag (thread.isRunning, a tool step included), read when a transition is asked for. */
+  readonly threadRunning: { readonly current: boolean };
 }
 
 /**
@@ -35,6 +37,7 @@ export function useConversationTransitions({
   switchThread,
   pickCount,
   deliverNote,
+  threadRunning,
 }: ConversationTransitionOptions): ConversationTransitionPort {
   return useMemo<ConversationTransitionPort>(() => {
     const branchingController = createOmpBranchingController({
@@ -51,9 +54,18 @@ export function useConversationTransitions({
       branchingController,
       capabilities,
       pickCount,
-      isBusy: () => isStreaming(store),
+      isBusy: () => conversationBusy(store, threadRunning.current),
     });
     // The chat on screen is the one the person picked last, so the note is written through its view.
     return withNoSwitchNote(port, deliverNote);
-  }, [capabilities, deliverNote, pickCount, send, store, submitPrompt, switchThread]);
+  }, [
+    capabilities,
+    deliverNote,
+    pickCount,
+    send,
+    store,
+    submitPrompt,
+    switchThread,
+    threadRunning,
+  ]);
 }

@@ -139,6 +139,7 @@ function Harness({ currentThread, send, switchThread, capabilities, holder }: Ha
     switchThread,
     pickCount: () => 0,
     deliverNote: () => undefined,
+    threadRunning: { current: false },
   });
   const rewind = useRewindPanel({
     threadId: currentThread,

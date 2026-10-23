@@ -39,12 +39,19 @@ export function isStreaming(store: OmpRuntimeStore): boolean {
 }
 
 /**
- * A turn is running in this conversation: the prompt is streaming, or admitted and not settled, or omp is streaming. It is the
- * test the transition port applies before it rewinds, forks or clears (`P4/transitions/transitions.ts`, `prepare`).
+ * A turn is running in this conversation. It is true when the composer's own test says so (`threadRunning`: the chat's
+ * thread is running, a tool step included; the composer picks steer or follow-up with that same flag), or when the store
+ * shows the prompt streaming, admitted and not settled, or omp streaming. The slash commands and the transition port apply
+ * it before they rewind, fork or clear, and `/restart` words its question with it.
  */
-export function conversationBusy(store: OmpRuntimeStore): boolean {
+export function conversationBusy(store: OmpRuntimeStore, threadRunning: boolean): boolean {
   const { prompt } = store.getSnapshot();
-  return prompt.streaming || (prompt.admitted && !prompt.sessionSettled) || isStreaming(store);
+  return (
+    threadRunning ||
+    prompt.streaming ||
+    (prompt.admitted && !prompt.sessionSettled) ||
+    isStreaming(store)
+  );
 }
 
 export function transcriptEntryCount(store: OmpRuntimeStore): number {
