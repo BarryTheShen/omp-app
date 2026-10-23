@@ -1,6 +1,6 @@
 import type { Stats } from "node:fs";
 import { lstat, readdir, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { FileSearchCandidate, FileSearchKind, FileSearchResult } from "@omp-app/contracts";
 import { type AbortSignalLike, AppFailure } from "@omp-app/contracts";
 
@@ -13,6 +13,27 @@ const MAX_FILE_SEARCH_TIMEOUT_MS = 60_000;
 const MAX_ERROR_BYTES = 64 * 1024;
 const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/;
 
+const CANDIDATE_CACHE_TTL_MS = 30_000;
+const CANDIDATE_CACHE_FOLDERS = 8;
+/**
+ * Names a walk skips, entry and all: dependency, cache and repository metadata, and `.worktrees`, where git worktrees keep
+ * whole copies of a repository. Those copies would fill the results with duplicates of the same files.
+ */
+const WALK_SKIPPED_NAMES: ReadonlySet<string> = new Set([
+  ".git",
+  "node_modules",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".cache",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".tox",
+  ".worktrees",
+]);
+/** Sorts names the way `localeCompare` does; one collator serves every sort. */
+const LOCALE_ORDER = new Intl.Collator();
+
 export interface FileSearchOptions {
   readonly signal?: AbortSignalLike;
   readonly timeoutMs?: number;
@@ -22,6 +43,8 @@ export interface FileSearchOptions {
   readonly scanBytes?: number;
   readonly gitBinary?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Clock for the candidate cache's 30 seconds; the default is `Date.now`. Tests set it. */
+  readonly now?: () => number;
 }
 
 export type FileSearchRequest = {
@@ -150,6 +173,53 @@ class ScanBudget {
   }
 }
 
+/** One folder's listing and the time it was cached. */
+interface CachedCollection {
+  readonly collection: Collection;
+  readonly cachedAt: number;
+}
+
+/**
+ * Listings by folder, keyed with the limits that shape them. A query within 30 seconds ranks against the cached list and
+ * reads nothing from disk. Eight folders are kept; the oldest goes first. Map order is the order of caching.
+ */
+const candidateCache = new Map<string, CachedCollection>();
+
+function candidateKey(
+  folder: string,
+  scanLimit: number,
+  scanBytes: number,
+  gitBinary: string | undefined,
+): string {
+  return [folder, scanLimit, scanBytes, gitBinary ?? ""].join("\0");
+}
+
+function cachedCollection(key: string, now: number): Collection | undefined {
+  const entry = candidateCache.get(key);
+  if (entry === undefined) return undefined;
+  if (isFresh(entry, now)) return entry.collection;
+  candidateCache.delete(key);
+  return undefined;
+}
+
+function rememberCollection(key: string, collection: Collection, now: number): void {
+  candidateCache.delete(key);
+  candidateCache.set(key, { collection, cachedAt: now });
+  for (const [cachedKey, entry] of candidateCache) {
+    if (!isFresh(entry, now)) candidateCache.delete(cachedKey);
+  }
+  while (candidateCache.size > CANDIDATE_CACHE_FOLDERS) {
+    const oldest = candidateCache.keys().next().value;
+    if (oldest === undefined) break;
+    candidateCache.delete(oldest);
+  }
+}
+
+function isFresh(entry: CachedCollection, now: number): boolean {
+  const age = now - entry.cachedAt;
+  return age >= 0 && age < CANDIDATE_CACHE_TTL_MS;
+}
+
 /**
  * Search workspace paths without reading their contents.
  *
@@ -165,12 +235,19 @@ export async function searchWorkspaceFiles(
   try {
     const validated = validateRequest(request);
     const limit = normalizeLimit(request.limit);
-    const scan = new ScanBudget(normalizeScanLimit(options.scanLimit));
+    const scanLimit = normalizeScanLimit(options.scanLimit);
     const scanBytes = normalizeScanBytes(options.scanBytes);
     const folder = await validateFolder(validated.folder, budget);
-    const collection =
-      (await collectFromGit(folder, budget, scan, scanBytes, options)) ??
-      (await collectByWalk(folder, budget, scan));
+    const clock = options.now ?? Date.now;
+    const key = candidateKey(folder, scanLimit, scanBytes, options.gitBinary);
+    let collection = cachedCollection(key, clock());
+    if (collection === undefined) {
+      const scan = new ScanBudget(scanLimit);
+      collection =
+        (await collectFromGit(folder, budget, scan, scanBytes, options)) ??
+        (await collectByWalk(folder, budget, scan));
+      rememberCollection(key, collection, clock());
+    }
     return rankCandidates(collection, validated.query, limit, budget);
   } catch (error) {
     if (error instanceof AppFailure) throw error;
@@ -352,44 +429,51 @@ async function addGitPathAsync(
   }
 }
 
+interface WalkDirectory {
+  readonly absolute: string;
+  /** The folder's path from the search folder, "/"-separated; empty for the search folder itself. */
+  readonly relative: string;
+}
+
+/**
+ * Lists a folder that is not a git repository one depth at a time: every folder of a depth, in locale order, before
+ * the next depth. The scan limit and the time budget reach a folder's shallow files before a deep dependency tree.
+ * Symbolic links are not followed, and every path starts from the folder's real path, so no entry needs its own
+ * realpath.
+ */
 async function collectByWalk(
   folder: string,
   budget: SearchBudget,
   scan: ScanBudget,
 ): Promise<Collection> {
   const candidates = new Map<string, SearchKind>();
-  await walkDirectory(folder, folder, candidates, budget, scan);
+  let level: readonly WalkDirectory[] = [{ absolute: folder, relative: "" }];
+  while (level.length > 0 && !scan.truncated) {
+    const next: WalkDirectory[] = [];
+    for (const directory of level) {
+      if (scan.truncated) break;
+      budget.assert();
+      const entries = await budget.wait(readdir(directory.absolute, { withFileTypes: true }));
+      entries.sort((left, right) => LOCALE_ORDER.compare(left.name, right.name));
+      for (const entry of entries) {
+        budget.assert();
+        if (!scan.take()) break;
+        if (WALK_SKIPPED_NAMES.has(entry.name) || entry.isSymbolicLink()) continue;
+        const path = directory.relative ? `${directory.relative}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          candidates.set(path, "directory");
+          next.push({ absolute: join(directory.absolute, entry.name), relative: path });
+        } else if (entry.isFile()) {
+          candidates.set(path, "file");
+        }
+      }
+    }
+    level = next;
+  }
   return {
     candidates: [...candidates].map(([path, kind]) => ({ path, kind })),
     truncated: scan.truncated,
   };
-}
-
-async function walkDirectory(
-  folder: string,
-  current: string,
-  candidates: Map<string, SearchKind>,
-  budget: SearchBudget,
-  scan: ScanBudget,
-): Promise<void> {
-  budget.assert();
-  const entries = await budget.wait(readdir(current, { withFileTypes: true }));
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-  for (const entry of entries) {
-    budget.assert();
-    if (!scan.take()) return;
-    if (entry.name === ".git" || entry.name === "node_modules") continue;
-    if (entry.isSymbolicLink()) continue;
-
-    const absolute = resolve(current, entry.name);
-    const inspected = await inspectCandidate(absolute, folder, budget);
-    if (inspected === null) continue;
-    candidates.set(inspected.path, inspected.kind);
-    if (inspected.kind === "directory") {
-      await walkDirectory(folder, absolute, candidates, budget, scan);
-      if (scan.truncated) return;
-    }
-  }
 }
 
 async function inspectCandidate(

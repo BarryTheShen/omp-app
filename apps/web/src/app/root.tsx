@@ -744,6 +744,8 @@ interface ActiveThreadProps {
   readonly newChat: boolean;
   /** A New chat started from the chat on screen has not replaced it yet: the composer's draft is the folder's new-chat draft. */
   readonly newChatStarting: boolean;
+  /** A chat is still opening: its history is loading, or a New chat is starting. The file list waits for it. */
+  readonly opening: boolean;
   /** Loads the page of messages older than the ones shown; the thread offers it while history is older. */
   readonly onLoadOlder?: () => Promise<void>;
   /** Loads the full text of a tool output the thread shows shortened. */
@@ -928,6 +930,7 @@ function ActiveThreadReady({
   history,
   newChat,
   newChatStarting,
+  opening,
   leftSidebar,
   claimReloadTarget,
   onPromptSent,
@@ -2237,6 +2240,7 @@ function ActiveThreadReady({
       slash={slashProvider}
       notify={setCommandStatus}
       fail={setCommandError}
+      opening={opening}
     >
       <RuntimeAwarePreviousMessageSelector controller={selectorController} />
       <ThreadRunningFlag flag={threadRunning} />
@@ -3124,6 +3128,7 @@ function ConnectedApp({
               displayedHistory.threadId === newChatFrom) ||
             displayedHistory.threadId === newlyStartedThread
           }
+          opening={history.isLoading || newChat.state === "opening"}
           resumePlace={resumePlace}
           connectionSurface={connectionSurface}
           watchSurface={watchSurface}

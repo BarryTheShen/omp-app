@@ -163,12 +163,11 @@ describe("ComposerTriggers in the composer", () => {
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("before @src/app.ts "));
   });
 
-  test("the first focus asks for the folder's files once, and an @ typed after it finds them with no searching line (issue 2214)", async () => {
+  test("the warm-up asks for the folder's files once, after the first paint, and an @ typed after it finds them with no searching line (issue 2214)", async () => {
     const search = vi.fn(async (_args: unknown) => oneFile);
     render(<Composed capabilities={EVERYTHING} client={fakeClient(search)} />);
     const input = screen.getByRole("textbox", { name: "Message input" });
-    fireEvent.focus(input);
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1), { timeout: 3_000 });
     await pause();
     fireEvent.change(input, { target: { value: "before @" } });
     (input as HTMLTextAreaElement).setSelectionRange(8, 8);

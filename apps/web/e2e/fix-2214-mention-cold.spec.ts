@@ -6,9 +6,10 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 
 /*
  * Issue 2214: the first `@` in a page said "No matches" for about 0.2 s before its files. The list now says
- * "Searching files…" until the file search has answered, and the composer asks for the folder's files on its first
- * focus, so an `@` typed after that opens with its files. The held specs keep the file search's answer back to show
- * the line; the cold spec types `@` right after the first focus and checks that "No matches" never comes before a file.
+ * "Searching files…" until the file search has answered, and the composer asks for the folder's files a second after the
+ * chat's first paint (issue 2537), so an `@` typed after that opens with its files. The held specs keep the file search's
+ * answer back to show the line; the cold spec types `@` right after the first focus and checks that "No matches" never
+ * comes before a file.
  */
 
 // omp 18.12.2 is at this path in every the test machine job.
@@ -314,7 +315,7 @@ async function statusLog(page: Page): Promise<string[]> {
 }
 
 realTest(
-  "a cold `@` typed after the first focus's pre-fetch has answered shows its files, never 'No matches' (issue 2214)",
+  "a cold `@` typed after the warm-up's answer has come shows its files, never 'No matches' (issue 2214)",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
     await seedFiles(realApp.folder);
@@ -323,8 +324,8 @@ realTest(
     const composer = await startChat(page);
     await watchFileList(page);
     await composer.click();
-    // The first focus asks for the folder's files. The `@` is typed once that answer has reached the page; a page that
-    // sends no pre-fetch never sends it, so the wait ends after 1.5 s and the `@` is typed then.
+    // The file list's first answer is asked for a second after the first paint. The `@` is typed once that answer has
+    // reached the page; if it has not come within 1.5 s, the `@` is typed then.
     const focusedAt = Date.now();
     while (!gate.answered.includes("") && Date.now() - focusedAt < 1_500) {
       await page.waitForTimeout(50);

@@ -187,18 +187,35 @@ function editKindOf(event: InputEvent, input: HTMLTextAreaElement): EditKind {
   return "other";
 }
 
+/** The file list's first answer waits this long after the chat's first paint, then runs in idle time. */
+const WARM_UP_DELAY_MS = 1_000;
+/** The longest the warm-up waits for an idle moment before it runs anyway. */
+const WARM_UP_IDLE_TIMEOUT_MS = 2_000;
+
+/** Runs `task` in idle time, or at once where requestIdleCallback is missing. Returns how to cancel it. */
+function whenIdle(task: () => void): () => void {
+  if (typeof window.requestIdleCallback !== "function") {
+    const timer = setTimeout(task, 0);
+    return () => clearTimeout(timer);
+  }
+  const handle = window.requestIdleCallback(task, { timeout: WARM_UP_IDLE_TIMEOUT_MS });
+  return () => window.cancelIdleCallback(handle);
+}
+
 function TriggerPopoverView({
   provider,
   trigger,
   onSelect,
   notify,
   fail,
+  opening = false,
 }: {
   readonly provider: MentionProvider | undefined;
   readonly trigger: "@" | "#";
   readonly onSelect: (candidate: TriggerCandidate) => void;
   readonly notify: (message: string) => void;
   readonly fail: (message: string) => void;
+  readonly opening?: boolean | undefined;
 }) {
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
   // Why the last search could not answer: shown in the list, never as a row to choose.
@@ -259,25 +276,39 @@ function TriggerPopoverView({
     return () => document.removeEventListener("beforeinput", onBeforeInput, true);
   }, [composerTextarea, history, trigger]);
 
-  // The first focus of the composer in a page asks the file list for its first answer: the request the first `@`
-  // would make, made earlier. The adapter keeps that answer, so an `@` typed after it opens with its files.
+  // The file list's first answer is asked for once: a second after the chat's first paint, in idle time, and never while
+  // the chat is still opening. An `@` typed after it opens with its files: the adapter keeps that answer.
   const warmed = useRef(false);
   const { adapter } = completion;
+  const adapterRef = useRef(adapter);
   useEffect(() => {
-    if (trigger !== "@" || provider === undefined) return undefined;
-    const warm = () => {
-      if (warmed.current) return;
-      warmed.current = true;
-      adapter.search?.("");
+    adapterRef.current = adapter;
+  }, [adapter]);
+  const warmable = trigger === "@" && provider !== undefined && !opening;
+  useEffect(() => {
+    if (!warmable || warmed.current) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelIdle: (() => void) | undefined;
+    // requestAnimationFrame runs before the next paint, so the delay is counted from the chat's first paint.
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => {
+        cancelIdle = whenIdle(() => {
+          warmed.current = true;
+          // An `@` being typed when the warm-up is due asks for its own answer: the warm answer must not replace it.
+          const input = composerTextarea();
+          const typing =
+            input !== null &&
+            detectMentionTrigger(input.value, input.selectionStart)?.trigger === "@";
+          if (!typing) adapterRef.current.search?.("");
+        });
+      }, WARM_UP_DELAY_MS);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+      cancelIdle?.();
     };
-    const onFocus = (event: FocusEvent) => {
-      if (event.target === composerTextarea()) warm();
-    };
-    const focused = document.activeElement;
-    if (focused !== null && focused === composerTextarea()) warm();
-    document.addEventListener("focus", onFocus, true);
-    return () => document.removeEventListener("focus", onFocus, true);
-  }, [adapter, composerTextarea, provider, trigger]);
+  }, [composerTextarea, warmable]);
 
   // A GitHub row replaces the reference at the caret with its link, the typed `pr` or `issue` word included: the
   // directive would leave that word in front of the link. The row is done here only while the caret is on its #.
@@ -377,6 +408,7 @@ function findMentionProvider(
 interface MentionComposerSlotProps extends ComposerTriggerSlotProps {
   readonly notify: (message: string) => void;
   readonly fail: (message: string) => void;
+  readonly opening?: boolean | undefined;
 }
 
 /** The file and GitHub lists for one composer. They render inside the composer's shared trigger root (see ComposerTriggers). */
@@ -385,6 +417,7 @@ export function MentionComposerSlot({
   onSelect,
   notify,
   fail,
+  opening,
   children,
 }: MentionComposerSlotProps) {
   return (
@@ -396,6 +429,7 @@ export function MentionComposerSlot({
         onSelect={onSelect}
         notify={notify}
         fail={fail}
+        opening={opening}
       />
       <TriggerPopoverView
         provider={findMentionProvider(providers, "#")}

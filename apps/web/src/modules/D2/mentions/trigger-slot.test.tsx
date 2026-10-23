@@ -277,7 +277,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
   });
 
-  test("the first focus of the composer asks the file list once, so an @ typed after it has its files and no searching line (issue 2214)", async () => {
+  test("the warm-up's files, asked once after the first paint, are there for an @ typed after it, with no searching line (issue 2214)", async () => {
     const searched = vi.fn(
       async (_query: string): Promise<TriggerSearchResult> => ({
         state: "ready",
@@ -312,8 +312,7 @@ describe("D2.4 MentionTriggerSlot", () => {
       searchingSeen.push(screen.queryByText("Searching files…") !== null);
     });
     watch.observe(document.body, { childList: true, subtree: true, characterData: true });
-    fireEvent.focus(input);
-    await waitFor(() => expect(searched).toHaveBeenCalledWith(""));
+    await waitFor(() => expect(searched).toHaveBeenCalledWith(""), { timeout: 3_000 });
     await pause();
     fireEvent.change(input, { target: { value: "before @" } });
     (input as HTMLTextAreaElement).setSelectionRange(8, 8);
@@ -359,8 +358,7 @@ describe("D2.4 MentionTriggerSlot", () => {
       </RuntimeHarness>,
     );
     const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
-    fireEvent.focus(input);
-    await waitFor(() => expect(searched).toHaveBeenCalledWith(""));
+    await waitFor(() => expect(searched).toHaveBeenCalledWith(""), { timeout: 3_000 });
     await pause();
     fireEvent.change(input, { target: { value: "@" } });
     input.setSelectionRange(1, 1);
@@ -801,5 +799,80 @@ describe("D2.4 MentionTriggerSlot", () => {
     input.setSelectionRange(7, 7);
     fireEvent.click(await screen.findByText("issue #12"));
     await waitFor(() => expect(input.value).toBe("see issue://12 "));
+  });
+
+  test("warms the file list once, a second after the first paint, and not while the chat opens", async () => {
+    const searchTyped = vi.fn(
+      (_query: string): Promise<TriggerSearchResult> =>
+        Promise.resolve({ state: "ready", candidates: [], revision: "warm" }),
+    );
+    const provider: MentionProvider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped,
+    };
+    const composed = (opening: boolean) => (
+      <RuntimeHarness>
+        <MentionTriggerSlot
+          {...quiet}
+          opening={opening}
+          providers={[provider]}
+          onSelect={() => undefined}
+        >
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>
+    );
+    const { rerender } = render(composed(true));
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(searchTyped).not.toHaveBeenCalled();
+
+    rerender(composed(false));
+    // The chat's first paint is the frame in which it stops opening; the answer comes a second after that.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(searchTyped).not.toHaveBeenCalled();
+    await waitFor(() => expect(searchTyped).toHaveBeenCalledWith(""), { timeout: 3_000 });
+    expect(searchTyped).toHaveBeenCalledTimes(1);
+  });
+
+  test("a mention typed before the warm-up is due keeps its own answer, which the warm-up does not replace", async () => {
+    const fileRow = (label: string): TriggerSearchResult["candidates"][number] => ({
+      id: `file:${label}`,
+      kind: "file",
+      source: "a1.file-search",
+      label,
+      insertText: `@${label} `,
+    });
+    const searched = vi.fn(
+      async (query: string): Promise<TriggerSearchResult> =>
+        query === "b"
+          ? { state: "ready", candidates: [fileRow("b.ts")], revision: "b" }
+          : { state: "ready", candidates: [fileRow("a.ts")], revision: "all" },
+    );
+    const provider: MentionProvider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped: searched,
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "@b" } });
+    input.setSelectionRange(2, 2);
+    await waitFor(() => expect(screen.getByText("b.ts")).toBeTruthy());
+    // The warm-up is due a second after the first paint; the mention still being typed keeps its own answer.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(searched).not.toHaveBeenCalledWith("");
+    expect(screen.getByText("b.ts")).toBeTruthy();
+    expect(screen.queryByText("a.ts")).toBeNull();
   });
 });

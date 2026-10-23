@@ -224,7 +224,152 @@ describe("searchWorkspaceFiles", () => {
     }
     expect(leaked).toEqual([]);
   });
+
+  test("lists each depth before the next, so the scan limit reaches shallow files first", async () => {
+    const folder = await temporaryDirectory();
+    await mkdir(join(folder, "deep", "a", "b"), { recursive: true });
+    await write(join(folder, "deep", "a", "b", "leaf.ts"), "");
+    await write(join(folder, "top.ts"), "");
+
+    const result = await searchWorkspaceFiles(
+      { folder, query: "", limit: 200 },
+      { ...nonRepositoryOptions, scanLimit: 4 },
+    );
+    const paths = pathsOf(result);
+
+    expect(paths).toContain("top.ts");
+    expect(paths).toContain("deep/a");
+    expect(paths).not.toContain("deep/a/b/leaf.ts");
+    expect(result.truncated).toBe(true);
+  });
+
+  test("skips dependency, cache and repository metadata folders by name", async () => {
+    const folder = await temporaryDirectory();
+    const skipped = [
+      ".venv",
+      "venv",
+      "__pycache__",
+      ".cache",
+      ".mypy_cache",
+      ".pytest_cache",
+      ".tox",
+      ".worktrees",
+    ];
+    for (const name of skipped) {
+      await mkdir(join(folder, name), { recursive: true });
+      await write(join(folder, name, "inside.ts"), "");
+    }
+    await write(join(folder, "visible.ts"), "");
+
+    const result = await searchWorkspaceFiles(
+      { folder, query: "", limit: 200 },
+      nonRepositoryOptions,
+    );
+
+    expect(pathsOf(result)).toEqual(["visible.ts"]);
+  });
+
+  test("lists neither a symlinked folder nor the files it points to", async () => {
+    const folder = await temporaryDirectory();
+    await mkdir(join(folder, "real"), { recursive: true });
+    await write(join(folder, "real", "target.ts"), "");
+    await symlink(join(folder, "real"), join(folder, "alias"));
+
+    const result = await searchWorkspaceFiles(
+      { folder, query: "", limit: 200 },
+      nonRepositoryOptions,
+    );
+    const paths = pathsOf(result);
+
+    expect(paths).toContain("real/target.ts");
+    expect(paths.some((path) => path === "alias" || path.startsWith("alias/"))).toBe(false);
+  });
+
+  test("answers a query within 30 seconds from the listing it cached, and lists again after", async () => {
+    let now = 1_000_000;
+    const options = { ...nonRepositoryOptions, now: () => now };
+    const folder = await temporaryDirectory();
+    await write(join(folder, "first.ts"), "");
+    await searchWorkspaceFiles({ folder, query: "first" }, options);
+
+    await write(join(folder, "second.ts"), "");
+    now += 29_999;
+    const within = await searchWorkspaceFiles({ folder, query: "second" }, options);
+    expect(pathsOf(within)).not.toContain("second.ts");
+
+    now += 1;
+    const after = await searchWorkspaceFiles({ folder, query: "second" }, options);
+    expect(pathsOf(after)).toContain("second.ts");
+  });
+
+  test("caches a git folder's listing for 30 seconds and keeps git's ignore rules", async () => {
+    let now = 2_000_000;
+    const options = { now: () => now };
+    const repository = await temporaryDirectory();
+    await write(join(repository, ".gitignore"), "ignored.ts\n");
+    await write(join(repository, "tracked.ts"), "");
+    await write(join(repository, "ignored.ts"), "");
+    await git(repository, ["init", "-q", "-b", "main"]);
+
+    const first = await searchWorkspaceFiles({ folder: repository, query: "" }, options);
+    expect(pathsOf(first)).toContain("tracked.ts");
+
+    await write(join(repository, "late.ts"), "");
+    now += 1_000;
+    const within = await searchWorkspaceFiles({ folder: repository, query: "" }, options);
+    expect(pathsOf(within)).not.toContain("late.ts");
+    expect(pathsOf(within)).not.toContain("ignored.ts");
+
+    now += 29_000;
+    const after = await searchWorkspaceFiles({ folder: repository, query: "" }, options);
+    expect(pathsOf(after)).toContain("late.ts");
+    expect(pathsOf(after)).not.toContain("ignored.ts");
+  });
+
+  test("keeps the eight most recent folders, so a ninth search drops the oldest listing", async () => {
+    let now = 3_000_000;
+    const options = { ...nonRepositoryOptions, now: () => now };
+    const folders: string[] = [];
+    for (let index = 0; index < 9; index += 1) {
+      const folder = await temporaryDirectory();
+      await write(join(folder, "seed.ts"), "");
+      await searchWorkspaceFiles({ folder, query: "seed" }, options);
+      folders.push(folder);
+      now += 1;
+    }
+    const oldest = folders.at(0);
+    const newest = folders.at(-1);
+    if (oldest === undefined || newest === undefined) throw new Error("nine folders were searched");
+    await write(join(oldest, "late-oldest.ts"), "");
+    await write(join(newest, "late-newest.ts"), "");
+
+    const evicted = await searchWorkspaceFiles({ folder: oldest, query: "late-oldest" }, options);
+    const kept = await searchWorkspaceFiles({ folder: newest, query: "late-newest" }, options);
+
+    expect(pathsOf(evicted)).toContain("late-oldest.ts");
+    expect(pathsOf(kept)).not.toContain("late-newest.ts");
+  });
+
+  test("a bounded walk is not answered from an earlier unbounded listing of the same folder", async () => {
+    const folder = await temporaryDirectory();
+    for (let index = 0; index < 10; index += 1) {
+      await write(join(folder, `entry-${index}.txt`), "");
+    }
+    await searchWorkspaceFiles({ folder, query: "entry", limit: 200 }, nonRepositoryOptions);
+
+    const bounded = await searchWorkspaceFiles(
+      { folder, query: "entry", limit: 200 },
+      { ...nonRepositoryOptions, scanLimit: 3 },
+    );
+
+    expect(bounded.truncated).toBe(true);
+    expect(bounded.results.length).toBeLessThanOrEqual(3);
+  });
 });
+
+function pathsOf(result: FileSearchResult): string[] {
+  return result.results.map((candidate) => candidate.path);
+}
 
 async function temporaryDirectory(): Promise<string> {
   await mkdir(dataRoot, { recursive: true });

@@ -33,6 +33,8 @@ export interface ComposerTriggersProps {
   readonly notify: (message: string) => void;
   /** Says why a `#` action row could not run, in plain English: the app's error line. */
   readonly fail: (message: string) => void;
+  /** Whether the open chat is still opening (its history is loading, or a New chat is starting). Its file list waits. */
+  readonly opening?: boolean | undefined;
 }
 
 /** An available capability, or one that works through a fallback path. */
@@ -82,6 +84,7 @@ export function ComposerTriggers({
   slash,
   notify,
   fail,
+  opening = false,
   children,
 }: ComposerTriggersProps) {
   const providers = useMemo(
@@ -96,6 +99,7 @@ export function ComposerTriggers({
           providers={providers.mention}
           notify={notify}
           fail={fail}
+          opening={opening}
         >
           <SlashComposerSlot onSelect={keepInsertedText} providers={slash ? [slash] : []}>
             {children}
