@@ -81,6 +81,25 @@ describe("createDraftBuffer", () => {
     expect(reports).toHaveLength(1);
   });
 
+  test("a pending send is kept per scope until it is cleared, and a damaged record is dropped and reported", () => {
+    const storage = new MemoryDraftStorage();
+    const reports: unknown[] = [];
+    const buffer = createDraftBuffer(storage, (error) => reports.push(error));
+    buffer.writeSent(folderScope, "sent text");
+    expect(buffer.readSent(folderScope)).toBe("sent text");
+    buffer.clearSent(folderScope);
+    expect(buffer.readSent(folderScope)).toBeNull();
+
+    buffer.writeSent(folderScope, "soon damaged");
+    for (const key of storage.keys()) {
+      storage.setItem(key, JSON.stringify({ text: 3 }));
+    }
+
+    expect(buffer.readSent(folderScope)).toBeNull();
+    expect(storage.keys()).toEqual([]);
+    expect(reports).toHaveLength(1);
+  });
+
   test("reports a write the storage refuses, and does not throw into the controller", () => {
     class FullStorage extends MemoryDraftStorage {
       override setItem(): void {

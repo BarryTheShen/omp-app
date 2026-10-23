@@ -6,6 +6,7 @@ import {
   type DraftLifecycleTarget,
   type DraftStoreAdapter,
   type DraftTimer,
+  draftScopeStream,
   isConflictFailure,
 } from "./drafts";
 
@@ -71,6 +72,8 @@ export interface ChatDraftOptions {
   readonly timers?: DraftTimer;
   /** Keeps unsaved text in this tab, so it survives the app's server stopping. */
   readonly buffer?: DraftBuffer;
+  /** The user's prompts the chat's transcript shows, oldest first. A send this browser made is admitted once its text is the newest of them. */
+  readonly userPrompts?: () => readonly string[];
 }
 
 export class ChatDraft {
@@ -118,14 +121,20 @@ export class ChatDraft {
     if (this.disposed || this.busy || !observation.loaded) return;
     if (this.phase === "loading") {
       const folder = this.options.folder;
+      // A send this browser made that the transcript does not show yet: the chat is not new, its prompt is on its way. The copy
+      // stays where it is until the transcript shows that prompt (see `DraftController.admittedBy`).
+      if (!observation.hasMessages && this.pendingSends().length > 0) return;
       this.phase = observation.hasMessages || folder === null ? "sent" : "unsent";
       if (this.phase === "unsent" && folder !== null) {
         this.enqueueMove({ kind: "folder", folder });
+      } else {
+        this.enqueueAdmitted();
       }
       return;
     }
     if (this.phase === "unsent" && observation.hasMessages) {
       this.phase = "sent";
+      this.enqueueAdmitted();
       this.enqueueMove({ kind: "thread", threadId: this.threadId });
     }
   }
@@ -170,7 +179,11 @@ export class ChatDraft {
 
   /** The chat shows a message it did not show before: a send in progress was admitted (see `DraftController.noteSent`). */
   public noteSent = (): void => {
-    if (this.busy) this.current.noteSent();
+    if (this.busy) {
+      this.current.noteSent();
+    } else if (this.pendingSends().length > 0) {
+      this.enqueueAdmitted();
+    }
   };
 
   /** Runs again what failed: the move that did not finish, or the composer's own failed load or save. */
@@ -206,6 +219,50 @@ export class ChatDraft {
       pending = this.moves;
       await pending;
     } while (pending !== this.moves);
+  }
+
+  /** The sends this browser made that still wait to be admitted, with their scope: the folder's new-chat draft and the chat's own. */
+  private pendingSends(): { readonly scope: DraftScope; readonly text: string }[] {
+    const buffer = this.options.buffer;
+    if (buffer === undefined) return [];
+    const scopes: DraftScope[] = [{ kind: "thread", threadId: this.threadId }];
+    if (this.options.folder !== null)
+      scopes.unshift({ kind: "folder", folder: this.options.folder });
+    return scopes.flatMap((scope) => {
+      const text = buffer.readSent(scope);
+      return text === null ? [] : [{ scope, text }];
+    });
+  }
+
+  /** Drops the copies of sends the transcript now shows admitted. It runs in the move queue, so no move hands such a copy off. */
+  private enqueueAdmitted(): void {
+    this.moves = this.moves
+      .then(() => this.dropAdmitted())
+      .catch((error: unknown) => this.current.failWith(error));
+  }
+
+  private async dropAdmitted(): Promise<void> {
+    const prompts = this.options.userPrompts?.() ?? [];
+    if (this.disposed || prompts.length === 0) return;
+    const newest = prompts[prompts.length - 1];
+    for (const { scope, text } of this.pendingSends()) {
+      // A send the transcript does not show as its newest prompt waits, without a load of its scope.
+      if (text === newest) await this.admittedIn(scope, prompts);
+    }
+  }
+
+  /** Runs `admittedBy` on the controller that holds `scope`: the current one, or one built for the scope and disposed after. */
+  private async admittedIn(scope: DraftScope, prompts: readonly string[]): Promise<void> {
+    if (draftScopeStream(this.current.getSnapshot().scope) === draftScopeStream(scope)) {
+      await this.current.admittedBy(prompts);
+      return;
+    }
+    const controller = this.create(scope);
+    try {
+      await controller.admittedBy(prompts);
+    } finally {
+      await controller.dispose();
+    }
   }
 
   /** Loads the target scope, then takes what the previous controller held. Moves never overlap. */

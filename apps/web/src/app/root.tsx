@@ -179,7 +179,7 @@ import {
   useChatDraft,
   useComposerDraft,
 } from "@/modules/U2/drafts";
-import { createStorePromptSource, useIsRecalledPrompt } from "@/modules/U2/history";
+import { createStorePromptSource, useIsRecalledPrompt, userPromptsIn } from "@/modules/U2/history";
 import { ModeIndicator } from "@/modules/U2/modes";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import { createToolRegistry } from "@/modules/U3/tool-card/registry";
@@ -1641,6 +1641,7 @@ function ActiveThreadReady({
                 ),
               };
             },
+            userPrompts: () => userPromptsIn(store.getSnapshot()),
           },
     [newChatStarting, store],
   );

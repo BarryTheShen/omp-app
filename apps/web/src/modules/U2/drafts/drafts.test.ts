@@ -1675,7 +1675,7 @@ describe("DraftController: an earlier draft that text typed before it loaded wou
     store.draft = savedDraft("loaded draft");
     const controller = new DraftController({ store, scope: chat, timers: new FakeTimers() });
     await controller.load();
-    controller.adopt({ text: "moved text", attachments: [], failedSends: [] });
+    controller.adopt({ text: "moved text", attachments: [], failedSends: [], sending: null });
 
     await controller.load();
 

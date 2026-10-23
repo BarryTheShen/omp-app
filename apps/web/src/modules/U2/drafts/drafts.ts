@@ -90,6 +90,8 @@ export interface HeldDraft {
   readonly text: string;
   readonly attachments: readonly AttachmentRef[];
   readonly failedSends: readonly FailedSend[];
+  /** The send this copy is, while its admission is not known (see `DraftController.submit`), or null. */
+  readonly sending: string | null;
 }
 
 export interface DraftStoreAdapter {
@@ -329,8 +331,10 @@ export class DraftController {
   private readonly selfClearedRevisions = new Set<Revision>();
   /** The step the error status is for: the composer's Retry runs it again. */
   private failedStep: FailedStep | null = null;
-  /** The text of the send in progress, until its admission is known; the chat's own messages can prove it earlier. */
+  /** The text of the send in progress, or of a send whose copy is still here and not yet known admitted (see `consumeSent`). */
   private sendInFlight: string | null = null;
+  /** Whether the send in progress has a record. Only a prompt has one (see `submit`). */
+  private sendRecorded = false;
 
   public constructor(options: DraftControllerOptions) {
     this.store = options.store;
@@ -390,6 +394,14 @@ export class DraftController {
     let held: BufferedDraft | null = null;
     try {
       await settledWrites(this.scope);
+      // A prompt this tab sent, whose copy is still here: its record outlives a save of the copy, so a reload finds it.
+      if (this.sendInFlight === null) {
+        const recorded = this.buffer?.readSent(this.scope) ?? null;
+        if (recorded !== null) {
+          this.sendInFlight = recorded;
+          this.sendRecorded = true;
+        }
+      }
       // Read once the writes in flight have landed: the buffer then holds what the store is about to return. When
       // the person typed while those landed, the buffer holds that text, mirrored over what was kept, so what was
       // kept is the text read at the start.
@@ -555,7 +567,12 @@ export class DraftController {
       text: this.snapshot.text,
       attachments: [...this.snapshot.attachments],
       failedSends: [...this.snapshot.failedSends],
+      sending: this.sendRecorded ? this.sendInFlight : null,
     };
+    // The send's record moves with its copy: the scope the copy moves to keeps it (see `adopt`).
+    this.sendInFlight = null;
+    this.sendRecorded = false;
+    this.buffer?.clearSent(this.scope);
     this.setState({
       text: "",
       attachments: [],
@@ -571,6 +588,11 @@ export class DraftController {
 
   /** Adds a draft that moved here from another scope; the text already here stays first. */
   public adopt(held: HeldDraft): void {
+    if (held.sending !== null) {
+      this.sendInFlight = held.sending;
+      this.sendRecorded = true;
+      this.buffer?.writeSent(this.scope, held.sending);
+    }
     if (held.text === "" && held.attachments.length === 0 && held.failedSends.length === 0) return;
     const text =
       this.snapshot.text === ""
@@ -639,15 +661,20 @@ export class DraftController {
     // The draft's own attachments are the ones sent. A send names them only by id, name and media type, which would
     // replace the full references the composer holds and make the composer reload them.
     const attachments = [...this.snapshot.attachments];
-    this.setDraft(text, attachments);
+    // A prompt's send is recorded before its copy is written, so a reload that beats the admission finds the record (see
+    // `admittedBy`). A `!` or `$` command is not recorded: the transcript admits a prompt only, so a command's record would
+    // wait for an admission that never shows, and a reload would never classify its chat (see `observe`).
     this.sendInFlight = text;
+    this.sendRecorded = intent.mode === "prompt";
+    if (this.sendRecorded) this.buffer?.writeSent(this.scope, text);
+    this.setDraft(text, attachments);
     try {
       await trackWrite(this.scope, this.admitAndClear(intent, submitPrompt, text));
     } catch (error) {
+      // The send failed, so it is no longer pending: the failed send is recorded in its place.
+      this.consumeSent(text);
       await this.recordFailedSend(text, attachments, error);
       throw error;
-    } finally {
-      this.sendInFlight = null;
     }
   }
 
@@ -659,9 +686,17 @@ export class DraftController {
   public noteSent(): void {
     const sent = this.sendInFlight;
     if (sent === null) return;
-    this.sendInFlight = null;
     // A failed clear is already the composer's error status (`fail`), which the composer shows with its retry.
-    void this.clearAfterAdmissionNow(sent).catch(() => undefined);
+    trackClear(this.scope, this.clearAfterAdmissionNow(sent));
+  }
+
+  /** Forgets the send `sentText` when it is the one in progress: its copy is no longer pending. Returns it, or null. */
+  private consumeSent(sentText: string | undefined): string | null {
+    if (sentText === undefined || this.sendInFlight !== sentText) return null;
+    this.sendInFlight = null;
+    this.sendRecorded = false;
+    this.buffer?.clearSent(this.scope);
+    return sentText;
   }
   private async admitAndClear(
     intent: PromptIntent,
@@ -677,6 +712,7 @@ export class DraftController {
   }
 
   public async clearAfterAdmission(sentText?: string): Promise<void> {
+    this.consumeSent(sentText);
     if (this.snapshot.revision === null && !this.snapshot.dirty) return;
     if (sentText !== undefined && this.snapshot.text !== sentText) return;
     this.clearTimer();
@@ -684,7 +720,21 @@ export class DraftController {
     await this.clearAfterAdmissionNow(sentText);
   }
 
+  /**
+   * The chat's transcript shows the send this controller holds as its newest prompt: the send was admitted, so its copy
+   * clears. A reload that beat the admission left the copy here, with the record of the send (see `submit`). A controller
+   * that has not loaded loads first.
+   */
+  public async admittedBy(prompts: readonly string[]): Promise<void> {
+    if (!this.loaded) await this.load();
+    const sent = this.sendInFlight;
+    if (sent === null || prompts.at(-1) !== sent) return;
+    await this.clearAfterAdmission(sent);
+  }
+
   private async clearAfterAdmissionNow(sentText?: string): Promise<void> {
+    // The send's pending record ends at admission (see `consumeSent`), before any early return.
+    this.consumeSent(sentText);
     if (this.snapshot.revision === null && !this.snapshot.dirty) return;
     // Text typed while the prompt was being admitted is not part of it: it stays, and autosave stores it.
     if (sentText !== undefined && this.snapshot.text !== sentText) return;

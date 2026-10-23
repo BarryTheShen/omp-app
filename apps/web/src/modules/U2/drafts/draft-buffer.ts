@@ -24,6 +24,10 @@ export interface DraftBuffer {
   readReplaced(scope: DraftScope): DraftInput | null;
   writeReplaced(scope: DraftScope, input: DraftInput): void;
   clearReplaced(scope: DraftScope): void;
+  /** The text of a send this tab made from the scope, not yet known to be admitted, or null. It outlives the copy's save. */
+  readSent(scope: DraftScope): string | null;
+  writeSent(scope: DraftScope, text: string): void;
+  clearSent(scope: DraftScope): void;
 }
 
 /** The part of Web Storage the buffer uses. The app passes `localStorage`, so the copy survives a reload, a closed tab and a restarted browser. */
@@ -47,6 +51,11 @@ const StoredReplaced = z.strictObject({
   input: DraftInput,
 });
 
+const StoredSent = z.strictObject({
+  version: z.literal(1),
+  text: z.string(),
+});
+
 function replacedKeyFor(scope: DraftScope): string {
   return `${KEY_PREFIX}replaced:${draftScopeStream(scope)}`;
 }
@@ -60,6 +69,21 @@ function parseStoredReplaced(raw: string): DraftInput | null {
   }
   const parsed = StoredReplaced.safeParse(value);
   return parsed.success ? parsed.data.input : null;
+}
+
+function sentKeyFor(scope: DraftScope): string {
+  return `${KEY_PREFIX}sent:${draftScopeStream(scope)}`;
+}
+
+function parseStoredSent(raw: string): string | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const parsed = StoredSent.safeParse(value);
+  return parsed.success ? parsed.data.text : null;
 }
 
 function keyFor(scope: DraftScope): string {
@@ -166,6 +190,30 @@ export function createDraftBuffer(
     },
     clearReplaced(scope) {
       attempt(onError, () => storage.removeItem(replacedKeyFor(scope)));
+    },
+    readSent(scope) {
+      const key = sentKeyFor(scope);
+      const raw = storage.getItem(key);
+      if (raw === null) return null;
+      const text = parseStoredSent(raw);
+      if (text !== null) return text;
+      attempt(onError, () => storage.removeItem(key));
+      onError(
+        new AppFailure({
+          code: "internal",
+          message: "A send in this tab could not be read and was dropped",
+          retryable: false,
+        }),
+      );
+      return null;
+    },
+    writeSent(scope, text) {
+      attempt(onError, () =>
+        storage.setItem(sentKeyFor(scope), JSON.stringify({ version: 1, text })),
+      );
+    },
+    clearSent(scope) {
+      attempt(onError, () => storage.removeItem(sentKeyFor(scope)));
     },
   };
 }

@@ -2,7 +2,7 @@ import { AppFailure, type DraftScope, FolderPath, ThreadId } from "@omp-app/cont
 import { describe, expect, test, vi } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import { ChatDraft, isCurrentUnsentChat, unsentChatReloadTarget } from "./chat-draft";
-import { createDraftBuffer, type DraftBufferStorage } from "./draft-buffer";
+import { createDraftBuffer, type DraftBuffer, type DraftBufferStorage } from "./draft-buffer";
 import type { DraftStoreAdapter, DraftTimer } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
 
@@ -399,6 +399,160 @@ describe("ChatDraft: a failed step is retried, a conflict waits for a choice", (
     );
     expect(chat.controller.getSnapshot().text).toBe("typed while the chat was new");
     expect(store.text(newChatDraft)).toBeUndefined();
+  });
+});
+
+describe("ChatDraft: a send whose admission a reload beat", () => {
+  const quiet = (): void => undefined;
+  /** Lets the queued moves and drafts settle. Each step is a promise, so a fixed number of turns is exact, not a guess at time. */
+  async function settle(): Promise<void> {
+    for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+  }
+
+  /** The page before the reload: a New chat sends a prompt, and the send is held until the test releases it. */
+  async function sendBeforeReload(store: ScopedDraftStore, buffer: DraftBuffer) {
+    const sending = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-new"),
+      startsUnsent: true,
+      timers: noTimers,
+      buffer,
+    });
+    await sending.controller.load();
+    const release = Promise.withResolvers<void>();
+    const sent = sending.submit(prompt("sent then reloaded"), () => release.promise);
+    await vi.waitFor(() =>
+      expect(buffer.read(newChatDraft)?.input.text).toBe("sent then reloaded"),
+    );
+    return { release, sent };
+  }
+
+  /**
+   * The page after the reload. A static import would share one module instance with the page before it, whose held
+   * write would then block this page's loads; a reload starts with nothing in memory, so the module is loaded again.
+   */
+  async function reloadedChat(
+    store: ScopedDraftStore,
+    buffer: DraftBuffer,
+    transcript: string[],
+  ): Promise<ChatDraft> {
+    vi.resetModules();
+    const fresh = await import("./chat-draft");
+    return new fresh.ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-saved"),
+      timers: noTimers,
+      buffer,
+      userPrompts: () => transcript,
+    });
+  }
+
+  test("the saved chat is not new while its prompt is on its way, so the copy stays in the folder", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { release, sent } = await sendBeforeReload(store, buffer);
+    const chat = await reloadedChat(store, buffer, []);
+    await chat.controller.load();
+
+    chat.observe({ loaded: true, hasMessages: false });
+    await settle();
+
+    expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-saved"));
+    expect(buffer.read(newChatDraft)?.input.text).toBe("sent then reloaded");
+    expect(store.text(threadScope("chat-saved"))).toBeUndefined();
+    release.resolve();
+    await sent;
+  });
+
+  test("once the transcript shows the send, its copy is dropped, and the saved chat never takes it", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { release, sent } = await sendBeforeReload(store, buffer);
+    const transcript: string[] = [];
+    const chat = await reloadedChat(store, buffer, transcript);
+    await chat.controller.load();
+    chat.observe({ loaded: true, hasMessages: false });
+    await settle();
+
+    transcript.push("sent then reloaded");
+    chat.observe({ loaded: true, hasMessages: true });
+    await vi.waitFor(() => expect(buffer.read(newChatDraft)).toBeNull());
+    await settle();
+
+    expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-saved"));
+    expect(chat.controller.getSnapshot().text).toBe("");
+    expect(store.text(newChatDraft)).toBeUndefined();
+    expect(store.text(threadScope("chat-saved"))).toBeUndefined();
+    release.resolve();
+    await sent;
+  });
+
+  test("a New chat's typed text that equals a prompt of the saved chat is not dropped", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    await store.save({
+      scope: newChatDraft,
+      draft: { text: "continue", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-saved"),
+      timers: noTimers,
+      buffer,
+      userPrompts: () => ["continue"],
+    });
+    await chat.controller.load();
+
+    chat.observe({ loaded: true, hasMessages: true });
+    await settle();
+
+    expect(chat.controller.getSnapshot().text).toBe("");
+    expect(store.text(newChatDraft)).toBe("continue");
+  });
+
+  test("a send keeps its record while it waits, and drops it once the send is admitted", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { release, sent } = await sendBeforeReload(store, buffer);
+    expect(buffer.readSent(newChatDraft)).toBe("sent then reloaded");
+
+    release.resolve();
+    await sent;
+
+    expect(buffer.readSent(newChatDraft)).toBeNull();
+    expect(buffer.read(newChatDraft)).toBeNull();
+  });
+
+  test("a send that fails drops its record, and its text stays as a failed send", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const chat = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-new"),
+      startsUnsent: true,
+      timers: noTimers,
+      buffer,
+    });
+    await chat.controller.load();
+    const refused = new AppFailure({
+      code: "internal",
+      message: "The prompt was refused",
+      retryable: true,
+    });
+
+    await expect(
+      chat.submit(prompt("refused prompt"), async () => {
+        throw refused;
+      }),
+    ).rejects.toBe(refused);
+
+    expect(buffer.readSent(newChatDraft)).toBeNull();
+    expect(chat.controller.getSnapshot().failedSends).toHaveLength(1);
   });
 });
 

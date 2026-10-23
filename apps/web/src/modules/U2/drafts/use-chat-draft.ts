@@ -10,6 +10,8 @@ import type { DraftController, DraftStoreAdapter } from "./drafts";
 export interface ChatMessagesSource {
   subscribe(listener: () => void): () => void;
   getSnapshot(): { readonly messageOrder: readonly string[]; readonly hasUserMessage?: boolean };
+  /** The user's prompts in the chat, read when a draft moves into it or a reload finds a copy of one of them. */
+  userPrompts?(): readonly string[];
 }
 
 export interface UseChatDraftOptions {
@@ -77,6 +79,7 @@ export function useChatDraft({
         startsUnsent: startsUnsent && messages.getSnapshot().messageOrder.length === 0,
         lifecycle,
         buffer,
+        userPrompts: () => messages.userPrompts?.() ?? [],
       }),
     [draftStore, folder, draftThreadKey, staleChat, startsUnsent, messages, lifecycle, buffer],
   );
