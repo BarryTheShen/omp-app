@@ -422,4 +422,104 @@ describe("NativeRemoteThreadListAdapter", () => {
     await expect(first).resolves.toMatchObject({ remoteId: threadOne });
     expect(opened).toBe(1);
   });
+
+  test("a New chat started for its caller keeps the hold its open takes, until the caller adopts it", async () => {
+    const calls: string[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => {
+        calls.push("threadId" in args ? `open ${args.threadId}` : "open new");
+        return openResult("threadId" in args ? args.threadId : threadOne);
+      },
+      close: async ({ threadId }) => {
+        calls.push(`close ${threadId}`);
+        return null;
+      },
+    });
+    const started = await adapter.startNew();
+    expect(started.threadId).toBe(threadOne);
+    expect(calls).toEqual(["open new"]);
+    expect(adapter.adopt(threadOne)).toBe(true);
+    expect(adapter.adopt(threadOne)).toBe(false);
+    expect(calls).toEqual(["open new"]);
+  });
+
+  test("a New chat no caller adopts is let go when the next pick finishes", async () => {
+    const calls: string[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => {
+        calls.push("threadId" in args ? `open ${args.threadId}` : "open new");
+        return openResult("threadId" in args ? args.threadId : threadOne);
+      },
+      close: async ({ threadId }) => {
+        calls.push(`close ${threadId}`);
+        return null;
+      },
+    });
+    await adapter.startNew();
+    await adapter.switchToThread(threadTwo);
+    expect(calls).toEqual([
+      "open new",
+      `open ${threadTwo}`,
+      `close ${threadOne}`,
+      `close ${threadTwo}`,
+    ]);
+    expect(adapter.adopt(threadOne)).toBe(false);
+  });
+
+  test("a New chat started after one nobody adopted lets the older one go, and only the newest is adopted", async () => {
+    const opened = [threadOne, threadTwo];
+    const closed: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async () => openResult(opened.shift() ?? threadTwo),
+      close: async ({ threadId }) => {
+        closed.push(threadId);
+        return null;
+      },
+    });
+    await adapter.startNew();
+    await adapter.startNew();
+    expect(closed).toEqual([threadOne]);
+    expect(adapter.adopt(threadOne)).toBe(false);
+    expect(adapter.adopt(threadTwo)).toBe(true);
+    expect(closed).toEqual([threadOne]);
+  });
+
+  test("a New chat started for its caller that finishes after a later pick is let go, and is not adopted", async () => {
+    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const closed: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => ("threadId" in args ? openResult(args.threadId) : newChatOpen.promise),
+      close: async ({ threadId }) => {
+        closed.push(threadId);
+        return null;
+      },
+    });
+    const started = adapter.startNew();
+    await adapter.switchToThread(threadTwo);
+    newChatOpen.resolve(openResult(threadOne));
+    await expect(started).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(closed).toEqual([threadTwo, threadOne]);
+    expect(adapter.adopt(threadOne)).toBe(false);
+  });
+
+  test("a New chat started for its caller that fails holds nothing and is not adopted", async () => {
+    const closed: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async () => {
+        throw new AppFailure({ code: "permission", message: "denied", retryable: false });
+      },
+      close: async ({ threadId }) => {
+        closed.push(threadId);
+        return null;
+      },
+    });
+    await expect(adapter.startNew()).rejects.toMatchObject({ appError: { code: "permission" } });
+    expect(closed).toEqual([]);
+    expect(adapter.adopt(threadOne)).toBe(false);
+  });
 });

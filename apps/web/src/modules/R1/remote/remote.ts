@@ -85,6 +85,13 @@ function isNewThreadId(threadId: string): boolean {
   return threadId === "new" || threadId.startsWith("new:") || threadId.startsWith("local:");
 }
 
+function initialized(result: OpenThreadResult): RemoteThreadInitializeResponse {
+  return {
+    remoteId: result.threadId,
+    ...(result.sessionFile ? { externalId: result.sessionFile } : {}),
+  };
+}
+
 /**
  * Stable assistant-ui RemoteThreadListAdapter over R1.3 metadata. It never owns a transcript or
  * message store: selecting/initializing a thread only completes after the typed A0 open resolves.
@@ -101,6 +108,8 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
   private requests = 0;
   /** The newest open that has finished, opened or failed. */
   private finishedRequest = 0;
+  /** The New chat `startNew` opened that no caller has adopted yet: its hold is the adapter's until `adopt` takes it. */
+  private adoptable: ThreadId | undefined;
 
   public constructor(options: RemoteThreadListOptions) {
     this.options = options;
@@ -147,7 +156,7 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
     }
     const existing = this.initializations.get(threadId);
     if (existing && existing.request === this.requests) return existing.task;
-    const task = this.open(threadId);
+    const task = this.open(threadId).then(initialized);
     // `open` takes its number as its first step, so the counter holds the number of this open now.
     const entry = { task, request: this.requests };
     this.initializations.set(threadId, entry);
@@ -219,11 +228,38 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
   }
 
   /**
+   * Starts a New chat for a caller that adopts it (`adopt`): the open keeps the hold it takes, so the caller holds the chat
+   * once and opens it no more. A New chat no caller adopts is let go when the next open finishes.
+   */
+  public startNew(): Promise<OpenThreadResult> {
+    return this.open("new", true);
+  }
+
+  /**
+   * The caller takes over the hold of the New chat `startNew` opened, if the adapter still holds it. Returns false when it
+   * does not (the chat was let go, or it was never such a New chat), and then the caller must open the chat itself.
+   */
+  public adopt(threadId: ThreadId): boolean {
+    if (this.adoptable !== threadId) return false;
+    this.adoptable = undefined;
+    return true;
+  }
+
+  /** Lets go of the New chat no caller adopted, once a newer open finishes: the newest open is the one kept. */
+  private letGoAdoptable(): void {
+    const unadopted = this.adoptable;
+    this.adoptable = undefined;
+    if (unadopted !== undefined && this.options.close)
+      void releaseThread(this.options.close, unadopted);
+  }
+
+  /**
    * Opens one pick. Picks can finish out of order: a new chat waits for omp to start, while a chat that is
    * already running opens at once. A pick that finishes after a later pick has already finished is let go and
-   * never selected, because the person made the later pick last. A pick that fails counts as a later pick too.
+   * never selected, because the person made the later pick last. A pick that fails counts as a later pick too. A New chat
+   * opened for its caller (`forAdoption`, see `startNew`) keeps its hold until `adopt` takes it.
    */
-  private async open(threadId: string): Promise<RemoteThreadInitializeResponse> {
+  private async open(threadId: string, forAdoption = false): Promise<OpenThreadResult> {
     const request = ++this.requests;
     try {
       let args: OpenThreadArgs;
@@ -252,13 +288,13 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
       }
       this.finishedRequest = request;
       this.currentThreadId = nextThreadId;
-      if (this.options.close) void releaseThread(this.options.close, nextThreadId);
+      this.letGoAdoptable();
+      if (forAdoption) this.adoptable = nextThreadId;
+      else if (this.options.close) void releaseThread(this.options.close, nextThreadId);
       this.options.onThreadIdChange?.(nextThreadId);
-      return {
-        remoteId: nextThreadId,
-        ...(result.sessionFile ? { externalId: result.sessionFile } : {}),
-      };
+      return { ...result, threadId: nextThreadId };
     } catch (error) {
+      if (request > this.finishedRequest) this.letGoAdoptable();
       this.finishedRequest = Math.max(this.finishedRequest, request);
       throw failure(error, "Opening the remote thread failed");
     }
