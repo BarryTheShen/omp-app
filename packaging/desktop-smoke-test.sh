@@ -25,7 +25,13 @@ shots="$(dirname "$deb")/screenshots"
 mkdir -p "$shots"
 work=$(mktemp -d)
 export HOME="$work/home" XDG_STATE_HOME="$work/state" PI_CODING_AGENT_DIR="$work/agent" OMP_APP_DATA_DIR="$work/data"
-mkdir -p "$HOME" "$work/folder" "$PI_CODING_AGENT_DIR" "$OMP_APP_DATA_DIR"
+mkdir -p "$HOME" "$work/folder" "$PI_CODING_AGENT_DIR" "$OMP_APP_DATA_DIR" "$work/omp"
+# The server runs the omp the app pins, never the one CI installs for the window's own lookup: a stand-in that will not
+# start takes its place, so nothing is downloaded and the server answers with its omp page.
+pinned=$(grep -o -E '"version": *"[^"]+"' "$(dirname "$0")/../packages/server/src/omp-pin/pin.json" | grep -o -E '[0-9][^"]*')
+printf '#!/bin/sh\nexit 1\n' >"$work/omp/omp-$pinned"
+chmod +x "$work/omp/omp-$pinned"
+export OMP_APP_OMP_DIR="$work/omp"
 root="$work/root"
 app="$root/usr/bin/omp-app-desktop"
 sidecar_bin="$root/usr/bin/omp-app-desktop-server"

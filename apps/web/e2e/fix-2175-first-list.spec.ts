@@ -12,9 +12,6 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
  * The page's own timings are written to .data/screenshots as data, not asserted. Captures: light, dark and 390 px.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 const LOADING = "Loading commands…";
 const NO_MATCH = "No matching commands.";
 const WAIT_MS = 15_000;

@@ -8,9 +8,6 @@ import { expect, realTest, startChat } from "./real-omp";
  * returned in provider order (v18.12.6 packages/tui/src/autocomplete.ts:740-745). Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** The slash list above the composer (`trigger-slot.tsx`). */
 function commandList(page: Page) {
   return page.getByRole("listbox", { name: "Slash commands" });

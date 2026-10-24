@@ -152,7 +152,6 @@ async function measure(
 }
 
 realTest.use({
-  ompBinary: "/cache/bun/omp-18.12.2",
   seedEntries: { entries: seededEntries(500) },
 });
 realTest.setTimeout(1_200_000);

@@ -6,8 +6,12 @@ import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import { FolderPath, RpcSessionPort, ThreadId } from "@omp-app/contracts";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
+import { pinnedOmpPath } from "../../src/omp-pin";
 
-const REAL_OMP = "/home/user/.bun/bin/omp";
+/** The omp the app pins, from `OMP_APP_OMP_DIR` (the test machine's shared cache), else this checkout's `.data/omp`. */
+const REAL_OMP = pinnedOmpPath(
+  Bun.env.OMP_APP_OMP_DIR ?? resolve(import.meta.dir, "../../../../.data/omp"),
+);
 const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
 const realTest = Bun.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP) ? test : test.skip;
 const roots: string[] = [];

@@ -3,8 +3,6 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 const LIST = "Slash commands";
 
 async function captureList(

@@ -6,9 +6,6 @@ import { expect, realTest, startChat } from "./real-omp";
  * command name, Enter submits it). Enter then sends the command. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** The slash list above the composer (`trigger-slot.tsx`). */
 function commandList(page: Page) {
   return page.getByRole("listbox", { name: "Slash commands" });

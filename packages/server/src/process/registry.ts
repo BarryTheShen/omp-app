@@ -2,7 +2,6 @@ import type { ProcessStatus, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { RpcSessionTimer } from "@omp-app/omp-rpc";
 import type { OmpProcess, OmpProcessOptions } from "./omp-process";
-import { spawnOmpProcess } from "./omp-process";
 
 /**
  * Each omp process holds about 380 MB while idle, so a chat nobody watches is stopped after two
@@ -35,8 +34,8 @@ function defaultTimer(): RpcSessionTimer {
 export interface OmpProcessRegistryOptions {
   /** How long an unwatched thread's process stays up before it is checked and stopped. Default 2 minutes. */
   readonly idleCloseMs?: number;
-  /** Injectable for tests; defaults to `spawnOmpProcess` (a real `omp --mode rpc-ui` child). */
-  readonly createProcess?: (options: OmpProcessOptions) => OmpProcess;
+  /** Makes a thread's omp: `spawnOmpProcess` with the pinned omp in the server, a stand-in in tests. */
+  readonly createProcess: (options: OmpProcessOptions) => OmpProcess;
   /** Injectable for deterministic idle-close tests; defaults to the global timer. */
   readonly timer?: RpcSessionTimer;
 }
@@ -96,9 +95,9 @@ export class OmpProcessRegistry {
   #idleHooks: OmpProcessIdleHooks | undefined;
   readonly #busyListeners = new Set<(threadId: ThreadId, busy: boolean) => void>();
 
-  constructor(options: OmpProcessRegistryOptions = {}) {
+  constructor(options: OmpProcessRegistryOptions) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
-    this.#createProcess = options.createProcess ?? spawnOmpProcess;
+    this.#createProcess = options.createProcess;
     this.#timer = options.timer ?? defaultTimer();
   }
 

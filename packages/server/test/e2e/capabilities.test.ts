@@ -8,6 +8,7 @@ import {
   type CompositionServerOptions,
   createCompositionServer,
 } from "../../scripts/dev";
+import { OMP_PIN, pinnedOmpPath } from "../../src/omp-pin";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
@@ -163,6 +164,79 @@ async function welcomeFor(server: CompositionServer) {
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe("the omp the app pins", () => {
+  /** A server started without an omp binary: it resolves the pinned omp from OMP_APP_OMP_DIR itself. */
+  async function startPinned(
+    root: string,
+    environment: Readonly<Record<string, string>>,
+    ompDownload?: CompositionServerOptions["ompDownload"],
+  ): Promise<CompositionServer> {
+    const home = join(root, "home");
+    const agentDir = join(root, "agent");
+    const appDataDir = join(root, "app-data");
+    await Promise.all([home, agentDir, appDataDir].map((path) => mkdir(path, { recursive: true })));
+    const server = await createCompositionServer({
+      port: 0,
+      env: { ...Bun.env, HOME: home, PI_CODING_AGENT_DIR: agentDir, ...environment },
+      homeDir: home,
+      agentDir,
+      appDataDir,
+      staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
+      ...(ompDownload === undefined ? {} : { ompDownload }),
+    });
+    servers.push(server);
+    return server;
+  }
+
+  test("runs the release in OMP_APP_OMP_DIR, never an omp found on PATH", async () => {
+    const root = await temporaryRoot("pinned-omp-");
+    const pinnedDir = join(root, "pinned");
+    const pathDir = join(root, "path-bin");
+    await Promise.all([pinnedDir, pathDir].map((path) => mkdir(path, { recursive: true })));
+    const pinned = pinnedOmpPath(pinnedDir);
+    await writeFile(pinned, FAKE_OMP, { mode: 0o755 });
+    // An omp on PATH that would fail every probe and records any start.
+    await writeFile(
+      join(pathDir, "omp"),
+      `#!/bin/sh\necho "$@" >> "${join(pathDir, "omp.spawnlog")}"\nexit 1\n`,
+      { mode: 0o755 },
+    );
+
+    const server = await startPinned(root, {
+      OMP_APP_OMP_DIR: pinnedDir,
+      PATH: `${pathDir}:${Bun.env.PATH ?? ""}`,
+    });
+
+    expect(server.health.status).toBe("ok");
+    expect(await readFile(`${pinned}.spawnlog`, "utf8")).toContain("--version");
+    await expect(readFile(join(pathDir, "omp.spawnlog"), "utf8")).rejects.toThrow();
+  }, 30_000);
+
+  test("starts, and says why, when the pinned omp cannot be downloaded", async () => {
+    const root = await temporaryRoot("pinned-omp-missing-");
+    const urls: string[] = [];
+
+    const server = await startPinned(
+      root,
+      { OMP_APP_OMP_DIR: join(root, "pinned") },
+      async (url) => {
+        urls.push(url);
+        return new Response("not here", { status: 404 });
+      },
+    );
+
+    expect(urls).toEqual([
+      `https://github.com/can1357/oh-my-pi/releases/download/v${OMP_PIN.version}/omp-${process.platform}-${process.arch}`,
+    ]);
+    expect(server.health).toEqual({
+      status: "unhealthy",
+      detail: `The app's omp could not be installed: the download of omp ${OMP_PIN.version} failed (HTTP 404).`,
+    });
+    // The server still answers, so the page can show the reason.
+    expect((await welcomeFor(server)).type).toBe("welcome");
+  }, 30_000);
 });
 
 describe("composition capability wiring", () => {

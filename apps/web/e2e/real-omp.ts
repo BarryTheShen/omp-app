@@ -5,7 +5,8 @@
  * `packages/server/scripts/dev.ts`, real omp, and the fake model in
  * `packages/omp-rpc/scripts/fake-openai-server.ts`) in a temporary home, so nothing touches `~/.omp`.
  *
- * Run with `OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts` from `apps/web`. The fake model
+ * Run with `OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts` from `apps/web`, after putting the app's omp in place
+ * once with `bun packages/server/scripts/fetch-omp.ts` (or pointing `OMP_APP_OMP_DIR` at a folder that holds it). The fake model
  * answers by keyword in the last user message: `ask_user` makes omp ask "Which database?",
  * `run_bash` makes it run `echo fixture-tool`, `make_todos` makes it write a two-item todo list,
  * `abort_slow` streams slowly, `slow_tool` makes it run a shell command that takes 7 seconds, and
@@ -18,8 +19,33 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { type BrowserContext, expect, type Locator, type Page, test } from "@playwright/test";
 
-export const REAL_OMP = "/home/user/.bun/bin/omp";
 export const APP_ROOT = resolve(process.cwd(), "../..");
+
+/** The version in `packages/server/src/omp-pin/pin.json`: the omp release the app runs. */
+function pinnedOmpVersion(): string {
+  const pin: unknown = JSON.parse(
+    readFileSync(resolve(APP_ROOT, "packages/server/src/omp-pin/pin.json"), "utf8"),
+  );
+  if (
+    typeof pin === "object" &&
+    pin !== null &&
+    "version" in pin &&
+    typeof pin.version === "string"
+  ) {
+    return pin.version;
+  }
+  throw new Error("packages/server/src/omp-pin/pin.json names no omp version");
+}
+
+/**
+ * The omp every live test runs: the release the app pins, from `OMP_APP_OMP_DIR` (on the test machine the shared
+ * `/cache/bun/omp-pinned`), else this checkout's `.data/omp` (`bun packages/server/scripts/fetch-omp.ts` puts it
+ * there). With `OMP_APP_REAL_OMP=1` a missing binary fails the live tests rather than skipping them.
+ */
+export const REAL_OMP = join(
+  process.env.OMP_APP_OMP_DIR ?? resolve(APP_ROOT, ".data", "omp"),
+  `omp-${pinnedOmpVersion()}`,
+);
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
 const FAKE_PROVIDER = resolve(APP_ROOT, "packages/omp-rpc/scripts/fake-openai-server.ts");
 const SESSION_PATHS = resolve(APP_ROOT, "packages/server/src/modules/A1/sessions/paths.ts");
@@ -412,7 +438,8 @@ export async function enableNativeSkills(agentDir: string): Promise<void> {
   );
 }
 
-export const realOmpEnabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
+/** Live tests run when `OMP_APP_REAL_OMP=1`; they then need the app's omp, and a missing one fails them, never skips them. */
+export const realOmpEnabled = process.env.OMP_APP_REAL_OMP === "1";
 
 /** Files for the chat's workspace folder, and whether that folder is a git repository (`git init`). */
 export interface SeedWorkspace {
@@ -497,7 +524,12 @@ export const realTest = test.extend<{
     use,
     testInfo,
   ) => {
-    testInfo.skip(!realOmpEnabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
+    testInfo.skip(!realOmpEnabled, "needs OMP_APP_REAL_OMP=1");
+    if (!existsSync(REAL_OMP)) {
+      throw new Error(
+        `The app's omp is not at ${REAL_OMP}: run \`bun packages/server/scripts/fetch-omp.ts\`, or set OMP_APP_OMP_DIR to the folder that holds it.`,
+      );
+    }
     // Real omp starts a process per chat: a loaded machine needs more than the default 30 s.
     testInfo.slow();
     await mkdir(resolve(APP_ROOT, ".data"), { recursive: true });

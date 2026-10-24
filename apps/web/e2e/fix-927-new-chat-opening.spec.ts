@@ -2,14 +2,13 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, screenshots } from "./real-omp";
+import { expect, REAL_OMP, realTest, screenshots } from "./real-omp";
 
 /**
  * Issue 927. A New chat takes omp a moment to start, and the page used to look unchanged for that
  * time: it still said to choose a folder and open a session. This wrapper makes a new chat's omp wait
  * 4 s before it starts, so the opening is long enough to look at. Resumed chats start at once.
  */
-const REAL_OMP = "/home/user/.bun/bin/omp";
 const dir = resolve(process.cwd(), "../../.data/fix-927-new-chat");
 mkdirSync(dir, { recursive: true });
 const delayedOmp = join(dir, "omp-new-chat-delay.sh");

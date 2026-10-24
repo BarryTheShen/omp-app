@@ -2,7 +2,8 @@
 # Unpacks a built package into a temporary folder and checks that the installed command works:
 # it prints its version, serves the web app and its scripts, a second launch finds the first, it
 # writes its debug log (private, without the launch token) and `omp-app logs` and
-# `omp-app debug-report` read it, and stopping it removes its record. No omp is needed; nothing
+# `omp-app debug-report` read it, and stopping it removes its record. No omp is needed: a stand-in
+# that will not start takes the place of the omp the app pins, so nothing is downloaded. Nothing
 # outside the temporary folder is touched.
 #
 #   packaging/smoke-test.sh dist/release/omp-app_0.1.451_amd64.deb
@@ -20,7 +21,11 @@ trap cleanup EXIT
 dpkg-deb -x "$package" "$work/root"
 app="$work/root/usr/bin/omp-app"
 export HOME="$work/home" XDG_STATE_HOME="$work/state" PI_CODING_AGENT_DIR="$work/agent" OMP_APP_DATA_DIR="$work/data"
-mkdir -p "$HOME" "$work/folder"
+mkdir -p "$HOME" "$work/folder" "$work/omp"
+pinned=$(grep -o -E '"version": *"[^"]+"' "$(dirname "$0")/../packages/server/src/omp-pin/pin.json" | grep -o -E '[0-9][^"]*')
+printf '#!/bin/sh\nexit 1\n' >"$work/omp/omp-$pinned"
+chmod +x "$work/omp/omp-$pinned"
+export OMP_APP_OMP_DIR="$work/omp"
 
 expected=$(dpkg-deb -f "$package" Version)
 [[ $("$app" --version) == "$expected" ]] || { echo "FAIL: --version is not $expected" >&2; exit 1; }

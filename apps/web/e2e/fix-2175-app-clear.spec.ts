@@ -18,8 +18,6 @@ import {
  * throwaway home: no test touches a real session.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 realTest.setTimeout(300_000);
 
 const NOTE =

@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, realTest, sendPrompt, startChat } from "./real-omp";
+import { expect, REAL_OMP, realTest, sendPrompt, startChat } from "./real-omp";
 
 realTest.setTimeout(300_000);
 
@@ -10,7 +10,6 @@ realTest.setTimeout(300_000);
  * starts a resumed chat at once. So a New chat clicked and then a chat picked finishes its pick first, while the New
  * chat is still opening: the sequence the fix for #877 must keep. Without the wait the race is too short to test.
  */
-const REAL_OMP = "/home/user/.bun/bin/omp";
 const delayDir = resolve(process.cwd(), "../../.data/fix-877-new-chat");
 mkdirSync(delayDir, { recursive: true });
 const delayedOmp = join(delayDir, "omp-new-chat-delay.sh");

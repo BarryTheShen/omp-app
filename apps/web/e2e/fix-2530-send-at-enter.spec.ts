@@ -27,9 +27,6 @@ declare global {
  * sends. Real omp on the test machine (omp 18.12.1, `omp --version`). On main the row waits for the echo, so cases 1 and 2 fail there.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 const PROMPT = "Name one reason a sent message should show at once, in one short sentence.";
 const USER_ROW = '[data-slot="u1-message-row"][data-role="user"]';
 const PENDING_KEY = 'data-store-key*="pending-prompt"';

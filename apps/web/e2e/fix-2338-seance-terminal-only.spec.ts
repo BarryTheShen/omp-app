@@ -8,9 +8,6 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
  * it is typed, Enter refuses it with the sentence, and nothing is sent. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 const DESCRIPTION = "Consult a saved session without resuming it";
 const REFUSAL = "/seance only runs in omp's terminal, so nothing was sent.";
 

@@ -1,7 +1,9 @@
 /**
  * A stand-in for the omp binary whose command list cannot be read: each `get_available_commands` request gets an
- * error reply, the way omp's own failure does, and every other line reaches the real omp unchanged. The fix-1371 spec
- * starts the app with it through a shell wrapper, so the list fails inside the real app while the chat is real omp.
+ * error reply, the way omp's own failure does, and the `available_commands_update` frames omp pushes on its own (at
+ * start and when commands change, omp v18.12.6 `modes/rpc/rpc-mode.ts:1753-1759`) are held back. Every other line
+ * passes unchanged both ways. The fix-1371 spec starts the app with it through a shell wrapper, so the list fails
+ * inside the real app while the chat is real omp.
  *
  * Usage: bun fix-1371-omp-without-command-list.ts <real omp> [omp arguments...]
  */
@@ -13,10 +15,40 @@ if (realOmp === undefined) {
 }
 
 const child = spawn(realOmp, args, { stdio: ["pipe", "pipe", "inherit"], env: process.env });
-child.stdout.pipe(process.stdout);
+
+/** Whether a line omp wrote is a pushed command list. */
+function isCommandListPush(line: string): boolean {
+  if (!line.includes('"available_commands_update"')) return false;
+  try {
+    const frame: unknown = JSON.parse(line);
+    return (
+      typeof frame === "object" &&
+      frame !== null &&
+      "type" in frame &&
+      frame.type === "available_commands_update"
+    );
+  } catch {
+    return false;
+  }
+}
+
+let pendingOutput = "";
+child.stdout.setEncoding("utf8");
+child.stdout.on("data", (chunk: string) => {
+  pendingOutput += chunk;
+  for (let end = pendingOutput.indexOf("\n"); end !== -1; end = pendingOutput.indexOf("\n")) {
+    const line = pendingOutput.slice(0, end + 1);
+    pendingOutput = pendingOutput.slice(end + 1);
+    if (!isCommandListPush(line)) process.stdout.write(line);
+  }
+});
+child.stdout.on("end", () => {
+  if (pendingOutput !== "") process.stdout.write(pendingOutput);
+});
 // The child may exit before its stdin is written again; its exit ends this process, so the write error is not news.
 child.stdin.on("error", () => undefined);
-child.once("exit", (code, signal) => process.exit(code ?? (signal === null ? 0 : 1)));
+// `close` comes after omp's output has ended, so its last lines are passed on before this process exits.
+child.once("close", (code, signal) => process.exit(code ?? (signal === null ? 0 : 1)));
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => child.kill(signal));
 }

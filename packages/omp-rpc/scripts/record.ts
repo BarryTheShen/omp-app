@@ -127,9 +127,30 @@ while (!ready.includes("READY")) {
   ready += new TextDecoder().decode(value);
 }
 
+/**
+ * The omp the app runs: the release in `packages/server/src/omp-pin/pin.json`, from `OMP_APP_OMP_DIR` or this
+ * checkout's `.data/omp` (`bun packages/server/scripts/fetch-omp.ts` puts it there), so fixtures record what the app
+ * really talks to.
+ */
+async function pinnedOmp(): Promise<string> {
+  const pin: unknown = JSON.parse(
+    await readFile(path.resolve(import.meta.dir, "../../server/src/omp-pin/pin.json"), "utf8"),
+  );
+  if (
+    typeof pin !== "object" ||
+    pin === null ||
+    !("version" in pin) ||
+    typeof pin.version !== "string"
+  ) {
+    throw new Error("packages/server/src/omp-pin/pin.json names no omp version");
+  }
+  const dir = process.env.OMP_APP_OMP_DIR ?? path.resolve(import.meta.dir, "../../../.data/omp");
+  return path.join(dir, `omp-${pin.version}`);
+}
+
 const omp = Bun.spawn({
   cmd: [
-    process.env.OMP_BIN ?? "omp",
+    await pinnedOmp(),
     "--mode",
     "rpc-ui",
     "--cwd",

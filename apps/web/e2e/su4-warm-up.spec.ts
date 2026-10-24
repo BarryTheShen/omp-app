@@ -8,9 +8,6 @@ import { expect, realTest, startChat } from "./real-omp";
  * one for the empty query comes a second or more after it.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** A file search call the page sent: when it left the page (this process's clock) and its query. */
 interface FileSearchCall {
   readonly at: number;

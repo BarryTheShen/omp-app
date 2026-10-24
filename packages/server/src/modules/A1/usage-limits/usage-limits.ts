@@ -7,8 +7,8 @@ export const USAGE_LIMITS_CACHE_MS = 60_000;
 export const USAGE_LIMITS_TIMEOUT_MS = 45_000;
 
 export interface UsageLimitStoreOptions {
-  /** The omp binary to run; `omp` from PATH by default. */
-  readonly binary?: string;
+  /** The omp binary to run: the one the app pins (`src/omp-pin`), or a test's stand-in. */
+  readonly binary: string;
   /** Environment for omp, so it finds the same signed-in accounts the chats use. Defaults to this process's. */
   readonly env?: Record<string, string | undefined>;
   readonly timeoutMs?: number;
@@ -217,8 +217,8 @@ export class UsageLimitStoreService {
   #cache: { readonly at: number; readonly result: UsageLimitsResult } | undefined;
   #pending: Promise<UsageLimitsResult> | undefined;
 
-  constructor(options: UsageLimitStoreOptions = {}) {
-    this.#binary = options.binary ?? "omp";
+  constructor(options: UsageLimitStoreOptions) {
+    this.#binary = options.binary;
     this.#env = environmentFor(options.env ?? process.env);
     this.#timeoutMs = options.timeoutMs ?? USAGE_LIMITS_TIMEOUT_MS;
     this.#cacheMs = options.cacheMs ?? USAGE_LIMITS_CACHE_MS;
@@ -245,8 +245,6 @@ export class UsageLimitStoreService {
   }
 }
 
-export function createUsageLimitStore(
-  options: UsageLimitStoreOptions = {},
-): UsageLimitStoreService {
+export function createUsageLimitStore(options: UsageLimitStoreOptions): UsageLimitStoreService {
   return new UsageLimitStoreService(options);
 }

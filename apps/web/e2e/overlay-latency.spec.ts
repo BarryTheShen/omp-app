@@ -420,7 +420,6 @@ function assertGuard(summary: GuardSummary): void {
   }
 }
 
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 realTest.setTimeout(1_200_000);
 realTest.describe.configure({ mode: "serial" });
 

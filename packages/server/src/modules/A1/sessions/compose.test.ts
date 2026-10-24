@@ -213,7 +213,7 @@ async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
     cwd,
     file,
     threadId,
-    options: { threadId, folder: FolderPath.parse(cwd), ompBin: "stub" },
+    options: { threadId, folder: FolderPath.parse(cwd) },
   };
 }
 
@@ -295,7 +295,6 @@ describe("the session store the server composes", () => {
       chats.acquire({
         threadId: ThreadId.parse("open-idle"),
         folder: FolderPath.parse(cwd),
-        ompBin: "stub",
       });
 
       const error = await store.deleteSession({ folder: cwd, sessionFile: file }).then(
@@ -409,7 +408,6 @@ describe("the session store the server composes", () => {
       chats.acquire({
         threadId: ThreadId.parse("open-port"),
         folder: FolderPath.parse(cwd),
-        ompBin: "stub",
       });
       const published: unknown[] = [];
       const context = {
@@ -687,7 +685,7 @@ describe("the session store the server composes", () => {
       });
       const file = path.join(store.bucketPath(cwd), "settling-view.jsonl");
       await writeSession(file, "settling-view", cwd);
-      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" }); // tab one's view
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd) }); // tab one's view
 
       const error = await rejectionOf(
         store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
@@ -723,7 +721,7 @@ describe("the session store the server composes", () => {
       });
       const file = path.join(store.bucketPath(cwd), "tab-held.jsonl");
       await writeSession(file, "tab-held", cwd);
-      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" });
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd) });
 
       const result = await store.deleteSession(
         { folder: cwd, sessionFile: file },
@@ -758,7 +756,7 @@ describe("the session store the server composes", () => {
       });
       const file = path.join(store.bucketPath(cwd), "two-tabs.jsonl");
       await writeSession(file, "two-tabs", cwd);
-      const options = { threadId, folder: FolderPath.parse(cwd), ompBin: "stub" };
+      const options = { threadId, folder: FolderPath.parse(cwd) };
       chats.acquire(options); // tab one
       chats.acquire(options); // tab two
 
@@ -807,7 +805,7 @@ describe("the session store the server composes", () => {
       });
       const file = path.join(store.bucketPath(cwd), "window-chat.jsonl");
       await writeSession(file, "window-chat", cwd);
-      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" }); // tab one's view
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd) }); // tab one's view
 
       // Tab one asks for the delete. omp is asked to stop and does not finish within the limit.
       const refusedToTabOne = rejectionOf(
@@ -859,7 +857,7 @@ describe("the session store the server composes", () => {
       });
       const file = path.join(store.bucketPath(cwd), "busy-tab.jsonl");
       await writeSession(file, "busy-tab", cwd);
-      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" });
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd) });
       chats.setBusy(threadId, true);
 
       const error = await rejectionOf(

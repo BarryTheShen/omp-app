@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import {
   APP_ROOT,
   expect,
+  REAL_OMP,
   realTest,
   screenshots,
   sendPrompt,
@@ -48,7 +49,7 @@ const WRAPPER_SOURCE = [
   "// Stand-in omp: answers the branch command as unknown and forwards every other line to the real omp.",
   'import { spawn } from "node:child_process";',
   'import { createInterface } from "node:readline";',
-  'const realOmp = "/home/user/.bun/bin/omp";',
+  `const realOmp = ${JSON.stringify(REAL_OMP)};`,
   "const child = spawn(realOmp, process.argv.slice(2), {",
   "  env: process.env,",
   '  stdio: ["pipe", "pipe", "inherit"],',

@@ -1,7 +1,14 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, sendPrompt, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  expect,
+  REAL_OMP,
+  realTest,
+  sendPrompt,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 /**
  * Issue 2212. A chat picked from the sidebar used to stay on screen until omp had opened the picked chat and its history
@@ -9,7 +16,6 @@ import { expect, realTest, sendPrompt, startChat, waitForFiniteAnimations } from
  * the sidebar's rows stay mounted, and a second pick cancels the open before it. The wrapper delays each resumed omp 4 s,
  * as the fix-927 wrapper delays a new chat's omp.
  */
-const REAL_OMP = "/home/user/.bun/bin/omp";
 const dir = resolve(process.cwd(), "../../.data/fix-2212-click-feedback");
 mkdirSync(dir, { recursive: true });
 const delayedResume = join(dir, "omp-resume-delay.sh");

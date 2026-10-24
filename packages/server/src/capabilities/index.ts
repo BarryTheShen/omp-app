@@ -183,7 +183,8 @@ export const COMMAND_PROBE_EVIDENCE: Readonly<Record<OmpCommandName, CommandProb
 export interface CapabilityProbeOptions {
   /** The isolated cwd for the short-lived probe process, normally a directory under app data. */
   readonly cwd: FolderPath;
-  readonly ompBin?: string;
+  /** The omp to probe: the one the app pins (`src/omp-pin`), or a test's stand-in. */
+  readonly ompBin: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Maximum time allowed for an individual omp command. */
   readonly timeoutMs?: number;

@@ -12,9 +12,6 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
  * comes before a file.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 const SEARCHING = "Searching files…";
 const NO_MATCH = "No matches";
 const WAIT_MS = 15_000;

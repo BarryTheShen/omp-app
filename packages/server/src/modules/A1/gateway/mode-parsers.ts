@@ -30,9 +30,12 @@ const SLOW_OFF = "Slow mode off.";
 const SLOW_OFF_CLAUDE_LIMIT =
   "Slow mode off: at your Claude usage limit, requests may get a short wrap-up allowance, then wait for the limit to reset.";
 
-/** builtin-modes.ts:240 with the status line of :220-224: computer use turned on for this session. */
+/**
+ * builtin-modes.ts:242 with the status line of :213-226 at omp v18.12.6, the release the app pins: computer use turned
+ * on for this session. 18.12.6 added `backgroundFallback` (the `computer.backgroundFallback` enum, tools/settings.ts:675).
+ */
 const COMPUTER_ON =
-  /^Computer use enabled for this session\. Computer use: enabled · prelude: active · configured: display=[^,]+, maxWidth=\d+, maxHeight=\d+$/;
+  /^Computer use enabled for this session\. Computer use: enabled · prelude: active · configured: display=[^,]+, maxWidth=\d+, maxHeight=\d+, backgroundFallback=(takeover|refuse)$/;
 /** builtin-modes.ts:237: computer use cannot turn on in this session (its prelude is missing). */
 const COMPUTER_UNAVAILABLE = "Computer use is unavailable in this session.";
 /** builtin-modes.ts:241: computer use turned off for this session. */

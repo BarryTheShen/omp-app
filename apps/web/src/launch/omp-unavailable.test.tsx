@@ -13,11 +13,10 @@ describe("OmpUnavailableScreen", () => {
     render(<OmpUnavailableScreen reason="omp was not found." />);
     expect(screen.getByRole("heading", { name: "omp isn't available" })).toBeTruthy();
     expect(screen.getByText("omp was not found.")).toBeTruthy();
-    // The step that fixes it, and where the app looks for omp.
+    // The step that fixes it, and where the app's omp comes from.
     const guidance = document.body.textContent ?? "";
-    expect(guidance).toContain("omp --version");
-    expect(guidance).toContain("~/.bun/bin");
-    expect(guidance).toContain("~/.local/bin");
+    expect(guidance).toContain("downloads from omp's GitHub releases");
+    expect(guidance).toContain("can reach github.com");
     expect(guidance).toContain("start it again");
     const hint = document.querySelector("[data-log-hint='true']");
     expect(hint?.textContent).toContain("omp-app debug-report");

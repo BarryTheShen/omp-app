@@ -16,8 +16,6 @@ import {
  * question, and Restart ends it. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 realTest.setTimeout(300_000);
 
 const TITLE = "Restart omp for this chat?";

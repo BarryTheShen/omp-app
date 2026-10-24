@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  REAL_OMP,
   realTest,
   screenshots,
   sendPrompt,
@@ -17,7 +18,6 @@ realTest.setTimeout(300_000);
  * The omp binary the fixture runs (see real-omp.ts). This wrapper holds a new chat's omp for 4 s before it starts, so the
  * New chat is still starting when the file is dropped. A resumed chat starts at once.
  */
-const REAL_OMP = "/home/user/.bun/bin/omp";
 const delayDir = resolve(process.cwd(), "../../.data/fix-1114-new-chat");
 mkdirSync(delayDir, { recursive: true });
 const delayedOmp = join(delayDir, "omp-new-chat-delay.sh");

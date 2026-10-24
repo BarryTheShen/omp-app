@@ -7,8 +7,6 @@ const TIP = "Message, or type / for commands";
 const DEFAULT_PLACEHOLDER = "Send a message...";
 const SENDS_KEY = "omp-app.slash-sends";
 
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 async function assertPlaceholderColor(page: Page): Promise<void> {
   const input = page.getByRole("textbox", { name: "Message input" });
   const colors = await input.evaluate((element) => {

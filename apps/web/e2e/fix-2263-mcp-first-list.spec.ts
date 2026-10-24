@@ -6,7 +6,6 @@ import { expect, realTest, startChat } from "./real-omp";
 // #2263 (part of #2175): the first `/` and a typed command read only omp's own command list. Three stdio MCP servers
 // that take 1.5 s to start are configured, the setup of the owner's workspace. Before this change the app read every MCP
 // prompt for each chat, so the first `/` and the first typed command waited about 5 s for those servers to start.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 
 const STUB = resolve(process.cwd(), "e2e/fix-2263-mcp-stub.ts");
 const OPTIONS = '[aria-label="Slash commands"] [role="option"]';

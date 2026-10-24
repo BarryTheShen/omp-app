@@ -6,7 +6,7 @@
  */
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { probeOmp } from "../src/capabilities/omp-version";
 import {
   clearInstance,
@@ -29,6 +29,7 @@ import {
   readLogTail,
   stateDirectory,
 } from "../src/logging";
+import { OMP_PIN, pinnedOmpPath } from "../src/omp-pin";
 import { createCompositionServer } from "./dev";
 
 /** Replaced with the release version when `packaging/build-deb.sh` compiles this file. */
@@ -101,6 +102,12 @@ if (args.command === "version") {
 
 const home = homedir();
 const logDir = stateDirectory(Bun.env, home);
+// The omp the server runs: the one the app pins, in its app data unless OMP_APP_OMP_DIR says otherwise (see
+// `createCompositionServer`, which resolves the same folders).
+const appData =
+  Bun.env.OMP_APP_DATA_DIR ??
+  join(Bun.env.PI_CODING_AGENT_DIR ?? join(home, ".omp", "agent"), "app");
+const appOmp = pinnedOmpPath(Bun.env.OMP_APP_OMP_DIR ?? join(appData, "omp"));
 
 if (args.command === "logs") {
   const tail = readLogTail(logDir, args.lines ?? 100);
@@ -110,11 +117,10 @@ if (args.command === "logs") {
 }
 if (args.command === "debug-report") {
   const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
-  const ompBin = Bun.env.OMP_BIN ?? Bun.which("omp", { PATH: searchPath }) ?? "omp";
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(Bun.env))
     if (value !== undefined) environment[key] = value;
-  const probe = await probeOmp(ompBin, { ...environment, PATH: searchPath }, process.cwd());
+  const probe = await probeOmp(appOmp, { ...environment, PATH: searchPath }, process.cwd());
   const now = new Date();
   const target = resolve(process.cwd(), debugReportFileName(now));
   // The omp processes listed are the running server's: this command starts none of its own.
@@ -128,7 +134,7 @@ if (args.command === "debug-report") {
       directory: logDir,
       version,
       now,
-      omp: { path: ompBin, version: probe.version },
+      omp: { path: appOmp, version: probe.version },
       processes: await listProcesses(running?.pid),
     }),
     { mode: 0o600 },
@@ -160,7 +166,6 @@ if (running) {
 const folder = resolve(args.folder ?? process.cwd());
 if (!existsSync(folder) || !statSync(folder).isDirectory()) fail(`"${folder}" is not a folder.`);
 const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
-const ompBin = Bun.env.OMP_BIN ?? Bun.which("omp", { PATH: searchPath }) ?? "omp";
 
 const envPort = Number(Bun.env.OMP_APP_PORT ?? DEFAULT_PORT);
 let port = args.port ?? (Number.isInteger(envPort) ? envPort : DEFAULT_PORT);
@@ -170,11 +175,13 @@ if (port !== 0 && !(await portIsFree(port))) {
   port = 0;
 }
 
+if (!existsSync(appOmp)) {
+  console.log(`Downloading omp ${OMP_PIN.version}, the omp this app runs (first start only)…`);
+}
 const server = await createCompositionServer({
   port,
   staticRoot: webRoot(),
   cwd: folder,
-  ompBin,
   env: { PATH: searchPath },
   serverVersion: version,
   logger,
@@ -184,7 +191,7 @@ await recordInstance(record, { pid: process.pid, url: address, version });
 console.log(`omp app ${version}\n\n  ${address}\n\nPress Ctrl+C or close this window to quit.`);
 if (server.health.status !== "ok") {
   console.warn(
-    `\nWarning: ${server.health.detail ?? "omp is not working."} Check that \`omp --version\` works in this terminal, then start the app again. The app opens, but chats cannot start.`,
+    `\nWarning: ${server.health.detail ?? "omp is not working."} The app opens, but chats cannot start. If the download failed, check that this computer can reach github.com and start the app again; otherwise run \`omp-app debug-report\` and attach the file to an issue.`,
   );
 }
 if (args.open) openBrowser(address);

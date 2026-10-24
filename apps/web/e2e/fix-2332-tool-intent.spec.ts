@@ -1,12 +1,10 @@
 /// <reference types="node" />
-import { spawnSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
   narrowTo,
-  REAL_OMP,
   realTest,
   screenshots,
   sendPrompt,
@@ -18,26 +16,11 @@ import {
  * #2332 on real omp: a bash call's intent (the model's `i` argument, which omp 18.12.2 and newer sends with the call)
  * shows on the card's summary line while the call runs, in place of its command. When the call ends, the summary goes
  * back to the command on the same line, so the card keeps its height. The fake model asks for the call with the keyword
- * `intent_probe` and a number of seconds. The harness default omp can be older than 18.12.2: then this skips, because
- * that omp sends no intent.
+ * `intent_probe` and a number of seconds.
  */
 
 const INTENT = "Waiting for the fixture command to finish";
 const COMMAND = "sleep 9; echo intent-probe-done";
-const NEEDS_OMP = "needs omp 18.12.2 or newer";
-
-/** Whether this omp sends a tool call's intent, judged by its version: omp 18.12.2 is the first to send it. */
-function ompSendsToolIntent(omp: string): boolean {
-  const result = spawnSync(omp, ["--version"], { encoding: "utf8" });
-  if (result.error) throw result.error;
-  const printed = `${result.stdout}${result.stderr}`;
-  const match = /omp\/(\d+)\.(\d+)\.(\d+)/.exec(printed);
-  if (match === null) throw new Error(`omp --version printed no version: ${printed}`);
-  const [major = 0, minor = 0, patch = 0] = [match[1], match[2], match[3]].map((part) =>
-    Number(part),
-  );
-  return major > 18 || (major === 18 && (minor > 12 || (minor === 12 && patch >= 2)));
-}
 
 // The summary is drawn with the muted token: a probe with that colour must match its computed colour before anything
 // is captured, so a screenshot cannot show browser defaults.
@@ -72,8 +55,7 @@ realTest.setTimeout(240_000);
 
 realTest(
   "real omp: a bash call shows its intent on its card while it runs, in light, dark and 390 px, and the card keeps its height when it ends",
-  async ({ realApp, ompBinary }, testInfo) => {
-    testInfo.skip(!ompSendsToolIntent(ompBinary ?? REAL_OMP), NEEDS_OMP);
+  async ({ realApp }) => {
     const page = await realApp.open({
       beforeLoad: (target) =>
         target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),

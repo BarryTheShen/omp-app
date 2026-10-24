@@ -66,8 +66,8 @@ function usageFixture(now: number): unknown {
   };
 }
 
-// A stand-in for omp that only the usage read reaches: `omp usage` prints the fixture, and every other call runs the
-// real omp. The app's server finds it first on its PATH; the chat's omp is started by its absolute path.
+// A stand-in for omp: `omp usage` prints the fixture, and every other call runs the real omp. The server runs it as
+// its omp, so chats and probes reach the real one through it.
 const FIXTURE_DIRECTORY = mkdtempSync(join(tmpdir(), "omp-app-1163-usage-"));
 const FIXTURE_FILE = join(FIXTURE_DIRECTORY, "usage.json");
 const WRAPPER = join(FIXTURE_DIRECTORY, "omp");
@@ -78,7 +78,7 @@ writeFileSync(
 );
 chmodSync(WRAPPER, 0o755);
 
-realTest.use({ serverEnv: { PATH: `${FIXTURE_DIRECTORY}:${process.env.PATH ?? ""}` } });
+realTest.use({ ompBinary: WRAPPER });
 
 /** Sends a prompt the fake model answers, and waits until its answer is on screen. */
 async function answeredChat(page: Page): Promise<void> {

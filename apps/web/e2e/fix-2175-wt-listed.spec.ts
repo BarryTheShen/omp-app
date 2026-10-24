@@ -7,9 +7,7 @@ import { expect, realTest, startChat } from "./real-omp";
  * sends it and the app asks first. Each question is cancelled here, so no chat moves. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
 realTest.use({
-  ompBinary: "/cache/bun/omp-18.12.2",
   seedWorkspace: { files: { "README.md": "# project\n" }, gitRepo: true },
 });
 

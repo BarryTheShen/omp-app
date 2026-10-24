@@ -1,7 +1,7 @@
 /**
  * The pieces of the installed app's command (`omp-app`) that are worth testing on their own: the
- * command line, the one-instance-per-user record, the search path that lets a desktop launch find
- * omp, and the check that the port is free. `scripts/omp-app.ts` wires them to the server.
+ * command line, the one-instance-per-user record, the search path the chats' omp runs with, and the
+ * check that the port is free. `scripts/omp-app.ts` wires them to the server.
  */
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
@@ -15,7 +15,8 @@ export const USAGE = `Usage: omp-app [folder] [options]
        omp-app logs [--lines <n>]
        omp-app debug-report
 
-Starts the omp app and opens it in your browser. omp must be installed.
+Starts the omp app and opens it in your browser. The app runs the omp release it is built for,
+which it downloads on its first start.
 
   folder         the folder to work in (default: the current folder)
   --port <n>     port to listen on (default: ${DEFAULT_PORT}, or a free port if that one is taken)
@@ -161,8 +162,9 @@ export async function clearInstance(path: string, pid: number): Promise<void> {
 }
 
 /**
- * The search path omp is started with. A launch from the desktop doesn't read the shell's
- * start-up files, so the folders where `bun` and `omp` usually live are added when they exist.
+ * The search path the chats' omp runs with, so its tools find the user's programs. A launch from the
+ * desktop doesn't read the shell's start-up files, so the folders where `bun` and other user tools
+ * usually live are added when they exist.
  */
 export function ompSearchPath(
   home: string,

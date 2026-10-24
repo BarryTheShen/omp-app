@@ -19,9 +19,9 @@ sudo apt remove omp-app                                                     # un
 
 There are two packages of the same version. Take the window (`omp-app-desktop`) if you want the app in the applications menu, or the terminal command (`omp-app`) if you want to start it from a terminal, which opens your browser. Each release lists both, with one `SHA256SUMS` file. Remove the window with `sudo apt remove omp-app-desktop`.
 
-`omp` must be installed separately; the app finds it on your `PATH` (it also looks in `~/.bun/bin` and `~/.local/bin`, which a desktop launch does not have). `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
+The app runs the omp release it is built for (named in `packages/server/src/omp-pin/pin.json`, now 18.12.6), never an omp installed on your computer. On its first start it downloads that release from omp's GitHub releases into `~/.omp/agent/app/omp` (or the folder `OMP_APP_OMP_DIR` names), checks it against the release's SHA-256 checksum, and runs every chat and omp command on it; when a newer app moves to a newer release, the older releases' binaries there are deleted. The window (`omp-app-desktop`) still looks for an installed omp before it starts; that lookup goes in a later release. `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
 
-If omp is missing, cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, instead of an app that cannot start chats, and the terminal prints the same warning. The checks are asked twice, the second time with a longer wait, because a busy computer can take more than five seconds to start omp.
+If the app's omp cannot be downloaded, cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, instead of an app that cannot start chats, and the terminal prints the same warning. The checks are asked twice, the second time with a longer wait, because a busy computer can take more than five seconds to start omp.
 
 When omp starts but has no model set up, the page says "No model is set up yet" and what to set up instead of saying that omp is missing.
 
@@ -48,7 +48,7 @@ A folder that is really named `logs` is opened with `omp-app ./logs`.
 
 - All 42 module specs (the plans and part lists) are done.
 - 172 of 261 parts are merged: the infrastructure (waves W1 and W2), most of W3 (thread view, composer with drafts and attachments, queued messages, dialogs and approvals, panels and the todo checklist, the session catalog and sidebar, settings kit, shortcuts) and most of W4 (tool cards for read, edit, write, AST edit, grep, glob, find, ast_grep, lsp, eval, debug, bash, browser, GitHub, web search, security scan, checkpoint/rewind, goal, recall/reflect, resolve/reject), plus parts of W5–W7 (models, mentions and internal links, MCP lifecycle, notifications, context and usage, session commands, branch and fork, restore-point snapshots).
-- `bun run dev` starts the real server against your omp and prints the app's link. The app works end to end on real omp: pick a folder, start or reopen a chat, send a prompt, watch tool calls and replies stream, change the model and thinking level, see context usage, reload and get the chat and the unsent draft back. Modules merged since the app root are being wired into the running app (#566).
+- `bun run dev` starts the real server against the omp the app pins and prints the app's link. The app works end to end on real omp: pick a folder, start or reopen a chat, send a prompt, watch tool calls and replies stream, change the model and thinking level, see context usage, reload and get the chat and the unsent draft back. Modules merged since the app root are being wired into the running app (#566).
 - The UI keeps its current stack and patterns (the owner, 2026-10-06), with omp's own default themes as the colors: `titanium` (dark) and `light` (`apps/web/src/styles/tokens.css`).
 
 The live board: `bun tools/board.ts show`. GitHub issues are the source of truth.
@@ -108,7 +108,7 @@ From `AGENTS.md` (approved by the owner):
 
 ## Development
 
-Prerequisites: [Bun](https://bun.sh) 1.3.14 or later, omp 18.6.1 or later on `PATH`, and Google Chrome (the end-to-end tests use the system Chrome and never download browsers).
+Prerequisites: [Bun](https://bun.sh) 1.3.14 or later and Google Chrome (the end-to-end tests use the system Chrome and never download browsers). The server and the live tests run the omp the app pins: `bun packages/server/scripts/fetch-omp.ts` puts it in `.data/omp` once (or set `OMP_APP_OMP_DIR` to a folder that holds it).
 
 ```bash
 bun install                 # install every workspace
@@ -120,8 +120,9 @@ cd apps/web
 bun run dev                 # the web app on Vite's dev server
 E2E_PORT=4200 bun run e2e   # production build + Playwright on system Chrome (pick a free port)
 
-# Optional: the smoke test that starts the real omp binary (slow; off by default)
-OMP_APP_REAL_OMP=1 bun test packages/server/src/process/real-omp.test.ts
+# Optional: the live tests that run the app's omp (slow; off by default)
+OMP_APP_REAL_OMP=1 bun test packages/server/test/e2e/real-omp.test.ts
+cd apps/web && OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts
 ```
 
 ## Waves

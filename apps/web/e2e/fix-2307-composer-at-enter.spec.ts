@@ -25,9 +25,6 @@ declare global {
  * on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 const PROMPT = "Please write a short answer for the layout check.";
 const USER_ROW = '[data-slot="u1-message-row"][data-role="user"]';
 const DRAFT_PORT = "A1.draftStore";

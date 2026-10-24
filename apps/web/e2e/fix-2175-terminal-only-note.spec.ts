@@ -7,9 +7,6 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
  * commands.". Enter still refuses it with the sentence it had, and nothing is sent. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** The 28 typed names that get a note: 25 terminal-only commands with no app row, and their 3 aliases. `queue` has none: the app answers `/queue` itself. */
 const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = [
   { name: "agents", does: "Open the agents hub (per-agent model, prewalk, and advisor)" },

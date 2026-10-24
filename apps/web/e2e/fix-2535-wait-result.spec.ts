@@ -6,8 +6,6 @@ import { expect, realTest, sendPrompt, startChat } from "./real-omp";
  * The worker answers in plain text and never yields, so only its recorded result can say it finished.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 realTest.setTimeout(300_000);
 
 realTest(

@@ -64,6 +64,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
+import { ensurePinnedOmp, pinnedOmpPath } from "../src/omp-pin";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -87,7 +88,13 @@ import { type AppServer, createAppServer } from "../src/server";
 export interface CompositionServerOptions {
   readonly port?: number;
   readonly staticRoot?: string;
+  /**
+   * Test seam: the omp binary to run (a wrapper script in some e2e specs). Without it the server runs the omp the app
+   * pins (`src/omp-pin`), downloaded once into `OMP_APP_OMP_DIR`, else `<app data>/omp`.
+   */
   readonly ompBin?: string;
+  /** Test seam: how the pinned omp is downloaded when it is missing; the default is `fetch`. */
+  readonly ompDownload?: (url: string) => Promise<Response>;
   readonly ompArgs?: readonly string[];
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;
@@ -152,9 +159,25 @@ export async function createCompositionServer(
     OMP_APP_DATA_DIR: appDataDir,
   };
   const launchFolder = resolve(options.cwd ?? process.cwd());
-  const ompBinary = options.ompBin ?? env.OMP_BIN ?? "omp";
   const logger = options.logger ?? createNullLogger();
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
+  // The omp the app pins, never one installed on the computer: chats, probes and omp commands all run it.
+  const ompDir = env.OMP_APP_OMP_DIR ?? join(appDataDir, "omp");
+  let ompBinary = options.ompBin ?? pinnedOmpPath(ompDir);
+  let installFailure: string | undefined;
+  if (options.ompBin === undefined) {
+    try {
+      ompBinary = await ensurePinnedOmp({
+        dir: ompDir,
+        logger,
+        // A folder named by OMP_APP_OMP_DIR may be shared by other versions of the app (the test machine's job cache).
+        removeOlder: env.OMP_APP_OMP_DIR === undefined,
+        ...(options.ompDownload === undefined ? {} : { fetch: options.ompDownload }),
+      });
+    } catch (error) {
+      installFailure = error instanceof Error ? error.message : String(error);
+    }
+  }
   logger.info("start", {
     version: serverVersion,
     pid: process.pid,
@@ -172,10 +195,19 @@ export async function createCompositionServer(
     log_file: logger.path,
   });
   const probeStarted = performance.now();
-  const probe = await probeOmpPatiently(ompBinary, env, launchFolder, {
-    // A busy computer can need longer than a quiet one: it is asked once more, patiently.
-    onRetry: (waitedMs) => logger.warn("omp.probe_retry", { waited_ms: waitedMs }),
-  });
+  const probe: OmpProbe =
+    installFailure === undefined
+      ? await probeOmpPatiently(ompBinary, env, launchFolder, {
+          // A busy computer can need longer than a quiet one: it is asked once more, patiently.
+          onRetry: (waitedMs) => logger.warn("omp.probe_retry", { waited_ms: waitedMs }),
+        })
+      : {
+          version: null,
+          health: {
+            status: "unhealthy",
+            detail: `The app's omp could not be installed: ${installFailure}`,
+          },
+        };
   const ompProbeMs = Math.round(performance.now() - probeStarted);
   const defaultsProbe = {
     binary: ompBinary,
@@ -316,7 +348,7 @@ export async function createCompositionServer(
       logOmpProcess(
         spawnOmpProcess({
           ...processOptions,
-          ompBin: options.ompBin ?? processOptions.ompBin,
+          ompBin: ompBinary,
           args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
           env: { ...env, ...processOptions.env },
         }),
@@ -461,7 +493,7 @@ export async function createCompositionServer(
     watchRegistry: fileWatch,
   });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
-  const usageLimitStore = createUsageLimitStore({ env });
+  const usageLimitStore = createUsageLimitStore({ env, binary: ompBinary });
   const extensionCatalog = createExtensionCatalog({
     env,
     homeDir,

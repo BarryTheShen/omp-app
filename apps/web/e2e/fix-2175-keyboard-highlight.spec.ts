@@ -9,9 +9,6 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
  * A pointer move over a row moves the highlight too, and it never scrolls the list. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** The slash list above the composer (`trigger-slot.tsx`). */
 function commandList(page: Page): Locator {
   return page.getByRole("listbox", { name: "Slash commands" });

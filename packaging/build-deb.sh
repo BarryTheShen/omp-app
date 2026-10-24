@@ -5,7 +5,8 @@
 #
 # The package holds one self-contained command (/usr/bin/omp-app: Bun's runtime plus the server,
 # compiled from packages/server/scripts/omp-app.ts), the built web app (/usr/share/omp-app/web),
-# a desktop entry and an icon. omp itself is not part of it and must be installed separately.
+# a desktop entry and an icon. The omp release the app runs is not in it: the command downloads it
+# on its first start (packages/server/src/omp-pin).
 set -euo pipefail
 
 version=${1:?usage: packaging/build-deb.sh <version>}
@@ -46,7 +47,7 @@ Recommends: xdg-utils
 Homepage: https://github.com/BarryTheShen/omp-app
 Description: Browser app for the omp coding agent
  Run omp-app: it starts a local server and opens the app in your browser.
- omp itself must be installed separately.
+ It runs the omp release it is built for, which it downloads on its first start.
 EOF
 
 mkdir -p "$out"

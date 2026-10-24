@@ -17,9 +17,6 @@ import {
  * Real omp 18.12.2 on the test machine, in the harness's throwaway home: no test touches a real session.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** The session files on disk, anywhere under omp's sessions folder. No folder yet means no session. */
 async function sessionFiles(realApp: RealApp): Promise<string[]> {
   try {

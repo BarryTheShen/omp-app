@@ -1,5 +1,4 @@
 /// <reference types="node" />
-import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
@@ -7,7 +6,6 @@ import {
   expect,
   narrowTo,
   openToolCard,
-  REAL_OMP,
   realTest,
   screenshots,
   sendPrompt,
@@ -18,12 +16,11 @@ import {
 /**
  * #2341 on real omp: a subagent's running bash call names its intent on the task card's row, "Running bash: <intent>",
  * and the row drops the call once the call ends. The fake model starts the subagent with `spawn_intent_subagent N`; the
- * child's one bash call sleeps N seconds with an intent (the `i` argument). With an omp older than 18.12.1 this skips:
- * 18.12.1 is the oldest omp checked to send a call's intent in subagent progress (`task/executor.ts:1831-1834` there).
+ * child's one bash call sleeps N seconds with an intent (the `i` argument), which omp sends in subagent progress since
+ * 18.12.1 (`task/executor.ts:1831-1834` there).
  */
 
 const RUNNING = "Running bash: Waiting for the subagent's fixture command";
-const NEEDS_OMP = "needs omp 18.12.1 or newer";
 
 /** A subagent type that runs inline: `blocking: true` makes the parent wait on the child, so its call is foreground. */
 const FOREGROUND_AGENT = [
@@ -35,19 +32,6 @@ const FOREGROUND_AGENT = [
   "Complete the assignment with the tools you have.",
   "",
 ].join("\n");
-
-/** Whether this omp sends a tool call's intent, judged by its version: 18.12.1 is the oldest checked to send it. */
-function ompSendsToolIntent(omp: string): boolean {
-  const result = spawnSync(omp, ["--version"], { encoding: "utf8" });
-  if (result.error) throw result.error;
-  const printed = `${result.stdout}${result.stderr}`;
-  const match = /omp\/(\d+)\.(\d+)\.(\d+)/.exec(printed);
-  if (match === null) throw new Error(`omp --version printed no version: ${printed}`);
-  const [major = 0, minor = 0, patch = 0] = [match[1], match[2], match[3]].map((part) =>
-    Number(part),
-  );
-  return major > 18 || (major === 18 && (minor > 12 || (minor === 12 && patch >= 1)));
-}
 
 // The row's counts are drawn with the muted token: a probe with that colour must match its computed colour before
 // anything is captured, so a screenshot cannot show browser defaults.
@@ -76,8 +60,7 @@ realTest.setTimeout(240_000);
 
 realTest(
   "real omp: a subagent's running bash call names its intent on the task card row, in light, dark and 390 px, and the row drops it when the call ends",
-  async ({ realApp, ompBinary }, testInfo) => {
-    testInfo.skip(!ompSendsToolIntent(ompBinary ?? REAL_OMP), NEEDS_OMP);
+  async ({ realApp }) => {
     const page = await realApp.open({
       beforeLoad: (target) =>
         target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
@@ -113,8 +96,7 @@ realTest(
 
 realTest(
   "real omp: a foreground subagent's running bash call names its intent on the task card row, and the row drops it when the call ends",
-  async ({ realApp, ompBinary }, testInfo) => {
-    testInfo.skip(!ompSendsToolIntent(ompBinary ?? REAL_OMP), NEEDS_OMP);
+  async ({ realApp }) => {
     // The child's type declares `blocking: true`, so omp runs the task call inline and the parent waits on the child.
     // omp reads user agents from `~/.omp/agent/agents`; the fixture runs omp with HOME at `<root>/home`, beside its agent folder.
     const agents = join(dirname(realApp.agentDir), "home", ".omp", "agent", "agents");

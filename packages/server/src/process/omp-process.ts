@@ -34,8 +34,6 @@ export interface OmpProcessOptions {
   readonly folder: FolderPath;
   /** The home folder the server runs under; defaults to the operating system's home. */
   readonly homeDir?: string;
-  /** Defaults to `OMP_BIN`, else `"omp"` resolved from `PATH`. */
-  readonly ompBin?: string;
   /** Extra argv appended after the forced `--mode rpc-ui` (for example `--resume <id>`). */
   readonly args?: readonly string[];
   /** Merged over the current process environment; a key set to `undefined` is removed. */
@@ -48,6 +46,11 @@ export interface OmpProcessOptions {
   readonly timer?: RpcSessionTimer;
   /** Injectable for deterministic tests; defaults to `Bun.spawn`. */
   readonly spawn?: typeof Bun.spawn;
+}
+
+export interface SpawnOmpProcessOptions extends OmpProcessOptions {
+  /** The omp to run: the one the app pins (`src/omp-pin`), or a test's stand-in. Never one found on `PATH`. */
+  readonly ompBin: string;
 }
 
 export interface OmpProcessEvent {
@@ -166,10 +169,10 @@ class SpawnedOmpProcess implements OmpProcess {
   #pendingChunkBytes = 0;
   #writeTail: Promise<void> = Promise.resolve();
 
-  constructor(options: OmpProcessOptions) {
+  constructor(options: SpawnOmpProcessOptions) {
     this.threadId = options.threadId;
     this.folder = options.folder;
-    this.#ompBin = options.ompBin ?? Bun.env.OMP_BIN ?? "omp";
+    this.#ompBin = options.ompBin;
     this.#args = options.args ?? [];
     this.#homeDir = options.homeDir ?? homedir();
     this.#envOverrides = options.env ?? {};
@@ -443,8 +446,8 @@ class SpawnedOmpProcess implements OmpProcess {
   }
 }
 
-/** Spawns a fresh `omp --mode rpc-ui` child; the default `createProcess` for `OmpProcessRegistry`. */
-export function spawnOmpProcess(options: OmpProcessOptions): OmpProcess {
+/** Spawns a fresh `omp --mode rpc-ui` child running the omp the app pins. */
+export function spawnOmpProcess(options: SpawnOmpProcessOptions): OmpProcess {
   return new SpawnedOmpProcess(options);
 }
 

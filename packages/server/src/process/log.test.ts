@@ -87,7 +87,7 @@ describe("OmpProcessRegistry.list", () => {
     });
     expect(registry.list()).toEqual([]);
     const thread = ThreadId.parse("thread-a");
-    registry.acquire({ threadId: thread, folder: FolderPath.parse("/workspace/a"), ompBin: "omp" });
+    registry.acquire({ threadId: thread, folder: FolderPath.parse("/workspace/a") });
     processes[0]?.emit({ status: "running" });
     expect(registry.list()).toEqual([{ threadId: thread, pid: 4321, status: "running" }]);
   });

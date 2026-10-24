@@ -18,9 +18,6 @@ import {
  * box must fit above it there; a chat with a reply has the composer at the bottom. Real omp 18.12.2 on the test machine.
  */
 
-// omp 18.12.2 is at this path in every the test machine job.
-realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
-
 /** The list box's height on main, with `max-h-72`. */
 const MAIN_BOX_HEIGHT = 288;
 

@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 import {
   APP_ROOT,
   expect,
+  REAL_OMP,
   realTest,
   sendPrompt,
   startChat,
@@ -12,7 +13,6 @@ import {
 
 // Issue 2181: a chat's notices take their own row above the composer. They cover no message or control, they do not move
 // the composer, a repeat of the same notice is one entry with its count, and a chat shows only its own notices.
-const OMP_18122 = "/cache/bun/omp-18.12.2";
 const EXTENSION_FILE = "notice-cover-2181.ts";
 const EXTENSION_SOURCE = `export default function noticeCover2181(pi) {
   pi.on("session_start", (_event, ctx) => {
@@ -32,7 +32,7 @@ mkdirSync(DATA_DIR, { recursive: true });
 const OMP_WITH_EXTENSION = join(DATA_DIR, "omp-app-2181-omp-with-extension.sh");
 writeFileSync(
   OMP_WITH_EXTENSION,
-  `#!/bin/sh\nexec '${OMP_18122}' --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}" "$@"\n`,
+  `#!/bin/sh\nexec '${REAL_OMP}' --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}" "$@"\n`,
 );
 chmodSync(OMP_WITH_EXTENSION, 0o755);
 

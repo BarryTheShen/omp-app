@@ -104,7 +104,6 @@ function options(thread: string, folder: string): OmpProcessOptions {
   return {
     threadId: ThreadId.parse(thread),
     folder: FolderPath.parse(folder),
-    ompBin: "stub",
   };
 }
 function createdAt(created: StubProcess[], index: number): StubProcess {

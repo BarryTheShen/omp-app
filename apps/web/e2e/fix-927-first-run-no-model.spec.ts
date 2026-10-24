@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, screenshots } from "./real-omp";
+import { expect, REAL_OMP, realTest, screenshots } from "./real-omp";
 
 /**
  * Issue 927. With no model set up, omp exits when it starts, and the app used to show "omp isn't
@@ -11,7 +11,6 @@ import { expect, realTest, screenshots } from "./real-omp";
  * fresh install does. The fixture's own agent folder still holds the fake model's config, which only
  * the server reads.
  */
-const REAL_OMP = "/home/user/.bun/bin/omp";
 const dir = resolve(process.cwd(), "../../.data/fix-927-no-model");
 mkdirSync(dir, { recursive: true });
 const emptyAgent = mkdtempSync(join(dir, "agent-"));

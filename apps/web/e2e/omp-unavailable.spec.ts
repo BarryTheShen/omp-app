@@ -20,7 +20,7 @@ realTest(
       timeout: 30_000,
     });
     await expect(page.getByText("omp was not found.")).toBeVisible();
-    await expect(page.getByText(/omp --version/).first()).toBeVisible();
+    await expect(page.getByText(/downloads from omp's GitHub releases/).first()).toBeVisible();
     // No app behind it: nothing to click that would fail silently.
     await expect(page.getByRole("button", { name: "New chat" })).toHaveCount(0);
     await expect(page.getByLabel("Message input")).toHaveCount(0);

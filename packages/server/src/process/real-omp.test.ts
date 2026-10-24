@@ -1,15 +1,21 @@
 import { afterEach, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readlink, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { FolderPath, ThreadId } from "@omp-app/contracts";
 import { RpcSession } from "@omp-app/omp-rpc";
+import { pinnedOmpPath } from "../omp-pin";
 import { type OmpProcess, spawnOmpProcess } from "./omp-process";
 
 // Starting the real omp takes seconds and varies under load (it timed out while ten builders ran
 // their checks), so this smoke runs only when asked: OMP_APP_REAL_OMP=1. A0.9's end-to-end suite
-// exercises the real omp at every wave gate.
-const REAL_OMP = process.env.OMP_APP_REAL_OMP === "1" ? Bun.which("omp") : null;
+// exercises the real omp at every wave gate. It runs the omp the app pins, from OMP_APP_OMP_DIR or
+// this checkout's .data/omp (`bun packages/server/scripts/fetch-omp.ts`).
+const PINNED_OMP = pinnedOmpPath(
+  process.env.OMP_APP_OMP_DIR ?? resolve(import.meta.dir, "../../../../.data/omp"),
+);
+const REAL_OMP = process.env.OMP_APP_REAL_OMP === "1" && existsSync(PINNED_OMP) ? PINNED_OMP : null;
 const realTest = REAL_OMP ? test : test.skip;
 const temporaryRoots: string[] = [];
 const liveProcesses: OmpProcess[] = [];
@@ -61,7 +67,7 @@ realTest(
       threadId: ThreadId.parse("thread-a0-5-real"),
       folder,
       homeDir: home,
-      ompBin: REAL_OMP ?? "omp",
+      ompBin: REAL_OMP ?? PINNED_OMP,
       env: {
         HOME: home,
         PI_CODING_AGENT_DIR: agentDir,
@@ -95,7 +101,7 @@ realTest(
       threadId: ThreadId.parse("thread-1143-home"),
       folder,
       homeDir: home,
-      ompBin: REAL_OMP ?? "omp",
+      ompBin: REAL_OMP ?? PINNED_OMP,
       env: {
         HOME: home,
         PI_CODING_AGENT_DIR: agentDir,

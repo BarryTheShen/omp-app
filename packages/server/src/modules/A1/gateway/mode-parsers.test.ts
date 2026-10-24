@@ -5,13 +5,14 @@ import { parseModeChangeReply } from "./mode-parsers";
 /*
  * Recorded from the installed omp 18.8.9 in `--mode rpc-ui` with the fake model: each command's `command_output`
  * text exactly as omp wrote it, and a prompt acknowledgement with agentInvoked false (omp ran the text as a
- * command). The same texts are cited to omp v18.6.1 in mode-parsers.ts.
+ * command). The same texts are cited to omp v18.6.1 in mode-parsers.ts. `computerOn` is in the form of omp 18.12.6,
+ * the release the app pins, which added `backgroundFallback` to the status line (builtin-modes.ts:213-243).
  */
 const RECORDED = {
   slowUnsupported:
     "The current model has no slow mode: /slow uses the flex tier on OpenAI/Google models and low priority on Anthropic subscriptions.",
   computerOn:
-    "Computer use enabled for this session. Computer use: enabled · prelude: active · configured: display=active, maxWidth=3840, maxHeight=2400",
+    "Computer use enabled for this session. Computer use: enabled · prelude: active · configured: display=active, maxWidth=3840, maxHeight=2400, backgroundFallback=takeover",
   computerOff: "Computer use disabled for this session.",
   extendedOn: "Extended context enabled.",
   extendedOff: "Extended context disabled.",
