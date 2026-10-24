@@ -368,6 +368,48 @@ describe("A0.6 upgrade and static serving", () => {
     ).toBeUndefined();
   });
 
+  test("with a remote origin, accepts that Tailscale host and origin besides loopback, and nothing else", () => {
+    const remote = { origin: "https://devbox.tail1234.ts.net", host: "devbox.tail1234.ts.net" };
+    const policy = { token: "right", port: 4317, remote };
+    const request = (origin: string, host: string) =>
+      new Request(`http://127.0.0.1:4317/ws?token=right`, { headers: { origin, host } });
+
+    // Through `tailscale serve`: the browser's Host and Origin reach the server unchanged.
+    expect(
+      authorizeWebSocketUpgrade(
+        request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
+        policy,
+      ),
+    ).toBeUndefined();
+    // The loopback page still works.
+    expect(
+      authorizeWebSocketUpgrade(request("http://127.0.0.1:4317", "127.0.0.1:4317"), policy),
+    ).toBeUndefined();
+    // Another tailnet name, plain HTTP for the same name, or a page on another site are turned away.
+    expect(
+      authorizeWebSocketUpgrade(
+        request("https://devbox.tail1234.ts.net", "other.tail1234.ts.net"),
+        policy,
+      ),
+    ).toMatchObject({ status: 403 });
+    expect(
+      authorizeWebSocketUpgrade(
+        request("http://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
+        policy,
+      ),
+    ).toEqual({ closeCode: 4403, reason: "origin not allowed" });
+    expect(
+      authorizeWebSocketUpgrade(request("https://evil.example", "devbox.tail1234.ts.net"), policy),
+    ).toEqual({ closeCode: 4403, reason: "origin not allowed" });
+    // Without a remote origin, the Tailscale host is a bad Host.
+    expect(
+      authorizeWebSocketUpgrade(request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"), {
+        token: "right",
+        port: 4317,
+      }),
+    ).toMatchObject({ status: 403 });
+  });
+
   test("says a token an earlier start printed is expired, and a token never printed is invalid", () => {
     const request = (token: string) =>
       new Request(`http://127.0.0.1:4317/ws?token=${token}`, {
@@ -481,6 +523,49 @@ describe("A0.6 upgrade and static serving", () => {
       });
     } finally {
       void app.stop();
+    }
+  });
+
+  test("with a remote origin, a WebSocket that arrives as `tailscale serve` passes it on gets the welcome", async () => {
+    const remote = { origin: "https://devbox.tail1234.ts.net", host: "devbox.tail1234.ts.net" };
+    const app = createAppServer({
+      port: 0,
+      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
+      token: "right",
+      remote,
+    });
+    /**
+     * Opens a socket with the Host and Origin a browser sends through `tailscale serve`, and says how it ended: the
+     * welcome, refused before the upgrade (the socket never opened), or closed after it with a code.
+     */
+    const attempt = (host: string, origin: string) =>
+      new Promise<"welcome" | "refused" | `closed ${number}`>((resolve) => {
+        let opened = false;
+        const socket = new WebSocket(`${app.url}/ws?token=right`, { headers: { host, origin } });
+        socket.onopen = () => {
+          opened = true;
+          socket.send(
+            JSON.stringify({
+              type: "hello",
+              protocols: ["omp-app/1"],
+              client: { name: "test-client", version: "1.0.0" },
+            }),
+          );
+        };
+        socket.onmessage = () => {
+          resolve("welcome");
+          socket.close();
+        };
+        socket.onclose = (event) => resolve(opened ? `closed ${event.code}` : "refused");
+        socket.onerror = () => undefined;
+      });
+    try {
+      expect(await attempt(remote.host, remote.origin)).toBe("welcome");
+      // Another tailnet name is refused before the upgrade, so the custom Host really reached the server.
+      expect(await attempt("other.tail1234.ts.net", remote.origin)).toBe("refused");
+      expect(await attempt(remote.host, "https://evil.example")).toBe("closed 4403");
+    } finally {
+      await app.stop();
     }
   });
 });

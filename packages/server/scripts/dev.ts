@@ -82,6 +82,7 @@ import {
   spawnOmpProcess,
 } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
+import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
 
@@ -124,6 +125,8 @@ export interface CompositionServerOptions {
 export interface CompositionServer extends AppServer {
   readonly processRegistry: OmpProcessRegistry;
   readonly health: OmpProbe["health"];
+  /** The Tailscale address the app can also be opened at (`OMP_APP_REMOTE_ORIGIN`), when one is set. */
+  readonly remoteUrl: string | undefined;
 }
 
 function environmentWithOverrides(
@@ -161,6 +164,8 @@ export async function createCompositionServer(
   const launchFolder = resolve(options.cwd ?? process.cwd());
   const logger = options.logger ?? createNullLogger();
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
+  // A bad value stops the start before anything runs: the app must never listen for an address it cannot check.
+  const remote = parseRemoteOrigin(env[REMOTE_ORIGIN_ENV]);
   // The omp the app pins, never one installed on the computer: chats, probes and omp commands all run it.
   const ompDir = env.OMP_APP_OMP_DIR ?? join(appDataDir, "omp");
   let ompBinary = options.ompBin ?? pinnedOmpPath(ompDir);
@@ -597,11 +602,17 @@ export async function createCompositionServer(
     registry,
     logger,
     earlierLaunchTokens: launchHistory.earlier,
+    ...(remote === undefined ? {} : { remote }),
   });
   await launchHistory.remember(server.token);
   launchToken = server.token;
   logger.addSecret(server.token);
-  logger.info("listening", { port: server.port, health: health.status, detail: health.detail });
+  logger.info("listening", {
+    port: server.port,
+    health: health.status,
+    detail: health.detail,
+    remote: remote?.origin ?? "none",
+  });
   const stats = startStatsSampler({
     logger,
     processes: () => processRegistry.list(),
@@ -611,6 +622,7 @@ export async function createCompositionServer(
     ...server,
     processRegistry,
     health,
+    remoteUrl: remote?.origin,
     async stop() {
       try {
         stats.stop();

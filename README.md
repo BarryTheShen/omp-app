@@ -25,6 +25,17 @@ If the app's omp cannot be downloaded, cannot start, or does not answer the app'
 
 When omp starts but has no model set up, the page says "No model is set up yet" and what to set up instead of saying that omp is missing.
 
+### From another device on your tailnet
+
+The app's server listens only on this computer (127.0.0.1). To open it from your phone or another computer, serve it over HTTPS on your tailnet, never the internet, because chats run commands on this computer:
+
+```bash
+export OMP_APP_REMOTE_ORIGIN=https://<computer>.<tailnet>.ts.net   # this computer's Tailscale name; then start omp-app
+tailscale serve --bg localhost:4317                                # HTTPS on the tailnet, passed to the app's port
+```
+
+`omp-app` then prints a second link, `https://<computer>.<tailnet>.ts.net/#token=…`, that opens the app on another device of your tailnet. Send it to that device privately: whoever has the link can use the app. The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off` (or `tailscale serve reset`, which clears every serve setting of this computer), then unset the variable and restart the app.
+
 ### When something goes wrong: the debug log
 
 The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records: a header (app, system, Bun and omp versions, folders); the omp and capability checks with their timings; every omp process (start, pid, how long it ran, and its last stderr lines if it dies on its own); every browser connection (opened, closed, turned away); every failed call (which one, and why); uncaught errors and crashes with their stack; errors the page itself reports; and every 30 seconds the server's memory, the number and memory of omp processes, and how long the server was blocked at worst, so a freeze leaves numbers behind.

@@ -11,6 +11,7 @@ import { launchTokenDigest } from "./launch-history";
 import type { Logger } from "./logging";
 import type { PortRegistry } from "./registry/ports";
 import { PORT_REGISTRY } from "./registry/ports";
+import type { RemoteOrigin } from "./remote-origin";
 import { EventReplayHub } from "./replay";
 
 const DEFAULT_PORT = 4317;
@@ -23,6 +24,8 @@ export interface AppServerOptions {
   readonly port?: number;
   readonly token?: string;
   readonly origins?: readonly string[];
+  /** The Tailscale address the app may also be opened from (`OMP_APP_REMOTE_ORIGIN`, see `remote-origin.ts`). */
+  readonly remote?: RemoteOrigin;
   readonly instanceId?: string;
   readonly serverVersion?: string;
   readonly omp?: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
@@ -57,6 +60,8 @@ export interface UpgradePolicy {
   readonly origins?: readonly string[];
   readonly port: number;
   readonly earlierLaunchTokens?: ReadonlySet<string>;
+  /** The Tailscale address allowed besides the loopback ones. */
+  readonly remote?: RemoteOrigin;
 }
 
 function requestedPort(options: AppServerOptions): number {
@@ -73,13 +78,14 @@ function defaultOrigins(port: number): readonly string[] {
 
 function originAllowed(origin: string | null, policy: UpgradePolicy): boolean {
   if (origin === null) return false;
-  if (policy.origins !== undefined) return policy.origins.includes(origin);
-  return defaultOrigins(policy.port).includes(origin);
+  if (origin === policy.remote?.origin) return true;
+  return (policy.origins ?? defaultOrigins(policy.port)).includes(origin);
 }
 
-function hostAllowed(request: Request, port: number): boolean {
+function hostAllowed(request: Request, policy: UpgradePolicy): boolean {
   const host = request.headers.get("host")?.toLowerCase();
-  return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+  if (host !== undefined && host === policy.remote?.host) return true;
+  return host === `127.0.0.1:${policy.port}` || host === `localhost:${policy.port}`;
 }
 
 function constantTimeEqual(expected: string, actual: string): boolean {
@@ -101,7 +107,7 @@ export function authorizeWebSocketUpgrade(
 ): Response | UpgradeClose | undefined {
   const url = new URL(request.url);
   const candidate = url.searchParams.get("token") ?? "";
-  if (!hostAllowed(request, policy.port)) return forbiddenUpgrade();
+  if (!hostAllowed(request, policy)) return forbiddenUpgrade();
   if (!originAllowed(request.headers.get("origin"), policy)) {
     return { closeCode: 4403, reason: "origin not allowed" };
   }
@@ -198,6 +204,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           origins,
           port: bunServer.port ?? port,
           earlierLaunchTokens: options.earlierLaunchTokens,
+          ...(options.remote === undefined ? {} : { remote: options.remote }),
         });
         if (authorization instanceof Response) {
           options.logger?.warn("connection.rejected", {

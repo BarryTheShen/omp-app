@@ -30,6 +30,7 @@ import {
   stateDirectory,
 } from "../src/logging";
 import { OMP_PIN, pinnedOmpPath } from "../src/omp-pin";
+import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { createCompositionServer } from "./dev";
 
 /** Replaced with the release version when `packaging/build-deb.sh` compiles this file. */
@@ -166,6 +167,11 @@ if (running) {
 const folder = resolve(args.folder ?? process.cwd());
 if (!existsSync(folder) || !statSync(folder).isDirectory()) fail(`"${folder}" is not a folder.`);
 const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
+try {
+  parseRemoteOrigin(Bun.env[REMOTE_ORIGIN_ENV]);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 
 const envPort = Number(Bun.env.OMP_APP_PORT ?? DEFAULT_PORT);
 let port = args.port ?? (Number.isInteger(envPort) ? envPort : DEFAULT_PORT);
@@ -189,6 +195,11 @@ const server = await createCompositionServer({
 const address = `${server.url}/#token=${encodeURIComponent(server.token)}`;
 await recordInstance(record, { pid: process.pid, url: address, version });
 console.log(`omp app ${version}\n\n  ${address}\n\nPress Ctrl+C or close this window to quit.`);
+if (server.remoteUrl !== undefined) {
+  console.log(
+    `\nFrom another device on your tailnet:\n\n  ${server.remoteUrl}/#token=${encodeURIComponent(server.token)}\n\nThis computer must serve it: tailscale serve --bg localhost:${server.port}`,
+  );
+}
 if (server.health.status !== "ok") {
   console.warn(
     `\nWarning: ${server.health.detail ?? "omp is not working."} The app opens, but chats cannot start. If the download failed, check that this computer can reach github.com and start the app again; otherwise run \`omp-app debug-report\` and attach the file to an issue.`,
