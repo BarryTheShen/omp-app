@@ -91,3 +91,5 @@ body {
 @custom-variant data-closed (
   &:where([data-state="closed"], [data-closed]:not([data-closed="false"]))
 );
+
+@custom-variant thread-running (&:where([data-thread-running="true"] *));

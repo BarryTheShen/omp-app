@@ -20,7 +20,9 @@ export interface P3MessageActionsProps {
 }
 
 /**
- * Edit on a user row and Regenerate on an assistant row. User editing waits while a turn streams.
+ * Edit on a user row and Regenerate on an assistant row. A user row's actions wait for a turn to end: the thread's root
+ * marks the run (`thread-running:` in index.css), and the row does not subscribe to it, so a run that starts or ends
+ * draws no action bar again.
  * The assistant action host stays mounted while streaming so assistant-ui's Reload subscription can
  * reveal the control when the thread settles.
  */
@@ -31,11 +33,13 @@ export function P3MessageActions({
 }: P3MessageActionsProps) {
   const [versionsOpen, setVersionsOpen] = useState(false);
   const role = useAuiState((state) => state.message.role);
-  const running = useAuiState((state) => state.thread.isRunning);
   if (role === "user") {
-    if (running || (onEdit === undefined && otherVersions.length === 0)) return null;
+    if (onEdit === undefined && otherVersions.length === 0) return null;
     return (
-      <div className="mt-2 flex flex-wrap justify-end gap-1.5" data-slot="p3-message-actions">
+      <div
+        className="mt-2 flex flex-wrap justify-end gap-1.5 thread-running:hidden"
+        data-slot="p3-message-actions"
+      >
         <div className="flex flex-wrap justify-end gap-1">
           {onEdit === undefined ? null : (
             <Button

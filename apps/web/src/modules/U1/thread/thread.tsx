@@ -750,6 +750,24 @@ function MessageSlices({
 }
 
 /**
+ * The thread's root, marked with `data-thread-running` while a run is on. The mark is an attribute of this element, not a prop
+ * of the rows: the `thread-running:` variant (index.css) hides the actions that wait for a run to end, so a run that starts or
+ * ends draws no action bar again. Only this element re-renders; its children are the elements ThreadShell already made.
+ */
+function ThreadRoot({ children }: { readonly children: ReactNode }) {
+  const running = useAuiState((state) => state.thread.isRunning);
+  return (
+    <ThreadPrimitive.Root
+      className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
+      data-slot="u1-thread-root"
+      data-thread-running={running ? "true" : undefined}
+    >
+      {children}
+    </ThreadPrimitive.Root>
+  );
+}
+
+/**
  * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
  */
@@ -863,10 +881,7 @@ export function ThreadShell({
   return (
     <CredentialActionsProvider value={credentialActions ?? NO_CREDENTIAL_ACTIONS}>
       <FullOutputProvider value={onLoadFullOutput}>
-        <ThreadPrimitive.Root
-          className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
-          data-slot="u1-thread-root"
-        >
+        <ThreadRoot>
           <ThreadPrimitive.Viewport
             ref={viewportRef}
             data-slot="u1-thread-viewport"
@@ -933,7 +948,7 @@ export function ThreadShell({
               </ThreadPrimitive.ViewportFooter>
             </div>
           </ThreadPrimitive.Viewport>
-        </ThreadPrimitive.Root>
+        </ThreadRoot>
       </FullOutputProvider>
     </CredentialActionsProvider>
   );

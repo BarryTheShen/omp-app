@@ -7,6 +7,7 @@ import {
 } from "@assistant-ui/react";
 import { ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Profiler, type ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { P3MessageActions, type P3MessageActionsProps } from "./message-actions";
 
@@ -52,6 +53,33 @@ function Harness({
       </MessageByIndexProvider>
     </AssistantRuntimeProvider>
   );
+}
+
+const USER_ROW: ThreadMessageLike = {
+  role: "user",
+  id: "user-row",
+  content: [{ type: "text", text: "A message" }],
+  metadata: { custom: {} },
+};
+
+/**
+ * A runtime whose run flag can change while its children stay the same elements: only what a child subscribes to can draw it
+ * again.
+ */
+function RunningRuntime({
+  running,
+  children,
+}: {
+  readonly running: boolean;
+  readonly children: ReactNode;
+}) {
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+    messages: [USER_ROW],
+    onNew: async () => undefined,
+    convertMessage: (value) => value,
+    isRunning: running,
+  });
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }
 
 describe("P3 message actions", () => {
@@ -105,12 +133,30 @@ describe("P3 message actions", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  test("no action is offered while a turn streams", () => {
-    render(
-      <Harness messageRole="user" onEdit={() => undefined} onReload={() => undefined} running />,
+  test("a user row's actions are not drawn again when a run starts or ends", () => {
+    let drawn = 0;
+    const row = (
+      <Profiler
+        id="user-row-actions"
+        onRender={() => {
+          drawn += 1;
+        }}
+      >
+        <MessageByIndexProvider index={0}>
+          <MessagePrimitive.Root>
+            <P3MessageActions onEdit={() => undefined} />
+          </MessagePrimitive.Root>
+        </MessageByIndexProvider>
+      </Profiler>
     );
+    const view = render(<RunningRuntime running={false}>{row}</RunningRuntime>);
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    drawn = 0;
 
-    expect(screen.queryByRole("button")).toBeNull();
+    view.rerender(<RunningRuntime running>{row}</RunningRuntime>);
+    view.rerender(<RunningRuntime running={false}>{row}</RunningRuntime>);
+
+    expect(drawn).toBe(0);
   });
   test("keeps the assistant action host mounted while a turn streams", () => {
     const { container } = render(
