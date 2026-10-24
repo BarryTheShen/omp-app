@@ -162,6 +162,14 @@ export async function clearInstance(path: string, pid: number): Promise<void> {
 }
 
 /**
+ * The address that opens a running app: its launch link (`…/#token=…`), with the folder to open it on (an absolute
+ * path) added to the fragment when there is one. The page reads the folder once when it loads (`launch/token.ts`).
+ */
+export function launchAddress(link: string, folder: string | undefined): string {
+  return folder === undefined ? link : `${link}&folder=${encodeURIComponent(folder)}`;
+}
+
+/**
  * The search path the chats' omp runs with, so its tools find the user's programs. A launch from the
  * desktop doesn't read the shell's start-up files, so the folders where `bun` and other user tools
  * usually live are added when they exist.

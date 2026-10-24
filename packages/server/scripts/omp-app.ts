@@ -13,6 +13,7 @@ import {
   DEFAULT_PORT,
   installUnhandledRejectionLogger,
   instanceFile,
+  launchAddress,
   ompSearchPath,
   parseLauncherArgs,
   portIsFree,
@@ -89,6 +90,13 @@ function openBrowser(address: string): void {
   }
 }
 
+/** The folder a path names, resolved from the current folder; ends the command when it is not a folder. */
+function existingFolder(path: string): string {
+  const folder = resolve(path);
+  if (!existsSync(folder) || !statSync(folder).isDirectory()) fail(`"${folder}" is not a folder.`);
+  return folder;
+}
+
 const parsed = parseLauncherArgs(process.argv.slice(2));
 if (!parsed.ok) fail(`${parsed.message}\n\n${USAGE}`);
 const { args } = parsed;
@@ -159,13 +167,17 @@ process.on("uncaughtException", (error) => {
 const record = instanceFile(Bun.env, home);
 const running = await readRunningInstance(record, { alive: isAlive, responds });
 if (running) {
-  console.log(`omp app ${running.version} is already running.\n\n  ${running.url}\n`);
-  if (args.open) openBrowser(running.url);
+  // A folder on the command line opens the running app on that folder: the page reads it from the address.
+  const address = launchAddress(
+    running.url,
+    args.folder === undefined ? undefined : existingFolder(args.folder),
+  );
+  console.log(`omp app ${running.version} is already running.\n\n  ${address}\n`);
+  if (args.open) openBrowser(address);
   process.exit(0);
 }
 
-const folder = resolve(args.folder ?? process.cwd());
-if (!existsSync(folder) || !statSync(folder).isDirectory()) fail(`"${folder}" is not a folder.`);
+const folder = existingFolder(args.folder ?? process.cwd());
 const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
 try {
   parseRemoteOrigin(Bun.env[REMOTE_ORIGIN_ENV]);

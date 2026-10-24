@@ -30,6 +30,12 @@ export OMP_APP_OMP_DIR="$work/omp"
 expected=$(dpkg-deb -f "$package" Version)
 [[ $("$app" --version) == "$expected" ]] || { echo "FAIL: --version is not $expected" >&2; exit 1; }
 
+# The user service: installed, starting this package's command, and enabled for every user on install.
+unit="$work/root/usr/lib/systemd/user/omp-app.service"
+grep -q -x 'ExecStart=/usr/bin/omp-app --no-open %h' "$unit" || { echo "FAIL: the user service does not start /usr/bin/omp-app" >&2; exit 1; }
+dpkg-deb -I "$package" postinst | grep -q 'systemctl --global enable omp-app.service' || { echo "FAIL: postinst does not enable the user service" >&2; exit 1; }
+dpkg-deb -I "$package" prerm | grep -q 'systemctl --global disable omp-app.service' || { echo "FAIL: prerm does not disable the user service" >&2; exit 1; }
+
 "$app" --no-open --port 0 "$work/folder" >"$work/out.log" 2>&1 &
 pid=$!
 address=""

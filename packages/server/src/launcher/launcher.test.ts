@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   clearInstance,
   instanceFile,
+  launchAddress,
   ompSearchPath,
   parseLauncherArgs,
   portIsFree,
@@ -135,6 +136,28 @@ describe("the one-instance record", () => {
     expect(instanceFile({ XDG_STATE_HOME: "relative" }, "/home/u")).toBe(
       "/home/u/.local/state/omp-app/instance.json",
     );
+  });
+});
+
+describe("launchAddress", () => {
+  const link = "http://127.0.0.1:4317/#token=abc%2Bdef";
+
+  test("is the launch link itself when there is no folder", () => {
+    expect(launchAddress(link, undefined)).toBe(link);
+  });
+
+  test("adds the folder to the fragment, after the token", () => {
+    expect(launchAddress(link, "/work/app")).toBe(`${link}&folder=%2Fwork%2Fapp`);
+  });
+
+  test("encodes a folder name that would end or split the fragment", () => {
+    const address = launchAddress(link, "/work/my app & co/#1/100%/a=b+c");
+    expect(address).toBe(
+      `${link}&folder=%2Fwork%2Fmy%20app%20%26%20co%2F%231%2F100%25%2Fa%3Db%2Bc`,
+    );
+    const fragment = new URLSearchParams(new URL(address).hash.slice(1));
+    expect(fragment.get("token")).toBe("abc+def");
+    expect(fragment.get("folder")).toBe("/work/my app & co/#1/100%/a=b+c");
   });
 });
 

@@ -5,7 +5,7 @@ import {
   type CreateAppClientOptions,
   createAppClient,
 } from "@omp-app/client";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, type FolderPath } from "@omp-app/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LogHint } from "./log-hint";
@@ -52,6 +52,11 @@ export interface AppConnectionProviderProps {
   readonly createClient?: (options: CreateAppClientOptions) => AppClient;
   /** Loads the page again. A launch link typed into the open tab reloads it with that link; the default reloads the window. */
   readonly reload?: () => void;
+  /**
+   * Told the folder a launch link asks the app to open on, once, when the page reads its address. Keep the function
+   * the same between renders: a new one reads the address again.
+   */
+  readonly onLaunchFolder?: (folder: FolderPath) => void;
 }
 
 /** How long reconnects may fail before the banner says the server is not answering, and what to do. */
@@ -102,13 +107,17 @@ export function AppConnectionProvider({
   history,
   createClient = createAppClient,
   reload = reloadWindow,
+  onLaunchFolder,
 }: AppConnectionProviderProps) {
   const [launch, setLaunch] = useState<ReturnType<typeof readLaunchToken> | null>(null);
   const [snapshot, setSnapshot] = useState<AppConnectionSnapshot>(EMPTY_CONNECTION);
 
   useEffect(() => {
-    setLaunch(readLaunchToken({ location, storage, history }));
-  }, [history, location, storage]);
+    const result = readLaunchToken({ location, storage, history });
+    // The first read gives the folder up; a second read (StrictMode runs effects twice) finds the address stripped.
+    if (result.folder !== null) onLaunchFolder?.(result.folder);
+    setLaunch(result);
+  }, [history, location, onLaunchFolder, storage]);
 
   // A launch link typed into this open tab changes only the fragment: the page does not load again, and the token
   // read above stays the old one. A different token is a new link from a restarted app: load the page with it.

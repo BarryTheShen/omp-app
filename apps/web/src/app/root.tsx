@@ -50,6 +50,7 @@ import { LargePasteMenuProvider } from "./large-paste-menu";
 import { installPerfTrace, perfTraceEnabled } from "./perf-trace";
 import { RouterBridge } from "./router-bridge";
 import { openSavedChatModelPicker } from "./saved-chat-model-picker";
+import { rememberLaunchFolder } from "./session-storage";
 import { EmptyTranscript, FocusDiagnosticPanelOnReveal } from "./thread-chrome";
 import type { ActiveThreadProps } from "./thread-props";
 import { useThreadSurfaces } from "./thread-surfaces";
@@ -900,7 +901,7 @@ function ConnectedRoot() {
 
 export function AppRoot() {
   return (
-    <AppConnectionProvider>
+    <AppConnectionProvider onLaunchFolder={rememberLaunchFolder}>
       <ThemeApplier />
       <AccessibilityProvider>
         <AppConnectionGate>

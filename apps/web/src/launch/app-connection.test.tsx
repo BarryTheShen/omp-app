@@ -524,3 +524,45 @@ describe("a launch link typed into the open tab", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("the folder a launch link asks for", () => {
+  function renderLink(hash: string) {
+    const onLaunchFolder = vi.fn();
+    const replaceState = vi.fn();
+    render(
+      <AppConnectionProvider
+        createClient={() => makeClient("open")}
+        history={{ replaceState }}
+        location={{ ...pageLocation, hash }}
+        onLaunchFolder={onLaunchFolder}
+        storage={{ getItem: () => null, setItem: () => undefined }}
+      >
+        <Harness />
+      </AppConnectionProvider>,
+    );
+    return { onLaunchFolder, replaceState };
+  }
+
+  test("is given to the app once, and leaves the address with the token", async () => {
+    const { onLaunchFolder, replaceState } = renderLink(
+      "#token=fragment-token&folder=%2Fwork%2Fproject",
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+    );
+    expect(onLaunchFolder).toHaveBeenCalledTimes(1);
+    expect(onLaunchFolder).toHaveBeenCalledWith("/work/project");
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
+  });
+
+  test("is not given when the link has none, or when its folder is not an absolute path", async () => {
+    for (const hash of ["#token=fragment-token", "#token=fragment-token&folder=work%2Fproject"]) {
+      const { onLaunchFolder } = renderLink(hash);
+      await waitFor(() =>
+        expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+      );
+      expect(onLaunchFolder).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+});

@@ -1,0 +1,16 @@
+# The omp app's server as a user service: it starts when the user logs in and keeps running with no
+# window or browser open, so running chats keep going. The omp-app package installs it at
+# /usr/lib/systemd/user/omp-app.service and enables it for every user (`systemctl --global enable`).
+#   systemctl --user stop omp-app          stops it until the next login
+#   systemctl --user mask --now omp-app    stops it and keeps it from starting at login (the global enable
+#                                          is not the user's to disable); `systemctl --user unmask omp-app` undoes it
+[Unit]
+Description=omp app server
+Documentation=https://github.com/BarryTheShen/omp-app
+
+[Service]
+ExecStart=/usr/bin/omp-app --no-open %h
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -5,8 +5,9 @@
 #
 # The package holds one self-contained command (/usr/bin/omp-app: Bun's runtime plus the server,
 # compiled from packages/server/scripts/omp-app.ts), the built web app (/usr/share/omp-app/web),
-# a desktop entry and an icon. The omp release the app runs is not in it: the command downloads it
-# on its first start (packages/server/src/omp-pin).
+# a desktop entry, an icon, and a user service (/usr/lib/systemd/user/omp-app.service) that its
+# postinst enables for every user, so the server starts at login. The omp release the app runs is
+# not in it: the command downloads it on its first start (packages/server/src/omp-pin).
 set -euo pipefail
 
 version=${1:?usage: packaging/build-deb.sh <version>}
@@ -23,13 +24,14 @@ cd "$root"
 
 bun run build
 
-install -d "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/share/omp-app" \
+install -d "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/share/omp-app" "$stage/usr/lib/systemd/user" \
   "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/scalable/apps"
 bun build --compile --minify --target=bun-linux-x64 \
   --define "OMP_APP_VERSION=\"$version\"" \
   packages/server/scripts/omp-app.ts --outfile "$stage/usr/bin/omp-app"
 cp -r apps/web/dist "$stage/usr/share/omp-app/web"
 install -m 0644 packaging/omp-app.desktop "$stage/usr/share/applications/omp-app.desktop"
+install -m 0644 packaging/omp-app.service "$stage/usr/lib/systemd/user/omp-app.service"
 install -m 0644 apps/web/public/favicon.svg "$stage/usr/share/icons/hicolor/scalable/apps/omp-app.svg"
 find "$stage" -type d -exec chmod 0755 {} +
 find "$stage/usr/share" -type f -exec chmod 0644 {} +
@@ -48,7 +50,26 @@ Homepage: https://github.com/BarryTheShen/omp-app
 Description: Browser app for the omp coding agent
  Run omp-app: it starts a local server and opens the app in your browser.
  It runs the omp release it is built for, which it downloads on its first start.
+ A user service (omp-app.service) starts the server at login, so chats keep running
+ with no window or browser open.
 EOF
+
+# The user service starts at every user's next login; removing the package turns that off again. An upgrade keeps it.
+cat >"$stage/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --global enable omp-app.service >/dev/null 2>&1 || true
+fi
+EOF
+cat >"$stage/DEBIAN/prerm" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --global disable omp-app.service >/dev/null 2>&1 || true
+fi
+EOF
+chmod 0755 "$stage/DEBIAN/postinst" "$stage/DEBIAN/prerm"
 
 mkdir -p "$out"
 package="omp-app_${version}_amd64.deb"
