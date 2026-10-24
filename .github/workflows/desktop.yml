@@ -85,17 +85,11 @@ jobs:
           set -euo pipefail
           cargo clippy --all-targets -- -D warnings
           cargo test
-      # The app runs the omp coding agent, so the smoke test needs omp. It is installed the way omp's
-      # README says (bun install -g), pinned to the version the local tests used, and checked here.
-      - name: Install omp (the coding agent the app runs)
-        run: |
-          set -euo pipefail
-          bun install -g @oh-my-pi/pi-coding-agent@18.8.9
-          omp --version
 
-      # Starts the packaged window on a virtual display and checks that it opens the app, starts its
-      # server, quits, and leaves no process behind. packaging/desktop-smoke-test.sh makes the checks;
-      # the screenshots it saves go into dist/desktop, which the upload below includes.
+      # Starts the packaged window on a virtual display, with the omp release its package carries, and checks that it
+      # opens the app on its server, that the server outlives the window, and that a long turn finishes after the
+      # window closed. packaging/desktop-smoke-test.sh makes the checks; the screenshots it saves go into
+      # dist/desktop, which the upload below includes.
       - name: Smoke-test the package under a virtual display
         run: |
           set -euo pipefail

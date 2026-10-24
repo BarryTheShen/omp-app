@@ -135,14 +135,6 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: bash packaging/build-desktop-deb.sh "${{ steps.changes.outputs.version }}"
 
-      # The window runs the omp coding agent, so its smoke test needs omp: installed the way desktop.yml does.
-      - name: Install omp (the coding agent the window runs)
-        if: steps.changes.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          bun install -g @oh-my-pi/pi-coding-agent@18.8.9
-          omp --version
-
       - name: Check that the window's package works
         if: steps.changes.outputs.changed == 'true'
         run: |
