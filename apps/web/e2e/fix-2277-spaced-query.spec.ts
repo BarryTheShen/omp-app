@@ -3,8 +3,9 @@ import { expect, realTest, startChat } from "./real-omp";
 
 /*
  * Issue 2277: a spaced slash query lists only the argument completions of the command named exactly before the space, as
- * omp's editor does (autocomplete.ts:362-365, 716-719). `/context ` names a command with no subcommands, so no list shows
- * and Enter sends it; `/extended-context `, a command named exactly, still lists its own. Real omp 18.12.2 on the test machine.
+ * omp's editor does (v18.12.6 packages/tui/src/autocomplete.ts:690, 727-745). `/context ` names a command with no subcommands, so no list shows
+ * and Enter sends it. `/extended-context ` preserves omp's subcommand order: its exact-argument completion items are
+ * returned in provider order (v18.12.6 packages/tui/src/autocomplete.ts:740-745). Real omp 18.12.2 on the test machine.
  */
 
 // omp 18.12.2 is at this path in every the test machine job.
@@ -47,8 +48,8 @@ realTest(
     await composer.pressSequentially("/extended-context ");
     const options = commandList(page).getByRole("option");
     await expect(options).toHaveCount(3, { timeout: 60_000 });
-    await expect(options.nth(0).locator("span.font-medium")).toHaveText("/extended-context off");
-    await expect(options.nth(1).locator("span.font-medium")).toHaveText("/extended-context on");
+    await expect(options.nth(0).locator("span.font-medium")).toHaveText("/extended-context on");
+    await expect(options.nth(1).locator("span.font-medium")).toHaveText("/extended-context off");
     await expect(options.nth(2).locator("span.font-medium")).toHaveText("/extended-context status");
   },
 );

@@ -2,9 +2,9 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, realTest, startChat } from "./real-omp";
 
 /*
- * Issue 2175, S8: `/wt` is listed in the `/` list, as omp lists it. Enter on `/w` chooses it and inserts `/wt ` without
- * sending. Enter on `/wt` typed in full, or on its alias `/worktree`, sends it, and the app asks first. Each question is
- * cancelled here, so no chat moves. Real omp 18.12.2 on the test machine.
+ * Issue 2175, S8: `/w` is omp's prefix pick for the `/wt` command (alias `/worktree`), per v18.12.6 autocomplete.ts:374-382, 385-477.
+ * Enter on `/w` picks the row and inserts `/wt ` without sending. A second Enter on `/wt`, or Enter on `/worktree`,
+ * sends it and the app asks first. Each question is cancelled here, so no chat moves. Real omp 18.12.2 on the test machine.
  */
 
 // omp 18.12.2 is at this path in every the test machine job.
@@ -24,7 +24,7 @@ function moveQuestion(page: Page): Locator {
 }
 
 realTest(
-  "S8: /wt is listed; Enter from /w inserts it without sending, and Enter on /wt or /worktree asks first",
+  "S8: /w picks /wt; Enter inserts it without sending, and Enter on /wt or /worktree asks first",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     const page = await realApp.open();

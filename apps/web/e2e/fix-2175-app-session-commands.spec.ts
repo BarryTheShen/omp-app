@@ -83,15 +83,15 @@ async function chooseRow(
 }
 
 realTest(
-  "S9a: a typed /del picks the /delete row, which asks with the chat's delete question; Cancel and Escape keep the chat, and Delete removes it",
+  "S9a: a typed /delete picks the /delete row, which asks with the chat's delete question; Cancel and Escape keep the chat, and Delete removes it",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     await mkdir(screenshots, { recursive: true });
     const page = await realApp.open();
     const { composer, chatFile } = await chatWithPingPong(page, realApp);
 
-    // `/del` lists the app's own row first (it was `/model` before S9a); Enter on it opens the question.
-    await composer.fill("/del");
+    // `/delete` names the app's own row exactly; Enter on it opens the question.
+    await composer.fill("/delete");
     const row = listRow(page, /^\/delete/);
     await expect(row).toBeVisible({ timeout: 60_000 });
     await expect(row).toContainText("Delete this chat, after you confirm");
@@ -155,7 +155,7 @@ realTest(
     await expect(page.locator("html")).toHaveClass(/dark/);
     const { composer, chatFile } = await chatWithPingPong(page, realApp);
 
-    await composer.fill("/del");
+    await composer.fill("/delete");
     const row = listRow(page, /^\/delete/);
     await expect(row).toBeVisible({ timeout: 60_000 });
     // The row is painted with the app's own colour, not the browser's default text colour.
@@ -204,7 +204,7 @@ realTest(
     const { composer, chatFile } = await chatWithPingPong(page, realApp);
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await composer.fill("/del");
+    await composer.fill("/delete");
     const row = listRow(page, /^\/delete/);
     await expect(row).toBeVisible({ timeout: 60_000 });
     await waitForFiniteAnimations(page);
@@ -354,9 +354,9 @@ async function expectFocusInTree(page: Page): Promise<void> {
     .toBe(true);
 }
 
-/** Types `/br`, then shoots the /branch row of the slash list in the page's theme. */
+/** Types `/branch`, then shoots the /branch row of the slash list in the page's theme. */
 async function shootBranchRow(page: Page, composer: Locator, file: string): Promise<void> {
-  await composer.fill("/br");
+  await composer.fill("/branch");
   const row = listRow(page, /^\/branch/);
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row).toContainText("Rewind this chat to one of your messages. This chat is kept.");
@@ -433,7 +433,7 @@ realTest.describe("S9b: /tree, /branch and /rewind open the Conversation history
   );
 
   realTest(
-    "S9b: /rewind and /bran pick the /branch row, which opens the panel with the rewind header",
+    "S9b: /rewind and /branch pick the /branch row, which opens the panel with the rewind header",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(300_000);
       const page = await realApp.open();
@@ -446,7 +446,7 @@ realTest.describe("S9b: /tree, /branch and /rewind open the Conversation history
       await expect(conversationTree(page)).toBeVisible({ timeout: 30_000 });
 
       await page.keyboard.press("Escape");
-      await chooseRow(page, composer, "/bran", /^\/branch/);
+      await chooseRow(page, composer, "/branch", /^\/branch/);
       await expect(headerNote(page, BRANCH_HEADER)).toBeVisible({ timeout: 30_000 });
       await expect(historyTab(page)).toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
       expect(realApp.problems).toEqual([]);
@@ -570,9 +570,9 @@ async function sessionLines(realApp: RealApp, file: string): Promise<string[]> {
   return text.split("\n").filter((line) => line !== "");
 }
 
-/** Types `/fo`, then shoots the /fork row of the slash list in the page's theme. */
+/** Types `/fork`, then shoots the /fork row of the slash list in the page's theme. */
 async function shootForkRow(page: Page, composer: Locator, file: string): Promise<void> {
-  await composer.fill("/fo");
+  await composer.fill("/fork");
   const row = listRow(page, /^\/fork/);
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row).toContainText("Fork this chat into a copy and open it. The original is kept.");
@@ -586,7 +586,7 @@ realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () 
   realTest.use({ seedEntries: { entries } });
 
   realTest(
-    "S9c: a typed /fo picks the /fork row, which opens a copy of the chat with its note; the list has two rows and the original keeps its lines",
+    "S9c: a typed /fork picks the /fork row, which opens a copy of the chat with its note; the list has two rows and the original keeps its lines",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(300_000);
       const page = await realApp.open();
@@ -594,8 +594,8 @@ realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () 
       const original = await seededFile(realApp);
       const originalLines = await sessionLines(realApp, original);
 
-      // `/fo` lists the app's own /fork row first, so Enter on it forks the chat.
-      await chooseRow(page, composer, "/fo", /^\/fork/);
+      // `/fork` names the app's own row exactly, so Enter on it forks the chat.
+      await chooseRow(page, composer, "/fork", /^\/fork/);
 
       await expect(forkNote(page)).toBeVisible({ timeout: 60_000 });
       await expect.poll(() => sessionFiles(realApp), { timeout: 60_000 }).toHaveLength(2);
@@ -658,23 +658,6 @@ realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () 
   );
 
   realTest(
-    "S9c: a typed /for picks the /fork row too, and forks the chat the same way",
-    async ({ realApp }, testInfo) => {
-      testInfo.setTimeout(300_000);
-      const page = await realApp.open();
-      const composer = await openSeededChat(page);
-      const original = await seededFile(realApp);
-
-      // `/for` picks the same /fork row as `/fo`, and Enter forks the chat the same way.
-      await chooseRow(page, composer, "/for", /^\/fork/);
-      await expect(forkNote(page)).toBeVisible({ timeout: 60_000 });
-      await expect.poll(() => sessionFiles(realApp), { timeout: 60_000 }).toHaveLength(2);
-      expect(await sessionFiles(realApp)).toContain(original);
-      expect(realApp.problems).toEqual([]);
-    },
-  );
-
-  realTest(
     "S9c: the /fork row and the copy's note read in light mode at 1280 px",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(300_000);
@@ -683,7 +666,7 @@ realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () 
       const composer = await openSeededChat(page);
       await shootForkRow(page, composer, "fix-2175-s9c-list-light-1280.png");
 
-      await chooseRow(page, composer, "/fo", /^\/fork/);
+      await chooseRow(page, composer, "/fork", /^\/fork/);
       const note = forkNote(page);
       await expect(note).toBeVisible({ timeout: 60_000 });
       // The note is painted with the app's own colour, not the browser's default black.
@@ -708,7 +691,7 @@ realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () 
     const composer = await openSeededChat(page);
     await shootForkRow(page, composer, "fix-2175-s9c-list-dark-1280.png");
     // The copy's note in dark mode: picking the row forks the chat and writes the note into the copy.
-    await chooseRow(page, composer, "/fo", /^\/fork/);
+    await chooseRow(page, composer, "/fork", /^\/fork/);
     const note = page
       .getByRole("region", { name: "Notices in this conversation" })
       .getByText(FORK_DONE);
@@ -727,11 +710,11 @@ realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () 
     const page = await realApp.open();
     const composer = await openSeededChat(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    // The /fo list at 390 px: the /fork row fits the screen and keeps its description, then Enter picks it below.
+    // The `/fork` list at 390 px: the row fits the screen and keeps its description before Enter picks it.
     await shootForkRow(page, composer, "fix-2175-s9c-list-light-390.png");
     await expectInsideWidth(listRow(page, /^\/fork/), 390);
 
-    await chooseRow(page, composer, "/fo", /^\/fork/);
+    await chooseRow(page, composer, "/fork", /^\/fork/);
     const note = forkNote(page);
     await expect(note).toBeVisible({ timeout: 60_000 });
     await waitForFiniteAnimations(page);

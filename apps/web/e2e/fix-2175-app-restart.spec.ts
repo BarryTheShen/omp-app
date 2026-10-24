@@ -11,7 +11,7 @@ import {
 } from "./real-omp";
 
 /*
- * Issue 2284, S9e: `/restart` asks first, then restarts omp on this chat. `/res` picks it. Cancel and Escape send nothing.
+ * Issue 2284, S9e: `/restart` asks first, then restarts omp on this chat. The exact `/restart` row is chosen. Cancel and Escape send nothing.
  * Restart omp starts a new omp on the saved chat, which keeps its messages. A reply still being written is named in the
  * question, and Restart ends it. Real omp 18.12.2 on the test machine.
  */
@@ -54,9 +54,9 @@ async function destructiveColor(page: Page): Promise<string> {
   });
 }
 
-/** Types `/res`, waits for the `/` list to offer `/restart` first, and presses Enter: the pick the pin pins. */
+/** Types `/restart`, waits for the exact `/restart` row, and presses Enter. */
 async function typeRestart(page: Page, composer: Locator): Promise<void> {
-  await composer.fill("/res");
+  await composer.fill("/restart");
   await expect(
     page
       .getByRole("listbox", { name: "Slash commands" })
@@ -95,7 +95,7 @@ async function captureQuestion(page: Page, name: string, words: string): Promise
 }
 
 realTest(
-  "real omp: /res asks first; Cancel and Escape send nothing; Restart omp starts omp again on this chat",
+  "real omp: /restart asks first; Cancel and Escape send nothing; Restart omp starts omp again on this chat",
   async ({ realApp }) => {
     await mkdir(screenshots, { recursive: true });
     const page = await realApp.open({

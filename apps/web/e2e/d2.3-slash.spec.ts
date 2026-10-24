@@ -47,7 +47,7 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
 
-    await composer.fill("/us");
+    await composer.fill("/usage");
     await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
     const usage = commandList(page).getByRole("option", { name: /^\/usage/ });
     // The list shows "Loading commands" until omp answers. A real omp's first answer can take longer than the default
@@ -83,7 +83,7 @@ realTest(
     const composer = await startChat(page);
 
     // /context takes no arguments, so the one Enter that chooses it also sends it.
-    await composer.fill("/cont");
+    await composer.fill("/context");
     await expect(commandList(page).getByRole("option", { name: /^\/context/ })).toBeVisible({
       timeout: 30_000,
     });
@@ -124,7 +124,7 @@ realTest("the command list reads in light mode", async ({ realApp }, testInfo) =
   testInfo.setTimeout(180_000);
   const page = await realApp.open();
   const composer = await startChat(page);
-  await composer.fill("/us");
+  await composer.fill("/usage");
   await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
   // The list draws with the app's own surface, not the browser's default: a transparent background would mean no styles loaded.
   expect(
@@ -141,7 +141,7 @@ realTest("the command list reads in dark mode", async ({ realApp }, testInfo) =>
   await page.evaluate(() => window.localStorage.setItem("omp-app.theme", "dark"));
   await page.reload();
   const composer = await startChat(page);
-  await composer.fill("/us");
+  await composer.fill("/usage");
   await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("html")).toHaveClass(/dark/);
   expect(
@@ -157,7 +157,7 @@ realTest(
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
     const composer = await startChat(page);
-    await composer.fill("/us");
+    await composer.fill("/usage");
     await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
     for (const width of [640, 390]) {
       await page.setViewportSize({ width, height: 844 });

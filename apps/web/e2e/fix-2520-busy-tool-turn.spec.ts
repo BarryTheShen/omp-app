@@ -76,7 +76,7 @@ async function sendCommandsWhileRunning(page: Page, composer: Locator): Promise<
   await expect(headerNote(page, WAIT.clear)).toBeVisible();
   await expect(page.getByText(DONE.clear)).toHaveCount(0);
 
-  await runCommand(page, composer, "/fo", /^\/fork /);
+  await runCommand(page, composer, "/fork", /^\/fork /);
   await expect(headerNote(page, WAIT.fork)).toBeVisible();
   await expect(page.getByText(DONE.fork)).toHaveCount(0);
 

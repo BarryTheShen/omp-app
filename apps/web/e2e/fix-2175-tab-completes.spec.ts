@@ -26,7 +26,7 @@ realTest(
     testInfo.setTimeout(240_000);
     const page = await realApp.open();
     const composer = await startChat(page);
-    await composer.pressSequentially("/cont");
+    await composer.pressSequentially("/context");
     const first = commandList(page).getByRole("option").first();
     await expect(first.locator("span.font-medium")).toHaveText("/context", { timeout: 60_000 });
     await composer.press("Tab");

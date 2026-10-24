@@ -48,9 +48,9 @@ async function setTheme(page: Page, dark: boolean): Promise<void> {
   await waitForFiniteAnimations(page);
 }
 
-/** Types `/cl`, waits for the `/` list to offer `/clear` first, and presses Enter: the pick the pin pins. */
+/** Types `/clear`, waits for the `/` list to offer the exact `/clear` command, and presses Enter. */
 async function typeClear(page: Page, composer: Locator): Promise<void> {
-  await composer.fill("/cl");
+  await composer.fill("/clear");
   await expect(
     page
       .getByRole("listbox", { name: "Slash commands" })
@@ -60,7 +60,7 @@ async function typeClear(page: Page, composer: Locator): Promise<void> {
 }
 
 realTest(
-  "real omp: /cl starts a new chat in the same folder, says so in it, and keeps the old chat in the list",
+  "real omp: /clear starts a new chat in the same folder, says so in it, and keeps the old chat in the list",
   async ({ realApp }) => {
     await mkdir(screenshots, { recursive: true });
     const page = await realApp.open({
@@ -112,7 +112,7 @@ realTest(
 );
 
 realTest(
-  "real omp: /cl while a reply is still being written says to wait, and starts nothing",
+  "real omp: /clear while a reply is still being written says to wait, and starts nothing",
   async ({ realApp }) => {
     const page = await realApp.open({
       beforeLoad: (target) =>
