@@ -72,8 +72,11 @@ async function prepare(target: Page, theme: Theme): Promise<void> {
 /** Starts a chat at any width: the narrow layout keeps the sessions list in a drawer that must open first. */
 async function startChatAt(page: Page, width: number): Promise<Locator> {
   if (width <= 768) {
+    // The layout changes after the resize: wait for the button before opening the drawer, so a wide layout that has
+    // not gone yet is not taken for an open drawer (fix-1201-session-title-card-real.spec.ts does the same, issue 1450).
     const show = page.getByRole("button", { name: "Show sessions sidebar" });
-    if ((await show.count()) > 0) await show.first().click();
+    await expect(show).toBeVisible();
+    await show.click();
   }
   const composer = await startChat(page);
   if (width <= 768) {
