@@ -1,13 +1,16 @@
 import { describe, expect, test } from "vitest";
 import { P7_CONTEXT_SETTINGS_SECTIONS } from "@/modules/P7/settings";
 import { SETTINGS_SECTIONS } from "@/registry";
-import registry from "./fixtures/omp-settings-registry.v18.9.1.json";
+import registry from "./fixtures/omp-settings-registry.v18.12.6.json";
 
 type RegistrySetting = (typeof registry.settings)[number];
 type Control = (typeof SETTINGS_SECTIONS)[number]["controls"][number];
 
-/** omp creates these ids in a keyword loop, so the literal-register extractor cannot see them. */
-const INVISIBLE_TO_THE_EXTRACTOR: Readonly<Record<string, string>> = {
+/**
+ * App controls with no entry in the registry fixture: the magic-keyword ids omp creates in a loop (the literal-register
+ * extractor cannot see them), and two settings omp removed.
+ */
+const NOT_IN_THE_FIXTURE: Readonly<Record<string, string>> = {
   "magicKeywords.ultrathink":
     "generated in omp's magic-keyword loop; absent from literal register calls",
   "magicKeywords.orchestrate":
@@ -16,12 +19,14 @@ const INVISIBLE_TO_THE_EXTRACTOR: Readonly<Record<string, string>> = {
     "generated in omp's magic-keyword loop; absent from literal register calls",
   "magicKeywords.jevify":
     "generated in omp's magic-keyword loop; absent from literal register calls",
-  "lsp.requestTimeout": "added in omp v18.12.2; absent from the v18.9.1 registry fixture",
-  "task.structured": "added in omp v18.12.2; absent from the v18.9.1 registry fixture",
+  "providers.openai-codex.codeMode":
+    "removed in omp v18.10.4 (CHANGELOG line 543 at v18.12.6); the app keeps the control for omp 18.6.1, its floor",
+  "providers.openai-codex.codeModeDirectTools":
+    "removed in omp v18.10.4 (CHANGELOG line 543 at v18.12.6); the app keeps the control for omp 18.6.1, its floor",
 };
 /** These enum values are identifier-valued in omp, so the literal-register extractor omits them. */
 const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
-  // omp v18.9.1 tiny/device.ts:74-94
+  // omp v18.12.6 tiny/device.ts:74-94 (the file is identical at v18.9.1)
   "providers.tinyModelDevice": [
     "default",
     "gpu",
@@ -39,7 +44,7 @@ const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
     "webnn-cpu",
     "webnn-npu",
   ],
-  // omp v18.9.1 tiny/dtype.ts:49-68
+  // omp v18.12.6 tiny/dtype.ts:49-68 (the file is identical at v18.9.1)
   "providers.tinyModelDtype": [
     "default",
     "q4",
@@ -56,15 +61,6 @@ const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
     "q1f16",
     "auto",
   ],
-};
-
-/**
- * Enum values omp added after the v18.9.1 registry fixture was recorded, in omp's order. `always-ask-cached`
- * came in omp v18.12.3 (`packages/coding-agent/CHANGELOG.md` line 93 at v18.12.5); its list is
- * `packages/coding-agent/src/tools/settings.ts:316` at v18.12.5.
- */
-const VALUES_ADDED_AFTER_V18_9_1: Readonly<Record<string, readonly string[]>> = {
-  "tools.approvalMode": ["always-ask", "always-ask-cached", "write", "yolo"],
 };
 
 /** These controls intentionally use a different shape than omp's persisted setting registration. */
@@ -124,13 +120,13 @@ function optionValues(control: Control): readonly string[] {
     : [];
 }
 
-describe("settings descriptors match omp's v18.9.1 registration", () => {
+describe("settings descriptors match omp's v18.12.6 registration", () => {
   test("every app control has a registry entry or a named extractor exception, with matching type", () => {
     const mismatches: string[] = [];
     for (const control of ALL_CONTROLS) {
       const source = registryFor(control.key);
       if (source === undefined) {
-        if (INVISIBLE_TO_THE_EXTRACTOR[control.key] !== undefined) continue;
+        if (NOT_IN_THE_FIXTURE[control.key] !== undefined) continue;
         mismatches.push(`${control.key}: missing from omp's registry`);
         continue;
       }
@@ -154,10 +150,7 @@ describe("settings descriptors match omp's v18.9.1 registration", () => {
         continue;
       }
       const actual = optionValues(control);
-      const expected =
-        IDENTIFIER_ENUM_VALUES[control.key] ??
-        VALUES_ADDED_AFTER_V18_9_1[control.key] ??
-        source.values;
+      const expected = IDENTIFIER_ENUM_VALUES[control.key] ?? source.values;
       if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         mismatches.push(
           `${control.key}: options ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`,
@@ -182,17 +175,14 @@ describe("settings descriptors match omp's v18.9.1 registration", () => {
     }
   });
 
-  test("limits unextracted app controls to generated magic-keyword settings", () => {
+  test("limits app controls without a registry entry to the magic-keyword settings and the two omp removed", () => {
     const missingFromRegistry = ALL_CONTROLS.map((control) => control.key)
       .filter((key) => registryFor(key) === undefined)
       .sort();
-    expect(missingFromRegistry).toEqual(Object.keys(INVISIBLE_TO_THE_EXTRACTOR).sort());
-    for (const key of Object.keys(INVISIBLE_TO_THE_EXTRACTOR)) {
+    expect(missingFromRegistry).toEqual(Object.keys(NOT_IN_THE_FIXTURE).sort());
+    for (const key of Object.keys(NOT_IN_THE_FIXTURE)) {
       expect(controlFor(key), `${key} app control`).toBeDefined();
-      expect(
-        registryFor(key),
-        `${key} is not visible to literal register extraction`,
-      ).toBeUndefined();
+      expect(registryFor(key), `${key} has no entry in the registry fixture`).toBeUndefined();
     }
   });
 });

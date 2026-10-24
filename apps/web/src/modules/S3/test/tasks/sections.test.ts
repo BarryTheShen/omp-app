@@ -151,7 +151,10 @@ describe("S3 Tasks settings", () => {
     for (const key of keys) {
       const control = controlFor(key);
       const safetyText = `${control.label} ${control.description ?? ""}`;
-      expect(control.description).toContain("Saving");
+      // The switch follows omp 18.12.6's own wording (task/settings.ts:26-37): it says when a saved value applies.
+      expect(control.description).toContain(
+        key === "task.isolation.enabled" ? "Applies to tasks started after saving." : "Saving",
+      );
       expect(safetyText).toMatch(/worktree|checkout|isolation/i);
       expect(safetyText).not.toContain(key);
     }

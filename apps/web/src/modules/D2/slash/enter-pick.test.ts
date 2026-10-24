@@ -4,13 +4,14 @@ import { type CapabilityMap, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { DESTRUCTIVE_FORMS } from "./destructive";
 import golden from "./enter-pick.golden.json";
-import realCatalog from "./fixtures/real-get-available-commands-18.12.2.json";
+import realCatalog from "./fixtures/real-get-available-commands-18.12.6.json";
 import { createSlashCommandProvider } from "./provider";
 import type { SlashAppCommand } from "./routing";
 import { fakeSlashClient } from "./test-support";
 
 // Enter runs the first row of the `/` list. This pins that row for every prefix of every single-word name omp lists
-// (names and aliases) and of every app command name, with omp's real 18.12.2 list and main's real provider. A change
+// (names and aliases) and of every app command name, with omp's real 18.12.6 list (`get_available_commands`, recorded with
+// `bun tools/record-omp-fixtures.ts`) and main's real provider. A change
 // that moves a pick fails here; `ENTER_PICK_UPDATE=1` (run from apps/web) rewrites the golden file, and the diff goes in the PR body.
 // #2175 replaces the app's older length-weighted prefix scores with omp v18.12.6's exact/prefix/subsequence scores.
 // Source: packages/tui/src/autocomplete.ts:374-382,395,475-478. No command-usage counts reach this app catalog, so
@@ -129,7 +130,7 @@ async function picksForEveryPrefix(): Promise<Record<string, string>> {
   return picks;
 }
 
-describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 list", () => {
+describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.6 list", () => {
   test("the app's commands are the 19 listed rows and the unlisted guarded forms", () => {
     const listed = APP_COMMANDS.filter((app) => app.unlisted !== true).map((app) => app.name);
     expect(listed).toEqual([

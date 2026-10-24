@@ -1,7 +1,18 @@
 {
   "source": "omp",
-  "version": "v18.9.1",
+  "version": "v18.12.6",
   "settings": [
+    {
+      "id": "advisor.continueSeverity",
+      "type": "enum",
+      "values": ["nit", "concern", "blocker"],
+      "default": "concern",
+      "ui": {
+        "tab": "model",
+        "group": "Advisor",
+        "label": "Advisor Continue Severity"
+      }
+    },
     {
       "id": "advisor.enabled",
       "type": "boolean",
@@ -153,6 +164,16 @@
       "id": "async.maxJobs",
       "type": "number",
       "default": 100
+    },
+    {
+      "id": "async.widgets",
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "tab": "tools",
+        "group": "Execution",
+        "label": "Live Job Widgets"
+      }
     },
     {
       "id": "auth.accountPolicies",
@@ -906,6 +927,17 @@
       }
     },
     {
+      "id": "computer.backgroundFallback",
+      "type": "enum",
+      "values": ["takeover", "refuse"],
+      "default": "takeover",
+      "ui": {
+        "tab": "tools",
+        "group": "Computer",
+        "label": "Computer Background Fallback"
+      }
+    },
+    {
       "id": "computer.display",
       "type": "string",
       "default": "active",
@@ -1449,6 +1481,16 @@
       "id": "gc.coldArchiveAfterDays",
       "type": "number",
       "default": 30
+    },
+    {
+      "id": "gc.compress",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "id": "gc.compressAfterDays",
+      "type": "number",
+      "default": 7
     },
     {
       "id": "gc.retainNewestGlobal",
@@ -2162,6 +2204,17 @@
       }
     },
     {
+      "id": "lsp.requestTimeout",
+      "type": "number",
+      "values": ["10", "20", "30", "60", "120", "300"],
+      "default": 10,
+      "ui": {
+        "tab": "files",
+        "group": "LSP",
+        "label": "Request Timeout"
+      }
+    },
+    {
       "id": "lsp.shared",
       "type": "boolean",
       "default": true,
@@ -2724,6 +2777,27 @@
       }
     },
     {
+      "id": "prewalk.auto",
+      "type": "enum",
+      "values": ["off", "suggest", "on"],
+      "default": "off",
+      "ui": {
+        "tab": "model",
+        "group": "Prewalk",
+        "label": "Auto Prewalk"
+      }
+    },
+    {
+      "id": "prewalk.autoTarget",
+      "type": "string",
+      "default": "@smol",
+      "ui": {
+        "tab": "model",
+        "group": "Prewalk",
+        "label": "Auto-prewalk target"
+      }
+    },
+    {
       "id": "prewalk.enabled",
       "type": "boolean",
       "default": false,
@@ -2875,27 +2949,6 @@
         "tab": "providers",
         "group": "Services",
         "label": "Ollama Cloud Max Concurrency"
-      }
-    },
-    {
-      "id": "providers.openai-codex.codeMode",
-      "type": "enum",
-      "values": ["off", "on", "auto"],
-      "default": "off",
-      "ui": {
-        "tab": "providers",
-        "group": "Services",
-        "label": "Codex Code Mode"
-      }
-    },
-    {
-      "id": "providers.openai-codex.codeModeDirectTools",
-      "type": "array",
-      "default": [],
-      "ui": {
-        "tab": "providers",
-        "group": "Services",
-        "label": "Codex Code Mode Direct Tools"
       }
     },
     {
@@ -3406,6 +3459,11 @@
       "default": 5
     },
     {
+      "id": "sharpshooter.minPromptLength",
+      "type": "number",
+      "default": 16
+    },
+    {
       "id": "sharpshooter.model",
       "type": "string",
       "ui": {
@@ -3413,6 +3471,10 @@
         "group": "Sharpshooter",
         "label": "Sharpshooter Model"
       }
+    },
+    {
+      "id": "shellCommandPrefix",
+      "type": "string"
     },
     {
       "id": "shellMinimizer.enabled",
@@ -3943,6 +4005,11 @@
       "default": "EMPTY_AGENT_SERVICE_TIER_OVERRIDES"
     },
     {
+      "id": "task.agentSoftRequestBudget",
+      "type": "record",
+      "default": "EMPTY_AGENT_SOFT_REQUEST_BUDGET"
+    },
+    {
       "id": "task.batch",
       "type": "boolean",
       "default": true,
@@ -4026,7 +4093,7 @@
       "ui": {
         "tab": "tasks",
         "group": "Isolation",
-        "label": "Isolate Subagents"
+        "label": "Allow Isolated Subagents"
       }
     },
     {
@@ -4133,6 +4200,16 @@
         "tab": "tasks",
         "group": "Subagents",
         "label": "Speculative Task Launch"
+      }
+    },
+    {
+      "id": "task.structured",
+      "type": "boolean",
+      "default": false,
+      "ui": {
+        "tab": "tasks",
+        "group": "Subagents",
+        "label": "Structured Task Results"
       }
     },
     {
@@ -4410,7 +4487,7 @@
     {
       "id": "tools.approvalMode",
       "type": "enum",
-      "values": ["always-ask", "write", "yolo"],
+      "values": ["always-ask", "always-ask-cached", "write", "yolo"],
       "default": "yolo",
       "ui": {
         "tab": "interaction",
@@ -4753,6 +4830,16 @@
         "tab": "appearance",
         "group": "Display",
         "label": "Codex Reset Fireworks"
+      }
+    },
+    {
+      "id": "tui.completeScrollback",
+      "type": "boolean",
+      "default": false,
+      "ui": {
+        "tab": "appearance",
+        "group": "Display",
+        "label": "Complete Scrollback"
       }
     },
     {

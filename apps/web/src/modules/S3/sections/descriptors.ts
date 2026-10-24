@@ -789,8 +789,8 @@ const tasksCommandsSkills: readonly SettingControl[] = [
 const tasksIsolation: readonly SettingControl[] = [
   described(
     bool("task.isolation.enabled", "live"),
-    "Isolate Subagents",
-    "Run subagents in an isolated project copy. This setting controls isolation for future tasks. Saving it does not create or change a copy.",
+    "Allow Isolated Subagents",
+    "Lets a task ask for its own isolated copy of the project; tasks that do not ask run in the shared checkout. Applies to tasks started after saving.",
   ),
   described(
     enumSetting(

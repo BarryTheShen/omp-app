@@ -927,6 +927,11 @@
       "source": "builtin"
     },
     {
+      "name": "forget-approvals",
+      "description": "Forget every file and folder approval Ask and remember has recorded",
+      "source": "builtin"
+    },
+    {
       "name": "autoresearch",
       "description": "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
       "input": {
