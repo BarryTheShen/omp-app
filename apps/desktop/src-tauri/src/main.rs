@@ -2,13 +2,13 @@
 //! free loopback port, waits until it answers, and opens the app in the window. Closing the window,
 //! or quitting the app, stops the server and every process it started; if the window process is
 //! killed outright, the kernel stops the server (see `server.rs`). A second launch focuses the window
-//! that is already open. The window finds the omp coding agent itself (see `omp.rs`).
+//! that is already open. The window runs the omp release that ships in its package, not one found on
+//! this computer.
 
 mod address;
 mod clipboard;
 mod downloads;
 mod gstreamer;
-mod omp;
 mod procs;
 mod server;
 mod signals;

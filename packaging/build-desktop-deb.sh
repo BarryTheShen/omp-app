@@ -4,10 +4,11 @@
 #   packaging/build-desktop-deb.sh <version>      for example 0.1.451
 #
 # The package holds the "omp app" window (/usr/bin/omp-app-desktop), the server that window starts
-# (/usr/bin/omp-app-desktop-server: the omp-app command's server, compiled with Bun), the built web
-# app (/usr/lib/omp-app-desktop/web) and an applications-menu entry. It shares no file with the
-# omp-app command package (packaging/build-deb.sh), so both can be installed. omp itself is not part
-# of it and must be installed separately. The prerequisites are in apps/desktop/README.md.
+# (/usr/bin/omp-app-desktop-server: the omp-app command's server, compiled with Bun), the omp release
+# the app pins (/usr/lib/omp-app-desktop/omp), the built web app (/usr/lib/omp-app-desktop/web) and an
+# applications-menu entry. The server runs the omp it holds, so omp needs no separate install. The
+# package shares no file with the omp-app command package (packaging/build-deb.sh), so both can be
+# installed. The prerequisites are in apps/desktop/README.md.
 # CARGO_TARGET_DIR, if set, must be an absolute path.
 set -euo pipefail
 
@@ -35,6 +36,10 @@ bun build --compile --minify --target=bun-linux-x64 \
   --define "OMP_APP_VERSION=\"$version\"" \
   packages/server/scripts/omp-app.ts --outfile "$crate/binaries/omp-app-desktop-server-$triple"
 
+# The omp release the app pins (packages/server/src/omp-pin/pin.json) is bundled as a resource too
+# (resources/omp), beside the web app. The fetch checks the download against the release's SHA-256.
+bun packages/server/scripts/fetch-omp.ts "$crate/resources/omp"
+
 # Tauri builds the window and the .deb (the deb target only); the version comes from here.
 (cd "$desktop" && bun run tauri build --bundles deb --config "{\"version\": \"$version\"}")
 
@@ -58,8 +63,10 @@ cp "$built" "$out/$package"
   exit 1
 }
 paths=$(dpkg-deb -c "$out/$package" | awk '{ print $NF }')
+pinned=$(grep -o -E '"version": *"[^"]+"' packages/server/src/omp-pin/pin.json | grep -o -E '[0-9][^"]*')
 for path in usr/bin/omp-app-desktop usr/bin/omp-app-desktop-server \
-  usr/lib/omp-app-desktop/web/index.html usr/share/applications/omp-app-desktop.desktop; do
+  usr/lib/omp-app-desktop/web/index.html "usr/lib/omp-app-desktop/omp/omp-$pinned" \
+  usr/share/applications/omp-app-desktop.desktop; do
   grep -Fxq "$path" <<<"$paths" || {
     echo "the package has no $path" >&2
     exit 1

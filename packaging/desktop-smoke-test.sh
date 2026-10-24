@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Smoke test of the packaged desktop app (#1040). It runs the app from the package under a virtual
 # X display with a private session bus, and checks what a person would see and what must not be left
-# behind. The window opens and the app loads (it connects to its server). Closing the window, SIGTERM,
-# and a killed window each end the server and every process the run started. A second launch only
-# focuses the window. The error page shows when the web app or the server is missing, and the app
-# opens without omp. Screenshots go into a screenshots folder next to the package.
+# behind. The window opens and the app loads (it connects to its server), and the server finds the omp
+# the package holds healthy. Closing the window, SIGTERM, and a killed window each end the server and
+# every process the run started. A second launch only focuses the window. The error page shows when
+# the web app or the server is missing. Screenshots go into a screenshots folder next to the package.
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -25,13 +25,7 @@ shots="$(dirname "$deb")/screenshots"
 mkdir -p "$shots"
 work=$(mktemp -d)
 export HOME="$work/home" XDG_STATE_HOME="$work/state" PI_CODING_AGENT_DIR="$work/agent" OMP_APP_DATA_DIR="$work/data"
-mkdir -p "$HOME" "$work/folder" "$PI_CODING_AGENT_DIR" "$OMP_APP_DATA_DIR" "$work/omp"
-# The server runs the omp the app pins, never the one CI installs for the window's own lookup: a stand-in that will not
-# start takes its place, so nothing is downloaded and the server answers with its omp page.
-pinned=$(grep -o -E '"version": *"[^"]+"' "$(dirname "$0")/../packages/server/src/omp-pin/pin.json" | grep -o -E '[0-9][^"]*')
-printf '#!/bin/sh\nexit 1\n' >"$work/omp/omp-$pinned"
-chmod +x "$work/omp/omp-$pinned"
-export OMP_APP_OMP_DIR="$work/omp"
+mkdir -p "$HOME" "$work/folder" "$PI_CODING_AGENT_DIR" "$OMP_APP_DATA_DIR"
 root="$work/root"
 app="$root/usr/bin/omp-app-desktop"
 sidecar_bin="$root/usr/bin/omp-app-desktop-server"
@@ -128,7 +122,9 @@ server_info() { # prints "<server pid> <base address>" once the server answers; 
   for n in $(seq 1 $(($1 * 5))); do
     if [[ -f $state/instance.json ]]; then
       read -r pid url < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["pid"], d["url"])' "$state/instance.json" 2>/dev/null) || true
-      if [[ -n ${pid:-} && -n ${url:-} ]]; then
+      # A killed server leaves its record, and its successor listens on the same port before it records itself: only a
+      # record whose process is alive names the server that answers.
+      if [[ -n ${pid:-} && -n ${url:-} ]] && is_alive "$pid"; then
         base=${url%%/#*}
         if curl -sf "$base/" -o "$work/index-$pid.html" && grep -q 'id="root"' "$work/index-$pid.html"; then
           echo "$pid $base"
@@ -229,8 +225,6 @@ trap 'note "interrupted"; finish 1' INT TERM
 dpkg-deb -x "$deb" "$root" || fail "cannot extract $deb"
 [[ -x $app && -x $sidecar_bin ]] || fail "the package has no window or no server binary"
 
-# The window finds omp on the PATH, in the home folders, or in the login shell. CI installs omp before this runs.
-command -v omp >/dev/null 2>&1 || fail "T1: omp is not on this computer's PATH; install omp first (the CI workflow does this)"
 note "== T1: the window opens, the app loads, and closing the window ends everything"
 launch "$app"
 app_pid=$LAUNCHED
@@ -241,7 +235,8 @@ read -r side _ <<<"$info"
 [[ $(readlink "/proc/$side/exe") == "$sidecar_bin" ]] || fail "T1: the server is not the package's server binary"
 cmp -s "$work/index-$side.html" "$root/usr/lib/omp-app-desktop/web/index.html" || fail "T1: the served page is not the package's web app"
 wait_log 'connection.open' 60 || fail "T1: the window never connected to its server, so the app did not load"
-note "T1 the window opened and the app loaded (it connected to its server)"
+wait_log 'omp\.probe status=ok' 30 || fail "T1: the server's log has no healthy omp probe, so the omp the package holds did not start"
+note "T1 the window opened and the app loaded (it connected to its server), and the server's omp probe was healthy"
 sleep 4
 shot "$wid" app-window
 close_window "$wid" || fail "T1: could not send the close request"
@@ -294,39 +289,6 @@ for variant in web server; do
   wait "$p"
   note "T3 $variant missing: the error page shows, and the app exits when its window closes"
 done
-
-note "== T4: OMP_BIN names a missing file: the app opens and its server answers with its own omp page"
-launch env OMP_BIN=/nonexistent/omp "$app"
-p=$LAUNCHED
-wid=$(wait_window 120) || fail "T4: no window"
-info=$(server_info 90) || fail "T4: the server never answered"
-read -r side _ <<<"$info"
-sleep 4
-shot "$wid" omp-bin-missing-page
-close_window "$wid"
-wait_gone "$p" 40 || fail "T4: the app did not exit"
-wait "$p"
-wait_gone "$side" 30 || fail "T4: the server $side is still running"
-note "T4 the app opens with a missing OMP_BIN, and the app and its server end when the window closes"
-
-note "== T4b: omp not found (empty home, a session PATH without omp, no login shell): the no-omp page shows and no server starts"
-nohome="$work/no-omp-home"
-mkdir -p "$nohome" "$work/state-no-omp"
-env -i HOME="$nohome" PATH=/usr/bin:/bin SHELL=/bin/false DISPLAY="$DISPLAY" XAUTHORITY="${XAUTHORITY:-}" \
-  DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}" GDK_BACKEND=x11 \
-  XDG_STATE_HOME="$work/state-no-omp" PI_CODING_AGENT_DIR="$work/agent-no-omp" OMP_APP_DATA_DIR="$work/data-no-omp" \
-  "$app" >"$work/launch-no-omp.log" 2>&1 &
-p=$!
-started+=("$p")
-wid=$(wait_window 120) || fail "T4b: no window"
-sleep 3
-shot "$wid" not-installed-page
-[[ ! -e $work/state-no-omp/omp-app/instance.json ]] || fail "T4b: a server started without omp"
-grep -q 'omp was not found' "$work/launch-no-omp.log" || fail "T4b: the window did not report that omp was not found"
-close_window "$wid"
-wait_gone "$p" 40 || fail "T4b: the app did not exit after its window closed"
-wait "$p"
-note "T4b omp not found: the no-omp page shows, no server started, and the app exits when its window closes"
 
 note "== T5: SIGTERM ends the window, the server, and the app"
 launch "$app"
