@@ -10,13 +10,21 @@ import { SettingsScreen } from "./settings-screen";
 import { RunOnExit } from "./thread-chrome";
 
 /**
+ * The frame's height from its first frame, not the height its content has reached so far: the settings load after
+ * the frame opens, and a frame that grew with them moved its top edge (issue 2584). H is 45 rem (720 px), measured
+ * on origin/main at 1280 by 900: every Settings tab loads to that height, the window's 80% cap. The tabs scroll
+ * inside it, and the window's 80dvh cap still applies on shorter windows.
+ */
+const SETTINGS_FRAME_HEIGHT = "h-[min(45rem,calc(100dvh-4rem))]";
+/**
  * The settings frame is 60 rem (960 px at the default size) and never wider than 94% of the window,
  * so a phone still shows a margin. It does not scroll: its panel's body does, so the title stays whole.
  * Its one grid column may be narrower than the header's content (`minmax(0, 1fr)`), so the header's
  * Close button stays inside the frame at 200% zoom on a phone, and the title truncates instead.
  */
-const SETTINGS_FRAME_CLASS =
+const SETTINGS_FRAME_WIDTH =
   "w-[min(60rem,94vw)] max-w-none grid-cols-[minmax(0,1fr)] overflow-hidden p-0";
+const SETTINGS_FRAME_CLASS = `${SETTINGS_FRAME_HEIGHT} ${SETTINGS_FRAME_WIDTH}`;
 
 interface AppOverlaysInput {
   readonly overlay: OverlayHostApi;
