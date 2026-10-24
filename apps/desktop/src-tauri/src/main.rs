@@ -1,15 +1,12 @@
-//! omp app as a desktop window. The window starts the app's own server (bundled as a sidecar) on a
-//! free loopback port, waits until it answers, and opens the app in the window. Closing the window,
-//! or quitting the app, stops the server and every process it started; if the window process is
-//! killed outright, the kernel stops the server (see `server.rs`). A second launch focuses the window
-//! that is already open. The window runs the omp release that ships in its package, not one found on
-//! this computer.
+//! omp app as a desktop window. The window opens the app on the app's own server (bundled as a sidecar): on the
+//! one that already runs, or on one it starts itself, detached (see `server.rs`). Closing the window, or quitting
+//! the app, never stops a server, so running chats keep going. A second launch focuses the window that is already
+//! open. The window runs the omp release that ships in its package, not one found on this computer.
 
 mod address;
 mod clipboard;
 mod downloads;
 mod gstreamer;
-mod procs;
 mod server;
 mod signals;
 
@@ -26,8 +23,7 @@ fn main() {
         .manage(server::Shared::default())
         .invoke_handler(tauri::generate_handler![clipboard::read_clipboard_png])
         .on_window_event(|window, event| {
-            // Closing the window hides it at once. The app ends once the server is stopped (see
-            // `server::quit`), which can take a few seconds while omp is busy.
+            // Closing the window hides it at once, and the app ends (see `server::quit`). The server keeps running.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
@@ -44,7 +40,7 @@ fn main() {
         .expect("the omp app could not be prepared");
     app.run(|app, event| {
         if let RunEvent::Exit = event {
-            server::stop(app);
+            server::quitting(app);
         }
     });
 }

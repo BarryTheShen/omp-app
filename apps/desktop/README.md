@@ -1,8 +1,10 @@
 # omp app desktop
 
-A desktop window for the omp app. It starts the app's own server (inside the package, nothing else to install) on this computer, and opens the app in a window. The window opens at once on a starting page, and shows the app when the server answers. When the window closes, it hides at once; then the server and every omp process it started are stopped, and the app ends (this can take a few seconds while omp is busy). A second launch brings the open window forward.
+A desktop window for the omp app. It opens the app in a window on the app's own server: on the one that already runs, or, when none runs, on one it starts itself (inside the package, nothing else to install). The window opens at once on a starting page, and shows the app when the server answers. A second launch brings the open window forward.
 
-The server uses port 27183 when that port is free, so the web app keeps its stored settings (theme, sidebar, last chat) from one launch to the next. When the port is busy, the server takes a free port instead.
+Closing the window leaves the server running, so chats keep going; stop it with `systemctl --user stop omp-app` when the user service runs it, else `kill $(jq .pid ~/.local/state/omp-app/instance.json)`.
+
+The server the window starts uses port 4317, the port of the `omp-app` command and the user service, when it is free, so the web app keeps its stored settings (theme, sidebar, last chat) whichever of them started the server. When the port is busy, the server takes a free port instead.
 "Save debug log" (in the command palette) saves its file into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from.
 
 The window bundles the omp coding agent: the package holds the omp release the app pins (named in `packages/server/src/omp-pin/pin.json`), and the server runs that one, never an omp installed on this computer. There is nothing to install.
@@ -72,7 +74,3 @@ These two need a person at a real desktop: the automated runs use a virtual disp
    ```
 
 3. Copy a picture (a screenshot, for example), click New chat, click the message box, and press Ctrl+V. Expected: a chip named `Pasted image 1.png` appears above the box. The automated runs use X11, so on GNOME's Wayland session this is the check that counts.
-
-## Limits
-
-- If the window process is killed outright (for example with `kill -9`), the kernel tells the server to stop, and the server ends the omp processes it started. A command that omp runs in its own session can keep running after that, because the stop does not reach it.

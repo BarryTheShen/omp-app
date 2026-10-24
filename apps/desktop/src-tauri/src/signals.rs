@@ -1,5 +1,5 @@
-//! Ctrl+C, SIGTERM and SIGHUP quit the app the way closing the window does, so the server and
-//! everything it started are always stopped.
+//! Ctrl+C, SIGTERM and SIGHUP quit the app the way closing the window does: the app ends, and the server keeps
+//! running.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;

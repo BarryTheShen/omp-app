@@ -1,63 +1,57 @@
-//! The bundled server: starts it, waits until it answers, opens the app in the window, and stops it,
-//! with everything it started, when the app quits or the server ends on its own.
+//! The window's server: the window opens the app on the server that already runs, or starts one.
 //!
-//! The server is started on the main thread, because the kernel's death signal is tied to the thread
-//! that starts a process (see `spawn`). It starts before the window is built, so the two starts
-//! overlap, and the window then opens on a starting page (see `launch`). The server runs the omp that
-//! ships with the app, from the package's own folder, so nothing is looked up on this computer. So if
-//! this window process dies, even from SIGKILL, the kernel sends the server SIGTERM, and the server
-//! ends the omp processes it started before it exits. `procs.rs` ends whatever is left after a quit.
-//! The server's address is fixed (see `DESKTOP_PORT`), so the web app keeps its stored settings from
-//! one launch to the next.
+//! The server belongs to the user, not to the window. At launch the window first reads the record the server
+//! writes when it listens (see `address.rs`). If the record names a live process whose address answers, the window
+//! attaches: it opens on the starting page, then on that address, and starts and watches nothing. Otherwise it starts
+//! the server detached, in a session of its own and with no input or output, and waits for the record to name a live
+//! server that answers. That may be another instance: a server that finds one running ends, and the record then names
+//! that instance. So closing the window, quitting, SIGTERM and SIGKILL of the window never stop a server, and the
+//! chats it runs keep going. The window never stops a server, and never kills the one it started, not even when none
+//! answers in time: the error page shows instead.
 //!
-//! Each start has a few threads: one reads the server's output for its address and for "already
-//! running", one drains its error output (never shown or logged: it can hold the launch token), one
-//! waits for the server to end and decides what the window shows, and one waits for the address and
-//! then for the server to answer, before it opens the app in the window.
+//! While the window is open and the server it started is its child, one thread waits for that server to end, and shows
+//! the error page when nothing serves any more. A server that was already running is not watched. The server runs the
+//! omp that ships with the app, from the package's own folder, so nothing is looked up on this computer. A server the
+//! window starts asks for the port the `omp-app` command and the user service ask for (see `DESKTOP_PORT`), so the web
+//! app's address, and with it its stored settings, is the same whichever of them started the server.
 
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Child, ChildStderr, ChildStdout, Command as StdCommand, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex, PoisonError};
+use std::process::{Child, Command as StdCommand, Stdio};
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
-use crate::address::{self, LaunchAddress};
+use crate::address;
 use crate::downloads;
 use crate::gstreamer::RegistryScan;
-use crate::procs::{self, Proc};
 use crate::WINDOW_LABEL;
 
 /// The sidecar's file name: the bundler installs it next to the window binary under this name.
 const SIDECAR: &str = "omp-app-desktop-server";
-/// The port the server is asked for. Fixed, so the window's address, and with it the web app's stored
-/// settings, is the same at every launch. It is below the system's ephemeral ports and is not the
-/// omp-app command's 4317. If it is busy, the server picks a free port itself, as it does for the command.
-const DESKTOP_PORT: &str = "27183";
+/// The port the server is asked for: 4317, the one the `omp-app` command and the user service ask for, so the window's
+/// address, and with it the web app's stored settings, is the same whichever of them started the server. If it is busy,
+/// the server picks a free port itself, as it does for the command.
+const DESKTOP_PORT: &str = "4317";
 /// The page shown at once, while the server starts, served from apps/desktop/ui.
 const STARTING_PAGE: &str = "starting.html";
 /// The page for "the app could not start", served from apps/desktop/ui.
 const ERROR_PAGE: &str = "error.html";
 const WINDOW_TITLE: &str = "omp app";
-/// How long the server has to print its address, and then to answer. The server answers only after its omp checks, and
-/// the first start of the omp the package holds also sets that omp up (it unpacks its native parts into the home
+/// How long a server that was started has to record itself and answer. The server answers only after its omp checks,
+/// and the first start of the omp the package holds also sets that omp up (it unpacks its native parts into the home
 /// folder), which on a busy computer took more than 30 s; the window shows the starting page meanwhile.
 const START_TIMEOUT: Duration = Duration::from_secs(90);
-/// How long a stopping server gets to end the omp processes it started by itself.
-const STOP_GRACE: Duration = Duration::from_secs(10);
-/// How long the processes that are left get after SIGTERM before SIGKILL.
-const KILL_WAIT: Duration = Duration::from_secs(2);
 /// How long the app page waits for the launch scan of GStreamer's plugin cache (see `gstreamer.rs`).
 const REGISTRY_SCAN_WAIT: Duration = Duration::from_secs(60);
 
-/// What the threads share. Only ever locked for a moment; never held while stopping a server.
+/// What the threads share. Only ever locked for a moment.
 #[derive(Default)]
 pub struct Shared {
     state: Mutex<State>,
@@ -65,43 +59,8 @@ pub struct Shared {
 
 #[derive(Default)]
 struct State {
-    /// Set when the app quits: nothing may start after this, and no error is shown.
+    /// Set when the app quits: nothing may open in the window or show an error after this.
     quitting: bool,
-    /// The server this app started, until it is stopped or it turns out to be another instance's.
-    server: Option<Server>,
-}
-
-impl State {
-    /// Keeps a server that has started, unless the app is quitting. A quit that came while the server was
-    /// being spawned did not see it, so the server is handed back, to be stopped by the caller.
-    fn keep(&mut self, server: Server) -> Option<Server> {
-        if self.quitting {
-            Some(server)
-        } else {
-            self.server = Some(server);
-            None
-        }
-    }
-}
-
-/// One server this app started. Its process group id is its pid.
-struct Server {
-    /// The server's identity (pid and start time). None if it had already ended when checked.
-    leader: Option<Proc>,
-}
-
-impl Server {
-    /// Ends the server and every process it started, and reports any that would not end.
-    fn stop(self) {
-        let Some(leader) = self.leader else {
-            return;
-        };
-        let left = procs::stop_tree(leader, STOP_GRACE, KILL_WAIT);
-        if !left.is_empty() {
-            let pids: Vec<i32> = left.iter().map(|process| process.pid).collect();
-            eprintln!("omp app: {} process(es) did not stop: {pids:?}", pids.len());
-        }
-    }
 }
 
 fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
@@ -110,37 +69,44 @@ fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
     change(&mut state)
 }
 
-/// Opens the app: the server, and the window (see `launch`). Called once, from the app's setup, which runs on the main
-/// thread.
+/// Opens the app in the window (see `launch`). Called once, from the app's setup, which runs on the main thread.
 pub fn start(app: AppHandle) {
     launch(&mut AppSteps { app });
 }
 
 /// The steps a launch runs, in order. `AppSteps` runs them on the app; the tests run the same order on recording steps.
 trait LaunchSteps {
-    /// A server that has started, until it is adopted or discarded.
+    /// A server this launch started, until it is watched.
     type Started;
-    /// Starts the server, on the omp that ships with the app (see `spawn`).
+    /// The address of the server that already runs, if one does (see `running_server`).
+    fn running(&mut self) -> Option<Url>;
+    /// Starts the server, detached, on the omp that ships with the app (see `spawn`).
     fn spawn_server(&mut self) -> Result<Self::Started, String>;
     /// Builds the window on `page`. False when the window cannot open; the app is then asked to exit.
     fn open_window(&mut self, page: &'static str) -> bool;
-    /// Keeps a started server, and watches it until it ends.
-    fn adopt(&mut self, started: Self::Started);
-    /// Stops a started server that the app does not keep.
-    fn discard(&mut self, started: Self::Started);
+    /// Opens the app in the window on the address of the server that already runs.
+    fn open_server(&mut self, address: Url);
+    /// Watches a server this launch started: the app opens on the server once it records itself and answers, and the
+    /// error page shows when the server ends with nothing else serving.
+    fn watch_server(&mut self, started: Self::Started);
 }
 
-/// Starts the server, then opens the window. The server starts on this thread before the window is built, so the two
-/// starts overlap (plan S2): the window then opens on the starting page, or on the error page when the server did not
-/// start. The server runs the omp that ships with the app, so nothing is looked up on this computer first.
+/// Attaches to the server that already runs, or starts one. A server that runs is attached to before anything starts:
+/// the window opens on the starting page and then on its address. Otherwise the server starts on this thread before
+/// the window is built, so the two starts overlap (plan S2): the window then opens on the starting page, or on the
+/// error page when the server did not start. A window that cannot open asks the app to exit and nothing more starts.
 fn launch<S: LaunchSteps>(steps: &mut S) {
+    if let Some(address) = steps.running() {
+        if steps.open_window(STARTING_PAGE) {
+            steps.open_server(address);
+        }
+        return;
+    }
     match steps.spawn_server() {
         Ok(started) => {
             // The window opens before the server is watched: a page shown by the watch would find no window yet.
             if steps.open_window(STARTING_PAGE) {
-                steps.adopt(started);
-            } else {
-                steps.discard(started);
+                steps.watch_server(started);
             }
         }
         Err(problem) => {
@@ -156,7 +122,11 @@ struct AppSteps {
 }
 
 impl LaunchSteps for AppSteps {
-    type Started = (Child, Option<Proc>);
+    type Started = Child;
+
+    fn running(&mut self) -> Option<Url> {
+        running_server()
+    }
 
     fn spawn_server(&mut self) -> Result<Self::Started, String> {
         spawn(&self.app)
@@ -173,25 +143,36 @@ impl LaunchSteps for AppSteps {
         }
     }
 
-    fn adopt(&mut self, (child, leader): Self::Started) {
-        // A quit may have come while the server was being spawned: it must not outlive the app.
-        let rejected = with_state(&self.app, |state| state.keep(Server { leader }));
-        match rejected {
-            Some(server) => server.stop(),
-            None => watch(self.app.clone(), child),
-        }
+    fn open_server(&mut self, address: Url) {
+        // Off the main thread, which this runs on: the page first waits for GStreamer's launch scan (see `open_server_page`).
+        let app = self.app.clone();
+        thread::spawn(move || open_server_page(&app, address));
     }
 
-    fn discard(&mut self, (_child, leader): Self::Started) {
-        Server { leader }.stop();
+    fn watch_server(&mut self, child: Self::Started) {
+        watch(self.app.clone(), child);
     }
 }
 
-/// Starts the server on the desktop port (or a free one, when it is busy), with the browser opening
-/// switched off, on the omp that ships with the app (the `omp` folder beside the web app). The server
-/// gets the kernel's death signal (SIGTERM when this process dies, even from SIGKILL) and its own
-/// process group, so every process it starts stays in that group.
-fn spawn(app: &AppHandle) -> Result<(Child, Option<Proc>), String> {
+/// Where the server records itself, by the variables the server reads (see `address::instance_file`).
+fn instance_record() -> Option<PathBuf> {
+    let state = std::env::var_os("XDG_STATE_HOME");
+    let home = std::env::var_os("HOME");
+    address::instance_file(state.as_deref(), home.as_deref())
+}
+
+/// The address of the server that runs now, from its record: its process is alive and its address answers.
+fn running_server() -> Option<Url> {
+    let record = instance_record()?;
+    let address = address::answering_instance(&record)?;
+    Url::parse(&address.url).ok()
+}
+
+/// Starts the server on the desktop port (or a free one, when it is busy), with the browser opening switched off, on
+/// the omp that ships with the app (the `omp` folder beside the web app). The server is detached: it has a session
+/// (and so a process group) of its own, and no input or output, so nothing that happens to this process reaches it.
+/// It logs to its own file and records its address itself, so its output is not needed.
+fn spawn(app: &AppHandle) -> Result<Child, String> {
     let folder = std::env::var_os("HOME")
         .map(PathBuf::from)
         .filter(|path| path.is_dir())
@@ -209,9 +190,6 @@ fn spawn(app: &AppHandle) -> Result<(Child, Option<Proc>), String> {
         .parent()
         .ok_or("the app's folder was not found")?
         .join(SIDECAR);
-    // This process's pid. The server must still have it as its parent once the death signal is set;
-    // if it does not, this process died first, and the server must not start.
-    let parent = libc::pid_t::try_from(std::process::id()).map_err(|error| error.to_string())?;
     let mut command = StdCommand::new(&sidecar);
     command
         .args([folder.as_os_str(), OsStr::new("--no-open")])
@@ -222,135 +200,63 @@ fn spawn(app: &AppHandle) -> Result<(Child, Option<Proc>), String> {
         // The server takes this port when it is free, and otherwise a free port (see DESKTOP_PORT).
         .env("OMP_APP_PORT", DESKTOP_PORT)
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0);
-    // SAFETY: the closure runs in the child between fork and exec. It makes two system calls and
-    // allocates nothing, which is all that is allowed at that point.
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // SAFETY: the closure runs in the child between fork and exec. It makes one system call and allocates
+    // nothing, which is all that is allowed at that point.
     unsafe {
-        command.pre_exec(move || {
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_ulong) != 0 {
+        command.pre_exec(|| {
+            // A session of its own, and so a process group of its own, with no controlling terminal.
+            if libc::setsid() == -1 {
                 return Err(io::Error::last_os_error());
-            }
-            if libc::getppid() != parent {
-                return Err(io::Error::from_raw_os_error(libc::ESRCH));
             }
             Ok(())
         });
     }
-    let child = command.spawn().map_err(|error| error.to_string())?;
-    let leader = procs::identify(child.id());
-    Ok((child, leader))
+    command.spawn().map_err(|error| error.to_string())
 }
 
-/// Watches the server until it ends: its output, its error output, and the end itself.
+/// Watches the server this window started, for as long as the window runs. One thread waits for the server to end;
+/// when it does and no server answers (a server that found another instance running also ends, and that instance
+/// serves the window), the error page is shown. The other thread waits for the record to name a server that answers,
+/// and opens the app on it.
 fn watch(app: AppHandle, mut child: Child) {
-    let attached = Arc::new(AtomicBool::new(false));
-    let (found_tx, found_rx) = mpsc::channel();
-    let stdout = child.stdout.take();
-    let reader_attached = Arc::clone(&attached);
-    let reader = thread::spawn(move || read_output(stdout, found_tx, &reader_attached));
-    if let Some(stderr) = child.stderr.take() {
-        thread::spawn(move || drain(stderr));
-    }
-    let ender_app = app.clone();
+    let ender = app.clone();
     thread::spawn(move || {
         let _ = child.wait();
-        // The end is decided only after the output is read: an "already running" line may be the last.
-        let _ = reader.join();
-        if attached.load(Ordering::SeqCst) {
-            // Another instance serves the window, so this server was not started for the app to keep:
-            // forget it. A later quit must not sweep a process group whose id may have been reused.
-            with_state(&ender_app, |state| state.server.take());
-        } else {
-            // The server ended on its own (a quit has already taken it). The omp processes it left
-            // behind are still in its process group: end them, then say so.
-            stop_server(&ender_app);
-            show_error(&ender_app);
+        if running_server().is_none() {
+            show_error(&ender);
         }
     });
-    thread::spawn(move || open_when_answering(app, found_rx));
+    thread::spawn(move || open_when_recorded(&app));
 }
 
-/// Reads the server's output until it ends. The first launch address goes to the thread that waits
-/// for it. A server that found another instance running says so before it ends.
-fn read_output(
-    stdout: Option<ChildStdout>,
-    found: mpsc::Sender<LaunchAddress>,
-    attached: &AtomicBool,
-) {
-    let Some(stdout) = stdout else {
+/// Waits for the record to name a live server that answers, and opens the app on it. If none does within
+/// `START_TIMEOUT`, the error page is shown, and the server that was started is left alone. The server's start can
+/// take a long time on a busy computer, so the window shows the starting page until it answers.
+fn open_when_recorded(app: &AppHandle) {
+    let Some(record) = instance_record() else {
+        show_error(app);
         return;
     };
-    let mut lines = BufReader::new(stdout);
-    let mut found = Some(found);
-    let mut line = Vec::new();
-    loop {
-        line.clear();
-        match lines.read_until(b'\n', &mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
-        // The text is never logged: it can hold the launch token.
-        let text = String::from_utf8_lossy(&line);
-        if address::says_already_running(&text) {
-            attached.store(true, Ordering::SeqCst);
-        }
-        if let Some(launch) = address::find(&text) {
-            if let Some(sender) = found.take() {
-                let _ = sender.send(launch);
-            }
-        }
+    let found = address::wait_for_instance(&record, START_TIMEOUT);
+    let url = found.and_then(|address| Url::parse(&address.url).ok());
+    match url {
+        Some(url) => open_server_page(app, url),
+        None => show_error(app),
     }
 }
 
-/// Reads the server's error output to its end, so that the server never blocks on it. Never shown or
-/// logged: it can hold the launch token.
-fn drain(mut stderr: ChildStderr) {
-    let _ = io::copy(&mut stderr, &mut io::sink());
+/// The app is quitting: nothing opens in the window or shows an error from now on. No server is stopped.
+pub fn quitting(app: &AppHandle) {
+    with_state(app, |state| state.quitting = true);
 }
 
-/// Waits for the server's address and then for the server to answer, and opens the app in the window.
-/// If either never comes, the server is stopped and the error page is shown. The server's start can
-/// take a long time on a busy computer, so the window shows the starting page until it answers.
-fn open_when_answering(app: AppHandle, found: mpsc::Receiver<LaunchAddress>) {
-    let answered = match found.recv_timeout(START_TIMEOUT) {
-        Ok(launch) => address::wait_for_answer(launch.port, START_TIMEOUT).then_some(launch.url),
-        Err(_) => None,
-    };
-    match answered.and_then(|url| Url::parse(&url).ok()) {
-        Some(url) => open_server_page(&app, url),
-        None => {
-            stop_server(&app);
-            show_error(&app);
-        }
-    }
-}
-
-/// Stops the server this app started, if it is still known. Taking it out of the state means it is
-/// stopped once, whichever thread gets there first.
-fn stop_server(app: &AppHandle) {
-    if let Some(server) = with_state(app, |state| state.server.take()) {
-        server.stop();
-    }
-}
-
-/// The app is quitting: stops the server and everything it started.
-pub fn stop(app: &AppHandle) {
-    let server = with_state(app, |state| {
-        state.quitting = true;
-        state.server.take()
-    });
-    if let Some(server) = server {
-        server.stop();
-    }
-}
-
-/// The window was closed: the app ends once the server and what it started are stopped. This runs on
-/// its own thread, so the window (already hidden) and the event loop are not held up meanwhile.
+/// The window was closed: the app ends, and the server keeps running. This runs on its own thread, so the window
+/// (already hidden) and the event loop are not held up meanwhile.
 pub fn quit(app: AppHandle) {
     thread::spawn(move || {
-        stop(&app);
+        quitting(&app);
         app.exit(0);
     });
 }
@@ -425,7 +331,7 @@ fn open_server_page(app: &AppHandle, url: Url) {
         }
         None => {
             if let Err(error) = new_window(&handle, WebviewUrl::External(url)).build() {
-                // Without a window nothing can be shown: quit, and the exit stops the server.
+                // Without a window nothing can be shown: quit.
                 eprintln!("omp app: the window did not open: {error}");
                 handle.exit(1);
             }
@@ -452,7 +358,7 @@ fn show_page(app: &AppHandle, page: &'static str) {
         }
         None => {
             if let Err(error) = new_window(&handle, WebviewUrl::App(page.into())).build() {
-                // Without a window nothing can be shown: quit, and the exit stops the server.
+                // Without a window nothing can be shown: quit.
                 eprintln!("omp app: the page did not open: {error}");
                 handle.exit(1);
             }
@@ -506,17 +412,30 @@ mod tests {
         assert!(!is_app("http://example.com"));
     }
 
-    /// What a launch's steps did, in order. The fields are the answers the steps give: whether the server or the window
-    /// fails.
+    /// The address the recording steps find a server at.
+    const RUNNING_ADDRESS: &str = "http://127.0.0.1:27183/#token=t";
+
+    /// What a launch's steps did, in order. The fields are the answers the steps give: whether a server already runs,
+    /// and whether the server or the window fails.
     #[derive(Default)]
     struct Recorder {
         steps: Vec<String>,
+        server_runs: bool,
         spawn_fails: bool,
         window_fails: bool,
     }
 
     impl LaunchSteps for Recorder {
         type Started = ();
+
+        fn running(&mut self) -> Option<Url> {
+            self.steps.push("running".to_owned());
+            if self.server_runs {
+                Some(Url::parse(RUNNING_ADDRESS).unwrap())
+            } else {
+                None
+            }
+        }
 
         fn spawn_server(&mut self) -> Result<(), String> {
             self.steps.push("spawn".to_owned());
@@ -532,27 +451,36 @@ mod tests {
             !self.window_fails
         }
 
-        fn adopt(&mut self, _started: ()) {
-            self.steps.push("adopt".to_owned());
+        fn open_server(&mut self, address: Url) {
+            self.steps.push(format!("open {address}"));
         }
 
-        fn discard(&mut self, _started: ()) {
-            self.steps.push("discard".to_owned());
+        fn watch_server(&mut self, _started: ()) {
+            self.steps.push("watch".to_owned());
         }
-    }
-
-    fn lines(expected: &[&str]) -> Vec<String> {
-        expected.iter().map(|line| (*line).to_owned()).collect()
     }
 
     #[test]
-    fn the_server_starts_before_the_window_opens_and_is_kept_once_the_window_is_open() {
+    fn a_server_that_already_runs_is_attached_to_and_nothing_is_started() {
+        let mut recorder = Recorder {
+            server_runs: true,
+            ..Recorder::default()
+        };
+        launch(&mut recorder);
+        let expected = [
+            "running",
+            "window starting.html",
+            "open http://127.0.0.1:27183/#token=t",
+        ];
+        assert_eq!(recorder.steps, expected);
+    }
+
+    #[test]
+    fn no_server_running_starts_one_before_the_window_opens_and_then_waits_for_it() {
         let mut recorder = Recorder::default();
         launch(&mut recorder);
-        assert_eq!(
-            recorder.steps,
-            lines(&["spawn", "window starting.html", "adopt"])
-        );
+        let expected = ["running", "spawn", "window starting.html", "watch"];
+        assert_eq!(recorder.steps, expected);
     }
 
     #[test]
@@ -562,38 +490,30 @@ mod tests {
             ..Recorder::default()
         };
         launch(&mut recorder);
-        assert_eq!(recorder.steps, lines(&["spawn", "window error.html"]));
+        let expected = ["running", "spawn", "window error.html"];
+        assert_eq!(recorder.steps, expected);
     }
 
     #[test]
-    fn a_window_that_does_not_open_discards_the_server_it_started() {
+    fn a_window_that_does_not_open_after_attaching_starts_nothing_more() {
+        let mut recorder = Recorder {
+            server_runs: true,
+            window_fails: true,
+            ..Recorder::default()
+        };
+        launch(&mut recorder);
+        let expected = ["running", "window starting.html"];
+        assert_eq!(recorder.steps, expected);
+    }
+
+    #[test]
+    fn a_window_that_does_not_open_after_starting_a_server_watches_nothing() {
         let mut recorder = Recorder {
             window_fails: true,
             ..Recorder::default()
         };
         launch(&mut recorder);
-        assert_eq!(
-            recorder.steps,
-            lines(&["spawn", "window starting.html", "discard"])
-        );
-    }
-
-    #[test]
-    fn a_server_that_started_during_a_quit_is_handed_back_to_be_stopped_and_not_kept() {
-        let mut state = State {
-            quitting: true,
-            ..State::default()
-        };
-        let handed_back = state.keep(Server { leader: None });
-        assert!(handed_back.is_some());
-        assert!(state.server.is_none());
-    }
-
-    #[test]
-    fn a_server_that_started_before_any_quit_is_kept() {
-        let mut state = State::default();
-        let handed_back = state.keep(Server { leader: None });
-        assert!(handed_back.is_none());
-        assert!(state.server.is_some());
+        let expected = ["running", "spawn", "window starting.html"];
+        assert_eq!(recorder.steps, expected);
     }
 }

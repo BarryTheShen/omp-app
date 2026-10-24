@@ -2,9 +2,16 @@
 # Smoke test of the packaged desktop app (#1040). It runs the app from the package under a virtual
 # X display with a private session bus, and checks what a person would see and what must not be left
 # behind. The window opens and the app loads (it connects to its server), and the server finds the omp
-# the package holds healthy. Closing the window, SIGTERM, and a killed window each end the server and
-# every process the run started. A second launch only focuses the window. The error page shows when
-# the web app or the server is missing. Screenshots go into a screenshots folder next to the package.
+# the package holds healthy. The server belongs to the user, not to the window: closing the window, SIGTERM,
+# and a killed window each end the app and leave the server running, with its instance record. A launch while
+# a server runs attaches to it and starts no second one; a second launch while a window is open only focuses
+# the window. The error page shows when the web app or the server is missing (a running server is stopped
+# first, or the window would attach to it) and when the server the window started dies. The test stops the
+# server itself at the end, with SIGTERM to the pid in instance.json: it ends with its omp processes and
+# removes its record. Screenshots go into a screenshots folder next to the package.
+# A long turn does not depend on its window either: a message that starts a slow tool is sent in the window (the e2e
+# harness's fake model provider answers it), the window is closed while the tool runs, and the turn finishes anyway;
+# the reopened window attaches, and the chat's session file holds the message once and the final answer once (#2614).
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -27,20 +34,25 @@ work=$(mktemp -d)
 export HOME="$work/home" XDG_STATE_HOME="$work/state" PI_CODING_AGENT_DIR="$work/agent" OMP_APP_DATA_DIR="$work/data"
 mkdir -p "$HOME" "$work/folder" "$PI_CODING_AGENT_DIR" "$OMP_APP_DATA_DIR"
 root="$work/root"
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+requests="$work/requests.jsonl"
 app="$root/usr/bin/omp-app-desktop"
 sidecar_bin="$root/usr/bin/omp-app-desktop-server"
 state="$work/state/omp-app"
 results=()
 started=()
 LAUNCHED=""
+provider_pid=""
+provider_in=""
 
 note() {
   results+=("$1")
   echo "$1"
 }
 finish() {
-  # Ends the apps the way a person does (SIGTERM); one still running after 25 s is killed. A server
-  # still in the instance record is ended too, but only if its command line names this run's folder.
+  # Ends the apps the way a person does (SIGTERM); one still running after 25 s is killed. A server belongs to no app,
+  # so every server of this run still running (the one in instance.json, and any other) is stopped too: SIGTERM, and
+  # KILL after 20 s. The executable is this run's own extracted copy, so other programs' servers never match.
   local pid leftover
   for pid in "${started[@]}"; do
     if is_alive "$pid"; then kill -TERM "$pid" 2>/dev/null || true; fi
@@ -48,15 +60,15 @@ finish() {
   for pid in "${started[@]}"; do
     wait_gone "$pid" 25 || kill -KILL "$pid" 2>/dev/null || true
   done
-  leftover=""
-  if [[ -f $state/instance.json ]]; then
-    leftover=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$state/instance.json" 2>/dev/null || true)
-  fi
-  if [[ -n $leftover ]] && is_alive "$leftover" && tr '\0' ' ' <"/proc/$leftover/cmdline" 2>/dev/null | grep -qF -- "$work"; then
-    note "cleanup: server $leftover was still running; stopping it"
-    kill -TERM "$leftover" 2>/dev/null || true
-    wait_gone "$leftover" 20 || kill -KILL "$leftover" 2>/dev/null || true
-  fi
+  leftover=$(sidecars_of_run)
+  for pid in $leftover; do
+    note "cleanup: server $pid was still running; stopping it"
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  for pid in $leftover; do
+    wait_gone "$pid" 20 || kill -KILL "$pid" 2>/dev/null || true
+  done
+  stop_provider
   rm -rf "$work"
   echo "== summary"
   printf '%s\n' "${results[@]}"
@@ -158,7 +170,28 @@ run_processes() {
     if [[ $cwd == "$work"* ]]; then echo "$pid"; fi
   done
 }
-stop_count() { grep -c ' stop$' "$state/omp-app.log" 2>/dev/null || echo 0; }
+stop_count() {
+  local n
+  n=$(grep -c ' stop$' "$state/omp-app.log" 2>/dev/null)
+  echo "${n:-0}"
+}
+# The pid the instance record names; fails when there is no record.
+record_pid() {
+  [[ -f $state/instance.json ]] || return 1
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$state/instance.json" 2>/dev/null
+}
+is_run_server() { [[ $(readlink "/proc/$1/exe" 2>/dev/null) == "$sidecar_bin" ]]; }
+# Stops the server the instance record names the way a person (or systemd) does: SIGTERM to its pid, then waits
+# for it to end. Succeeds when no server of this run runs; fails when it is still running after 30 s or leaves its
+# record behind.
+stop_server() {
+  local pid
+  pid=$(record_pid) || return 0
+  is_alive "$pid" && is_run_server "$pid" || return 0
+  kill -TERM "$pid" 2>/dev/null || true
+  wait_gone "$pid" 30 || return 1
+  [[ ! -e $state/instance.json ]]
+}
 shot() {
   import -window "$1" "$shots/$2.png" || fail "could not take the screenshot $2"
   note "screenshot screenshots/$2.png"
@@ -220,12 +253,123 @@ x11.XFlush(display)
 x11.XCloseDisplay(display)
 PY
 }
+# The fake model provider of the e2e harness (packages/omp-rpc/scripts/fake-openai-server.ts). It answers for the agent
+# folder, writes omp's models.yml and config.yml there, logs every request to $requests, and stops when its standard
+# input ends, so it gets a pipe that this shell holds open. The harness passes omp `--model fake/fake-model` through
+# the server's ompArgs; the packaged server takes no such argument, so the model is omp's default in config.yml.
+start_provider() {
+  local script="$repo/packages/omp-rpc/scripts/fake-openai-server.ts" n
+  command -v bun >/dev/null 2>&1 || return 1
+  [[ -f $script ]] || return 1
+  coproc PROVIDER { cd "$PI_CODING_AGENT_DIR" && exec bun "$script" "$PI_CODING_AGENT_DIR" >"$work/provider.log" 2>&1; }
+  provider_pid=$PROVIDER_PID
+  provider_in=${PROVIDER[1]}
+  for n in $(seq 1 300); do
+    grep -q '^READY ' "$work/provider.log" 2>/dev/null && break
+    is_alive "$provider_pid" || return 1
+    sleep 0.2
+  done
+  grep -q '^READY ' "$work/provider.log" 2>/dev/null || return 1
+  printf 'modelRoles:\n  default: fake/fake-model\n' >>"$PI_CODING_AGENT_DIR/config.yml"
+}
+# Ends the provider: closing its input is how the harness asks it to stop; SIGTERM, then SIGKILL, if it stays.
+stop_provider() {
+  [[ -n $provider_pid ]] || return 0
+  if [[ -n $provider_in ]]; then
+    exec {provider_in}>&-
+    provider_in=""
+  fi
+  wait_gone "$provider_pid" 10 || kill -TERM "$provider_pid" 2>/dev/null || true
+  wait_gone "$provider_pid" 10 || kill -KILL "$provider_pid" 2>/dev/null || true
+  provider_pid=""
+}
+# Waits up to $2 seconds until a request the model provider got has the text $1.
+wait_provider_request() {
+  local n
+  for n in $(seq 1 $(($2 * 5))); do
+    grep -q -- "$1" "$requests" 2>/dev/null && return 0
+    sleep 0.2
+  done
+  return 1
+}
+# What omp's session files of this run hold for the message `slow_tool`. omp writes them under
+# $PI_CODING_AGENT_DIR/sessions, in one folder per chat folder (its name: sessionBucketName in
+# packages/server/src/modules/A1/sessions/paths.ts), so every file below that folder is read. Prints
+# "<files with the message> <user messages with it> <tool results of the slow tool> <final answers>".
+session_counts() {
+  python3 - "$PI_CODING_AGENT_DIR/sessions" <<'PY'
+import json
+import os
+import sys
+
+
+def text_of(content):
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+
+
+files = users = tool_results = finals = 0
+for folder, _, names in os.walk(sys.argv[1]):
+    for name in sorted(names):
+        if not name.endswith(".jsonl"):
+            continue
+        has_message = False
+        with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue  # a line omp is still writing
+                message = entry.get("message") if isinstance(entry, dict) else None
+                if not isinstance(message, dict):
+                    continue
+                text = text_of(message.get("content"))
+                role = message.get("role")
+                if role == "user" and "slow_tool" in text:
+                    users += 1
+                    has_message = True
+                elif role == "toolResult" and "slow-tool-done" in text:
+                    tool_results += 1
+                elif role == "assistant" and "slow-tool-done" in text:
+                    finals += 1
+        files += 1 if has_message else 0
+print(files, users, tool_results, finals)
+PY
+}
+# Waits up to $1 seconds until the chat's session file has the slow tool's result and the final answer after it.
+wait_turn_done() {
+  local n c_files c_users c_tools c_finals
+  for n in $(seq 1 "$1"); do
+    read -r c_files c_users c_tools c_finals < <(session_counts)
+    [[ ${c_tools:-0} -ge 1 && ${c_finals:-0} -ge 1 ]] && return 0
+    sleep 1
+  done
+  return 1
+}
+# Clicks into the window's message box, then types the text $2 and presses Enter. A new chat that is ready centres its
+# greeting and message box in the conversation pane (#2087): in the 1200 x 800 window the pane spans x 240 to 1200, and
+# the box's text line sits at y 428 (measured on fix-2087's empty-chat capture at 800 px high), so the click goes to
+# (720, 428). While the chat still opens, the box is a disabled line at the bottom, which is why the caller waits for
+# omp first. Measure it again when the composer's layout changes. There is no window manager under Xvfb, so the window
+# gets the keyboard focus from xdotool.
+send_in_window() {
+  xdotool windowfocus "$1" 2>/dev/null || true
+  xdotool mousemove --window "$1" 720 428 click 1 || return 1
+  sleep 1
+  xdotool key --clearmodifiers ctrl+a || return 1
+  xdotool type --delay 60 -- "$2" || return 1
+  sleep 1
+  xdotool key Return
+}
 
 trap 'note "interrupted"; finish 1' INT TERM
 dpkg-deb -x "$deb" "$root" || fail "cannot extract $deb"
 [[ -x $app && -x $sidecar_bin ]] || fail "the package has no window or no server binary"
 
-note "== T1: the window opens, the app loads, and closing the window ends everything"
+note "== T1: the window opens, the app loads, and closing the window leaves the server running"
 launch "$app"
 app_pid=$LAUNCHED
 wid=$(wait_window 120) || fail "T1: no window opened within 120 s"
@@ -237,23 +381,31 @@ cmp -s "$work/index-$side.html" "$root/usr/lib/omp-app-desktop/web/index.html" |
 wait_log 'connection.open' 60 || fail "T1: the window never connected to its server, so the app did not load"
 wait_log 'omp\.probe status=ok' 30 || fail "T1: the server's log has no healthy omp probe, so the omp the package holds did not start"
 note "T1 the window opened and the app loaded (it connected to its server), and the server's omp probe was healthy"
+[[ $(ps -o sid= -p "$side" | tr -d ' ') == "$side" ]] || fail "T1: the server is not in a session of its own"
+note "T1 the server runs in a session of its own"
 sleep 4
 shot "$wid" app-window
 close_window "$wid" || fail "T1: could not send the close request"
 wait_gone "$app_pid" 40 || fail "T1: the app did not exit after its window closed"
 wait "$app_pid"
 note "T1 the window closed and the app exited (status $?)"
-wait_gone "$side" 30 || fail "T1: the server $side is still running"
-[[ -z $(group_left "$side") ]] || fail "T1: processes left in the server's group: $(group_left "$side")"
-[[ ! -e $state/instance.json ]] || fail "T1: the instance record was left behind"
-grep -q ' stop$' "$state/omp-app.log" || fail "T1: the server log has no stop line"
-note "T1 the server stopped, logged its stop, and left no process or instance record"
+is_alive "$side" || fail "T1: the server $side ended when the window closed"
+[[ $(record_pid) == "$side" ]] || fail "T1: the instance record is gone or names another process"
+[[ $(stop_count) == 0 ]] || fail "T1: the server logged a stop when the window closed"
+note "T1 the server $side still runs after the window closed: its instance record stays, and it logged no stop"
 
-note "== T2: a second launch focuses the window and starts no second server"
+note "== T2: a launch while a server runs attaches to it and starts no second one; a launch while a window is open only focuses it"
+opens_before=$(count_log 'connection.open')
 launch "$app"
 first=$LAUNCHED
-wid=$(wait_window 120) || fail "T2: no window for the first launch"
-info=$(server_info 90) || fail "T2: the first server never answered"
+wid=$(wait_window 120) || fail "T2: no window for the launch that attaches"
+info=$(server_info 90) || fail "T2: the running server stopped answering"
+read -r attached _ <<<"$info"
+[[ $attached == "$side" ]] || fail "T2: the window's server is $attached, not the one that was running ($side)"
+wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T2: the window never connected to the running server"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 ]] || fail "T2: $servers server processes of this run after the window attached"
+note "T2 the window attached to the running server $side: it connected, and no second server started"
 launch "$app"
 second=$LAUNCHED
 wait_gone "$second" 30 || fail "T2: the second launch did not exit"
@@ -261,16 +413,18 @@ wait "$second"
 note "T2 the second launch exited (status $?)"
 [[ $(window_ids | wc -l) == 1 ]] || fail "T2: $(window_ids | wc -l) windows after the second launch"
 servers=$(sidecars_of_run | wc -l)
-[[ $servers == 1 ]] || fail "T2: $servers server processes of this run"
+[[ $servers == 1 ]] || fail "T2: $servers server processes of this run after the second launch"
 note "T2 one window and one server after the second launch"
 is_alive "$first" || fail "T2: the first app stopped"
 close_window "$wid"
-wait_gone "$first" 40 || fail "T2: the first app did not exit after its window closed"
+wait_gone "$first" 40 || fail "T2: the app did not exit after its window closed"
 wait "$first"
-wait_gone "$(cut -d' ' -f1 <<<"$info")" 30 || fail "T2: the server is still running"
-note "T2 the first app and its server ended when its window closed"
+is_alive "$side" || fail "T2: the server $side ended when the window closed"
+note "T2 the app ended when its window closed, and the server runs on"
 
-note "== T3: the web app or the server is missing: the error page shows"
+note "== T3: the web app or the server is missing: the error page shows (the running server is stopped first, or the window would attach to it)"
+stop_server || fail "T3: the server $side did not end on SIGTERM, or left its record"
+note "T3 the server was stopped with SIGTERM: it ended and removed its instance record"
 for variant in web server; do
   broken="$work/broken-$variant"
   dpkg-deb -x "$deb" "$broken" || fail "T3 $variant: cannot extract the package"
@@ -290,7 +444,7 @@ for variant in web server; do
   note "T3 $variant missing: the error page shows, and the app exits when its window closes"
 done
 
-note "== T5: SIGTERM ends the window, the server, and the app"
+note "== T5: SIGTERM ends the window and the app, and the server runs on"
 launch "$app"
 p=$LAUNCHED
 wid=$(wait_window 120) || fail "T5: no window"
@@ -299,11 +453,12 @@ read -r side _ <<<"$info"
 kill -TERM "$p"
 wait_gone "$p" 40 || fail "T5: the app did not exit on SIGTERM"
 wait "$p"
-wait_gone "$side" 30 || fail "T5: the server $side is still running"
-[[ -z $(group_left "$side") ]] || fail "T5: processes left in the server's group: $(group_left "$side")"
-note "T5 SIGTERM ended the app, its server, and the server's processes"
+is_alive "$side" || fail "T5: the server $side ended when the window got SIGTERM"
+[[ $(record_pid) == "$side" ]] || fail "T5: the instance record is gone or names another process"
+note "T5 SIGTERM ended the app, and its server $side runs on"
 
-note "== T6: the server dies on its own: the window stays and shows the error page"
+note "== T6: the server the window started dies on its own: the window stays and shows the error page"
+stop_server || fail "T6: the server $side did not end on SIGTERM, or left its record"
 launch "$app"
 p=$LAUNCHED
 wid=$(wait_window 120) || fail "T6: no window"
@@ -320,37 +475,36 @@ wait_gone "$p" 40 || fail "T6: the app did not exit after its window closed"
 wait "$p"
 note "T6 the window stayed open with the error page, and closing it ended the app"
 
-note "== T7: the window is SIGKILLed (3 rounds): the kernel ends the server, and nothing of the run is left"
+note "== T7: the window is SIGKILLed (3 rounds): the server runs on, and no second one starts"
+kept=""
 for round in 1 2 3; do
-  stops_before=$(stop_count)
   opens_before=$(count_log 'connection.open')
   launch "$app"
   p=$LAUNCHED
   wid=$(wait_window 120) || fail "T7 round $round: no window"
   info=$(server_info 90) || fail "T7 round $round: the server never answered"
   read -r side _ <<<"$info"
-  # A server that is still starting has not set up its signal handlers, so the window's death would end it without a
-  # stop line (seen once in a release run on the test-machine runner, and reproduced 1 time in 26 by killing the window the
-  # moment the server's instance record appeared). The window's connection means the start is over, as in T1.
+  [[ -n $kept ]] || kept=$side
+  [[ $side == "$kept" ]] || fail "T7 round $round: the window's server is $side, not $kept: a second server started"
   wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T7 round $round: the window never connected to its server"
   kill -KILL "$p"
   wait_gone "$p" 10 || fail "T7 round $round: the window process did not die"
   wait "$p"
-  wait_gone "$side" 30 || fail "T7 round $round: server $side still running after its window was killed"
-  [[ $(stop_count) -gt $stops_before ]] || fail "T7 round $round: the server did not log its stop"
-  [[ -z $(group_left "$side") ]] || fail "T7 round $round: processes left in the server's group: $(group_left "$side")"
-  leftover=$(run_processes | tr '\n' ' ')
-  [[ -z $leftover ]] || fail "T7 round $round: processes of this run left: $leftover"
-  [[ ! -e $state/instance.json ]] || fail "T7 round $round: the instance record was left behind"
-  note "T7 round $round: the server ended by the kernel's death signal, and nothing of the run is left"
+  is_alive "$side" || fail "T7 round $round: server $side ended when its window was killed"
+  [[ $(record_pid) == "$side" ]] || fail "T7 round $round: the instance record is gone or names another process"
+  servers=$(sidecars_of_run | wc -l)
+  [[ $servers == 1 ]] || fail "T7 round $round: $servers server processes of this run"
+  note "T7 round $round: the window was killed, and the server $side runs on"
 done
 
-note "== T8: New chat in the window starts omp for the chat; closing the window leaves no omp (no message is sent, so no model is called)"
+note "== T8: New chat in the window starts omp for the chat; closing the window leaves the server running (no message is sent, so no model is called)"
+stops_before=$(stop_count)
 launch "$app"
 p=$LAUNCHED
 wid=$(wait_window 120) || fail "T8: no window"
 info=$(server_info 90) || fail "T8: the server never answered"
 read -r side _ <<<"$info"
+[[ $side == "$kept" ]] || fail "T8: the window's server is $side, not $kept: a second server started"
 sleep 5
 # The sidebar's New chat button: its place is fixed by the window's size (1200 x 800, server.rs) and an empty workspace
 # folder. Measured in the app at that size after the UI redesign: the button's box is x 12, y 124, 215 x 32, so its
@@ -371,12 +525,84 @@ close_window "$wid"
 wait_gone "$p" 40 || fail "T8: the app did not exit after its window closed"
 wait "$p"
 note "T8 the window closed and the app exited (status $?)"
-wait_gone "$side" 30 || fail "T8: the server $side is still running"
+is_alive "$side" || fail "T8: the server $side ended when the window closed"
+[[ $(stop_count) == "$stops_before" ]] || fail "T8: the server logged a stop when the window closed"
+note "T8 the server $side runs on after the window closed, and logged no stop"
+
+note "== T9: a long turn outlives its window: slow_tool is sent in the window, the window is closed while the tool runs, the turn finishes, and the reopened window attaches (the model is the e2e harness's fake provider)"
+before_server=$side
+stops_before=$(stop_count)
+start_provider || fail "T9: the fake model provider did not start (it needs bun on the PATH): $(tail -n 3 "$work/provider.log" 2>/dev/null | tr '\n' ' ')"
+note "T9 the fake model provider runs for the agent folder, and omp's default model there is fake/fake-model"
+running_before=$(count_log 'status=running')
+launch "$app"
+p=$LAUNCHED
+wid=$(wait_window 120) || fail "T9: no window"
+info=$(server_info 90) || fail "T9: the server never answered"
+read -r side _ <<<"$info"
+[[ $side == "$before_server" ]] || fail "T9: the window's server is $side, not $before_server: a second server started"
+sleep 5
+xdotool mousemove --window "$wid" 120 140 click 1 || fail "T9: could not click New chat"
+wait_log_count 'status=running' $((${running_before:-0} + 1)) 90 || fail "T9: New chat did not start omp (the server logged no new running omp)"
+sleep 6
+# The server's log has no line for a sent prompt, so the provider's request log marks the start of the turn.
+sent=""
+for attempt in 1 2; do
+  send_in_window "$wid" slow_tool || fail "T9: could not type the message into the window"
+  if wait_provider_request slow_tool 20; then
+    sent=yes
+    break
+  fi
+done
+[[ -n $sent ]] || fail "T9: the message never reached the model provider, so omp did not start the turn"
+note "T9 slow_tool was typed and sent in the window, and the model provider got the request: the turn runs (its tool takes 7 s)"
+close_window "$wid" || fail "T9: could not send the close request"
+wait_gone "$p" 40 || fail "T9: the app did not exit after its window closed"
+closed_at=$SECONDS
+answered=$(grep -c '"role":"tool"' "$requests" 2>/dev/null)
+wait "$p"
+note "T9 the window closed with the turn running, and the app exited (status $?)"
+[[ ${answered:-0} == 0 ]] || fail "T9: the tool had already ended when the window closed, so the turn did not outlive its window"
+is_alive "$side" || fail "T9: the server $side ended when the window closed"
+[[ $(record_pid) == "$side" ]] || fail "T9: the instance record is gone or names another process"
+[[ $(stop_count) == "$stops_before" ]] || fail "T9: the server logged a stop when the window closed"
+note "T9 the server $side runs on after the window closed: its record stays, and it logged no stop"
+wait_turn_done 60 || fail "T9: 60 s after its window closed, the chat's session file has no tool result and final answer, so the turn did not finish (files, messages, results, answers: $(session_counts))"
+note "T9 the turn finished with no window open: the session file has the tool's result and the final answer ($((SECONDS - closed_at)) s after the window closed)"
+opens_before=$(count_log 'connection.open')
+launch "$app"
+p=$LAUNCHED
+wid=$(wait_window 120) || fail "T9: no window for the launch that attaches"
+info=$(server_info 90) || fail "T9: the running server stopped answering"
+read -r attached _ <<<"$info"
+[[ $attached == "$side" ]] || fail "T9: the reopened window's server is $attached, not the one that ran the turn ($side)"
+wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T9: the reopened window never connected to the running server"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 ]] || fail "T9: $servers server processes of this run after the window reopened"
+note "T9 the reopened window attached to the running server $side: it connected, and no second server started"
+sleep 4
+shot "$wid" long-turn-reopened
+read -r n_files n_users n_tools n_finals < <(session_counts)
+[[ ${n_files:-0} == 1 && ${n_users:-0} == 1 && ${n_tools:-0} == 1 && ${n_finals:-0} == 1 ]] || fail "T9: in the chat's session file slow_tool appears ${n_users:-?} times, the tool's result ${n_tools:-?} times and the final answer ${n_finals:-?} times, in ${n_files:-?} chat file(s); each must be exactly once, in one file"
+note "T9 the chat's session file holds the message slow_tool once, the tool's result once, and the final answer once"
+close_window "$wid"
+wait_gone "$p" 40 || fail "T9: the app did not exit after its window closed"
+wait "$p"
+is_alive "$side" || fail "T9: the server $side ended when the reopened window closed"
+stop_provider
+note "T9 the reopened window closed, the server $side runs on, and the fake model provider is stopped"
+
+note "== end: the test stops the server itself: SIGTERM to the pid in instance.json ends it, its omp processes, and its record"
+server=$(record_pid) || fail "end: there is no instance record while the server should run"
+[[ $server == "$side" ]] || fail "end: the instance record names $server, not the server $side"
+is_alive "$server" || fail "end: the server $server is not running"
+stop_server || fail "end: the server $server did not end on SIGTERM, or left its instance record"
+grep -q ' stop$' "$state/omp-app.log" || fail "end: the server log has no stop line"
 for pid in $(grep -o 'pid=[0-9]*' "$state/omp-app.log" | cut -d= -f2 | sort -u); do
-  is_alive "$pid" && fail "T8: process $pid is still running after the window closed"
+  is_alive "$pid" && fail "end: process $pid is still running after the server was stopped"
 done
 leftover=$(run_processes | tr '\n' ' ')
-[[ -z $leftover ]] || fail "T8: processes of this run left: $leftover"
-note "T8 no omp and no server of this run is left after the window closed"
+[[ -z $leftover ]] || fail "end: processes of this run left: $leftover"
+note "end SIGTERM ended the server $server and its omp processes, and it removed its instance record; nothing of the run is left"
 
 finish 0
