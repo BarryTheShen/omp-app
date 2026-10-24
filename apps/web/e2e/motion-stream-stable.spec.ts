@@ -8,7 +8,7 @@ import { expect, realTest, screenshots, sendPrompt, startChat } from "./real-omp
  * Motion and stability (#1173, part 1): a reply that streams must not move the composer. The steering
  * hint ("Enter steers this turn…") used to be a line above the editor that mounted when a turn started and
  * unmounted when it ended, so the composer jumped 24 px at both ends of every reply, and the Jump to latest
- * row moved with it. The hint now sits in the toolbar row, which has a fixed height. Each test streams a long
+ * row moved with it. The hint now sits in the editor's placeholder, so the toolbar does not change. Each test streams a long
  * reply on real omp, records where the composer sits in every frame, and asserts that it never moves and
  * that the layout shift stays under 0.02. Each test also keeps a screenshot taken mid-reply.
  */
@@ -36,7 +36,6 @@ async function streamReply(
   page: Page,
   composer: Locator,
   label: string,
-  hint: "visible" | "hidden",
 ): Promise<{ readonly step: StepResult; readonly sawComposer: boolean }> {
   const stop = page.getByRole("button", { name: "Stop generating" });
   const step = await measureStep(page, `streamed reply (${label})`, async () => {
@@ -44,12 +43,7 @@ async function streamReply(
     await expect(stop).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("Here is the long streamed block:")).toBeVisible();
     await mkdir(screenshots, { recursive: true });
-    const steerHint = page.locator('[data-composer-steer-hint="true"]');
-    if (hint === "visible") await expect(steerHint).toBeVisible();
-    else {
-      await expect(steerHint).toHaveCount(1);
-      await expect(steerHint).toBeHidden();
-    }
+    await expect(composer).toHaveAttribute("placeholder", "Enter steers · Ctrl+Enter queues");
     await page.screenshot({ path: join(screenshots, `motion-stream-${label}.png`) });
     await expect(stop).toHaveCount(0, { timeout: 60_000 });
   });
@@ -64,7 +58,7 @@ realTest("a streamed reply does not move the composer (light)", async ({ realApp
   });
   const composer = await startChat(page);
   await establishMessageBaseline(page, composer);
-  const { step, sawComposer } = await streamReply(page, composer, "light", "visible");
+  const { step, sawComposer } = await streamReply(page, composer, "light");
   expect(sawComposer, "the recorder followed the composer").toBe(true);
   expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
   expect(step.layoutShift, "layout shift (CLS) while the reply streams").toBeLessThan(0.02);
@@ -80,7 +74,7 @@ realTest("a streamed reply does not move the composer (dark)", async ({ realApp 
   });
   const composer = await startChat(page);
   await establishMessageBaseline(page, composer);
-  const { step, sawComposer } = await streamReply(page, composer, "dark", "visible");
+  const { step, sawComposer } = await streamReply(page, composer, "dark");
   expect(sawComposer, "the recorder followed the composer").toBe(true);
   expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
   expect(step.layoutShift, "layout shift (CLS) while the reply streams").toBeLessThan(0.02);
@@ -97,14 +91,14 @@ realTest("a streamed reply does not move the composer (390 px)", async ({ realAp
   const drawerClose = page.locator('button[aria-label="Close open sidebar"]');
   if ((await drawerClose.count()) > 0) await drawerClose.click();
   await establishMessageBaseline(page, composer);
-  const { step, sawComposer } = await streamReply(page, composer, "narrow", "hidden");
+  const { step, sawComposer } = await streamReply(page, composer, "narrow");
   expect(sawComposer, "the recorder followed the composer").toBe(true);
   expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
   expect(step.layoutShift, "layout shift (CLS) while the reply streams").toBeLessThan(0.02);
 });
 
 realTest(
-  "a streamed reply does not move the composer with both sidebars open at 1024 px, where the hint is hidden",
+  "a streamed reply does not move the composer with both sidebars open at 1024 px",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     const page = await realApp.open({
@@ -113,7 +107,7 @@ realTest(
     await page.setViewportSize({ width: 1024, height: 800 });
     const composer = await startChat(page);
     await establishMessageBaseline(page, composer);
-    const { step, sawComposer } = await streamReply(page, composer, "wide-both-sidebars", "hidden");
+    const { step, sawComposer } = await streamReply(page, composer, "wide-both-sidebars");
     expect(sawComposer, "the recorder followed the composer").toBe(true);
     expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
   },

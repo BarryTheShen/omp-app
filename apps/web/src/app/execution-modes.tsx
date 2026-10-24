@@ -59,9 +59,7 @@ function openExecutionModesDialog({
 
 /**
  * The composer toolbar's button. Below the 48 rem (768 px) breakpoint it is only an icon, so the toolbar keeps room
- * for the input modes beside it. While the composer's steer hint shows (its toolbar row is the named group
- * `composer-toolbar`, marked with `data-steer-hint`, and the hint shows from a 38 rem toolbar), it is only an icon too,
- * so the hint keeps its room. Its name stays on the button for assistive technology and as the hover hint.
+ * for the input modes beside it. Its name stays on the button for assistive technology and as the hover hint.
  */
 function ExecutionModesButton({ onOpen }: { readonly onOpen: () => void }) {
   return (
@@ -75,13 +73,8 @@ function ExecutionModesButton({ onOpen }: { readonly onOpen: () => void }) {
       type="button"
       variant="ghost"
     >
-      <SlidersHorizontalIcon
-        aria-hidden="true"
-        className="size-4 md:hidden @[38rem]:group-data-[steer-hint=true]/composer-toolbar:block"
-      />
-      <span className="hidden md:inline @[38rem]:group-data-[steer-hint=true]/composer-toolbar:hidden">
-        Execution modes
-      </span>
+      <SlidersHorizontalIcon aria-hidden="true" className="size-4 md:hidden" />
+      <span className="hidden md:inline">Execution modes</span>
     </Button>
   );
 }

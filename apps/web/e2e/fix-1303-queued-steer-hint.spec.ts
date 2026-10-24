@@ -15,7 +15,7 @@ import {
  * Issue #1303 on real omp. While a message is queued during a streaming reply (a steer with Enter, a follow-up with
  * Ctrl+Enter), the queue lane sat in the composer's toolbar row beside the round Stop button. The lane took the row's
  * width, so the steer hint was squeezed to 0 px: its text ran under Stop and past the composer's edge. The lane now sits
- * on a row of its own above the composer (#2316), and the hint is shown whole or not at all. Checked at 1280 px (light and
+ * on a row of its own above the composer (#2316). The steer hint is the editor's placeholder, not a toolbar item. Checked at 1280 px (light and
  * dark), at 390 px and at 195 px (a 390 px phone at 200% zoom): no text under Stop, no text past the composer's border,
  * no sideways scroll, and the lane above the composer.
  */
@@ -49,10 +49,6 @@ interface Composer {
   readonly stop: Box;
   /** The queue lane's box, or null when no lane is drawn. */
   readonly queue: Box | null;
-  /** Whether the steer hint is drawn at all (it has a box in the layout). */
-  readonly hintShown: boolean;
-  /** Whether the steer hint's text fits its own box (it is not squeezed). */
-  readonly hintFits: boolean;
   /** Every text the composer draws, cut to what a person can see, with its box. */
   readonly texts: readonly { readonly text: string; readonly box: Box }[];
   readonly page: { readonly scrollWidth: number; readonly clientWidth: number };
@@ -87,7 +83,6 @@ async function measure(page: Page): Promise<Composer> {
     const toolbar = document.querySelector('[data-composer-toolbar="true"]');
     const stop = document.querySelector('button[aria-label="Stop generating"]');
     const queue = document.querySelector('[data-surface="queue"]');
-    const hint = document.querySelector('[data-composer-steer-hint="true"]');
     if (card === null || toolbar === null || stop === null) {
       throw new Error("the composer is not on the page");
     }
@@ -123,8 +118,6 @@ async function measure(page: Page): Promise<Composer> {
       toolbar: boxOf(toolbar),
       stop: boxOf(stop),
       queue: queue !== null && queue.getClientRects().length > 0 ? boxOf(queue) : null,
-      hintShown: hint !== null && hint.getClientRects().length > 0,
-      hintFits: hint === null || hint.scrollWidth <= hint.clientWidth + 0.5,
       texts,
       page: {
         scrollWidth: document.documentElement.scrollWidth,
@@ -144,7 +137,7 @@ function overlaps(a: Box, b: Box): boolean {
   );
 }
 
-/** Nothing the composer draws is under Stop or past its border; the hint is whole; the lane sits above the composer. */
+/** Nothing the composer draws is under Stop or past its border, and the lane sits above the composer. */
 function expectNothingCovered(composer: Composer): void {
   const under = composer.texts
     .filter((text) => overlaps(text.box, composer.stop))
@@ -157,7 +150,6 @@ function expectNothingCovered(composer: Composer): void {
     )
     .map((text) => text.text);
   expect(past, "no text runs past the composer's border").toEqual([]);
-  expect(composer.hintFits, "the steer hint is whole, not squeezed").toBe(true);
   expect(composer.page.scrollWidth, "no sideways scroll").toBeLessThanOrEqual(
     composer.page.clientWidth,
   );
@@ -168,7 +160,7 @@ function expectNothingCovered(composer: Composer): void {
 }
 
 realTest(
-  "at 1280 px, a queued steer and follow-up leave the steer hint whole and cover nothing",
+  "at 1280 px, a queued steer and follow-up leave the steer placeholder on the editor and cover nothing",
   async ({ realApp }) => {
     const page = await realApp.open();
     await page.setViewportSize(DESKTOP);
@@ -178,15 +170,14 @@ realTest(
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "fix-1303-queued-light.png") });
     const measured = await measure(page);
-    expect(measured.hintShown, "the steer hint is shown at 1280 px").toBe(true);
+    await expect(composer).toHaveAttribute("placeholder", HINT);
     expectNothingCovered(measured);
-    await expect(page.getByText(HINT, { exact: true })).toBeVisible();
     expect(realApp.problems).toEqual([]);
   },
 );
 
 realTest(
-  "in dark, the same queued messages at 1280 px leave the steer hint whole and cover nothing",
+  "in dark, the same queued messages at 1280 px leave the steer placeholder on the editor and cover nothing",
   async ({ realApp }) => {
     const page = await realApp.open({
       beforeLoad: (openPage) =>
@@ -200,14 +191,14 @@ realTest(
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "fix-1303-queued-dark.png") });
     const measured = await measure(page);
-    expect(measured.hintShown, "the steer hint is shown at 1280 px").toBe(true);
+    await expect(composer).toHaveAttribute("placeholder", HINT);
     expectNothingCovered(measured);
     expect(realApp.problems).toEqual([]);
   },
 );
 
 realTest(
-  "at 390 px, the queued messages fit the composer, the hint is hidden and nothing runs past the border",
+  "at 390 px, the queued messages fit the composer and nothing runs past the border",
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
@@ -218,7 +209,7 @@ realTest(
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "fix-1303-queued-390-light.png") });
     const measured = await measure(page);
-    expect(measured.hintShown, "the steer hint is hidden in a narrow composer").toBe(false);
+    await expect(composer).toHaveAttribute("placeholder", HINT);
     expectNothingCovered(measured);
     expect(realApp.problems).toEqual([]);
   },
@@ -235,7 +226,7 @@ realTest(
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "fix-1303-queued-200-light.png") });
     const measured = await measure(page);
-    expect(measured.hintShown, "the steer hint is hidden in a narrow composer").toBe(false);
+    await expect(composer).toHaveAttribute("placeholder", HINT);
     expectNothingCovered(measured);
     expect(realApp.problems).toEqual([]);
   },
@@ -318,9 +309,8 @@ interface ModesShot {
 }
 
 /**
- * The Execution modes button around a reply. Before the reply the label shows from 768 px and the icon below. While the
- * steer hint shows (streaming, from a 38 rem toolbar) the button is its icon at every width; below 38 rem the hint is not
- * drawn, so nothing changes. After the reply the button is as it was before.
+ * The Execution modes button around a reply: the label shows from 768 px and the icon below, before, during and after
+ * the reply. The steer hint is the editor's placeholder, so nothing in the toolbar changes while the reply streams.
  */
 async function modesAroundReply(realApp: RealApp, shot: ModesShot): Promise<void> {
   const page = shot.dark
@@ -334,7 +324,6 @@ async function modesAroundReply(realApp: RealApp, shot: ModesShot): Promise<void
   await page.setViewportSize({ width: shot.width, height: shot.height });
   const wide = shot.width >= 768;
   const modes = executionModes(page);
-  const hint = page.getByText(HINT, { exact: true });
   const stop = page.getByRole("button", { name: "Stop generating" });
   await mkdir(screenshots, { recursive: true });
   await waitForFiniteAnimations(page);
@@ -350,12 +339,16 @@ async function modesAroundReply(realApp: RealApp, shot: ModesShot): Promise<void
   await sendPrompt(composer, LONG_RUN);
   await expect(stop).toBeVisible({ timeout: 120_000 });
   if (wide) {
-    await expect(hint, "the steer hint shows at this width").toBeVisible();
+    await expect(modes.label, "the label stays while a reply streams").toBeVisible();
+    await expect(modes.icon).toBeHidden();
   } else {
-    await expect(hint, "the steer hint is not drawn at this width").toBeHidden();
+    await expect(modes.label).toBeHidden();
+    await expect(modes.icon).toBeVisible();
   }
-  await expect(modes.label, "the label is an icon while the hint shows").toBeHidden();
-  await expect(modes.icon).toBeVisible();
+  await expect(composer, "the steer placeholder shows while a reply streams").toHaveAttribute(
+    "placeholder",
+    HINT,
+  );
   await expect(page.getByRole("button", { name: MODES, exact: true })).toBeVisible();
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: join(screenshots, `fix-1303-modes-${shot.name}-streaming.png`) });
@@ -373,14 +366,14 @@ async function modesAroundReply(realApp: RealApp, shot: ModesShot): Promise<void
 }
 
 realTest(
-  "at 1280 px in light, the Execution modes label shows before a reply, is an icon while the steer hint shows, and comes back after",
+  "at 1280 px in light, the Execution modes label shows before, during and after a reply",
   async ({ realApp }) => {
     await modesAroundReply(realApp, { name: "1280-light", width: 1280, height: 800, dark: false });
   },
 );
 
 realTest(
-  "at 1280 px in dark, the Execution modes label shows before a reply, is an icon while the steer hint shows, and comes back after",
+  "at 1280 px in dark, the Execution modes label shows before, during and after a reply",
   async ({ realApp }) => {
     await modesAroundReply(realApp, { name: "1280-dark", width: 1280, height: 800, dark: true });
   },
@@ -401,7 +394,7 @@ realTest(
 );
 
 realTest(
-  "with a 30-character model label at 1280 px, the steer hint stays whole and the toolbar wraps without clipping",
+  "with a 30-character model label at 1280 px, the model label stays whole and nothing overflows or clips",
   async ({ realApp }) => {
     expect(LONG_MODEL).toHaveLength(30);
     const page = await realApp.open();
@@ -414,13 +407,9 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-1303-wrap-1280-light-streaming.png") });
     const fit = await toolbarFit(page);
     const measured = await measure(page);
-    expect(
-      measured.hintShown,
-      `the steer hint is shown at 1280 px (toolbar content ${fit.contentWidth} px)`,
-    ).toBe(true);
     expectNothingCovered(measured);
-    await expect(executionModes(page).label).toBeHidden();
-    await expect(executionModes(page).icon).toBeVisible();
+    await expect(executionModes(page).label).toBeVisible();
+    await expect(executionModes(page).icon).toBeHidden();
     expect(fit.pillText, "the model label is whole").toBe(LONG_MODEL);
     expect(fit.pillFits, "the model pill does not clip its label").toBe(true);
     expect(fit.rowOverflows, "the toolbar row does not overflow").toBe(false);
@@ -433,7 +422,7 @@ realTest(
 );
 
 realTest(
-  "with a 30-character model label at the 38 rem toolbar width, the steer hint shows whole and nothing overflows or clips",
+  "with a 30-character model label at the 38 rem toolbar width, nothing overflows or clips while a reply streams",
   async ({ realApp }) => {
     expect(LONG_MODEL).toHaveLength(30);
     const page = await realApp.open();
@@ -450,13 +439,9 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-1303-wrap-608-light-streaming.png") });
     const fit = await toolbarFit(page);
     const measured = await measure(page);
-    expect(
-      measured.hintShown,
-      `the steer hint shows at the 38 rem toolbar width (toolbar content ${fit.contentWidth} px, card ${fit.cardWidth} px, thread ${fit.threadWidth})`,
-    ).toBe(true);
     expectNothingCovered(measured);
-    await expect(executionModes(page).label).toBeHidden();
-    await expect(executionModes(page).icon).toBeVisible();
+    await expect(executionModes(page).label).toBeVisible();
+    await expect(executionModes(page).icon).toBeHidden();
     expect(fit.contentWidth, "the toolbar's content is 38 rem wide").toBe(608);
     expect(fit.pillText, "the model label is whole").toBe(LONG_MODEL);
     expect(fit.pillFits, "the model pill does not clip its label").toBe(true);

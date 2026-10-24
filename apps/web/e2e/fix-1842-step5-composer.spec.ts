@@ -531,19 +531,7 @@ realTest(
     await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible({
       timeout: 60_000,
     });
-    const steerHint = page.locator('[data-composer-steer-hint="true"]');
-    await expect(steerHint).toBeVisible();
-    const hintEdges = await Promise.all([
-      steerHint.boundingBox(),
-      page.getByRole("button", { name: "Stop generating" }).boundingBox(),
-    ]);
-    if (!hintEdges[0] || !hintEdges[1]) throw new Error("Running steer/stop surfaces are missing");
-    expect(hintEdges[0].x + hintEdges[0].width).toBeLessThanOrEqual(hintEdges[1].x);
-    const steerStyle = await steerHint.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { overflow: style.overflow, textOverflow: style.textOverflow };
-    });
-    expect(steerStyle).toEqual({ overflow: "hidden", textOverflow: "ellipsis" });
+    await expect(composer).toHaveAttribute("placeholder", "Enter steers · Ctrl+Enter queues");
     await composer.fill("queued while running");
     await composer.press("Control+Enter");
     const queue = page.locator("[data-queue-bar]");

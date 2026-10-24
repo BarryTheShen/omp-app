@@ -18,6 +18,7 @@ import {
   ThinkingLevelsController,
   ThinkingSelector,
   thinkingLevelLabel,
+  WIDEST_THINKING_WORDS,
 } from "@/modules/D1/thinking";
 import { ContextStatusBar } from "@/modules/P7/context/status-bar";
 import {
@@ -223,7 +224,7 @@ export function SessionModelControl({
   const open = () => openDialog();
   useModelPaletteCommand(openDialog);
   return (
-    <span className="flex h-7 min-w-0 max-w-[min(16rem,100%)]">
+    <span className="flex h-7 min-w-0 max-w-[min(20rem,100%)]">
       <Button
         aria-label={modelName ? `Model: ${modelName}. Change model or thinking` : "Choose a model"}
         className="text-muted-foreground hover:text-foreground rounded-control h-7 w-full min-w-0 px-2 text-sm font-normal transition-colors"
@@ -233,7 +234,15 @@ export function SessionModelControl({
         variant="ghost"
       >
         <span className="truncate">{modelName ?? "Choose a model"}</span>
-        {level ? <span className="text-muted-foreground shrink-0">· {level}</span> : null}
+        {/* The level sits in a cell as wide as the widest level, so cycling it never moves what comes after it. */}
+        {session.model?.reasoning ? (
+          <span
+            className="text-muted-foreground grid shrink-0 justify-items-start text-left after:invisible after:col-start-1 after:row-start-1 after:content-[attr(data-reserve)]"
+            data-reserve={`· ${WIDEST_THINKING_WORDS}`}
+          >
+            <span className="col-start-1 row-start-1">{level === null ? "" : `· ${level}`}</span>
+          </span>
+        ) : null}
       </Button>
     </span>
   );

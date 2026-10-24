@@ -1,7 +1,7 @@
 import { CapabilityStatus } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { ThinkingLevel } from "../contract";
-import { thinkingLevelLabel } from "./selector";
+import { thinkingLevelLabel, WIDEST_THINKING_WORDS } from "./selector";
 import { ThinkingLevelsController } from "./thinking";
 
 const capabilities = {
@@ -89,5 +89,17 @@ describe("thinkingLevelLabel", () => {
       xhigh: "Extra high",
       max: "Max",
     });
+  });
+});
+
+describe("the widest thinking label", () => {
+  test("is the longest level's words, which the composer and the status bar reserve", () => {
+    expect(WIDEST_THINKING_WORDS).toBe("extra high");
+    for (const level of ThinkingLevel.options) {
+      if (level === "inherit" || level === "off") continue;
+      expect(thinkingLevelLabel(level).toLowerCase().length).toBeLessThanOrEqual(
+        WIDEST_THINKING_WORDS.length,
+      );
+    }
   });
 });

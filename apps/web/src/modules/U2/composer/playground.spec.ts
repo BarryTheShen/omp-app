@@ -11,7 +11,7 @@ test.describe("U2.2 ComposerSurface playground", () => {
     await page.screenshot({ path: path.join(screenshots, "u2.2-idle.png"), fullPage: true });
 
     await page.getByTestId("playground-streaming").click();
-    await expect(page.getByText("Enter steers · Ctrl+Enter queues")).toBeVisible();
+    await expect(page.getByPlaceholder("Enter steers · Ctrl+Enter queues")).toBeVisible();
     await page.screenshot({ path: path.join(screenshots, "u2.2-streaming.png"), fullPage: true });
 
     await page.getByTestId("playground-error").click();

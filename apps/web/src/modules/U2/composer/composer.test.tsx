@@ -88,10 +88,10 @@ describe("U2.2 ComposerSurface", () => {
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
   });
 
-  test("chooses steer while R0 reports a running turn and shows the hint", async () => {
+  test("chooses steer while R0 reports a running turn and offers it as the placeholder", async () => {
     const submitPrompt = vi.fn(async () => undefined);
     renderComposer(true, submitPrompt);
-    expect(screen.getByText("Enter steers · Ctrl+Enter queues")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Enter steers · Ctrl+Enter queues")).toBeTruthy();
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "steer text" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -103,35 +103,31 @@ describe("U2.2 ComposerSurface", () => {
     });
   });
 
-  test("marks the toolbar row only while the steer hint is rendered", () => {
-    const idle = renderComposer(
+  test("offers the steer as the editor's placeholder only while a turn runs", () => {
+    renderComposer(
       false,
       vi.fn(async () => undefined),
     );
     expect(
-      idle.container.querySelector("[data-composer-toolbar]")?.hasAttribute("data-steer-hint"),
-    ).toBe(false);
+      screen.getByRole("textbox", { name: "Message input" }).getAttribute("placeholder"),
+    ).not.toBe("Enter steers · Ctrl+Enter queues");
     cleanup();
-    const running = renderComposer(
-      true,
-      vi.fn(async () => undefined),
-    );
-    expect(
-      running.container.querySelector("[data-composer-toolbar]")?.getAttribute("data-steer-hint"),
-    ).toBe("true");
-  });
-
-  test("the steer hint sits in the toolbar row with the stop control, so it adds no line above the editor", () => {
     renderComposer(
       true,
       vi.fn(async () => undefined),
     );
-    const hint = screen.getByText("Enter steers · Ctrl+Enter queues");
-    const stop = screen.getByRole("button", { name: "Stop generating" });
-    const row = hint.closest("[data-composer-toolbar]");
-    expect(row).not.toBeNull();
-    expect(row?.contains(stop)).toBe(true);
-    expect(hint.getAttribute("title")).toBe(
+    expect(screen.getByRole("textbox", { name: "Message input" }).getAttribute("placeholder")).toBe(
+      "Enter steers · Ctrl+Enter queues",
+    );
+  });
+
+  test("the steer hint is the editor's placeholder, not a toolbar control, and explains the steer on hover", () => {
+    renderComposer(
+      true,
+      vi.fn(async () => undefined),
+    );
+    expect(document.querySelector("[data-steer-hint]")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Message input" }).getAttribute("title")).toBe(
       "Enter steers this turn. Ctrl+Enter queues a message for after it.",
     );
   });
@@ -145,7 +141,7 @@ describe("U2.2 ComposerSurface", () => {
         true,
         vi.fn(async () => undefined),
       );
-      expect(screen.getByText("Enter steers · Cmd+Enter queues")).toBeTruthy();
+      expect(screen.getByPlaceholderText("Enter steers · Cmd+Enter queues")).toBeTruthy();
     } finally {
       userAgent.mockRestore();
     }
@@ -481,8 +477,8 @@ describe("U2.2 ComposerSurface", () => {
       expect(submitPrompt).not.toHaveBeenCalled();
       expect(input).toHaveProperty("value", "with a picture");
       expect(screen.getByText(LOADING)).toBeTruthy();
-      // Enter does not steer while the message is held, so the steer hint is not offered either.
-      expect(screen.queryByText("Enter steers · Ctrl+Enter queues")).toBeNull();
+      // Enter does not steer while the message is held, so the steer placeholder is not offered either.
+      expect(input.getAttribute("placeholder")).not.toBe("Enter steers · Ctrl+Enter queues");
       // A picture that is loading does not hold back Stop: the turn can still be stopped.
       expect(screen.getByRole("button", { name: "Stop generating" }).hasAttribute("disabled")).toBe(
         false,
@@ -536,7 +532,7 @@ describe("U2.2 ComposerSurface", () => {
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "still typing" } });
 
-    expect(screen.queryByText("Enter steers · Ctrl+Enter queues")).toBeNull();
+    expect(input.getAttribute("placeholder")).not.toBe("Enter steers · Ctrl+Enter queues");
     expect(screen.getByRole("button", { name: "Stop generating" }).hasAttribute("disabled")).toBe(
       true,
     );

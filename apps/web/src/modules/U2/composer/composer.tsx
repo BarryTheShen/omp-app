@@ -557,10 +557,10 @@ export function ComposerSurface({
   );
 
   const chord = chordLabel("Mod+Enter", { mac: isApplePlatform() });
-  const steerHint = `Enter steers · ${chord} queues`;
-  const steerHintTitle = `Enter steers this turn. ${chord} queues a message for after it.`;
-  const steerHintRendered =
-    isStreaming && notSentReason === undefined && modeForText(text) === "prompt";
+  // While a reply streams and Enter would steer, the editor's placeholder says how to steer and how to queue.
+  const steerPlaceholder = `Enter steers · ${chord} queues`;
+  const steerTitle = `Enter steers this turn. ${chord} queues a message for after it.`;
+  const steerOffered = isStreaming && notSentReason === undefined && modeForText(text) === "prompt";
 
   return (
     <ComposerPrimitive.Root
@@ -598,7 +598,8 @@ export function ComposerSurface({
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={placeholder}
+            placeholder={steerOffered ? steerPlaceholder : placeholder}
+            title={steerOffered ? steerTitle : undefined}
             rows={1}
             submitMode="none"
             className="aui-composer-input caret-primary placeholder:text-muted-foreground max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-4 pt-3 pb-2 text-base leading-6 focus:outline-none"
@@ -672,9 +673,8 @@ export function ComposerSurface({
           </p>
         )}
         <div
-          className="@container group/composer-toolbar flex min-w-0 items-center justify-between gap-2 px-2 pb-2"
+          className="flex min-w-0 items-center justify-between gap-2 px-2 pb-2"
           data-composer-toolbar="true"
-          data-steer-hint={steerHintRendered ? "true" : undefined}
           style={replaced ? { display: "none" } : undefined}
         >
           <ComposerPrimitive.AddAttachment
@@ -691,16 +691,6 @@ export function ComposerSurface({
             }
           />
           {toolbar}
-          {/* The steer hint keeps its width: the controls beside it wrap onto a new row rather than squeeze it. */}
-          {steerHintRendered && (
-            <p
-              className="text-muted-foreground hidden shrink-0 whitespace-nowrap text-xs @[38rem]:block truncate"
-              data-composer-steer-hint="true"
-              title={steerHintTitle}
-            >
-              {steerHint}
-            </p>
-          )}
           <div className="ms-auto flex shrink-0 items-center gap-(--space-xs)">
             {voice}
             {canCancel ? (
