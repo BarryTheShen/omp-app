@@ -9,9 +9,9 @@ import {
 } from "./real-omp";
 
 /**
- * The status bar under the composer (N1.4), mounted in the real app on real omp: once a chat is started it shows
- * the Pi mark, the folder, the model omp reports and the local clock; a segment with no value is not drawn
- * (collaboration stays hidden); and the bar is still there, and fits the screen, after a reply and at 390 px.
+ * The status bar under the composer (N1.4), mounted in the real app on real omp: once a chat is started it shows the
+ * folder's name, the model omp reports and the context use. The rows the bar does not draw (the Pi mark, the clock, the
+ * server and the session) are not in it. The bar is still there, and fits the screen, after a reply and at 390 px.
  * The segment ids are the N2 rows.
  */
 realTest(
@@ -22,12 +22,12 @@ realTest(
     const composer = await startChat(page);
     const bar = page.getByRole("region", { name: "Session and workspace status" });
     await expect(bar).toBeVisible({ timeout: 30_000 });
-    await expect(bar.locator('[data-segment="N2.pi"]')).toBeVisible();
+    await expect(bar.locator('[data-segment="N2.pi"]')).toHaveCount(0);
     await expect(bar.locator('[data-segment="N2.path"]')).toContainText(
       realApp.folder.split("/").pop() ?? "",
     );
     await expect(bar.locator('[data-segment="N2.model"]')).toContainText("Fake Model");
-    await expect(bar.locator('[data-segment="N2.time"]')).toContainText(/\d{1,2}:\d{2}/);
+    await expect(bar.locator('[data-segment="N2.time"]')).toHaveCount(0);
     await expect(bar.locator('[data-segment="N2.collab"]')).toHaveCount(0);
 
     await sendPrompt(composer, "Say something short.");
@@ -44,10 +44,10 @@ realTest(
 );
 
 /**
- * Issue 1607, under the one-line rule: the status row is one line at every width. The segments take the room that is left and
- * cut a segment short when it does not fit, and the full text stays in its title and accessible name. The context group keeps its
- * own width and is never clipped, so Usage stays inside the row. The limit is the rendered line-height plus vertical padding and
- * one pixel for fractional layout rounding; a second line exceeds it.
+ * Issue 1607, under the one-line rule: the status row is one line at every width. The segments take the room that is left,
+ * and a segment that does not fit is left out whole, never cut short; its full text stays in its title and accessible name.
+ * The context group keeps its own width and is never clipped, so Usage stays inside the row. The limit is the rendered
+ * line-height plus vertical padding and one pixel for fractional layout rounding; a second line exceeds it.
  */
 realTest(
   "the status row stays one line at every width, and the context group is never clipped",
@@ -123,7 +123,7 @@ realTest(
         .toBe(true);
       await status.screenshot({ path: join(screenshots, `n1-4-status-row-${width}.png`) });
     }
-    // At 390 px a segment does not fit: its value is cut short, and its full text is still in its title.
+    // At 390 px no drawn value is cut short: a segment that does not fit is left out, and its full text is in its title.
     await expect
       .poll(() =>
         segments.evaluate((section) =>
@@ -132,13 +132,12 @@ realTest(
           ),
         ),
       )
-      .toBe(true);
+      .toBe(false);
     await expect(segments.locator('[data-segment="N2.path"]')).toHaveAttribute(
       "title",
       /Workspace folder: /,
     );
-    // Below 480 px the folder and the model still show, not only their icons.
-    await expect(segments.locator('[data-segment="N2.path"]')).toBeVisible();
+    // The model stays at 390 px: it is kept before the folder and the branch.
     await expect(segments.locator('[data-segment="N2.model"]')).toBeVisible({ timeout: 30_000 });
   },
 );

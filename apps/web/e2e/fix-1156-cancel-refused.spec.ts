@@ -34,6 +34,8 @@ async function settle(page: Page): Promise<void> {
 /** Starts a long worker, messages it while its command runs, and returns once its answer is back in the Agent Hub. */
 async function steerLongWorker(page: Page): Promise<{ hub: Locator; answeredAt: number }> {
   const composer = await startChat(page);
+  const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+  if ((await showPanels.count()) > 0) await showPanels.first().click();
   await page.getByRole("tab", { name: "Agents" }).click();
   const hub = page.getByRole("region", { name: "Agent Hub" });
   await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });

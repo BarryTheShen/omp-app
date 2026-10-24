@@ -58,6 +58,9 @@ realTest(
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 120_000 });
     await recordKeydowns(page);
 
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
+
     // The panel tabs: a modified arrow, Home or End is not taken by the tab row.
     const todo = page.getByRole("tab", { name: "Todo checklist" });
     await todo.focus();

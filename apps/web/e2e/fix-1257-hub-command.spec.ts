@@ -71,6 +71,8 @@ realTest(
     // The helper waits 5 s for the app; a loaded machine can take longer to mount it, so wait for the root with a bound it needs.
     await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 60_000 });
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_long_subagent");
     await page.getByRole("tab", { name: "Agents" }).click();
     const running = agentHub(page).getByRole("option", { name: /Running/ });

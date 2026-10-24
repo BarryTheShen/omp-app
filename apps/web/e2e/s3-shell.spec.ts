@@ -221,6 +221,12 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         page.locator('[data-shell-region="header"]').getByText("omp", { exact: true }),
       ).toHaveCount(0);
+      // The panel starts closed on a first run: open it, so the Panels column and its tabs are there to check.
+      await page.getByRole("button", { name: "Show panels sidebar" }).click();
+      await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute(
+        "data-open",
+        "true",
+      );
       await expectAccessibleShellChrome(page);
       const settings = page.getByRole("button", { name: "Settings", exact: true });
       await expect(settings.locator("svg")).toBeVisible();

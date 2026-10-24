@@ -32,6 +32,16 @@ export function thinkingLevelLabel(level: ThinkingLevel): string {
   return level === "xhigh" ? "Extra high" : first.toUpperCase() + level.slice(1);
 }
 
+/**
+ * The widest thinking label, in the words the composer and the status bar show: "extra high". A control that shows a
+ * level reserves this width, so it keeps one width while the level cycles.
+ */
+export const WIDEST_THINKING_WORDS = ALL_LEVELS.filter(
+  (level) => level !== "inherit" && level !== "off",
+)
+  .map((level) => thinkingLevelLabel(level).toLowerCase())
+  .reduce((widest, words) => (words.length > widest.length ? words : widest), "");
+
 export function ThinkingSelector({
   controller,
   onApplied,

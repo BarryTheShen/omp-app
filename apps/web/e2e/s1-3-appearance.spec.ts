@@ -49,9 +49,12 @@ function buildPlaygroundPage(): void {
 
 async function expectBackgroundToken(page: Page): Promise<void> {
   await expect(
-    page.getByText("These settings change omp's terminal only. This app does not use them.", {
-      exact: true,
-    }),
+    page.getByText(
+      "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   const background = await page.evaluate(() => {
     const token = getComputedStyle(document.documentElement)
@@ -122,9 +125,12 @@ test("appearance settings commit terminal values and fit narrow screens in both 
   await lightPage.getByRole("button", { name: "Choose dark theme…" }).click();
   await lightPage.getByLabel("OMP theme name").fill("custom-dark");
   await expect(
-    lightPage.getByText("These settings change omp's terminal only. This app does not use them.", {
-      exact: true,
-    }),
+    lightPage.getByText(
+      "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await lightPage.getByRole("button", { name: "Use this theme name" }).click();
   await expect
@@ -148,9 +154,12 @@ test("appearance settings commit terminal values and fit narrow screens in both 
 
   await lightPage.getByRole("button", { name: "Cancel" }).click();
   await expect(
-    lightPage.getByText("These settings change omp's terminal only. This app does not use them.", {
-      exact: true,
-    }),
+    lightPage.getByText(
+      "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await lightPage.close();
   await darkPage.close();

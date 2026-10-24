@@ -33,6 +33,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_quiet_subagent/ })
       .click();
+    const showReopenedPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showReopenedPanels.count()) > 0) await showReopenedPanels.first().click();
     // The chat recorded the worker's answer before the restart, so its notice still reads as finished.
     await expect(
       reopened.locator(NOTICE).filter({ hasText: "QuietProbe finished." }).first(),
@@ -80,6 +82,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_quiet_subagent/ })
       .click();
+    const showReloadedPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showReloadedPanels.count()) > 0) await showReloadedPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     const finished = hub.getByRole("option", { name: /Finished.*QuietProbe/ });
@@ -107,6 +111,8 @@ realTest(
     testInfo.setTimeout(300_000);
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_long_subagent");
     await page.getByRole("tab", { name: "Agents" }).click();
     const running = page.getByRole("region", { name: "Agent Hub" });
@@ -121,6 +127,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_long_subagent/ })
       .click();
+    const showReloadedPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showReloadedPanels.count()) > 0) await showReloadedPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     await expect(
       page
@@ -138,6 +146,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_long_subagent/ })
       .click();
+    const showReopenedPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showReopenedPanels.count()) > 0) await showReopenedPanels.first().click();
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const hub = reopened.getByRole("region", { name: "Agent Hub" });
     const stopped = hub.getByRole("option", { name: /Stopped.*LongProbe/ });

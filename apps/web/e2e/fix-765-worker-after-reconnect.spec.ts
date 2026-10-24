@@ -102,6 +102,8 @@ realTest(
     const tab: Tab = { outage: false, withholding: false, withheld: 0, live: [] };
     const page = await realApp.open({ beforeLoad: (target) => routeSocket(target, tab) });
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
 

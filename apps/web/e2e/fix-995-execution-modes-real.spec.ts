@@ -26,9 +26,9 @@ function composerOf(page: Page): Locator {
   return page.getByRole("textbox", { name: "Message input" });
 }
 
-/** The context readout's text, for example "10 of 128k tokens". */
+/** The context readout's percentage, for example "Context 42%". The token count beside it is left out on a narrow bar. */
 function readoutOf(page: Page): Locator {
-  return page.getByRole("region", { name: "Context status" }).getByText(/ tokens$/);
+  return page.getByRole("region", { name: "Context status" }).getByText(/^Context /);
 }
 
 /** The composer's row: the attach button, the composer toolbar, and the send button. */

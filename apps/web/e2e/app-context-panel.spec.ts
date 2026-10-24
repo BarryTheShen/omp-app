@@ -15,6 +15,8 @@ async function openContextOfAnsweredChat(page: Page) {
   const composer = await startChat(page);
   await sendPrompt(composer, "pong");
   await expect(page.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
+  const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+  if ((await showPanels.count()) > 0) await showPanels.first().click();
   await page.getByRole("tab", { name: "Context" }).click();
   await expect(page.getByText(/[\d.,k]+ \/ [\d.,k]+ tokens/)).toBeVisible({ timeout: 30_000 });
 }
@@ -32,6 +34,8 @@ realTest(
     await expect(page.getByText("pong", { exact: true })).toHaveCount(1, { timeout: 60_000 });
     await sendPrompt(composer, longPrompt);
     await expect(page.getByText("pong", { exact: true })).toHaveCount(2, { timeout: 60_000 });
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Context" }).click();
     await expect(page.getByText(/[\d.,k]+ \/ [\d.,k]+ tokens/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Compact now" })).toBeVisible();

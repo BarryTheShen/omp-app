@@ -1,6 +1,7 @@
 /**
  * App-owned shell layout preferences. These values belong to the browser UI, not omp's config
- * files: the shell only persists its two sidebar widths and keeps them bounded before rendering.
+ * files: the shell persists its two sidebar widths and whether the wide layout's right panel is open,
+ * and keeps the widths bounded before rendering.
  */
 import { useCallback, useEffect, useState } from "react";
 
@@ -14,7 +15,12 @@ const DEFAULT_RIGHT_SIDEBAR_WIDTH = 18;
 export interface ShellPreferences {
   readonly leftSidebarWidth: number;
   readonly rightSidebarWidth: number;
+  /** The wide layout's right panel: closed on a first visit, then as the person last left it. */
+  readonly rightSidebarOpen: boolean;
 }
+
+/** The two sidebar widths a person can drag. */
+type SidebarWidthKey = "leftSidebarWidth" | "rightSidebarWidth";
 
 export type ShellPersistenceStatus = "ready" | "unavailable";
 
@@ -23,11 +29,13 @@ export interface ShellPreferencesState {
   readonly persistenceStatus: ShellPersistenceStatus;
   readonly setLeftSidebarWidth: (width: number) => void;
   readonly setRightSidebarWidth: (width: number) => void;
+  readonly setRightSidebarOpen: (open: boolean) => void;
 }
 
 const DEFAULT_PREFERENCES: ShellPreferences = Object.freeze({
   leftSidebarWidth: DEFAULT_LEFT_SIDEBAR_WIDTH,
   rightSidebarWidth: DEFAULT_RIGHT_SIDEBAR_WIDTH,
+  rightSidebarOpen: false,
 });
 
 function clampSidebarWidth(width: number, fallback: number): number {
@@ -55,6 +63,7 @@ function readStoredPreferences(): {
     const candidate = parsed as {
       readonly leftSidebarWidth?: unknown;
       readonly rightSidebarWidth?: unknown;
+      readonly rightSidebarOpen?: unknown;
     };
     const leftWidth =
       typeof candidate.leftSidebarWidth === "number" ? candidate.leftSidebarWidth : Number.NaN;
@@ -64,6 +73,7 @@ function readStoredPreferences(): {
       preferences: {
         leftSidebarWidth: clampSidebarWidth(leftWidth, DEFAULT_LEFT_SIDEBAR_WIDTH),
         rightSidebarWidth: clampSidebarWidth(rightWidth, DEFAULT_RIGHT_SIDEBAR_WIDTH),
+        rightSidebarOpen: candidate.rightSidebarOpen === true,
       },
       persistenceStatus: "ready",
     };
@@ -72,7 +82,7 @@ function readStoredPreferences(): {
   }
 }
 
-/** Reads, bounds, and persists the two browser-owned sidebar widths. */
+/** Reads, bounds, and persists the shell's layout preferences: the two sidebar widths and the right panel's state. */
 export function useShellPreferences(): ShellPreferencesState {
   const [{ preferences, persistenceStatus: initialStatus }, setInitialState] =
     useState(readStoredPreferences);
@@ -89,7 +99,7 @@ export function useShellPreferences(): ShellPreferencesState {
     }
   }, [preferences]);
 
-  const setWidth = useCallback((key: keyof ShellPreferences, width: number) => {
+  const setWidth = useCallback((key: SidebarWidthKey, width: number) => {
     setInitialState((state) => ({
       ...state,
       preferences: {
@@ -107,11 +117,18 @@ export function useShellPreferences(): ShellPreferencesState {
     (width: number) => setWidth("rightSidebarWidth", width),
     [setWidth],
   );
+  const setRightSidebarOpen = useCallback((open: boolean) => {
+    setInitialState((state) => ({
+      ...state,
+      preferences: { ...state.preferences, rightSidebarOpen: open },
+    }));
+  }, []);
 
   return {
     preferences,
     persistenceStatus,
     setLeftSidebarWidth,
     setRightSidebarWidth,
+    setRightSidebarOpen,
   };
 }

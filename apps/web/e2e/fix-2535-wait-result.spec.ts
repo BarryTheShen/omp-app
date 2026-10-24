@@ -15,6 +15,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_wait_subagent");
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
@@ -30,6 +32,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_wait_subagent/ })
       .click();
+    const showReopenedPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showReopenedPanels.count()) > 0) await showReopenedPanels.first().click();
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const reopenedHub = reopened.getByRole("region", { name: "Agent Hub" });
     await expect(reopenedHub.getByRole("option", { name: /Finished.*WaitProbe/ })).toHaveCount(1, {

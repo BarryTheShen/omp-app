@@ -253,16 +253,30 @@ export function AppShell({
   newChat = false,
 }: AppShellProps) {
   const isNarrow = useMediaQuery(NARROW_QUERY);
-  const { preferences, persistenceStatus, setLeftSidebarWidth, setRightSidebarWidth } =
-    useShellPreferences();
+  const {
+    preferences,
+    persistenceStatus,
+    setLeftSidebarWidth,
+    setRightSidebarWidth,
+    setRightSidebarOpen,
+  } = useShellPreferences();
   // The desktop layout's open state. The narrow drawers have their own state, so narrowing and then
   // widening again leaves this as it was.
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(preferences.rightSidebarOpen);
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [focusDrawerOnOpen, setFocusDrawerOnOpen] = useState(false);
   const leftShown = isNarrow ? drawer === "left" : leftOpen;
   const rightShown = isNarrow ? drawer === "right" : rightOpen;
+  // The person's own choice for the wide layout's right panel, remembered for the next visit. A reveal that opens the
+  // panel (showRightSidebar) is not a choice, so it is not remembered.
+  const chooseRight = useCallback(
+    (open: boolean) => {
+      setRightOpen(open);
+      setRightSidebarOpen(open);
+    },
+    [setRightSidebarOpen],
+  );
   const showRightSidebar = useCallback(() => {
     if (isNarrow) {
       setFocusDrawerOnOpen(false);
@@ -310,7 +324,7 @@ export function AppShell({
         if (isNarrow) {
           setFocusDrawerOnOpen(true);
           setDrawer((current) => (current === "right" ? null : "right"));
-        } else setRightOpen((open) => !open);
+        } else chooseRight(!rightOpen);
       } else {
         if (isNarrow) {
           setFocusDrawerOnOpen(true);
@@ -321,7 +335,7 @@ export function AppShell({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [drawer, isNarrow]);
+  }, [chooseRight, drawer, isNarrow, rightOpen]);
 
   const toggleLeft = () => {
     if (isNarrow) {
@@ -333,7 +347,7 @@ export function AppShell({
     if (isNarrow) {
       setFocusDrawerOnOpen(true);
       setDrawer("right");
-    } else setRightOpen((open) => !open);
+    } else chooseRight(!rightOpen);
   };
   // A side's own arrow closes it. In the narrow layout a drawer closes by leaving no drawer open.
   const closeLeft = () => {
@@ -344,7 +358,7 @@ export function AppShell({
   const closeRight = () => {
     if (isNarrow) {
       setDrawer(null);
-    } else setRightOpen(false);
+    } else chooseRight(false);
   };
 
   const sidebarTrack = (width: number, open: boolean) =>

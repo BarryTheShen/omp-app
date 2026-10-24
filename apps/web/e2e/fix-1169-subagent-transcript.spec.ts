@@ -33,6 +33,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_long_subagent");
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
@@ -70,6 +72,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_long_subagent/ })
       .click();
+    const reopenedShowPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await reopenedShowPanels.count()) > 0) await reopenedShowPanels.first().click();
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const reopenedHub = reopened.getByRole("region", { name: "Agent Hub" });
     await reopenedHub.getByRole("option", { name: /Cancelled/ }).click();
@@ -87,6 +91,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_long_subagent");
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
@@ -130,6 +136,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_subagent/ })
       .click();
+    const reopenedShowPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await reopenedShowPanels.count()) > 0) await reopenedShowPanels.first().click();
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const hub = reopened.getByRole("region", { name: "Agent Hub" });
     await expect(hub.getByRole("option", { name: /NestedProbe/ })).toHaveCount(1, {
@@ -164,6 +172,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_subagent/ })
       .click();
+    const reopenedShowPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await reopenedShowPanels.count()) > 0) await reopenedShowPanels.first().click();
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const hub = reopened.getByRole("region", { name: "Agent Hub" });
     await expect(hub.getByRole("option", { name: /NestedProbe/ })).toHaveCount(1, {

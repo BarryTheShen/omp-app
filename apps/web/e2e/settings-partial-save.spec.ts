@@ -11,6 +11,7 @@ const REFUSAL =
 async function openAppearanceImages(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByTestId("settings-screen")).toBeVisible();
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
   await page.getByRole("tab", { name: "Images", exact: true }).click();
   const section = page.locator('[data-s1-appearance-section="S1.appearanceImages"]');
   await expect(section).toBeVisible();

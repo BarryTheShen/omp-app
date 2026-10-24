@@ -43,7 +43,7 @@ async function captureDialogThreeWays(page: Page, name: string): Promise<void> {
 }
 
 realTest(
-  "#1006: typing /settings and pressing Enter at once opens Settings, with no click and no second Enter",
+  "#1006: typing /settings and pressing Enter at once opens Settings, with no second Enter",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     await mkdir(screenshots, { recursive: true });
@@ -59,6 +59,7 @@ realTest(
 
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible({ timeout: 30_000 });
+    await dialog.getByRole("button", { name: "Appearance", exact: true }).click();
     await expect(dialog.getByText("Composer Shape", { exact: true })).toBeVisible({
       timeout: 60_000,
     });

@@ -75,17 +75,17 @@ const SESSION: SessionInfoState = {
 };
 
 /** A runtime store with the state the bar reads, and a way to change it the way the app does. */
-function runtimeFake(): StatusRuntime & {
+function runtimeFake(overrides: Partial<SessionInfoState> = {}): StatusRuntime & {
   setStreaming(value: boolean): void;
   setSessionName(name: string): void;
 } {
   let streaming = false;
-  let sessionName = SESSION.sessionName;
+  let sessionName = overrides.sessionName ?? SESSION.sessionName;
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
   const current = (): RuntimeSnapshot =>
     ({
       prompt: { streaming },
-      session: { ...SESSION, sessionName },
+      session: { ...SESSION, ...overrides, sessionName },
     }) as unknown as RuntimeSnapshot;
   const emit = () => {
     for (const listener of [...listeners]) listener(current());
@@ -113,6 +113,7 @@ function renderBar(options: {
   readonly pr: GithubReference | null;
   readonly folder?: FolderPath | null;
   readonly runtime?: StatusRuntime;
+  readonly session?: Partial<SessionInfoState>;
 }) {
   return render(
     <>
@@ -123,7 +124,7 @@ function renderBar(options: {
         folder={options.folder === undefined ? folder : options.folder}
         reportFailure={vi.fn()}
         roster={null}
-        runtime={options.runtime ?? runtimeFake()}
+        runtime={options.runtime ?? runtimeFake(options.session)}
         threadId={threadId}
       />
     </>,
@@ -136,62 +137,96 @@ async function bar(): Promise<HTMLElement> {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
+/** A session that has reported its model, its thinking level and a name. */
+const REPORTED: Partial<SessionInfoState> = {
+  model: { id: "gpt-6-luna", name: "GPT-6 Luna", reasoning: true } as never,
+  thinkingLevel: "high",
+};
+
 describe("StatusSegments", () => {
-  test("shows each segment that has a value, with its words for screen readers", async () => {
-    renderBar({ pr: pullRequest("https://github.com/acme/app/pull/42") });
+  test("draws the folder, the model and the branch, and none of the other rows", async () => {
+    renderBar({ pr: pullRequest("https://github.com/acme/app/pull/42"), session: REPORTED });
     const region = await bar();
     await waitFor(() => {
-      expect(within(region).getByText("Host name: devbox")).toBeTruthy();
+      expect(within(region).getByText("Workspace folder: ~/code/app")).toBeTruthy();
     });
-    expect(within(region).getByText("Workspace folder: ~/code/app")).toBeTruthy();
     expect(within(region).getByText("Git branch: main, clean")).toBeTruthy();
-    expect(within(region).getByText("Session name: Refactor auth")).toBeTruthy();
-    expect(within(region).getByText("Session ID: 01903e7a")).toBeTruthy();
+    expect(within(region).getByText("Model: GPT-6 Luna, thinking high")).toBeTruthy();
+    for (const id of [
+      "N2.pi",
+      "N2.hostname",
+      "N2.session",
+      "N2.session-name",
+      "N2.pr",
+      "N2.goal",
+      "N2.subagents",
+      "N2.time-spent",
+      "N2.time",
+    ]) {
+      expect(region.querySelector(`[data-segment="${id}"]`), id).toBeNull();
+    }
   });
 
-  test("the segments stay on one line, and the folder keeps its full text in its title", async () => {
+  test("the folder shows its name, and its tooltip carries the full path and the server and session ids", async () => {
+    renderBar({ pr: null });
+    const folder = await waitFor(() => {
+      const element = document.querySelector('[data-segment="N2.path"]');
+      if (element === null) throw new Error("the folder is not drawn yet");
+      return element;
+    });
+    expect(folder.querySelector("[data-segment-value]")?.textContent).toBe("app");
+    expect(folder.getAttribute("title")).toBe(
+      `Workspace folder: ~/code/app\nServer ID: devbox\nSession ID: ${threadId}`,
+    );
+  });
+
+  test("the bar stays on one line", async () => {
     renderBar({ pr: null });
     const region = await bar();
-    await waitFor(() => {
-      expect(within(region).getByText("Host name: devbox")).toBeTruthy();
-    });
     expect(region.className).toContain("flex-nowrap");
     expect(region.className).not.toContain("flex-wrap");
-    const path = region.querySelector('[data-segment="N2.path"]');
-    expect(path?.getAttribute("title")).toBe("Workspace folder: ~/code/app");
   });
 
   test("leaves out a segment that has no value", async () => {
     const { container } = renderBar({ pr: null });
     await bar();
     await waitFor(() => {
-      expect(container.querySelector('[data-segment="N2.hostname"]')).not.toBeNull();
+      expect(container.querySelector('[data-segment="N2.path"]')).not.toBeNull();
     });
+    expect(container.querySelector('[data-segment="N2.model"]')).toBeNull();
     expect(container.querySelector('[data-segment="N2.pr"]')).toBeNull();
     expect(container.querySelector('[data-segment="N2.subagents"]')).toBeNull();
-    expect(container.querySelector('[data-segment="N2.mode"]')).toBeNull();
   });
 
-  test("links a pull request to its https address, in a new tab", async () => {
-    renderBar({ pr: pullRequest("https://github.com/acme/app/pull/42") });
-    const link = await screen.findByRole("link", {
-      name: "Pull request #42: Fix the build, open, opens in a new tab",
+  test("when the bar is short, the branch goes first and no segment is cut", async () => {
+    // jsdom lays nothing out, so each segment is as wide as its text (8 px a character, plus its icon) and the bar has
+    // 200 px: the folder (44 px) and the model (156 px) fit together, and the branch (52 px) does not.
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const text = this.querySelector("[data-segment-value]")?.textContent ?? "";
+      return this.dataset.segment === undefined ? 0 : text.length * 8 + 20;
     });
-    expect(link.getAttribute("href")).toBe("https://github.com/acme/app/pull/42");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toContain("noreferrer");
-    expect(link.textContent).toBe("#42");
-  });
-
-  test("shows a pull request whose address is not https as plain text", async () => {
-    renderBar({ pr: pullRequest("http://example.com/pr/42") });
-    const region = await bar();
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
+      return this.getAttribute("aria-label") === "Session and workspace status" ? 200 : 0;
+    });
+    const { container } = renderBar({ pr: null, session: REPORTED });
+    await bar();
+    const classOf = (id: string) =>
+      container.querySelector(`[data-segment="${id}"]`)?.className ?? "";
     await waitFor(() => {
-      expect(within(region).getByText("Pull request #42: Fix the build, open")).toBeTruthy();
+      expect(classOf("N2.git")).toContain("invisible");
     });
-    expect(screen.queryByRole("link", { name: /Pull request/ })).toBeNull();
+    expect(classOf("N2.path")).not.toContain("invisible");
+    expect(classOf("N2.model")).not.toContain("invisible");
+  });
+
+  test("with no folder open and no model yet, the bar draws nothing", () => {
+    renderBar({ pr: null, folder: null });
+    expect(screen.queryByRole("region", { name: "Session and workspace status" })).toBeNull();
   });
 
   test("a passive update leaves focus where it was", async () => {
@@ -214,13 +249,5 @@ describe("StatusSegments", () => {
     const region = await bar();
     expect(region.getAttribute("aria-live")).toBeNull();
     expect(region.querySelector('[aria-live], [role="status"], [role="alert"]')).toBeNull();
-  });
-
-  test("with no folder open the local clock still shows, and the folder segments do not", async () => {
-    const { container } = renderBar({ pr: null, folder: null });
-    await bar();
-    expect(screen.getByText(/^Local time \d{1,2}:\d{2}$/)).toBeTruthy();
-    expect(container.querySelector('[data-segment="N2.hostname"]')).toBeNull();
-    expect(container.querySelector('[data-segment="N2.git"]')).toBeNull();
   });
 });

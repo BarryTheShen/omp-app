@@ -53,6 +53,8 @@ function workingSeconds(text: string): number {
 /** Starts a long worker, messages it while its command runs, and returns once its answer is back in the Agent Hub. */
 async function steerLongWorker(page: Page): Promise<Locator> {
   const composer = await startChat(page);
+  const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+  if ((await showPanels.count()) > 0) await showPanels.first().click();
   await page.getByRole("tab", { name: "Agents" }).click();
   const hub = page.getByRole("region", { name: "Agent Hub" });
   await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });

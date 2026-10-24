@@ -392,7 +392,7 @@ describe("S1.3 appearance settings surface", () => {
     expect(tabAt(0).getAttribute("aria-selected")).toBe("true");
   });
 
-  test("says that these settings change omp's terminal only", async () => {
+  test("says which settings also change this app's chats", async () => {
     const state: FakeConfig = {
       entries: [...DEFAULT_ENTRIES],
       revision: "revision-1",
@@ -403,7 +403,7 @@ describe("S1.3 appearance settings surface", () => {
 
     expect(
       await screen.findAllByText(
-        "These settings change omp's terminal only. This app does not use them.",
+        "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
       ),
     ).toHaveLength(1);
   });

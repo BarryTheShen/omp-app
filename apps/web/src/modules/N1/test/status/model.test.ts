@@ -78,7 +78,7 @@ function reasonOf(chip: StatusChip): string | null {
 }
 
 describe("buildStatusChips", () => {
-  test("keeps every N2 row the bar shows once, in display order", () => {
+  test("keeps every N2 row once, in display order", () => {
     expect(buildStatusChips(inputs()).map((chip) => chip.segment.id)).toEqual([
       "N2.pi",
       "N2.hostname",
@@ -116,14 +116,17 @@ describe("buildStatusChips", () => {
 describe("host and folder", () => {
   test("shows the host name and the home-relative folder", () => {
     expect(textOf(chipFor("N2.hostname"))).toBe("devbox");
-    expect(textOf(chipFor("N2.path"))).toBe("~/code/app");
+    expect(textOf(chipFor("N2.path"))).toBe("app");
+    expect(chipFor("N2.path").tooltip).toBe(
+      `Workspace folder: ~/code/app\nServer ID: devbox\nSession ID: ${threadId}`,
+    );
   });
 
-  test("a long folder path shows its last two parts, and the whole path in the accessible label", () => {
+  test("a long folder path shows its name, and the whole path in the accessible label", () => {
     const long = "/home/user/workspace/projects/omp-app/.data/run/workspace";
     const host = { state: "ready", value: { hostname: "devbox", displayPath: long } } as const;
     const chip = chipFor("N2.path", { host });
-    expect(textOf(chip)).toBe("…/run/workspace");
+    expect(textOf(chip)).toBe("workspace");
     expect(chip.segment.accessibleLabel).toBe(`Workspace folder: ${long}`);
   });
 
@@ -143,7 +146,7 @@ describe("host and folder", () => {
 describe("git branch", () => {
   test("a clean branch says so", () => {
     const chip = chipFor("N2.git");
-    expect(textOf(chip)).toBe("main · clean");
+    expect(textOf(chip)).toBe("main");
     expect(chip.tone).toBe("clean");
     expect(chip.segment.accessibleLabel).toBe("Git branch: main, clean");
   });
@@ -160,13 +163,14 @@ describe("git branch", () => {
       }),
     } as const;
     const chip = chipFor("N2.git", { git });
-    expect(textOf(chip)).toBe("main · 1 changed · 1 staged · 1 untracked");
+    expect(textOf(chip)).toBe("main");
+    expect(chip.segment.accessibleLabel).toBe("Git branch: main, 1 changed, 1 staged, 1 untracked");
     expect(chip.tone).toBe("changed");
   });
 
   test("a detached head shows the short commit", () => {
     const git = { state: "ready", value: gitState({ branch: null, detached: true }) } as const;
-    expect(textOf(chipFor("N2.git", { git }))).toBe("detached at abcdef1 · clean");
+    expect(textOf(chipFor("N2.git", { git }))).toBe("detached at abcdef1");
   });
 
   test("a folder outside a repository, or a repository with no commits, shows nothing", () => {

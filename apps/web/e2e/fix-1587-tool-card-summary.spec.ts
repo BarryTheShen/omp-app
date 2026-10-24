@@ -40,6 +40,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });

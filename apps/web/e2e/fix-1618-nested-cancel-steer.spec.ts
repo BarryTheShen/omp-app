@@ -166,6 +166,8 @@ realTest(
     await box.press("Enter");
     await expect(nested.getByText(STEER_TEXT, { exact: true })).toBeVisible({ timeout: 120_000 });
 
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await expect(hub.getByRole("option", { name: /Running.*NestedChild/ })).toHaveCount(0, {
@@ -214,6 +216,8 @@ realTest(
       timeout: 180_000,
     });
 
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await expect(hub.getByRole("option", { name: /Running.*NestedChild/ })).toHaveCount(0, {
@@ -231,6 +235,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await sendPrompt(composer, "spawn_nested_probe");

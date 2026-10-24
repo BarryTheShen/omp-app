@@ -255,8 +255,8 @@ describe("StatusBarController", () => {
     await settle();
     expect(reads).toEqual({ host: 1, git: 1, pr: 1 });
     expect(chipText(controller, "N2.hostname")).toBe("devbox");
-    expect(chipText(controller, "N2.path")).toBe("~/code/app");
-    expect(chipText(controller, "N2.git")).toBe("main · clean");
+    expect(chipText(controller, "N2.path")).toBe("app");
+    expect(chipText(controller, "N2.git")).toBe("main");
     expect(chipText(controller, "N2.pr")).toBe("#42");
     controller.stop();
   });
@@ -278,7 +278,7 @@ describe("StatusBarController", () => {
     await settle();
     expect(reads.pr).toBe(0);
     expect(chipText(controller, "N2.pr")).toBeNull();
-    expect(chipText(controller, "N2.git")).toBe("main · clean");
+    expect(chipText(controller, "N2.git")).toBe("main");
     controller.stop();
   });
 
@@ -348,7 +348,7 @@ describe("StatusBarController", () => {
     await settle();
     releaseFirst?.(gitState("main"));
     await settle();
-    expect(chipText(controller, "N2.git")).toBe("feature · clean");
+    expect(chipText(controller, "N2.git")).toBe("feature");
     controller.stop();
   });
 

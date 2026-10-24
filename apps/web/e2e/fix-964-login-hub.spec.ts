@@ -131,6 +131,8 @@ realTest(
         target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
     });
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_long_subagent");
     await page.getByRole("tab", { name: "Agents" }).click();
     const running = agentHub(page).getByRole("option", { name: /Running/ });

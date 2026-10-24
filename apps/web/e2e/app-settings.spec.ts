@@ -43,6 +43,12 @@ realTest("opens core settings and renders light, dark, and narrow layouts", asyn
       target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
   });
   await openSettings(page);
+  // Settings opens on Interaction, the first page whose settings change the app; Appearance comes after it.
+  await expect(page.getByRole("button", { name: "Interaction", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "Appearance", exact: true })).toHaveAttribute(
     "aria-pressed",
@@ -51,9 +57,12 @@ realTest("opens core settings and renders light, dark, and narrow layouts", asyn
   await expect(page.getByText("Save settings to", { exact: true })).toBeVisible();
   await expect(page.getByText("Dark Theme", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByText("These settings change omp's terminal only. This app does not use them.", {
-      exact: true,
-    }),
+    page.getByText(
+      "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
+      {
+        exact: true,
+      },
+    ),
   ).toHaveCount(1);
   const appearanceTabs = page
     .getByRole("tablist", { name: "Appearance sections", exact: true })

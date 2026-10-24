@@ -111,6 +111,8 @@ realTest(
     await sendPrompt(composer, WARM);
     await expect(answers(page)).toHaveCount(2, { timeout: 90_000 });
 
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Context" }).click();
     await page.getByRole("button", { name: "Compact now" }).click();
     await expect(page.getByText(/^Compacted [\d,]+ tokens\.$/)).toBeVisible({ timeout: 120_000 });

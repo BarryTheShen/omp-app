@@ -138,6 +138,9 @@ realTest(
     await exchange(page, composer, "alpha question", 1);
     await exchange(page, composer, "bravo question", 2);
 
+    // The panel starts closed on a first run: open it, so there is something to collapse.
+    await page.getByRole("button", { name: "Show panels sidebar" }).click();
+    await expectPanelsOpen(page, true);
     await page.getByRole("button", { name: "Hide panels sidebar" }).click();
     await expectPanelsOpen(page, false);
 
@@ -199,6 +202,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
 
     const hub = page.getByRole("region", { name: "Agent Hub" });
@@ -266,6 +271,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "spawn_subagent");
 
     // The card starts the chat's roster on its own: its worker's transcript is read by the card, not by the tab.
@@ -369,6 +376,10 @@ realTest(
     await page.setViewportSize({ width: 1280, height: 900 });
     const composer = await startChat(page);
     await exchange(page, composer, "alpha question", 1);
+    // The panel starts closed on a first run: open it and let its slide finish, so the tabs are measured at rest.
+    await page.getByRole("button", { name: "Show panels sidebar" }).click();
+    await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute("data-open", "true");
+    await waitForFiniteAnimations(page);
 
     await composer.focus();
     await page.keyboard.press(CHORD);
@@ -401,6 +412,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });

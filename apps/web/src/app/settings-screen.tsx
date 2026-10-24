@@ -60,11 +60,17 @@ export type SettingsScreenProps = {
 type SettingsLayer = Extract<ConfigWriteLayer, "global" | "project">;
 type SettingsGroups = Readonly<Record<SettingTab, readonly SettingsSectionDescriptor[]>>;
 
-/** The tabs the screen has always opened with, in that order; the other omp tabs follow in omp's order. */
-const LEADING_TABS: readonly SettingTab[] = ["appearance", "interaction", "model"];
+/**
+ * The pages whose settings change the app. They come first, in this order, and Settings opens on the first one this
+ * connection can use. The other omp pages follow in omp's order.
+ */
+const LEADING_TABS: readonly SettingTab[] = ["interaction", "model"];
+/** Omp's terminal-only page: its settings change only omp's terminal, so it comes after the app's own pages. */
+const TERMINAL_ONLY_TABS: readonly SettingTab[] = ["appearance"];
 const TAB_ORDER: readonly SettingTab[] = [
   ...LEADING_TABS,
-  ...SETTING_TABS.filter((tab) => !LEADING_TABS.includes(tab)),
+  ...SETTING_TABS.filter((tab) => !LEADING_TABS.includes(tab) && !TERMINAL_ONLY_TABS.includes(tab)),
+  ...TERMINAL_ONLY_TABS,
 ];
 const TAB_LABELS: Readonly<Record<SettingTab, string>> = {
   appearance: "Appearance",
@@ -313,7 +319,13 @@ export function SettingsScreen({
   onStartChat,
 }: SettingsScreenProps) {
   const [contextVisited, setContextVisited] = useState(false);
-  const [activeTab, setActiveTab] = useState<SettingTab>("appearance");
+  // A tab without any available section is left out. Settings opens on the first tab that is shown.
+  const shownTabs = TAB_ORDER.filter((tab) =>
+    SETTINGS_GROUPS[tab].some(
+      (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
+    ),
+  );
+  const [activeTab, setActiveTab] = useState<SettingTab>(() => shownTabs[0] ?? "interaction");
   const [layer, setLayer] = useState<SettingsLayer>("global");
   const [search, setSearch] = useState("");
   const [selectedSections, setSelectedSections] = useState<Partial<Record<SettingTab, string>>>(
@@ -338,12 +350,6 @@ export function SettingsScreen({
   const configAvailable = configStatus === "available" || configStatus === "fallback";
   // Keep unavailable settings visible in the section list so their reason is clear, but do not let them open an editor.
   const sections = useMemo(() => SETTINGS_GROUPS[activeTab], [activeTab]);
-  // A tab without any available section is left out.
-  const shownTabs = TAB_ORDER.filter((tab) =>
-    SETTINGS_GROUPS[tab].some(
-      (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
-    ),
-  );
   const contextAvailable = shownTabs.includes("context");
   useEffect(() => {
     if (!contextAvailable || contextVisited) return undefined;

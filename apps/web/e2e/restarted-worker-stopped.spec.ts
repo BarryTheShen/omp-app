@@ -28,6 +28,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     // The steerable worker keeps taking steps until a steer reaches it, so it is still running when the app restarts.
     await sendPrompt(composer, "spawn_steerable_subagent start the worker and wait for it");
     await page.getByRole("tab", { name: "Agents" }).click();
@@ -45,6 +47,8 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_steerable_subagent/ })
       .click();
+    const showReopenedPanels = reopened.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showReopenedPanels.count()) > 0) await showReopenedPanels.first().click();
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const reopenedHub = reopened.getByRole("region", { name: "Agent Hub" });
     await expect(reopenedHub.getByRole("option", { name: /Stopped.*SteerProbe/ })).toHaveCount(1, {

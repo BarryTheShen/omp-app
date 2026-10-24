@@ -65,6 +65,7 @@ realTest(
 
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible({ timeout: 30_000 });
+    await dialog.getByRole("button", { name: "Appearance", exact: true }).click();
     await expect(dialog.getByText("Composer Shape", { exact: true })).toBeVisible({
       timeout: 60_000,
     });

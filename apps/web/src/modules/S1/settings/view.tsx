@@ -24,10 +24,11 @@ export type AppearanceSettingsViewProps = {
   /** Hide the standalone page heading when this view is embedded in another settings surface. */
   readonly showHeader?: boolean;
 };
-function TerminalOnlySettingsNote() {
+function AppearanceScopeNote() {
   return (
     <p className="text-muted-foreground text-sm">
-      These settings change omp's terminal only. This app does not use them.
+      These settings change omp's terminal only, except Block Images and Auto-Resize Images, which
+      also change this app's chats.
     </p>
   );
 }
@@ -128,7 +129,7 @@ export function AppearanceSettingsView({
           onSelect={actions.onThemeSelect}
           onCancel={actions.onCancelSelector}
         />
-        <TerminalOnlySettingsNote />
+        <AppearanceScopeNote />
         {model.actionError ? (
           <p className="text-destructive text-sm" role="alert">
             {model.actionError}
@@ -152,7 +153,7 @@ export function AppearanceSettingsView({
           onSelect={actions.onImagesSelect}
           onCancel={actions.onCancelSelector}
         />
-        <TerminalOnlySettingsNote />
+        <AppearanceScopeNote />
         {model.actionError ? (
           <p className="text-destructive text-sm" role="alert">
             {model.actionError}
@@ -186,9 +187,7 @@ export function AppearanceSettingsView({
           </Button>
         </header>
       ) : null}
-      <p className="text-muted-foreground text-sm">
-        These settings change omp's terminal only. This app does not use them.
-      </p>
+      <AppearanceScopeNote />
 
       <div className="space-y-3">
         <label className="text-sm font-medium" htmlFor="s1-appearance-search">

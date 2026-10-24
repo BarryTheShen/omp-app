@@ -45,6 +45,8 @@ realTest(
     await expect(assistantMessages.last()).toBeVisible();
     await expect(page.getByText("Assistant is working…")).toBeHidden({ timeout: 45_000 });
     await expect(page.getByText("Loading conversation…")).toBeHidden();
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await expect(page.getByText("Nothing here yet")).toBeVisible();
     await expect(page.getByText("No todos yet.")).toHaveCount(0);
     await messageInput.fill("draft survives reload");
@@ -188,6 +190,8 @@ realTest("lists omp's todos in the checklist panel", async ({ realApp }) => {
   await sendPrompt(composer, "Please make_todos for the release.");
   await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText("Assistant is working…")).toBeHidden({ timeout: 45_000 });
+  const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+  if ((await showPanels.count()) > 0) await showPanels.first().click();
   await expect(page.getByText("Write the thing").first()).toBeVisible();
   await expect(page.getByText("Test the thing").first()).toBeVisible();
   await expect(page.getByText("Nothing here yet")).toHaveCount(0);

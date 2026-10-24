@@ -51,7 +51,8 @@ export function ContextStatusBar({
               style={{ width: `${Math.max(0, Math.min(100, window.percent))}%` }}
             />
           </span>
-          <span className="truncate">
+          {/* The token count is dropped below 40 rem (640 px) of status bar, so the percentage and the bar's own items keep their room. */}
+          <span className="hidden @[40rem]:inline">
             {shortCount(window.tokens)} of {shortCount(window.contextWindow)} tokens
           </span>
         </span>
@@ -60,7 +61,9 @@ export function ContextStatusBar({
       )}
       {snapshot.isCompacting ? <span role="status">Compacting…</span> : null}
       {isStreaming && snapshot.tokensPerSecond !== null ? (
-        <span>{snapshot.tokensPerSecond.toFixed(1)} tokens/s</span>
+        <span className="hidden @[40rem]:inline">
+          {snapshot.tokensPerSecond.toFixed(1)} tokens/s
+        </span>
       ) : null}
       <UsagePopover port={usage} limits={limits} />
     </section>

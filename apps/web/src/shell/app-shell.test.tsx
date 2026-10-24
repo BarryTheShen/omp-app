@@ -10,9 +10,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The Panels sidebar. A closed one is hidden from assistive technology, so it is found by its attribute, not its name. */
+function panelsSidebar(): HTMLElement {
+  const sidebar = document.querySelector<HTMLElement>('[data-shell-sidebar="right"]');
+  if (sidebar === null) throw new Error("The Panels sidebar is not rendered.");
+  return sidebar;
+}
+
 describe("AppShell regions", () => {
   test("renders named regions in visual and focus order", () => {
     render(<AppShell />);
+    fireEvent.click(screen.getByRole("button", { name: "Show panels sidebar" }));
 
     expect(screen.getByRole("navigation", { name: "Sessions" })).toBeTruthy();
     expect(screen.getByRole("main", { name: "Conversation" })).toBeTruthy();
@@ -51,7 +59,11 @@ describe("right sidebar requests", () => {
       return <p>Panel body</p>;
     }
     render(<AppShell rightSidebar={<Panel />} />);
-    const panels = screen.getByRole("complementary", { name: "Panels" });
+    const panels = panelsSidebar();
+    expect(seen.current?.open).toBe(false);
+    act(() => {
+      seen.current?.show();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Hide panels sidebar" }));
     expect(panels.getAttribute("data-open")).toBe("false");
     expect(seen.current?.open).toBe(false);
@@ -77,20 +89,22 @@ describe("sidebar controls", () => {
   test("collapse and expand both sidebars from keyboard shortcuts", () => {
     render(<AppShell />);
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
-    const panels = screen.getByRole("complementary", { name: "Panels" });
+    const panels = panelsSidebar();
+    // A first visit starts with the panel closed.
+    expect(panels.hasAttribute("inert")).toBe(true);
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
     expect(sessions.hasAttribute("inert")).toBe(true);
     expect(screen.getByRole("button", { name: "Show sessions sidebar" })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
-    expect(panels.hasAttribute("inert")).toBe(true);
-    expect(screen.getByRole("button", { name: "Show panels sidebar" })).toBeTruthy();
+    expect(panels.hasAttribute("inert")).toBe(false);
+    expect(screen.getByRole("button", { name: "Hide panels sidebar" })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
     expect(sessions.hasAttribute("inert")).toBe(false);
-    expect(panels.hasAttribute("inert")).toBe(false);
+    expect(panels.hasAttribute("inert")).toBe(true);
   });
 
   test("an open side panel has one control that closes it, and a closed one has one control that opens it", () => {
@@ -110,10 +124,10 @@ describe("sidebar controls", () => {
 
     expect(closers("sessions")).toHaveLength(1);
     expect(openers("sessions")).toHaveLength(0);
-    expect(closers("panels")).toHaveLength(1);
-    expect(openers("panels")).toHaveLength(0);
+    expect(closers("panels")).toHaveLength(0);
+    expect(openers("panels")).toHaveLength(1);
     assertToggle("left", "Hide", true);
-    assertToggle("right", "Hide", true);
+    assertToggle("right", "Show", false);
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
     expect(closers("sessions")).toHaveLength(0);
@@ -121,15 +135,15 @@ describe("sidebar controls", () => {
     assertToggle("left", "Show", false);
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
-    expect(closers("panels")).toHaveLength(0);
-    expect(openers("panels")).toHaveLength(1);
-    assertToggle("right", "Show", false);
+    expect(closers("panels")).toHaveLength(1);
+    expect(openers("panels")).toHaveLength(0);
+    assertToggle("right", "Hide", true);
   });
 
   test("the Panels sidebar keeps its own column when the sessions sidebar is hidden", () => {
     render(<AppShell />);
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
-    expect(screen.getByRole("complementary", { name: "Panels" }).style.gridColumn).toBe("3");
+    expect(panelsSidebar().style.gridColumn).toBe("3");
   });
 
   test("does not hijack the typing shortcut inside an editable control", () => {
@@ -141,6 +155,54 @@ describe("sidebar controls", () => {
       ctrlKey: true,
     });
     expect(sessions.hasAttribute("inert")).toBe(false);
+  });
+});
+
+describe("the right panel's open state", () => {
+  const panelOpen = () => panelsSidebar().getAttribute("data-open");
+
+  test("starts closed on a first visit", () => {
+    render(<AppShell />);
+    expect(panelOpen()).toBe("false");
+  });
+
+  test("keeps the open choice the person made, across a reload", () => {
+    const first = render(<AppShell />);
+    fireEvent.click(screen.getByRole("button", { name: "Show panels sidebar" }));
+    expect(window.localStorage.getItem(SHELL_PREFERENCES_STORAGE_KEY)).toContain(
+      '"rightSidebarOpen":true',
+    );
+    first.unmount();
+
+    render(<AppShell />);
+    expect(panelOpen()).toBe("true");
+  });
+
+  test("keeps a close made with the panel's own arrow, across a reload", () => {
+    const first = render(<AppShell />);
+    fireEvent.click(screen.getByRole("button", { name: "Show panels sidebar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide panels sidebar" }));
+    first.unmount();
+
+    render(<AppShell />);
+    expect(panelOpen()).toBe("false");
+  });
+
+  test("a reveal that opens the panel is not remembered as the person's choice", () => {
+    const seen: { current: RightSidebar | null } = { current: null };
+    function Reveal() {
+      seen.current = useRightSidebar();
+      return null;
+    }
+    const first = render(<AppShell rightSidebar={<Reveal />} />);
+    act(() => {
+      seen.current?.show();
+    });
+    expect(panelOpen()).toBe("true");
+    first.unmount();
+
+    render(<AppShell rightSidebar={<Reveal />} />);
+    expect(panelOpen()).toBe("false");
   });
 });
 
@@ -419,6 +481,7 @@ describe("narrow layout", () => {
     const closed = (id: string) => document.getElementById(id)?.hasAttribute("inert");
 
     render(<AppShell />);
+    fireEvent.click(screen.getByRole("button", { name: "Show panels sidebar" }));
     expect(closed("shell-sessions-sidebar")).toBe(false);
     expect(closed("shell-panels-sidebar")).toBe(false);
 

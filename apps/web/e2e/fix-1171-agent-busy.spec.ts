@@ -187,8 +187,10 @@ async function refusedSecondPrompt(
   if (threadId === undefined) {
     throw new Error("The full thread id was not captured from the sent prompt.");
   }
-  await expect(page.getByRole("region", { name: "Session and workspace status" })).toContainText(
-    `Session ID: ${threadId.slice(0, 8)}`,
+  // The bar draws the folder and the branch; the session id is in the folder's tooltip, in full.
+  await expect(page.locator('[data-segment="N2.path"]')).toHaveAttribute(
+    "title",
+    new RegExp(`Session ID: ${threadId}`),
   );
   await expect(page.getByText("ready", { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("pong", { exact: true })).toHaveCount(1, { timeout: 60_000 });

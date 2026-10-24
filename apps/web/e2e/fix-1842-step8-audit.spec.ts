@@ -389,6 +389,8 @@ realTest("pins the Rules tab to fill the Panels region", async ({ realApp }) => 
   try {
     await startChat(page);
     await page.setViewportSize({ width: 1280, height: 800 });
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     const rulesTab = page.getByRole("tab", { name: "Rules", exact: true });
     await expect(rulesTab).toBeVisible();
     await rulesTab.click();

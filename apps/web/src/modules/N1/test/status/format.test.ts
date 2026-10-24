@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 import {
   accentIndex,
+  folderName,
   formatClock,
   formatDuration,
   pullRequestHref,
   safeText,
-  shortenPath,
 } from "../../status/format";
 
 describe("safeText", () => {
@@ -22,20 +22,15 @@ describe("safeText", () => {
   });
 });
 
-describe("shortenPath", () => {
-  test("keeps a short path whole", () => {
-    expect(shortenPath("~/code/app")).toBe("~/code/app");
-    expect(shortenPath("/work/app")).toBe("/work/app");
+describe("folderName", () => {
+  test("shows the last part of a folder path", () => {
+    expect(folderName("~/code/projects/omp-app")).toBe("omp-app");
+    expect(folderName("/work/app")).toBe("app");
   });
 
-  test("keeps only the last two parts of a long path", () => {
-    expect(shortenPath("/home/user/workspace/projects/omp-app/.data/run/workspace")).toBe(
-      "…/run/workspace",
-    );
-  });
-
-  test("keeps the home mark on a long home-relative path", () => {
-    expect(shortenPath("~/code/projects/omp-app")).toBe("~/…/projects/omp-app");
+  test("shows a path with no name, such as the root, whole", () => {
+    expect(folderName("/")).toBe("/");
+    expect(folderName("~")).toBe("~");
   });
 });
 

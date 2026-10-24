@@ -22,6 +22,8 @@ realTest(
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await sendPrompt(composer, "Please make_todos for the release.");
     await expect(page.getByText("Write the thing").first()).toBeVisible({ timeout: 90_000 });
 

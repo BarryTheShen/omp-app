@@ -100,9 +100,12 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
   await lightPage.goto(`/${PAGE_NAME}.html`);
   await expect(lightPage.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await expect(
-    lightPage.getByText("These settings change omp's terminal only. This app does not use them.", {
-      exact: true,
-    }),
+    lightPage.getByText(
+      "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await expectBackgroundToken(lightPage);
   const reducedMotionDuration = await lightPage.evaluate(() =>
@@ -133,9 +136,12 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
   await darkPage.goto(`/${PAGE_NAME}.html`);
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(
-    darkPage.getByText("These settings change omp's terminal only. This app does not use them.", {
-      exact: true,
-    }),
+    darkPage.getByText(
+      "These settings change omp's terminal only, except Block Images and Auto-Resize Images, which also change this app's chats.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await expectBackgroundToken(darkPage);
   await waitForAnimations(darkPage);

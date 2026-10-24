@@ -94,8 +94,8 @@ function StatusBarPlayground() {
       <header className="border-border bg-card mx-auto w-full max-w-4xl rounded-xl border p-4 shadow-xs">
         <h1 className="text-lg font-semibold tracking-tight">Status bar</h1>
         <p className="text-muted-foreground text-sm">
-          The host, the folder, the git branch, the pull request, the session, the model and the
-          clock
+          The folder, the git branch and the model. The server and the session are in the folder's
+          tooltip.
         </p>
       </header>
       <section className="border-border bg-card mx-auto mt-6 flex w-full max-w-4xl flex-col gap-5 rounded-xl border p-4 shadow-xs sm:p-6">

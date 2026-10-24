@@ -79,12 +79,10 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * A folder path shortened for the bar: a path of more than three parts keeps only its last two, after
- * "…/" (or "~/…/" for a home-relative path). The full path stays in the accessible label and the tooltip.
+ * The name a person reads for a folder: its last part, so `~/code/projects/omp-app` shows `omp-app`. A path with
+ * no name (the root) is shown whole. The full path is in the folder's tooltip.
  */
-export function shortenPath(path: string): string {
+export function folderName(path: string): string {
   const parts = path.split("/").filter((part) => part !== "");
-  if (parts.length <= 3) return path;
-  const prefix = path.startsWith("~/") ? "~/…/" : "…/";
-  return `${prefix}${parts.slice(-2).join("/")}`;
+  return parts.at(-1) ?? path;
 }

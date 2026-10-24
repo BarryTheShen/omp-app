@@ -6,16 +6,16 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { ThinkingLevel } from "@/modules/D1/contract";
-import { thinkingLevelLabel } from "@/modules/D1/thinking";
+import { thinkingLevelLabel, WIDEST_THINKING_WORDS } from "@/modules/D1/thinking/selector";
 import type { SessionInfoState } from "@/modules/R0/store";
 import type { StatusSegment } from "../contract";
 import {
   accentIndex,
+  folderName,
   formatClock,
   formatDuration,
   pullRequestHref,
   safeText,
-  shortenPath,
 } from "./format";
 
 /** One port read, or why there is none. A segment with no reading leaves the bar. */
@@ -64,6 +64,10 @@ export interface StatusChip {
   readonly href?: string;
   /** Which of the five chart colours marks a session name, from 1 to 5. */
   readonly accent?: number;
+  /** What the tooltip says when the accessible label says less: the folder's full path, the server and the session ids. */
+  readonly tooltip?: string;
+  /** The widest text the value can show. The value keeps this width while its text changes, so the bar does not move. */
+  readonly reserve?: string;
 }
 
 type SessionGoal = NonNullable<SessionView["goal"]>;
@@ -124,16 +128,24 @@ function hostChip(reading: Reading<HostMetadata>): StatusChip {
   };
 }
 
-function pathChip(reading: Reading<HostMetadata>): StatusChip {
+function pathChip(reading: Reading<HostMetadata>, threadId: ThreadId): StatusChip {
   const id = "N2.path";
   const label = "Workspace folder";
   if (reading.state === "unavailable") return unavailable(id, label, reading.reason, "folder");
   const path = safeText(reading.value.displayPath);
   if (path === "") return unavailable(id, label, "The folder has no path.", "folder");
+  // The bar draws the folder's name. The tooltip also carries the server and session ids, which the bar does not draw.
+  const server = safeText(reading.value.hostname);
+  const tooltip = [
+    `${label}: ${path}`,
+    ...(server === "" ? [] : [`Server ID: ${server}`]),
+    `Session ID: ${threadId}`,
+  ];
   return {
-    segment: available(id, label, `Workspace folder: ${path}`, shortenPath(path)),
+    segment: available(id, label, `Workspace folder: ${path}`, folderName(path)),
     icon: "folder",
     tone: "neutral",
+    tooltip: tooltip.join("\n"),
   };
 }
 
@@ -179,7 +191,7 @@ function gitChip(reading: Reading<GitState>): StatusChip {
       id,
       label,
       `${label}: ${branch}${clean ? ", clean" : `, ${parts.join(", ")}`}`,
-      `${branch} · ${clean ? "clean" : parts.join(" · ")}`,
+      branch,
     ),
     icon: "git",
     tone: clean ? "clean" : "changed",
@@ -254,6 +266,7 @@ function modelChip(model: SessionView["model"], level: SessionView["thinkingLeve
     segment: available(id, label, accessible, thinking === null ? name : `${name} · ${thinking}`),
     icon: "model",
     tone: "neutral",
+    ...(model.reasoning ? { reserve: `${name} · ${WIDEST_THINKING_WORDS}` } : {}),
   };
 }
 
@@ -342,7 +355,7 @@ export function buildStatusChips(inputs: StatusInputs): readonly StatusChip[] {
   return [
     piChip(),
     hostChip(inputs.host),
-    pathChip(inputs.host),
+    pathChip(inputs.host, inputs.threadId),
     gitChip(inputs.git),
     prChip(inputs.pullRequest),
     sessionChip(inputs.threadId),

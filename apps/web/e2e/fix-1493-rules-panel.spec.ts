@@ -8,6 +8,8 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 const RULES_FILE = "# Rules\n\nAlways include RULES-MARKER-1493 in your response.\n";
 
 async function openRules(page: Page) {
+  const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+  if ((await showPanels.count()) > 0) await showPanels.first().click();
   const tab = page.getByRole("tab", { name: "Rules", exact: true });
   await expect(tab).toBeVisible();
   await tab.click();
