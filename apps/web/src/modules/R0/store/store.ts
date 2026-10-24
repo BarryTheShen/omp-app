@@ -26,16 +26,19 @@ import {
   persistedMessageKey,
   provisionalMessageKey,
 } from "@omp-app/contracts";
-import { createDraft, type Draft, finishDraft } from "immer";
+import { createDraft, type Draft, finishDraft, freeze, original } from "immer";
 
 type QueueMode = OmpWire.QueueMode;
 type SessionState = OmpWire.SessionState;
 type TodoItem = OmpWire.TodoItem;
 type TodoPhase = OmpWire.TodoPhase;
 
-/** A mutable Immer draft is never exposed; `commit` finishes it into a frozen snapshot that shares every unchanged branch with the previous one. */
+/**
+ * A mutable Immer draft is never exposed; `commit` finishes it into a frozen snapshot that shares every unchanged branch with
+ * the previous one. The message order is not in the draft: it is `OmpRuntimeStore.order`, and a change makes a new array.
+ */
 type MutableSnapshot = {
-  -readonly [Key in keyof RuntimeSnapshot]: RuntimeSnapshot[Key];
+  -readonly [Key in Exclude<keyof RuntimeSnapshot, "messageOrder">]: RuntimeSnapshot[Key];
 };
 
 /**
@@ -435,6 +438,186 @@ function freezeDeep<T>(value: T, seen = new Set<object>()): T {
   return Object.freeze(value);
 }
 
+/**
+ * Keyed records that a commit changes without copying them whole. Immer copies and walks every key of a changed record, which
+ * cost 12 ms a commit at 27,400 messages. Here the keys live in chunks of `CHUNK_KEYS`: a write copies the one chunk it touches
+ * and the list of chunks. A record reads as the plain record it stands for (`record[key]`, `key in record`, `Object.keys`, JSON)
+ * and cannot be written: the store changes one with `recordWith` and `recordWithout`, which return the record itself when
+ * nothing changed.
+ */
+const CHUNK_KEYS = 64;
+
+/** Which chunk each key is in. A key keeps its chunk, so every version of one record shares this index. */
+interface ChunkIndex {
+  readonly chunkOf: Map<string, number>;
+  /** The chunk the next new key joins, and how many keys it holds. */
+  openChunk: number;
+  openKeys: number;
+}
+
+/** One version of a chunked record. A version is never changed once built: a write builds the next one. */
+class ChunkedRecord<V> {
+  private readonly index: ChunkIndex;
+  private readonly chunks: readonly (ReadonlyMap<string, V> | undefined)[];
+
+  constructor(index: ChunkIndex, chunks: readonly (ReadonlyMap<string, V> | undefined)[]) {
+    this.index = index;
+    this.chunks = chunks;
+  }
+
+  get(key: string): V | undefined {
+    const id = this.index.chunkOf.get(key);
+    return id === undefined ? undefined : this.chunks[id]?.get(key);
+  }
+
+  has(key: string): boolean {
+    return this.get(key) !== undefined;
+  }
+
+  keys(): string[] {
+    const keys: string[] = [];
+    for (const chunk of this.chunks) {
+      if (chunk !== undefined) for (const key of chunk.keys()) keys.push(key);
+    }
+    return keys;
+  }
+
+  set(key: string, value: V): ChunkedRecord<V> {
+    if (this.get(key) === value) return this;
+    const id = this.index.chunkOf.get(key) ?? this.takeSlot(key);
+    const chunk = new Map<string, V>(this.chunks[id]);
+    chunk.set(key, value);
+    return this.withChunk(id, chunk);
+  }
+
+  /** The table with every entry of `updates` set; the same table when each entry already holds its value. */
+  setMany(updates: ReadonlyMap<string, V>): ChunkedRecord<V> {
+    const touched = new Map<number, Map<string, V>>();
+    for (const [key, value] of updates) {
+      if (this.get(key) === value) continue;
+      const id = this.index.chunkOf.get(key) ?? this.takeSlot(key);
+      let chunk = touched.get(id);
+      if (chunk === undefined) {
+        chunk = new Map<string, V>(this.chunks[id]);
+        touched.set(id, chunk);
+      }
+      chunk.set(key, value);
+    }
+    if (touched.size === 0) return this;
+    const chunks = this.chunks.slice();
+    for (const [id, chunk] of touched) chunks[id] = chunk;
+    return new ChunkedRecord(this.index, chunks);
+  }
+
+  delete(key: string): ChunkedRecord<V> {
+    const id = this.index.chunkOf.get(key);
+    const current = id === undefined ? undefined : this.chunks[id];
+    if (id === undefined || current === undefined || !current.has(key)) return this;
+    const chunk = new Map<string, V>(current);
+    chunk.delete(key);
+    return this.withChunk(id, chunk);
+  }
+
+  /** A new key takes a place in the open chunk; a full chunk is followed by the next one. */
+  private takeSlot(key: string): number {
+    const index = this.index;
+    if (index.openKeys === CHUNK_KEYS) {
+      index.openChunk += 1;
+      index.openKeys = 0;
+    }
+    index.chunkOf.set(key, index.openChunk);
+    index.openKeys += 1;
+    return index.openChunk;
+  }
+
+  private withChunk(id: number, chunk: ReadonlyMap<string, V>): ChunkedRecord<V> {
+    const chunks = this.chunks.slice();
+    chunks[id] = chunk;
+    return new ChunkedRecord(this.index, chunks);
+  }
+}
+
+/** The prototype of every record view. Immer copies only plain objects and arrays, so a commit never copies or walks a view. */
+class RecordView {}
+const RECORD_VIEW_TARGET = new RecordView();
+
+/** Each view's table, by view: `viewOf` registers every view it makes, and `tableOf` reads the table of a view back. */
+const tableByView = new WeakMap<object, ChunkedRecord<unknown>>();
+
+/** The read-only record over one version of a chunked record: `record[key]` reads the table, and nothing can be written. */
+function viewOf<K extends string, V>(table: ChunkedRecord<V>): Readonly<Record<K, V>> {
+  const view = new Proxy(RECORD_VIEW_TARGET, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") {
+        const value = table.get(prop);
+        if (value !== undefined) return value;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    has(target, prop) {
+      return (typeof prop === "string" && table.has(prop)) || Reflect.has(target, prop);
+    },
+    ownKeys: () => table.keys(),
+    getOwnPropertyDescriptor(_target, prop) {
+      const value = typeof prop === "string" ? table.get(prop) : undefined;
+      return value === undefined
+        ? undefined
+        : { value, writable: false, enumerable: true, configurable: true };
+    },
+    set: () => false,
+    defineProperty: () => false,
+    deleteProperty: () => false,
+    setPrototypeOf: () => false,
+    preventExtensions: () => false,
+  });
+  // Unchecked cast: a view answers `view[key]` for the keys of its table, which is what `Readonly<Record<K, V>>` promises.
+  const record = view as unknown as Readonly<Record<K, V>>;
+  tableByView.set(record, table);
+  return record;
+}
+
+/** The table behind a view that `viewOf` made, typed to the values of that view. */
+function tableOf<V>(record: object): ChunkedRecord<V> {
+  const table = tableByView.get(record);
+  if (table === undefined) throw new TypeError("Only a record that the store made can be changed.");
+  // Unchecked cast: `viewOf` registers each view with the table of its own values, and `recordWith` reads it back for that type.
+  const typed = table as ChunkedRecord<V>;
+  return typed;
+}
+
+/** `record` with `key` set to `value`; the record it came from is unchanged. The value is frozen, as the draft froze it. */
+function recordWith<K extends string, V extends object>(
+  record: Readonly<Record<K, V>>,
+  key: K,
+  value: V,
+): Readonly<Record<K, V>> {
+  const table = tableOf<V>(record);
+  const next = table.set(key, freeze(value, true));
+  return next === table ? record : viewOf<K, V>(next);
+}
+
+/** `record` with every entry of `updates` set, in one copy; the record it came from is unchanged. */
+function recordWithMany<K extends string, V extends object>(
+  record: Readonly<Record<K, V>>,
+  updates: ReadonlyMap<K, V>,
+): Readonly<Record<K, V>> {
+  const table = tableOf<V>(record);
+  const frozen = new Map<string, V>();
+  for (const [key, value] of updates) frozen.set(key, freeze(value, true));
+  const next = table.setMany(frozen);
+  return next === table ? record : viewOf<K, V>(next);
+}
+
+/** `record` without `key`; the record it came from is unchanged, and the same record comes back when `key` is not in it. */
+function recordWithout<K extends string, V>(
+  record: Readonly<Record<K, V>>,
+  key: K,
+): Readonly<Record<K, V>> {
+  const table = tableOf<V>(record);
+  const next = table.delete(key);
+  return next === table ? record : viewOf<K, V>(next);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -543,40 +726,52 @@ function copyAssistantWithDelta(
   return { ...cloneValue(candidate), content };
 }
 
+/**
+ * A draft of the snapshot for one event. The order is left out: Immer would copy and freeze the whole array on every commit
+ * (7 ms at 27,400 messages), so `commit` sets the store's order on the snapshot it publishes.
+ */
 function mutableSnapshot(snapshot: RuntimeSnapshot): MutableSnapshot {
-  return createDraft(snapshot) as unknown as MutableSnapshot;
+  const { messageOrder: _order, ...rest } = snapshot;
+  return createDraft(rest) as unknown as MutableSnapshot;
 }
 
 function makeInitialSnapshot(threadId: ThreadId): RuntimeSnapshot {
   const processGeneration = 0;
-  return freezeDeep({
-    threadId,
-    processId: processIdForGeneration(threadId, processGeneration),
-    processGeneration,
-    revision: 0,
-    lastSeq: 0,
-    needsRefetch: false,
-    transcript: { entries: {}, order: [], head: null, hasOlder: false },
-    messages: {},
-    streaming: {},
-    messageOrder: [],
-    pendingEnded: [],
-    pendingPrompts: [],
-    tools: {},
-    prompt: EMPTY_PROMPT,
-    queue: EMPTY_QUEUE,
-    commands: [],
-    todoPhases: EMPTY_TODOS,
-    todoReminders: EMPTY_REMINDERS,
-    pending: EMPTY_PENDING,
-    process: EMPTY_PROCESS,
-    session: EMPTY_SESSION,
-    error: null,
+  return Object.freeze({
+    ...freezeDeep({
+      threadId,
+      processId: processIdForGeneration(threadId, processGeneration),
+      processGeneration,
+      revision: 0,
+      lastSeq: 0,
+      needsRefetch: false,
+      transcript: { entries: {}, order: [], head: null, hasOlder: false },
+      streaming: {},
+      messageOrder: [],
+      pendingEnded: [],
+      pendingPrompts: [],
+      prompt: EMPTY_PROMPT,
+      queue: EMPTY_QUEUE,
+      commands: [],
+      todoPhases: EMPTY_TODOS,
+      todoReminders: EMPTY_REMINDERS,
+      pending: EMPTY_PENDING,
+      process: EMPTY_PROCESS,
+      session: EMPTY_SESSION,
+      error: null,
+    }),
+    // The records are views (see `viewOf`), attached after the freeze, which would otherwise freeze them as plain objects.
+    messages: viewOf<MessageKey, RuntimeMessage>(
+      new ChunkedRecord<RuntimeMessage>({ chunkOf: new Map(), openChunk: 0, openKeys: 0 }, []),
+    ),
+    tools: viewOf<ToolCallId, ToolCallState>(
+      new ChunkedRecord<ToolCallState>({ chunkOf: new Map(), openChunk: 0, openKeys: 0 }, []),
+    ),
   });
 }
 
 function pendingMessageForKey(
-  snapshot: RuntimeSnapshot,
+  snapshot: Pick<RuntimeSnapshot, "messages">,
   key: ProvisionalMessageKey,
 ): RuntimeMessage | undefined {
   return snapshot.messages[key];
@@ -696,9 +891,13 @@ function messageIdForEvent(
 }
 
 function addOrReplaceMessage(next: MutableSnapshot, key: MessageKey, value: RuntimeMessage): void {
-  const messages = next.messages as Record<string, RuntimeMessage>;
+  next.messages = recordWith(next.messages, key, value);
+  setStreamingCopy(next, key, value);
+}
+
+/** A message that is still streaming, or ended but not yet saved, keeps its streamed copy in `streaming`. */
+function setStreamingCopy(next: MutableSnapshot, key: MessageKey, value: RuntimeMessage): void {
   const streaming = next.streaming as Record<string, RuntimeMessage>;
-  messages[key] = value;
   if (value.status === "streaming" || value.status === "ended") {
     if (key.startsWith("stream:")) streaming[key] = value;
   } else {
@@ -706,12 +905,32 @@ function addOrReplaceMessage(next: MutableSnapshot, key: MessageKey, value: Runt
   }
 }
 
+/** Drops a message's record and its streamed copy. Its place in the order is the caller's to change. */
 function removeMessage(next: MutableSnapshot, key: MessageKey): void {
-  delete (next.messages as Record<string, RuntimeMessage>)[key];
+  next.messages = recordWithout(next.messages, key);
   delete (next.streaming as Record<string, RuntimeMessage>)[key];
-  const order = next.messageOrder as MessageKey[];
+}
+
+/** A new order with `count` entries from `start` replaced by `items`. A published order is never changed in place. */
+function spliced(
+  order: readonly MessageKey[],
+  start: number,
+  count: number,
+  ...items: MessageKey[]
+): MessageKey[] {
+  const copy = order.slice();
+  copy.splice(start, count, ...items);
+  return copy;
+}
+
+/** The order with `key` replaced in place by `replacement`; the same order when `key` is not in it. */
+function replacedInOrder(
+  order: readonly MessageKey[],
+  key: MessageKey,
+  replacement: MessageKey,
+): readonly MessageKey[] {
   const index = order.indexOf(key);
-  if (index >= 0) order.splice(index, 1);
+  return index < 0 ? order : spliced(order, index, 1, replacement);
 }
 
 /** The row a message keeps as it streams and ends: the row it took the place of, so its element is not replaced. */
@@ -724,10 +943,7 @@ function keptRowKey(next: MutableSnapshot, key: MessageKey): { readonly rowKey?:
 /** Takes the rows of pending prompts out of the list and the store: omp will not echo them, or the person took them back. */
 function removePendingPrompts(next: MutableSnapshot, keys: readonly MessageKey[]): void {
   next.pendingPrompts = next.pendingPrompts.filter((pending) => !keys.includes(pending.key));
-  for (const key of keys) {
-    delete (next.messages as Record<string, RuntimeMessage>)[key];
-    delete (next.streaming as Record<string, RuntimeMessage>)[key];
-  }
+  for (const key of keys) removeMessage(next, key);
 }
 
 /** The keys of the rows still waiting for omp's echo, oldest first. */
@@ -735,19 +951,26 @@ function pendingKeysOf(next: MutableSnapshot): MessageKey[] {
   return next.pendingPrompts.map((pending) => pending.key);
 }
 
-/** The row of a message the history already shows: one with the same role and timestamp that is not streamed; -1 when none. */
-function shownCopyIndex(next: MutableSnapshot, key: MessageKey, message: OmpMessage): number {
-  if (next.messageOrder.includes(key)) return -1;
+/**
+ * The position in `order` of the row the history already shows for `message`: a row with the same role and timestamp that is
+ * not streamed; -1 when none. `copies` holds those rows by copy key (`hydratePersistedMessages` keeps it), so this costs no
+ * scan of the chat.
+ */
+function shownCopyIndex(
+  next: MutableSnapshot,
+  copies: ReadonlyMap<string, MessageKey>,
+  order: readonly MessageKey[],
+  key: MessageKey,
+  message: OmpMessage,
+): number {
+  if (next.messages[key] !== undefined) return -1;
   const copyKey = streamedCopyKey(message);
-  if (copyKey === undefined) return -1;
-  return next.messageOrder.findIndex((shownKey) => {
-    const shown: RuntimeMessage | undefined = next.messages[shownKey];
-    return (
-      shown !== undefined &&
-      shown.streamMessageId === undefined &&
-      streamedCopyKey(shown.message) === copyKey
-    );
-  });
+  const shownKey = copyKey === undefined ? undefined : copies.get(copyKey);
+  if (copyKey === undefined || shownKey === undefined) return -1;
+  const shown: RuntimeMessage | undefined = next.messages[shownKey];
+  if (shown === undefined || shown.streamMessageId !== undefined) return -1;
+  if (streamedCopyKey(shown.message) !== copyKey) return -1;
+  return order.indexOf(shownKey);
 }
 
 /**
@@ -756,8 +979,7 @@ function shownCopyIndex(next: MutableSnapshot, key: MessageKey, message: OmpMess
  * (`convertExternalMessage`). So a reminder after tool results names that answer, and the answer after the reminder
  * starts a row of its own (issue 1522).
  */
-function reminderRowId(next: MutableSnapshot): MessageKey | null {
-  const order = next.messageOrder;
+function reminderRowId(next: MutableSnapshot, order: readonly MessageKey[]): MessageKey | null {
   const last = order.at(-1);
   if (last === undefined) return null;
   let answer: RuntimeMessage | undefined;
@@ -856,10 +1078,10 @@ function setProcess(
 }
 
 function cancelActiveTools(next: MutableSnapshot): void {
-  const tools = next.tools as Record<string, ToolCallState>;
-  for (const [toolCallId, tool] of Object.entries(tools)) {
-    if (tool.status === "running" || tool.status === "partial") {
-      tools[toolCallId] = { ...tool, status: "cancelled" };
+  for (const [key, tool] of Object.entries(next.tools)) {
+    const toolCallId = asToolCallId(key);
+    if (toolCallId !== undefined && (tool.status === "running" || tool.status === "partial")) {
+      next.tools = recordWith(next.tools, toolCallId, { ...tool, status: "cancelled" });
     }
   }
 }
@@ -996,15 +1218,51 @@ function streamedCopyKey(message: OmpMessage): string | undefined {
 }
 
 /**
+ * The records one history pass writes, applied together. Writing them one at a time copies a chunk of the record for each
+ * write, and a pass over a long chat's history writes most of its chunks, so the pass collects its writes and applies them
+ * once (`apply`), which copies each chunk once.
+ */
+class MessageWrites {
+  private readonly next: MutableSnapshot;
+  private readonly pending = new Map<MessageKey, RuntimeMessage>();
+
+  constructor(next: MutableSnapshot) {
+    this.next = next;
+  }
+
+  /** The record as the pass sees it: a record the pass wrote, else the record in the store. */
+  get(key: MessageKey): RuntimeMessage | undefined {
+    const written: RuntimeMessage | undefined = this.pending.get(key);
+    return written ?? this.next.messages[key];
+  }
+
+  /** Records a write for `apply`; its streamed copy is kept as `addOrReplaceMessage` keeps it. */
+  set(key: MessageKey, value: RuntimeMessage): void {
+    this.pending.set(key, value);
+    setStreamingCopy(this.next, key, value);
+  }
+
+  /** Applies every write of the pass to the record, in one copy. */
+  apply(): void {
+    this.next.messages = recordWithMany(this.next.messages, this.pending);
+  }
+}
+
+/**
  * History holds the message the stream still shows as streaming: omp persisted it, so its end was missed (a
  * gap in the stream), and the history's copy is the ended message. The stand-in takes that copy and ends, so
  * it settles; it pairs with its entry at the next pairing, as a message_end would. A message_end that still
  * arrives finds the same stand-in.
  */
-function settleStreamedCopy(next: MutableSnapshot, key: MessageKey, message: OmpMessage): void {
-  const record = next.messages[key];
+function settleStreamedCopy(
+  next: MutableSnapshot,
+  writes: MessageWrites,
+  key: MessageKey,
+  message: OmpMessage,
+): void {
+  const record = writes.get(key);
   if (record?.status !== "streaming") return;
-  addOrReplaceMessage(next, key, { ...record, message, status: "ended" });
+  writes.set(key, { ...record, message, status: "ended" });
   const pending = next.pendingEnded as ProvisionalMessageKey[];
   const provisional = key as ProvisionalMessageKey;
   if (!pending.includes(provisional)) pending.push(provisional);
@@ -1056,14 +1314,17 @@ function isVoiceLine(record: RuntimeMessage | undefined): boolean {
  * message, in branch order, followed by the live messages omp has not persisted yet. A live message
  * already paired to an entry keeps its record; one not paired yet stands in for its entry (so a
  * message never shows twice while its `message_end` and the history race). Persisted messages of
- * other branches leave the view.
+ * other branches leave the view. `order` is the store's message order, and the order it returns
+ * replaces it. `copies` is refilled with the history rows the view shows, by copy key (`shownCopyIndex`).
  */
 function hydratePersistedMessages(
   next: MutableSnapshot,
+  order: readonly MessageKey[],
+  copies: Map<string, MessageKey>,
   rowKeys: ReadonlyMap<EntryId, MessageKey> = new Map(),
-): void {
+): readonly MessageKey[] {
   const unpairedLive = new Map<string, MessageKey>();
-  for (const key of next.messageOrder) {
+  for (const key of order) {
     const record = next.messages[key];
     if (!key.startsWith("stream:") || record === undefined || record.entryId !== undefined)
       continue;
@@ -1077,11 +1338,12 @@ function hydratePersistedMessages(
     return live;
   };
 
+  const writes = new MessageWrites(next);
   const viewOrder: MessageKey[] = [];
   for (const entryId of activeBranch(next.transcript)) {
     const entry = next.transcript.entries[entryId];
     if (!entry) continue;
-    const current = entry.messageKey === undefined ? undefined : next.messages[entry.messageKey];
+    const current = entry.messageKey === undefined ? undefined : writes.get(entry.messageKey);
     if (current?.streamMessageId !== undefined) {
       viewOrder.push(current.key);
       continue;
@@ -1089,7 +1351,7 @@ function hydratePersistedMessages(
     const message = current?.message ?? messageFromEntry(entry);
     const live = takeLiveCopy(message);
     if (live !== undefined) {
-      if (message !== undefined) settleStreamedCopy(next, live, message);
+      if (message !== undefined) settleStreamedCopy(next, writes, live, message);
       viewOrder.push(live);
       continue;
     }
@@ -1100,7 +1362,7 @@ function hydratePersistedMessages(
     if (!message) continue;
     const key = persistedMessageKey(next.threadId, entryId);
     const rowKey = rowKeys.get(entryId);
-    addOrReplaceMessage(next, key, {
+    writes.set(key, {
       key,
       message,
       status: "persisted",
@@ -1111,14 +1373,23 @@ function hydratePersistedMessages(
     mergeEntryMessageKey(next, entryId, key);
     viewOrder.push(key);
   }
+  writes.apply();
   const shown = new Set<MessageKey>(viewOrder);
-  const live = next.messageOrder.filter((key) => !shown.has(key) && key.startsWith("stream:"));
-  next.messageOrder = placeLiveMessages(
-    next.messageOrder,
+  const live = order.filter((key) => !shown.has(key) && key.startsWith("stream:"));
+  const placed = placeLiveMessages(
+    order,
     viewOrder,
     live,
     (key) => next.messages[key]?.interrupted === true || isVoiceLine(next.messages[key]),
   );
+  copies.clear();
+  for (const key of placed) {
+    const record = next.messages[key];
+    if (record === undefined || record.streamMessageId !== undefined) continue;
+    const copyKey = streamedCopyKey(record.message);
+    if (copyKey !== undefined && !copies.has(copyKey)) copies.set(copyKey, key);
+  }
+  return placed;
 }
 
 interface PendingDraft {
@@ -1248,6 +1519,10 @@ export class OmpRuntimeStore {
   private undeliveredFrames: UndeliveredFrame[] = [];
   /** Omp events no listener was attached for when they arrived: kept for the first listener (`subscribeOmpEvents`). */
   private undeliveredEvents: UndeliveredEvent[] = [];
+  /** The message order (`messageOrder` of the snapshot). A change makes a new array: a published order is never changed in place. */
+  private order: readonly MessageKey[];
+  /** The history rows the view shows, by copy key (see `shownCopyIndex`); `hydratePersistedMessages` refills it. */
+  private readonly historyCopies = new Map<string, MessageKey>();
 
   public constructor(options: OmpRuntimeStoreOptions);
   public constructor(threadId: ThreadId, options?: Omit<OmpRuntimeStoreOptions, "threadId">);
@@ -1260,6 +1535,7 @@ export class OmpRuntimeStore {
         ? { ...options, threadId: optionsOrThreadId }
         : optionsOrThreadId;
     this.snapshot = makeInitialSnapshot(config.threadId);
+    this.order = this.snapshot.messageOrder;
     this.transport = config.transport ?? {};
   }
 
@@ -1488,7 +1764,7 @@ export class OmpRuntimeStore {
     const rowKeys = settleEndedCommands(next, fresh);
     if (leafId !== undefined) next.transcript = { ...next.transcript, head: leafId };
     this.pairEndedInDraft(next, entries);
-    hydratePersistedMessages(next, rowKeys);
+    this.order = hydratePersistedMessages(next, this.order, this.historyCopies, rowKeys);
     this.commit(next);
   }
 
@@ -1508,7 +1784,7 @@ export class OmpRuntimeStore {
       order: [...older.map((entry) => entry.id), ...next.transcript.order],
       hasOlder,
     };
-    hydratePersistedMessages(next);
+    this.order = hydratePersistedMessages(next, this.order, this.historyCopies);
     this.commit(next);
   }
 
@@ -1537,7 +1813,7 @@ export class OmpRuntimeStore {
     if (key !== undefined && record !== undefined && message !== undefined) {
       addOrReplaceMessage(next, key, { ...record, message });
     }
-    hydratePersistedMessages(next);
+    this.order = hydratePersistedMessages(next, this.order, this.historyCopies);
     this.commit(next);
   }
 
@@ -1705,9 +1981,9 @@ export class OmpRuntimeStore {
       timestamp: Date.now(),
     } as unknown as OmpMessage;
     const next = mutableSnapshot(this.snapshot);
+    const isNew = next.messages[key] === undefined;
     addOrReplaceMessage(next, key, { key, message, status: "ended", streamMessageId: id });
-    const order = next.messageOrder as MessageKey[];
-    if (!order.includes(key)) order.push(key);
+    if (isNew) this.order = spliced(this.order, this.order.length, 0, key);
     this.commit(next);
   }
 
@@ -1737,7 +2013,7 @@ export class OmpRuntimeStore {
     ) {
       removePendingPrompts(next, [pendingKey]);
     }
-    if (next.messageOrder.length === 0 && next.pendingPrompts.length === 0) {
+    if (this.order.length === 0 && next.pendingPrompts.length === 0) {
       updatePrompt(next, { sent: false });
     }
     this.commit(next);
@@ -1798,11 +2074,21 @@ export class OmpRuntimeStore {
     this.commit(next);
   }
 
+  /**
+   * Publishes the event's draft. Unchanged branches are shared with the previous snapshot and changed ones are frozen (Immer
+   * auto-freeze). The order is set here, so a change to it makes a new snapshot. A commit that changes neither publishes
+   * nothing: the snapshot and its listeners stay as they were.
+   */
   private commit(next: MutableSnapshot): void {
-    next.revision = this.snapshot.revision + 1;
-    // Structural sharing: unchanged branches are reused and changed ones are frozen (Immer auto-freeze),
-    // so an event costs the size of what it changed, not the size of the whole session.
-    this.snapshot = finishDraft(next as unknown as Draft<RuntimeSnapshot>);
+    const draft = next as unknown as Draft<Omit<RuntimeSnapshot, "messageOrder">>;
+    const base = original(draft);
+    const finished = finishDraft(draft);
+    if (finished === base && this.order === this.snapshot.messageOrder) return;
+    this.snapshot = Object.freeze({
+      ...finished,
+      messageOrder: this.order,
+      revision: this.snapshot.revision + 1,
+    });
     for (const listener of this.listeners) listener(this.snapshot);
   }
 
@@ -1837,15 +2123,15 @@ export class OmpRuntimeStore {
   }
 
   private interruptStreamingMessages(next: MutableSnapshot): void {
-    const messages = next.messages as Record<string, RuntimeMessage>;
     const streaming = next.streaming as Record<string, RuntimeMessage>;
     const pending = next.pendingEnded as ProvisionalMessageKey[];
-    for (const [key, message] of Object.entries(messages)) {
+    // The open streamed copies are read from the published snapshot: a draft's children must never end up inside a record.
+    for (const [key, message] of Object.entries(this.snapshot.streaming)) {
       if (!key.startsWith("stream:") || message.status !== "streaming") continue;
-      const interrupted: RuntimeMessage = { ...message, status: "ended", interrupted: true };
-      messages[key] = interrupted;
-      delete streaming[key];
       const provisionalKey = key as ProvisionalMessageKey;
+      const interrupted: RuntimeMessage = { ...message, status: "ended", interrupted: true };
+      next.messages = recordWith(next.messages, provisionalKey, interrupted);
+      delete streaming[key];
       if (!pending.includes(provisionalKey)) pending.push(provisionalKey);
     }
     updatePrompt(next, { streaming: false });
@@ -2117,7 +2403,7 @@ export class OmpRuntimeStore {
           todos: cloneValue(event.todos) as TodoItem[],
           attempt: typeof event.attempt === "number" ? event.attempt : 1,
           maxAttempts: typeof event.maxAttempts === "number" ? event.maxAttempts : 1,
-          afterMessage: reminderRowId(next),
+          afterMessage: reminderRowId(next, this.order),
         };
         next.todoReminders = [...next.todoReminders, reminder].slice(-MAX_TODO_REMINDERS);
         return;
@@ -2152,7 +2438,7 @@ export class OmpRuntimeStore {
     const messageId = messageIdForEvent(event, seq, this.generatedMessageNumber++);
     const key = provisionalMessageKey(this.snapshot.processId, messageId);
     this.streamKeys.set(messageId, key);
-    const order = next.messageOrder as MessageKey[];
+    const order = this.order;
     // The pending row this echo answers: the oldest one added before the echo's seq (`markPromptSent`). Only the person's own
     // user message is an echo: omp marks an agent's or a synthetic one (`attribution`, `synthetic`), which they did not type.
     const echoedKey =
@@ -2162,10 +2448,13 @@ export class OmpRuntimeStore {
     // A message the history already shows (the stream was replayed, or lagged behind a history load) takes that message's
     // place instead of showing twice. The copy keeps that row's id, so a notice that follows the row still follows it
     // (issue 1522). The pending row of such an echo is a duplicate, and goes.
-    if (echoedKey !== undefined && shownCopyIndex(next, key, message) >= 0) {
+    if (
+      echoedKey !== undefined &&
+      shownCopyIndex(next, this.historyCopies, order, key, message) >= 0
+    ) {
       removePendingPrompts(next, [echoedKey]);
     }
-    const shownIndex = shownCopyIndex(next, key, message);
+    const shownIndex = shownCopyIndex(next, this.historyCopies, order, key, message);
     const shownKey = shownIndex >= 0 ? order[shownIndex] : undefined;
     const shown = shownKey === undefined ? undefined : next.messages[shownKey];
     // Otherwise the echo takes the pending row's place: its row id is kept, so the element is not replaced, and the echo
@@ -2179,11 +2468,13 @@ export class OmpRuntimeStore {
       streamMessageId: messageId,
       ...(rowKey === undefined ? {} : { rowKey }),
     };
+    // A message the store already holds is in the order: its start put it there, so only a new one is added.
+    const isNew = next.messages[key] === undefined;
     if (replacedKey !== undefined) removePendingPrompts(next, [replacedKey]);
     addOrReplaceMessage(next, key, record);
-    if (!order.includes(key)) {
-      if (shownIndex >= 0) order.splice(shownIndex, 1, key);
-      else order.push(key);
+    if (isNew) {
+      this.order =
+        shownIndex >= 0 ? spliced(order, shownIndex, 1, key) : spliced(order, order.length, 0, key);
     }
     updatePrompt(next, { admitted: true, streaming: true, sessionSettled: false });
   }
@@ -2238,7 +2529,8 @@ export class OmpRuntimeStore {
       ...keptRowKey(next, key),
     };
     addOrReplaceMessage(next, key, record);
-    if (!next.messageOrder.includes(key)) (next.messageOrder as MessageKey[]).push(key);
+    // A message's first event adds it to the order (its start normally did); a message the store holds is in the order already.
+    if (previous === undefined) this.order = spliced(this.order, this.order.length, 0, key);
     updatePrompt(next, { admitted: true, streaming: true, sessionSettled: false });
   }
 
@@ -2256,8 +2548,9 @@ export class OmpRuntimeStore {
       streamMessageId: id,
       ...keptRowKey(next, key),
     };
+    const isNew = pendingMessageForKey(next, key) === undefined;
     addOrReplaceMessage(next, key, record);
-    if (!next.messageOrder.includes(key)) (next.messageOrder as MessageKey[]).push(key);
+    if (isNew) this.order = spliced(this.order, this.order.length, 0, key);
     if (!(next.pendingEnded as ProvisionalMessageKey[]).includes(key)) {
       (next.pendingEnded as ProvisionalMessageKey[]).push(key);
     }
@@ -2268,9 +2561,8 @@ export class OmpRuntimeStore {
     const toolCallId = asToolCallId(event.toolCallId);
     const toolName = asString(event.toolName);
     if (!toolCallId || !toolName) return;
-    const tools = next.tools as Record<string, ToolCallState>;
-    const previous = tools[toolCallId];
-    tools[toolCallId] = {
+    const previous = next.tools[toolCallId];
+    next.tools = recordWith(next.tools, toolCallId, {
       toolCallId,
       toolName,
       args: cloneValue(event.args),
@@ -2278,7 +2570,7 @@ export class OmpRuntimeStore {
       status: "running",
       // Argument projections stream in before execution starts; keep the latest one.
       streamProjection: previous?.streamProjection,
-    };
+    });
   }
 
   private reduceToolUpdate(
@@ -2289,9 +2581,8 @@ export class OmpRuntimeStore {
     const toolCallId = asToolCallId(event.toolCallId);
     const toolName = asString(event.toolName);
     if (!toolCallId || !toolName) return;
-    const tools = next.tools as Record<string, ToolCallState>;
-    const previous = tools[toolCallId];
-    tools[toolCallId] = {
+    const previous = next.tools[toolCallId];
+    next.tools = recordWith(next.tools, toolCallId, {
       toolCallId,
       toolName,
       args: event.args === undefined ? previous?.args : cloneValue(event.args),
@@ -2305,7 +2596,7 @@ export class OmpRuntimeStore {
       streamProjection: stream ? cloneValue(event.update) : previous?.streamProjection,
       result: previous?.result,
       isError: previous?.isError,
-    };
+    });
   }
 
   private reduceToolEnd(next: MutableSnapshot, event: Record<string, unknown>): void {
@@ -2313,8 +2604,8 @@ export class OmpRuntimeStore {
     const toolName = asString(event.toolName);
     if (!toolCallId || !toolName) return;
     const isError = event.isError === true;
-    const previous = (next.tools as Record<string, ToolCallState>)[toolCallId];
-    (next.tools as Record<string, ToolCallState>)[toolCallId] = {
+    const previous = next.tools[toolCallId];
+    next.tools = recordWith(next.tools, toolCallId, {
       toolCallId,
       toolName,
       args: event.args === undefined ? previous?.args : cloneValue(event.args),
@@ -2324,7 +2615,7 @@ export class OmpRuntimeStore {
       streamProjection: previous?.streamProjection,
       result: cloneValue(event.result),
       isError,
-    };
+    });
     // omp derives its todo list from every successful `todo` result except `view`
     // (src/tools/todo.ts:194-199 at v18.6.1); the app follows the same rule.
     const phases = todoPhasesFromResult(toolName, isError, event.result);
@@ -2366,11 +2657,9 @@ export class OmpRuntimeStore {
         parentId: entry?.parentId,
         rowKey: message.rowKey ?? key,
       };
-      const order = next.messageOrder as MessageKey[];
-      const originalIndex = order.indexOf(key);
       addOrReplaceMessage(next, persistedKey, persisted);
       removeMessage(next, key);
-      if (originalIndex >= 0) order.splice(originalIndex, 0, persistedKey);
+      this.order = replacedInOrder(this.order, key, persistedKey);
       mergeEntryMessageKey(next, pairedId, persistedKey);
       const pendingIndex = pending.indexOf(key);
       if (pendingIndex >= 0) pending.splice(pendingIndex, 1);

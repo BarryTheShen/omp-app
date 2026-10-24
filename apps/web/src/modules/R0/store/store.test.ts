@@ -122,7 +122,7 @@ describe("OmpRuntimeStore", () => {
 
     const before = store.getSnapshot();
     expect(Object.isFrozen(before)).toBe(true);
-    expect(Object.isFrozen(before.messages)).toBe(true);
+    // The messages are a read-only view of chunks, so the record itself is not frozen: writes to it are refused.
     expect(() => {
       (before.messages as Record<string, unknown>).new = {};
     }).toThrow();
@@ -701,7 +701,9 @@ describe("OmpRuntimeStore", () => {
     expect(after).not.toBe(before);
     expect(after.transcript).toBe(before.transcript);
     expect(after.tools["a" as ToolCallId]).toBe(before.tools["a" as ToolCallId]);
-    expect(Object.isFrozen(after.tools)).toBe(true);
+    expect(() => {
+      (after.tools as Record<string, unknown>).new = {};
+    }).toThrow();
     expect(Object.isFrozen(after.tools["b" as ToolCallId])).toBe(true);
   });
 
