@@ -1,4 +1,4 @@
-import { messageIdentity, type OmpMessage } from "@omp-app/contracts";
+import { messageIdentity, type OmpMessage, type OmpWire } from "@omp-app/contracts";
 import type { RuntimeMessageView } from "../../R0/runtime";
 import type { RuntimeMessage, RuntimeSnapshot } from "../../R0/store";
 import type { RawTranscriptContent, RawTranscriptPart, TranscriptRow } from "../model";
@@ -377,9 +377,10 @@ function contentParts(content: unknown, startIndex: number): BuiltContent {
         break;
       }
       case "thinking": {
-        const thinking =
-          "thinking" in item && typeof item.thinking === "string" ? item.thinking : undefined;
-        const narration = "narration" in item && item.narration === true;
+        // omp's `ThinkingContent`. The data is unchecked, so every field may be missing.
+        const block = item as Partial<OmpWire.ThinkingContent>;
+        const thinking = typeof block.thinking === "string" ? block.thinking : undefined;
+        const narration = block.narration === true;
         parts.push(
           thinking === undefined
             ? rawPart(index, "notice", item)

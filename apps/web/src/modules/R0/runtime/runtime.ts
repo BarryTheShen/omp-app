@@ -342,11 +342,13 @@ function assistantParts(
         );
         break;
       case "thinking": {
-        const thinking = typeof rawPart.thinking === "string" ? rawPart.thinking : undefined;
+        // omp's `ThinkingContent`. The data is unchecked, so every field may be missing.
+        const block = rawPart as Partial<OmpWire.ThinkingContent>;
+        const thinking = typeof block.thinking === "string" ? block.thinking : undefined;
         parts.push(
           thinking === undefined
             ? textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" })
-            : rawPart.narration === true
+            : block.narration === true
               ? textPart(thinking, status)
               : { type: "reasoning", text: thinking, status },
         );
