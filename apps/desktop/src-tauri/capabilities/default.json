@@ -1,7 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The window grants no commands to any page. The app's pages and the local server's pages call no desktop commands.",
+  "description": "The app's server pages in this window may read a picture from the clipboard, and nothing else.",
   "windows": ["main"],
-  "permissions": []
+  "local": false,
+  "remote": {
+    "urls": ["http://127.0.0.1:*/*"]
+  },
+  "permissions": ["allow-read-clipboard-png"]
 }

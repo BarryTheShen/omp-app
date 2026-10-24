@@ -150,3 +150,99 @@ describe("U2.2 ComposerSurface: a file the composer will not take", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });
+
+/** The desktop window's bridge to its commands, answering the one command with `invoke`. Returns the spy on it. */
+function desktopBridge(invoke: (command: string) => Promise<unknown>) {
+  const spy = vi.fn(invoke);
+  Object.defineProperty(window, "__TAURI_INTERNALS__", {
+    configurable: true,
+    value: { invoke: spy },
+  });
+  return spy;
+}
+
+/** The first bytes of a PNG: enough to be a picture here, since the composer does not decode it. */
+const PICTURE = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]).buffer;
+
+describe("U2.2 ComposerSurface: a paste whose event carries no file", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  });
+
+  test("in the desktop window, the picture on the clipboard is attached as one file, named as a pasted picture", async () => {
+    const invoke = desktopBridge(async () => PICTURE);
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const input = renderComposer(manager);
+
+    fireEvent.paste(input, { clipboardData: { files: [], getData: () => "" } });
+
+    await waitFor(() =>
+      expect(manager.getState().complete.map((attachment) => attachment.name)).toEqual([
+        "Pasted image 1.png",
+      ]),
+    );
+    expect(invoke).toHaveBeenCalledWith("read_clipboard_png");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("in a browser, a paste with no file and no text attaches nothing and shows no notice", async () => {
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const input = renderComposer(manager);
+
+    fireEvent.paste(input, { clipboardData: { files: [], getData: () => "" } });
+
+    // The paste handler's work is asynchronous: wait for it to finish before asserting that it did nothing.
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 0);
+    await promise;
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a read the desktop window refuses is named in the composer, and nothing is attached", async () => {
+    desktopBridge(async () => {
+      throw new Error("The clipboard is busy");
+    });
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const input = renderComposer(manager);
+
+    fireEvent.paste(input, { clipboardData: { files: [], getData: () => "" } });
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(
+        "The picture could not be read from the clipboard.",
+      ),
+    );
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+  });
+
+  test("an empty answer from the desktop window attaches nothing and shows no notice", async () => {
+    const invoke = desktopBridge(async () => new ArrayBuffer(0));
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const input = renderComposer(manager);
+
+    fireEvent.paste(input, { clipboardData: { files: [], getData: () => "" } });
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 0);
+    await promise;
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a paste that carries text goes to the box, and the desktop window's command is not called", () => {
+    const invoke = desktopBridge(async () => PICTURE);
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const input = renderComposer(manager);
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === "text/plain" ? "a few words" : ""),
+      },
+    });
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});

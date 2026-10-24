@@ -41,6 +41,7 @@ import {
   textForMode,
 } from "../modes";
 import { type ArrowGesture, arrowGestureStep, NO_ARROW_GESTURE } from "./arrow-gesture";
+import { readDesktopClipboardPicture } from "./clipboard-pictures";
 import { useLargePasteMenuThreshold } from "./large-paste-menu";
 import { offeredFiles, refusalNotice } from "./refused-files";
 import { useRemeasureOnWidthChange } from "./remeasure";
@@ -191,6 +192,8 @@ const SAVING_PASTE_REASON =
 /** What a person reads when a large paste could not be saved as a file: the text is attached instead, so it is not lost. */
 const LOCAL_FILE_FALLBACK =
   "The pasted text could not be saved to a file, so it was attached instead.";
+/** What a person reads when the desktop window cannot read the picture on the clipboard. */
+const PICTURE_UNREADABLE = "The picture could not be read from the clipboard.";
 
 /** U2's assistant-ui composer surface; all submissions go through the injected R0.3 callback. */
 export function ComposerSurface({
@@ -420,12 +423,41 @@ export function ComposerSurface({
     }
   }, [addPasteAsChip, insertLargePaste, largePaste, savePasteFile]);
 
+  /**
+   * Attaches the picture on the desktop window's clipboard after a paste that carried neither a file nor text.
+   * A browser has no such picture, so nothing happens there. A read the window refuses is named in the box.
+   * A picture the composer refuses is named by the runtime's notice (composer.attachmentAddError).
+   */
+  const attachDesktopPicture = useCallback(async (): Promise<void> => {
+    const sequence = pasteCount.current + 1;
+    let file: File | null;
+    try {
+      file = await readDesktopClipboardPicture(sequence);
+    } catch {
+      setError({ code: "unavailable", message: PICTURE_UNREADABLE, retryable: true });
+      return;
+    }
+    if (file === null) return;
+    pasteCount.current = sequence;
+    try {
+      await composer.addAttachment(file);
+    } catch {
+      // The runtime has already said why (composer.attachmentAddError), so its notice stands.
+    }
+  }, [composer]);
+
   const largePasteThreshold = useLargePasteMenuThreshold();
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       // A pasted file is attached by assistant-ui; only plain text can be a large paste.
       if (event.clipboardData.files.length > 0) return;
       const pasted = event.clipboardData.getData("text/plain");
+      // The paste carried no file and no text. In the desktop window the picture on the clipboard is read through the
+      // window's own command, since the engine does not hand it to the page. A browser has no such picture to read.
+      if (pasted === "") {
+        void attachDesktopPicture();
+        return;
+      }
       const decision = classifyLargePaste(pasted, largePasteThreshold);
       if (decision.kind !== "choose") return;
       event.preventDefault();
@@ -439,7 +471,7 @@ export function ComposerSurface({
         selectionEnd: input.selectionEnd,
       });
     },
-    [insertLargePaste, largePaste, largePasteThreshold],
+    [attachDesktopPicture, insertLargePaste, largePaste, largePasteThreshold],
   );
 
   const handleSubmitCapture = useCallback(

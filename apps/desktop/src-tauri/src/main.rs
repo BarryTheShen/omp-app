@@ -5,6 +5,7 @@
 //! that is already open. The window finds the omp coding agent itself (see `omp.rs`).
 
 mod address;
+mod clipboard;
 mod downloads;
 mod gstreamer;
 mod omp;
@@ -23,6 +24,7 @@ fn main() {
             focus_window(app)
         }))
         .manage(server::Shared::default())
+        .invoke_handler(tauri::generate_handler![clipboard::read_clipboard_png])
         .on_window_event(|window, event| {
             // Closing the window hides it at once. The app ends once the server is stopped (see
             // `server::quit`), which can take a few seconds while omp is busy.
