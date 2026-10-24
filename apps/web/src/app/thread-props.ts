@@ -10,7 +10,7 @@ import type { createNativeRemoteThreadListAdapter } from "@/modules/R1/remote";
 import type { ReadingPlace } from "@/modules/U1/scroll";
 import type { withPastedText } from "@/modules/U2/attachments";
 import type { PromptIntent } from "@/modules/U2/contract";
-import type { NewChatOutcome } from "./new-chat-outcome";
+import type { NewChatOutcome, NewChatTicket } from "./new-chat-outcome";
 
 /** The attachments a send carries, read when Enter is pressed in the composer that holds them (see `submit` in the view). */
 export interface SendAttachments {
@@ -25,7 +25,7 @@ export interface ActiveThreadProps {
     newChatEnd: Promise<NewChatOutcome> | null,
     keptInNewChat: boolean,
   ) => Promise<void>;
-  readonly newChatOutcomeNow: () => Promise<NewChatOutcome> | null;
+  readonly newChatTicketNow: () => NewChatTicket | null;
   readonly registerLiveChat: (
     threadId: ThreadId,
     deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,

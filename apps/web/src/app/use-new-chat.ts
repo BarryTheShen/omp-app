@@ -3,7 +3,7 @@ import { type Dispatch, type SetStateAction, useCallback, useRef } from "react";
 import type { SelectedThreadHistoryController } from "@/modules/R1/history";
 import type { NewChatStatus } from "@/modules/R1/ui";
 import { unsentChatReloadMarker } from "@/modules/U2/drafts";
-import { type NewChatOutcome, type NewChatTicket, openNewChatTicket } from "./new-chat-outcome";
+import { type NewChatTicket, openNewChatTicket } from "./new-chat-outcome";
 import { perfTraceStart } from "./perf-trace";
 import {
   persistUnsentChatReload,
@@ -37,12 +37,9 @@ export function useNewChat({
   // newest New chat (an older one is superseded by a newer click and will not open), so the newest hold is the one a
   // report ends; the holds of the New chats before it end at once.
   const newChatHolds = useRef<Array<() => void>>([]);
-  // The newest New chat's outcome: a send made while it opens waits for it, and is not sent when it does not open.
+  // Keep the opened ticket current until its first draft submission and chat-view open settle.
   const newChatTicketRef = useRef<NewChatTicket | null>(null);
-  const newChatOutcomeNow = useCallback(
-    (): Promise<NewChatOutcome> | null => newChatTicketRef.current?.outcome ?? null,
-    [],
-  );
+  const newChatTicketNow = useCallback((): NewChatTicket | null => newChatTicketRef.current, []);
   const reportNewChat = useCallback(
     (status: NewChatStatus): void => {
       setNewChat(status);
@@ -61,8 +58,14 @@ export function useNewChat({
       }
       if (readTabValue(UNSENT_CHAT_KEY, "") === unsentChatReloadMarker())
         writeTabValue(UNSENT_CHAT_KEY, null);
-      newChatTicketRef.current?.settle("not-opened");
-      newChatTicketRef.current = null;
+      // Keep an opened ticket through its first send and chat-view open; a later New chat must not replace either.
+      const ticket = newChatTicketRef.current;
+      if (ticket !== null) {
+        ticket.settle("not-opened");
+        void ticket.waitForSettled().then(() => {
+          if (newChatTicketRef.current === ticket) newChatTicketRef.current = null;
+        });
+      }
       newChatHolds.current.pop()?.();
     },
     [controller, unsentThread, setNewChatFrom, setNewlyStartedThread, setNewChat],
@@ -74,13 +77,15 @@ export function useNewChat({
       setNewlyStartedThread(threadId);
       persistUnsentChatReload(threadId);
       newChatHolds.current.at(-1)?.();
-      newChatTicketRef.current?.settle("opened");
-      newChatTicketRef.current = null;
-      return openStartedChat(threadId);
+      const ticket = newChatTicketRef.current;
+      const opening = openStartedChat(threadId);
+      ticket?.trackOpen(opening);
+      ticket?.settle("opened");
+      return opening;
     },
     [openStartedChat, setNewChatThreadId, unsentThread, setNewlyStartedThread],
   );
-  return { newChatOutcomeNow, reportNewChat, openNewChatFromSidebar };
+  return { newChatTicketNow, reportNewChat, openNewChatFromSidebar };
 }
 
 interface StartChatInput {

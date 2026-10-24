@@ -1746,6 +1746,34 @@ describe("SessionCatalogSidebar New chat status", () => {
     newChatStarted.resolve({ remoteId: "thread-new" });
     await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
   });
+  test("waits for a first message to finish before starting another New chat", async () => {
+    const calls: string[] = [];
+    const waiting = Promise.withResolvers<boolean>();
+    let waits = 0;
+    renderSidebar({
+      remote: {
+        ...fakeRemote(calls),
+        initialize: async (id: string) => {
+          calls.push(`initialize:${id}`);
+          return { remoteId: `thread-${calls.length}` };
+        },
+      },
+      onNewChat: async () => {},
+      onNewChatStatus: () => {},
+      waitForNewChatSend: async () => {
+        waits += 1;
+        return waits === 2 ? waiting.promise : true;
+      },
+    });
+    const button = screen.getByRole("button", { name: "New chat" });
+    fireEvent.click(button);
+    await waitFor(() => expect(calls).toEqual(["initialize:new"]));
+    fireEvent.click(button);
+    await waitFor(() => expect(waits).toBe(2));
+    expect(calls).toEqual(["initialize:new"]);
+    waiting.resolve(true);
+    await waitFor(() => expect(calls).toEqual(["initialize:new", "initialize:new"]));
+  });
 
   test("a chat picked while a New chat starts ends the New chat's opening, and the New chat does not open over the pick", async () => {
     const statuses: unknown[] = [];

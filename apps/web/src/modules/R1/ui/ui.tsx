@@ -45,6 +45,8 @@ export interface SessionCatalogSidebarProps {
   readonly onOpenThread?: (threadId: ThreadId) => unknown;
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
+  /** Waits for the current first-message delivery; false keeps a refused draft from moving to another chat. */
+  readonly waitForNewChatSend?: () => Promise<boolean>;
   /** Shows why a picked chat did not open, when the chat's saved model cannot be restored (the picker offers another). */
   readonly onOpenFailed?: (threadId: ThreadId, error: AppError) => void;
   readonly onDeletedOpenThread?: () => Promise<void> | void;
@@ -206,6 +208,7 @@ export function SessionCatalogSidebar({
   onOpenThread,
   onNewChat,
   onNewChatStatus,
+  waitForNewChatSend,
   onOpenFailed,
   onDeletedOpenThread,
   onPinChange,
@@ -533,6 +536,8 @@ export function SessionCatalogSidebar({
   };
 
   const createNewChat = async (): Promise<void> => {
+    // Keep the first message with its pending chat instead of superseding its open ticket.
+    if ((await waitForNewChatSend?.()) === false) return;
     catalog.setActionError(undefined);
     const token = {};
     pendingNewChat.current = token;

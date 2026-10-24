@@ -13,12 +13,9 @@ const TEXT = "keep this message";
 const NOTICE = "It's in the message box of a new chat";
 
 /**
- * A send made in a New chat that has not opened yet is refused when the person starts another New chat at once. The
- * notice says where the text went, and the text is in the message box of the new chat (#2358, under #2343). An earlier
- * chat is answered first, as in the probe that reproduces it: a first chat's send can otherwise open before the next
- * New chat starts.
+ * A later New chat starts only after the first message has been admitted to the chat that was opening.
  */
-async function refusedSendInNewChat(page: Page): Promise<Locator> {
+async function firstSendBeforeNextNewChat(page: Page): Promise<Locator> {
   const first = await startChat(page);
   await sendPrompt(first, "first chat");
   await expect(
@@ -27,10 +24,9 @@ async function refusedSendInNewChat(page: Page): Promise<Locator> {
   const composer = await startChat(page);
   await sendPrompt(composer, TEXT);
   const next = await startChat(page);
-  await expect(page.getByText(NOTICE, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
-  // The third chat is on screen and empty, so the box that holds the text is that chat's.
+  await expect(page.getByText(NOTICE, { exact: false })).toHaveCount(0);
   await expect(page.locator('[data-empty-chat="true"]')).toBeVisible({ timeout: 30_000 });
-  await expect(next).toHaveValue(TEXT);
+  await expect(next).toHaveValue("");
   return next;
 }
 
@@ -41,44 +37,63 @@ async function expectShellPainted(page: Page): Promise<void> {
     .evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(background).not.toBe("rgba(0, 0, 0, 0)");
 }
+async function expectEmptyNewChatRemains(page: Page): Promise<void> {
+  const emptyChat = page.locator('[data-empty-chat="true"]');
+  const firstSendRow = page.locator('[data-slot="r1-session-row"]').filter({ hasText: TEXT });
+  await expect(emptyChat).toBeVisible();
+  await expect(firstSendRow).toHaveAttribute("data-selected", "false");
+  await page.waitForTimeout(3000);
+  await expect(emptyChat).toBeVisible();
+  await expect(firstSendRow).toHaveAttribute("data-selected", "false");
+}
 
-realTest("a refused send says where its text went, in light and at 390 px", async ({ realApp }) => {
-  const page = await realApp.open({
-    beforeLoad: (target) =>
-      target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
-  });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await refusedSendInNewChat(page);
-  await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await expectShellPainted(page);
-  await waitForFiniteAnimations(page);
-  await page.screenshot({
-    path: join(screenshots, "fix-2358-refused-send-light.png"),
-    fullPage: true,
-  });
-  // The same refused chat at phone width: the notice and the text are still there.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByText(NOTICE, { exact: false }).first()).toBeVisible();
-  await expectShellPainted(page);
-  await waitForFiniteAnimations(page);
-  await page.screenshot({
-    path: join(screenshots, "fix-2358-refused-send-narrow.png"),
-    fullPage: true,
-  });
-});
+realTest(
+  "a first send reaches its New chat before another New chat starts, in light and at 390 px",
+  async ({ realApp }) => {
+    const page = await realApp.open({
+      beforeLoad: (target) =>
+        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await firstSendBeforeNextNewChat(page);
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+    await expectShellPainted(page);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-2343-first-send-light.png"),
+      fullPage: true,
+    });
+    // The next chat stays empty at phone width too.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('[data-empty-chat="true"]')).toBeVisible();
+    await expectShellPainted(page);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-2343-first-send-narrow.png"),
+      fullPage: true,
+    });
+    await expectEmptyNewChatRemains(page);
+    expect(realApp.problems).toEqual([]);
+  },
+);
 
-realTest("a refused send says where its text went, in dark", async ({ realApp }) => {
-  const page = await realApp.open({
-    beforeLoad: (target) =>
-      target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
-  });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await refusedSendInNewChat(page);
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await expectShellPainted(page);
-  await waitForFiniteAnimations(page);
-  await page.screenshot({
-    path: join(screenshots, "fix-2358-refused-send-dark.png"),
-    fullPage: true,
-  });
-});
+realTest(
+  "a first send reaches its New chat before another New chat starts, in dark",
+  async ({ realApp }) => {
+    const page = await realApp.open({
+      beforeLoad: (target) =>
+        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await firstSendBeforeNextNewChat(page);
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expectShellPainted(page);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-2343-first-send-dark.png"),
+      fullPage: true,
+    });
+    await expectEmptyNewChatRemains(page);
+    expect(realApp.problems).toEqual([]);
+  },
+);

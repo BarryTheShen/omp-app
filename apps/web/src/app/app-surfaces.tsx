@@ -6,6 +6,7 @@ import type {
   RpcSessionPort,
   ThreadId,
 } from "@omp-app/contracts";
+import { useCallback } from "react";
 import { type AppConnectionSnapshot, ConnectionBanner, WatchNotice } from "@/launch";
 import { LayoutArea, type Surface, type SurfaceMap } from "@/layout";
 import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
@@ -40,6 +41,7 @@ interface AppSurfacesInput {
   readonly rpc: PortClient<typeof RpcSessionPort>;
   readonly controller: SelectedThreadHistoryController | null;
   readonly reportNewChat: (status: NewChatStatus) => void;
+  readonly newChatTicketNow: ActiveThreadProps["newChatTicketNow"];
   readonly reportOpenFailure: (threadId: ThreadId, error: AppError) => void;
   readonly capabilities: CapabilityMap;
   readonly openSettings: (threadId: ThreadId | null, restoreFocus?: HTMLElement) => void;
@@ -65,6 +67,7 @@ export function useAppSurfaces({
   rpc,
   controller,
   reportNewChat,
+  newChatTicketNow,
   reportOpenFailure,
   capabilities,
   openSettings,
@@ -72,6 +75,10 @@ export function useAppSurfaces({
   watchNotice,
   onDismissWatchNotice,
 }: AppSurfacesInput) {
+  const waitForNewChatSend = useCallback(() => {
+    const ticket = newChatTicketNow();
+    return ticket === null ? Promise.resolve(true) : ticket.waitForSettled();
+  }, [newChatTicketNow]);
   // What each sidebar surface id renders. Where it goes: `@/layout` (LAYOUT).
   const sidebarSurfaces: SurfaceMap = {
     folder: {
@@ -95,6 +102,7 @@ export function useAppSurfaces({
             catalog={catalog}
             currentThreadId={history.threadId}
             onNewChat={openNewChatFromSidebar}
+            waitForNewChatSend={waitForNewChatSend}
             onOpenThread={openSidebarChat}
             confirmDelete={(_session, title, restoreFocus) =>
               openChatDeleteConfirm(overlay, title, undefined, restoreFocus)

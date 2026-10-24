@@ -47,7 +47,7 @@ interface ThreadSendInput {
   readonly registerLiveChat: ActiveThreadProps["registerLiveChat"];
   readonly deliverToOpenChat: ActiveThreadProps["deliverToOpenChat"];
   readonly onPromptSent: ActiveThreadProps["onPromptSent"];
-  readonly newChatOutcomeNow: ActiveThreadProps["newChatOutcomeNow"];
+  readonly newChatTicketNow: ActiveThreadProps["newChatTicketNow"];
   readonly onRefreshAfterCommand: ActiveThreadProps["onRefreshAfterCommand"];
   readonly history: ActiveThreadProps["history"];
   readonly threadId: ThreadId;
@@ -76,7 +76,7 @@ export function useThreadSend({
   registerLiveChat,
   deliverToOpenChat,
   onPromptSent,
-  newChatOutcomeNow,
+  newChatTicketNow,
   onRefreshAfterCommand,
   history,
   threadId,
@@ -161,10 +161,11 @@ export function useThreadSend({
       refs: attachmentManager.toDraftRefs(),
       complete: attachmentManager.getState().complete,
     };
-    // A send made while a New chat opens takes that New chat's outcome now, not when it is delivered.
-    const newChatEnd = newChatOutcomeNow();
+    // A later New chat waits for this ticket's full draft submission, including clearing or restoring its text.
+    const newChatTicket = newChatTicketNow();
+    const newChatEnd = newChatTicket?.outcome ?? null;
     // Where a send that is not sent keeps its text: a New chat's text stays in the folder's new-chat box (chat-draft.ts).
-    await chatDraft.submit(intent, (sent) =>
+    const submission = chatDraft.submit(intent, (sent) =>
       deliverToOpenChat(
         sent,
         attachments,
@@ -172,6 +173,8 @@ export function useThreadSend({
         chatDraft.controller.getSnapshot().scope.kind === "folder",
       ),
     );
+    newChatTicket?.trackSend(submission);
+    await submission;
     if (intent.mode === "bash") void onRefreshAfterCommand?.();
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();

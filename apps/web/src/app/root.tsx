@@ -99,7 +99,7 @@ function ActiveThreadReady({
   pickCount,
   deliverNote,
   deliverToOpenChat,
-  newChatOutcomeNow,
+  newChatTicketNow,
   registerLiveChat,
   onOpenSettings,
   remote,
@@ -337,7 +337,7 @@ function ActiveThreadReady({
     registerLiveChat,
     deliverToOpenChat,
     onPromptSent,
-    newChatOutcomeNow,
+    newChatTicketNow,
     onRefreshAfterCommand,
     history,
     threadId,
@@ -650,7 +650,7 @@ function ConnectedApp({
     setNewChatThreadId,
     setOpenFailure,
   });
-  const { newChatOutcomeNow, reportNewChat, openNewChatFromSidebar } = useNewChat({
+  const { newChatTicketNow, reportNewChat, openNewChatFromSidebar } = useNewChat({
     controller,
     unsentThread,
     setNewChat,
@@ -699,6 +699,7 @@ function ConnectedApp({
     rpc,
     controller,
     reportNewChat,
+    newChatTicketNow,
     reportOpenFailure,
     capabilities,
     openSettings,
@@ -745,7 +746,7 @@ function ConnectedApp({
           pickCount={pickCount}
           deliverNote={deliverNoteToOpenChat}
           deliverToOpenChat={deliverToOpenChat}
-          newChatOutcomeNow={newChatOutcomeNow}
+          newChatTicketNow={newChatTicketNow}
           registerLiveChat={registerLiveChat}
           remote={remote}
           title={title}
