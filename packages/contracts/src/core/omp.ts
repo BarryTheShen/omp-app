@@ -14,10 +14,10 @@ export type * as OmpWire from "../omp-wire/rpc-wire.generated";
 export const OMP_FLOOR_VERSION = "18.6.1";
 
 /** The omp tag the files in `../omp-wire/` were copied from. */
-export const OMP_WIRE_TAG = "v18.9.1";
+export const OMP_WIRE_TAG = "v18.12.6";
 
 /** The commit `OMP_WIRE_TAG` points at. */
-export const OMP_WIRE_COMMIT = "a4d6f0adc63dda4ccdf4d25c26422219820f865b";
+export const OMP_WIRE_COMMIT = "45c35e40c46166dc726ccc52f5d27f40f2449f99";
 
 /**
  * omp RPC protocol versions the app speaks. omp writes its `ready` frame in protocol 1 and
