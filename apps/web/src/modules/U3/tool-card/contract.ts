@@ -58,7 +58,7 @@ export interface OutputMeta {
   readonly artifactId?: string;
   readonly artifactElidedBytes?: number;
   readonly artifactError?: unknown;
-  readonly diagnostics?: readonly unknown[];
+  readonly diagnostics?: { readonly summary: string; readonly messages: readonly string[] };
   readonly limits?: readonly unknown[];
 }
 

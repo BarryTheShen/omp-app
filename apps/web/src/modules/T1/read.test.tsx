@@ -152,8 +152,8 @@ describe("ReadCard", () => {
           displayTarget: "a.ts",
           displayContent: { text: "one", startLine: 1 },
           truncation: { truncated: true, truncatedBy: "lines", totalLines: 100, outputLines: 96 },
-          suffixResolution: "Resolved via .tsx suffix",
-          meta: { diagnostics: [{ message: "Binary fallback used" }] },
+          suffixResolution: { from: "a", to: "a.tsx" },
+          meta: { diagnostics: { summary: "1 warning(s)", messages: ["Binary fallback used"] } },
         })}
       />,
     );
@@ -161,7 +161,9 @@ describe("ReadCard", () => {
 
     expect(screen.getByText("2 reads grouped")).toBeTruthy();
     expect(screen.getByText("Output shortened; omitted 4 lines")).toBeTruthy();
-    expect(screen.getByText("Resolved via .tsx suffix")).toBeTruthy();
+    expect(
+      screen.getByText("Path 'a' not found; resolved to 'a.tsx' via suffix match"),
+    ).toBeTruthy();
     expect(screen.getByText("Binary fallback used")).toBeTruthy();
   });
 

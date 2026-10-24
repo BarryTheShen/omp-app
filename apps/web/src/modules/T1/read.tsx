@@ -234,7 +234,7 @@ function ReadBody({
       )}
       {details.suffixResolution && (
         <p className="text-xs text-muted-foreground" data-slot="t1-read-notice">
-          {details.suffixResolution}
+          {`Path '${details.suffixResolution.from}' not found; resolved to '${details.suffixResolution.to}' via suffix match`}
         </p>
       )}
       {notes && (
@@ -350,14 +350,10 @@ function binaryContentFor(details: ReadToolDetails, mimeType: string | undefined
 }
 
 function diagnosticMessages(details: ReadToolDetails): string | undefined {
-  const messages = details.meta?.diagnostics
-    ?.flatMap((value) => {
-      if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
-      if (!("message" in value) || typeof value.message !== "string") return [];
-      return [middleEllipsis(value.message, 240)];
-    })
-    .slice(0, 4);
-  return messages && messages.length > 0 ? messages.join(" · ") : undefined;
+  const messages = details.meta?.diagnostics?.messages
+    .slice(0, 4)
+    .map((message) => middleEllipsis(message, 240));
+  return messages !== undefined && messages.length > 0 ? messages.join(" · ") : undefined;
 }
 
 function displayTarget(

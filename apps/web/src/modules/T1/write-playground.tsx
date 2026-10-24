@@ -68,14 +68,12 @@ function WritePlayground() {
               madeExecutable: true,
               xdev: true,
               message: "Write completed",
-              diagnostics: [
-                {
-                  severity: "warning",
-                  path: "scripts/run.sh",
-                  line: 2,
-                  message: "shellcheck warning",
-                },
-              ],
+              diagnostics: {
+                server: "shellcheck",
+                messages: ["scripts/run.sh:2:1 [warning] shellcheck warning"],
+                summary: "1 warning(s)",
+                errored: false,
+              },
               meta: {
                 artifactId: "artifact-script-1",
                 artifactElidedBytes: 48,

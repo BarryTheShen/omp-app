@@ -58,10 +58,12 @@ export const T2_SCRIPTED_LARGE_FIND_RESULTS: readonly RealToolResult[] = [
           linesSeen: 100,
           truncated: false,
         })),
+        coverage: "complete",
         stats: {
           listed: 21,
           requests: 21,
-          errors: 0,
+          failed: 0,
+          unanswered: 0,
           judged: 21,
           filesRead: 21,
           fileBytes: 210000,

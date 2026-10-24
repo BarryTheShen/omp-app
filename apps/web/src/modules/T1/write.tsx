@@ -16,19 +16,14 @@ import { omittedOf, type OutputMeta as ParsedOutputMeta } from "../U3/tool-card/
 import { detailsSource, splitToolResult } from "../U3/tool-card/result";
 import type { ArtifactSlot, CopyKind } from "../U3/tool-card/slots";
 import { TextOutput } from "../U3/tool-card/text-output";
-import {
-  type Diagnostic,
-  decodeWriteArgs,
-  decodeWriteDetails,
-  type WriteToolDetails,
-} from "./models";
+import { FileDiagnosticsPanel } from "./file-diagnostics";
+import { decodeWriteArgs, decodeWriteDetails, type WriteToolDetails } from "./models";
 
 const MAX_SOURCE_LINES = 16;
 const MAX_SOURCE_CHARACTERS = 8_000;
 const MAX_SVG_PREVIEW_CHARACTERS = 64_000;
 const MAX_MERMAID_PREVIEW_CHARACTERS = 16_000;
 const MAX_MERMAID_EDGES = 200;
-const MAX_DIAGNOSTICS = 8;
 
 export interface WriteCardProps {
   readonly rendererProps: ToolRendererProps;
@@ -147,7 +142,7 @@ function WriteBody({
   const artifactId = outputMeta?.artifactId ?? outputMeta?.truncation?.artifactId;
   const artifactElidedBytes =
     outputMeta?.artifactElidedBytes ?? outputMeta?.truncation?.artifactElidedBytes;
-  const diagnostics = diagnosticsFor(details);
+  const diagnostics = details?.diagnostics;
   const metadataNotices = metadataNotice(outputMeta);
   const copySource = async (): Promise<void> => {
     if (onCopy !== undefined) {
@@ -235,7 +230,9 @@ function WriteBody({
         )
       )}
       {returnedText !== "" && <TextOutput text={returnedText} testId="t1-write-returned" />}
-      {diagnostics.length > 0 && <Diagnostics diagnostics={diagnostics} />}
+      {diagnostics && (
+        <FileDiagnosticsPanel diagnostics={diagnostics} slot="t1-write-diagnostics" />
+      )}
       {metadataNotices.length > 0 && <MetadataNotices notices={metadataNotices} />}
       {artifactId !== undefined && (
         <ArtifactNotice
@@ -458,30 +455,6 @@ function SourcePreview({
           </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-function Diagnostics({ diagnostics }: { readonly diagnostics: readonly Diagnostic[] }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 text-xs" data-slot="t1-write-diagnostics">
-      {diagnostics.map((diagnostic) => {
-        const severity = diagnostic.severity ?? "info";
-        return (
-          <p
-            className={
-              severity === "error"
-                ? "text-danger"
-                : severity === "warning"
-                  ? "text-warning"
-                  : "text-muted-foreground"
-            }
-            key={`${severity}-${diagnostic.path ?? "diagnostic"}-${diagnostic.line ?? 0}-${diagnostic.column ?? 0}-${diagnostic.message ?? "notice"}`}
-          >
-            <span className="font-medium">{severity}:</span> {diagnosticText(diagnostic)}
-          </p>
-        );
-      })}
     </div>
   );
 }
@@ -743,11 +716,6 @@ function sourcePreview(content: string, expanded: boolean): SourcePreviewValue {
   };
 }
 
-function diagnosticsFor(details: WriteToolDetails | undefined): readonly Diagnostic[] {
-  const diagnostics = details?.diagnostics ?? [];
-  return diagnostics.slice(0, MAX_DIAGNOSTICS);
-}
-
 function metadataNotice(outputMeta: ToolOutputMeta | undefined): readonly string[] {
   if (outputMeta === undefined) return [];
   const notices: string[] = [];
@@ -769,20 +737,7 @@ function metadataNotice(outputMeta: ToolOutputMeta | undefined): readonly string
       `${outputMeta.limits.length} output limit notice${outputMeta.limits.length === 1 ? "" : "s"}.`,
     );
   }
-  if (outputMeta.diagnostics !== undefined && outputMeta.diagnostics.length > 0) {
-    notices.push(
-      `${outputMeta.diagnostics.length} metadata diagnostic${outputMeta.diagnostics.length === 1 ? "" : "s"}.`,
-    );
-  }
   return notices;
-}
-
-function diagnosticText(diagnostic: Diagnostic): string {
-  const location = [diagnostic.path, diagnostic.line, diagnostic.column]
-    .filter((value) => value !== undefined)
-    .join(":");
-  const message = diagnostic.message ?? "Diagnostic reported without a message.";
-  return location.length > 0 ? `${location}: ${message}` : message;
 }
 
 function lineCountFor(content: string): number {

@@ -5,10 +5,10 @@ import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardPhase, ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { splitToolResult } from "../U3/tool-card/result";
+import { FileDiagnosticsPanel } from "./file-diagnostics";
 import {
   decodeEditArgs,
   decodeEditDetails,
-  type EditDiagnostics,
   type EditPerFileResult,
   type EditToolArgs,
   type EditToolDetails,
@@ -177,9 +177,9 @@ function EditBody({
               line {firstChangedLine(details)}
             </span>
           )}
-          {moveTarget(details) && (
+          {details?.move && (
             <span className="min-w-0 truncate rounded border border-border px-2 py-0.5 font-mono">
-              → {middleEllipsis(moveTarget(details) ?? "")}
+              → {middleEllipsis(details.move)}
             </span>
           )}
         </div>
@@ -216,7 +216,7 @@ function EditBody({
           {conflict}
         </p>
       )}
-      {diagnostics && <Diagnostics diagnostics={diagnostics} />}
+      {diagnostics && <FileDiagnosticsPanel diagnostics={diagnostics} slot="t1-edit-diagnostics" />}
       <CopyButton label={copyLabel} onCopy={onCopy} raw={copyText} />
     </section>
   );
@@ -265,7 +265,7 @@ function EditFileSection({ file }: { readonly file: EditPerFileResult }) {
         <p className="text-muted-foreground text-xs">No changes were made.</p>
       )}
       {conflict && <p className="text-danger text-xs">{conflict}</p>}
-      {diagnostics && <Diagnostics diagnostics={diagnostics} />}
+      {diagnostics && <FileDiagnosticsPanel diagnostics={diagnostics} slot="t1-edit-diagnostics" />}
     </section>
   );
 }
@@ -406,37 +406,6 @@ function RawPreview({ label, text }: { readonly label: string; readonly text: st
             .filter(Boolean)
             .join(" and ")}
           .
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Diagnostics({ diagnostics }: { readonly diagnostics: EditDiagnostics }) {
-  const messages = diagnostics.messages?.slice(0, 8) ?? [];
-  const hiddenMessages = Math.max(0, (diagnostics.messages?.length ?? 0) - messages.length);
-  const className = diagnostics.errored
-    ? "text-danger"
-    : messages.length > 0
-      ? "text-warning"
-      : "text-muted-foreground";
-  const occurrences = new Map<string, number>();
-  return (
-    <div className={`flex flex-col gap-1 text-xs ${className}`} data-slot="t1-edit-diagnostics">
-      <span className="font-medium text-muted-foreground">Diagnostics</span>
-      {diagnostics.summary && (
-        <p>
-          {diagnostics.errored ? `Diagnostics error: ${diagnostics.summary}` : diagnostics.summary}
-        </p>
-      )}
-      {messages.map((message) => {
-        const occurrence = occurrences.get(message) ?? 0;
-        occurrences.set(message, occurrence + 1);
-        return <p key={`${message}:${occurrence}`}>{message}</p>;
-      })}
-      {hiddenMessages > 0 && (
-        <p className="text-muted-foreground">
-          {hiddenMessages} more diagnostic message{hiddenMessages === 1 ? "" : "s"}.
         </p>
       )}
     </div>
@@ -675,7 +644,7 @@ function editSummary(
 
 function editTarget(args: EditToolArgs | undefined, details: EditToolDetails | undefined): string {
   if (details?.sourcePath) {
-    const destination = details.path ?? moveTarget(details);
+    const destination = details.path ?? details.move;
     if (destination && destination !== details.sourcePath) {
       return `${details.sourcePath} → ${destination}`;
     }
@@ -686,14 +655,14 @@ function editTarget(args: EditToolArgs | undefined, details: EditToolDetails | u
     args?.path ??
     args?.file_path ??
     patchTarget(args?.patch ?? args?.input) ??
-    moveTarget(details) ??
+    details?.move ??
     "edit"
   );
 }
 function fileTarget(file: EditPerFileResult): string {
   const source = typeof file.sourcePath === "string" ? file.sourcePath : file.path;
   const sourcePath = source ?? "file";
-  const destination = typeof file.path === "string" ? file.path : moveTarget(file);
+  const destination = typeof file.path === "string" ? file.path : file.move;
   return sourcePath && destination && sourcePath !== destination
     ? `${sourcePath} → ${destination}`
     : (destination ?? sourcePath);
@@ -765,7 +734,7 @@ function editStatus(
   if (phase === "running" || phase === "partial") return "Streaming";
   if (operationFor(args, details) === "create") return "Created";
   if (operationFor(args, details) === "delete") return "Deleted";
-  if (moveTarget(details)) return "Moved";
+  if (details?.move) return "Moved";
   return diff || perFileResults?.some((file) => file.diff) ? "Applied" : "No changes";
 }
 
@@ -799,19 +768,6 @@ function firstChangedLine(value: unknown): number | undefined {
   return typeof record.firstChangedLine === "number" && record.firstChangedLine > 0
     ? record.firstChangedLine
     : undefined;
-}
-function moveTarget(value: unknown): string | undefined {
-  const record = recordOf(value);
-  if (record === undefined) return undefined;
-  if (typeof record.move === "string") return record.move;
-  if (typeof record.rename === "string") return record.rename;
-  if (record.move !== null && typeof record.move === "object" && !Array.isArray(record.move)) {
-    const move = record.move as Record<string, unknown>;
-    for (const key of ["path", "to", "target"]) {
-      if (typeof move[key] === "string") return move[key];
-    }
-  }
-  return undefined;
 }
 
 function fileFailure(file: EditPerFileResult): boolean {

@@ -38,10 +38,12 @@ export function FindCard({ rendererProps }: { readonly rendererProps: ToolRender
   const shownFailures = failures.slice(0, MAX_FAILURE_LINES);
   const showNoMatches = settled && parsedDetails !== undefined && hits.length === 0;
   const showUnavailable = settled && parsedDetails === undefined;
+  const partial = parsedDetails === undefined ? undefined : partialNote(parsedDetails);
   const hasSection =
     shownHits.length > 0 ||
     showNoMatches ||
     showUnavailable ||
+    partial !== undefined ||
     stats !== undefined ||
     failures.length > 0;
 
@@ -98,9 +100,18 @@ export function FindCard({ rendererProps }: { readonly rendererProps: ToolRender
                 )}
               </ul>
             )}
-            {showNoMatches && <p className="text-muted-foreground text-xs">No matches.</p>}
+            {showNoMatches && (
+              <p className="text-muted-foreground text-xs">
+                {partial === undefined ? "No matches." : "No matches in the files omp judged."}
+              </p>
+            )}
             {showUnavailable && (
               <p className="text-muted-foreground text-xs">Search details unavailable.</p>
+            )}
+            {partial !== undefined && (
+              <p className="text-warning mt-3 text-xs" data-testid="t2-find-partial">
+                {partial}
+              </p>
             )}
             {stats !== undefined && (
               <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-find-stats">
@@ -190,6 +201,21 @@ function findSummary(
   const count = hitCount > 0 ? plural(hitCount, "hit") : undefined;
   if (label.length === 0) return count;
   return count === undefined ? label : `${label} · ${count}`;
+}
+
+/**
+ * omp's own warning that a search judged only part of the files (`coverage: "partial"`): some judge requests failed,
+ * so an empty or short result is not proof of absence (packages/coding-agent/src/tools/jfind/index.ts:160-164).
+ */
+function partialNote(details: FindToolDetails): string | undefined {
+  if (details.coverage !== "partial") return undefined;
+  const failed = details.stats?.failed;
+  const requests = details.stats?.requests;
+  const what =
+    failed === undefined || requests === undefined
+      ? "some judge requests failed"
+      : `${failed} of ${requests} judge requests failed`;
+  return `Partial: ${what}; unjudged files may still match.`;
 }
 
 function statsLine(details: FindToolDetails): string | undefined {

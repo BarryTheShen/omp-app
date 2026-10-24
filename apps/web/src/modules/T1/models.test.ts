@@ -32,7 +32,15 @@ describe("T1 file operation models", () => {
   test("decodes write/edit/ast_edit args and detail metadata", () => {
     expect(decodeWriteArgs({ path: "a.ts", content: "export {};" }).ok).toBe(true);
     expect(
-      decodeWriteDetails({ madeExecutable: true, diagnostics: [{ message: "warn" }] }).ok,
+      decodeWriteDetails({
+        madeExecutable: true,
+        diagnostics: {
+          server: "typescript",
+          messages: ["a.ts:1:1 [warning] unused"],
+          summary: "1 warning(s)",
+          errored: false,
+        },
+      }).ok,
     ).toBe(true);
     expect(decodeEditArgs({ path: "a.ts", oldText: "a", newText: "b" }).ok).toBe(true);
     expect(decodeEditDetails({ op: "update", diff: "-a\n+b" }).ok).toBe(true);

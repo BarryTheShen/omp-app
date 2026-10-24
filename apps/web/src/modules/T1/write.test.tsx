@@ -258,9 +258,12 @@ describe("WriteCard", () => {
             madeExecutable: true,
             resolvedPath: "/home/user/project/scripts/run.sh",
             xdev: { tool: "recall", mode: "execute", tier: "read" },
-            diagnostics: [
-              { severity: "warning", path: "scripts/run.sh", line: 2, message: "shellcheck" },
-            ],
+            diagnostics: {
+              server: "shellcheck",
+              messages: ["scripts/run.sh:2:1 [warning] shellcheck"],
+              summary: "1 warning(s)",
+              errored: false,
+            },
             meta: {
               truncation: {
                 truncated: true,

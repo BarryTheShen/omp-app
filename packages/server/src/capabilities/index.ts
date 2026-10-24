@@ -32,14 +32,14 @@ const PROBE_OMP_ARGS = [
   "--no-rules",
 ] as const;
 export const RPC_NO_SESSION_SOURCE =
-  "omp-v18.9.1:packages/coding-agent/src/cli/flag-tables.ts:307-310; cli/args.ts:316-319";
+  "omp-v18.12.6:packages/coding-agent/src/cli/flag-tables.ts:316-319; cli/args.ts:350-353";
 
 /** The source of the generic unknown-command branch used by all command probes. */
 export const RPC_UNKNOWN_COMMAND_SOURCE =
-  "omp-v18.9.1:packages/coding-agent/src/modes/rpc/rpc-mode.ts:2630-2633";
+  "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-mode.ts:2675-2678";
 /** The source of the response/error contract used to classify invalid arguments. */
 export const RPC_INVALID_ARGUMENT_SOURCE =
-  "omp-v18.9.1:packages/coding-agent/src/modes/rpc/rpc-mode.ts:1896-1901,2611-2613; docs/rpc.md:115-120,304-311";
+  "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-mode.ts:1936-1941,2656-2658; docs/rpc.md:115-120,304-311";
 
 /**
  * Commands the app does not send yet, so the probe does not send them either. A bare frame is a valid
@@ -100,73 +100,73 @@ export interface CommandProbeEvidence {
 }
 
 const COMMAND_DOCUMENTATION_SOURCE: Readonly<Record<OmpCommandName, string>> = {
-  negotiate_protocol: "omp-v18.9.1:docs/rpc.md:139-142",
-  prompt: "omp-v18.9.1:docs/rpc.md:126-137",
-  steer: "omp-v18.9.1:docs/rpc.md:126-137",
-  follow_up: "omp-v18.9.1:docs/rpc.md:126-137",
-  remove_queued_message: "omp-v18.9.1:docs/rpc.md:126-137",
-  promote_queued_message: "omp-v18.9.1:docs/rpc.md:126-137",
-  abort: "omp-v18.9.1:docs/rpc.md:126-137",
-  abort_and_prompt: "omp-v18.9.1:docs/rpc.md:126-137",
-  abort_and_restore_queue: "omp-v18.9.1:docs/rpc.md:135,415-421",
-  new_session: "omp-v18.9.1:docs/rpc.md:126-137",
-  open_session: "omp-v18.9.1:docs/rpc.md:126-137",
-  get_state: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_fast_mode: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_slow_mode: "omp-v18.9.1:docs/rpc.md:147,580-611",
-  goal: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_ask_dialog: "omp-v18.9.1:docs/rpc.md:143-152",
-  get_available_commands: "omp-v18.9.1:docs/rpc.md:143-152",
-  get_entries: "omp-v18.9.1:docs/rpc.md:143-152",
-  get_tree: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_todos: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_host_tools: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_host_uri_schemes: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_subagent_subscription: "omp-v18.9.1:docs/rpc.md:143-152",
-  set_event_filter: "omp-v18.9.1:docs/rpc.md:143-152",
-  get_subagents: "omp-v18.9.1:docs/rpc.md:143-152",
-  get_subagent_messages: "omp-v18.9.1:docs/rpc.md:143-152",
-  cancel_subagent: "omp-v18.9.1:docs/rpc.md:143-152",
-  steer_subagent: "omp-v18.9.1:docs/rpc.md:143-152",
-  live_start: "omp-v18.9.1:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
-  live_stop: "omp-v18.9.1:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
-  live_mute: "omp-v18.9.1:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
-  set_model: "omp-v18.9.1:docs/rpc.md:163-169",
-  cycle_model: "omp-v18.9.1:docs/rpc.md:163-169",
-  get_available_models: "omp-v18.9.1:docs/rpc.md:163-169",
-  set_thinking_level: "omp-v18.9.1:docs/rpc.md:171-177",
-  cycle_thinking_level: "omp-v18.9.1:docs/rpc.md:171-177",
-  get_available_thinking_levels: "omp-v18.9.1:docs/rpc.md:171-177",
-  set_steering_mode: "omp-v18.9.1:docs/rpc.md:179-183",
-  set_follow_up_mode: "omp-v18.9.1:docs/rpc.md:179-183",
-  set_interrupt_mode: "omp-v18.9.1:docs/rpc.md:179-183",
-  compact: "omp-v18.9.1:docs/rpc.md:185-188",
-  set_auto_compaction: "omp-v18.9.1:docs/rpc.md:185-188",
-  set_cache_warming: "omp-v18.9.1:docs/rpc.md:190-205",
-  set_auto_retry: "omp-v18.9.1:docs/rpc.md:207-210",
-  abort_retry: "omp-v18.9.1:docs/rpc.md:207-210",
-  bash: "omp-v18.9.1:docs/rpc.md:212-222",
-  abort_bash: "omp-v18.9.1:docs/rpc.md:212-222",
-  get_session_stats: "omp-v18.9.1:docs/rpc.md:224-236",
-  export_html: "omp-v18.9.1:docs/rpc.md:224-236",
-  switch_session: "omp-v18.9.1:docs/rpc.md:224-236",
-  branch: "omp-v18.9.1:docs/rpc.md:224-236",
-  fork: "omp-v18.9.1:docs/rpc.md:224-236",
-  get_branch_messages: "omp-v18.9.1:docs/rpc.md:224-236",
-  get_last_assistant_text: "omp-v18.9.1:docs/rpc.md:224-236",
-  set_session_name: "omp-v18.9.1:docs/rpc.md:224-236",
-  handoff: "omp-v18.9.1:docs/rpc.md:224-236",
-  get_messages: "omp-v18.9.1:docs/rpc.md:240-247",
-  get_messages_page: "omp-v18.9.1:docs/rpc.md:240-247",
-  get_login_providers: "omp-v18.9.1:docs/rpc.md:249-259",
-  login: "omp-v18.9.1:docs/rpc.md:249-259",
-  get_logout_accounts: "omp-v18.9.1:docs/rpc.md:253-254,262-264",
-  logout: "omp-v18.9.1:docs/rpc.md:253-254,262-264",
-  predict_word: "omp-v18.9.1:docs/rpc.md:269-294",
-  predict_word_feedback: "omp-v18.9.1:docs/rpc.md:269-294",
-  btw: "omp-v18.9.1:docs/rpc.md:298,1069-1135",
-  btw_cancel: "omp-v18.9.1:docs/rpc.md:299,1102-1108",
-  get_btw_history: "omp-v18.9.1:docs/rpc.md:300,1111-1114",
+  negotiate_protocol: "omp-v18.12.6:docs/rpc.md:139-142",
+  prompt: "omp-v18.12.6:docs/rpc.md:126-137",
+  steer: "omp-v18.12.6:docs/rpc.md:126-137",
+  follow_up: "omp-v18.12.6:docs/rpc.md:126-137",
+  remove_queued_message: "omp-v18.12.6:docs/rpc.md:126-137",
+  promote_queued_message: "omp-v18.12.6:docs/rpc.md:126-137",
+  abort: "omp-v18.12.6:docs/rpc.md:126-137",
+  abort_and_prompt: "omp-v18.12.6:docs/rpc.md:126-137",
+  abort_and_restore_queue: "omp-v18.12.6:docs/rpc.md:135,415-421",
+  new_session: "omp-v18.12.6:docs/rpc.md:126-137",
+  open_session: "omp-v18.12.6:docs/rpc.md:126-137",
+  get_state: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_fast_mode: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_slow_mode: "omp-v18.12.6:docs/rpc.md:147,580-611",
+  goal: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_ask_dialog: "omp-v18.12.6:docs/rpc.md:143-152",
+  get_available_commands: "omp-v18.12.6:docs/rpc.md:143-152",
+  get_entries: "omp-v18.12.6:docs/rpc.md:143-152",
+  get_tree: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_todos: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_host_tools: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_host_uri_schemes: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_subagent_subscription: "omp-v18.12.6:docs/rpc.md:143-152",
+  set_event_filter: "omp-v18.12.6:docs/rpc.md:143-152",
+  get_subagents: "omp-v18.12.6:docs/rpc.md:143-152",
+  get_subagent_messages: "omp-v18.12.6:docs/rpc.md:143-152",
+  cancel_subagent: "omp-v18.12.6:docs/rpc.md:143-152",
+  steer_subagent: "omp-v18.12.6:docs/rpc.md:143-152",
+  live_start: "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
+  live_stop: "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
+  live_mute: "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
+  set_model: "omp-v18.12.6:docs/rpc.md:163-169",
+  cycle_model: "omp-v18.12.6:docs/rpc.md:163-169",
+  get_available_models: "omp-v18.12.6:docs/rpc.md:163-169",
+  set_thinking_level: "omp-v18.12.6:docs/rpc.md:171-177",
+  cycle_thinking_level: "omp-v18.12.6:docs/rpc.md:171-177",
+  get_available_thinking_levels: "omp-v18.12.6:docs/rpc.md:171-177",
+  set_steering_mode: "omp-v18.12.6:docs/rpc.md:179-183",
+  set_follow_up_mode: "omp-v18.12.6:docs/rpc.md:179-183",
+  set_interrupt_mode: "omp-v18.12.6:docs/rpc.md:179-183",
+  compact: "omp-v18.12.6:docs/rpc.md:185-188",
+  set_auto_compaction: "omp-v18.12.6:docs/rpc.md:185-188",
+  set_cache_warming: "omp-v18.12.6:docs/rpc.md:190-205",
+  set_auto_retry: "omp-v18.12.6:docs/rpc.md:207-210",
+  abort_retry: "omp-v18.12.6:docs/rpc.md:207-210",
+  bash: "omp-v18.12.6:docs/rpc.md:212-222",
+  abort_bash: "omp-v18.12.6:docs/rpc.md:212-222",
+  get_session_stats: "omp-v18.12.6:docs/rpc.md:224-236",
+  export_html: "omp-v18.12.6:docs/rpc.md:224-236",
+  switch_session: "omp-v18.12.6:docs/rpc.md:224-236",
+  branch: "omp-v18.12.6:docs/rpc.md:224-236",
+  fork: "omp-v18.12.6:docs/rpc.md:224-236",
+  get_branch_messages: "omp-v18.12.6:docs/rpc.md:224-236",
+  get_last_assistant_text: "omp-v18.12.6:docs/rpc.md:224-236",
+  set_session_name: "omp-v18.12.6:docs/rpc.md:224-236",
+  handoff: "omp-v18.12.6:docs/rpc.md:224-236",
+  get_messages: "omp-v18.12.6:docs/rpc.md:240-247",
+  get_messages_page: "omp-v18.12.6:docs/rpc.md:240-247",
+  get_login_providers: "omp-v18.12.6:docs/rpc.md:249-259",
+  login: "omp-v18.12.6:docs/rpc.md:249-259",
+  get_logout_accounts: "omp-v18.12.6:docs/rpc.md:253-254,262-264",
+  logout: "omp-v18.12.6:docs/rpc.md:253-254,262-264",
+  predict_word: "omp-v18.12.6:docs/rpc.md:269-294",
+  predict_word_feedback: "omp-v18.12.6:docs/rpc.md:269-294",
+  btw: "omp-v18.12.6:docs/rpc.md:298,1071-1137",
+  btw_cancel: "omp-v18.12.6:docs/rpc.md:299,1104-1110",
+  get_btw_history: "omp-v18.12.6:docs/rpc.md:300,1113-1116",
 };
 
 export const COMMAND_PROBE_EVIDENCE: Readonly<Record<OmpCommandName, CommandProbeEvidence>> =
@@ -425,7 +425,7 @@ export function capabilityProbeResultFromRaw(
       ? unavailable(PROBE_TIMEOUT_REASON)
       : raw.protocolVersion === 2
         ? available("rpc")
-        : unavailable("omp did not negotiate protocol v2 (omp-v18.9.1:docs/rpc.md:40-58)"),
+        : unavailable("omp did not negotiate protocol v2 (omp-v18.12.6:docs/rpc.md:40-58)"),
   );
   addCapability(
     capabilities,
@@ -624,6 +624,6 @@ export function capabilitiesForProtocol(
     "omp.protocol.v2":
       protocolVersion === 2
         ? available("rpc")
-        : unavailable("this thread remained on RPC protocol v1 (omp-v18.9.1:docs/rpc.md:40-58)"),
+        : unavailable("this thread remained on RPC protocol v1 (omp-v18.12.6:docs/rpc.md:40-58)"),
   });
 }

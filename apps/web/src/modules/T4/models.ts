@@ -186,11 +186,12 @@ export const SearchResponseSchema = z.looseObject({
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
-/** omp v18.9.1 packages/tui/src/tools/web-search-types.ts:12-46. */
+/** omp v18.12.6 packages/tui/src/tools/web-search-types.ts:12-37 (`deepseek` is new since v18.9.1). */
 const SEARCH_PROVIDER_LABELS: Readonly<Record<string, string>> = {
   anthropic: "Anthropic",
   brave: "Brave",
   codex: "OpenAI Codex",
+  deepseek: "DeepSeek",
   duckduckgo: "DuckDuckGo",
   ecosia: "Ecosia",
   exa: "Exa",

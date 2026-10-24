@@ -64,10 +64,12 @@ function FindPlayground() {
                   ranges: [{ start: 5, end: 5, p: 0.71, snippet: "retryBudget: 3," }],
                 },
               ],
+              coverage: "partial",
               stats: {
                 listed: 2,
                 requests: 3,
-                errors: 1,
+                failed: 1,
+                unanswered: 0,
                 judged: 2,
                 filesRead: 2,
                 fileBytes: 100,

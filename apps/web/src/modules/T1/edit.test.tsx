@@ -65,7 +65,7 @@ describe("EditCard", () => {
                 path: "src/c.ts",
                 diff: "@@ -1 +1 @@\n-old\n+new",
                 op: "update",
-                move: { path: "src/c.ts" },
+                move: "src/c.ts",
                 diagnostics: {
                   server: "patch",
                   messages: ["patch: Review generated import"],

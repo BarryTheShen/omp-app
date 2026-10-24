@@ -213,6 +213,11 @@ const BashToolResultSchema = z.looseObject({
   details: z
     .looseObject({
       wallTimeMs: z.number().optional(),
+      /**
+       * `false` when the run was shorter than 1000 ms and omp added no "Wall time" footer to the text (v18.12.6
+       * `packages/coding-agent/src/tools/bash.ts:726,746`); absent on results of older omp.
+       */
+      wallTimeNoticeEmitted: z.boolean().optional(),
       exitCode: z.number().optional(),
       timedOut: z.boolean().optional(),
       meta: z.unknown().optional(),
@@ -299,14 +304,16 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
       ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
     };
   }
-  // omp writes its notes after the output: the wall time, then the exit code of a failed command. The card shows both
-  // as facts of its own (the meta row and the banner), so neither is part of what the command printed.
+  // omp writes its notes after the output: the wall time (only for a run of a second or more), then the exit code of a
+  // failed command. The card shows both as facts of its own (the meta row and the banner), so neither is part of what
+  // the command printed. With `wallTimeNoticeEmitted: false` there is no footer: a last line that reads like one is
+  // the command's own (omp's renderer strips it only when the flag is not false, `packages/tui/src/tools/bash.ts:328-330`).
   const withoutExitCode =
     details.exitCode === undefined || details.exitCode === 0
       ? text
       : text.replace(EXIT_CODE_SUFFIX, "");
   const withoutWallTime =
-    details.wallTimeMs === undefined
+    details.wallTimeMs === undefined || details.wallTimeNoticeEmitted === false
       ? withoutExitCode
       : withoutExitCode.replace(WALL_TIME_SUFFIX, "");
   const output = withoutWallTime.replace(/\n+$/, "");

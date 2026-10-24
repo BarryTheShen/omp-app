@@ -59,17 +59,16 @@ describe("AstEditCard", () => {
           totalReplacements: 0,
           filesTouched: 0,
           limitReached: true,
-          parseErrors: [{ path: "src/bad.ts", message: "parse failed" }],
+          parseErrors: ["src/bad.ts: parse error (syntax tree contains error nodes)"],
         })}
       />,
     );
     expandToolCards();
-    expect(screen.getByRole("link", { name: "src/bad.ts" }).getAttribute("href")).toBe(
-      "#read:src%2Fbad.ts",
-    );
     expect(screen.getByRole("alert").textContent).toContain("Parse errors");
     expect(screen.getByTestId("t1-ast-edit-limit").textContent).toContain("safety limit");
-    expect(within(screen.getByRole("alert")).getByText(/parse failed/)).toBeTruthy();
+    expect(
+      within(screen.getByRole("alert")).getByText(/syntax tree contains error nodes/),
+    ).toBeTruthy();
   });
 
   test("keeps running structural context visible before a result exists", () => {

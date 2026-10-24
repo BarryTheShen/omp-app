@@ -73,7 +73,10 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
             </div>
           ) : (
             !state.isError &&
-            parsedDetails && <p className="text-muted-foreground mt-3 text-xs">No matches.</p>
+            parsedDetails &&
+            parsedDetails.timedOut !== true && (
+              <p className="text-muted-foreground mt-3 text-xs">No matches.</p>
+            )
           )}
           {parsedDetails?.missingPaths && parsedDetails.missingPaths.length > 0 && (
             <p className="text-warning mt-3 text-xs" data-testid="t2-glob-missing">
@@ -85,11 +88,19 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
               Results truncated at the requested limit ({totalFiles} found).
             </p>
           )}
-          {parsedDetails?.truncated && !parsedDetails.resultLimitReached && (
-            <p className="text-warning mt-3 text-xs" data-testid="t2-glob-truncated">
-              Scan output was truncated; expand raw details for the recorded result.
+          {parsedDetails?.timedOut && (
+            <p className="text-warning mt-3 text-xs" data-testid="t2-glob-timed-out">
+              The scan timed out before it finished: this list is incomplete and is not proof that
+              nothing matches.
             </p>
           )}
+          {parsedDetails?.truncated &&
+            !parsedDetails.resultLimitReached &&
+            parsedDetails.timedOut !== true && (
+              <p className="text-warning mt-3 text-xs" data-testid="t2-glob-truncated">
+                Scan output was truncated; expand raw details for the recorded result.
+              </p>
+            )}
           {parsedDetails?.error && (
             <p className="text-destructive mt-3 text-xs" role="alert">
               {parsedDetails.error}

@@ -5,22 +5,20 @@ import { OutputMetaSchema, TruncationMetaSchema } from "../U3/tool-card/output-m
 const UnknownRecord = z.record(z.string(), z.unknown());
 const OptionalText = z.string().optional();
 
-export const EditDiagnosticsSchema = z.looseObject({
+/**
+ * omp's `FileDiagnosticsResult` (v18.12.6 `packages/tui/src/tools/lsp.ts:77-88`): what an edit and a write carry in
+ * `details.diagnostics`. `summary` is the count line ("2 error(s), 1 warning(s)", "OK" when clean), `messages` one
+ * text line per diagnostic with its own severity, `errored` whether any is an error, `formatter` the outcome of
+ * the format-on-write pass.
+ */
+export const FileDiagnosticsSchema = z.looseObject({
   server: z.string().optional(),
   messages: z.array(z.string()).optional(),
   summary: z.string().optional(),
   errored: z.boolean().optional(),
+  formatter: z.string().optional(),
 });
-export type EditDiagnostics = z.infer<typeof EditDiagnosticsSchema>;
-
-export const DiagnosticSchema = z.looseObject({
-  severity: z.enum(["error", "warning", "info", "hint"]).optional(),
-  message: z.string().optional(),
-  path: z.string().optional(),
-  line: z.int().positive().optional(),
-  column: z.int().positive().optional(),
-});
-export type Diagnostic = z.infer<typeof DiagnosticSchema>;
+export type FileDiagnostics = z.infer<typeof FileDiagnosticsSchema>;
 
 export const ArtifactNoticeSchema = z.looseObject({
   artifactId: z.string().min(1),
@@ -68,7 +66,8 @@ export const ReadToolDetailsSchema = z.looseObject({
   truncation: TruncationMetaSchema.optional(),
   isDirectory: z.boolean().optional(),
   resolvedPath: z.string().optional(),
-  suffixResolution: z.string().optional(),
+  /** Set when the path was not found and one workspace file matched it by its tail (`packages/tui/src/tools/read.ts:65`). */
+  suffixResolution: z.looseObject({ from: z.string(), to: z.string() }).optional(),
   url: z.string().optional(),
   finalUrl: z.string().optional(),
   contentType: z.string().optional(),
@@ -81,7 +80,8 @@ export const ReadToolDetailsSchema = z.looseObject({
   summary: ReadSummarySchema.optional(),
   conflictCount: z.int().nonnegative().optional(),
   displayReadTargets: z.array(z.string()).optional(),
-  displayReadTargetLinks: z.array(z.string()).optional(),
+  /** One link per entry of `displayReadTargets`; `null` for a part with no file to link, such as one that failed to read. */
+  displayReadTargetLinks: z.array(z.string().nullable()).optional(),
 });
 export type ReadToolDetails = z.infer<typeof ReadToolDetailsSchema>;
 
@@ -99,7 +99,7 @@ export const WriteToolArgsSchema = z
 export type WriteToolArgs = z.infer<typeof WriteToolArgsSchema>;
 
 export const WriteToolDetailsSchema = z.looseObject({
-  diagnostics: z.array(DiagnosticSchema).optional(),
+  diagnostics: FileDiagnosticsSchema.optional(),
   meta: OutputMetaSchema.optional(),
   madeExecutable: z.boolean().optional(),
   resolvedPath: z.string().optional(),
@@ -131,9 +131,11 @@ export type EditToolArgs = z.infer<typeof EditToolArgsSchema>;
 export const EditPerFileResultSchema = z.looseObject({
   path: z.string().optional(),
   diff: z.string().optional(),
-  diagnostics: EditDiagnosticsSchema.optional(),
+  diagnostics: FileDiagnosticsSchema.optional(),
   op: z.enum(["create", "delete", "update"]).optional(),
-  move: UnknownRecord.optional(),
+  /** The path the file moved to (`packages/tui/src/tools/edit.ts:73-94`); `sourcePath` is where it came from. */
+  move: z.string().optional(),
+  sourcePath: z.string().optional(),
   error: z.string().optional(),
   meta: OutputMetaSchema.optional(),
   oldText: z.string().optional(),
@@ -144,9 +146,10 @@ export type EditPerFileResult = z.infer<typeof EditPerFileResultSchema>;
 export const EditToolDetailsSchema = z.looseObject({
   diff: z.string().optional(),
   firstChangedLine: z.int().positive().optional(),
-  diagnostics: EditDiagnosticsSchema.optional(),
+  diagnostics: FileDiagnosticsSchema.optional(),
   op: z.enum(["create", "delete", "update"]).optional(),
-  move: UnknownRecord.optional(),
+  /** The path the file moved to (`packages/tui/src/tools/edit.ts:97-122`); `sourcePath` is where it came from. */
+  move: z.string().optional(),
   meta: OutputMetaSchema.optional(),
   perFileResults: z.array(EditPerFileResultSchema).optional(),
   path: z.string().optional(),
@@ -180,7 +183,8 @@ export const AstEditToolDetailsSchema = z.looseObject({
   filesSearched: z.int().nonnegative().optional(),
   applied: z.boolean().optional(),
   limitReached: z.boolean().optional(),
-  parseErrors: z.array(UnknownRecord).optional(),
+  /** One text line each, capped, as `capParseErrors` leaves them (`packages/tui/src/tools/ast-edit.ts:36-38`). */
+  parseErrors: z.array(z.string()).optional(),
   parseErrorsTotal: z.int().nonnegative().optional(),
   scopePath: z.string().optional(),
   files: z.array(z.string()).optional(),

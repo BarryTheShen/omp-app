@@ -61,6 +61,17 @@ export const OutputSourceSchema = z.looseObject({
 });
 
 /**
+ * The LSP diagnostics an edit or a write attached, as omp's `OutputMetaBuilder.diagnostics` stores them: the summary
+ * and the message lines, one object, not a list (omp v18.12.6 `packages/tui/src/tools/output-meta.ts:53-56,92`,
+ * `packages/coding-agent/src/tools/output-meta.ts:425-430`). The builder adds nothing when there are no messages.
+ */
+export const OutputDiagnosticsSchema = z.looseObject({
+  summary: z.string(),
+  messages: z.array(z.string()),
+});
+export type OutputDiagnostics = z.infer<typeof OutputDiagnosticsSchema>;
+
+/**
  * `details.meta` of a tool result, the wire shape every tool module decodes. (`OutputMeta` in
  * `contract.ts` is a card's normalized view of it.)
  */
@@ -70,7 +81,7 @@ export const OutputMetaSchema = z.looseObject({
   artifactId: z.string().min(1).optional(),
   artifactElidedBytes: z.int().nonnegative().optional(),
   artifactError: UnknownRecord.optional(),
-  diagnostics: z.array(z.unknown()).optional(),
+  diagnostics: OutputDiagnosticsSchema.optional(),
   /** What cut the output short beyond truncation, such as `{ resultLimit: { reached: 200 } }`. */
   limits: UnknownRecord.optional(),
 });

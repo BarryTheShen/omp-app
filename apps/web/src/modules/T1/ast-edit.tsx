@@ -77,28 +77,14 @@ export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRen
                 className="border-danger/40 bg-danger-surface/30 text-danger mt-3 rounded-md border p-2 text-xs"
                 role="alert"
               >
-                <p className="font-medium">Parse errors ({parsedDetails.parseErrors.length})</p>
+                <p className="font-medium">
+                  Parse errors (
+                  {Math.max(parsedDetails.parseErrorsTotal ?? 0, parsedDetails.parseErrors.length)})
+                </p>
                 <ul className="mt-1 list-disc ps-4">
-                  {parsedDetails.parseErrors.slice(0, 8).map((error) => {
-                    const parsed = parseError(error);
-                    return (
-                      <li key={JSON.stringify(error)}>
-                        {parsed.path ? (
-                          <a
-                            className="text-primary underline underline-offset-2"
-                            data-read-path={parsed.path}
-                            href={`#read:${encodeURIComponent(parsed.path)}`}
-                            title={`Read ${parsed.path}`}
-                          >
-                            {parsed.path}
-                          </a>
-                        ) : (
-                          <span>AST edit</span>
-                        )}
-                        {parsed.location && `:${parsed.location}`}: {parsed.message}
-                      </li>
-                    );
-                  })}
+                  {parsedDetails.parseErrors.slice(0, 8).map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
                 </ul>
               </div>
             )}
@@ -145,37 +131,6 @@ function formatPattern(ops: readonly { readonly pat: string; readonly out: strin
   const first = ops[0];
   if (first === undefined) return "(none)";
   return `${first.pat} → ${first.out}${ops.length > 1 ? ` (+${ops.length - 1} more)` : ""}`;
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-function parseError(value: unknown): {
-  readonly path?: string;
-  readonly location?: string;
-  readonly message: string;
-} {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return { message: String(value) };
-  }
-  const record = value as Record<string, unknown>;
-  const path = stringValue(record.path) ?? stringValue(record.file);
-  const line = numberOrText(record.line) ?? numberOrText(record.startLine);
-  const column = numberOrText(record.column) ?? numberOrText(record.startColumn);
-  const location =
-    line === undefined ? undefined : `${line}${column === undefined ? "" : `:${column}`}`;
-  return {
-    ...(path === undefined ? {} : { path }),
-    ...(location === undefined ? {} : { location }),
-    message:
-      stringValue(record.message) ??
-      stringValue(record.error) ??
-      "AST parsing failed for this match.",
-  };
-}
-
-function numberOrText(value: unknown): string | undefined {
-  return typeof value === "number" || typeof value === "string" ? String(value) : undefined;
 }
 
 function rawText(value: unknown): string {

@@ -97,6 +97,11 @@ export const GlobToolDetailsSchema = z.looseObject({
   fileCount: z.number().int().nonnegative().optional(),
   files: z.array(z.string().min(1)).optional(),
   truncated: z.boolean().optional(),
+  /**
+   * The scan hit the tool's deadline, so the files listed are an incomplete set (packages/tui/src/tools/glob.ts:38-41,
+   * set at packages/coding-agent/src/tools/glob.ts:316,347). Such a result also has `truncated: true`.
+   */
+  timedOut: z.boolean().optional(),
   error: OptionalText,
   cwd: OptionalText,
   missingPaths: z.array(z.string()).optional(),
@@ -134,10 +139,16 @@ export const FindHitSchema = z.looseObject({
 });
 export type FindHit = z.infer<typeof FindHitSchema>;
 
+/**
+ * omp v18.12.6 `FindStats` (packages/tui/src/tools/find.ts:72-97): `failed` counts judge requests that failed
+ * outright and decides the search's coverage; `unanswered` counts questions a successful response left without an
+ * answer. v18.9.1 had one `errors` count for both.
+ */
 export const FindStatsSchema = z.looseObject({
   listed: z.number().int().nonnegative().optional(),
   requests: z.number().int().nonnegative().optional(),
-  errors: z.number().int().nonnegative().optional(),
+  failed: z.number().int().nonnegative().optional(),
+  unanswered: z.number().int().nonnegative().optional(),
   judged: z.number().int().nonnegative().optional(),
   filesRead: z.number().int().nonnegative().optional(),
   fileBytes: z.number().int().nonnegative().optional(),
@@ -157,6 +168,12 @@ export const FindToolDetailsSchema = z.looseObject({
   keywords: z.array(z.string()).optional(),
   threshold: OptionalNumber,
   hits: z.array(FindHitSchema).optional(),
+  /**
+   * How much of the search the judge covered (packages/tui/src/tools/find.ts:64-70, set at
+   * packages/coding-agent/src/tools/jfind/cascade.ts:357-359): "complete", "partial" (some requests failed, unjudged
+   * files may still match) or "unavailable" (every request failed; omp returns that as an error).
+   */
+  coverage: z.string().optional(),
   stats: FindStatsSchema.optional(),
   elapsedMs: OptionalNumber,
   cwd: OptionalText,

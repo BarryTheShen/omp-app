@@ -57,7 +57,7 @@ function AstEditPlayground() {
             filesSearched: 50,
             applied: false,
             limitReached: true,
-            parseErrors: [{ path: "src/broken.ts", message: "Unexpected token" }],
+            parseErrors: ["src/broken.ts: parse error (syntax tree contains error nodes)"],
           })}
         />
         <AstEditCard rendererProps={props("ast-edit-running", undefined, { type: "running" })} />
