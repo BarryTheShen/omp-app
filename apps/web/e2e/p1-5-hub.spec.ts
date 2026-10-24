@@ -95,6 +95,18 @@ function captureProblems(page: Page): string[] {
   return problems;
 }
 
+/**
+ * Sends a prompt to a chat that has just answered. omp still runs its last turn for a moment, and it refuses a prompt that
+ * arrives then: the composer keeps the text and offers "Queue it for after" (see fix-1171-agent-busy). Queuing it is the
+ * choice a person makes, so the prompt runs once omp is free. A prompt that omp takes needs no choice.
+ */
+async function sendAfterReply(page: Page, composer: Locator, text: string): Promise<void> {
+  await sendPrompt(composer, text);
+  const queue = page.getByRole("button", { name: "Queue it for after" });
+  await queue.waitFor({ state: "visible", timeout: 10_000 }).catch(() => undefined);
+  if (await queue.isVisible()) await queue.click();
+}
+
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   const widths = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
@@ -306,15 +318,15 @@ realTest(
     const hubRegion = hub.getByRole("region", { name: "Agent Hub" });
     await expect(hubRegion).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });
 
-    await sendPrompt(composer, "spawn_subagent");
+    await sendAfterReply(page, composer, "spawn_subagent");
     await expect(hub.getByRole("option", { name: /Finished/ })).toHaveCount(1, {
       timeout: 120_000,
     });
     await expect(hub.getByRole("option", { name: /Finished.*NestedProbe/ })).toHaveCount(1);
-    await sendPrompt(composer, "spawn_failing_subagent");
+    await sendAfterReply(page, composer, "spawn_failing_subagent");
     await expect(hub.getByRole("option", { name: /Failed/ })).toHaveCount(1, { timeout: 120_000 });
     await expect(hub.getByRole("option", { name: /Failed.*FailProbe/ })).toHaveCount(1);
-    await sendPrompt(composer, "spawn_long_subagent");
+    await sendAfterReply(page, composer, "spawn_long_subagent");
     const running = hub.getByRole("option", { name: /Running.*LongProbe/ });
     await expect(running).toHaveCount(1, { timeout: 120_000 });
     await expect(hub.getByRole("button", BADGE)).toHaveCount(0);
@@ -389,7 +401,7 @@ realTest(
       { timeout: 90_000 },
     );
 
-    await sendPrompt(composer, "spawn_subagent");
+    await sendAfterReply(page, composer, "spawn_subagent");
     await expect(hub.getByRole("option", { name: /Finished.*NestedProbe/ })).toHaveCount(1, {
       timeout: 120_000,
     });
