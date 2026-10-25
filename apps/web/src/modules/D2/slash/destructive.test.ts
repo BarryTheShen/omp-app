@@ -4,6 +4,7 @@ import { DESTRUCTIVE_FORMS, destructiveQuestion } from "./destructive";
 describe("the questions before the typed forms that delete data", () => {
   test("every form that deletes data has a question, and no other form does", () => {
     expect([...DESTRUCTIVE_FORMS].sort()).toEqual([
+      "forget-approvals",
       "marketplace remove",
       "marketplace rm",
       "marketplace uninstall",
@@ -50,6 +51,20 @@ describe("the questions before the typed forms that delete data", () => {
   test("memory clear and memory reset both ask about all saved memory, whatever follows them", () => {
     expect(destructiveQuestion("memory clear", "")?.title).toBe("Clear all saved memory?");
     expect(destructiveQuestion("memory reset", "now")?.title).toBe("Clear all saved memory?");
+  });
+
+  test("/forget-approvals always asks, whatever follows it, and says what omp forgets and that other chats lose it too", () => {
+    // The text is omp v18.12.6's: builtin-control.ts:86-95 runs `clearApprovalGrants` (tools/approval-cache.ts:217-222),
+    // which empties this process's in-memory grants and the `approval-cache.db` file in omp's agent folder (:106-122).
+    const question = {
+      label: "Forget approvals",
+      title: "Forget every remembered approval?",
+      description:
+        "omp forgets every file and folder approval it remembered across sessions (kept in omp's own folder, so other chats and omp in a terminal lose them too) and the ones this chat remembered. The next read or write asks again. This cannot be undone.",
+      confirmLabel: "Forget approvals",
+    };
+    expect(destructiveQuestion("forget-approvals", "")).toEqual(question);
+    expect(destructiveQuestion("forget-approvals", "now --scope user")).toEqual(question);
   });
 
   test("a scope omp refuses, and a form that names nothing, have no question, so nothing is asked about a delete omp will not make", () => {

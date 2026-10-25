@@ -66,6 +66,9 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
  * - `marketplace remove|rm` delete a marketplace source, and `uninstall` deletes a plugin's installed files
  *   (builtin-marketplace.ts:124-130 and :181-187; marketplace/manager.ts:578-638, the removal at :636).
  * - `modelpreset delete <name>` deletes a saved preset (builtin-modes.ts:847-849, :981-983).
+ * - `forget-approvals` deletes every file and folder approval "Ask and remember" recorded: the in-memory grants of that omp
+ *   process and `approval-cache.db` (omp v18.12.6, builtin-control.ts:86-95; tools/approval-cache.ts:217-222). It takes no
+ *   argument, so it is guarded in every form, as `/share` is, and asks first (`destructive.ts`).
  * - `wt` and its alias `worktree` move the chat into a new worktree. With omp's "Clean Source Checkout on /wt" setting on, they
  *   also reset and clean the folder's checkout (builtin-lifecycle.ts:747, session-worktree.ts:96-103). The app cannot read that
  *   setting, so every form asks first.
@@ -82,6 +85,7 @@ const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   mcp: { remove: "name", rm: "name", reload: "any" },
   marketplace: { remove: "target", rm: "target", uninstall: "target" },
   modelpreset: { delete: "target" },
+  "forget-approvals": true,
   wt: true,
   worktree: true,
   annotate: true,

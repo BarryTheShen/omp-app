@@ -172,6 +172,7 @@ describe("#1272 omp subcommands that run at once are answered by the app, not se
       "/marketplace rm market",
       "/marketplace uninstall plugin@market",
       "/modelpreset delete fast",
+      "/forget-approvals",
     ]) {
       const route = routeSlashText(text, entries, []);
       expect(route?.kind, text).toBe("app");
@@ -234,6 +235,27 @@ describe("#1272 omp subcommands that run at once are answered by the app, not se
     expect(guardedForm("/wt feature")).toEqual({ name: "wt", args: "feature" });
     expect(guardedForm("/WT:feature")).toEqual({ name: "wt", args: "feature" });
     expect(guardedForm("/worktree")).toEqual({ name: "worktree", args: "" });
+  });
+
+  test("/forget-approvals is guarded in every form, in any letter case or spacing: it takes no argument and omp ignores any", () => {
+    expect(guardedForm("/forget-approvals")).toEqual({ name: "forget-approvals", args: "" });
+    expect(guardedForm("  /FORGET-Approvals  ")).toEqual({ name: "forget-approvals", args: "" });
+    expect(guardedForm("/forget-approvals now")).toEqual({
+      name: "forget-approvals",
+      args: "now",
+    });
+    expect(guardedForm("/forget-approvals:")).toEqual({ name: "forget-approvals", args: "" });
+  });
+
+  test("a name that only resembles /forget-approvals is not guarded", () => {
+    for (const text of [
+      "/forget",
+      "/forget-approval",
+      "/forget-approvals-now",
+      "/forgetapprovals",
+    ]) {
+      expect(guardedForm(text), text).toBeNull();
+    }
   });
 });
 

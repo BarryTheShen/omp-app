@@ -28,6 +28,7 @@ import {
   type SlashCommandProvider,
   type SlashRoute,
 } from "@/modules/D2/slash";
+import realCatalog18126 from "@/modules/D2/slash/fixtures/real-get-available-commands-18.12.6.json";
 import { completedRun, fakeSlashClient } from "@/modules/D2/slash/test-support";
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import type { ConversationTransitionPort } from "@/modules/P4/transitions";
@@ -1223,6 +1224,146 @@ describe("#1348 the typed forms that delete data each ask first, with their own 
       { threadId, command: "/marketplace uninstall --scope user" },
       {},
     );
+  });
+});
+
+describe("#2633 /forget-approvals asks first, like the other typed forms that delete saved data", () => {
+  const REPLY = "Remembered approvals forgotten; the next read or write asks again.";
+
+  /**
+   * The chat's ask-first commands, a gateway that answers with omp's reply and records what it is sent, an overlay that
+   * records the question each command opens, and a provider over omp 18.12.6's own list, which holds `/forget-approvals`:
+   * only the guard keeps the typed text from running there.
+   */
+  function chat() {
+    const opened: OverlayOpenOptions[] = [];
+    const gateway = {
+      run: vi.fn(async ({ command }: { readonly command: string }) => completedRun(command, REPLY)),
+      sessionDelete: vi.fn(async () => ({ outcome: "unknown" as const })),
+    };
+    const commands = askFirstSlashCommands({
+      catalog: null,
+      fallbackTitle: "Seeded chat",
+      overlay: {
+        open: (options) => {
+          opened.push(options);
+          return undefined;
+        },
+      },
+      gateway,
+      threadId,
+      lifecycle: null,
+      openThread: async () => undefined,
+      showReport: () => undefined,
+    });
+    const fake = fakeSlashClient({
+      commands: async () => ({ commands: realCatalog18126.commands }),
+    });
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => commands,
+    });
+    return { opened, gateway, commands, fake, provider };
+  }
+
+  /** Sends the text the way the composer's Enter does, and returns the route, the send in progress and what the header was told. */
+  async function pressEnter(
+    text: string,
+    commands: readonly SlashAppCommand[],
+    provider: SlashCommandProvider,
+  ) {
+    const intent: PromptIntent = { mode: "prompt", text, delivery: "new" };
+    const route = await routeSubmit({
+      intent,
+      hasAttachments: false,
+      provider,
+      appCommands: commands,
+    });
+    if (route === null) throw new Error(`${text} would be sent to the model`);
+    const showStatus = vi.fn();
+    const running = runSlashRoute({ route, intent, provider, showStatus, showReport: vi.fn() });
+    return { route, running, showStatus };
+  }
+
+  /** Renders the question the overlay was asked to open, the way the overlay would. */
+  function renderQuestion(opened: readonly OverlayOpenOptions[]): void {
+    const content = opened[0]?.content;
+    if (typeof content !== "function") throw new Error("No question was opened.");
+    render(
+      content({
+        id: "forget-approvals",
+        close: () => undefined,
+        requestClose: () => undefined,
+        update: () => undefined,
+      }),
+    );
+  }
+
+  test("Enter on /forget-approvals is the app's: it asks, and omp is sent nothing until the question is answered", async () => {
+    const { opened, gateway, commands, fake, provider } = chat();
+    // omp's own list holds the command, so without the guard the typed text would run in omp at once.
+    const rows = (await provider.searchTyped("forget-approvals")).candidates.map(
+      (row) => row.label,
+    );
+    expect(rows).toContain("/forget-approvals");
+    const { route, running } = await pressEnter("/forget-approvals", commands, provider);
+    expect(route).toMatchObject({ kind: "app", command: { name: "forget-approvals" } });
+    expect(opened.map((options) => options.label)).toEqual(["Forget approvals"]);
+    renderQuestion(opened);
+    expect(screen.getByText("Forget every remembered approval?")).toBeTruthy();
+    expect(gateway.run).not.toHaveBeenCalled();
+    expect(fake.runs).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await running;
+  });
+
+  test("Cancel sends nothing to omp, and the header shows no reply", async () => {
+    const { opened, gateway, commands, fake, provider } = chat();
+    const { running, showStatus } = await pressEnter("/forget-approvals", commands, provider);
+    renderQuestion(opened);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await running;
+    expect(gateway.run).not.toHaveBeenCalled();
+    expect(fake.runs).toEqual([]);
+    expect(showStatus.mock.calls).toEqual([[null]]);
+  });
+
+  test("Forget approvals sends the command once, and omp's reply shows in the header", async () => {
+    const { opened, gateway, commands, fake, provider } = chat();
+    const { running, showStatus } = await pressEnter("/forget-approvals", commands, provider);
+    renderQuestion(opened);
+    fireEvent.click(screen.getByRole("button", { name: "Forget approvals" }));
+    await running;
+    expect(gateway.run).toHaveBeenCalledTimes(1);
+    expect(gateway.run).toHaveBeenCalledWith({ threadId, command: "/forget-approvals" }, {});
+    expect(fake.runs).toEqual([]);
+    expect(showStatus).toHaveBeenLastCalledWith(`omp: ${REPLY}`);
+  });
+
+  test("words typed after it, and another letter case, change nothing: it still asks, and the name is sent in omp's case", async () => {
+    const { opened, gateway, commands, provider } = chat();
+    const { running } = await pressEnter("/Forget-Approvals now", commands, provider);
+    expect(opened.map((options) => options.label)).toEqual(["Forget approvals"]);
+    renderQuestion(opened);
+    fireEvent.click(screen.getByRole("button", { name: "Forget approvals" }));
+    await running;
+    expect(gateway.run).toHaveBeenCalledWith({ threadId, command: "/forget-approvals now" }, {});
+  });
+
+  test("a retry, an edit or a queued message cannot send it past the question", async () => {
+    const send = vi.fn(async () => undefined) as unknown as RpcSessionSend;
+    const guarded = guardOmpSend(send);
+    for (const type of ["prompt", "steer", "follow_up"]) {
+      await expect(
+        guarded({
+          threadId,
+          command: { type, message: "/forget-approvals" },
+        } as unknown as Parameters<RpcSessionSend>[0]),
+      ).rejects.toMatchObject({ appError: { code: "unavailable", retryable: false } });
+    }
+    expect(send).not.toHaveBeenCalled();
   });
 });
 

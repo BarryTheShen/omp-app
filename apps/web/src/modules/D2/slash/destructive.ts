@@ -3,7 +3,9 @@
  * rest of `DESTRUCTIVE_FORMS`). It names the target the person typed and says what omp deletes. Cancel sends nothing.
  *
  * A form with no target, or with a `--scope` that is not `project` or `user`, makes omp print its usage or refuse the
- * scope before anything is deleted, so it has no question (`null`), and the app sends it as typed.
+ * scope before anything is deleted, so it has no question (`null`), and the app sends it as typed. The forms that
+ * delete everything of a kind and take no target (`/memory clear`, `/forget-approvals`) always ask; `/forget-approvals`
+ * is the one form that is a single word.
  */
 export interface DestructiveQuestion {
   /** The overlay's name for the dialog. */
@@ -102,6 +104,23 @@ const presetDelete: Builder = (args) => {
   };
 };
 
+/**
+ * `/forget-approvals`: omp's `clearApprovalGrants` (builtin-control.ts:86-95 runs it and answers "Remembered approvals
+ * forgotten; ..."; tools/approval-cache.ts:217-222, omp v18.12.6). It empties both tiers that "Ask and remember" fills
+ * (approval-cache.ts:1-11): the in-memory grants of every conversation in that omp process (`sessionsByDir`, :188-190, :220), and
+ * `approval-cache.db` in omp's agent folder (`ApprovalCache.clear`, :106-122, a `DELETE FROM grants`), which covers every later
+ * session. In this app each chat is its own omp process, so the first tier is this chat's own and other chats keep theirs; the
+ * second is one file that every chat, and omp in a terminal, reads from the same folder, so they all lose it. It takes no target,
+ * and omp ignores any text typed after it, so the question is always asked.
+ */
+const forgetApprovals: Builder = () => ({
+  label: "Forget approvals",
+  title: "Forget every remembered approval?",
+  description:
+    "omp forgets every file and folder approval it remembered across sessions (kept in omp's own folder, so other chats and omp in a terminal lose them too) and the ones this chat remembered. The next read or write asks again. This cannot be undone.",
+  confirmLabel: "Forget approvals",
+});
+
 /** The guarded forms that delete data, keyed by the words the app matches them on (routing.ts `GUARDED_OMP_COMMANDS`). */
 const QUESTIONS: Record<string, Builder> = {
   "memory clear": memoryClear,
@@ -114,6 +133,7 @@ const QUESTIONS: Record<string, Builder> = {
   "marketplace rm": marketplaceRemove,
   "marketplace uninstall": pluginUninstall,
   "modelpreset delete": presetDelete,
+  "forget-approvals": forgetApprovals,
 };
 
 /** The guarded forms that delete data, in the words the app matches them on (`memory clear`, `ssh rm`, ...). */
