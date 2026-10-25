@@ -12,6 +12,10 @@
 # A long turn does not depend on its window either: a message that starts a slow tool is sent in the window (the e2e
 # harness's fake model provider answers it), the window is closed while the tool runs, and the turn finishes anyway;
 # the reopened window attaches, and the chat's session file holds the message once and the final answer once (#2614).
+# A server on another computer (#2649): `--remote <link>` keeps the link in the config folder, readable by this account
+# only, and the window opens that server and starts none here; when the computer does not answer, the error page shows.
+# A second launch with `--local` or `--remote` moves the open window: back to this computer's running server, or to the
+# other computer's address (a listener there sees the window's TLS handshake; it is no https server, so nothing loads).
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -31,7 +35,7 @@ export GDK_BACKEND=x11
 shots="$(dirname "$deb")/screenshots"
 mkdir -p "$shots"
 work=$(mktemp -d)
-export HOME="$work/home" XDG_STATE_HOME="$work/state" PI_CODING_AGENT_DIR="$work/agent" OMP_APP_DATA_DIR="$work/data"
+export HOME="$work/home" XDG_STATE_HOME="$work/state" XDG_CONFIG_HOME="$work/config" PI_CODING_AGENT_DIR="$work/agent" OMP_APP_DATA_DIR="$work/data"
 mkdir -p "$HOME" "$work/folder" "$PI_CODING_AGENT_DIR" "$OMP_APP_DATA_DIR"
 root="$work/root"
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -39,6 +43,7 @@ requests="$work/requests.jsonl"
 app="$root/usr/bin/omp-app-desktop"
 sidecar_bin="$root/usr/bin/omp-app-desktop-server"
 state="$work/state/omp-app"
+link_file="$XDG_CONFIG_HOME/omp-app/desktop-server"
 results=()
 started=()
 LAUNCHED=""
@@ -364,6 +369,10 @@ send_in_window() {
   sleep 1
   xdotool key Return
 }
+# A port of this computer that nothing listens on now: bound, then let go.
+free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
+# The kept link file's mode, as octal digits; empty when there is no file.
+link_mode() { stat -c %a "$link_file" 2>/dev/null; }
 
 trap 'note "interrupted"; finish 1' INT TERM
 dpkg-deb -x "$deb" "$root" || fail "cannot extract $deb"
@@ -591,6 +600,95 @@ wait "$p"
 is_alive "$side" || fail "T9: the server $side ended when the reopened window closed"
 stop_provider
 note "T9 the reopened window closed, the server $side runs on, and the fake model provider is stopped"
+
+note "== T10: a server on another computer (#2649): --remote keeps its link privately and opens that server, starting none here; a computer that does not answer gets the error page; a second launch with --local or --remote moves the open window"
+unreachable="https://127.0.0.1:$(free_port)/#token=smoke-remote"
+opens_before=$(count_log 'connection.open')
+launch "$app" --remote "$unreachable"
+p=$LAUNCHED
+wid=$(wait_window 120) || fail "T10: no window for the launch with --remote"
+[[ $(cat "$link_file" 2>/dev/null) == "$unreachable" ]] || fail "T10: the link file holds '$(cat "$link_file" 2>/dev/null)', not the link given to --remote"
+[[ $(link_mode) == 600 ]] || fail "T10: the link file's mode is '$(link_mode)', not 600"
+note "T10 --remote kept the link in the config folder, readable by this account only"
+sleep 8
+is_alive "$p" || fail "T10: the app quit when the other computer did not answer"
+[[ $(window_ids | wc -l) == 1 ]] || fail "T10: $(window_ids | wc -l) windows while the other computer did not answer"
+[[ $(count_log 'connection.open') == "${opens_before:-0}" ]] || fail "T10: the window connected to this computer's server instead of the other computer"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 ]] || fail "T10: $servers server processes of this run: the launch with --remote started one here"
+shot "$wid" remote-unreachable
+note "T10 the other computer did not answer: the window stayed open on the error page, and it neither used nor started a server here"
+launch "$app" --local
+second=$LAUNCHED
+wait_gone "$second" 30 || fail "T10: the second launch with --local did not exit"
+wait "$second"
+[[ ! -e $link_file ]] || fail "T10: the second launch with --local left the link file"
+wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T10: after a second launch with --local the window never connected to this computer's server"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 && $(window_ids | wc -l) == 1 ]] || fail "T10: $servers server processes and $(window_ids | wc -l) windows after --local"
+note "T10 a second launch with --local forgot the link and moved the open window to this computer's running server"
+# A computer that answers: something listens on the link's port. It is no https server, so no page loads, but the
+# first byte the window sends there (22, a TLS handshake) shows that the window went to that address.
+open_port=$(free_port)
+python3 - "$open_port" "$work/listener.log" <<'PY' &
+import socket
+import sys
+
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("127.0.0.1", int(sys.argv[1])))
+server.listen(16)
+with open(sys.argv[2], "a", buffering=1) as log:
+    log.write("listening\n")
+    while True:
+        connection, _ = server.accept()
+        connection.settimeout(10)
+        try:
+            first = connection.recv(1)
+        except OSError:
+            first = b""
+        log.write(f"connection first={first[0] if first else 'none'}\n")
+        connection.close()
+PY
+listener=$!
+started+=("$listener")
+for n in $(seq 1 50); do
+  grep -q listening "$work/listener.log" 2>/dev/null && break
+  sleep 0.2
+done
+answering="https://127.0.0.1:$open_port/#token=smoke-remote"
+launch "$app" --remote "$answering"
+second=$LAUNCHED
+wait_gone "$second" 30 || fail "T10: the second launch with --remote did not exit"
+wait "$second"
+[[ $(cat "$link_file" 2>/dev/null) == "$answering" && $(link_mode) == 600 ]] || fail "T10: the second launch with --remote did not keep its link privately"
+went=""
+for n in $(seq 1 60); do
+  grep -q 'first=22' "$work/listener.log" 2>/dev/null && { went=yes; break; }
+  sleep 0.5
+done
+[[ -n $went ]] || fail "T10: the window never went to the other computer's address (the listener got: $(tr '\n' ' ' <"$work/listener.log" 2>/dev/null))"
+sleep 3
+is_alive "$p" || fail "T10: the app quit after the window went to the other computer"
+[[ $(window_ids | wc -l) == 1 ]] || fail "T10: $(window_ids | wc -l) windows after the window went to the other computer"
+shot "$wid" remote-not-https
+note "T10 a second launch with --remote moved the open window to the other computer: the window began a TLS handshake there"
+launch "$app" --local
+second=$LAUNCHED
+wait_gone "$second" 30 || fail "T10: the last launch with --local did not exit"
+wait "$second"
+[[ ! -e $link_file ]] || fail "T10: the last launch with --local left the link file"
+wait_log_count 'connection.open' $((${opens_before:-0} + 2)) 60 || fail "T10: after the last --local the window never connected to this computer's server again"
+note "T10 --local again: the link is forgotten, and the window is back on this computer's server"
+kill -TERM "$listener" 2>/dev/null || true
+wait "$listener" 2>/dev/null || true
+close_window "$wid"
+wait_gone "$p" 40 || fail "T10: the app did not exit after its window closed"
+wait "$p"
+is_alive "$side" || fail "T10: the server $side ended"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 ]] || fail "T10: $servers server processes of this run at the end of T10"
+note "T10 the window closed, and this computer's server $side runs on, the only one"
 
 note "== end: the test stops the server itself: SIGTERM to the pid in instance.json ends it, its omp processes, and its record"
 server=$(record_pid) || fail "end: there is no instance record while the server should run"

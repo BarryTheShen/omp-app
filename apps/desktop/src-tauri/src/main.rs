@@ -2,11 +2,16 @@
 //! one that already runs, or on one it starts itself, detached (see `server.rs`). Closing the window, or quitting
 //! the app, never stops a server, so running chats keep going. A second launch focuses the window that is already
 //! open. The window runs the omp release that ships in its package, not one found on this computer.
+//!
+//! `omp-app-desktop --remote '<link>'` makes the window open the app's server on another computer of the tailnet,
+//! from the link that server logs for another device, and `omp-app-desktop --local` brings it back to this computer's
+//! server (see `remote.rs`). Each is kept for the next launches, and a second launch with either moves the open window.
 
 mod address;
 mod clipboard;
 mod downloads;
 mod gstreamer;
+mod remote;
 mod server;
 mod signals;
 
@@ -16,8 +21,16 @@ use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 const WINDOW_LABEL: &str = "main";
 
 fn main() {
+    // Keeps or forgets the link of a server on another computer before anything starts (see `remote.rs`).
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(reason) = server::apply_choice(&args) {
+        eprintln!("omp app: {reason}");
+        std::process::exit(2);
+    }
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // The second launch's own arguments, its program's name left out.
+            server::relaunch(app, args.get(1..).unwrap_or_default());
             focus_window(app)
         }))
         .manage(server::Shared::default())

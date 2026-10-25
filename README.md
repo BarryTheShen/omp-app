@@ -38,6 +38,15 @@ tailscale serve --bg localhost:4317                                # HTTPS on th
 
 `omp-app` then prints a second link, `https://<computer>.<tailnet>.ts.net/#token=…`, that opens the app on another device of your tailnet. Send it to that device privately: whoever has the link can use the app. The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off` (or `tailscale serve reset`, which clears every serve setting of this computer), then unset the variable and restart the app.
 
+The window (`omp-app-desktop`) can open that server from another computer too. Run it once with the link:
+
+```bash
+omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net/#token=…'   # keeps the link and opens that server
+omp-app-desktop --local                                                 # back to this computer's own server
+```
+
+The window keeps the link in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. Run either command while the window is open to move it to the other server. Only an `https://` link with a token is accepted. If the other computer does not answer, the window says so and names it. Undo: `omp-app-desktop --local`.
+
 ### When something goes wrong: the debug log
 
 The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records: a header (app, system, Bun and omp versions, folders); the omp and capability checks with their timings; every omp process (start, pid, how long it ran, and its last stderr lines if it dies on its own); every browser connection (opened, closed, turned away); every failed call (which one, and why); uncaught errors and crashes with their stack; errors the page itself reports; and every 30 seconds the server's memory, the number and memory of omp processes, and how long the server was blocked at worst, so a freeze leaves numbers behind.

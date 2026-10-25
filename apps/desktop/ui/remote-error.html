@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>omp app</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        color: #1f2328;
+        font-family: system-ui, sans-serif;
+      }
+      main {
+        max-width: 34rem;
+        padding: 2rem;
+      }
+      h1 {
+        margin: 0 0 1rem;
+        font-size: 1.4rem;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 0.75rem;
+        line-height: 1.5;
+      }
+      code {
+        font-size: 0.95em;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #1f2328;
+          color: #e6edf3;
+        }
+      }
+    </style>
+    <script src="remote-error.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>omp app could not reach <span id="host">the other computer</span></h1>
+      <p>
+        This window opens the app's server on another computer of your tailnet. That computer did not
+        answer: it may be off, not on the tailnet, or not serving the app with <code>tailscale serve</code>.
+      </p>
+      <p>Close this window and open omp app again once the other computer is back.</p>
+      <p>To use this computer's own server instead, run <code>omp-app-desktop --local</code>.</p>
+    </main>
+  </body>
+</html>
