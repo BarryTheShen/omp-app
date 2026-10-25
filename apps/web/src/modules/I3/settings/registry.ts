@@ -1,8 +1,8 @@
 /**
- * Committed extract of omp v18.8.9's memory setting registrations. The registrations were checked
- * against the v18.6.1 floor sources named by research/modules/I3.md:26-30 and the v18.8.9 review
- * sources: memory-backend/settings.ts:12-40, autolearn/settings.ts:10-35, hindsight/settings.ts:61-157,245,
- * and mnemopi/settings.ts:35-100,170-181,226-248. The app renders only these registered keys.
+ * Committed extract of omp v18.12.6's memory setting registrations (none of them changed since v18.8.9). The
+ * registrations were checked against the sources: memory-backend/settings.ts:12-40, autolearn/settings.ts:10-35,
+ * hindsight/settings.ts:61-157,245, and mnemopi/settings.ts:35-100,170-181,226-248; research/modules/I3.md:26-30 names
+ * the settings the section covers. The app renders only these registered keys.
  */
 export const MEMORY_REGISTRY_EXTRACT = {
   "memory/General": {

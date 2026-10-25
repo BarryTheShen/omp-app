@@ -10,7 +10,7 @@ import {
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 
 /**
- * Memory settings correspond to omp v18.6.1's Memory sections. The setting-schema ranges are
+ * Memory settings correspond to omp v18.12.6's Memory sections. The setting-schema ranges are
  * recorded in research/modules/I3.md:26-30 and research/omp-feature-inventory.md:879-884.
  * ConfigStore remains authoritative for effective values, provenance and revisions.
  */

@@ -4,7 +4,7 @@ const REQUEST_LOG_LINE = "raw-http-request=";
 const REQUEST_LOG_SAVE_FAILED_LINE = "raw-http-request-save-failed=";
 
 /**
- * Separates the provider's error from omp's local request diagnostics. omp v18.8.9 declares these
+ * Separates the provider's error from omp's local request diagnostics. omp v18.12.6 declares these
  * prefixes at `packages/ai/src/utils/http-inspector.ts:63-64`, appends the saved path at :103, and
  * appends the save error at :106. The path is intentionally never returned to the browser.
  */

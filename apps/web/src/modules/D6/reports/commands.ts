@@ -2,7 +2,7 @@ import type { DiagnosticCommandRequest } from "../contract";
 
 /**
  * `/changelog` with no arguments shows the three most recent releases; `full` shows the whole
- * changelog (omp v18.6.1 utils/changelog.ts:18 and :38, `RECENT_CHANGELOG_ENTRY_LIMIT`).
+ * changelog (omp v18.12.6 utils/changelog.ts:18 and :38, `RECENT_CHANGELOG_ENTRY_LIMIT`).
  */
 export type ChangelogView = "recent" | "full";
 
@@ -22,6 +22,6 @@ export function jobsRequest(view: JobsView): DiagnosticCommandRequest {
 
 /**
  * `/trace` starts omp's stats dashboard on this computer and returns this session's trace URL,
- * which carries the session file's path (omp v18.6.1 slash-commands/builtin-collaboration.ts:204-220).
+ * which carries the session file's path (omp v18.12.6 slash-commands/builtin-collaboration.ts:204-220).
  */
 export const TRACE_REQUEST: DiagnosticCommandRequest = { name: "trace" };

@@ -84,8 +84,8 @@ export const HttpsUrl = z
   );
 
 /**
- * `/share`'s typed result, read from omp 18.6.1's reply: the viewer link, the gist link when omp made
- * one, and whether omp trimmed the session to fit the share size limit (builtin-collaboration.ts:285-307).
+ * `/share`'s typed result, read from omp 18.12.6's reply: the viewer link, the gist link when omp made
+ * one, and whether omp trimmed the session to fit the share size limit (builtin-collaboration.ts:293-315).
  */
 export const ShareResult = z.strictObject({
   url: HttpsUrl,
@@ -98,7 +98,7 @@ export const ShareCommandArgs = z.strictObject({ threadId: ThreadId });
 export type ShareCommandArgs = z.infer<typeof ShareCommandArgs>;
 
 /**
- * `session` runs `/dump`; `all` runs `/dump all` (builtin-collaboration.ts:231-279 in v18.6.1); `anon` runs `/dump anon`,
+ * `session` runs `/dump`; `all` runs `/dump all` (builtin-collaboration.ts:231-290 in v18.12.6); `anon` runs `/dump anon`,
  * the anonymized archive that omp v18.8.9 added (its `dump` subcommands in builtin-collaboration.ts).
  */
 export const DumpScope = z.enum(["session", "all", "anon"]);
@@ -108,10 +108,10 @@ export const DumpCommandArgs = z.strictObject({ threadId: ThreadId, scope: DumpS
 export type DumpCommandArgs = z.infer<typeof DumpCommandArgs>;
 
 /**
- * omp's own dump text for one scope, exactly as omp printed it. The server checks the shape omp 18.6.1
+ * omp's own dump text for one scope, exactly as omp printed it. The server checks the shape omp 18.12.6
  * prints for that scope and passes the text through unparsed; browser code shows it and never reads it.
- * `empty` is true when omp printed its message for a session with no messages (builtin-collaboration.ts:248,
- * :257), so a caller can say so without a report to save.
+ * `empty` is true when omp printed its message for a session with no messages (builtin-collaboration.ts:255,
+ * :264), so a caller can say so without a report to save.
  */
 export const DumpReport = z.strictObject({
   scope: DumpScope,
@@ -232,7 +232,7 @@ export const ModeChangeResult = z.union([
 export type ModeChangeResult = z.infer<typeof ModeChangeResult>;
 /**
  * `/session delete`, as the server reports it. The browser never reads omp's words (AP4): A1 reads omp's one-line reply
- * (builtin-session.ts:274-288 at omp v18.6.1) and gives one of these outcomes. `deleted`: omp removed the chat's file,
+ * (builtin-session.ts:273-287 at omp v18.12.6) and gives one of these outcomes. `deleted`: omp removed the chat's file,
  * so the app leaves the chat and drops its row. `refused`: nothing was deleted, and the reason says why. `failed`: the
  * chat's file could not be removed. `unknown`: a reply A1 does not recognise, so nothing changes.
  */

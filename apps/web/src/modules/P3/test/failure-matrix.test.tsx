@@ -1,6 +1,6 @@
 // Stand-in texts are test inputs that omp or the transport would send; no production file emits them. Each row proves
 // that P3 keeps the code, message and retryable flag it is given, and that it maps the source and the branch the way the
-// row names. The branch and get_branch_messages shapes are omp v18.8.9's (fixtures/omp-branch.ts cites each one).
+// row names. The branch and get_branch_messages shapes are omp v18.12.6's, the same as at v18.8.9 (fixtures/omp-branch.ts cites each one).
 import type { CapabilityKey, ThreadId } from "@omp-app/contracts";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";

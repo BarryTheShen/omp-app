@@ -43,7 +43,7 @@ export const EntryCursorSchema = z.strictObject({
   nextSince: EntryIdSchema.optional(),
 });
 
-/** Labels are display-only at the v18.6.1 floor; no mutation port exists. */
+/** Labels are display-only at omp v18.12.6, which has no RPC command that sets one; no mutation port exists. */
 export interface ReadOnlyTreeLabel {
   readonly targetId: EntryId;
   readonly text: string | null;

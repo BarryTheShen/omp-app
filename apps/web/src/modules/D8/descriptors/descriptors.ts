@@ -35,7 +35,7 @@ const SUBAGENT_EVENTS = D8_RELEASED_CAPABILITIES.subagentEvents;
 /**
  * Command rows. Only `/ratchet` is an omp slash command that omp's RPC catalog lists (the recorded catalog in D2's
  * fixtures). omp runs `/goal`, `/guided-goal`, `/loop`, `/tan` and `/vibe` only in its terminal (`handleTui` only:
- * omp v18.8.9 `builtin-modes.ts:358-432` and `builtin-lifecycle.ts:451`), so those rows claim no slash name. The goal
+ * omp v18.12.6 `builtin-modes.ts:360-448` and `builtin-lifecycle.ts:463-471`), so those rows claim no slash name. The goal
  * subcommands and the `--goal` launch flag have no slash either.
  */
 export const D8_COMMAND_DESCRIPTORS = [

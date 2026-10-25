@@ -211,7 +211,7 @@ const P1_STATUS_DESCRIPTORS = [
 /**
  * Each omp custom-message type has one renderer (contract change 2026-10-05). The IRC row covers the
  * incoming type; the autoreply and relay types are registered with no row of their own. omp's IRC bus
- * replaced the auto-reply model (packages/coding-agent/src/irc/bus.ts:1-12, omp v18.8.9), so irc:autoreply
+ * replaced the auto-reply model (packages/coding-agent/src/irc/bus.ts:1-12, omp v18.12.6), so irc:autoreply
  * is read from older transcripts only.
  */
 const P1_MESSAGE_DESCRIPTORS = [

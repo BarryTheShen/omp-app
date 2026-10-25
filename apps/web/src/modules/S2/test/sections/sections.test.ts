@@ -72,7 +72,7 @@ function validate(key: string, value: SettingValue) {
 }
 
 describe("S2 Files and Shell sections", () => {
-  test("covers exactly the six S5 groups with the v18.6.1 registered keys", () => {
+  test("covers exactly the six S5 groups with the v18.12.6 registered keys", () => {
     expect(S2_SETTINGS_SECTIONS).toHaveLength(6);
     expect(S2_SETTINGS_SECTIONS.map((descriptor) => descriptor.inventory)).toEqual([
       ["S5.files-editing"],
@@ -90,6 +90,13 @@ describe("S2 Files and Shell sections", () => {
     expect(S2_SETTINGS_SECTIONS.map((descriptor) => descriptor.requires)).toEqual(
       S2_SETTINGS_SECTIONS.map(() => ["host.config"]),
     );
+  });
+
+  test("describes shared language servers as omp 18.12.6 starts them: one server per connection, kept warm for the next", () => {
+    const description = control("lsp.shared").description ?? "";
+    expect(description).toContain("its own server");
+    expect(description).toContain("stays warm");
+    expect(description).not.toContain("Share one language server");
   });
 
   test("describes every Files setting and keeps terminal-only previews read-only", () => {

@@ -27,7 +27,7 @@ function controlFor(descriptor: SettingsSectionDescriptor, key: string): Setting
 }
 
 describe("S2.2 Files policy snapshots", () => {
-  test("covers exactly the registered Files keys with v18.6.1 kinds and defaults", () => {
+  test("covers exactly the registered Files keys with v18.12.6 kinds and defaults", () => {
     expect(
       FILES_SECTIONS.flatMap((descriptor) =>
         descriptor.controls.map((control) => control.key),

@@ -256,7 +256,7 @@ function commandMetadata(
   }));
 }
 
-/** Plugin package manifests use package.json's `omp` or `pi` object, as defined by omp v18.6.1
+/** Plugin package manifests use package.json's `omp` or `pi` object, as defined by omp v18.12.6
  * `extensibility/plugins/types.ts` and loaded by `extensibility/plugins/loader.ts`. */
 function packageSummary(
   pkg: JsonObject,
@@ -336,8 +336,8 @@ async function listChildren(path: string): Promise<string[]> {
   }
 }
 
-/** Skills follow omp v18.6.1's non-recursive `<root>/skills/<name>/SKILL.md` layout and YAML
- * frontmatter (`docs/skills.md`, `discovery/builtin.ts:288-315`). */
+/** Skills follow omp v18.12.6's non-recursive `<root>/skills/<name>/SKILL.md` layout and YAML
+ * frontmatter (`docs/skills.md`, `discovery/builtin.ts:309-337`). */
 function parseFrontmatter(text: string): { fields?: JsonObject; error?: string } {
   const lines = text.split(/\r?\n/);
   if (lines[0]?.trim() !== "---") return { error: "Skill metadata frontmatter is missing." };

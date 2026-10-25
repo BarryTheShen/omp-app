@@ -78,7 +78,7 @@ describe("formatDuration", () => {
   });
 
   test("rounds to tenths before it picks the unit, so a minute never reads as 60.0s", () => {
-    // omp 18.8.9 packages/utils/src/format.ts:13-17: toFixed(1) alone turns 59.95 s into "60.0s".
+    // omp 18.12.6 packages/utils/src/format.ts:13-17: toFixed(1) alone turns 59.95 s into "60.0s".
     expect(formatDuration(59_940)).toBe("59.9s");
     expect(formatDuration(59_950)).toBe("1m");
   });

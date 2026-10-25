@@ -6,7 +6,7 @@ export type FilesSettingDefault = {
   readonly value: JsonValue;
 };
 
-/** omp v18.6.1 registered defaults, shared by the policy fallback and test fixtures. */
+/** omp v18.12.6 registered defaults, shared by the policy fallback and test fixtures. */
 export const FILES_SETTING_DEFAULTS = {
   // edit/settings.ts:36-50
   "edit.mode": { kind: "enum", value: "hashline" },

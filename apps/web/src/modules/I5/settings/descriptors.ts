@@ -76,7 +76,7 @@ function positiveRecordValidator(value: SettingValue): ValidationResult {
 
 /**
  * `providers.maxInFlightRequests`: provider name → positive concurrency limit; providers not listed
- * are unlimited, and omp rejects non-positive or non-numeric values (omp v18.6.1 docs/settings.md:921).
+ * are unlimited, and omp rejects non-positive or non-numeric values (omp v18.12.6 docs/settings.md:960).
  */
 const providerLimitsControl: MapSettingControl = {
   key: "providers.maxInFlightRequests",
@@ -92,13 +92,6 @@ const providerLimitsControl: MapSettingControl = {
   validate: positiveRecordValidator,
   apply: "live",
 };
-
-function listValidator(value: SettingValue): ValidationResult {
-  const candidate = plain(value);
-  return Array.isArray(candidate) && candidate.every((item) => typeof item === "string")
-    ? { valid: true }
-    : { valid: false, code: "list", message: "Enter a list of text values." };
-}
 
 function optionalUrlValidator(value: SettingValue): ValidationResult {
   const candidate = plain(value);
@@ -176,9 +169,6 @@ const textControl = (key: string, description: string, apply: SettingControl["ap
 const urlControl = (key: string, description: string, apply: SettingControl["apply"] = "reload") =>
   control(key, "text", optionalUrlValidator, apply, description);
 
-const listControl = (key: string, description: string, apply: SettingControl["apply"] = "reload") =>
-  control(key, "list", listValidator, apply, description);
-
 const LIVE_VOICE_VALUES = [
   "arbor",
   "breeze",
@@ -206,11 +196,11 @@ const TTS_VOICE_VALUES = [
   "bm_fable",
 ] as const;
 /**
- * Keys and labels are copied from omp v18.6.1's registration sources:
+ * Keys and labels are copied from omp v18.12.6's registration sources:
  * - `packages/coding-agent/src/stt/settings.ts:1-45` (Speech-to-Text and submit trigger),
  * - `packages/coding-agent/src/live/settings.ts:1-20` (live.voice),
- * - `packages/coding-agent/src/tts/settings.ts:1-80` (local TTS and speech.*),
- * - `packages/coding-agent/src/session/settings.ts:130-1390` (provider services and reset policy),
+ * - `packages/coding-agent/src/tts/settings.ts:1-110` (local TTS and speech.*),
+ * - `packages/coding-agent/src/session/settings.ts:160-173,912-1435` (provider services and reset policy),
  * - `packages/coding-agent/src/web/settings.ts:1-50` (Exa and SearXNG endpoint).
  *
  * omp registers `stt.language` without UI metadata; I5 places it in the Services section because the
@@ -229,8 +219,6 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
   "speech.voice": "Speech Vocalization Voice",
   "speech.speed": "Speech Vocalization Speed",
   "providers.maxInFlightRequests": "Max In-Flight Requests",
-  "providers.openai-codex.codeMode": "Codex Code Mode",
-  "providers.openai-codex.codeModeDirectTools": "Codex Code Mode Direct Tools",
   "providers.ollama-cloud.maxConcurrency": "Ollama Cloud Max Concurrency",
   "providers.webSearchTimeoutSeconds": "Web Search Timeout",
   "providers.antigravityEndpoint": "Antigravity Endpoint Mode",
@@ -303,17 +291,6 @@ const providerServiceControls: readonly SettingControl[] = [
     false,
   ),
   providerLimitsControl,
-  enumControl(
-    "providers.openai-codex.codeMode",
-    ["off", "on", "auto"],
-    "Route Codex code-mode models through eval.",
-    "reload",
-  ),
-  listControl(
-    "providers.openai-codex.codeModeDirectTools",
-    "Additional direct tools available in Codex Code Mode.",
-    "reload",
-  ),
   numberControl(
     "providers.ollama-cloud.maxConcurrency",
     0,

@@ -1,5 +1,5 @@
 // The completed, aborted and provider-error prompt_result frames plus session_settled are recorded under packages/omp-rpc/fixtures.
-// The pending frame remains the documented shape (rpc-types.ts:239-244 at omp v18.8.9).
+// The pending frame remains the documented shape (rpc-types.ts:241-246 at omp v18.12.6).
 import type { RpcSessionEvent } from "@omp-app/contracts";
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";

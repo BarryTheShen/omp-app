@@ -1,5 +1,5 @@
-// Stored messages are read from the recordings (fixtures/omp-branch.ts). The branch result is omp v18.8.9's
-// (rpc-types.ts:540). The get_state answer and the sessionId key are in the recorded out-of-order run.
+// Stored messages are read from the recordings (fixtures/omp-branch.ts). The branch result is omp v18.12.6's
+// (rpc-types.ts:542). The get_state answer and the sessionId key are in the recorded out-of-order run.
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import {

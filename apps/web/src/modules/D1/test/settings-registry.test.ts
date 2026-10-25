@@ -8,7 +8,7 @@ type Control = (typeof SETTINGS_SECTIONS)[number]["controls"][number];
 
 /**
  * App controls with no entry in the registry fixture: the magic-keyword ids omp creates in a loop (the literal-register
- * extractor cannot see them), and two settings omp removed.
+ * extractor cannot see them).
  */
 const NOT_IN_THE_FIXTURE: Readonly<Record<string, string>> = {
   "magicKeywords.ultrathink":
@@ -19,10 +19,6 @@ const NOT_IN_THE_FIXTURE: Readonly<Record<string, string>> = {
     "generated in omp's magic-keyword loop; absent from literal register calls",
   "magicKeywords.jevify":
     "generated in omp's magic-keyword loop; absent from literal register calls",
-  "providers.openai-codex.codeMode":
-    "removed in omp v18.10.4 (CHANGELOG line 543 at v18.12.6); the app keeps the control for omp 18.6.1, its floor",
-  "providers.openai-codex.codeModeDirectTools":
-    "removed in omp v18.10.4 (CHANGELOG line 543 at v18.12.6); the app keeps the control for omp 18.6.1, its floor",
 };
 /** These enum values are identifier-valued in omp, so the literal-register extractor omits them. */
 const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {

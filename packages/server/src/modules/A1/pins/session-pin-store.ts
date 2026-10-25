@@ -91,7 +91,7 @@ function nonEmpty(value: string | undefined): string | undefined {
 }
 
 /**
- * Matches omp v18.6.1's packages/utils/src/dirs.ts:618-621 (`getAgentDir`) and 311-315
+ * Matches omp v18.12.6's packages/utils/src/dirs.ts:640-643 (`getAgentDir`) and 333-337
  * (`getConfigAgentDirName`): `PI_CODING_AGENT_DIR` wins outright; otherwise `OMP_PROFILE` selects
  * `~/.omp/profiles/<profile>/agent`; otherwise the default is `~/.omp/agent`. Mirrors A1.4
  * ConfigStore's own `resolveAgentDirectory` — there is no shared export for it, so every A1 store

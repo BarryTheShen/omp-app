@@ -18,7 +18,7 @@ function replyTo(
   };
 }
 
-/** builtin-session.ts:287-288 at omp v18.6.1, with the path omp printed: the file it deleted. */
+/** builtin-session.ts:286-287 at omp v18.12.6, with the path omp printed: the file it deleted. */
 const DELETED = (path: string) =>
   `Session deleted: ${path}. Use ACP \`session/load\` to switch to another session.`;
 

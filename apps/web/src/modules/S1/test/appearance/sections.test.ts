@@ -13,7 +13,7 @@ import {
   THEME_SETTINGS_SECTION,
 } from "../../appearance";
 
-// omp v18.9.1 defaults: modes/settings.ts:58-331 and 360-685; task/settings.ts:442-447; utils/title-settings.ts:7-43.
+// omp v18.12.6 defaults: modes/settings.ts:59-333 and 361-755; task/settings.ts:536-546; utils/title-settings.ts:12-66.
 const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   "theme.dark": "titanium",
   "theme.light": "light",
@@ -153,7 +153,7 @@ const EXPECTED_KINDS: Readonly<Record<string, SettingControl["kind"]>> = {
 function defaultSnapshot(descriptor: SettingsSectionDescriptor): ConfigSnapshot {
   const entries: ConfigEntry[] = descriptor.controls.map((setting) => {
     const value = DEFAULT_VALUES[setting.key];
-    if (value === undefined) throw new Error(`Missing omp v18.6.1 default for ${setting.key}.`);
+    if (value === undefined) throw new Error(`Missing omp v18.12.6 default for ${setting.key}.`);
     return { key: setting.key, secret: false, value, source: "default", overrides: [] };
   });
   return { folder: null, revision: "revision-1", entries };
@@ -209,7 +209,7 @@ describe("S1.3 appearance sections", () => {
         }
         const value = DEFAULT_VALUES[setting.key];
         if (value === undefined)
-          throw new Error(`Missing omp v18.6.1 default fixture for ${setting.key}.`);
+          throw new Error(`Missing omp v18.12.6 default fixture for ${setting.key}.`);
         expect(setting.validate({ secret: false, value }, snapshot)).toEqual({ valid: true });
         expect(snapshot.entries.find((entry) => entry.key === setting.key)).toMatchObject({
           value,

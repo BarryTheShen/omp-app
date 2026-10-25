@@ -7,10 +7,11 @@ export const P6_DEQUEUE_SHORTCUT_ID = "P6.message.dequeue" as const;
 type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
 
 /**
- * Browser-local queue controls from omp's v18.6.1 input grammar:
+ * Browser-local queue controls from omp's v18.12.6 input grammar:
  * `Ctrl/Cmd+Enter` queues a follow-up and `Alt+Up` restores a queued message. The browser app
  * registers the descriptors; P6.3/U2 owns the actual composer action wiring.
- * Sources: research/omp-feature-inventory.md:436-440 and omp's v18.6.1 input-controller keybindings.
+ * Sources: research/omp-feature-inventory.md:436-440 and omp v18.12.6's `app.message.followUp` and `app.message.dequeue`
+ * keybindings (packages/tui/src/app-keybindings.ts:157-175: Ctrl+Q or Ctrl+Enter, and Alt+Up or Shift+Up).
  */
 export const P6_SHORTCUT_DESCRIPTORS = [
   {

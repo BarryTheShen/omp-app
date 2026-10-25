@@ -150,7 +150,7 @@ export const SubagentTranscriptPageSchema = z
   );
 export type SubagentTranscriptPage = z.infer<typeof SubagentTranscriptPageSchema>;
 
-/** omp's advisor note (packages/tui/src/chat/messages.ts:292-301, omp v18.8.9). `turn` is the primary turns completed
+/** omp's advisor note (packages/tui/src/chat/messages.ts:295-304, omp v18.12.6). `turn` is the primary turns completed
  * when the note was emitted; `turnsAgo` is set only when its batch is delivered after a later turn. */
 export const AdvisorNoteSchema = z
   .object({

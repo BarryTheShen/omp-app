@@ -36,7 +36,7 @@ function openCredentialDatabase(home: string): Database {
       value TEXT NOT NULL,
       expires_at INTEGER NOT NULL
     );
-    -- Mirrors omp v18.8.9's auth/sqlite-credential-store.ts change tracking.
+    -- Mirrors omp v18.12.6's auth/sqlite-credential-store.ts change tracking.
     CREATE TABLE IF NOT EXISTS auth_change_revision (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       revision INTEGER NOT NULL

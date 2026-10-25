@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownContent } from "../markdown";
 
 /**
- * The `customType` omp gives a `/skill:<name>` run (`SKILL_PROMPT_MESSAGE_TYPE`), as a real omp 18.8.9 run records it.
+ * The `customType` omp gives a `/skill:<name>` run (`SKILL_PROMPT_MESSAGE_TYPE`, packages/tui/src/chat/messages.ts:21 at omp v18.12.6).
  * Its `content` is the full generated prompt the model receives; its `details` are the skill's facts.
  */
 export const SKILL_PROMPT_CUSTOM_TYPE = "skill-prompt";
@@ -32,7 +32,7 @@ function textField(details: unknown, key: string): string | undefined {
 }
 
 /**
- * The skill card's facts, read from the `details` a real omp 18.8.9 run records (`name`, `path`, `args`, `prompt`,
+ * The skill card's facts, read from the `details` omp builds for a `/skill:<name>` run (extensibility/skills.ts:705-712 at v18.12.6: `name`, `path`, `args`, `prompt`,
  * `lineCount`): this reads `name`, `args` and `path`. A message whose details lack them still shows its prompt.
  */
 export function describeSkillPrompt(details: unknown, prompt: string): SkillPromptView {

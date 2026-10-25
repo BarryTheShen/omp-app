@@ -12,7 +12,7 @@ import {
 } from "../contract";
 import { createMcpServerPort, type McpServerLifecyclePort } from "../servers";
 
-/** The v18.6.1 command surface lists prompts but does not fetch their message content. */
+/** The v18.12.6 command surface lists prompts but does not fetch their message content. */
 const MCP_PROMPT_EXPANSION_CAPABILITY = "upstream.mcp-prompt-expansion" as const;
 
 export type McpCatalogState = "idle" | "loading" | "ready" | "stale" | "error" | "unavailable";
@@ -63,7 +63,7 @@ export interface McpProtocolCatalogOptions {
   readonly threadId: ThreadId;
 }
 
-/** omp v18.6.1 exposes no MCP notification subscription through the app server. */
+/** omp v18.12.6 exposes no MCP notification subscription through the app server. */
 const MCP_NOTIFICATIONS: McpNotificationSnapshot = Object.freeze({
   state: "unavailable",
   capability: "upstream.mcp-notifications",

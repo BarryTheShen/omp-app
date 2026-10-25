@@ -30,7 +30,7 @@ describe("I4.5 descriptor and AP6 acceptance", () => {
   });
 
   test("the guest-prompt row matches the custom message type omp writes, not the app's AP6 event name", () => {
-    // omp v18.8.9, packages/wire/src/index.ts:170 (COLLAB_PROMPT_MESSAGE_TYPE); the app's event is `collab_guest_prompt`.
+    // omp v18.12.6, packages/wire/src/index.ts:170 (COLLAB_PROMPT_MESSAGE_TYPE); the app's event is `collab_guest_prompt`.
     expect(I4_GUEST_PROMPT_DESCRIPTOR.match).toEqual({
       by: "customType",
       customType: "collab-prompt",

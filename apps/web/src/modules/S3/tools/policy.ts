@@ -1,11 +1,12 @@
-import type {
-  ConfigEntry,
-  ConfigSource,
-  FolderPath,
-  JsonValue,
-  Provenance,
-  Revision,
-  SettingSource,
+import {
+  type ConfigEntry,
+  type ConfigSource,
+  type FolderPath,
+  type JsonValue,
+  OMP_FLOOR_VERSION,
+  type Provenance,
+  type Revision,
+  type SettingSource,
 } from "@omp-app/contracts";
 import type { ConfigSnapshot, SettingControl } from "../../S1/settings-kit";
 import {
@@ -51,137 +52,138 @@ export const TOOLS_SECTION_IDS = [
 export type ToolsSectionId = (typeof TOOLS_SECTION_IDS)[number];
 
 /**
- * omp v18.6.1 defaults; each key cites its exact registration below. Effective values and
- * provenance come from A1 ConfigStore; these defaults are the safe fallback when no entry exists.
+ * omp v18.12.6 defaults, each equal to the `default` of its registration; each key's comment cites that
+ * registration's lines at v18.12.6. Effective values and provenance come from A1 ConfigStore; these defaults
+ * are the safe fallback when no entry exists.
  */
 export const TOOLS_SETTING_DEFAULTS = {
-  // boolean true; packages/coding-agent/src/tools/settings.ts:348-351.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:355-365.
   "todo.enabled": true,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:434-437.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:441-451.
   "glob.enabled": true,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:446-449.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:453-463.
   "grep.enabled": true,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:497-500.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:504-514.
   "astGrep.enabled": false,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:509-512.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:516-526.
   "astEdit.enabled": true,
-  // enum "auto"; packages/coding-agent/src/tools/settings.ts:520-524.
+  // enum "auto"; packages/coding-agent/src/tools/settings.ts:528-549.
   "find.enabled": "auto",
-  // boolean true; packages/coding-agent/src/tools/settings.ts:545-549.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:553-563.
   "debug.enabled": true,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:557-561.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:565-575.
   "launch.enabled": true,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:569-573.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:577-587.
   "speechgen.enabled": false,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:581-585.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:589-600.
   "generate_image.enabled": false,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:594-598.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:602-612.
   "computer.enabled": false,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:606-610.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:614-624.
   "ratchet.enabled": false,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:618-622.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:626-637.
   "archive.enabled": true,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:687-691.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:723-733.
   "checkpoint.enabled": false,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:700-704.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:736-746.
   "fetch.enabled": true,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:712-716.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:748-759.
   "vault.enabled": false,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:725-729.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:761-772.
   "github.enabled": false,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:775-779.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:811-821.
   "web_search.enabled": true,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:787-791.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:823-834.
   "security.enabled": false,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:800-804.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:836-846.
   "ask.enabled": true,
-  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:7-11.
+  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:7-17.
   "browser.enabled": true,
-  // boolean true; packages/coding-agent/src/ida/settings.ts:8-12.
+  // boolean true; packages/coding-agent/src/ida/settings.ts:8-19.
   "ida.enabled": true,
-  // number 1; packages/coding-agent/src/tools/settings.ts:457-461.
+  // number 1; packages/coding-agent/src/tools/settings.ts:465-482.
   "grep.contextBefore": 1,
-  // number 3; packages/coding-agent/src/tools/settings.ts:476-480.
+  // number 3; packages/coding-agent/src/tools/settings.ts:484-502.
   "grep.contextAfter": 3,
-  // string undefined; packages/coding-agent/src/tools/browser/settings.ts:19-23.
+  // string undefined; packages/coding-agent/src/tools/browser/settings.ts:19-30.
   "browser.cdpUrl": undefined,
-  // boolean false; packages/coding-agent/src/tools/browser/settings.ts:32-36.
+  // boolean false; packages/coding-agent/src/tools/browser/settings.ts:32-43.
   "browser.relay": false,
-  // string undefined; packages/coding-agent/src/tools/browser/settings.ts:45-49.
+  // string undefined; packages/coding-agent/src/tools/browser/settings.ts:45-55.
   "browser.relayUrl": undefined,
-  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:57-61.
+  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:57-67.
   "browser.headless": true,
-  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:69-73.
+  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:69-80.
   "browser.cmux": true,
-  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:82-86.
+  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:82-93.
   "browser.tern": true,
-  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:95-99.
+  // boolean true; packages/coding-agent/src/tools/browser/settings.ts:95-106.
   "browser.freezeOnTurnEnd": true,
-  // number 1800; packages/coding-agent/src/tools/browser/settings.ts:108-112.
+  // number 1800; packages/coding-agent/src/tools/browser/settings.ts:108-125.
   "browser.idleCloseSec": 1800,
-  // string undefined; packages/coding-agent/src/tools/browser/settings.ts:127-131.
+  // string undefined; packages/coding-agent/src/tools/browser/settings.ts:127-138.
   "browser.screenshotDir": undefined,
-  // string "active"; omp v18.8.9 packages/coding-agent/src/tools/settings.ts:631-640.
+  // string "active"; packages/coding-agent/src/tools/settings.ts:639-649.
   "computer.display": "active",
-  // number 3840; packages/coding-agent/src/tools/settings.ts:643-647.
+  // number 3840; packages/coding-agent/src/tools/settings.ts:651-661.
   "computer.maxWidth": 3840,
-  // number 2400; packages/coding-agent/src/tools/settings.ts:655-659.
+  // number 2400; packages/coding-agent/src/tools/settings.ts:663-673.
   "computer.maxHeight": 2400,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:738-742.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:774-784.
   "github.cache.enabled": true,
-  // number 300; packages/coding-agent/src/tools/settings.ts:750-754.
+  // number 300; packages/coding-agent/src/tools/settings.ts:786-796.
   "github.cache.softTtlSec": 300,
-  // number 604800; packages/coding-agent/src/tools/settings.ts:762-766.
+  // number 604800; packages/coding-agent/src/tools/settings.ts:798-809.
   "github.cache.hardTtlSec": 604800,
-  // number 50; packages/coding-agent/src/tools/settings.ts:12-16.
+  // number 50; packages/coding-agent/src/tools/settings.ts:12-36.
   "tools.artifactSpillThreshold": 50,
-  // number 20; packages/coding-agent/src/tools/settings.ts:38-42.
+  // number 20; packages/coding-agent/src/tools/settings.ts:38-58.
   "tools.artifactTailBytes": 20,
-  // number 20; packages/coding-agent/src/tools/settings.ts:60-64.
+  // number 20; packages/coding-agent/src/tools/settings.ts:60-82.
   "tools.artifactHeadBytes": 20,
-  // number 768; packages/coding-agent/src/tools/settings.ts:84-88.
+  // number 768; packages/coding-agent/src/tools/settings.ts:84-104.
   "tools.outputMaxColumns": 768,
-  // number 500; packages/coding-agent/src/tools/settings.ts:106-110.
+  // number 500; packages/coding-agent/src/tools/settings.ts:106-125.
   "tools.artifactTailLines": 500,
-  // number 16; packages/coding-agent/src/tools/settings.ts:127-131.
+  // number 16; packages/coding-agent/src/tools/settings.ts:127-146.
   "tools.artifactMaxBytes": 16,
-  // number 300000; packages/coding-agent/src/tools/settings.ts:667-671.
+  // number 300000; packages/coding-agent/src/tools/settings.ts:703-721.
   "images.questionTimeoutMs": 300_000,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:813-817.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:849-860.
   "tools.intentTracing": true,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:826-830.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:862-873.
   "tools.abortOnFabricatedResult": true,
-  // boolean false; packages/coding-agent/src/tools/settings.ts:839-843.
+  // boolean false; packages/coding-agent/src/tools/settings.ts:875-886.
   "tools.speculativeExecution.enabled": false,
-  // number 2; packages/coding-agent/src/tools/settings.ts:852-856.
+  // number 2; packages/coding-agent/src/tools/settings.ts:888-904.
   "tools.speculativeExecution.maxInFlight": 2,
-  // number 0; packages/coding-agent/src/tools/settings.ts:870-874.
+  // number 0; packages/coding-agent/src/tools/settings.ts:906-924.
   "tools.maxTimeout": 0,
-  // boolean true (RPC protocol default); packages/coding-agent/src/tools/settings.ts:892-896.
+  // boolean true (RPC protocol default); packages/coding-agent/src/tools/settings.ts:928-939.
   "async.enabled": true,
-  // number 100 (RPC protocol default); packages/coding-agent/src/tools/settings.ts:905-909.
+  // number 100 (RPC protocol default); packages/coding-agent/src/tools/settings.ts:941-946.
   "async.maxJobs": 100,
-  // number 30000; packages/coding-agent/src/extensibility/settings.ts:152-156.
+  // number 30000; packages/coding-agent/src/extensibility/settings.ts:151-162.
   "extensionHandlers.toolCallTimeoutMs": 30_000,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:961-965.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:1010-1022.
   "dev.autoqa": true,
-  // string URL; packages/coding-agent/src/tools/settings.ts:975-979.
+  // string URL; packages/coding-agent/src/tools/settings.ts:1024-1034.
   "dev.autoqaPush.endpoint": "https://qa.omp.sh/v1/grievances",
-  // string ""; packages/coding-agent/src/ida/settings.ts:22-26.
+  // string ""; packages/coding-agent/src/ida/settings.ts:22-32.
   "ida.python": "",
-  // string ""; packages/coding-agent/src/ida/settings.ts:35-39.
+  // string ""; packages/coding-agent/src/ida/settings.ts:35-46.
   "ida.installDir": "",
-  // number 4; packages/coding-agent/src/ida/settings.ts:49-53.
+  // number 4; packages/coding-agent/src/ida/settings.ts:49-66.
   "ida.maxOpen": 4,
-  // number 900; packages/coding-agent/src/ida/settings.ts:69-73.
+  // number 900; packages/coding-agent/src/ida/settings.ts:69-87.
   "ida.idleCloseSec": 900,
-  // boolean true; packages/coding-agent/src/tools/settings.ts:359-363.
+  // boolean true; packages/coding-agent/src/tools/settings.ts:367-377.
   "todo.reminders": true,
-  // number 3; packages/coding-agent/src/tools/settings.ts:371-375.
+  // number 3; packages/coding-agent/src/tools/settings.ts:379-395.
   "todo.remindersMax": 3,
-  // enum "default"; packages/coding-agent/src/tools/settings.ts:389-393.
+  // enum "default"; packages/coding-agent/src/tools/settings.ts:397-417.
   "todo.eager": "default",
-  // number 60; packages/coding-agent/src/tools/settings.ts:411-415.
+  // number 60; packages/coding-agent/src/tools/settings.ts:419-438.
   "tasks.todoClearDelay": 60,
 } as const satisfies Readonly<Record<string, boolean | number | string | undefined>>;
 
@@ -371,7 +373,7 @@ export type ToolsPolicySnapshot = {
   readonly provenance: Readonly<{ [Key in ToolsSettingKey]: ToolSettingProvenance }>;
   /** Keys whose ConfigStore entry was secret; no secret payload is projected. */
   readonly redacted: readonly ToolsPolicyKey[];
-  /** Keys with a malformed value; the safe v18.6.1 default is projected instead. */
+  /** Keys with a malformed value; the safe v18.12.6 default is projected instead. */
   readonly invalid: readonly ToolsPolicyKey[];
   readonly availability: ToolsAvailabilityPolicy;
   readonly grepBrowser: ToolsGrepBrowserPolicy;
@@ -407,7 +409,7 @@ const CONTROL_BY_KEY = Object.fromEntries(
 const DEFAULT_PROVENANCE: ToolSettingProvenance = Object.freeze({
   source: "default",
   overrides: Object.freeze([]),
-  provenance: Object.freeze({ origin: "host-fallback", ompVersion: "18.6.1" }),
+  provenance: Object.freeze({ origin: "host-fallback", ompVersion: OMP_FLOOR_VERSION }),
 });
 
 function provenanceFor(entry: ConfigEntry | undefined): ToolSettingProvenance {
@@ -434,8 +436,8 @@ function projectSettingValue(
   snapshot: ToolsConfigSnapshot,
 ): SettingProjection {
   const { control } = registration;
-  // v18.6.1 migrates legacy booleans to the enum's on/off values.
-  // `packages/coding-agent/src/config/settings.ts:2808-2812`.
+  // v18.12.6 migrates legacy booleans to the enum's on/off values.
+  // `packages/coding-agent/src/config/settings.ts:2870-2874`.
   if (key === "find.enabled" && typeof value === "boolean") {
     return { valid: true, value: value ? "on" : "off" };
   }

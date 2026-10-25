@@ -1,19 +1,19 @@
 /**
  * Where a value came from.
  *
- * `SettingSource` is omp's own settings layering (omp v18.6.1; paths under
+ * `SettingSource` is omp's own settings layering (omp v18.12.6; paths under
  * `packages/coding-agent/src/` unless noted). omp reports these layer names itself
- * (`SettingProvenance`, config/settings.ts:63-64) and resolves a setting's value as follows:
+ * (`SettingProvenance`, config/settings.ts:65-66) and resolves a setting's value as follows:
  * - `env` wins over every layer when the setting declares an environment variable, unless the
  *   variable is declared a fallback, in which case any configured layer wins over it and it only
- *   replaces the default (config/registry.ts:65-83, 525-539, 789-792).
+ *   replaces the default (config/registry.ts:67-85, 527-541, 791-794).
  * - Otherwise the configured layers, highest first: `runtime` → `overlay` → `project` → `global`,
- *   then the schema `default` (config/settings.ts:864-877, 3826-3831). Objects merge key by key;
- *   arrays and scalars are replaced whole by the higher layer (config/settings.ts:3850-3873). A
+ *   then the schema `default` (config/settings.ts:879-892, 3911-3916). Objects merge key by key;
+ *   arrays and scalars are replaced whole by the higher layer (config/settings.ts:3935-3958). A
  *   value that merges to `null` counts as unset.
  *
  * omp exposes only the layer, never the file that supplied it; when A1 reads the files itself it
- * fills `Provenance.path`. There is no managed or system-wide settings layer in omp 18.6.1.
+ * fills `Provenance.path`. There is no managed or system-wide settings layer in omp 18.12.6.
  */
 import { z } from "zod";
 import { EntryId } from "./ids";

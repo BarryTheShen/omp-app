@@ -65,11 +65,11 @@ export const SNAPSHOT_RETENTION_LIMIT = 100 as const;
 export const SNAPSHOT_EXACT_CAPABILITY = WORKSPACE_EXACT_CAPABILITY;
 
 /**
- * v18.6.1 emits `tool_execution_start` as an observation. It does not wait for a host snapshot, so
- * this event can never authorize an exact per-tool snapshot.
+ * omp v18.12.6 emits `tool_execution_start` as an observation (docs/rpc.md:830): the RPC has no hook that waits for a host
+ * snapshot before a tool runs, so this event can never authorize an exact per-tool snapshot.
  */
 export const EXACT_SNAPSHOT_UNAVAILABLE_REASON =
-  "Restore points taken right before each tool runs need a newer omp. This version only reports a tool after it has started.";
+  "The app cannot take a restore point right before each tool runs: omp tells it about a tool only after the tool has started. Restore points taken when you send a message and when a turn finishes still work.";
 export const RAW_TOOL_EVENT_UNAVAILABLE_REASON =
   "A tool that has already started can't mark an exact restore point.";
 

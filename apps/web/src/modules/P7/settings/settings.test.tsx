@@ -224,6 +224,12 @@ describe("P7 context settings sections", () => {
     expect(keys).not.toContain("compaction.idleTimeoutSeconds");
   });
 
+  test("says snapcompact tool results include the newest one, and that read results stay text", () => {
+    const control = controlFor(CONTEXT_EXPERIMENTAL_SETTINGS, "snapcompact.toolResults");
+    expect(control.description).toContain("newest one included");
+    expect(control.description).toContain("read results stay text");
+  });
+
   test("validates numeric choices and ordered compaction methods without exposing raw option codes", () => {
     const threshold = controlFor(CONTEXT_COMPACTION_SETTINGS, "compaction.thresholdPercent");
     expect(threshold.validate({ secret: false, value: 70 }, snapshot())).toEqual({ valid: true });

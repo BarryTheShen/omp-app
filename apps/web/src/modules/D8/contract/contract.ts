@@ -5,7 +5,7 @@ import { z } from "zod";
 const OptionalText = z.string().optional();
 const UnknownRecord = z.record(z.string(), z.unknown());
 
-/** Released goal RPC operations in omp 18.6.1. */
+/** Goal RPC operations in omp 18.12.6 (`modes/rpc/rpc-goal.ts:21`). */
 export const GoalOperationSchema = z.enum(["get", "create", "resume", "pause", "drop"]);
 export type GoalOperation = z.infer<typeof GoalOperationSchema>;
 

@@ -9,8 +9,8 @@ import emojiBuckets from "./emojis.json";
 import type { LocalProvider } from "./provider";
 
 /**
- * Mirrors omp v18.6.1's emoji autocomplete boundary and inline replacement rules:
- * `src/modes/emoji-autocomplete.ts:131-170,232-322` as recorded in `research/modules/D2.md`.
+ * Mirrors omp v18.12.6's emoji autocomplete boundary and inline replacement rules:
+ * `packages/tui/src/prompt/emoji-autocomplete.ts:131-170,232-322` as recorded in `research/modules/D2.md`.
  * The checked-in bucket is the offline shortcode set consumed by that implementation.
  */
 export interface EmojiTriggerMatch {

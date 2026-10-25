@@ -136,9 +136,10 @@ export class SessionLifecycleController {
       if (latestGate) return latestGate;
       const callOptions = signal === undefined ? undefined : { signal };
       const result = await this.gateway.run({ threadId, command: "/fresh" }, callOptions);
-      // omp ends an idle `/fresh` with a prompt_result marked "aborted" (observed on omp 18.7.0)
-      // after printing its own message, so that marker does not mean the user cancelled. The
-      // user's own cancellation arrives as an AppFailure("cancelled") from the call itself.
+      // omp 18.12.6 answers an idle `/fresh` with its own message and `data.agentInvoked: false`, and sends no
+      // prompt_result for it (rpc-mode.ts:1913-1916). omp 18.7.0 sent a prompt_result marked "aborted" after the
+      // message, a marker that never meant the user cancelled. The user's own cancellation arrives as an
+      // AppFailure("cancelled") from the call itself.
       return { status: "completed", value: result };
     } catch (error) {
       return failureOutcome(error, "Refreshing provider state failed.");

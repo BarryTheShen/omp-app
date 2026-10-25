@@ -14,7 +14,7 @@ import {
   LIVE_FINAL_TRANSCRIPT,
   LIVE_RPC_FIXTURE,
   LIVE_STATE_FIXTURE,
-  OMP_V18_8_9_UI_SETTING_KEYS,
+  OMP_V18_12_6_UI_SETTING_KEYS,
 } from "../../fixtures";
 import { createLiveVoiceAdapter } from "../../live";
 import { I5_SETTINGS_SECTIONS } from "../../settings";
@@ -143,13 +143,13 @@ describe("I5 W5 gate", () => {
     });
   });
 
-  test("the app registers every settings key omp v18.8.9 shows, plus one intentional extra", () => {
+  test("the app registers every settings key omp v18.12.6 shows, plus one intentional extra", () => {
     const registered = I5_SETTINGS_SECTIONS.flatMap((section) =>
       section.controls.map((control) => control.key),
     );
-    expect(OMP_V18_8_9_UI_SETTING_KEYS.filter((key) => !registered.includes(key))).toEqual([]);
+    expect(OMP_V18_12_6_UI_SETTING_KEYS.filter((key) => !registered.includes(key))).toEqual([]);
     // omp registers stt.language without a settings ui; the app lists it with the services.
-    expect(registered.filter((key) => !OMP_V18_8_9_UI_SETTING_KEYS.includes(key))).toEqual([
+    expect(registered.filter((key) => !OMP_V18_12_6_UI_SETTING_KEYS.includes(key))).toEqual([
       "stt.language",
     ]);
   });

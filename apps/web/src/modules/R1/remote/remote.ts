@@ -209,11 +209,17 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
   }
 
   public async archive(_remoteId: string): Promise<void> {
-    throw unavailable("omp 18.6.1 has no native archive state", "upstream.session-archive");
+    throw unavailable(
+      "omp 18.12.6 cannot archive or unarchive a single chat, so the app cannot either.",
+      "upstream.session-archive",
+    );
   }
 
   public async unarchive(_remoteId: string): Promise<void> {
-    throw unavailable("omp 18.6.1 has no native archive state", "upstream.session-archive");
+    throw unavailable(
+      "omp 18.12.6 cannot archive or unarchive a single chat, so the app cannot either.",
+      "upstream.session-archive",
+    );
   }
 
   public async delete(remoteId: string): Promise<void> {

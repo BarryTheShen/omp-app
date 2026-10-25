@@ -12,9 +12,9 @@ import type {
 import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 
 /**
- * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
+ * Keys mirror omp v18.12.6's UI registrations in tools/settings.ts, tools/browser/settings.ts,
  * ida/settings.ts, task/settings.ts, goals/settings.ts, plan-mode/settings.ts and
- * extensibility/settings.ts. The worktree lifecycle keys follow `task/settings.ts:103-144 @v18.9.1`.
+ * extensibility/settings.ts. The worktree lifecycle keys follow `task/settings.ts:104-145`.
  * Per-key type/default citations are in `test/tasks/fixtures.ts`; ConfigStore provenance stays in
  * the typed S1-backed snapshots, with Tools citations in `../tools/policy.ts`.
  */
@@ -642,10 +642,10 @@ const toolsOutputLimits: readonly SettingControl[] = [
   ),
 ];
 
-// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:839-842`: boolean, default false.
-// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:852-855`: number, default 2.
-// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:892-896`: boolean, default true.
-// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:905-909`: number, default 100.
+// omp v18.12.6 `packages/coding-agent/src/tools/settings.ts:875-878`: boolean, default false.
+// omp v18.12.6 `packages/coding-agent/src/tools/settings.ts:888-891`: number, default 2.
+// omp v18.12.6 `packages/coding-agent/src/tools/settings.ts:928-932`: boolean, default true.
+// omp v18.12.6 `packages/coding-agent/src/tools/settings.ts:941-945`: number, default 100.
 const toolsExecution: readonly SettingControl[] = [
   described(
     duration("images.questionTimeoutMs", 3_600_000, "live"),

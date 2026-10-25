@@ -146,7 +146,11 @@ function withNote(message: string, note: string | null): string {
   return note === null ? message : `${message} ${note}`;
 }
 
-/** The thinking levels omp offers a model: none for a model without reasoning (model-hub.ts:1242-1245 at v18.6.1). */
+/**
+ * The thinking levels omp offers a model: none for a model without reasoning (model-hub.ts:1322-1332 at v18.12.6).
+ * omp leaves out `auto` for a model whose thinking ladder is unverified (`thinking.unverified`, model-hub.ts:1330-1332);
+ * the model records the app receives carry no such flag, so the app still offers `auto` for it.
+ */
 function thinkingLevelsFor(model: ModelDescriptor): readonly string[] {
   if (!model.reasoning) return [];
   return ["off", "auto", ...model.thinkingEfforts];
@@ -154,7 +158,7 @@ function thinkingLevelsFor(model: ModelDescriptor): readonly string[] {
 
 /**
  * The level a role keeps when its model is replaced: only a level the new model offers, as omp does
- * (model-hub.ts:1199-1207 at v18.6.1). Null means the role takes the model's default.
+ * (model-hub.ts:1286-1301 at v18.12.6). Null means the role takes the model's default.
  */
 function keptLevel(current: ModelRoleSelector | undefined, model: ModelDescriptor): string | null {
   if (current === undefined) return null;
@@ -401,7 +405,7 @@ export class ModelHubController {
   }
 
   /**
-   * Applies a preset as omp does (model-presets.ts:321-390 at v18.6.1): the default model is checked first,
+   * Applies a preset as omp does (model-presets.ts:321-390 at v18.12.6): the default model is checked first,
    * and a preset whose default is missing, not listed or a role or pattern is refused before anything is
    * written. Then the roles are saved, the session takes the default model, and the thinking level is set.
    */

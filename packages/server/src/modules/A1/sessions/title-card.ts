@@ -1,8 +1,8 @@
 /**
  * omp's card-form session titles: `<icon> <CODE>: <title>` (`🧪 FLAKY: Fix flaky park tests`). omp keeps the card in
  * the title it stores, so the app shows the title's own words and never rewrites the stored title. This mirrors omp
- * 18.8.9's `splitCardTitle` (`packages/coding-agent/src/utils/title-card.ts:43` for the line form, `:47-54` for the
- * icon rule). The browser never splits omp's titles: it shows the `displayTitle` this module computes.
+ * 18.12.6's `splitCardTitle` (`packages/coding-agent/src/utils/title-card.ts:171-175`, with the line form at `:43` and
+ * the icon rule at `:52-59`). The browser never splits omp's titles: it shows the `displayTitle` this module computes.
  */
 const CARD_LINE = /^(\S+) ([A-Z0-9]{1,6}): (\S.*)$/u;
 /** omp reads at most eight characters as the card's icon. */

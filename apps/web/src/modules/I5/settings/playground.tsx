@@ -21,8 +21,6 @@ const values: Readonly<Record<string, JsonValue>> = {
   "speech.enhanced": false,
   "speech.voice": "af_heart",
   "providers.maxInFlightRequests": { openai: 4 },
-  "providers.openai-codex.codeMode": "auto",
-  "providers.openai-codex.codeModeDirectTools": ["eval", "ask"],
   "providers.ollama-cloud.maxConcurrency": 3,
   "providers.antigravityEndpoint": "auto",
   "providers.fetch": "auto",

@@ -12,6 +12,7 @@ import {
   type ConfigWriteResult,
   FolderPath,
   type JsonValue,
+  OMP_FLOOR_VERSION,
   type SettingSource,
 } from "@omp-app/contracts";
 import { type Document, parseDocument } from "yaml";
@@ -25,15 +26,14 @@ import {
   watchFile,
 } from "../fs";
 
-const OMP_VERSION = "18.6.1";
 const CONFIG_FILE = "config.yml";
 const CONFIG_FALLBACK_FILE = "config.yaml";
 const APP_CONFIG_FILE = CONFIG_FILE;
 
 /**
- * omp's v18.6.1 registry marks a setting as credential-bearing with
- * `credential: true` or `ui.secret: true` (config/registry.ts:88-107 and
- * config/registry.ts:508-511). The app cannot import omp's registry, so callers
+ * omp's v18.12.6 registry marks a setting as credential-bearing with
+ * `credential: true` or `ui.secret: true` (config/registry.ts:90-109 and
+ * config/registry.ts:510-513). The app cannot import omp's registry, so callers
  * may provide those schema-marked keys explicitly. The conservative fallback
  * catches the credential-like key names used by omp's schema (apiKey, token,
  * password, secret, credential, and key material) without ever returning the
@@ -218,8 +218,8 @@ function nonEmpty(value: string | undefined): string | undefined {
   return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 /**
- * Matches omp v18.6.1's config/settings.ts:659-660 and
- * packages/utils/src/dirs.ts:27-31, 619-625: PI_CODING_AGENT_DIR wins,
+ * Matches omp v18.12.6's config/settings.ts:674-675 and
+ * packages/utils/src/dirs.ts:28-32, 641-647: PI_CODING_AGENT_DIR wins,
  * otherwise OMP_PROFILE selects ~/.omp/profiles/<profile>/agent, otherwise
  * the default is ~/.omp/agent. The native file is config.yml, with
  * config.yaml as the read fallback.
@@ -905,7 +905,7 @@ export class ConfigStoreService {
   private provenance(resolved: ResolvedSetting) {
     return {
       origin: resolved.provenanceOrigin,
-      ompVersion: OMP_VERSION,
+      ompVersion: OMP_FLOOR_VERSION,
       ...(resolved.path ? { path: resolved.path } : {}),
     } as const;
   }
@@ -921,7 +921,7 @@ export class ConfigStoreService {
           isSet: false,
           source: "global",
           overrides: [],
-          provenance: { origin: "omp-config", ompVersion: OMP_VERSION },
+          provenance: { origin: "omp-config", ompVersion: OMP_FLOOR_VERSION },
         };
       }
       throw failure("not_found", "Configuration key was not found.");
@@ -1156,7 +1156,7 @@ export class ConfigStoreService {
           overrides: [],
           provenance: {
             origin: layer === "app" ? "app-store" : "omp-config",
-            ompVersion: OMP_VERSION,
+            ompVersion: OMP_FLOOR_VERSION,
             ...(path ? { path } : {}),
           },
         };
@@ -1169,7 +1169,7 @@ export class ConfigStoreService {
         overrides: [],
         provenance: {
           origin: layer === "app" ? "app-store" : "omp-config",
-          ompVersion: OMP_VERSION,
+          ompVersion: OMP_FLOOR_VERSION,
           ...(path ? { path } : {}),
         },
       };

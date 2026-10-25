@@ -271,7 +271,7 @@ function modelChip(model: SessionView["model"], level: SessionView["thinkingLeve
 }
 
 /**
- * omp's status line shows a goal that is on or paused (modes/interactive-mode.ts:4582-4584, omp v18.8.9). A paused
+ * omp's status line shows a goal that is on or paused (modes/interactive-mode.ts:4814-4816, omp v18.12.6). A paused
  * goal has `enabled: false` (goals/runtime.ts:445-460), so it is shown by its status. A finished or dropped goal is
  * not shown.
  */

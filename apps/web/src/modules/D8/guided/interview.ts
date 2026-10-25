@@ -1,7 +1,7 @@
 /**
  * The guided goal interview's questions and the objective it builds. omp's `/guided-goal` asks for the five things
  * an objective must pin down before it creates a goal (`packages/coding-agent/src/prompts/goals/guided-goal-interview.md`,
- * the same at v18.6.1 and v18.8.9): success criteria, verification, an attempt cap, scope boundaries and stop
+ * the same at v18.6.1, v18.8.9 and v18.12.6): success criteria, verification, an attempt cap, scope boundaries and stop
  * conditions. The token budget is optional ("token budget when relevant"). The objective uses omp's five headings,
  * in omp's order.
  */

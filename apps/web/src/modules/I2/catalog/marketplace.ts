@@ -145,8 +145,8 @@ function commandFor(request: MarketplaceRequest): string {
       return "/plugins list";
     case "plugins-enable":
     case "plugins-disable":
-      // omp v18.9.1 builtin-marketplace.ts:440-450 parses name@marketplace and
-      // passes the parsed plugin ID plus explicit scope to setPluginEnabled.
+      // omp v18.12.6 builtin-marketplace.ts:440-452 parses `<plugin>` (name@marketplace for a marketplace plugin) and
+      // passes the parsed plugin ID plus explicit scope to setInstalledPluginEnabled.
       return `/plugins ${request.operation === "plugins-enable" ? "enable" : "disable"} ${pluginTarget(request.name, request.marketplace)} --scope ${request.scope}`;
     case "reload-plugins":
       return "/reload-plugins";
@@ -215,7 +215,7 @@ function gatewayFailure(error: unknown): AppFailure {
   });
 }
 
-/** Executes only explicit, v18.6.1 RPC marketplace/plugin commands through A1.8. */
+/** Executes only explicit, v18.12.6 RPC marketplace/plugin commands through A1.8. */
 export function createMarketplacePort(client: AppClient): MarketplacePort {
   const gateway = client.port(OmpCommandGatewayPort);
   return Object.freeze({

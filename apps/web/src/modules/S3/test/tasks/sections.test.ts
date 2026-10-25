@@ -36,7 +36,7 @@ function valid(control: SettingControl, value: SettingValue) {
 }
 
 describe("S3 Tasks settings", () => {
-  test("covers every v18.6.1 Tasks key with its source registration and exact control kind", () => {
+  test("covers every v18.12.6 Tasks key with its source registration and exact control kind", () => {
     const actualKeys: string[] = [];
     for (const control of settingControls()) actualKeys.push(control.key);
     const expectedKeys: string[] = [];

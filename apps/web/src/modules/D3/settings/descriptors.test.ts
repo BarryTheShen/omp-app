@@ -120,10 +120,10 @@ const OMP_PROVIDER_SETTINGS = [
     defaultValue: "auto",
     options: ["auto", "short", "long", "none"],
     apply: "live",
-    registrySource: "session/settings.ts:1118-1150",
+    registrySource: "session/settings.ts:1146-1177",
     boundarySource: "session/settings-stream-fn.ts:103-106",
     description:
-      "Prompt-cache retention for supported providers. Auto follows provider defaults, Short is 5 minutes, Long is 1 hour where supported, and Off disables caching. Environment settings still apply.",
+      "Prompt-cache retention for supported providers. Auto follows provider defaults, Short is 5 minutes, Long is a longer lifetime where supported (1 hour on Anthropic and Bedrock, 12 hours on OpenAI GPT-5.6 and later Responses), and Off disables caching. Environment settings still apply.",
   },
   {
     key: "providers.cacheWarming",

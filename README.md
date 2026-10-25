@@ -4,7 +4,7 @@ A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent (oh-
 
 The logo is copied from omp under its [MIT licence](NOTICE).
 
-The floor version is omp **18.6.1**. Features are switched on by capabilities omp reports when a session starts, not by version numbers.
+The app runs the omp release it pins, omp **18.12.6** (`packages/server/src/omp-pin/pin.json`), and no other. Features are still switched on by the capabilities omp reports when a session starts, not by version numbers.
 
 ## Install
 

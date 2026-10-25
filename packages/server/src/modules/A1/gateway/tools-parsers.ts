@@ -6,7 +6,7 @@ import {
 import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
 
 /**
- * omp's `builtin-session.ts:564-583` format (v18.8.9): `*` and `-` name ordinary tools; `~ xd://name`
+ * omp's `builtin-session.ts:520-539` format (v18.12.6): `*` and `-` name ordinary tools; `~ xd://name`
  * repeats the same tool when it is mounted on the xd:// device. The browser receives one typed row per tool.
  */
 const TOOL_LINE = /^([*~-])\s+(.+)$/u;

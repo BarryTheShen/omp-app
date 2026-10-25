@@ -27,8 +27,6 @@ const EXPECTED_SERVICE_KEYS = [
   "speech.voice",
   "speech.speed",
   "providers.maxInFlightRequests",
-  "providers.openai-codex.codeMode",
-  "providers.openai-codex.codeModeDirectTools",
   "providers.ollama-cloud.maxConcurrency",
   "providers.webSearchTimeoutSeconds",
   "providers.antigravityEndpoint",
@@ -104,12 +102,12 @@ function configClient(): PortClient<typeof ConfigStore> {
 afterEach(() => cleanup());
 
 describe("I5 settings descriptors", () => {
-  test("covers the two owned inventory sections and exact v18.6.1 keys", () => {
+  test("covers the two owned inventory sections and exact v18.12.6 keys", () => {
     expect(I5_SETTINGS_SECTIONS).toHaveLength(2);
     expect(INTERACTION_SPEECH_SECTION.inventory).toEqual(["S3.interaction-speech"]);
     expect(PROVIDERS_SERVICES_SECTION.inventory).toEqual(["S5.providers-services"]);
     expect(I5_SETTING_KEYS).toEqual([EXPECTED_SPEECH_KEYS, EXPECTED_SERVICE_KEYS]);
-    expect(PROVIDERS_SERVICES_SECTION.controls).toHaveLength(27);
+    expect(PROVIDERS_SERVICES_SECTION.controls).toHaveLength(25);
     expect(PROVIDERS_SERVICES_SECTION.requires).toEqual(["host.config"]);
   });
 
@@ -159,12 +157,6 @@ describe("I5 settings descriptors", () => {
     expect(
       requireControl("exa.searchDelayMs").validate({ secret: false, value: -1 }, snapshot),
     ).toMatchObject({ valid: false, code: "range" });
-    expect(
-      requireControl("providers.openai-codex.codeModeDirectTools").validate(
-        { secret: false, value: ["eval"] },
-        snapshot,
-      ),
-    ).toEqual({ valid: true });
     expect(
       requireControl("tts.localSpeed").validate({ secret: false, value: 0.5 }, snapshot),
     ).toEqual({ valid: true });

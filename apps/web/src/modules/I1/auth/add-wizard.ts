@@ -172,7 +172,7 @@ async function testAddedServer(
 
 /**
  * Collects non-secret configuration through U4 and I1.3. ACP add saves the config before its
- * configured-server test (omp v18.6.1 `helpers/mcp.ts:278-330`), so test status follows saving.
+ * configured-server test (omp v18.12.6 `helpers/mcp.ts:286-338`), so test status follows saving.
  * A save that fails as `cancelled` may already have been applied: that failure is rethrown
  * unchanged, and the caller must refresh its server list before any retry.
  */

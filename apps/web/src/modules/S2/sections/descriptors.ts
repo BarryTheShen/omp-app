@@ -10,7 +10,7 @@ import type {
 import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 
 /**
- * Keys, labels and defaults mirror omp v18.6.1's registered UI settings:
+ * Keys, labels and defaults mirror omp v18.12.6's registered UI settings:
  * - edit/settings.ts (edit.*)
  * - tools/settings.ts (read.* and read.summarize.*)
  * - lsp/settings.ts (lsp.*)
@@ -20,7 +20,7 @@ import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../..
  * The S2.3 descriptions and live apply boundaries are checked against omp v18.9.1:
  * `packages/coding-agent/src/lsp/settings.ts`, `exec/settings.ts`, `eval/settings.ts`,
  * `sdk.ts:5068-5135`, and `main.ts:2549-2554`.
- * Source snapshot: https://github.com/can1357/oh-my-pi/tree/v18.6.1/packages/coding-agent/src
+ * Source snapshot: https://github.com/can1357/oh-my-pi/tree/v18.12.6/packages/coding-agent/src
  */
 
 const HOST_CONFIG = ["host.config"] as const;
@@ -192,7 +192,7 @@ function validateBashPatterns(value: SettingValue): ValidationResult {
 
 /**
  * `bash.patterns`: ordered command approval rules, first match wins; `*` is the only wildcard
- * (omp v18.6.1 exec/settings.ts:120-131, tools/bash.ts:235-270).
+ * (omp v18.12.6 exec/settings.ts:136-147, tools/bash.ts:234-269).
  */
 const bashPatternsControl: RowsSettingControl = {
   key: "bash.patterns",
@@ -397,7 +397,7 @@ const filesLsp: readonly SettingControl[] = [
     "lsp.shared",
     "Shared Language Servers",
     "live",
-    "Share one language server per project across omp sessions when possible; otherwise use a separate server for each session.",
+    "Start language servers through the project's shared helper: each session gets its own server, and while another omp session in the project is running a stopped one stays warm for the next session; if the helper is unavailable each session uses a private server.",
   ),
   booleanControl(
     "lsp.formatOnWrite",

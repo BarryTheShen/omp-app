@@ -286,8 +286,8 @@ describe("OmpCommandGatewayService", () => {
   test("a prompt response without data (omp's real reply to an idle /fresh) completes and crashes nothing", async () => {
     // Captured from omp 18.7.0 (`prompt "/fresh"` on an idle session over `--mode rpc-ui`): the
     // response is `{success: true}` with no `data`, then a prompt_result marked aborted.
-    // omp 18.6.1 sends the same data-less response for every normally admitted prompt
-    // (rpc-mode.ts: `return success(id, "prompt")`). The server used to read `ack.agentInvoked`
+    // omp 18.12.6 sends the same data-less response for every normally admitted prompt and for a cancelled one
+    // (rpc-mode.ts:1921-1923; its builtin commands answer `{agentInvoked}`, :1915-1917). The server used to read `ack.agentInvoked`
     // from the missing object inside a promise callback, an unhandled rejection that killed the
     // whole server and every open session with it.
     const unhandled: unknown[] = [];

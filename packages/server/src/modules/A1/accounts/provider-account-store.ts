@@ -99,7 +99,7 @@ function nonEmpty(value: string | undefined): string | undefined {
   return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-/** Matches omp v18.6.1's `getAgentDir()` resolution used by `getAgentDbPath()`. */
+/** Matches omp v18.12.6's `getAgentDir()` resolution used by `getAgentDbPath()` (`packages/utils/src/dirs.ts:640-643, 953-955`). */
 function resolveAgentDirectory(options: ProviderAccountStoreOptions): string {
   const environment = options.env ?? process.env;
   const homeDirectory = resolve(options.homeDir ?? homedir());
@@ -304,15 +304,17 @@ function findAccount(
 }
 
 /**
- * Server-only provider/account seam over omp's documented v18.6.1 agent.db format.
+ * Server-only provider/account seam over omp's documented v18.12.6 agent.db format.
  *
  * The upstream store uses SQLite transactions plus a bounded `busy_timeout` for cross-process
- * locking (`packages/ai/src/auth/sqlite-credential-store.ts:417-535, 1285-1415`). Logout soft-deletes
- * `auth_credentials` (`:447-464, 1508-1555`). Session affinity pinning writes the documented
- * `cache` row used by `auth/affinity.ts:10-13, 67-110, 253-290`; no credential bytes are copied into
- * that row or returned from this class. v18.6.1's `/usage reset` is a slash/TUI flow backed by live
- * provider APIs (`builtin-session.ts:44-115`), not a non-interactive credential-store operation, so
- * resetUsage reports an explicit unavailable capability instead of claiming a local reset succeeded.
+ * locking (`packages/ai/src/auth/sqlite-credential-store.ts:620-626, 1327-1457`). Logout soft-deletes
+ * `auth_credentials` (`:483-500, 1550-1597`). Session affinity pinning writes the documented
+ * `cache` row that `auth/affinity.ts` reads and writes (`:11-13, 160-215, 219-285, 355-368`); no credential
+ * bytes are copied into that row or returned from this class. omp 18.12.6 spends a saved usage reset
+ * with `/usage reset` and `omp usage reset` (`slash-commands/builtin-session.ts:43-69, 393-418`,
+ * `cli/usage-cli.ts:1512`), which call the providers' live APIs and change no credential row. The app
+ * does not offer that, so resetUsage reports an explicit unavailable capability instead of claiming a
+ * local reset succeeded.
  */
 export class ProviderAccountStoreService {
   readonly agentDir: string;
@@ -441,7 +443,10 @@ export class ProviderAccountStoreService {
     } finally {
       db.close();
     }
-    throw unavailable("omp 18.6.1 has no non-interactive provider-account usage reset operation.");
+    // The typed command works in the app (it asks first and names the account, #1272), so the reason points there.
+    throw unavailable(
+      "Spend a saved usage reset by typing /usage reset in a chat; the app cannot do it from here yet.",
+    );
   }
 
   /**

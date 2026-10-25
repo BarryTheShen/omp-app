@@ -441,12 +441,12 @@ export function hashListName(query: string): "GitHub suggestions" | "Message act
 }
 
 /**
- * Matches omp v18.6.1's `github-ref-autocomplete.ts`: short URLs resolve against the current
+ * Matches omp v18.12.6's `github-ref-autocomplete.ts`: short URLs resolve against the current
  * session repository, while owner/repository/number URLs name another repository. The corresponding
  * `issue-pr-protocol.ts` resolver accepts those exact shapes.
  * Sources:
- * https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/packages/coding-agent/src/modes/github-ref-autocomplete.ts
- * https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/packages/coding-agent/src/internal-urls/issue-pr-protocol.ts
+ * https://raw.githubusercontent.com/can1357/oh-my-pi/v18.12.6/packages/tui/src/prompt/github-ref-autocomplete.ts
+ * https://raw.githubusercontent.com/can1357/oh-my-pi/v18.12.6/packages/coding-agent/src/internal-urls/issue-pr-protocol.ts
  */
 function githubTriggerCandidate(
   candidate: GithubReference,

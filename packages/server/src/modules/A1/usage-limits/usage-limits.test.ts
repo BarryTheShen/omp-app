@@ -23,8 +23,8 @@ async function fakeOmp(body: string): Promise<string> {
 
 const PATH = process.env.PATH ?? "/usr/bin:/bin";
 
-// The shape omp 18.8.7 prints for `omp usage --json` (pi-coding-agent src/cli/usage-cli.ts:1022-1063): reports
-// with their limits, and account identities that must never reach the app.
+// The shape omp 18.12.6 prints for `omp usage --json` (pi-coding-agent src/cli/usage-cli.ts:1105-1146, payload at
+// :1648-1655): reports with their limits, and account identities that must never reach the app.
 const usageJson = JSON.stringify({
   generatedAt: 1_000,
   reports: [

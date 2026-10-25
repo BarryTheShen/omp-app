@@ -17,7 +17,7 @@ function settingIndex(entries: readonly ConfigEntry[], key: string): number {
 }
 
 describe("S3 typed ConfigStore handoffs", () => {
-  test("reads todo and subagent policy from one revision with exact v18.6.1 defaults", async () => {
+  test("reads todo and subagent policy from one revision with exact v18.12.6 defaults", async () => {
     const fixture = createTaskConfigStoreFixture();
     const snapshot = await readTasksPolicySnapshot(fixture.client, null);
     expect(fixture.state.listCalls).toBe(1);

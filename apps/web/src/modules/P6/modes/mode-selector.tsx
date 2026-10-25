@@ -17,10 +17,10 @@ import {
 } from "../contract";
 
 /**
- * v18.6.1's RPC docs state that abort drops in-flight queued messages; P6 never invents a second
+ * v18.12.6's RPC docs state that abort drops in-flight queued messages; P6 never invents a second
  * queue state. A pending chip can be restored to the composer through the researched Alt+Up
  * dequeue action while it remains in R0.5's authoritative snapshot.
- * Source: .data/ref/omp-v18.6.1/docs_rpc.md:742-745 and research/modules/P6.md:48.
+ * Source: omp v18.12.6 docs/rpc.md:849-851 and research/modules/P6.md:48.
  */
 export const QUEUE_CANCELLATION_POLICY =
   "Stopping a turn (Esc) drops queued messages omp has not delivered yet. Alt+Up puts the last queued message back in the editor.";

@@ -5,7 +5,7 @@ import { parseModeChangeReply } from "./mode-parsers";
 /*
  * Recorded from the installed omp 18.8.9 in `--mode rpc-ui` with the fake model: each command's `command_output`
  * text exactly as omp wrote it, and a prompt acknowledgement with agentInvoked false (omp ran the text as a
- * command). The same texts are cited to omp v18.6.1 in mode-parsers.ts. `computerOn` is in the form of omp 18.12.6,
+ * command). The same texts are cited to omp v18.12.6 in mode-parsers.ts. `computerOn` is in the form of omp 18.12.6,
  * the release the app pins, which added `backgroundFallback` to the status line (builtin-modes.ts:213-243).
  */
 const RECORDED = {
@@ -89,7 +89,7 @@ describe("parseModeChangeReply on omp's recorded 18.8.9 replies", () => {
   });
 });
 
-describe("parseModeChangeReply on the other replies omp prints (cited to 18.6.1)", () => {
+describe("parseModeChangeReply on the other replies omp prints (cited to 18.12.6)", () => {
   test("Anthropic slow mode turned on, with or without a reset time, is applied", () => {
     expect(
       parseModeChangeReply(

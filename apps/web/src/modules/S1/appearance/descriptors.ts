@@ -12,10 +12,10 @@ import { settingOptions, terminalOnlyDescription } from "../settings-kit";
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 
 /**
- * omp v18.6.1 appearance registrations: `packages/coding-agent/src/modes/settings.ts:58-331`
- * (Theme, Composer, Status Line, Images), `:360-685` (Display), and
- * `packages/coding-agent/src/task/settings.ts:442-447` (the resolved-model badge).
- * omp v18.9.1 session-title registrations: `packages/coding-agent/src/utils/title-settings.ts:7-43`.
+ * omp v18.12.6 appearance registrations: `packages/coding-agent/src/modes/settings.ts:59-333`
+ * (Theme, Composer, Status Line, Images), `:361-755` (Display), and
+ * `packages/coding-agent/src/task/settings.ts:536-546` (the resolved-model badge).
+ * omp v18.12.6 session-title registrations: `packages/coding-agent/src/utils/title-settings.ts:12-66`.
  * These settings affect omp's terminal; ConfigStore supplies effective defaults and provenance.
  */
 

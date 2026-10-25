@@ -344,7 +344,7 @@ describe("goal", () => {
   });
 
   // omp keeps a paused goal with `enabled: false` (goals/runtime.ts:445-460), and its status line shows a goal that
-  // is enabled or paused (modes/interactive-mode.ts:4582-4584, omp v18.8.9).
+  // is enabled or paused (modes/interactive-mode.ts:4814-4816, omp v18.12.6).
   test("a goal that is on or paused is shown; a finished goal, or one that is off, is not", () => {
     const shown = (enabled: boolean, mode: string, status: string) =>
       textOf(

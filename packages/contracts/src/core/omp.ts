@@ -10,8 +10,11 @@ import type * as Wire from "../omp-wire/rpc-wire.generated";
 
 export type * as OmpWire from "../omp-wire/rpc-wire.generated";
 
-/** The oldest omp release the app supports (PLAN.md, "Open questions"). */
-export const OMP_FLOOR_VERSION = "18.6.1";
+/**
+ * The omp release the app runs and supports: the one `packages/server/src/omp-pin/pin.json` pins, since the app starts
+ * no other. The contracts package cannot read that file, so a test in `omp-pin.test.ts` keeps the two equal.
+ */
+export const OMP_FLOOR_VERSION = "18.12.6";
 
 /** The omp tag the files in `../omp-wire/` were copied from. */
 export const OMP_WIRE_TAG = "v18.12.6";

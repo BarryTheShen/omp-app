@@ -2,9 +2,11 @@ import type { ModelRef } from "../contract";
 
 /**
  * The model roles omp's `/model` hub lists, in omp's order: `MODEL_ROLE_IDS` in omp's model browser
- * (packages/tui/src/overlays/model-browser.ts:64-80 at v18.6.1; the same list at v18.8.9 and v18.9.1) and
- * the names omp shows (`MODEL_ROLES`, packages/coding-agent/src/config/model-roles.ts:56-90, identical at
- * v18.9.1). Roles omp stores under `modelRoles.<id>` in config.yml.
+ * (packages/tui/src/overlays/model-browser.ts:72-89 at v18.12.6) and the names omp shows (`MODEL_ROLES`,
+ * packages/coding-agent/src/config/model-roles.ts:56-91). Roles omp stores under `modelRoles.<id>` in config.yml.
+ * omp 18.12.6 also lists a `widget` role ("Job widgets", model-roles.ts:67) for the live job widgets of its terminal
+ * (`async.widgets`); the app has no such widgets and leaves the role out, so a configured `modelRoles.widget` is listed
+ * as a custom role by its key.
  */
 export interface ModelRoleDefinition {
   /** The key omp stores the role under. Shown to nobody: the dialog uses `name`. */
@@ -15,8 +17,8 @@ export interface ModelRoleDefinition {
   readonly kind: boolean;
   /**
    * Why no model can be picked for the role in this app, or null when a chat model can take it. The
-   * catalog lists chat models only (`getAvailable()` defaults to chat: model-controls.ts:493-498 at
-   * v18.6.1, read by get_available_models: rpc-mode.ts:2121-2125), so kind-only roles have no candidates.
+   * catalog lists chat models only (`getAvailable()` defaults to chat: model-controls.ts:502-507 at
+   * v18.12.6, read by get_available_models: rpc-mode.ts:2328-2332), so kind-only roles have no candidates.
    */
   readonly unpickableReason: string | null;
 }
@@ -97,7 +99,7 @@ const THINKING_SUFFIXES: Record<string, true> = {
 
 /**
  * A role's stored selector, `provider/id` with an optional `:level` suffix (omp writes it that way:
- * selector-controller.ts:970 at v18.6.1, formatModelSelectorValue in model-selector.ts:81). `model` is
+ * formatModelSelectorValue in packages/tui/src/overlays/model-selector.ts:81). `model` is
  * null when the text is not a `provider/id` pair.
  */
 export function splitRoleSelector(selector: string): {

@@ -2,7 +2,7 @@ import type { AppError, CapabilityKey, CapabilityMap } from "@omp-app/contracts"
 import { AppError as AppErrorSchema } from "@omp-app/contracts";
 import { z } from "zod";
 
-/** AP6 capability: v18.6.1 has no authoritative collaboration RPC or event stream. */
+/** AP6 capability: v18.12.6 has no authoritative collaboration RPC or event stream. */
 export const COLLABORATION_CAPABILITY = "upstream.collaboration" as CapabilityKey;
 export const COLLABORATION_UNAVAILABLE_REASON =
   "No app relay; collaboration requires omp's own upstream RPC.";
@@ -183,7 +183,7 @@ function unavailable<T>(capability: CapabilityKey): CollaborationResult<T> {
 }
 
 /**
- * Current v18.6.1 adapter: every operation is visibly unavailable until AP6's typed upstream
+ * Current v18.12.6 adapter: every operation is visibly unavailable until AP6's typed upstream
  * command/event contract is reported. No browser tab or app relay is treated as collaboration.
  */
 export function createUnavailableCollaborationPort(

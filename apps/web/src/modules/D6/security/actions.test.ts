@@ -78,7 +78,7 @@ describe("the security actions", () => {
   });
 });
 
-/** omp's own argument grammar for each subcommand, as its helper reads it (omp v18.6.1 slash-commands/helpers/security.ts). */
+/** omp's own argument grammar for each subcommand, as its helper reads it (omp v18.12.6 slash-commands/helpers/security.ts). */
 const OMP_GRAMMAR: readonly (readonly [SecurityActionId, string, string])[] = [
   ["plan", "", "plan"],
   ["plan", "--path src --exclude dist", "plan --path src --exclude dist"],

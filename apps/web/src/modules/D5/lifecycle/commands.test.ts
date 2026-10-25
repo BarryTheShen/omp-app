@@ -284,7 +284,8 @@ describe("SessionLifecycleController", () => {
   });
 
   test("keeps omp's own message when omp marks an idle /fresh as aborted, and treats a cancelled call as cancelled", async () => {
-    // omp 18.7.0 answers an idle `/fresh` with its message and a prompt_result marked "aborted".
+    // omp 18.7.0 answered an idle `/fresh` with its message and a prompt_result marked "aborted"; omp 18.12.6 sends no
+    // prompt_result for it (rpc-mode.ts:1913-1916). The app reads either.
     const abortedResult: CommandRunResult = { ...freshResult, status: "aborted" };
     const run = vi.fn<SessionLifecycleGateway["run"]>(async () => abortedResult);
     const controller = createController({ gateway: { run } });

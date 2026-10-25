@@ -11,13 +11,13 @@ import { settingOptions } from "../../S1/settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 /**
- * omp v18.6.1 setting registrations and option labels:
+ * omp v18.12.6 setting registrations and option labels:
  * `packages/coding-agent/src/session/context-settings.ts` and
  * `packages/coding-agent/src/export/ttsr-settings.ts`. Method choices/default come from
  * `packages/coding-agent/src/session/compaction-methods.ts`.
  */
 
-/** omp v18.6.1 defaults from `session/compaction-methods.ts`. */
+/** omp v18.12.6 defaults from `session/compaction-methods.ts`. */
 export const DEFAULT_COMPACTION_METHOD_ORDER = [
   "remote",
   "snapcompact",
@@ -294,29 +294,29 @@ function validateCompactionMethods(value: SettingValue): ValidationResult {
 }
 
 /**
- * Where omp v18.6.1 reads each key (its RPC host, so a saved change applies to the open session).
+ * Where omp v18.12.6 reads each key (its RPC host, so a saved change applies to the open session).
  * Each reference is a file:line in omp's source, from the audit of the 30 registrations in
  * `session/context-settings.ts` and `export/ttsr-settings.ts`:
- * - workspace.additionalDirectories: session/agent-session.ts:2379 (listener: #syncSettingsWorkspaceDirectories :2394)
- * - contextPromotion.enabled: session/session-maintenance.ts:3008,3238,3296; session/session-advisors.ts:2240
- * - extendedContext: session/agent-session.ts:2220 (listener); config/model-registry.ts:216
- * - compaction.enabled: session/session-maintenance.ts:578,1005,2057; modes/rpc/rpc-mode.ts:2182 (set_auto_compaction)
- * - compaction.midTurnEnabled: session/session-maintenance.ts:2621
- * - compaction.methodOrder: session/session-maintenance.ts:1163,2738; session/compaction-methods.ts (resolveCompactionMethodOrder)
- * - compaction.thresholdPercent, compaction.thresholdTokens: agent/src/compaction/compaction.ts:389-411; session/session-maintenance.ts:579,2062,3221
- * - compaction.handoffSaveToDisk: session/session-handoff.ts:212
- * - compaction.remoteStreamingV2Enabled: agent/src/compaction/compaction.ts:250-255,1670
- * - compaction.asyncEnabled: session/session-maintenance.ts:2057,2151,2366; session/context-usage-runtime.ts:36
- * - compaction.supersedeReads, compaction.dropUseless: session/session-maintenance.ts:676,712-722
- * - compaction.experimentalContextManagement: session/session-maintenance.ts:565; tools/index.ts:689,769 (tools/settings.ts:1015-1038)
- * - ttsr.enabled, ttsr.contextMode, ttsr.interruptMode, ttsr.repeatMode, ttsr.repeatGap: sdk.ts:2041-2043 (live source)
- * - ttsr.judge: session/agent-session.ts:2825
- * - ttsr.builtinRules, ttsr.disabledRules: system-prompt.ts:66-90 (prompt rebuild, sdk.ts:4611-4632)
- * - snapcompact.systemPrompt, snapcompact.toolResults, snapcompact.shape: sdk.ts:4101-4107; session/context-usage-runtime.ts:51-55
- * - tools.format: sdk.ts:3814,4338,5107; system-prompt.ts:71
- * Terminal only, so the app ignores them: branchSummary.enabled (modes/controllers/selector-controller.ts:1356),
+ * - workspace.additionalDirectories: session/agent-session.ts:2821 (listener: #syncSettingsWorkspaceDirectories :2836)
+ * - contextPromotion.enabled: session/session-maintenance.ts:3132,3373,3431; session/session-advisors.ts:2262
+ * - extendedContext: session/agent-session.ts:2646 (listener); config/model-registry.ts:232
+ * - compaction.enabled: session/session-maintenance.ts:627,1081,2143; modes/rpc/rpc-mode.ts:2389 (set_auto_compaction)
+ * - compaction.midTurnEnabled: session/session-maintenance.ts:2712
+ * - compaction.methodOrder: session/session-maintenance.ts:1239,2829; session/compaction-methods.ts (resolveCompactionMethodOrder)
+ * - compaction.thresholdPercent, compaction.thresholdTokens: agent/src/compaction/compaction.ts:354-411; session/session-maintenance.ts:628,2148,3356
+ * - compaction.handoffSaveToDisk: session/session-handoff.ts:213
+ * - compaction.remoteStreamingV2Enabled: agent/src/compaction/compaction.ts:238-243,1777
+ * - compaction.asyncEnabled: session/session-maintenance.ts:2143,2237,2452; session/context-usage-runtime.ts:32
+ * - compaction.supersedeReads, compaction.dropUseless: session/session-maintenance.ts:726,755-775
+ * - compaction.experimentalContextManagement: session/session-maintenance.ts:614; tools/index.ts:684,764 (tools/settings.ts:1064-1087)
+ * - ttsr.enabled, ttsr.contextMode, ttsr.interruptMode, ttsr.repeatMode, ttsr.repeatGap: sdk.ts:2207-2209 (live source)
+ * - ttsr.judge: session/agent-session.ts:3330
+ * - ttsr.builtinRules, ttsr.disabledRules: system-prompt.ts:41,89-90 (prompt rebuild, sdk.ts:4917-4938)
+ * - snapcompact.systemPrompt, snapcompact.toolResults, snapcompact.shape: sdk.ts:4384-4390; session/context-usage-runtime.ts:47-51
+ * - tools.format: sdk.ts:4090,4622,5427; system-prompt.ts:71
+ * Terminal only, so the app ignores them: branchSummary.enabled (modes/controllers/selector-controller.ts:1547),
  * compaction.idleEnabled, compaction.idleThresholdTokens, compaction.idleTimeoutSeconds
- * (modes/controllers/event-controller.ts:2638-2663).
+ * (modes/controllers/event-controller.ts:2795-2823).
  */
 function settingControl(
   key: SettingControl["key"],
@@ -512,7 +512,7 @@ const EXPERIMENTAL_SETTINGS: readonly SettingControl[] = [
   booleanControl(
     "snapcompact.toolResults",
     "Snapcompact Tool Results",
-    "Render large historical tool results as images for vision models instead of keeping their text.",
+    "Render large tool results, the newest one included, as images for vision models instead of keeping their text. Saves tokens on search and command output; read results stay text unless the model is known to edit exactly from images.",
   ),
   enumControl(
     "tools.format",

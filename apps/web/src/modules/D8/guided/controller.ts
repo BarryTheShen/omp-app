@@ -440,7 +440,7 @@ export class GuidedGoalController {
 
   /**
    * Why a goal cannot be created right now, or `null` when it can. These are omp's own refusals (rpc-goal.ts, `#create`,
-   * v18.8.9): an enabled goal blocks a new one, and a paused goal must be resumed or dropped first.
+   * v18.12.6): an enabled goal blocks a new one, and a paused goal must be resumed or dropped first.
    */
   private createBlock(): string | null {
     const capability = this.options.capabilities()?.[GOAL_CAPABILITY];

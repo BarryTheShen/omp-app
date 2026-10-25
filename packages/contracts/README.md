@@ -1,6 +1,6 @@
 # @omp-app/contracts
 
-The shared contracts of the omp app (module C0): the types, zod schemas and tables that the Bun server and the browser both use. The package ships TypeScript source with no build step; its only runtime dependency is `zod` 4. The omp floor is 18.6.1.
+The shared contracts of the omp app (module C0): the types, zod schemas and tables that the Bun server and the browser both use. The package ships TypeScript source with no build step; its only runtime dependency is `zod` 4. The omp floor is the release the app pins, 18.12.6 (`OMP_FLOOR_VERSION`).
 
 ## Using it
 

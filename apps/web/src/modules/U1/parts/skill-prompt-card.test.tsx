@@ -6,7 +6,7 @@ import { describeSkillPrompt } from "./skill-prompt-card";
 afterEach(() => cleanup());
 
 /*
- * A real omp 18.8.9 skill run, as its session file records it: `details` is { name, path, args, prompt, lineCount };
+ * A real omp 18.8.9 skill run, as its session file records it (omp 18.12.6 builds the same `details`, extensibility/skills.ts:705-712): `details` is { name, path, args, prompt, lineCount };
  * `content` is the generated prompt, shaped like `generated` below.
  */
 const SOURCE = "/home/me/.omp/agent/skills/review-notes/SKILL.md";

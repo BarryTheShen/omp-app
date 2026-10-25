@@ -173,10 +173,10 @@ function cancelledResult(
 /**
  * P4's conversation-only branch/fork adapter.
  *
- * omp v18.6.1 exposes `branch { entryId }` and `fork { entryId? }` as session RPCs
- * (`.data/ref/omp-v18.6.1/docs_rpc.md:221-235`; the RPC dispatcher calls
+ * omp v18.12.6 exposes `branch { entryId }` and `fork { entryId? }` as session RPCs
+ * (`docs/rpc.md:229-238`; the RPC dispatcher calls
  * `session.branch(entryId)` and `session.fork(entryId, { requireIdle: true })` at
- * `.data/ref/omp-v18.6.1/packages_coding-agent_src_modes_rpc_rpc-mode.ts:795-806`; wire
+ * `packages/coding-agent/src/modes/rpc/rpc-mode.ts:885-898`; wire
  * params/results are copied in
  * `packages/contracts/src/omp-wire/rpc-wire.generated.ts:553-555,1570-1576,1681-1682`).
  * `branch` returns text plus cancellation, while `fork` returns cancellation only; both require a

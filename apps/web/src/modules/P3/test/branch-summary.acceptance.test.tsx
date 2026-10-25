@@ -1,5 +1,5 @@
 // The branch_summary entry is recorded in packages/omp-rpc/fixtures/p3-branch-summary.fixture.jsonl:34; its wire message
-// shape is omp v18.8.9's session-entries.ts:148-156 and rpc-wire.generated.ts:193-198.
+// shape is omp v18.12.6's session-entries.ts:170-178 and rpc-wire.generated.ts:195-200.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { convertMessage } from "@/modules/R0/runtime";

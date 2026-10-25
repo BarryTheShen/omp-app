@@ -250,7 +250,7 @@ function parseServerList(output: string): McpCommandServerListResultValue {
   });
 }
 
-/** Mirrors the v18.6.1 `/mcp list` formatter: packages/coding-agent/src/slash-commands/helpers/mcp.ts:370-412. */
+/** Mirrors the v18.12.6 `/mcp list` formatter: packages/coding-agent/src/slash-commands/helpers/mcp.ts:378-420. */
 function parseServerRow(line: string): McpCommandServerSummaryValue | undefined {
   const match =
     /^(.*?) \| (stdio|http|sse) \| (enabled|disabled) \| (.*?) \[(user|project)\]$/.exec(line);
@@ -292,7 +292,7 @@ function urlFromLocation(location: string): { readonly url?: string } {
     return {};
   }
 }
-/** Mirrors the v18.6.1 `/mcp prompts` formatter: packages/coding-agent/src/slash-commands/helpers/mcp.ts:265-276. */
+/** Mirrors the v18.12.6 `/mcp prompts` formatter: packages/coding-agent/src/slash-commands/helpers/mcp.ts:273-284. */
 function parsePromptList(output: string): McpCommandPromptListResultValue {
   if (output === NO_MCP_SERVERS || output === NO_PROMPTS) {
     return McpCommandPromptListResult.parse({ prompts: [], revision: stableRevision(output) });
@@ -369,7 +369,7 @@ function parsePromptRow(
   };
 }
 
-/** Mirrors the v18.6.1 `/mcp resources` formatter: packages/coding-agent/src/slash-commands/helpers/mcp.ts:252-263. */
+/** Mirrors the v18.12.6 `/mcp resources` formatter: packages/coding-agent/src/slash-commands/helpers/mcp.ts:260-271. */
 function parseResourceList(output: string): McpCommandResourceListResultValue {
   if (output === NO_MCP_SERVERS || output === NO_RESOURCES) {
     return McpCommandResourceListResult.parse({ resources: [], revision: stableRevision(output) });

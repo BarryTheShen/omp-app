@@ -52,7 +52,7 @@ const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
 /**
- * A duration as omp writes its active-time figure (omp 18.8.9 `packages/utils/src/format.ts`, rounding at lines 13-17):
+ * A duration as omp writes its active-time figure (omp 18.12.6 `packages/utils/src/format.ts`, rounding at lines 13-17):
  * "42.3s", "3m5s", "2h30m", "3d2h".
  */
 export function formatDuration(ms: number): string {

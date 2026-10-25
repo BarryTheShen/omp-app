@@ -54,12 +54,13 @@ export const CapabilityKey: z.ZodType<CapabilityKey> = z.union([
  * The shared reasons for D8's unavailable upstream operations. The browser and
  * server both publish these exact strings so a capability's detail cannot drift.
  *
- * omp v18.8.9:
- * - `--goal` seeds a fresh CLI session (`packages/coding-agent/src/cli/flag-tables.ts:146-149,374-387`).
+ * omp v18.12.6:
+ * - `--goal` seeds a fresh interactive CLI session only; `--print` and `--mode` refuse it
+ *   (`packages/coding-agent/src/cli/flag-tables.ts:152-155,380-397`, `packages/coding-agent/src/cli/args.ts:130-139`).
  * - RPC goal operations are get/create/resume/pause/drop; create rejects an already active goal
  *   (`packages/coding-agent/src/modes/rpc/rpc-goal.ts:21-27,250`).
- * - Loop and vibe are `handleTui`-only (`packages/coding-agent/src/slash-commands/builtin-modes.ts:358-371,414-434`);
- *   tan is `handleTui`-only (`packages/coding-agent/src/slash-commands/builtin-lifecycle.ts:451-459`).
+ * - Loop and vibe are `handleTui`-only (`packages/coding-agent/src/slash-commands/builtin-modes.ts:360-373,416-436`);
+ *   tan is `handleTui`-only (`packages/coding-agent/src/slash-commands/builtin-lifecycle.ts:463-471`).
  */
 export const D8_AP6_UNAVAILABLE_REASONS = {
   "upstream.goal-launch":

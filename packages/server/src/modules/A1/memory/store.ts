@@ -33,8 +33,9 @@ import { hashContent } from "../fs";
 
 const CAPABILITY = "host.memory-store" as const;
 const EDIT_CAPABILITY = "upstream.memory-edit" as const;
+// Never suggest a destructive action in place of the missing one: clearing deletes every memory, not the one in question.
 const EDIT_UNAVAILABLE_REASON =
-  "omp v18.6.1 has no typed memory-edit command; editing one memory is unavailable rather than emulated.";
+  "omp 18.12.6 cannot edit a single memory, so the app cannot either.";
 
 export interface MemoryCommandGateway {
   readonly run: (args: {
@@ -197,8 +198,8 @@ function parseClearText(raw: string): MemoryClearResultValue {
 }
 
 /**
- * A1 memory seam over A1.8's structured command gateway. omp's v18.6.1 slash handler renders the
- * `/memory` family in `packages/coding-agent/src/slash-commands/builtin-lifecycle.ts:397-468`;
+ * A1 memory seam over A1.8's structured command gateway. omp's v18.12.6 slash handler renders the
+ * `/memory` family in `packages/coding-agent/src/slash-commands/builtin-lifecycle.ts:542-631`;
  * backend status/fallback text is defined by `packages/coding-agent/src/memory-backend/messages.ts`.
  * Parsers are intentionally conservative: a format mismatch returns raw text with `parsed:false`.
  */

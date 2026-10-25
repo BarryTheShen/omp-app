@@ -9,24 +9,25 @@ import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
 /*
  * Typed parsers for the execution-mode commands `/slow`, `/computer`, `/extended-context` and `/browser`. Each
  * reply is read only when it is exactly one of the texts omp prints for that command and direction, cited to
- * omp v18.6.1 below and checked against the replies the installed omp 18.8.9 printed for the fake model. Any
+ * omp v18.12.6 below, the release the app pins (the replies of the installed omp 18.8.9 printed for the fake model
+ * matched them, and `mode-parsers.test.ts` keeps them). Any
  * other reply is `unknown`: it is never read as applied, and the app shows omp's own words as sent, as it did
  * before typed results.
  */
 
-/** builtin-modes.ts:153-154, returned by :172 for any `/slow` change on a model without slow mode (on or off). */
+/** builtin-modes.ts:154-155, returned by :173 for any `/slow` change on a model without slow mode (on or off). */
 const SLOW_UNSUPPORTED =
   "The current model has no slow mode: /slow uses the flex tier on OpenAI/Google models and low priority on Anthropic subscriptions.";
-/** builtin-modes.ts:178 (flex tier) and :182 (Anthropic, no reset time): slow mode turned on. */
+/** builtin-modes.ts:179 (flex tier) and :183 (Anthropic, no reset time): slow mode turned on. */
 const SLOW_ON_FLEX = "Slow mode on: requests use the flex tier (lower cost, higher latency).";
 const SLOW_ON_CLAUDE =
   "Slow mode on: when your Claude subscription hits its session limit and Anthropic offers low priority, requests switch to it after any wrap-up allowance.";
-/** builtin-modes.ts:181: Anthropic, turned on until the limit resets; the reset clock is the only variable part. */
+/** builtin-modes.ts:182: Anthropic, turned on until the limit resets; the reset clock is the only variable part. */
 const SLOW_ON_CLAUDE_UNTIL_RESET =
   /^Slow mode on: continuing at low priority until your limit resets at .+\. Your weekly limit still applies, and responses may pause while waiting for spare capacity\.$/;
-/** builtin-modes.ts:176: slow mode turned off. */
+/** builtin-modes.ts:177: slow mode turned off. */
 const SLOW_OFF = "Slow mode off.";
-/** builtin-modes.ts:175: Anthropic's off reply; a turn-on that the usage limit stopped gets it too. */
+/** builtin-modes.ts:176: Anthropic's off reply; a turn-on that the usage limit stopped gets it too. */
 const SLOW_OFF_CLAUDE_LIMIT =
   "Slow mode off: at your Claude usage limit, requests may get a short wrap-up allowance, then wait for the limit to reset.";
 
@@ -41,13 +42,13 @@ const COMPUTER_UNAVAILABLE = "Computer use is unavailable in this session.";
 /** builtin-modes.ts:241: computer use turned off for this session. */
 const COMPUTER_OFF = "Computer use disabled for this session.";
 
-/** builtin-modes.ts:201 and :205: extended context turned on and off. */
+/** builtin-modes.ts:202 and :206: extended context turned on and off. */
 const EXTENDED_ON = "Extended context enabled.";
 const EXTENDED_OFF = "Extended context disabled.";
 
 /**
- * builtin-collaboration.ts:531 and :562: the browser window switched. The text is `Browser mode: <window>`.
- * builtin-collaboration.ts:526-527: the setting was saved but the browser did not restart; the error text after
+ * builtin-collaboration.ts:539 and :570: the browser window switched. The text is `Browser mode: <window>`.
+ * builtin-collaboration.ts:534-535: the setting was saved but the browser did not restart; the error text after
  * the colon is omp's own and is not passed on.
  */
 const BROWSER_RESTART_FAILED =

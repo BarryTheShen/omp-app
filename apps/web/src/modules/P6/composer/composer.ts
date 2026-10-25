@@ -167,7 +167,7 @@ function parseEnumeratedList(text: string): EnumeratedList | undefined {
   return { source, lines, items };
 }
 
-/** Mirrors omp v18.6.1 `packages/tui/src/prompt/queue-input.ts`. */
+/** Mirrors omp v18.12.6 `packages/tui/src/prompt/queue-input.ts`. */
 export function splitQueuedMessages(text: string): readonly string[] {
   const list = parseEnumeratedList(text);
   if (!list) {

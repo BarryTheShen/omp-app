@@ -169,7 +169,7 @@ const HttpsUrlSchema = z
   .max(2_048)
   .refine((value) => value.startsWith("https://"), "share URLs must use HTTPS");
 
-/** The exact one-shot `/share` result; there is no visibility or revoke input on omp 18.6.1. */
+/** The exact one-shot `/share` result; there is no visibility or revoke input on omp 18.12.6. */
 export const ShareResultSchema = z.strictObject({
   url: HttpsUrlSchema,
   gistUrl: HttpsUrlSchema.optional(),
@@ -177,7 +177,7 @@ export const ShareResultSchema = z.strictObject({
 });
 export type ShareResult = z.infer<typeof ShareResultSchema>;
 
-/** omp 18.6.1 cannot change share visibility; represent only the verified unavailable state. */
+/** omp 18.12.6 cannot change share visibility; represent only the verified unavailable state. */
 export const ShareVisibilitySchema = z.strictObject({
   state: z.literal("unavailable"),
   capability: z.literal("upstream.share-visibility"),

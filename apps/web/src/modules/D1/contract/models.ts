@@ -200,7 +200,7 @@ export type ModelTag = z.infer<typeof ModelTag>;
 export const ModelTags = z.record(z.string().min(1), ModelTag);
 export type ModelTags = z.infer<typeof ModelTags>;
 
-/** Matches omp v18.6.1 model-settings.ts:13-57 (`modelPresets` record values). */
+/** Matches omp v18.12.6 model-settings.ts:13-57 (`modelPresets` record values). */
 export const ModelPreset = z.strictObject({
   modelRoles: z.record(z.string().min(1), z.string().min(1)),
   defaultThinkingLevel: ConfiguredThinkingLevel.optional(),

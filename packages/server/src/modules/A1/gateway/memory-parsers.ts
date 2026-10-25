@@ -7,8 +7,8 @@ import {
 import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
 
 /**
- * omp v18.8.9 `builtin-lifecycle.ts:530-618` formats the stable maintenance replies (the block is
- * unchanged in v18.9.1): `Memory cleared.` and `Memory consolidation enqueued.`. The stats/diagnose
+ * omp v18.12.6 `builtin-lifecycle.ts:570-625` formats the stable maintenance replies (the block is
+ * unchanged since v18.8.9): `Memory cleared.` and `Memory consolidation enqueued.`. The stats/diagnose
  * hooks return backend-owned text, while ACP mental-model maintenance returns its fixed unsupported
  * sentence from `memory-backend/messages.ts:16-19`. A1 returns typed status and bounded text.
  */

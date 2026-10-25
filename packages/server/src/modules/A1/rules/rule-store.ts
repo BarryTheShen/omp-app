@@ -267,10 +267,12 @@ function changedId(path: string): RuleName {
 }
 
 /**
- * Native omp rule files. Locations and Markdown/frontmatter semantics follow omp v18.6.1's
- * `discovery/builtin.ts:388-446` and `discovery/helpers.ts:230-278`: user rules are
- * `<agentDir>/rules/*.{md,mdc}` plus `<agentDir>/RULES.md`; project rules are nearest
- * `<folder>/.omp/rules/*.{md,mdc}` plus `<folder>/.omp/RULES.md`. All mutations stay in those
+ * Native omp rule files. Locations and Markdown/frontmatter semantics follow omp v18.12.6's
+ * `discovery/builtin.ts:401-459` and `discovery/helpers.ts:231-279`: user rules are
+ * `<agentDir>/rules/*.{md,mdc}` plus `<agentDir>/RULES.md`; project rules are
+ * `<folder>/.omp/rules/*.{md,mdc}` plus `<folder>/.omp/RULES.md` (omp reads them from the nearest `.omp`
+ * above the folder, never one at home, a temporary root or a user config root: `discovery/builtin.ts:81-122`;
+ * the app reads the folder's own). All mutations stay in those
  * directories and publish through A1.2's atomic CAS writer.
  */
 export class RuleStoreService {
@@ -463,8 +465,8 @@ export class RuleStoreService {
   }
 
   /**
-   * A rule is on or off as its file says. A RULES.md with `enabled: false` is off: omp skips it (omp v18.8.9
-   * `discovery/helpers.ts:276`, loaded for RULES.md by `discovery/builtin.ts` `loadStickyRulesFile`).
+   * A rule is on or off as its file says. A RULES.md with `enabled: false` is off: omp skips it (omp v18.12.6
+   * `discovery/helpers.ts:277`, loaded for RULES.md by `discovery/builtin.ts` `loadStickyRulesFile`).
    */
   private ruleFromFile(location: RuleLocation, file: RuleFile): Rule {
     return {

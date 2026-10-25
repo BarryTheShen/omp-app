@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { ensurePinnedOmp, type OmpPin, pinnedOmpPath } from ".";
+import { OMP_FLOOR_VERSION } from "@omp-app/contracts";
+import { ensurePinnedOmp, OMP_PIN, type OmpPin, pinnedOmpPath } from ".";
 
 const dataRoot = resolve(import.meta.dir, "../../../../.data");
 const roots: string[] = [];
@@ -155,5 +156,11 @@ describe("ensurePinnedOmp", () => {
       ensurePinnedOmp({ dir, pin: PIN, platform: "win32", arch: "x64", fetch: download.fetch }),
     ).rejects.toThrow("omp 9.9.9 has no build for win32-x64 that this app can use.");
     expect(download.urls).toEqual([]);
+  });
+});
+
+describe("the pinned release", () => {
+  test("is the release the contracts name as the omp floor", () => {
+    expect(OMP_FLOOR_VERSION).toBe(OMP_PIN.version);
   });
 });

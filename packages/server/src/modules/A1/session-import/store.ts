@@ -55,8 +55,9 @@ function unsupportedImport(): AppFailure {
 
 /**
  * Creates native omp sessions only through an omp-owned import operation. This service never reads
- * or writes foreign transcripts and never writes native session files. omp v18.6.1 exposes
- * foreign import only through its interactive CLI picker and has no share-link RPC import, so
+ * or writes foreign transcripts and never writes native session files. omp 18.12.6 exposes
+ * foreign import only through its interactive CLI picker (`--from-claude`, `--from-codex`: `cli/args.ts:347`,
+ * `main.ts:874-893,2082`) and has no share-link RPC import, so
  * every validated request receives the explicit upstream capability failure.
  */
 export class SessionImportStoreService {

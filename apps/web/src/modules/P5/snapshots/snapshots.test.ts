@@ -594,7 +594,7 @@ describe("P5 quiet-point snapshot coordination", () => {
       state: "gated",
       capability: SNAPSHOT_EXACT_CAPABILITY,
       reason:
-        "Restore points taken right before each tool runs need a newer omp. This version only reports a tool after it has started.",
+        "The app cannot take a restore point right before each tool runs: omp tells it about a tool only after the tool has started. Restore points taken when you send a message and when a turn finishes still work.",
     });
     expect(calls).toBe(0);
     expect(rawToolEventExactGate()).toMatchObject({
@@ -612,7 +612,7 @@ describe("P5 quiet-point snapshot coordination", () => {
     ).toMatchObject({
       state: "unavailable",
       reason:
-        "Restore points taken right before each tool runs need a newer omp. This version only reports a tool after it has started.",
+        "The app cannot take a restore point right before each tool runs: omp tells it about a tool only after the tool has started. Restore points taken when you send a message and when a turn finishes still work.",
     });
     expect(
       exactSnapshotCapabilityGate({
@@ -624,7 +624,7 @@ describe("P5 quiet-point snapshot coordination", () => {
     ).toMatchObject({
       state: "unavailable",
       reason:
-        "Restore points taken right before each tool runs need a newer omp. This version only reports a tool after it has started.",
+        "The app cannot take a restore point right before each tool runs: omp tells it about a tool only after the tool has started. Restore points taken when you send a message and when a turn finishes still work.",
     });
   });
 

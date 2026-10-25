@@ -9,7 +9,7 @@ function actionText(action: OmpWire.AutoCompactionAction): string {
     case "handoff":
       return "preparing a handoff summary";
     case "shake":
-      // omp: "Surgically reduce context by dropping heavy content" (session-maintenance.ts, v18.6.1).
+      // omp: "Surgically reduce context by dropping heavy content" (session-maintenance.ts:884, v18.12.6).
       return "dropping heavy content (old tool output, images and thinking) to free space";
     case "snapcompact":
       // omp: renders the discarded history as images; no model call, no summary (docs/compaction.md).

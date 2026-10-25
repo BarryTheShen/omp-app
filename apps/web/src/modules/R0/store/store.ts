@@ -1184,8 +1184,8 @@ function branchSummaryFromEntry(raw: Record<string, unknown>): OmpMessage | unde
 
 /**
  * omp's compaction summary and its optional display metadata.
- * `warning` is a typed `CompactionEntry` field in omp v18.8.9:
- * `packages/coding-agent/src/session/session-entries.ts:135-155`.
+ * `warning` is a typed `CompactionEntry` field in omp v18.12.6:
+ * `packages/coding-agent/src/session/session-entries.ts:144-168`.
  */
 function compactionFromEntry(raw: Record<string, unknown>): OmpMessage | undefined {
   const { summary, shortSummary, tokensBefore, tokensAfter, method, timestamp, warning } = raw;
@@ -2396,8 +2396,9 @@ export class OmpRuntimeStore {
         }
         return;
       case "todo_reminder": {
-        // A reminder lists only the unfinished tasks when a turn stops. It is a transcript panel and
-        // never replaces the todo state (omp v18.6.1 src/modes/components/todo-reminder.ts).
+        // A reminder lists only the unfinished tasks when a turn stops. It is a transcript panel and never replaces the
+        // todo state (omp v18.12.6: sent by src/session/todo-tracker.ts:285-305, shown as a panel by
+        // src/modes/controllers/event-controller.ts:2762-2765).
         if (!Array.isArray(event.todos)) return;
         const reminder: TodoReminderState = {
           todos: cloneValue(event.todos) as TodoItem[],
@@ -2617,7 +2618,7 @@ export class OmpRuntimeStore {
       isError,
     });
     // omp derives its todo list from every successful `todo` result except `view`
-    // (src/tools/todo.ts:194-199 at v18.6.1); the app follows the same rule.
+    // (src/tools/todo.ts:194-199 at v18.12.6); the app follows the same rule.
     const phases = todoPhasesFromResult(toolName, isError, event.result);
     if (phases) updateTodos(next, phases);
   }

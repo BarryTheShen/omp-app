@@ -4,7 +4,7 @@ import { PencilIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import type { ExternalEditorAdapter } from "../contract";
-/** The TUI's Ctrl+G handoff is cited by omp v18.6.1 `src/modes/controllers/input-controller.ts:2084-2110`; hosts provide the browser adapter. */
+/** The TUI's Ctrl+G handoff is cited by omp v18.12.6 `src/modes/controllers/input-controller.ts:407,2809`; hosts provide the browser adapter. */
 
 export const EXTERNAL_EDITOR_CAPABILITY = "host.external-editor" as const;
 

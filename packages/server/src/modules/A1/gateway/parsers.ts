@@ -6,37 +6,37 @@ import { parseSessionDeleteReply } from "./session-delete-parser";
 import { registerToolsParser } from "./tools-parsers";
 
 /*
- * Typed parsers for the `/share` and `/dump` replies of omp v18.6.1 (issue #793), and for the `/dump anon` report of
- * omp v18.8.9 (issue 1683). Each command prints one `command_output` frame, and each parser accepts only the shape
+ * Typed parsers for the `/share`, `/dump` and `/dump anon` replies of omp v18.12.6 (issues #793 and 1683). Each
+ * command prints one `command_output` frame, and each parser accepts only the shape
  * omp prints for it, cited below.
  * A reply that differs is an `internal` failure, never a best-effort guess. `/dump` text is passed
  * through unparsed: the browser shows it, and no parser reads its wording.
  */
 
-/** builtin-collaboration.ts:296-298: the viewer link line, then the optional gist line and note line. */
+/** builtin-collaboration.ts:304-306: the viewer link line, then the optional gist line and note line. */
 const SHARE_URL_LINE = "Share URL: ";
 const GIST_LINE = "Gist: ";
 const TRIMMED_NOTE = "Note: large content was trimmed to fit the share size limit.";
 
-/** builtin-collaboration.ts:302: omp's reply when the upload failed; the text after it is omp's reason. */
+/** builtin-collaboration.ts:310: omp's reply when the upload failed; the text after it is omp's reason. */
 const SHARE_FAILED = "Failed to share session: ";
 
 /**
- * builtin-collaboration.ts:248: `/dump all` prints this when the session has no messages. Line 257 prints
- * it for `/dump` only when the formatted session is empty, which its header never is (recorded).
+ * builtin-collaboration.ts:255: `/dump all` and `/dump anon` print this when the session has no messages. Line 264
+ * prints it for `/dump` only when the formatted session is empty, which its header never is (recorded).
  */
 const NO_MESSAGES = "No messages to dump yet.";
 
-/** session-dump-format.ts:79 and :90: a session dump opens with its system prompt, or its configuration. */
+/** session-dump-format.ts:101 and :112: a session dump opens with its system prompt, or its configuration. */
 const SESSION_DUMP_OPENINGS = ["## System Prompt\n", "## Configuration\n"];
 
-/** session-dump-format.ts:293-298: the `/dump all` report opens with the archive path and ends with the warning. */
+/** session-dump-format.ts:384-403: the `/dump all` report opens with the archive path and ends with the warning. */
 const ARCHIVE_OPENING = "Session dump archive: ";
 const ARCHIVE_CONTENTS_OPENING = "Contains ";
 const ARCHIVE_WARNING =
   "This archive persists on disk and may contain raw context/secrets — treat accordingly.";
 /**
- * omp v18.8.9 ends an anonymized archive report (`/dump anon`) with its review note instead of the warning:
+ * omp v18.12.6 ends an anonymized archive report (`/dump anon`) with its review note instead of the warning:
  * `formatDumpArchiveReport` in session-dump-format.ts prints `ANONYMIZED_REVIEW_NOTE` from session-anonymizer.ts.
  */
 const ANONYMIZED_REVIEW_NOTE =
@@ -81,7 +81,7 @@ function urlAfter(line: string | undefined, prefix: string, command: string): st
 
 /**
  * Reads `/share`: `Share URL: <url>`, then an optional `Gist: <url>`, then an optional trimmed note,
- * in that order and with nothing else (builtin-collaboration.ts:296-298). omp's failed upload (:302) and
+ * in that order and with nothing else (builtin-collaboration.ts:304-306). omp's failed upload (:310) and
  * an http link are typed unavailable failures with plain messages; any other shape is `internal`.
  */
 export function parseShareReply(context: CommandParserContext): ShareResult {

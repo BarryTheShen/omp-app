@@ -50,7 +50,7 @@ async function appFailure(promise: Promise<unknown>): Promise<AppFailure> {
   if (!(result instanceof AppFailure)) throw new Error("expected an AppFailure");
   return result;
 }
-/** Mirrors the non-strict tokenizer in omp v18.6.1 `utils/command-args.ts`. */
+/** Mirrors the non-strict tokenizer in omp v18.12.6 `utils/command-args.ts`. */
 function parseOmpCommandArgs(text: string): string[] {
   const args: string[] = [];
   let current = "";
@@ -115,7 +115,7 @@ async function fastestPromptsMs(text: string): Promise<number> {
 }
 
 describe("McpCommandsService", () => {
-  test("parses v18.6.1 list output and exposes only remote URL origins", async () => {
+  test("parses v18.12.6 list output and exposes only remote URL origins", async () => {
     const { service } = serviceFor(
       [
         "local | stdio | enabled | bun [user]",
@@ -170,7 +170,7 @@ describe("McpCommandsService", () => {
     expect(JSON.stringify(result)).not.toContain("/usr/local");
   });
 
-  test("parses v18.6.1 prompt and resource formatter fixtures", async () => {
+  test("parses v18.12.6 prompt and resource formatter fixtures", async () => {
     const prompt = serviceFor("atlas/explain — Explains a codebase.");
     const promptResult = await prompt.service.prompts({ threadId });
     expect(promptResult.prompts).toEqual([
@@ -385,7 +385,7 @@ describe("McpCommandsService", () => {
     expect(JSON.stringify(safeCatalog)).not.toContain("t".repeat(32));
   });
 
-  test("normalizes the v18.6.1 empty prompt and resource messages", async () => {
+  test("normalizes the v18.12.6 empty prompt and resource messages", async () => {
     const prompts = await serviceFor("No prompts available on connected servers.").service.prompts({
       threadId,
     });

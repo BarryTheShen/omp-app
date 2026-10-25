@@ -4,7 +4,7 @@ import { useShortcutRegistry } from "../../../shortcuts";
 import type { ShortcutAction, ShortcutRegistry } from "../../../shortcuts/registry";
 import { U2Descriptors } from "../descriptors/descriptors";
 
-/** omp v18.6.1's external-editor chord is Ctrl+G; Mod maps it to Cmd on macOS. See `src/modes/controllers/input-controller.ts:2084-2110`. */
+/** omp v18.12.6's external-editor chord is Ctrl+G; Mod maps it to Cmd on macOS. See `packages/tui/src/keybinding-matchers.ts:63,72` and `packages/coding-agent/src/modes/controllers/input-controller.ts:407`. */
 export const U2_EXTERNAL_EDITOR_SHORTCUT = {
   kind: "shortcut",
   id: "U2.externalEditorShortcut",

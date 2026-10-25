@@ -1,10 +1,11 @@
 import { type ShareVisibility, ShareVisibilitySchema } from "../contract";
 
 /**
- * The `upstream.share-visibility` gate. omp 18.6.1 makes one kind of link: `/share` takes no
- * arguments and has no revoke (`slash-commands/builtin-collaboration.ts:284-309`,
- * `commands/share.ts:30-35`). Private and team links stay unavailable until omp provides them. The
- * reason is shown in place of a control, and no visibility control is rendered.
+ * The `upstream.share-visibility` gate. omp 18.12.6 makes one kind of link: `/share` takes no
+ * arguments and has no revoke (`slash-commands/builtin-collaboration.ts:292-317`,
+ * `commands/share.ts:30-35`; `--gist` and `share.store` only choose where that one link is stored).
+ * Private and team links stay unavailable until omp provides them. The reason is shown in place of a
+ * control, and no visibility control is rendered.
  */
 export const SHARE_VISIBILITY: ShareVisibility = ShareVisibilitySchema.parse({
   state: "unavailable",

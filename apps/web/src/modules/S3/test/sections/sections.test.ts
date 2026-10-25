@@ -336,7 +336,7 @@ describe("S3 Tools and Tasks sections", () => {
     );
   });
 
-  test("marks every v18.6.1 Tools control as live", () => {
+  test("marks every v18.12.6 Tools control as live", () => {
     for (const { key, source } of LIVE_TOOLS_SETTINGS) {
       expect(control(key).apply, `${key}: ${source}`).toBe("live");
     }
@@ -528,7 +528,7 @@ describe("S3 Tools and Tasks sections", () => {
 });
 
 describe("S3 section titles", () => {
-  test("each title is omp v18.6.1's group label (with and for &), in the order the sections list", () => {
+  test("each title is omp v18.12.6's group label (with and for &), in the order the sections list", () => {
     expect(S3_SETTINGS_SECTIONS.map((section) => section.title)).toEqual([
       "Available Tools",
       "Grep and Browser",

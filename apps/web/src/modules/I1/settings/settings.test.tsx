@@ -27,7 +27,7 @@ import {
   MCP_SETTINGS_SECTION_DESCRIPTOR,
 } from ".";
 
-/** omp v18.6.1 defaults from mcp/settings.ts:12,24,36,49,61 and tools/settings.ts:915,929,951. */
+/** omp v18.12.6 defaults from mcp/settings.ts:12,24,36,49,61 and tools/settings.ts:964,978,1000. */
 const DEFAULT_VALUES = {
   "mcp.enableProjectConfig": true,
   "mcp.startupTimeoutMs": 250,

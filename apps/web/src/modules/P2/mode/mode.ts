@@ -8,7 +8,7 @@ import {
 import type { PlanDocumentStoreSource, PlanState } from "../contract";
 import { PlanStateController } from "../contract";
 
-/** AP6 seam: omp v18.6.1 has no typed plan-mode RPC; a future port may provide these calls. */
+/** AP6 seam: omp v18.12.6 has no typed plan-mode RPC; a future port may provide these calls. */
 export interface PlanModePort {
   readonly enter: (threadId: ThreadId, options?: PortCallOptions) => Promise<void>;
   readonly exit: (threadId: ThreadId, options?: PortCallOptions) => Promise<void>;

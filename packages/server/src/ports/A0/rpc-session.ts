@@ -249,8 +249,10 @@ function hasMessages(value: unknown): boolean {
 
 /**
  * Whether omp says it is idle: no turn running, nothing queued, no background work that could wake
- * it. omp 18.6.1 (the supported floor) may not report `isSettled`, so the parts it does report are
- * combined; a state that can't be read counts as not settled, so the process is kept.
+ * it. omp 18.12.6 reports `isSettled` in every `get_state` (`modes/rpc/rpc-types.ts:182`,
+ * `modes/rpc/rpc-mode.ts:2083`: the same predicate as `session_settled`), so that answer is read as it is.
+ * A state without it is read from the parts it does report; a state that can't be read counts as not
+ * settled, so the process is kept.
  */
 function readSettled(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;

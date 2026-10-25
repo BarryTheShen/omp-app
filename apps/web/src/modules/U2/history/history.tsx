@@ -2,8 +2,8 @@ import { useAui } from "@assistant-ui/react";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef } from "react";
 
 /**
- * Mirrors omp v18.6.1's custom-editor Up/Down history boundary behavior from
- * `research/modules/U2.md:76-80` and the cited `src/modes/components/custom-editor.ts` source.
+ * Mirrors omp v18.12.6's prompt editor Up/Down history boundary behavior (`packages/tui/src/components/editor.ts:2210-2233`) from
+ * `research/modules/U2.md:76-80`.
  */
 export interface PromptHistorySource {
   getUserPrompts(): readonly string[];

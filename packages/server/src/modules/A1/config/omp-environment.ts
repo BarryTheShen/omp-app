@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { parseEnv } from "node:util";
 
 /**
- * The values omp reads from its environment for the Tools settings the app shows (omp v18.6.1).
+ * The values omp reads from its environment for the Tools settings the app shows (omp v18.12.6).
  *
  * omp takes a variable from its process environment first, then from the `.env` files of the
  * project it runs in, the agent folder, the config folder and the home folder, in that order
- * (packages/utils/src/env.ts:287-303). A variable counts only when it is non-empty, so an empty one
+ * (packages/utils/src/env.ts:289-305). A variable counts only when it is non-empty, so an empty one
  * falls through to the next source. A registered setting reads its variable before any settings
- * layer (packages/coding-agent/src/config/registry.ts:514-530); the browser and Auto QA code read
+ * layer (packages/coding-agent/src/config/registry.ts:516-532); the browser and Auto QA code read
  * theirs directly. This module reads the same sources in the same order. The ConfigStore places
  * the result in its environment layer, which is where precedence against saved and default values
  * is decided.

@@ -44,7 +44,7 @@ export const I4_ROLE_DESCRIPTOR: StatusDescriptor = {
 };
 
 /**
- * omp v18.8.9 writes a guest's prompt into the transcript as a custom message of type `collab-prompt`
+ * omp v18.12.6 writes a guest's prompt into the transcript as a custom message of type `collab-prompt`
  * (`packages/wire/src/index.ts:170`, written at `packages/coding-agent/src/collab/host.ts:996`). The typed AP6 prompt
  * that `GuestPromptRow` renders reaches the row through the main agent's composition, not through this match.
  */

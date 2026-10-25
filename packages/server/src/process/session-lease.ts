@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 export type SessionLease = "held" | "free" | "unknown" | "unsupported";
 
 /**
- * Mirrors omp v18.6.1: `getSessionOwnersDir()` (dirs.ts:1103-1104: the base config root plus
+ * Mirrors omp v18.12.6: `getSessionOwnersDir()` (dirs.ts:1150-1151: the base config root plus
  * `run/session-owners`, XDG state applied as omp applies it). It takes the child's environment, which
  * is what omp sees: the A1 helper reads the server's own environment and ignores PI_CONFIG_DIR.
  */
@@ -33,7 +33,7 @@ const LOW_SEED = 0x5049_2d46_494c_454cn;
 const PLAIN_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
- * The abstract socket name omp's Linux lease for one session is bound to (session-storage.ts:529-561
+ * The abstract socket name omp's Linux lease for one session is bound to (session-storage.ts:599-631
  * names the lock file `<ownersDir>/<session id>`, and the native lock names the socket after its path).
  */
 export function leaseSocketName(sessionId: string, ownersDir: string): string {

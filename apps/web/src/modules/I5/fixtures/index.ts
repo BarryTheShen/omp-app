@@ -54,13 +54,13 @@ export const CONFIG_STORE_FIXTURE = ConfigListResult.parse({
 });
 
 /**
- * The settings omp v18.8.9 shows in the Speech group of its interaction tab and the Services group of its providers
- * tab, that is the registrations whose `ui` names those groups: `group: "Speech"` at `stt/settings.ts:15,30`;
- * `group: "Services"` at `live/settings.ts:15`, `tts/settings.ts:21,34,47,60,78,92,105`, `web/settings.ts:14,26,40` and
- * `session/settings.ts:131,148,161,891,903,923,1251,1278,1300,1313,1326,1352,1374,1387,1400` (all under
- * `packages/coding-agent/src/`). omp registers `stt.language` without a `ui`, so it is not listed.
+ * The settings omp v18.12.6 shows in the Speech group of its interaction tab and the Services group of its providers
+ * tab, that is the registrations whose `ui` names those groups, in `stt/settings.ts`, `live/settings.ts`,
+ * `tts/settings.ts`, `web/settings.ts` and `session/settings.ts` (all under `packages/coding-agent/src/`; the same
+ * keys as at v18.8.9 once the two Codex Code Mode settings omp removed in 18.10.4 are left out). omp registers
+ * `stt.language` without a `ui`, so it is not listed.
  */
-export const OMP_V18_8_9_UI_SETTING_KEYS: readonly string[] = [
+export const OMP_V18_12_6_UI_SETTING_KEYS: readonly string[] = [
   "stt.enabled",
   "stt.submitTrigger",
   "live.voice",
@@ -72,8 +72,6 @@ export const OMP_V18_8_9_UI_SETTING_KEYS: readonly string[] = [
   "speech.voice",
   "speech.speed",
   "providers.maxInFlightRequests",
-  "providers.openai-codex.codeMode",
-  "providers.openai-codex.codeModeDirectTools",
   "providers.ollama-cloud.maxConcurrency",
   "providers.webSearchTimeoutSeconds",
   "providers.antigravityEndpoint",

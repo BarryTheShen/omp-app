@@ -82,7 +82,7 @@ function cloneSettings(settings: ModelSettings): ModelSettings {
       : {}),
   };
 }
-/** omp's preset name rule (model-presets.ts:24-25 at v18.6.1): a letter, then letters, digits, `-` or `_`. */
+/** omp's preset name rule (model-presets.ts:24-25 at v18.12.6): a letter, then letters, digits, `-` or `_`. */
 const PRESET_NAME_PATTERN = /^[a-zA-Z][\w-]*$/;
 
 export const PRESET_NAME_RULE =

@@ -6,6 +6,7 @@ import {
   type ConfigWriteResult,
   FolderPath,
   JsonValue,
+  OMP_FLOOR_VERSION,
   type SettingSource,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
@@ -183,7 +184,7 @@ describe("S3 Tools ConfigStore policy", () => {
     for (const key of TOOLS_POLICY_CONFIG_KEYS) expect(controlKeys).not.toContain(key);
   });
 
-  test("projects every v18.6.1 default with provenance for all Tools keys", async () => {
+  test("projects every default with provenance for all Tools keys", async () => {
     const policy = projectToolsPolicy(await readToolsSettings(fakeConfigStore().client, null));
     const keys = Object.keys(TOOLS_SETTING_DEFAULTS) as (keyof typeof TOOLS_SETTING_DEFAULTS)[];
     const sortedKeys = [...keys].sort();
@@ -195,7 +196,7 @@ describe("S3 Tools ConfigStore policy", () => {
       expect(policy.provenance[key]).toEqual({
         source: "default",
         overrides: [],
-        provenance: { origin: "host-fallback", ompVersion: "18.6.1" },
+        provenance: { origin: "host-fallback", ompVersion: OMP_FLOOR_VERSION },
       });
     }
   });
