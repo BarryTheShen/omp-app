@@ -59,9 +59,37 @@ function trackWrite<T>(scope: DraftScope, write: Promise<T>): Promise<T> {
 /** The clears of admitted sends in flight, by scope: a read waits for them after the write chain (see `settledWrites`). */
 const pendingClears = new Map<string, Promise<void>>();
 
-/** Registers an admitted send's clear: a read of the scope that begins later waits for it (see `settledWrites`). */
-function trackClear(scope: DraftScope, clear: Promise<void>): void {
+/**
+ * The sends this page had admitted from each scope: how many, and the texts of the latest of them. A load reads the count
+ * when it begins, and later asks whether the copy it holds is one of the texts admitted since (see `loadNow`).
+ */
+const admittedSends = new Map<string, { count: number; latest: string[] }>();
+/** Texts kept per scope: more than any load waits through. */
+const ADMITTED_TEXTS_KEPT = 8;
+
+function admissionCount(scope: DraftScope): number {
+  return admittedSends.get(draftScopeStream(scope))?.count ?? 0;
+}
+
+/** Whether `text` was among the sends admitted from the scope after the first `since` of them. */
+function admittedSince(scope: DraftScope, since: number, text: string): boolean {
+  const entry = admittedSends.get(draftScopeStream(scope));
+  if (entry === undefined) return false;
+  const newer = Math.min(entry.count - since, entry.latest.length);
+  return newer > 0 && entry.latest.slice(-newer).includes(text);
+}
+
+/**
+ * Registers an admitted send's clear: a read of the scope that begins later waits for it (see `settledWrites`). The send's
+ * text is noted as admitted, for a load that began before it (see `loadNow`).
+ */
+function trackClear(scope: DraftScope, sentText: string, clear: Promise<void>): void {
   const key = draftScopeStream(scope);
+  const admitted = admittedSends.get(key) ?? { count: 0, latest: [] };
+  admittedSends.set(key, {
+    count: admitted.count + 1,
+    latest: [...admitted.latest, sentText].slice(-ADMITTED_TEXTS_KEPT),
+  });
   const earlier = pendingClears.get(key) ?? Promise.resolve();
   const settled = Promise.all([
     earlier,
@@ -391,6 +419,14 @@ export class DraftController {
     // so it is read before the first wait.
     const keptAtStart = holdsText ? null : (this.buffer?.read(this.scope) ?? null);
     this.loadingKept = keptAtStart;
+    // How many of the scope's sends this page had had admitted when the load began (see `delivered`).
+    const admittedAtStart = admissionCount(this.scope);
+    // A copy whose text this page sent from the scope, admitted while this load waited, was delivered: it is not the
+    // scope's draft any more. Restored, it would come back into the box, in front of text typed meanwhile, and go out
+    // again with the next send (#2645). A copy that a reload kept (no send of this page ends while it loads) and the text
+    // of a send that failed are still restored.
+    const delivered = (copy: BufferedDraft | null): boolean =>
+      copy !== null && admittedSince(this.scope, admittedAtStart, copy.input.text);
     const replaced =
       this.buffer === undefined ? this.snapshot.replaced : this.buffer.readReplaced(this.scope);
     this.setState({ status: "loading", error: null, replaced });
@@ -413,8 +449,15 @@ export class DraftController {
         : this.snapshot.dirty
           ? keptAtStart
           : (this.buffer?.read(this.scope) ?? null);
+      if (delivered(held)) {
+        held = null;
+        // Text typed from now on is kept alone, not after the delivered copy (see `mirrorBuffer`).
+        this.loadingKept = null;
+      }
       const result = await this.store.get({ scope: this.scope });
       this.loaded = true;
+      // A send admitted while the stored draft was read can be the copy held: the person sent it from here meanwhile.
+      if (delivered(held)) held = null;
       if (held !== null) {
         this.restore(held, result.draft);
         return this.snapshot;
@@ -690,7 +733,7 @@ export class DraftController {
     const sent = this.sendInFlight;
     if (sent === null) return;
     // A failed clear is already the composer's error status (`fail`), which the composer shows with its retry.
-    trackClear(this.scope, this.clearAfterAdmissionNow(sent));
+    trackClear(this.scope, sent, this.clearAfterAdmissionNow(sent));
   }
 
   /** Forgets the send `sentText` when it is the one in progress: its copy is no longer pending. Returns it, or null. */
@@ -711,7 +754,7 @@ export class DraftController {
     // round trips. The clear runs as a write of its own, which later reads of this scope wait for (see `settledWrites`).
     // The draft holds the line with its mode prefix (`!pwd`): compare against that, not the bare command. A failed clear is
     // retried (see `clearServerCopy`); the box stays empty meanwhile.
-    trackClear(this.scope, this.clearAfterAdmissionNow(text));
+    trackClear(this.scope, text, this.clearAfterAdmissionNow(text));
   }
 
   public async clearAfterAdmission(sentText?: string): Promise<void> {

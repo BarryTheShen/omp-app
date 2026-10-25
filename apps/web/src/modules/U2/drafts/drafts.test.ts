@@ -978,6 +978,99 @@ describe("DraftController: unsaved text kept in this tab", () => {
     expect(reader.getSnapshot().text).toBe("");
   });
 
+  test("a load that began while a send was admitted does not put the sent text back in front of text typed meanwhile (#2645)", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const sender = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await sender.load();
+    sender.setDraft("first message", []);
+    await sender.flush();
+    const admission = Promise.withResolvers<void>();
+    const sending = sender.submit(prompt("first message"), () => admission.promise);
+    // The composer is built again while the send is on its way, as when a New chat finishes opening: the new controller
+    // loads the scope, and its kept copy is the send's own copy.
+    const reader = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    const loading = reader.load();
+    admission.resolve();
+    await expect.poll(() => store.clearStarted).toBe(true);
+    // The person types the next message while the sent text's clear runs.
+    reader.setDraft("second message", []);
+    store.release();
+    await Promise.all([sending, loading]);
+    expect(reader.getSnapshot().text).toBe("second message");
+  });
+
+  test("a load that began while a send was admitted does not bring the sent text back after the next message is sent from it (#2645)", async () => {
+    const store = new GatedClearStore();
+    const storage = new MemoryDraftStorage();
+    const sender = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await sender.load();
+    sender.setDraft("first message", []);
+    await sender.flush();
+    const admission = Promise.withResolvers<void>();
+    const sending = sender.submit(prompt("first message"), () => admission.promise);
+    const reader = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    store.gateGet();
+    const loading = reader.load();
+    admission.resolve();
+    await expect.poll(() => store.clearStarted).toBe(true);
+    reader.setDraft("second message", []);
+    store.release();
+    // The load reads the stored draft; meanwhile the person sends the next message from the box.
+    await expect.poll(() => store.getStarted).toBe(true);
+    await reader.submit(prompt("second message"), async () => undefined);
+    store.releaseGet();
+    await Promise.all([sending, loading]);
+    expect(reader.getSnapshot().text).toBe("");
+  });
+
+  test("a load that began while a send failed keeps the text in the box (#2645)", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const sender = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await sender.load();
+    sender.setDraft("first message", []);
+    await sender.flush();
+    const admission = Promise.withResolvers<void>();
+    const sending = sender.submit(prompt("first message"), () => admission.promise);
+    const reader = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    const loading = reader.load();
+    admission.reject(new AppFailure({ code: "unavailable", message: "refused", retryable: true }));
+    await expect(sending).rejects.toBeInstanceOf(AppFailure);
+    await loading;
+    expect(reader.getSnapshot().text).toBe("first message");
+  });
+
   /** A store whose first server clear fails, as a dropped connection does; the clears after it succeed. */
   class ClearFailsOnce extends ScopedDraftStore {
     serverClearCalls = 0;
