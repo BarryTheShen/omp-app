@@ -63,6 +63,8 @@ describe("copied omp wire files", () => {
     };
     expect(manifest.exports).toEqual({
       ".": "./src/index.ts",
+      // The ids alone, without the barrel's JSON inventory, for files that e2e specs load in Node (#2638).
+      "./ids": "./src/core/ids.ts",
       "./omp-wire/schema.json": "./src/omp-wire/rpc-wire.schema.json",
     });
     for (const target of Object.values(manifest.exports)) {
