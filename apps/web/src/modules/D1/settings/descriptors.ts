@@ -481,6 +481,24 @@ export const modelPrewalkSection = section("D1.modelPrewalk", "Prewalk", [
     "Start implementation with a fast model after planning begins.",
     "session",
   ),
+  // omp v18.12.6 `session/settings.ts:85-111` (prewalk.auto) and `:113-123` (prewalk.autoTarget). Both reach an omp started
+  // with `--mode rpc-ui`: `AgentSession.prompt` judges each new top-level task (`agent-session.ts:8220-8228,8389-8390`), and
+  // omp reads the values then (`session/prewalk.ts:233-236`, `agent-session.ts:2761-2762`), with its file watcher applying a
+  // saved edit to a running chat (`main.ts:2650-2655`). `/prewalk off` still turns auto-prewalk off for that chat until `/new`
+  // (`prewalk.ts:134,225-228`). Neither setting has a `protocolDefault`, so nothing pins the default over a saved value.
+  enumControl(
+    "prewalk.auto",
+    "Auto Prewalk",
+    ["off", "suggest", "on"],
+    "Ask the judge model (the Judge role) whether each new top-level task front-loads its hard reasoning. Needs a judge model; without one nothing is classified. Independent of Enable Prewalk. Suggest reports each decision without arming prewalk. On arms a handoff from the active model to the auto-prewalk target for a task that is confidently front-loaded, and the next task starts back on the planning model.",
+    "live",
+  ),
+  textControl(
+    "prewalk.autoTarget",
+    "Auto-Prewalk Target",
+    "Model or role that auto-prewalk hands off to at the first edit or write. The default is @smol, the Fast role.",
+    "live",
+  ),
 ]);
 
 export const modelVisionSection = section("D1.modelVision", "Vision", [

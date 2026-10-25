@@ -117,5 +117,14 @@ export const OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT = {
   "task.prewalk": false,
 } satisfies Readonly<Record<string, JsonValue | undefined>>;
 
-/** All S3 default literals now match the v18.8.9 registry extract. */
-export const S3_DEFAULT_EVIDENCE_GAPS = ["task.structured"] as const;
+/**
+ * Every other S3 default literal matches the v18.8.9 registry extract. These three S3 controls name settings omp added
+ * later (`task.structured` in 18.10.2, `computer.backgroundFallback` in 18.12.2, `async.widgets` in 18.12.3), so the
+ * extract has no row for them. The two Tools defaults are cited to omp v18.12.6 in `tools/policy.ts` and pinned in
+ * `test/tools/tools.test.ts`.
+ */
+export const S3_DEFAULT_EVIDENCE_GAPS = [
+  "task.structured",
+  "computer.backgroundFallback",
+  "async.widgets",
+] as const;

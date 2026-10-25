@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { ADVISOR_SETTING_DEFINITIONS } from "@/modules/P1/advisor/model";
 import { P7_CONTEXT_SETTINGS_SECTIONS } from "@/modules/P7/settings";
 import { SETTINGS_SECTIONS } from "@/registry";
 import registry from "./fixtures/omp-settings-registry.v18.12.6.json";
@@ -179,6 +180,39 @@ describe("settings descriptors match omp's v18.12.6 registration", () => {
     for (const key of Object.keys(NOT_IN_THE_FIXTURE)) {
       expect(controlFor(key), `${key} app control`).toBeDefined();
       expect(registryFor(key), `${key} has no entry in the registry fixture`).toBeUndefined();
+    }
+  });
+
+  /** The six settings omp's own settings screen gained in 18.12.x (they carry `ui` metadata in omp's registry). */
+  const ADDED_TO_OMP_SETTINGS_SCREEN = [
+    "advisor.continueSeverity",
+    "prewalk.auto",
+    "prewalk.autoTarget",
+    "async.widgets",
+    "computer.backgroundFallback",
+    "tui.completeScrollback",
+  ] as const;
+
+  test("has a control for each setting omp 18.12.x added to its settings screen, with omp's label, values and default", () => {
+    for (const key of ADDED_TO_OMP_SETTINGS_SCREEN) {
+      const source = registryFor(key);
+      expect(source?.ui?.label, `${key} registry label`).toBeDefined();
+      const control = controlFor(key);
+      // The advisor settings live on P1's advisor surface, not in a settings section.
+      const advisor = ADVISOR_SETTING_DEFINITIONS.find((candidate) => candidate.key === key);
+      expect(control ?? advisor, `${key} app control`).toBeDefined();
+      expect((control?.label ?? advisor?.label ?? "").toLowerCase(), `${key} label`).toBe(
+        (source?.ui?.label ?? "").toLowerCase(),
+      );
+      if (source?.type !== "enum") continue;
+      const values = advisor
+        ? (advisor.options ?? []).map((option) => option.value)
+        : control
+          ? optionValues(control)
+          : [];
+      expect(values, `${key} values`).toEqual(source.values);
+      expect(values, `${key} lists omp's default`).toContain(source.default);
+      if (advisor) expect(advisor.defaultValue, `${key} default`).toBe(source.default);
     }
   });
 });

@@ -262,7 +262,7 @@ describe("advisor configuration handoff", () => {
       expectedRevision: "rev-7",
     });
     expect(controller.getSnapshot().revision).toBe("rev-8");
-    expect(ADVISOR_KEYS).toHaveLength(7);
+    expect(ADVISOR_KEYS).toHaveLength(8);
     controller.dispose();
   });
 
@@ -302,12 +302,32 @@ describe("advisor configuration handoff", () => {
     controller.dispose();
   });
 
+  test("writes each advisor continue severity omp lists, and writes it as the string", async () => {
+    const harness = fakeClient({});
+    const controller = createAdvisorConfigController(harness.client, {
+      folder: null,
+      layer: "global",
+    });
+    // omp v18.12.6 `ADVISOR_SEVERITIES`: packages/tui/src/chat/messages.ts:290.
+    for (const severity of ["nit", "concern", "blocker"]) {
+      await controller.write("advisor.continueSeverity", severity);
+    }
+    expect(harness.writeCalls.map((call) => [call.key, call.value])).toEqual([
+      ["advisor.continueSeverity", { secret: false, value: "nit" }],
+      ["advisor.continueSeverity", { secret: false, value: "concern" }],
+      ["advisor.continueSeverity", { secret: false, value: "blocker" }],
+    ]);
+    controller.dispose();
+  });
+
   test("refuses invalid values for every advisor setting before writing", async () => {
     const invalidValues: readonly (readonly [AdvisorKey, JsonValue])[] = [
       ["advisor.enabled", "yes"],
       ["advisor.syncBacklog", "sometimes"],
       ["advisor.syncBacklog", 3],
       ["advisor.immuneTurns", -1],
+      ["advisor.continueSeverity", "urgent"],
+      ["advisor.continueSeverity", 2],
       ["advisor.reviewMode", "always"],
       ["advisor.reviewInterval", 0],
       ["advisor.maxNotesPerUpdate", 0],

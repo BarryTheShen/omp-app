@@ -178,6 +178,9 @@ describe("S3 Tools ConfigStore policy", () => {
     expect(TOOLS_SETTING_DEFAULTS["tools.speculativeExecution.maxInFlight"]).toBe(2);
     expect(TOOLS_SETTING_DEFAULTS["async.enabled"]).toBe(true);
     expect(TOOLS_SETTING_DEFAULTS["async.maxJobs"]).toBe(100);
+    // omp v18.12.6 packages/coding-agent/src/tools/settings.ts:675-701 (default "takeover") and :948-959 (default true).
+    expect(TOOLS_SETTING_DEFAULTS["computer.backgroundFallback"]).toBe("takeover");
+    expect(TOOLS_SETTING_DEFAULTS["async.widgets"]).toBe(true);
     expect(controls.find((control) => control.key === "async.enabled")?.apply).toBe("live");
     expect(TOOLS_APPROVAL_DEFAULTS).toEqual({ mode: "yolo", perTool: {} });
     expect(TOOLS_POLICY_CONFIG_KEYS).toContain("tools.approval");

@@ -129,6 +129,8 @@ export const TOOLS_SETTING_DEFAULTS = {
   "computer.maxWidth": 3840,
   // number 2400; packages/coding-agent/src/tools/settings.ts:663-673.
   "computer.maxHeight": 2400,
+  // enum "takeover"; packages/coding-agent/src/tools/settings.ts:675-701.
+  "computer.backgroundFallback": "takeover",
   // boolean true; packages/coding-agent/src/tools/settings.ts:774-784.
   "github.cache.enabled": true,
   // number 300; packages/coding-agent/src/tools/settings.ts:786-796.
@@ -163,6 +165,8 @@ export const TOOLS_SETTING_DEFAULTS = {
   "async.enabled": true,
   // number 100 (RPC protocol default); packages/coding-agent/src/tools/settings.ts:941-946.
   "async.maxJobs": 100,
+  // boolean true; packages/coding-agent/src/tools/settings.ts:948-959.
+  "async.widgets": true,
   // number 30000; packages/coding-agent/src/extensibility/settings.ts:151-162.
   "extensionHandlers.toolCallTimeoutMs": 30_000,
   // boolean true; packages/coding-agent/src/tools/settings.ts:1010-1022.
@@ -240,11 +244,13 @@ type Widen<Value> = Value extends boolean
 export type ToolsSettingValues = {
   readonly [Key in ToolsSettingKey]: Key extends "find.enabled"
     ? "auto" | "on" | "off"
-    : Key extends "todo.eager"
-      ? "default" | "preferred" | "always"
-      : Key extends "browser.cdpUrl" | "browser.relayUrl" | "browser.screenshotDir"
-        ? string | undefined
-        : Widen<(typeof TOOLS_SETTING_DEFAULTS)[Key]>;
+    : Key extends "computer.backgroundFallback"
+      ? "takeover" | "refuse"
+      : Key extends "todo.eager"
+        ? "default" | "preferred" | "always"
+        : Key extends "browser.cdpUrl" | "browser.relayUrl" | "browser.screenshotDir"
+          ? string | undefined
+          : Widen<(typeof TOOLS_SETTING_DEFAULTS)[Key]>;
 };
 
 export type ToolSettingProvenance = {

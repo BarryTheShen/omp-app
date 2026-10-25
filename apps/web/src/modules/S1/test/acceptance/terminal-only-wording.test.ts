@@ -20,6 +20,8 @@ const TERMINAL_ONLY_SOURCES: Readonly<Record<string, string>> = {
   "statusLine.compactThinkingLevel": "modes/status-line-host.ts",
   "statusLine.showHookStatus": "modes/status-line-host.ts",
   "tui.resizeScrollback": "main.ts prepaint composer; interactive TUI",
+  "tui.completeScrollback":
+    "v18.12.6 main.ts:2025 prepaint composer (startup-composer.ts:114-121) and modes/interactive-mode.ts:438,3624; interactive TUI",
   "terminal.showProgress": "modes/controllers/event-controller.ts",
   "terminal.programStatus": "modes/interactive-mode.ts",
   "tui.renderMermaid": "sdk.ts:3955 gated by tuiTranscript=false in rpc-ui; terminal only",

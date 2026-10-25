@@ -1,13 +1,15 @@
 import { AppError, ConfigEntry, ConfigWriteArgs, ConfigWriteResult } from "@omp-app/contracts";
 
 /**
- * The seven pins of omp's advisor section (research/omp-storage-and-config.md, "The exact advisor pins").
+ * The eight pins of omp's advisor section: the seven of research/omp-storage-and-config.md ("The exact advisor pins") and
+ * `advisor.continueSeverity`, added by omp 18.12.1 (`advisor/settings.ts:65-84` at v18.12.6).
  * `model/Advisor` groups them; P1 reads and writes them through A1's ConfigStore.
  */
 export const ADVISOR_SECTION_KEYS: readonly string[] = [
   "advisor.enabled",
   "advisor.syncBacklog",
   "advisor.immuneTurns",
+  "advisor.continueSeverity",
   "advisor.reviewMode",
   "advisor.reviewInterval",
   "advisor.maxNotesPerUpdate",

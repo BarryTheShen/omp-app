@@ -54,7 +54,7 @@ const EXPECTED_KEYS = [
     "browser.idleCloseSec",
     "browser.screenshotDir",
   ],
-  ["computer.display", "computer.maxWidth", "computer.maxHeight"],
+  ["computer.display", "computer.maxWidth", "computer.maxHeight", "computer.backgroundFallback"],
   ["github.cache.enabled", "github.cache.softTtlSec", "github.cache.hardTtlSec"],
   [
     "tools.artifactSpillThreshold",
@@ -73,6 +73,7 @@ const EXPECTED_KEYS = [
     "tools.maxTimeout",
     "async.enabled",
     "async.maxJobs",
+    "async.widgets",
   ],
   ["extensionHandlers.toolCallTimeoutMs"],
   ["dev.autoqa", "dev.autoqaPush.endpoint"],
@@ -165,6 +166,17 @@ const LIVE_TOOLS_SETTINGS = [
   { key: "computer.display", source: "packages/coding-agent/src/tools/computer.ts:240-251" },
   { key: "computer.maxWidth", source: "packages/coding-agent/src/tools/computer.ts:240-251" },
   { key: "computer.maxHeight", source: "packages/coding-agent/src/tools/computer.ts:240-251" },
+  // omp v18.12.6: the computer tool freezes the setting into every worker command's snapshot.
+  {
+    key: "computer.backgroundFallback",
+    source: "packages/coding-agent/src/tools/computer.ts:247-266 at v18.12.6",
+  },
+  // omp v18.12.6: job widgets read the setting on every call; `wait` results ask them for a view.
+  {
+    key: "async.widgets",
+    source:
+      "packages/coding-agent/src/sdk.ts:2289; packages/coding-agent/src/job-widgets/registry.ts:18,102 at v18.12.6",
+  },
   {
     key: "ida.python",
     source:
@@ -330,6 +342,33 @@ describe("S3 Tools and Tasks sections", () => {
     }
   });
 
+  test("lists the computer background fallback and live job widgets omp 18.12.x added, in omp's words, and neither is terminal only", () => {
+    const fallback = control("computer.backgroundFallback");
+    expect(fallback).toMatchObject({ label: "Computer Background Fallback", kind: "enum" });
+    expect(fallback.kind === "enum" ? fallback.options : undefined).toEqual([
+      { value: "takeover", label: "Takeover" },
+      { value: "refuse", label: "Refuse" },
+    ]);
+    expect(validate("computer.backgroundFallback", { secret: false, value: "refuse" })).toEqual({
+      valid: true,
+    });
+    expect(validate("computer.backgroundFallback", { secret: false, value: "ask" })).toMatchObject({
+      valid: false,
+      code: "enum",
+    });
+    expect(control("async.widgets")).toMatchObject({ label: "Live Job Widgets", kind: "boolean" });
+    expect(validate("async.widgets", { secret: false, value: false })).toEqual({ valid: true });
+    expect(validate("async.widgets", { secret: false, value: "yes" })).toMatchObject({
+      valid: false,
+      code: "boolean",
+    });
+    // Both have shared readers (computer.ts:247-266, sdk.ts:2289), so neither says "Terminal only." and neither uses code marks.
+    for (const key of ["computer.backgroundFallback", "async.widgets"]) {
+      expect(control(key).description, key).not.toMatch(/^Terminal only\./);
+      expect(control(key).description, key).not.toContain("`");
+    }
+  });
+
   test("gives the extension tool-call timeout its plain description", () => {
     expect(control("extensionHandlers.toolCallTimeoutMs").description).toBe(
       "How long an extension's tool-call handler may work before it is stopped. A value that is not above 0 uses 30,000 ms; time spent waiting for a dialog does not count.",
@@ -341,7 +380,7 @@ describe("S3 Tools and Tasks sections", () => {
       expect(control(key).apply, `${key}: ${source}`).toBe("live");
     }
     const toolsControls = TOOLS_SETTINGS_SECTIONS.flatMap((section) => section.controls);
-    expect(toolsControls).toHaveLength(64);
+    expect(toolsControls).toHaveLength(66);
     for (const setting of toolsControls) {
       expect(setting.apply, `${setting.key}: every Tools setting is live`).toBe("live");
     }

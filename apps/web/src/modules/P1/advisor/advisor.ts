@@ -15,15 +15,16 @@ import {
 export type AdvisorConfigLayer = "global" | "project";
 
 /**
- * omp v18.9.1 declares these seven settings in
- * `packages/coding-agent/src/advisor/settings.ts:7-139`, under the model/Advisor group.
- * The browser uses their plain-English labels in `model.ts`; these keys stay in the
- * typed ConfigStore seam and never appear as UI copy.
+ * omp v18.12.6 declares these eight settings in
+ * `packages/coding-agent/src/advisor/settings.ts:10-163`, under the model/Advisor group (`advisor.continueSeverity` is
+ * the one added after v18.9.1, at `:65-84`). The browser uses their plain-English labels in `model.ts`; these keys stay
+ * in the typed ConfigStore seam and never appear as UI copy.
  */
 export const ADVISOR_KEYS = [
   "advisor.enabled",
   "advisor.syncBacklog",
   "advisor.immuneTurns",
+  "advisor.continueSeverity",
   "advisor.reviewMode",
   "advisor.reviewInterval",
   "advisor.maxNotesPerUpdate",
@@ -39,6 +40,8 @@ export type AdvisorKey = (typeof ADVISOR_KEYS)[number];
  */
 const ADVISOR_SYNC_BACKLOG_VALUES = ["off", "1", "3", "5", "strict"] as const;
 const ADVISOR_REVIEW_MODE_VALUES = ["turn", "agent-end"] as const;
+/** `ADVISOR_SEVERITIES`, weakest first (packages/tui/src/chat/messages.ts:290 at v18.12.6). */
+const ADVISOR_CONTINUE_SEVERITY_VALUES = ["nit", "concern", "blocker"] as const;
 const ADVISOR_VALUE_VALIDATORS: Readonly<Record<AdvisorKey, (value: JsonValue) => boolean>> = {
   "advisor.enabled": (value) => typeof value === "boolean",
   "advisor.syncBacklog": (value) =>
@@ -53,6 +56,11 @@ const ADVISOR_VALUE_VALIDATORS: Readonly<Record<AdvisorKey, (value: JsonValue) =
     typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 1,
   "advisor.reviewInterval": (value) =>
     typeof value === "number" && Number.isInteger(value) && value >= 1,
+  "advisor.continueSeverity": (value) =>
+    typeof value === "string" &&
+    ADVISOR_CONTINUE_SEVERITY_VALUES.includes(
+      value as (typeof ADVISOR_CONTINUE_SEVERITY_VALUES)[number],
+    ),
   "advisor.evictStaleResults": (value) => typeof value === "boolean",
 };
 

@@ -382,6 +382,7 @@ describe("S3.5 ConfigStore fixtures and gate proof", () => {
       "S5.tasks-isolation",
       "S5.tasks-modes",
       "S5.tasks-subagents",
+      "S5.tools-computer",
       "S5.tools-execution",
     ]);
     expect(countDifferences.every((difference) => difference.actual > difference.declared)).toBe(
@@ -416,7 +417,11 @@ describe("S3.5 ConfigStore fixtures and gate proof", () => {
 
   test("uses every v18.8.9 registry default, including Computer Display", () => {
     const defaults = S3_PROVENANCE_FIXTURES.filter((fixture) => fixture.source === "default");
-    expect(S3_DEFAULT_EVIDENCE_GAPS).toEqual(["task.structured"]);
+    expect(S3_DEFAULT_EVIDENCE_GAPS).toEqual([
+      "task.structured",
+      "computer.backgroundFallback",
+      "async.widgets",
+    ]);
     for (const fixture of defaults) {
       expect(fixture.valueKind).toBe("omp-default");
       const section = S3_SETTINGS_SECTIONS.find((candidate) => candidate.id === fixture.sectionId);

@@ -546,6 +546,14 @@ const toolsComputer: readonly SettingControl[] = [
     "Computer Screenshot Height (pixels)",
     "Maximum height of a screenshot.",
   ),
+  // omp v18.12.6 `tools/settings.ts:675-701`. The computer tool freezes the setting into the snapshot every worker command
+  // carries (`tools/computer.ts:247-266`), so a saved value applies to the next call of a running `--mode rpc-ui` chat; no
+  // `protocolDefault`. omp's file watcher applies the edit (`main.ts:2650-2655`).
+  described(
+    enumSetting("computer.backgroundFallback", ["takeover", "refuse"], "live"),
+    "Computer Background Fallback",
+    "What window input does when it cannot run in the background. Takeover reruns that one call in the foreground and returns focus to the app you were using (on macOS; elsewhere it is a plain takeover). Refuse fails the call, and also keeps the agent from taking the foreground or opening macOS menus itself.",
+  ),
 ];
 
 const toolsGithub: readonly SettingControl[] = [
@@ -686,6 +694,16 @@ const toolsExecution: readonly SettingControl[] = [
     number("async.maxJobs", 0, 100, "live"),
     "Maximum Concurrent Async Jobs",
     "Maximum number of asynchronous shell commands and background tasks that may run at once.",
+  ),
+  // omp v18.12.6 `tools/settings.ts:948-959`. The reader is shared, not terminal: `sdk.ts:2289` hands the setting to every
+  // session's job widgets, which read it on each call (`job-widgets/registry.ts:18,102`). `wait` results and `proc://` reads ask
+  // for a widget view of each running job (`async/job-control.ts:217`; `tools/wait.ts:227`), and a viewed job's spec is written
+  // by the Job widgets model role (`job-widgets/author.ts:185`), so a change reaches a running `--mode rpc-ui` chat even though
+  // the app draws no widgets. No `protocolDefault`.
+  described(
+    bool("async.widgets", "live"),
+    "Live Job Widgets",
+    "Draw a live widget for each running background job (charts, bars or status grids made from its output) in omp's wait card, jobs pill and jobs sheet. The Job widgets model role (by default the Fast role) writes one spec per job; updates need no further model calls. The app does not draw these widgets.",
   ),
 ];
 

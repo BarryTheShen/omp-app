@@ -2,11 +2,11 @@ import type { ModelRef } from "../contract";
 
 /**
  * The model roles omp's `/model` hub lists, in omp's order: `MODEL_ROLE_IDS` in omp's model browser
- * (packages/tui/src/overlays/model-browser.ts:72-89 at v18.12.6) and the names omp shows (`MODEL_ROLES`,
- * packages/coding-agent/src/config/model-roles.ts:56-91). Roles omp stores under `modelRoles.<id>` in config.yml.
- * omp 18.12.6 also lists a `widget` role ("Job widgets", model-roles.ts:67) for the live job widgets of its terminal
- * (`async.widgets`); the app has no such widgets and leaves the role out, so a configured `modelRoles.widget` is listed
- * as a custom role by its key.
+ * (packages/tui/src/overlays/model-browser.ts:72-89 at v18.12.6, where `widget` follows `advisor`; the list at v18.6.1 was
+ * :64-80 and had no `widget`) and the names omp shows (`MODEL_ROLES`, packages/coding-agent/src/config/model-roles.ts:56-91
+ * at v18.12.6, "Job widgets" at :67). omp's job widgets read the role when they write a widget spec
+ * (packages/coding-agent/src/job-widgets/author.ts:185), so a change reaches a running chat. Roles omp stores under
+ * `modelRoles.<id>` in config.yml.
  */
 export interface ModelRoleDefinition {
   /** The key omp stores the role under. Shown to nobody: the dialog uses `name`. */
@@ -39,6 +39,7 @@ export const MODEL_ROLE_DEFINITIONS: readonly ModelRoleDefinition[] = [
   chatRole("memory", "Memory"),
   chatRole("task", "Subtask"),
   chatRole("advisor", "Advisor"),
+  chatRole("widget", "Job widgets"),
   {
     id: "image",
     name: "Image generation",

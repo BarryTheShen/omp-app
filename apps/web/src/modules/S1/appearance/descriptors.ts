@@ -286,6 +286,14 @@ export const DISPLAY_SETTINGS_SECTION = section(
       },
       "How a settled terminal resize refreshes transcript rows retained in terminal scrollback",
     ),
+    // omp v18.12.6 `modes/settings.ts:391-402`. Terminal only: the readers are the composer preferences, applied at startup
+    // only when a prepaint composer exists (`main.ts:2025`, `modes/startup-composer.ts:114-121`, interactive TTY) and live in
+    // the interactive terminal (`modes/interactive-mode.ts:438,3624,3666`); nothing reads it for `--mode rpc-ui`.
+    booleanControl(
+      "tui.completeScrollback",
+      "Complete Scrollback",
+      "Send transcript rows pushed off screen by a growing HUD or dialog straight to scrollback; when it shrinks, blank rows sit between the transcript and the input until new output fills them",
+    ),
     booleanControl(
       "terminal.showProgress",
       "Native Terminal Progress",

@@ -127,6 +127,8 @@ describe("D1 model settings sections", () => {
     );
     expect(modelSettingsSections[4]?.controls.map((control) => control.key)).toEqual([
       "prewalk.enabled",
+      "prewalk.auto",
+      "prewalk.autoTarget",
     ]);
     expect(modelSettingsSections[5]?.controls.map((control) => control.key)).toEqual([
       "images.describeForTextModels",
@@ -139,6 +141,36 @@ describe("D1 model settings sections", () => {
       "images.urls.sshTarget",
       "images.urls.sshRemotePort",
     ]);
+  });
+
+  test("lists auto prewalk and its target as omp 18.12.6 declares them, live and not terminal only", () => {
+    // omp v18.12.6 packages/coding-agent/src/session/settings.ts:85-111 (prewalk.auto) and :113-123 (prewalk.autoTarget).
+    const config: ConfigSnapshot = { folder: null, revision: "revision-1", entries: [] };
+    const prewalk = modelSettingsSections[4];
+    const auto = prewalk?.controls.find((control) => control.key === "prewalk.auto");
+    const target = prewalk?.controls.find((control) => control.key === "prewalk.autoTarget");
+    expect(auto).toMatchObject({ label: "Auto Prewalk", kind: "enum", apply: "live" });
+    expect(auto?.kind === "enum" ? auto.options : undefined).toEqual([
+      { value: "off", label: "Off" },
+      { value: "suggest", label: "Suggest" },
+      { value: "on", label: "On" },
+    ]);
+    expect(target).toMatchObject({ label: "Auto-Prewalk Target", kind: "text", apply: "live" });
+    expect(auto?.validate({ secret: false, value: "suggest" }, config)).toEqual({ valid: true });
+    expect(auto?.validate({ secret: false, value: "always" }, config)).toMatchObject({
+      valid: false,
+      code: "enum",
+    });
+    expect(target?.validate({ secret: false, value: "@smol" }, config)).toEqual({ valid: true });
+    expect(target?.validate({ secret: false, value: 3 }, config)).toMatchObject({
+      valid: false,
+      code: "text",
+    });
+    // Shared readers (`AgentSession.prompt`), so neither says "Terminal only."; no code marks in the words.
+    for (const control of [auto, target]) {
+      expect(control?.description).not.toMatch(/^Terminal only\./);
+      expect(control?.description).not.toContain("`");
+    }
   });
 
   test("marks thinking display settings as terminal-only when omp has no shared reader", () => {

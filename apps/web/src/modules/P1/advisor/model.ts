@@ -103,9 +103,11 @@ export interface AdvisorSettingDefinition {
   readonly defaultValue: JsonValue;
 }
 
-/** Labels and defaults mirror omp's advisor settings declarations at v18.9.1:
- * `packages/coding-agent/src/advisor/settings.ts:7-139`; numeric domains are validated by
- * `packages/coding-agent/src/advisor/config.ts:49-70`. */
+/** Labels and defaults mirror omp's advisor settings declarations at v18.12.6:
+ * `packages/coding-agent/src/advisor/settings.ts:10-163`; numeric domains are validated by
+ * `packages/coding-agent/src/advisor/config.ts:49-70` (v18.9.1). `advisor.continueSeverity` (`:65-84`) is read when a
+ * note arrives and when a final answer ends (`session/session-advisors.ts:1741,1806`), so a saved value reaches a running
+ * chat; its `protocolDefault` pins only the default, never a saved value (`main.ts:261-269`). */
 export const ADVISOR_SETTING_DEFINITIONS: readonly AdvisorSettingDefinition[] = [
   {
     key: "advisor.enabled",
@@ -139,6 +141,19 @@ export const ADVISOR_SETTING_DEFINITIONS: readonly AdvisorSettingDefinition[] = 
       label: `${value} ${value === 1 ? "turn" : "turns"}`,
     })),
     defaultValue: 3,
+  },
+  {
+    key: "advisor.continueSeverity",
+    label: "Advisor Continue Severity",
+    description:
+      "Minimum severity of an advisor note that wakes the agent after it finished with a final answer. Lower-severity notes stay as a card at the end of the transcript and reach the agent with your next message.",
+    kind: "select",
+    options: [
+      { value: "nit", label: "Nit" },
+      { value: "concern", label: "Concern" },
+      { value: "blocker", label: "Blocker" },
+    ],
+    defaultValue: "concern",
   },
   {
     key: "advisor.reviewMode",

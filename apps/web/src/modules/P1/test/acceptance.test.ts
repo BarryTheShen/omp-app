@@ -422,8 +422,8 @@ describe("W5: advisor settings fixtures carry a compare-and-set write and its co
     expect(ADVISOR_STALE_WRITE_CONFLICT).toMatchObject({ code: "conflict", retryable: false });
   });
 
-  test("the section groups the seven advisor pins, and the settings descriptor names one of them", () => {
-    expect(ADVISOR_SECTION_KEYS).toHaveLength(7);
+  test("the section groups the eight advisor pins, and the settings descriptor names one of them", () => {
+    expect(ADVISOR_SECTION_KEYS).toHaveLength(8);
     expect(P1_DESCRIPTORS.find((descriptor) => descriptor.kind === "setting")).toMatchObject({
       key: "advisor.enabled",
       section: "model/Advisor",

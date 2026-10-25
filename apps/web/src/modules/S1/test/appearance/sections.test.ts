@@ -29,6 +29,7 @@ const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   "statusLine.compactThinkingLevel": true,
   "statusLine.showHookStatus": true,
   "tui.resizeScrollback": "rebuild",
+  "tui.completeScrollback": false,
   "terminal.showProgress": false,
   "terminal.programStatus": true,
   "tui.textSizing": false,
@@ -74,6 +75,7 @@ const EXPECTED_KEYS = {
   ],
   display: [
     "tui.resizeScrollback",
+    "tui.completeScrollback",
     "terminal.showProgress",
     "terminal.programStatus",
     "tui.textSizing",
@@ -119,6 +121,7 @@ const EXPECTED_KINDS: Readonly<Record<string, SettingControl["kind"]>> = {
   "statusLine.compactThinkingLevel": "boolean",
   "statusLine.showHookStatus": "boolean",
   "tui.resizeScrollback": "enum",
+  "tui.completeScrollback": "boolean",
   "terminal.showProgress": "boolean",
   "terminal.programStatus": "boolean",
   "tui.textSizing": "boolean",
@@ -173,7 +176,7 @@ describe("S1.3 appearance sections", () => {
       "appearance/Display",
       "appearance/Images",
     ]);
-    expect(keys).toHaveLength(43);
+    expect(keys).toHaveLength(44);
     expect(new Set(keys).size).toBe(keys.length);
     expect([...keys].sort()).toEqual([...expected].sort());
     expect(S1_APPEARANCE_SECTIONS.flatMap((descriptor) => descriptor.inventory)).toEqual([
