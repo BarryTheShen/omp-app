@@ -15,10 +15,14 @@ import {
   instanceFile,
   launchAddress,
   ompSearchPath,
+  PortTakenError,
   parseLauncherArgs,
   portIsFree,
+  type RunningInstance,
   readRunningInstance,
   recordInstance,
+  type StartResult,
+  startOrAttach,
   USAGE,
 } from "../src/launcher/launcher";
 import {
@@ -32,7 +36,7 @@ import {
 } from "../src/logging";
 import { OMP_PIN, pinnedOmpPath } from "../src/omp-pin";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
-import { createCompositionServer } from "./dev";
+import { type CompositionServer, createCompositionServer } from "./dev";
 
 /** Replaced with the release version when `packaging/build-deb.sh` compiles this file. */
 declare const OMP_APP_VERSION: string | undefined;
@@ -165,8 +169,10 @@ process.on("uncaughtException", (error) => {
 });
 
 const record = instanceFile(Bun.env, home);
-const running = await readRunningInstance(record, { alive: isAlive, responds });
-if (running) {
+const readRunning = () => readRunningInstance(record, { alive: isAlive, responds });
+
+/** What a launch does when the app already runs: shows its link, opens it, and ends the command. */
+function attachToRunning(running: RunningInstance): never {
   // A folder on the command line opens the running app on that folder: the page reads it from the address.
   const address = launchAddress(
     running.url,
@@ -176,6 +182,9 @@ if (running) {
   if (args.open) openBrowser(address);
   process.exit(0);
 }
+
+const running = await readRunning();
+if (running) attachToRunning(running);
 
 const folder = existingFolder(args.folder ?? process.cwd());
 const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
@@ -196,14 +205,28 @@ if (port !== 0 && !(await portIsFree(port))) {
 if (!existsSync(appOmp)) {
   console.log(`Downloading omp ${OMP_PIN.version}, the omp this app runs (first start only)…`);
 }
-const server = await createCompositionServer({
-  port,
-  staticRoot: webRoot(),
-  cwd: folder,
-  env: { PATH: searchPath },
-  serverVersion: version,
-  logger,
-});
+let started: StartResult<CompositionServer>;
+try {
+  started = await startOrAttach({
+    port,
+    start: () =>
+      createCompositionServer({
+        port,
+        staticRoot: webRoot(),
+        cwd: folder,
+        env: { PATH: searchPath },
+        serverVersion: version,
+        logger,
+      }),
+    readRunning,
+  });
+} catch (error) {
+  if (error instanceof PortTakenError) fail(error.message);
+  throw error;
+}
+// Another start took the port first, while this one was downloading omp: this command is that one's "already running".
+if ("running" in started) attachToRunning(started.running);
+const { server } = started;
 const address = `${server.url}/#token=${encodeURIComponent(server.token)}`;
 await recordInstance(record, { pid: process.pid, url: address, version });
 console.log(`omp app ${version}\n\n  ${address}\n\nPress Ctrl+C or close this window to quit.`);

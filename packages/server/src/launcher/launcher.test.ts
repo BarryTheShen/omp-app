@@ -4,14 +4,18 @@ import { type AddressInfo, connect, createServer, type Server, type Socket } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  ATTACH_POLL_MS,
+  ATTACH_WAIT_MS,
   clearInstance,
   instanceFile,
   launchAddress,
   ompSearchPath,
+  PortTakenError,
   parseLauncherArgs,
   portIsFree,
   readRunningInstance,
   recordInstance,
+  startOrAttach,
 } from "./launcher";
 
 const dirs: string[] = [];
@@ -158,6 +162,123 @@ describe("launchAddress", () => {
     const fragment = new URLSearchParams(new URL(address).hash.slice(1));
     expect(fragment.get("token")).toBe("abc+def");
     expect(fragment.get("folder")).toBe("/work/my app & co/#1/100%/a=b+c");
+  });
+});
+
+describe("startOrAttach", () => {
+  const winner = { pid: 4242, url: "http://127.0.0.1:4317/#token=abc", version: "1.2.3" };
+  const takenPort = () =>
+    Object.assign(new Error("Failed to start server. Is port 4317 in use?"), {
+      code: "EADDRINUSE",
+    });
+  /** A clock whose sleeps only move its time forward, so the wait costs nothing; it records each sleep. */
+  const fakeClock = () => {
+    let time = 0;
+    const sleeps: number[] = [];
+    return {
+      sleeps,
+      now: () => time,
+      sleep: async (ms: number) => {
+        sleeps.push(ms);
+        time += ms;
+      },
+    };
+  };
+
+  test("returns the server it started, without reading the record", async () => {
+    let reads = 0;
+    const result = await startOrAttach({
+      port: 4317,
+      start: async () => "server",
+      readRunning: async () => {
+        reads += 1;
+        return winner;
+      },
+    });
+    expect(result).toEqual({ server: "server" });
+    expect(reads).toBe(0);
+  });
+
+  test("attaches to the instance that took the port while this one was starting", async () => {
+    let reads = 0;
+    const result = await startOrAttach({
+      port: 4317,
+      start: () => Promise.reject(takenPort()),
+      readRunning: async () => {
+        reads += 1;
+        return winner;
+      },
+    });
+    expect(result).toEqual({ running: winner });
+    expect(reads).toBe(1);
+  });
+
+  test("keeps looking for the winner's record and attaches as soon as it names an instance", async () => {
+    const clock = fakeClock();
+    let reads = 0;
+    const result = await startOrAttach({
+      port: 4317,
+      start: () => Promise.reject(takenPort()),
+      readRunning: async () => {
+        reads += 1;
+        return reads === 3 ? winner : null;
+      },
+      clock,
+    });
+    expect(result).toEqual({ running: winner });
+    expect(reads).toBe(3);
+    expect(clock.sleeps).toEqual([ATTACH_POLL_MS, ATTACH_POLL_MS]);
+  });
+
+  test("fails with a plain sentence only after the whole wait when no instance appears", async () => {
+    const clock = fakeClock();
+    let reads = 0;
+    const attempt = startOrAttach({
+      port: 4317,
+      start: () => Promise.reject(takenPort()),
+      readRunning: async () => {
+        reads += 1;
+        return null;
+      },
+      clock,
+    });
+    await expect(attempt).rejects.toThrow(
+      "port 4317 was taken while omp app was starting. Start it again.",
+    );
+    await expect(attempt).rejects.toBeInstanceOf(PortTakenError);
+    expect(clock.sleeps.reduce((total, ms) => total + ms, 0)).toBe(ATTACH_WAIT_MS);
+    expect(reads).toBe(ATTACH_WAIT_MS / ATTACH_POLL_MS + 1);
+  });
+
+  test("throws any other failure to start unchanged and never reads the record", async () => {
+    const failure = new Error("could not download omp");
+    let reads = 0;
+    const attempt = startOrAttach({
+      port: 4317,
+      start: () => Promise.reject(failure),
+      readRunning: async () => {
+        reads += 1;
+        return winner;
+      },
+    });
+    await expect(attempt).rejects.toBe(failure);
+    expect(reads).toBe(0);
+  });
+
+  test("recognises the error Bun itself throws for a port that is taken", async () => {
+    const port = await freePort();
+    const serve = () => Bun.serve({ hostname: "127.0.0.1", port, fetch: () => new Response("ok") });
+    const first = serve();
+    try {
+      const result = await startOrAttach({
+        port,
+        start: async () => serve(),
+        readRunning: async () => winner,
+      });
+      expect(result).toEqual({ running: winner });
+    } finally {
+      first.stop(true);
+    }
   });
 });
 

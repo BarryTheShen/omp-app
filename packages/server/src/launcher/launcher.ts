@@ -1,7 +1,8 @@
 /**
  * The pieces of the installed app's command (`omp-app`) that are worth testing on their own: the
- * command line, the one-instance-per-user record, the search path the chats' omp runs with, and the
- * check that the port is free. `scripts/omp-app.ts` wires them to the server.
+ * command line, the one-instance-per-user record, the search path the chats' omp runs with, the
+ * check that the port is free, and the start that attaches to an instance that took the port first.
+ * `scripts/omp-app.ts` wires them to the server.
  */
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
@@ -198,6 +199,69 @@ export function portIsFree(port: number, probe: Server = createServer()): Promis
   probe.once("error", () => done(false));
   probe.listen(port, "127.0.0.1", () => probe.close(() => done(true)));
   return promise;
+}
+
+/** Bun's error for a port that something else listens on: "Failed to start server. Is port N in use?", code EADDRINUSE. */
+export function isPortTaken(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
+}
+
+/** The server's start failed on a taken port and no instance of the app appeared in time: nothing to attach to. */
+export class PortTakenError extends Error {
+  constructor(readonly port: number) {
+    super(`port ${port} was taken while omp app was starting. Start it again.`);
+    this.name = "PortTakenError";
+  }
+}
+
+/** What a start came to: the server this process started, or the instance that was already running. */
+export type StartResult<S> = { readonly server: S } | { readonly running: RunningInstance };
+
+/** Time for `startOrAttach`'s wait; a test passes its own so the wait costs nothing. */
+export interface Clock {
+  readonly now: () => number;
+  readonly sleep: (ms: number) => Promise<void>;
+}
+
+const REAL_CLOCK: Clock = {
+  now: () => Date.now(),
+  sleep: (ms) => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, ms);
+    return promise;
+  },
+};
+
+/** How often, and for how long, a start that lost the port looks for the winner's record. */
+export const ATTACH_POLL_MS = 100;
+export const ATTACH_WAIT_MS = 3_000;
+
+/**
+ * Starts the server. The server downloads the pinned omp before it listens and is recorded only after it listens,
+ * so a second start in that time sees neither a record nor a taken port, and its bind then fails. When the bind
+ * fails because the port is taken, the winner writes its record right after it binds, so the record is read every
+ * `ATTACH_POLL_MS` for up to `ATTACH_WAIT_MS`: the first running instance it names is returned for the caller to
+ * attach to; with none by then, `PortTakenError`. Any other failure to start is thrown unchanged.
+ */
+export async function startOrAttach<S>(options: {
+  readonly port: number;
+  readonly start: () => Promise<S>;
+  readonly readRunning: () => Promise<RunningInstance | null>;
+  readonly clock?: Clock;
+}): Promise<StartResult<S>> {
+  try {
+    return { server: await options.start() };
+  } catch (error) {
+    if (!isPortTaken(error)) throw error;
+    const clock = options.clock ?? REAL_CLOCK;
+    const deadline = clock.now() + ATTACH_WAIT_MS;
+    for (;;) {
+      const running = await options.readRunning();
+      if (running !== null) return { running };
+      if (clock.now() >= deadline) throw new PortTakenError(options.port);
+      await clock.sleep(ATTACH_POLL_MS);
+    }
+  }
 }
 
 /**
