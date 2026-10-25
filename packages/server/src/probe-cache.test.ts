@@ -33,7 +33,11 @@ describe("omp probe cache", () => {
     const root = await temporaryRoot();
     const binary = join(root, "omp");
     await writeFile(binary, "binary");
-    const environment = { OMP_BIN: binary, PI_MODE: "test", OMP_APP_DATA_DIR: join(root, "app") };
+    const environment = {
+      PI_CODING_AGENT_DIR: join(root, "agent"),
+      PI_MODE: "test",
+      OMP_APP_DATA_DIR: join(root, "app"),
+    };
     const identity = await probeCacheIdentity(binary, "omp 18.12.2", environment);
     await writeProbeCache(root, identity, rawResult(), { model: "fake" }, ["model", "noDefault"]);
 
@@ -74,7 +78,10 @@ describe("omp probe cache", () => {
     const root = await temporaryRoot();
     const binary = join(root, "omp");
     await writeFile(binary, "binary");
-    const environment = { OMP_BIN: binary, OMP_APP_DATA_DIR: join(root, "app") };
+    const environment = {
+      PI_CODING_AGENT_DIR: join(root, "agent"),
+      OMP_APP_DATA_DIR: join(root, "app"),
+    };
     const identity = await probeCacheIdentity(binary, "omp 18.12.2", environment);
     const defaults = {
       loaded: {
