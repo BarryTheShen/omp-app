@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./ids": "./src/core/ids.ts",
     "./omp-wire/schema.json": "./src/omp-wire/rpc-wire.schema.json"
   },
   "scripts": {
