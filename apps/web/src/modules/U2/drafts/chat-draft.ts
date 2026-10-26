@@ -163,7 +163,7 @@ export class ChatDraft {
   /**
    * The composer holds the chat's draft from Enter until its send has settled: the box is empty at once and takes new
    * text, while the controller keeps the sent text until the send is admitted. No move runs while it holds, so the text
-   * typed meanwhile is in the controller before the draft moves into the chat (#2659). The returned function releases
+   * typed meanwhile is in the controller before the draft moves into the chat (issue 2659). The returned function releases
    * the hold once and reads the chat's state again.
    */
   public hold = (): (() => void) => {

@@ -156,8 +156,9 @@ export function useThreadSend({
     // keeps following by itself because it is at the bottom.
     scrollController.jumpToLatest();
     // The draft keeps the text until the send is admitted. The send goes to the chat that is open when it is delivered,
-    // carrying the attachments this composer holds now: that chat's view may be another one, which holds none of them.
-    const attachments: SendAttachments = {
+    // carrying the attachments this composer held at Enter (`holdForSend`, issue 2681), or holds now when no send kept them:
+    // that chat's view may be another one, which holds none of them.
+    const attachments: SendAttachments = attachmentManager.takeHeldForSend() ?? {
       refs: attachmentManager.toDraftRefs(),
       complete: attachmentManager.getState().complete,
     };

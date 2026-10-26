@@ -130,7 +130,10 @@ async function exercise(realApp: RealApp, theme: "light" | "dark"): Promise<void
 
   await composer.fill("during new chat");
   await composer.press("Enter");
-  await expect(composer).toHaveValue("during new chat");
+  // Since #2659 the box empties at Enter and takes the next message while this one waits for the New chat to open; the
+  // message is delivered into the new chat once it opens (below).
+  await expect(composer).toHaveValue("");
+  await expect(composer).toBeEditable();
 
   opening.release();
   await expect.poll(() => threadOpening.waiting(), { timeout: 30_000 }).toBeGreaterThan(0);

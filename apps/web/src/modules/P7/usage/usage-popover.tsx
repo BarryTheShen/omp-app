@@ -160,7 +160,7 @@ export function UsagePopover({
   const [readError, setReadError] = useState<string | null>(null);
   const [limitsKey, setLimitsKey] = useState(0);
   // The session's totals come from omp's `get_session_stats` (see `createUsagePort`): omp streams none, so they are read
-  // each time the panel opens, not only on Refresh (#2651). A failed read says why, in place of an empty section.
+  // each time the panel opens, not only on Refresh (issue 2651). A failed read says why, in place of an empty section.
   const readSession = useCallback(async () => {
     setBusy(true);
     setReadError(null);

@@ -55,7 +55,7 @@ export interface ComposerSurfaceProps {
   readonly disabled?: boolean;
   /**
    * Keeps the box apart from the draft while a send is in flight (`useComposerDraft`'s `beginSend` and `endSend`): the
-   * box empties at Enter and takes new text during the send (#2659). Without it the box is locked until the send settles.
+   * box empties at Enter and takes new text during the send (issue 2659). Without it the box is locked until the send settles.
    */
   readonly holdDraft?: { readonly begin: () => void; readonly end: () => void };
   /** The text box's accessible name. An edit box names itself, so it is not confused with the composer. */

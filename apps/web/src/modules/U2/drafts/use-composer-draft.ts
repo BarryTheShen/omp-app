@@ -35,7 +35,7 @@ interface UseComposerDraftOptions {
   readonly composer: ComposerTextTarget;
   readonly attachments: Pick<
     AttachmentManager,
-    "restore" | "subscribe" | "toDraftRefs" | "dropPending"
+    "restore" | "subscribe" | "toDraftRefs" | "dropPending" | "holdForSend" | "takeHeldForSend"
   >;
   /** A prompt Up or Down recalled (U2.5) is not the draft. */
   readonly isRecalledPrompt: (text: string) => boolean;
@@ -115,7 +115,7 @@ export function useComposerDraft({
   // The restore still loading, if any: a newer restore or a chat change replaces it (see `restoreAttachments`).
   const restoreAbort = useRef<AbortController | null>(null);
   // The send in flight, from Enter until it has settled (see `beginSend`): the box and the controller stay apart
-  // meanwhile. The controller keeps the sent text until admission, and text typed in the box must not join it (#2659).
+  // meanwhile. The controller keeps the sent text until admission, and text typed in the box must not join it (issue 2659).
   const sending = useRef<{ readonly chat: object; readonly release: () => void } | null>(null);
   const latestText = useRef(text);
   latestText.current = text;
@@ -294,13 +294,17 @@ export function useComposerDraft({
     if (sending.current !== null) return;
     sending.current = { chat, release: hold?.() ?? (() => undefined) };
     composer.setText("");
+    // The send carries what the composer holds now, though the list empties for the next message (issue 2681).
+    attachments.holdForSend();
     restoreAttachments(controller, []);
-  }, [chat, composer, controller, hold, restoreAttachments]);
+  }, [attachments, chat, composer, controller, hold, restoreAttachments]);
 
   const endSend = useCallback(() => {
     const held = sending.current;
     if (held === null) return;
     sending.current = null;
+    // A copy no send took is dropped, so no later send carries it.
+    attachments.takeHeldForSend();
     // A chat the person switched to during the send has its own text: the composer's sync for it is already running.
     if (held.chat === chat) {
       const typed = latestText.current;
@@ -320,7 +324,7 @@ export function useComposerDraft({
       }
     }
     held.release();
-  }, [attachmentsToSave, chat, composer, controller, restoreAttachments]);
+  }, [attachments, attachmentsToSave, chat, composer, controller, restoreAttachments]);
 
   return { beginSend, endSend };
 }

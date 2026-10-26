@@ -18,6 +18,8 @@ const noAttachments = {
   restore: async () => undefined,
   dropPending: () => undefined,
   toDraftRefs: () => [],
+  holdForSend: () => undefined,
+  takeHeldForSend: () => null,
   getState: () => ({ pending: [], complete: [], error: null }),
   subscribe: () => () => undefined,
 };

@@ -1,5 +1,5 @@
 // The ids entry, not the package's barrel: e2e specs import this file, and Playwright loads them in Node, which refuses
-// the JSON import the barrel's inventory module makes (#2638).
+// the JSON import the barrel's inventory module makes (issue 2638).
 import { FolderPath } from "@omp-app/contracts/ids";
 
 export const APP_TOKEN_STORAGE_KEY = "omp-app.websocket-token";

@@ -423,7 +423,7 @@ export class DraftController {
     const admittedAtStart = admissionCount(this.scope);
     // A copy whose text this page sent from the scope, admitted while this load waited, was delivered: it is not the
     // scope's draft any more. Restored, it would come back into the box, in front of text typed meanwhile, and go out
-    // again with the next send (#2645). A copy that a reload kept (no send of this page ends while it loads) and the text
+    // again with the next send (issue 2645). A copy that a reload kept (no send of this page ends while it loads) and the text
     // of a send that failed are still restored.
     const delivered = (copy: BufferedDraft | null): boolean =>
       copy !== null && admittedSince(this.scope, admittedAtStart, copy.input.text);

@@ -36,6 +36,8 @@ const NO_ATTACHMENTS = {
   subscribe: () => () => undefined,
   toDraftRefs: () => [],
   dropPending: () => undefined,
+  holdForSend: () => undefined,
+  takeHeldForSend: () => null,
 };
 const NOT_RECALLED = () => false;
 const controllers: DraftController[] = [];

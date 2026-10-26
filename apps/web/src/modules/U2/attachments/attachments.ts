@@ -124,6 +124,12 @@ function attachmentFromStored(stored: StoredAttachment, file: File): CompleteAtt
   };
 }
 
+/** What a send carries: its attachments' refs, and the complete attachments whose files hold a pasted chip's text. */
+export interface HeldForSend {
+  readonly refs: readonly AttachmentRef[];
+  readonly complete: readonly CompleteAttachment[];
+}
+
 /**
  * Stateful adapter for assistant-ui's attachment primitives. Binary content never enters a draft;
  * `toDraftRefs()` is the only persistence projection.
@@ -147,6 +153,8 @@ export class AttachmentManager implements AttachmentAdapter {
   };
   private error: AppFailure | null = null;
   private failedRemoval: { readonly id: string; readonly message: string } | null = null;
+  /** What a send in flight carries, kept by `holdForSend` while the composer empties for the next message. */
+  private heldForSend: HeldForSend | null = null;
 
   public constructor(options: AttachmentManagerOptions) {
     this.blobStore = options.blobStore;
@@ -169,6 +177,21 @@ export class AttachmentManager implements AttachmentAdapter {
     return [...this.complete.keys()]
       .map((id) => this.refs.get(id))
       .filter((ref): ref is AttachmentRef => ref !== undefined);
+  }
+
+  /**
+   * Keeps what the composer holds now for the send that starts at Enter (issue 2681): the composer then empties for the next
+   * message while the send is in flight (`useComposerDraft`'s `beginSend`), and the send still carries these.
+   */
+  public holdForSend(): void {
+    this.heldForSend = { refs: this.toDraftRefs(), complete: this.getState().complete };
+  }
+
+  /** What `holdForSend` kept, once: the send takes it, and a later read gets null. */
+  public takeHeldForSend(): HeldForSend | null {
+    const held = this.heldForSend;
+    this.heldForSend = null;
+    return held;
   }
 
   public async add({ file }: { readonly file: File }): Promise<PendingAttachment> {
