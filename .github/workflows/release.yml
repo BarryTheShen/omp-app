@@ -85,6 +85,22 @@ jobs:
           echo "$HOME/.bun/bin" >>"$GITHUB_PATH"
           "$HOME/.bun/bin/bun" --version
 
+      # The chat host (packages/server/scripts/build-chat-host.ts) is compiled by the Bun omp's release is built with,
+      # which that script names; on Bun 1.3.14 each chat kept about 130 MB more memory. The build scripts read CHAT_HOST_BUN.
+      - name: Install Bun 1.4.3 for the chat host
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chat-host-bun"
+          cd "$RUNNER_TEMP/chat-host-bun"
+          gh release download bun-v1.4.3 --repo oven-sh/bun --pattern bun-linux-x64.zip --pattern SHASUMS256.txt
+          grep ' bun-linux-x64.zip$' SHASUMS256.txt | sha256sum -c -
+          unzip -q bun-linux-x64.zip
+          echo "CHAT_HOST_BUN=$RUNNER_TEMP/chat-host-bun/bun-linux-x64/bun" >>"$GITHUB_ENV"
+          "$RUNNER_TEMP/chat-host-bun/bun-linux-x64/bun" --version
+
       - name: Install dependencies
         if: steps.changes.outputs.changed == 'true'
         run: bun install --frozen-lockfile
