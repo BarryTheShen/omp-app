@@ -15,7 +15,8 @@
 # A server on another computer (#2649): `--remote <link>` keeps the link in the config folder, readable by this account
 # only, and the window opens that server and starts none here; when the computer does not answer, the error page shows.
 # A second launch with `--local` or `--remote` moves the open window: back to this computer's running server, or to the
-# other computer's address (a listener there sees the window's TLS handshake; it is no https server, so nothing loads).
+# other computer's address (a listener there sees the window's TLS handshake; it is no https server, so the page does not
+# load, and the window shows the error page naming the computer and the reason, #2664).
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -668,11 +669,18 @@ for n in $(seq 1 60); do
   sleep 0.5
 done
 [[ -n $went ]] || fail "T10: the window never went to the other computer's address (the listener got: $(tr '\n' ' ' <"$work/listener.log" 2>/dev/null))"
+# The page did not load there: the window says so in its log and shows the error page with the reason (#2664).
+shown=""
+for n in $(seq 1 40); do
+  grep -q 'the app on 127.0.0.1 did not open' "$work"/launch-*.log 2>/dev/null && { shown=yes; break; }
+  sleep 0.5
+done
+[[ -n $shown ]] || fail "T10: the page at the other computer's address did not load, and the window did not show the error page"
 sleep 3
 is_alive "$p" || fail "T10: the app quit after the window went to the other computer"
 [[ $(window_ids | wc -l) == 1 ]] || fail "T10: $(window_ids | wc -l) windows after the window went to the other computer"
-shot "$wid" remote-not-https
-note "T10 a second launch with --remote moved the open window to the other computer: the window began a TLS handshake there"
+shot "$wid" remote-page-failed
+note "T10 a second launch with --remote moved the open window to the other computer: the window began a TLS handshake there, the page did not load, and the window showed the error page ($(grep -h -o 'the app on 127.0.0.1 did not open: .*' "$work"/launch-*.log | head -n 1))"
 launch "$app" --local
 second=$LAUNCHED
 wait_gone "$second" 30 || fail "T10: the last launch with --local did not exit"

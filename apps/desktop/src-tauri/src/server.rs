@@ -30,7 +30,10 @@ use std::time::Duration;
 
 use tauri::ipc::CapabilityBuilder;
 use tauri::webview::{DownloadEvent, NewWindowResponse};
-use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use webkit2gtk::{
+    LoadEvent, NetworkError, PolicyError, URIResponseExt, WebResourceExt, WebViewExt,
+};
 
 use crate::address;
 use crate::downloads;
@@ -169,7 +172,7 @@ impl LaunchSteps for AppSteps {
     }
 
     fn open_window(&mut self, page: &'static str) -> bool {
-        match new_window(&self.app, WebviewUrl::App(page.into())).build() {
+        match build_window(&self.app, WebviewUrl::App(page.into())) {
             Ok(_) => true,
             Err(error) => {
                 eprintln!("omp app: the window did not open: {error}");
@@ -265,7 +268,7 @@ fn open_remote_page(app: AppHandle, link: Url) {
         if remote::reachable(&link) {
             open_server_page(&app, link);
         } else {
-            show_remote_error(&app, &remote::host(&link));
+            show_remote_error(&app, &remote::host(&link), None);
         }
     });
 }
@@ -434,6 +437,78 @@ fn new_window(
         })
 }
 
+/// Builds the app's window, with its page loads watched (see `watch_page_loads`).
+fn build_window(app: &AppHandle, page: WebviewUrl) -> tauri::Result<WebviewWindow> {
+    let window = new_window(app, page).build()?;
+    watch_page_loads(&window);
+    Ok(window)
+}
+
+/// A page of the server on another computer that does not open shows the error page, naming the computer and what went
+/// wrong, instead of the engine's own text. The computer accepted the connection (see `remote::reachable`), but the page
+/// did not load (a failed TLS handshake, a reset connection, a certificate that is not accepted), or what answered is not
+/// the app (an error status, as `tailscale serve` answers while the app behind it is stopped). A load cancelled because
+/// another page opens is no failure. Pages of this computer's server are left to the server's watch, which shows the
+/// error page when the server ends (see `watch`).
+fn watch_page_loads(window: &WebviewWindow) {
+    let app = window.app_handle().clone();
+    let watched = window.with_webview(move |webview| {
+        let view = webview.inner();
+        let failed = app.clone();
+        view.connect_load_failed(move |_, _, uri, error| {
+            let replaced = error.matches(NetworkError::Cancelled)
+                || error.matches(PolicyError::FrameLoadInterruptedByPolicyChange);
+            !replaced && remote_page_failed(&failed, uri, &error.to_string())
+        });
+        let refused = app.clone();
+        view.connect_load_failed_with_tls_errors(move |_, uri, _, _| {
+            remote_page_failed(&refused, uri, "its certificate was not accepted")
+        });
+        view.connect_load_changed(move |view, event| {
+            if event != LoadEvent::Committed {
+                return;
+            }
+            let Some(response) = view.main_resource().and_then(|page| page.response()) else {
+                return;
+            };
+            let problem = answer_problem(response.status_code());
+            if let (Some(problem), Some(uri)) = (problem, response.uri()) {
+                remote_page_failed(&app, &uri, &problem);
+            }
+        });
+    });
+    if let Err(error) = watched {
+        eprintln!("omp app: the window's page loads are not watched: {error}");
+    }
+}
+
+/// Shows the error page when `uri` is a page of the server on another computer that did not open, and logs why. Returns
+/// whether it was one.
+fn remote_page_failed(app: &AppHandle, uri: &str, problem: &str) -> bool {
+    let remote = with_state(app, |state| state.remote_origin.clone());
+    let Some(host) = remote_page_host(uri, remote.as_deref()) else {
+        return false;
+    };
+    eprintln!("omp app: the app on {host} did not open: {problem}");
+    show_remote_error(app, &host, Some(problem));
+    true
+}
+
+/// The computer to name when `uri` is a page of the server on another computer (`remote`, its origin); None for any
+/// other address.
+fn remote_page_host(uri: &str, remote: Option<&str>) -> Option<String> {
+    let origin = remote?;
+    let url = Url::parse(uri).ok()?;
+    let host = url.host_str()?.to_owned();
+    (url.origin().ascii_serialization() == origin).then_some(host)
+}
+
+/// What an error status of the start page says: what answered is not the app, whose start page answers with success. A
+/// proxy answers so when the app behind it is stopped. None below 400.
+fn answer_problem(status: u32) -> Option<String> {
+    (status >= 400).then(|| format!("it answered with HTTP {status}"))
+}
+
 /// Puts a download in the account's Downloads folder, keeping its name, or in a numbered name if that name is
 /// taken. Returns false, which cancels the download, when no folder can be used; the reason goes to the log.
 fn choose_destination(app: &AppHandle, destination: &mut PathBuf) -> bool {
@@ -474,7 +549,7 @@ fn open_server_page(app: &AppHandle, url: Url) {
             }
         }
         None => {
-            if let Err(error) = new_window(&handle, WebviewUrl::External(url)).build() {
+            if let Err(error) = build_window(&handle, WebviewUrl::External(url)) {
                 // Without a window nothing can be shown: quit.
                 eprintln!("omp app: the window did not open: {error}");
                 handle.exit(1);
@@ -501,7 +576,7 @@ fn show_page(app: &AppHandle, page: &'static str) {
             }
         }
         None => {
-            if let Err(error) = new_window(&handle, WebviewUrl::App(page.into())).build() {
+            if let Err(error) = build_window(&handle, WebviewUrl::App(page.into())) {
                 // Without a window nothing can be shown: quit.
                 eprintln!("omp app: the page did not open: {error}");
                 handle.exit(1);
@@ -510,8 +585,9 @@ fn show_page(app: &AppHandle, page: &'static str) {
     });
 }
 
-/// Shows the page for "the server on another computer did not answer", naming the computer.
-fn show_remote_error(app: &AppHandle, host: &str) {
+/// Shows the page for "the server on another computer did not open", naming the computer: it did not answer, or it
+/// answered and the page did not open, for `problem` (see `watch_page_loads`).
+fn show_remote_error(app: &AppHandle, host: &str, problem: Option<&str>) {
     if with_state(app, |state| state.quitting) {
         return;
     }
@@ -519,6 +595,9 @@ fn show_remote_error(app: &AppHandle, host: &str) {
         return;
     };
     url.query_pairs_mut().append_pair("host", host);
+    if let Some(problem) = problem {
+        url.query_pairs_mut().append_pair("problem", problem);
+    }
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
         Some(window) => {
@@ -526,7 +605,7 @@ fn show_remote_error(app: &AppHandle, host: &str) {
         }
         None => {
             let page = WebviewUrl::App(REMOTE_ERROR_PAGE.into());
-            if let Err(error) = new_window(&handle, page).build() {
+            if let Err(error) = build_window(&handle, page) {
                 // Without a window nothing can be shown: quit.
                 eprintln!("omp app: the page did not open: {error}");
                 handle.exit(1);
@@ -598,6 +677,34 @@ mod tests {
         assert!(!is_app_address(&other, remote));
         let plain = url("http://devbox.tail1234.ts.net/x");
         assert!(!is_app_address(&plain, remote));
+    }
+
+    #[test]
+    fn a_failed_page_of_the_kept_server_names_its_computer_and_other_pages_do_not() {
+        let remote = Some("https://devbox.tail1234.ts.net");
+        let page = "https://devbox.tail1234.ts.net/#token=t";
+        let named = remote_page_host(page, remote);
+        assert_eq!(named.as_deref(), Some("devbox.tail1234.ts.net"));
+        assert_eq!(
+            remote_page_host(page, None),
+            None,
+            "only while a link is kept"
+        );
+        let local = "http://127.0.0.1:4317/#token=t";
+        let watched = remote_page_host(local, remote);
+        assert_eq!(watched, None, "this computer's server has its own watch");
+        assert_eq!(remote_page_host("https://example.com/", remote), None);
+        assert_eq!(remote_page_host("not a link", remote), None);
+    }
+
+    #[test]
+    fn only_an_error_status_means_what_answered_is_not_the_app() {
+        assert_eq!(answer_problem(200), None);
+        assert_eq!(answer_problem(304), None);
+        assert_eq!(answer_problem(399), None);
+        let proxy = answer_problem(502);
+        assert_eq!(proxy.as_deref(), Some("it answered with HTTP 502"));
+        assert!(answer_problem(404).is_some());
     }
 
     /// The address the recording steps find a server at.
