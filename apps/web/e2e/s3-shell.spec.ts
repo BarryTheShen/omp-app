@@ -280,7 +280,10 @@ for (const theme of ["light", "dark"] as const) {
 
       const composer = await startChat(page);
       await sendPrompt(composer, "pong");
-      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      // The sent message, in its bubble: the chat's row title and the fake model's reply say "pong" too (issue 2684).
+      await expect(
+        page.locator('[data-message-surface="user-bubble"]').getByText("pong", { exact: true }),
+      ).toBeVisible({ timeout: 60_000 });
       const toolbar = page.locator('[data-layout-area="composerToolbar"]');
       await expect(toolbar.locator('[data-surface="model"]')).toHaveCount(1);
       await expect(toolbar.locator(":scope > [data-surface]").first()).toHaveAttribute(
