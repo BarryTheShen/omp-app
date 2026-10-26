@@ -1,13 +1,13 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, REAL_OMP, realTest, sendPrompt, startChat } from "./real-omp";
+import { expect, realTest, sendPrompt, startChat } from "./real-omp";
 
 realTest.setTimeout(300_000);
 
 /**
- * The omp binary the fixture runs (see real-omp.ts). This wrapper makes a new chat wait 4 s before omp starts and
- * starts a resumed chat at once. So a New chat clicked and then a chat picked finishes its pick first, while the New
+ * The wrapper every chat runs through (see real-omp.ts). It makes a new chat wait 4 s before it starts, and starts a
+ * resumed chat at once. So a New chat clicked and then a chat picked finishes its pick first, while the New
  * chat is still opening: the sequence the fix for #877 must keep. Without the wait the race is too short to test.
  */
 const delayDir = resolve(process.cwd(), "../../.data/fix-877-new-chat");
@@ -17,14 +17,14 @@ writeFileSync(
   delayedOmp,
   `#!/bin/bash
 for arg in "$@"; do
-  if [ "$arg" = "--resume" ]; then exec "${REAL_OMP}" "$@"; fi
+  if [ "$arg" = "--resume" ]; then exec "$@"; fi
 done
 sleep 4
-exec "${REAL_OMP}" "$@"
+exec "$@"
 `,
 );
 chmodSync(delayedOmp, 0o755);
-realTest.use({ ompBinary: delayedOmp });
+realTest.use({ chatWrapper: delayedOmp });
 
 function newChatButton(page: Page): Locator {
   return page.locator('[aria-label="Sessions"]').getByRole("button", { name: "New chat" }).first();

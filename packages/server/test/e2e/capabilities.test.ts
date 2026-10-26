@@ -77,6 +77,11 @@ async function fakeOmp(root: string): Promise<string> {
   return path;
 }
 
+/** A line of the fake's spawn log that started a chat (or the probe's chat), not one of omp's commands. */
+function isChatStart(args: string): boolean {
+  return args !== "" && args !== "--version" && args !== "config list --json";
+}
+
 async function startServer(
   ompBin: string,
   environment: Readonly<Record<string, string>> = {},
@@ -105,6 +110,8 @@ async function startServer(
     agentDir,
     appDataDir,
     ompBin,
+    // The fake answers omp's commands and, as the chat host, the probe's and the chats' RPC.
+    chatHostBinary: ompBin,
     staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     ...(capabilityProbeSettings === undefined ? {} : { capabilityProbeSettings }),
     ...(leaseProbe === undefined ? {} : { leaseProbe }),
@@ -184,6 +191,7 @@ describe("the omp the app pins", () => {
       agentDir,
       appDataDir,
       staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
+      chatHostBinary: await fakeOmp(root),
       ...(ompDownload === undefined ? {} : { ompDownload }),
     });
     servers.push(server);
@@ -280,7 +288,7 @@ describe("composition capability wiring", () => {
     const invocations = (await readFile(`${binary}.spawnlog`, "utf8")).trim().split("\n");
     expect(invocations.filter((args) => args === "--version")).toHaveLength(2);
     expect(invocations.filter((args) => args === "config list --json")).toHaveLength(1);
-    expect(invocations.filter((args) => args.startsWith("--mode rpc-ui"))).toHaveLength(1);
+    expect(invocations.filter(isChatStart)).toHaveLength(1);
     expect(invocations).toHaveLength(4);
   }, 30_000);
   test("entire capability timeouts make server health unhealthy and are not cached", async () => {
@@ -360,7 +368,7 @@ describe("composition environment wiring", () => {
 });
 
 describe("composition open of a chat another omp holds", () => {
-  test("an open whose chat another omp holds fails at once with the terminal sentence, and starts no omp", async () => {
+  test("an open whose chat another omp holds fails at once with the terminal sentence, and starts no chat", async () => {
     const root = await temporaryRoot("capabilities-held-");
     const binary = await fakeOmp(root);
     const server = await startServer(binary, {}, root, undefined, async () => "active");
@@ -369,9 +377,7 @@ describe("composition open of a chat another omp holds", () => {
     await client.port(AppPort).serverInfo({});
     const folder = await temporaryRoot("capabilities-held-folder-");
     const omp = async () =>
-      (await readFile(`${binary}.spawnlog`, "utf8"))
-        .split("\n")
-        .filter((line) => line.startsWith("--mode rpc-ui"));
+      (await readFile(`${binary}.spawnlog`, "utf8")).split("\n").filter(isChatStart);
     const before = await omp();
     const started = performance.now();
     await expect(

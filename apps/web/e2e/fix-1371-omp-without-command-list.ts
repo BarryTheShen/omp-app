@@ -1,20 +1,20 @@
 /**
- * A stand-in for the omp binary whose command list cannot be read: each `get_available_commands` request gets an
- * error reply, the way omp's own failure does, and the `available_commands_update` frames omp pushes on its own (at
- * start and when commands change, omp v18.12.6 `modes/rpc/rpc-mode.ts:1753-1759`) are held back. Every other line
- * passes unchanged both ways. The fix-1371 spec starts the app with it through a shell wrapper, so the list fails
- * inside the real app while the chat is real omp.
+ * A stand-in for a chat whose command list cannot be read: each `get_available_commands` request gets an error reply,
+ * the way omp's own failure does, and the `available_commands_update` frames the chat pushes on its own (at start and
+ * when commands change; omp v18.12.6 `modes/rpc/rpc-mode.ts:1753-1759`, which the chat host runs) are held back. Every
+ * other line passes unchanged both ways. The fix-1371 spec runs every chat through it with a shell wrapper, so the list
+ * fails inside the real app while the chat is real.
  *
- * Usage: bun fix-1371-omp-without-command-list.ts <real omp> [omp arguments...]
+ * Usage: bun fix-1371-omp-without-command-list.ts <chat command...>
  */
 import { spawn } from "node:child_process";
 
-const [realOmp, ...args] = process.argv.slice(2);
-if (realOmp === undefined) {
-  throw new Error("usage: fix-1371-omp-without-command-list.ts <real omp> [omp arguments...]");
+const [program, ...args] = process.argv.slice(2);
+if (program === undefined) {
+  throw new Error("usage: fix-1371-omp-without-command-list.ts <chat command...>");
 }
 
-const child = spawn(realOmp, args, { stdio: ["pipe", "pipe", "inherit"], env: process.env });
+const child = spawn(program, args, { stdio: ["pipe", "pipe", "inherit"], env: process.env });
 
 /** Whether a line omp wrote is a pushed command list. */
 function isCommandListPush(line: string): boolean {

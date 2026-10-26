@@ -4,7 +4,6 @@ import type { Locator, Page } from "@playwright/test";
 import {
   APP_ROOT,
   expect,
-  REAL_OMP,
   realTest,
   sendPrompt,
   startChat,
@@ -32,12 +31,12 @@ mkdirSync(DATA_DIR, { recursive: true });
 const OMP_WITH_EXTENSION = join(DATA_DIR, "omp-app-2181-omp-with-extension.sh");
 writeFileSync(
   OMP_WITH_EXTENSION,
-  `#!/bin/sh\nexec '${REAL_OMP}' --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}" "$@"\n`,
+  `#!/bin/sh\nexec "$@" --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}"\n`,
 );
 chmodSync(OMP_WITH_EXTENSION, 0o755);
 
 realTest.use({
-  ompBinary: OMP_WITH_EXTENSION,
+  chatWrapper: OMP_WITH_EXTENSION,
   seedExtensions: { [EXTENSION_FILE]: EXTENSION_SOURCE },
 });
 realTest.setTimeout(900_000);

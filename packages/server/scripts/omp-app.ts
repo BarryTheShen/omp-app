@@ -62,6 +62,21 @@ function webRoot(): string {
   );
 }
 
+/**
+ * The compiled chat host that runs every chat (#2586): `OMP_APP_CHAT_HOST_BIN`, else beside the installed command. A
+ * source checkout has none; its server runs omp's command line from the pinned package on Bun instead.
+ */
+function chatHostBinary(): string | undefined {
+  if (Bun.env.OMP_APP_CHAT_HOST_BIN) return Bun.env.OMP_APP_CHAT_HOST_BIN;
+  const installed = resolve(dirname(process.execPath), "../lib/omp-app/chat-host");
+  if (existsSync(installed)) return installed;
+  // A compiled command holds its sources in Bun's in-memory folder, where they cannot run as a chat.
+  if (import.meta.dir.startsWith("/$bunfs/")) {
+    return fail(`the app's chat host is missing (${installed}). Reinstall the package.`);
+  }
+  return undefined;
+}
+
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -213,6 +228,7 @@ try {
       createCompositionServer({
         port,
         staticRoot: webRoot(),
+        chatHostBinary: chatHostBinary(),
         cwd: folder,
         env: { PATH: searchPath },
         serverVersion: version,

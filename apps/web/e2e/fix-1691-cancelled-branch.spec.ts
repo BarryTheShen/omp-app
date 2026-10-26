@@ -4,7 +4,6 @@ import type { Page } from "@playwright/test";
 import {
   APP_ROOT,
   expect,
-  REAL_OMP,
   realTest,
   screenshots,
   sendPrompt,
@@ -46,12 +45,12 @@ const OMP_CANCELLING_BRANCH = join(
 );
 writeFileSync(
   OMP_CANCELLING_BRANCH,
-  `#!/bin/sh\nexec '${REAL_OMP}' --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}" "$@"\n`,
+  `#!/bin/sh\nexec "$@" --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}"\n`,
 );
 chmodSync(OMP_CANCELLING_BRANCH, 0o755);
 
 realTest.use({
-  ompBinary: OMP_CANCELLING_BRANCH,
+  chatWrapper: OMP_CANCELLING_BRANCH,
   seedExtensions: { [EXTENSION_FILE]: EXTENSION_SOURCE },
 });
 

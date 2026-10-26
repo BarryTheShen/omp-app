@@ -6,18 +6,17 @@ import { expect, REAL_OMP, realTest, screenshots } from "./real-omp";
 
 /**
  * Issue 927. With no model set up, omp exits when it starts, and the app used to show "omp isn't
- * available" with the wrong reason. The fixture gives omp the fake model; this wrapper drops that
- * model, points omp at an empty agent folder and removes the provider keys, so omp starts the way a
- * fresh install does. The fixture's own agent folder still holds the fake model's config, which only
- * the server reads.
+ * available" with the wrong reason. The fixture gives omp the fake model; these wrappers drop that
+ * model, point omp at an empty agent folder and remove the provider keys, so omp starts the way a
+ * fresh install does: one for omp's commands (`ompBinary`), one for every chat (`chatWrapper`). The
+ * fixture's own agent folder still holds the fake model's config, which only the server reads.
  */
 const dir = resolve(process.cwd(), "../../.data/fix-927-no-model");
 mkdirSync(dir, { recursive: true });
 const emptyAgent = mkdtempSync(join(dir, "agent-"));
-const noModelOmp = join(dir, "omp-no-model.sh");
-writeFileSync(
-  noModelOmp,
-  `#!/bin/bash
+/** A script that runs `program` (empty: the command it is given) with that model, agent folder and keys gone. */
+function withoutModel(program: string): string {
+  return `#!/bin/bash
 args=()
 skip=0
 for arg in "$@"; do
@@ -27,11 +26,16 @@ for arg in "$@"; do
 done
 unset ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY MISTRAL_API_KEY GROQ_API_KEY XAI_API_KEY
 export PI_CODING_AGENT_DIR="${emptyAgent}"
-exec "${REAL_OMP}" "\${args[@]}"
-`,
-);
+exec ${program} "\${args[@]}"
+`;
+}
+const noModelOmp = join(dir, "omp-no-model.sh");
+writeFileSync(noModelOmp, withoutModel(`"${REAL_OMP}"`));
 chmodSync(noModelOmp, 0o755);
-realTest.use({ ompBinary: noModelOmp });
+const noModelChat = join(dir, "chat-no-model.sh");
+writeFileSync(noModelChat, withoutModel(""));
+chmodSync(noModelChat, 0o755);
+realTest.use({ ompBinary: noModelOmp, chatWrapper: noModelChat });
 
 async function expectNoModelScreen(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "No model is set up yet" })).toBeVisible({

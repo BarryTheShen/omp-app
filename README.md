@@ -92,10 +92,10 @@ flowchart LR
     D --> S
   end
   R0 <-->|"WebSocket: typed ports"| D
-  P <-->|"JSONL RPC over stdio"| O["omp --mode rpc-ui<br/>(one process per thread)"]
+  P <-->|"JSONL RPC over stdio"| O["omp's command line, built by the app<br/>--mode rpc-ui (one process per thread)"]
 ```
 
-- **One omp process per open thread**, started as `omp --mode rpc-ui` in the thread's folder. The server talks to it over omp's JSONL RPC (`packages/omp-rpc`).
+- **One chat process per open thread**: omp's own command line in `--mode rpc-ui`, in the thread's folder, speaking omp's JSONL RPC to the server (`packages/omp-rpc`). The app builds it from the omp package it pins (`packages/server/scripts/build-chat-host.ts`), and the packages ship it compiled (`/usr/lib/omp-app/chat-host`); `chatCommand()` (`packages/server/src/omp-host/chat-command.ts`) starts it. The omp release the app downloads still answers omp's own commands (version, models, usage, config).
 - **The browser never parses omp's output itself.** All events go through one store (R0), and one function turns omp messages into assistant-ui messages. Every other module reads that store.
 - **Server state goes through typed ports** (`packages/contracts/src/ports/`): settings come from omp's own config files, plus app-only data (drafts, plan documents, checkpoints) in the app's data folder.
 - **Features omp cannot do over RPC** are gated by a capability with a visible reason (`upstream.*`), never faked.

@@ -4,7 +4,6 @@ import type { Page } from "@playwright/test";
 import {
   APP_ROOT,
   expect,
-  REAL_OMP,
   realTest,
   screenshots,
   sendPrompt,
@@ -39,18 +38,19 @@ function answerTo(page: Page, tag: string) {
 }
 
 /**
- * A stand-in omp that does not know the branch command. The app probes each command by sending it and
- * reading whether omp answers "Unknown command:"; this one answers only `branch` that way and forwards
- * every other line to the real omp, so the probe finds branch missing and nothing else changes.
+ * A chat that does not know the branch command. The app probes each command by sending it and reading
+ * whether the chat answers "Unknown command:"; every chat runs through this stand-in, which answers only
+ * `branch` that way and forwards every other line to the chat it starts, so the probe finds branch
+ * missing and nothing else changes.
  */
 const OMP_WITHOUT_BRANCH = join(APP_ROOT, ".data", "p3-4-e2e", "omp-without-branch");
 const WRAPPER_SOURCE = [
   "#!/usr/bin/env bun",
-  "// Stand-in omp: answers the branch command as unknown and forwards every other line to the real omp.",
+  "// Stand-in chat: answers the branch command as unknown and forwards every other line to the chat it starts.",
   'import { spawn } from "node:child_process";',
   'import { createInterface } from "node:readline";',
-  `const realOmp = ${JSON.stringify(REAL_OMP)};`,
-  "const child = spawn(realOmp, process.argv.slice(2), {",
+  "const [program, ...args] = process.argv.slice(2);",
+  "const child = spawn(program, args, {",
   "  env: process.env,",
   '  stdio: ["pipe", "pipe", "inherit"],',
   "});",
@@ -255,7 +255,7 @@ realTest.describe("edit and regenerate from the transcript", () => {
 });
 
 realTest.describe("an omp without the branch command", () => {
-  realTest.use({ ompBinary: OMP_WITHOUT_BRANCH });
+  realTest.use({ chatWrapper: OMP_WITHOUT_BRANCH });
 
   realTest("shows neither Edit nor Regenerate", async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);

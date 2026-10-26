@@ -155,7 +155,7 @@ export interface RealApp {
   /** For a test that breaks the page on purpose: problems matching this are expected; any other still fails the test. */
   readonly allowProblem: (pattern: RegExp) => void;
   /**
-   * Starts another omp (`--mode rpc-ui`, the app's mode) in this run's folder, home and agent folder,
+   * Starts another omp (omp's own binary in `--mode rpc-ui`) in this run's folder, home and agent folder,
    * with the app's environment, for a test that needs a chat held by an omp the app did not start.
    * Stopped when the test ends.
    */
@@ -255,6 +255,7 @@ async function startServer(
     readonly seedToolResults: SeedToolResults | undefined;
     readonly seedEntries: SeedEntries | undefined;
     readonly ompBinary: string | undefined;
+    readonly chatWrapper: string | undefined;
     readonly defaultModel: boolean;
     readonly noModel: boolean;
     readonly port: number;
@@ -386,6 +387,7 @@ const server = await createCompositionServer({
   agentDir: ${JSON.stringify(join(root, "agent"))},
   appDataDir: ${JSON.stringify(join(root, "app-data"))},
   ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
+  chatWrapper: ${options.chatWrapper === undefined ? "undefined" : JSON.stringify(options.chatWrapper)},
   ompArgs: ${options.noModel || !options.defaultModel ? "[]" : '["--model", "fake/fake-model"]'},
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
   fileWatch,
@@ -454,8 +456,10 @@ export interface SeedWorkspace {
  * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`, or with one
  * chat made of recorded tool results with `realTest.use({ seedToolResults: { results } })` (one turn
  * each, in order), or with one made of raw session entries with `realTest.use({ seedEntries: {
- * entries } })`. A spec
- * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
+ * entries } })`. `realTest.use({ ompBinary })` replaces the omp that answers omp's commands (`--version`, `models`,
+ * `usage`, `config`), for a spec about omp being missing or answering differently. `realTest.use({ chatWrapper })` runs
+ * every chat through a program given the chat's whole command as its arguments, ending with `exec "$@"`: a spec that
+ * delays a chat's start, adds arguments to it or filters its frames.
  * Fake files in the agent's `extensions` folder appear in omp's extension catalog: `realTest.use({ seedExtensions: { "name.ts": source } })`.
  * A spec that needs `@` file mentions seeds files with `realTest.use({ seedWorkspace: { files, gitRepo: true } })`; file search lists git files only.
  * A spec that needs omp's environment overrides (for example `PI_AUTO_QA=0`) starts the app with `realTest.use({ serverEnv: { PI_AUTO_QA: "0" } })`.
@@ -476,6 +480,7 @@ export const realTest = test.extend<{
   seedAgentDotEnv: string | undefined;
   seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
+  chatWrapper: string | undefined;
   defaultModel: boolean;
   noModel: boolean;
   fileWatchFailure: "watcher-limit" | undefined;
@@ -495,6 +500,7 @@ export const realTest = test.extend<{
   seedAgentDotEnv: [undefined, { option: true }],
   seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
+  chatWrapper: [undefined, { option: true }],
   defaultModel: [true, { option: true }],
   noModel: [false, { option: true }],
   serverPort: [0, { option: true }],
@@ -514,6 +520,7 @@ export const realTest = test.extend<{
       seedAgentDotEnv,
       seedWorkspace,
       ompBinary,
+      chatWrapper,
       defaultModel,
       noModel,
       serverPort,
@@ -590,6 +597,7 @@ export const realTest = test.extend<{
         seedToolResults,
         seedEntries,
         ompBinary,
+        chatWrapper,
         defaultModel,
         noModel,
         port: serverPort,
@@ -626,6 +634,7 @@ export const realTest = test.extend<{
           seedToolResults,
           seedEntries,
           ompBinary,
+          chatWrapper,
           defaultModel,
           noModel,
           port: keptPort,

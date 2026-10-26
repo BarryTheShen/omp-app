@@ -64,6 +64,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
+import { chatCommand } from "../src/omp-host/chat-command";
 import { ensurePinnedOmp, pinnedOmpPath } from "../src/omp-pin";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
 import {
@@ -90,13 +91,22 @@ export interface CompositionServerOptions {
   readonly port?: number;
   readonly staticRoot?: string;
   /**
-   * Test seam: the omp binary to run (a wrapper script in some e2e specs). Without it the server runs the omp the app
-   * pins (`src/omp-pin`), downloaded once into `OMP_APP_OMP_DIR`, else `<app data>/omp`.
+   * Test seam: the omp binary that answers omp's commands (`--version`, `models`, `usage`, `config`; a wrapper script in
+   * some e2e specs). Without it the server runs the omp the app pins (`src/omp-pin`), downloaded once into
+   * `OMP_APP_OMP_DIR`, else `<app data>/omp`. Chats never run it: they run the chat host (`chatHostBinary`).
    */
   readonly ompBin?: string;
   /** Test seam: how the pinned omp is downloaded when it is missing; the default is `fetch`. */
   readonly ompDownload?: (url: string) => Promise<Response>;
   readonly ompArgs?: readonly string[];
+  /**
+   * The chat host compiled to one program (`scripts/build-chat-host.ts`: omp's own command line, built from the pinned
+   * package), which runs every chat. Default: `OMP_APP_CHAT_HOST_BIN`; without either, omp's command line from the
+   * pinned package (`src/cli.ts`) on the Bun running this server.
+   */
+  readonly chatHostBinary?: string;
+  /** Test seam: a program every chat runs through, given the chat's whole command as its arguments (`chatCommand()`). */
+  readonly chatWrapper?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;
   readonly agentDir?: string;
@@ -166,7 +176,12 @@ export async function createCompositionServer(
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
   // A bad value stops the start before anything runs: the app must never listen for an address it cannot check.
   const remote = parseRemoteOrigin(env[REMOTE_ORIGIN_ENV]);
-  // The omp the app pins, never one installed on the computer: chats, probes and omp commands all run it.
+  // Every chat, and the probe of a chat's commands, runs omp's command line built by the app (#2586).
+  const chats = chatCommand({
+    binary: options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN,
+    wrapper: options.chatWrapper,
+  });
+  // The omp the app pins, never one installed on the computer: omp's commands (version, models, usage, config) run it.
   const ompDir = env.OMP_APP_OMP_DIR ?? join(appDataDir, "omp");
   let ompBinary = options.ompBin ?? pinnedOmpPath(ompDir);
   let installFailure: string | undefined;
@@ -256,7 +271,7 @@ export async function createCompositionServer(
       const capabilityStarted = performance.now();
       const capabilityPromise = probeCapabilitiesPatiently({
         cwd: FolderPath.parse(appDataDir),
-        ompBin: ompBinary,
+        chatCommand: chats,
         env,
         ...options.capabilityProbeSettings,
         onRetry: (waitedMs) => logger.warn("capabilities.probe_retry", { waited_ms: waitedMs }),
@@ -353,7 +368,7 @@ export async function createCompositionServer(
       logOmpProcess(
         spawnOmpProcess({
           ...processOptions,
-          ompBin: ompBinary,
+          chatCommand: chats,
           args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
           env: { ...env, ...processOptions.env },
         }),

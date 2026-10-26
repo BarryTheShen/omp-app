@@ -2,7 +2,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, REAL_OMP, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
+import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 const DATA = resolve(process.cwd(), "../../.data/fix-1775-empty-state-stop-title");
 const DELAYED_OMP = join(DATA, "delayed-resume-omp.sh");
@@ -15,12 +15,12 @@ for arg in "$@"; do
   if [ "$arg" = "--resume" ]; then resume=1; fi
 done
 if [ "$resume" = 0 ]; then sleep 4; fi
-exec "${REAL_OMP}" "$@"
+exec "$@"
 `,
 );
 chmodSync(DELAYED_OMP, 0o755);
 
-realTest.use({ ompBinary: DELAYED_OMP });
+realTest.use({ chatWrapper: DELAYED_OMP });
 realTest.setTimeout(300_000);
 
 async function waitForNewOmp(

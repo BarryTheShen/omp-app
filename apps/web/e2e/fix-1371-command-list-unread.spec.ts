@@ -5,7 +5,6 @@ import type { Locator, Page } from "@playwright/test";
 import {
   expect,
   narrowTo,
-  REAL_OMP,
   realTest,
   screenshots,
   startChat,
@@ -13,16 +12,16 @@ import {
 } from "./real-omp";
 
 /**
- * #1371: omp's command list cannot be read in these runs. The omp binary is a shell wrapper around the proxy beside
- * this spec: the proxy answers `get_available_commands` with an error and passes every other line to the real omp.
+ * #1371: omp's command list cannot be read in these runs. Every chat runs through a shell wrapper around the proxy
+ * beside this spec: the proxy answers `get_available_commands` with an error and passes every other line to the chat.
  */
 const PROXY = resolve(process.cwd(), "e2e/fix-1371-omp-without-command-list.ts");
 const wrapperDir = resolve(process.cwd(), "../../.data/fix-1371-command-list");
 mkdirSync(wrapperDir, { recursive: true });
 const wrapper = join(wrapperDir, "omp-without-command-list.sh");
-writeFileSync(wrapper, `#!/bin/sh\nexec bun "${PROXY}" "${REAL_OMP}" "$@"\n`);
+writeFileSync(wrapper, `#!/bin/sh\nexec bun "${PROXY}" "$@"\n`);
 chmodSync(wrapper, 0o755);
-realTest.use({ ompBinary: wrapper });
+realTest.use({ chatWrapper: wrapper });
 
 const HELD =
   "/compact wasn't sent because omp's command list could not be read. omp could not list its commands.";

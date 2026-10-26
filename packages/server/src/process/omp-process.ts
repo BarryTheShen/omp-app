@@ -13,8 +13,6 @@ import type { RpcDuplex, RpcSessionTimer } from "@omp-app/omp-rpc";
 import { ensureAppDataDir } from "../modules/A1/fs/app-data";
 import { writeFileAtomic } from "../modules/A1/fs/atomic-file";
 
-/** `--mode rpc-ui` is required: it is the only mode that forwards extension/tool UI requests. */
-const OMP_MODE_ARGS = ["--mode", "rpc-ui"] as const;
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_MAX_STDERR_BYTES = 16 * 1024;
 const DEFAULT_MAX_PENDING_CHUNK_BYTES = 1024 * 1024;
@@ -34,7 +32,7 @@ export interface OmpProcessOptions {
   readonly folder: FolderPath;
   /** The home folder the server runs under; defaults to the operating system's home. */
   readonly homeDir?: string;
-  /** Extra argv appended after the forced `--mode rpc-ui` (for example `--resume <id>`). */
+  /** The chat's own arguments, after the chat command's (for example `--resume <id>`). */
   readonly args?: readonly string[];
   /** Merged over the current process environment; a key set to `undefined` is removed. */
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -49,8 +47,11 @@ export interface OmpProcessOptions {
 }
 
 export interface SpawnOmpProcessOptions extends OmpProcessOptions {
-  /** The omp to run: the one the app pins (`src/omp-pin`), or a test's stand-in. Never one found on `PATH`. */
-  readonly ompBin: string;
+  /**
+   * The program and leading arguments that start the chat: omp's command line in RPC mode, built by the app
+   * (`chatCommand()` in `omp-host/chat-command.ts`), or a test's stand-in.
+   */
+  readonly chatCommand: readonly string[];
 }
 
 export interface OmpProcessEvent {
@@ -64,8 +65,8 @@ export interface OmpProcessEvent {
 export type OmpProcessListener = (event: OmpProcessEvent) => void;
 
 /**
- * One spawned `omp --mode rpc-ui` child and its lifecycle. Implements `RpcDuplex` so an
- * `RpcSession` can be built directly around it: construct the session first (so its `onChunk`
+ * One spawned chat process (the app's chat host, which speaks omp's RPC protocol) and its lifecycle. Implements
+ * `RpcDuplex` so an `RpcSession` can be built directly around it: construct the session first (so its `onChunk`
  * subscription is registered), then call `start()`.
  */
 export interface OmpProcess extends RpcDuplex {
@@ -141,7 +142,7 @@ function crashFailure(
 class SpawnedOmpProcess implements OmpProcess {
   readonly threadId: ThreadId;
   readonly folder: FolderPath;
-  readonly #ompBin: string;
+  readonly #chatCommand: readonly string[];
   readonly #args: readonly string[];
   readonly #homeDir: string;
   readonly #envOverrides: Readonly<Record<string, string | undefined>>;
@@ -172,7 +173,7 @@ class SpawnedOmpProcess implements OmpProcess {
   constructor(options: SpawnOmpProcessOptions) {
     this.threadId = options.threadId;
     this.folder = options.folder;
-    this.#ompBin = options.ompBin;
+    this.#chatCommand = options.chatCommand;
     this.#args = options.args ?? [];
     this.#homeDir = options.homeDir ?? homedir();
     this.#envOverrides = options.env ?? {};
@@ -272,7 +273,7 @@ class SpawnedOmpProcess implements OmpProcess {
     try {
       const env = await this.#buildEnv();
       const homeArgs = await homeFolderArguments(this.folder, this.#homeDir);
-      child = this.#spawn([this.#ompBin, ...OMP_MODE_ARGS, ...homeArgs, ...this.#args], {
+      child = this.#spawn([...this.#chatCommand, ...homeArgs, ...this.#args], {
         cwd: this.folder,
         env,
         stdin: "pipe",
@@ -446,7 +447,7 @@ class SpawnedOmpProcess implements OmpProcess {
   }
 }
 
-/** Spawns a fresh `omp --mode rpc-ui` child running the omp the app pins. */
+/** Spawns a fresh chat process: the chat command, then the chat's arguments. */
 export function spawnOmpProcess(options: SpawnOmpProcessOptions): OmpProcess {
   return new SpawnedOmpProcess(options);
 }

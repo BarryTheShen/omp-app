@@ -7,7 +7,7 @@ Closing the window leaves the server running, so chats keep going; stop it with 
 The server the window starts uses port 4317, the port of the `omp-app` command and the user service, when it is free, so the web app keeps its stored settings (theme, sidebar, last chat) whichever of them started the server. When the port is busy, the server takes a free port instead.
 "Save debug log" (in the command palette) saves its file into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from.
 
-The window bundles the omp coding agent: the package holds the omp release the app pins (named in `packages/server/src/omp-pin/pin.json`), and the server runs that one, never an omp installed on this computer. There is nothing to install.
+The window bundles the omp coding agent: every chat runs omp's own command line, which the app builds from the omp package it pins and the package holds compiled (`/usr/lib/omp-app-desktop/chat-host`), and omp's own commands run the omp release the app pins (named in `packages/server/src/omp-pin/pin.json`), never an omp installed on this computer. There is nothing to install.
 
 The package is `omp-app-desktop` and its menu entry is "omp app". It does not replace or touch the `omp-app` command package.
 
@@ -29,7 +29,7 @@ The window needs glibc 2.39, which Ubuntu 24.04 has. The package declares that d
    . "$HOME/.cargo/env"
    ```
 
-3. Bun 1.3.14, the version `release.yml` uses.
+3. Bun 1.3.14, the version `release.yml` uses, and Bun 1.4.3 for the chat host: the Bun omp's release is built with (`packages/server/scripts/build-chat-host.ts` names it and refuses another). Unpack Bun 1.4.3 anywhere, for example from `https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64.zip`, and name it in `CHAT_HOST_BUN`.
 
 ## Build the package
 
@@ -37,12 +37,12 @@ From the repository root:
 
 ```
 bun install --frozen-lockfile
-bash packaging/build-desktop-deb.sh 0.1.451
+CHAT_HOST_BUN=/path/to/bun-1.4.3/bun bash packaging/build-desktop-deb.sh 0.1.451
 ```
 
 The package lands in `dist/desktop/omp-app-desktop_0.1.451_amd64.deb`, with `SHA256SUMS` next to it. The build downloads the omp release the app pins and checks it against the release's SHA-256 checksum, so it needs network access.
 
-The Rust build needs three inputs that the build script creates and git ignores: the server (`src-tauri/binaries/`), the web app (`src-tauri/resources/web`) and the pinned omp (`src-tauri/resources/omp`). So on a fresh checkout, run the build script once before the Rust checks:
+The Rust build needs four inputs that the build script creates and git ignores: the server (`src-tauri/binaries/`), the web app (`src-tauri/resources/web`), the chat host (`src-tauri/resources/chat-host`) and the pinned omp (`src-tauri/resources/omp`). So on a fresh checkout, run the build script once before the Rust checks:
 
 ```
 cd apps/desktop/src-tauri

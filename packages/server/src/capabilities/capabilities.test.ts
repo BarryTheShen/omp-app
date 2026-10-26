@@ -107,7 +107,7 @@ async function runProbe(
   const realAgent = join(root, "real-agent");
   const result = await probeCapabilities({
     cwd: FolderPath.parse(join(root, "app-data")),
-    ompBin: binary,
+    chatCommand: [binary],
     env: {
       ...overrides,
       HOME: realHome,
@@ -250,7 +250,7 @@ describe("probeCapabilities", () => {
     const binary = await fakeOmp();
     const result = await probeCapabilities({
       cwd: FolderPath.parse(join(root, "app-data")),
-      ompBin: binary,
+      chatCommand: [binary],
       env: { FAKE_DELAY: "1" },
       ghBinary: join(root, "missing-gh"),
       timeoutMs: 20,
@@ -274,7 +274,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      ompBin: binary,
+      chatCommand: [binary],
       // The fake answers after 100 ms: more than the first wait, well within the patient one.
       env: { FAKE_DELAY: "1" },
       ghBinary: join(root, "missing-gh"),
@@ -294,7 +294,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      ompBin: binary,
+      chatCommand: [binary],
       env: { FAKE_DELAY: "1" },
       ghBinary: join(root, "missing-gh"),
       timeoutMs: 20,
@@ -312,7 +312,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      ompBin: binary,
+      chatCommand: [binary],
       env: {},
       ghBinary: join(root, "missing-gh"),
       onRetry: (waited) => retries.push(waited),
@@ -327,7 +327,7 @@ describe("probeCapabilities", () => {
     const binary = await fakeOmp();
     const result = await probeCapabilities({
       cwd: FolderPath.parse(join(root, "app-data")),
-      ompBin: binary,
+      chatCommand: [binary],
       // set_model answers after 2 s, past its 1 s wait; every other command answers at once.
       env: { FAKE_SLOW_COMMAND: "set_model", FAKE_SLOW_MS: "2000" },
       ghBinary: join(root, "missing-gh"),
@@ -349,7 +349,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      ompBin: binary,
+      chatCommand: [binary],
       // set_model answers after 2 s: past the 1 s wait, well within the patient 10 s one.
       env: { FAKE_SLOW_COMMAND: "set_model", FAKE_SLOW_MS: "2000" },
       ghBinary: join(root, "missing-gh"),

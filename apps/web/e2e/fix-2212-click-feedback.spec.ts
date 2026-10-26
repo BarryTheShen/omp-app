@@ -1,20 +1,13 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import {
-  expect,
-  REAL_OMP,
-  realTest,
-  sendPrompt,
-  startChat,
-  waitForFiniteAnimations,
-} from "./real-omp";
+import { expect, realTest, sendPrompt, startChat, waitForFiniteAnimations } from "./real-omp";
 
 /**
  * Issue 2212. A chat picked from the sidebar used to stay on screen until omp had opened the picked chat and its history
  * had loaded: about 6 s when omp takes 4 s to resume. The picked chat's header and opening state now show at the click,
- * the sidebar's rows stay mounted, and a second pick cancels the open before it. The wrapper delays each resumed omp 4 s,
- * as the fix-927 wrapper delays a new chat's omp.
+ * the sidebar's rows stay mounted, and a second pick cancels the open before it. The wrapper every chat runs through
+ * delays each resumed chat 4 s, as the fix-927 wrapper delays a new chat.
  */
 const dir = resolve(process.cwd(), "../../.data/fix-2212-click-feedback");
 mkdirSync(dir, { recursive: true });
@@ -22,18 +15,16 @@ const delayedResume = join(dir, "omp-resume-delay.sh");
 writeFileSync(
   delayedResume,
   `#!/bin/bash
-chat=0
 resume=0
 for arg in "$@"; do
-  if [ "$arg" = "rpc-ui" ]; then chat=1; fi
   if [ "$arg" = "--resume" ]; then resume=1; fi
 done
-if [ "$chat" = 1 ] && [ "$resume" = 1 ]; then sleep 4; fi
-exec "${REAL_OMP}" "$@"
+if [ "$resume" = 1 ]; then sleep 4; fi
+exec "$@"
 `,
 );
 chmodSync(delayedResume, 0o755);
-realTest.use({ ompBinary: delayedResume, idleCloseMs: 500 });
+realTest.use({ chatWrapper: delayedResume, idleCloseMs: 500 });
 realTest.setTimeout(240_000);
 
 function sidebarRow(page: Page, title: string) {
@@ -154,19 +145,17 @@ realTest(
 
 // Pictures for the pull request. The chain runs these with CHAIN_ENV="OMP_APP_SHOTS=1"; without it they are skipped.
 const screenshots = resolve(process.cwd(), "../../.data/screenshots");
-// A resumed omp held for 20 s, so a picked chat is still opening when its picture is taken.
+// A resumed chat held for 20 s, so a picked chat is still opening when its picture is taken.
 const slowResume = join(dir, "omp-resume-slow.sh");
 writeFileSync(
   slowResume,
   `#!/bin/bash
-chat=0
 resume=0
 for arg in "$@"; do
-  if [ "$arg" = "rpc-ui" ]; then chat=1; fi
   if [ "$arg" = "--resume" ]; then resume=1; fi
 done
-if [ "$chat" = 1 ] && [ "$resume" = 1 ]; then sleep 20; fi
-exec "${REAL_OMP}" "$@"
+if [ "$resume" = 1 ]; then sleep 20; fi
+exec "$@"
 `,
 );
 chmodSync(slowResume, 0o755);
@@ -233,7 +222,7 @@ async function pictureWhileOpening(
 }
 
 realTest.describe("the picked chat while omp is still opening it", () => {
-  realTest.use({ ompBinary: slowResume });
+  realTest.use({ chatWrapper: slowResume });
 
   realTest("a picked chat shows at the click, in light", async ({ realApp }, testInfo) => {
     realTest.skip(

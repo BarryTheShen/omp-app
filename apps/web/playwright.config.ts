@@ -9,6 +9,8 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
   fullyParallel: true,
+  // Live tests run chats on the compiled chat host, as the packages do: built once per lockfile (e2e/global-setup.ts).
+  globalSetup: "./e2e/global-setup.ts",
   // The test-machine build queue sets E2E_WORKERS to the CPUs a job may use (inside its container the machine still reports 20,
   // so Playwright's default of half of them would be ten workers on four CPUs). A --workers flag still wins.
   workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined,

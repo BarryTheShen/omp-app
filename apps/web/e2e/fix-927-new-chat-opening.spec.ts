@@ -2,12 +2,12 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, REAL_OMP, realTest, screenshots } from "./real-omp";
+import { expect, realTest, screenshots } from "./real-omp";
 
 /**
- * Issue 927. A New chat takes omp a moment to start, and the page used to look unchanged for that
- * time: it still said to choose a folder and open a session. This wrapper makes a new chat's omp wait
- * 4 s before it starts, so the opening is long enough to look at. Resumed chats start at once.
+ * Issue 927. A New chat takes a moment to start, and the page used to look unchanged for that
+ * time: it still said to choose a folder and open a session. This wrapper, which every chat runs through, makes a new
+ * chat wait 4 s before it starts, so the opening is long enough to look at. Resumed chats start at once.
  */
 const dir = resolve(process.cwd(), "../../.data/fix-927-new-chat");
 mkdirSync(dir, { recursive: true });
@@ -15,18 +15,16 @@ const delayedOmp = join(dir, "omp-new-chat-delay.sh");
 writeFileSync(
   delayedOmp,
   `#!/bin/bash
-chat=0
 resume=0
 for arg in "$@"; do
-  if [ "$arg" = "rpc-ui" ]; then chat=1; fi
   if [ "$arg" = "--resume" ]; then resume=1; fi
 done
-if [ "$chat" = 1 ] && [ "$resume" = 0 ]; then sleep 4; fi
-exec "${REAL_OMP}" "$@"
+if [ "$resume" = 0 ]; then sleep 4; fi
+exec "$@"
 `,
 );
 chmodSync(delayedOmp, 0o755);
-realTest.use({ ompBinary: delayedOmp });
+realTest.use({ chatWrapper: delayedOmp });
 
 /** Clicks New chat and checks the page while omp starts: the words say so, and no step is asked of the person. */
 async function expectOpening(page: Page): Promise<void> {

@@ -8,6 +8,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@oh-my-pi/pi-coding-agent": "18.12.6",
     "@omp-app/client": "workspace:*",
     "@omp-app/contracts": "workspace:*",
     "@omp-app/omp-rpc": "workspace:*",

@@ -3,7 +3,6 @@ import { join } from "node:path";
 import {
   APP_ROOT,
   expect,
-  REAL_OMP,
   realTest,
   sendPrompt,
   startChat,
@@ -25,11 +24,11 @@ const OMP_WITH_NOTICES = join(DATA_DIR, "fix-2153-omp-with-notices.sh");
 mkdirSync(DATA_DIR, { recursive: true });
 writeFileSync(
   OMP_WITH_NOTICES,
-  `#!/bin/sh\nexec '${REAL_OMP}' --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}" "$@"\n`,
+  `#!/bin/sh\nexec "$@" --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}"\n`,
 );
 chmodSync(OMP_WITH_NOTICES, 0o755);
 realTest.use({
-  ompBinary: OMP_WITH_NOTICES,
+  chatWrapper: OMP_WITH_NOTICES,
   seedExtensions: { [EXTENSION_FILE]: EXTENSION_SOURCE },
 });
 

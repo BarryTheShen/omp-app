@@ -314,7 +314,8 @@ fn grant_clipboard(app: &AppHandle, origin: &str) {
 }
 
 /// Starts the server on the desktop port (or a free one, when it is busy), with the browser opening switched off, on
-/// the omp that ships with the app (the `omp` folder beside the web app). The server is detached: it has a session
+/// the omp that ships with the app (the `omp` folder beside the web app) and the chat host that runs every chat: omp's
+/// own command line, built by the app (`chat-host` beside the web app). The server is detached: it has a session
 /// (and so a process group) of its own, and no input or output, so nothing that happens to this process reaches it.
 /// It logs to its own file and records its address itself, so its output is not needed.
 fn spawn(app: &AppHandle) -> Result<Child, String> {
@@ -326,9 +327,16 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
     let resources = paths.resource_dir().map_err(|error| error.to_string())?;
     let web_root = resources.join("web");
     let omp_dir = resources.join("omp");
+    let chat_host = resources.join("chat-host");
     // The server would fall back to other folders if this one were missing; that must not happen.
     if !web_root.join("index.html").is_file() {
         return Err(format!("the web app is not in {}", web_root.display()));
+    }
+    if !chat_host.is_file() {
+        return Err(format!(
+            "the app's chat host is not at {}",
+            chat_host.display()
+        ));
     }
     let sidecar = std::env::current_exe()
         .map_err(|error| error.to_string())?
@@ -342,6 +350,8 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
         .env("OMP_APP_WEB_ROOT", &web_root)
         // The omp the server runs: the one that ships with the app, never one installed on this computer.
         .env("OMP_APP_OMP_DIR", &omp_dir)
+        // Every chat runs the chat host that ships with the app.
+        .env("OMP_APP_CHAT_HOST_BIN", &chat_host)
         // The server takes this port when it is free, and otherwise a free port (see DESKTOP_PORT).
         .env("OMP_APP_PORT", DESKTOP_PORT)
         .stdin(Stdio::null())

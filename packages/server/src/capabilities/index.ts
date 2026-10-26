@@ -183,8 +183,8 @@ export const COMMAND_PROBE_EVIDENCE: Readonly<Record<OmpCommandName, CommandProb
 export interface CapabilityProbeOptions {
   /** The isolated cwd for the short-lived probe process, normally a directory under app data. */
   readonly cwd: FolderPath;
-  /** The omp to probe: the one the app pins (`src/omp-pin`), or a test's stand-in. */
-  readonly ompBin: string;
+  /** The command that starts a chat (`chatCommand()` in `omp-host/chat-command.ts`), or a test's stand-in. */
+  readonly chatCommand: readonly string[];
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Maximum time allowed for an individual omp command. */
   readonly timeoutMs?: number;
@@ -510,7 +510,7 @@ function timedOutProbeResult(
 }
 
 /**
- * Starts one isolated `omp --mode rpc-ui` process, probes the command surface, then always closes it.
+ * Starts one isolated chat process (the chat command), probes the command surface, then always closes it.
  * The result is safe to publish in both the welcome frame and AppPort; callers apply the negotiated
  * protocol version to a thread with `capabilitiesForProtocol`.
  */
@@ -532,7 +532,7 @@ export async function probeCapabilities(
   const process = spawnOmpProcess({
     threadId,
     folder: FolderPath.parse(probeCwd),
-    ompBin: options.ompBin,
+    chatCommand: options.chatCommand,
     args: [...PROBE_OMP_ARGS],
     env: probeEnv,
     terminationGraceMs: Math.min(timeoutMs, 1_000),

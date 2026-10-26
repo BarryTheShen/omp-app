@@ -167,7 +167,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         env: { FAKE_OMP_PASSTHROUGH_CHECK: "isolated-value" },
       }),
     );
@@ -189,7 +189,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         env: { PI_CONFIG_FILES: configured },
       }),
     );
@@ -211,7 +211,7 @@ describe("OmpProcess spawn and stdio", () => {
     const policy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
     const startProcess = async (): Promise<void> => {
       const process = track(
-        spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }),
+        spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
       );
       await process.start();
       await waitForFrame(process, (frame) => frame.type === "ready");
@@ -230,7 +230,9 @@ describe("OmpProcess spawn and stdio", () => {
     const policy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
     await mkdir(join(folder, ".omp", "app"), { recursive: true });
     await writeFile(policy, "codexResets:\n  autoRedeem: yes\n");
-    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
+    const process = track(
+      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+    );
     await process.start();
     await waitForFrame(process, (frame) => frame.type === "ready");
     await process.stop();
@@ -248,7 +250,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         env: { OMP_APP_DATA_DIR: appData },
       }),
     );
@@ -273,7 +275,7 @@ describe("OmpProcess spawn and stdio", () => {
           threadId,
           folder,
           homeDir: folder,
-          ompBin: FAKE_OMP,
+          chatCommand: [FAKE_OMP],
           env: { OMP_APP_DATA_DIR: appData },
         }),
       );
@@ -287,7 +289,9 @@ describe("OmpProcess spawn and stdio", () => {
 
   test("round-trips a written command as the fake's echoed response", async () => {
     const folder = await temporaryFolder();
-    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
+    const process = track(
+      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+    );
     await process.start();
     await waitForFrame(process, (frame) => frame.type === "ready");
 
@@ -299,7 +303,9 @@ describe("OmpProcess spawn and stdio", () => {
 
   test("rejects start() once stopped, and stop() is idempotent", async () => {
     const folder = await temporaryFolder();
-    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
+    const process = track(
+      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+    );
     await process.start();
     await waitForFrame(process, (frame) => frame.type === "ready");
 
@@ -339,7 +345,9 @@ describe("OmpProcess shutdown", () => {
   test("stop() sends SIGTERM and resolves without secrets leaking into any event", async () => {
     const folder = await temporaryFolder();
     const events: OmpProcessEvent[] = [];
-    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
+    const process = track(
+      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+    );
     process.onEvent((event) => events.push(event));
     let closedWith: unknown;
     process.onClose((cause) => {
@@ -363,7 +371,7 @@ describe("OmpProcess shutdown", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         env: { FAKE_OMP_IGNORE_SIGTERM: "1" },
         terminationGraceMs: 25,
         timer,
@@ -391,7 +399,7 @@ describe("OmpProcess shutdown", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         terminationGraceMs: 25,
         timer,
         spawn: spawnWhoseFirstStopWaitFails(),
@@ -422,7 +430,7 @@ describe("OmpProcess crash handling", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         env: { FAKE_OMP_EXIT_CODE: "9", FAKE_OMP_STDERR: "diagnostic: fixture crash" },
       }),
     );
@@ -452,7 +460,7 @@ describe("OmpProcess crash handling", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         env: { FAKE_OMP_EXIT_CODE: "3", FAKE_OMP_STDERR: `error: provider rejected key ${key}` },
       }),
     );
@@ -471,7 +479,7 @@ describe("OmpProcess crash handling", () => {
         threadId,
         folder,
         homeDir: folder,
-        ompBin: FAKE_OMP,
+        chatCommand: [FAKE_OMP],
         maxStderrBytes: 2500,
         env: { FAKE_OMP_EXIT_CODE: "1", FAKE_OMP_STDERR: head + tail },
       }),

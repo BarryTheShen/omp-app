@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { APP_ROOT, expect, REAL_OMP, realTest, sendPrompt, startChat } from "./real-omp";
+import { APP_ROOT, expect, realTest, sendPrompt, startChat } from "./real-omp";
 
 realTest.setTimeout(300_000);
 
@@ -24,20 +24,20 @@ const EXTENSION_SOURCE = `export default function startupNotice(pi) {
 `;
 
 /**
- * omp does not load a file seeded in the agent's extensions folder here (its discovery skips it in this run), but it
- * loads any file named with `--extension`. This wrapper runs the real omp with that flag and the run's agent folder.
+ * A chat does not load a file seeded in the agent's extensions folder here (its discovery skips it in this run), but it
+ * loads any file named with `--extension`. This wrapper adds that flag, with the run's agent folder, to every chat's command.
  */
 const DATA_DIR = join(APP_ROOT, ".data");
 mkdirSync(DATA_DIR, { recursive: true });
 const OMP_WITH_EXTENSION = join(DATA_DIR, "omp-app-786-omp-with-extension.sh");
 writeFileSync(
   OMP_WITH_EXTENSION,
-  `#!/bin/sh\nexec '${REAL_OMP}' --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}" "$@"\n`,
+  `#!/bin/sh\nexec "$@" --extension "$PI_CODING_AGENT_DIR/extensions/${EXTENSION_FILE}"\n`,
 );
 chmodSync(OMP_WITH_EXTENSION, 0o755);
 
 realTest.use({
-  ompBinary: OMP_WITH_EXTENSION,
+  chatWrapper: OMP_WITH_EXTENSION,
   seedExtensions: { [EXTENSION_FILE]: EXTENSION_SOURCE },
 });
 
