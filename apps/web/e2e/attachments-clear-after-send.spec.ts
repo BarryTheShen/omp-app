@@ -6,6 +6,8 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 
 const ATTACHMENTS = '[data-slot="u2-composer-attachments"]';
 const SAVED = { timeout: 45_000 } as const;
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 async function addFile(page: Page, composer: Locator, name: string): Promise<void> {
   await composer.evaluate((input, fileName) => {
@@ -13,6 +15,23 @@ async function addFile(page: Page, composer: Locator, name: string): Promise<voi
     dataTransfer.items.add(new File(["attachment body"], fileName, { type: "text/plain" }));
     input.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
   }, name);
+  await expect(page.locator(ATTACHMENTS)).toContainText(name);
+}
+
+/**
+ * Drops one picture onto the composer. A picture is sent as a picture and stays a chip when its send fails; a text file
+ * is sent as a reference to a copy in the chat's folder, and a failed send keeps that reference instead (#2658).
+ */
+async function addPicture(page: Page, composer: Locator, name: string): Promise<void> {
+  await composer.evaluate(
+    (input, picture) => {
+      const bytes = Uint8Array.from(atob(picture.base64), (char) => char.charCodeAt(0));
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([bytes], picture.name, { type: "image/png" }));
+      input.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { name, base64: PNG_BASE64 },
+  );
   await expect(page.locator(ATTACHMENTS)).toContainText(name);
 }
 
@@ -125,16 +144,16 @@ realTest(
     });
     const composer = await startChat(page);
 
-    await addFile(page, composer, "kept-after-failure.txt");
+    await addPicture(page, composer, "kept-after-failure.png");
     // The chip gets its remove button when its upload has finished. Enter comes after that, as it does when a person
     // types after dropping a file.
-    await expect(page.getByRole("button", { name: "Remove kept-after-failure.txt" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove kept-after-failure.png" })).toBeVisible();
     failNextPrompt = true;
     await composer.fill("This send should fail before admission");
     await composer.press("Enter");
     await expect(page.locator('[data-composer-error="true"]')).toBeVisible({ timeout: 30_000 });
     // The send failed before omp took it: the chip is still in the composer, with the text.
-    await expect(page.locator(ATTACHMENTS)).toContainText("kept-after-failure.txt");
+    await expect(page.locator(ATTACHMENTS)).toContainText("kept-after-failure.png");
     await expect(composer).toHaveValue("This send should fail before admission");
 
     const composerArea = page.getByRole("region", { name: "Composer" });
@@ -152,9 +171,9 @@ realTest(
     // The saved draft keeps the attachment, and a reload restores it with the text.
     await expect
       .poll(() => storedAttachmentNames(realApp.appDataDir, "folders"), SAVED)
-      .toEqual(["kept-after-failure.txt"]);
+      .toEqual(["kept-after-failure.png"]);
     await page.reload();
-    await expect(page.locator(ATTACHMENTS)).toContainText("kept-after-failure.txt", {
+    await expect(page.locator(ATTACHMENTS)).toContainText("kept-after-failure.png", {
       timeout: 60_000,
     });
     await expect(composer).toHaveValue("This send should fail before admission");

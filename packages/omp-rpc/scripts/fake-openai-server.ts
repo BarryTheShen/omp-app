@@ -308,11 +308,15 @@ function namedBackgroundStart(prompt: string): Reply | undefined {
 }
 
 /**
- * `read_pasted_reference local://paste-N.md` makes the model read that reference with omp's own `read` tool, once. The
- * reply after the read is plain text, so the read's result is what the chat holds for the file.
+ * `read_pasted_reference local://paste-N.md` makes the model read that reference with omp's own `read` tool, once, and
+ * `read_attached_file` the first `local://` reference anywhere in the message (a text file attached in the composer is
+ * cited on a line of its own, #2658). The reply after the read is plain text, so the read's result is what the chat
+ * holds for the file.
  */
 function readPastedReferenceStart(prompt: string): Reply | undefined {
-  const reference = /read_pasted_reference (local:\/\/paste-\d+\.md)/.exec(prompt)?.[1];
+  const reference =
+    /read_pasted_reference (local:\/\/paste-\d+\.md)/.exec(prompt)?.[1] ??
+    (prompt.includes("read_attached_file") ? /(local:\/\/[\w.-]+)/.exec(prompt)?.[1] : undefined);
   if (reference === undefined) return undefined;
   return { tool: "read", args: { path: reference }, id: "call_read_pasted_reference" };
 }

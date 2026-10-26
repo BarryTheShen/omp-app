@@ -45,6 +45,7 @@ export function DraftComposer({
   onDoubleLeftArrow,
   sendBlockedReason,
   savePasteFile,
+  saveTextAttachment,
   placeholder,
 }: {
   readonly controller: DraftController;
@@ -71,6 +72,8 @@ export function DraftComposer({
   readonly sendBlockedReason?: string;
   /** Saves a large paste's full text as a file the chat's agent reads; the composer puts the reference in the box. */
   readonly savePasteFile?: (text: string) => Promise<string>;
+  /** Saves a text file attached in the composer as a file the chat's agent reads; the send cites its reference (issue 2658). */
+  readonly saveTextAttachment?: (name: string, text: string) => Promise<string>;
   readonly placeholder: string | undefined;
   readonly onDoubleLeftArrow: () => void;
 }) {
@@ -111,7 +114,7 @@ export function DraftComposer({
     return () => controller.setLifecycleReader(undefined);
   }, [controller, lifecycleReader]);
   useComposerDraftOwner(controller);
-  const { beginSend, endSend } = useComposerDraft({
+  const { beginSend, endSend, citeTextFiles } = useComposerDraft({
     chat,
     controller,
     switching,
@@ -121,7 +124,10 @@ export function DraftComposer({
     isRecalledPrompt,
     hold,
   });
-  const holdDraft = useMemo(() => ({ begin: beginSend, end: endSend }), [beginSend, endSend]);
+  const holdDraft = useMemo(
+    () => ({ begin: beginSend, end: endSend, cite: citeTextFiles }),
+    [beginSend, endSend, citeTextFiles],
+  );
   // assistant-ui keeps its own composer attachment list in the runtime. Clear that list when the draft owner changes,
   // before a New chat can submit it; U2's attachment manager is restored separately by useComposerDraft.
   const previousChat = useRef(chat);
@@ -144,6 +150,7 @@ export function DraftComposer({
       submitPrompt={submit}
       holdDraft={holdDraft}
       savePasteFile={savePasteFile}
+      saveTextAttachment={saveTextAttachment}
       toolbar={toolbar}
       voice={voice}
       onDoubleLeftArrow={onDoubleLeftArrow}

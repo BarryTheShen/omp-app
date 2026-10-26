@@ -14,6 +14,8 @@ export {
   attachmentHoldReason,
   classifyLargePaste,
   DEFAULT_LARGE_PASTE_LINE_THRESHOLD,
+  isCitedTextRef,
+  isPastedTextName,
   pastedTextName,
   withPastedText,
 } from "./attachments";

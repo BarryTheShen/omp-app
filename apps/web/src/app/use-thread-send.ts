@@ -14,7 +14,7 @@ import type { OmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import type { ThreadScrollController } from "@/modules/U1/scroll/thread-scroll-controller";
 import type { AttachmentManager } from "@/modules/U2/attachments";
-import { withPastedText } from "@/modules/U2/attachments";
+import { isCitedTextRef, withPastedText } from "@/modules/U2/attachments";
 import type { PromptIntent } from "@/modules/U2/contract";
 import type { UseChatDraftResult } from "@/modules/U2/drafts/use-chat-draft";
 import type { OverlayHostApi } from "@/overlay";
@@ -158,9 +158,14 @@ export function useThreadSend({
     // The draft keeps the text until the send is admitted. The send goes to the chat that is open when it is delivered,
     // carrying the attachments this composer held at Enter (`holdForSend`, issue 2681), or holds now when no send kept them:
     // that chat's view may be another one, which holds none of them.
-    const attachments: SendAttachments = attachmentManager.takeHeldForSend() ?? {
+    const carried = attachmentManager.takeHeldForSend() ?? {
       refs: attachmentManager.toDraftRefs(),
       complete: attachmentManager.getState().complete,
+    };
+    // A text file the message cites by reference went into the chat's folder, not with the prompt (issue 2658).
+    const attachments: SendAttachments = {
+      refs: carried.refs.filter((ref) => !isCitedTextRef(ref)),
+      complete: carried.complete,
     };
     // A later New chat waits for this ticket's full draft submission, including clearing or restoring its text.
     const newChatTicket = newChatTicketNow();

@@ -70,6 +70,12 @@ export function useThreadServices({
     async (text: string) => (await pasteFiles.save({ threadId, text })).reference,
     [pasteFiles, threadId],
   );
+  // A text file attached in the composer is saved into the chat's `local` folder at send, and cited by its reference (issue 2658).
+  const saveTextAttachment = useCallback(
+    async (name: string, text: string) =>
+      (await pasteFiles.saveFile({ threadId, name, text })).reference,
+    [pasteFiles, threadId],
+  );
   const agents = useThreadAgents({
     threadId,
     store,
@@ -87,6 +93,7 @@ export function useThreadServices({
     guardedSend,
     messageSend,
     savePasteFile,
+    saveTextAttachment,
     agents,
   };
 }

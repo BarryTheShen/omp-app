@@ -4,12 +4,13 @@ import type { A1PortContext } from "./context";
 import { assertNotAborted, createA1PortRegistration } from "./helper";
 
 /**
- * The session file a paste is saved beside. An open chat's file comes first: a new chat's omp names its file before
- * it writes it, so the file may not be on disk yet. A saved chat is found on disk.
+ * The session file a paste or an attached file is saved beside. An open chat's file comes first: a new chat's omp names
+ * its file before it writes it, so the file may not be on disk yet. A saved chat is found on disk.
  */
 export async function resolveChatSessionFile(
   context: Pick<A1PortContext, "openSessionFile" | "sessionFileStore">,
   threadId: ThreadId,
+  what = "the pasted text",
 ): Promise<SessionFilePath> {
   const open = context.openSessionFile(threadId);
   if (open !== undefined) return open;
@@ -18,7 +19,7 @@ export async function resolveChatSessionFile(
   if (parsed?.success) return parsed.data;
   throw new AppFailure({
     code: "not_found",
-    message: "The chat could not be found, so the pasted text was not saved.",
+    message: `The chat could not be found, so ${what} was not saved.`,
     retryable: false,
   });
 }
@@ -31,6 +32,15 @@ export function createPasteFileStoreRegistration(context: A1PortContext): PortRe
         assertNotAborted(handlerContext);
         const sessionFile = await resolveChatSessionFile(context, args.threadId);
         return context.pasteFileStore.save({ sessionFile, text: args.text });
+      },
+      saveFile: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        const sessionFile = await resolveChatSessionFile(
+          context,
+          args.threadId,
+          "the attached file",
+        );
+        return context.pasteFileStore.saveFile({ sessionFile, name: args.name, text: args.text });
       },
     },
     context.publish,

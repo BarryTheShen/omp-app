@@ -126,6 +126,7 @@ function ActiveThreadReady({
     guardedSend,
     messageSend,
     savePasteFile,
+    saveTextAttachment,
     agents,
   } = useThreadServices({ store, threadId, catalog, client, capabilities, p3Runs });
   const {
@@ -422,6 +423,7 @@ function ActiveThreadReady({
           onDoubleLeftArrow={openAgentHub}
           policy={resolveQueueSubmitPolicy}
           savePasteFile={savePasteFile}
+          saveTextAttachment={saveTextAttachment}
           sendBlockedReason={sendBlockedReason}
           submit={submit}
           toolbar={area("composerToolbar")}

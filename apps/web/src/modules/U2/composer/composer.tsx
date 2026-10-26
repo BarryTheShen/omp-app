@@ -45,6 +45,7 @@ import { readDesktopClipboardPicture } from "./clipboard-pictures";
 import { useLargePasteMenuThreshold } from "./large-paste-menu";
 import { offeredFiles, refusalNotice } from "./refused-files";
 import { useRemeasureOnWidthChange } from "./remeasure";
+import { withTextFilesSaved } from "./text-files";
 
 export interface ComposerSurfaceProps {
   readonly placeholder?: string;
@@ -57,7 +58,12 @@ export interface ComposerSurfaceProps {
    * Keeps the box apart from the draft while a send is in flight (`useComposerDraft`'s `beginSend` and `endSend`): the
    * box empties at Enter and takes new text during the send (issue 2659). Without it the box is locked until the send settles.
    */
-  readonly holdDraft?: { readonly begin: () => void; readonly end: () => void };
+  readonly holdDraft?: {
+    readonly begin: () => void;
+    readonly end: () => void;
+    /** The message cites its text files by reference: the draft drops their chips, before its prompt (issue 2658). */
+    readonly cite?: () => void;
+  };
   /** The text box's accessible name. An edit box names itself, so it is not confused with the composer. */
   readonly inputLabel?: string;
   /**
@@ -89,6 +95,12 @@ export interface ComposerSurfaceProps {
    * (for example `local://paste-1.md`). Without it the choice offers only the wrapped block and inline.
    */
   readonly savePasteFile?: (text: string) => Promise<string>;
+  /**
+   * Saves a text file attached in the composer as a file the chat's agent can read, and returns its reference (for
+   * example `local://notes.txt`). A send then cites each text file by it, since omp's prompt carries pictures only
+   * (issue 2658). Without it (the edit box), text files go as attachments, as before.
+   */
+  readonly saveTextAttachment?: (name: string, text: string) => Promise<string>;
   /** Gives lifecycle persistence access to the textarea's latest DOM value. */
   readonly onInputRef?: (input: HTMLTextAreaElement | null) => void;
 }
@@ -218,6 +230,7 @@ export function ComposerSurface({
   showAttachmentNames = true,
   toolbar,
   savePasteFile,
+  saveTextAttachment,
   onInputRef,
   onDoubleLeftArrow,
   children,
@@ -305,30 +318,14 @@ export function ComposerSurface({
       const isCommand = command.mode !== "prompt";
       // A bare `!` or `$` has no command to run: nothing is sent and the line stays.
       if (isCommand && command.text.length === 0) return;
-      let intents: readonly PromptIntent[] = [];
-      try {
-        if (isCommand) {
-          if (attachments.length > 0) {
-            throw new AppFailure({
-              code: "invalid_args",
-              message: "Remove the attachments to run a bash or Python command",
-              retryable: false,
-            });
-          }
-        } else {
-          const input = decisionInput(text, attachments, isStreaming, keyChord);
-          const result = delivery === undefined ? policy(input) : { delivery };
-          intents = intentsForDecision(result, text, attachments);
-          if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
-            throw new AppFailure({
-              code: "invalid_args",
-              message: "A turn is running: choose steer or follow-up",
-              retryable: false,
-            });
-          }
-        }
-      } catch (cause) {
-        setError(appFailure(cause).appError);
+      if (isCommand && attachments.length > 0) {
+        setError(
+          new AppFailure({
+            code: "invalid_args",
+            message: "Remove the attachments to run a bash or Python command",
+            retryable: false,
+          }).appError,
+        );
         return;
       }
       setError(null);
@@ -339,6 +336,25 @@ export function ComposerSurface({
         if (isCommand) {
           await submitModeInput(command, "new", capabilities, submitPrompt);
         } else {
+          // omp's prompt carries pictures only: each text file goes as a copy in the chat's folder, cited by its
+          // reference (issue 2658). A failed save sends nothing, and the draft keeps the text and its chips.
+          const sending =
+            saveTextAttachment === undefined
+              ? { text, attachments }
+              : await withTextFilesSaved(text, attachments, saveTextAttachment);
+          // The policy decides once, on the message as sent: a split carries the references too.
+          const input = decisionInput(sending.text, sending.attachments, isStreaming, keyChord);
+          const result = delivery === undefined ? policy(input) : { delivery };
+          const intents = intentsForDecision(result, sending.text, sending.attachments);
+          if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
+            throw new AppFailure({
+              code: "invalid_args",
+              message: "A turn is running: choose steer or follow-up",
+              retryable: false,
+            });
+          }
+          // The message cites its text files now, so the draft drops their chips before it records the send.
+          if (sending.attachments.length < attachments.length) holdDraft?.cite?.();
           for (const intent of intents) await submitPrompt(intent);
         }
         if (holdDraft === undefined && latestText.current === submittedText) await composer.reset();
@@ -361,6 +377,7 @@ export function ComposerSurface({
       isSubmitting,
       policy,
       notSentReason,
+      saveTextAttachment,
       submitPrompt,
       text,
     ],

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppFailure, SessionFilePath } from "@omp-app/contracts";
-import { createPasteFileStore, localRootOf } from "./paste-file-store";
+import { createPasteFileStore, localRootOf, safeLocalFileName } from "./paste-file-store";
 
 let root: string;
 
@@ -80,6 +80,73 @@ describe("paste file store", () => {
     expect(failure.appError.code).toBe("internal");
     expect(failure.appError.message).toBe(
       "The pasted text could not be saved to the chat's folder.",
+    );
+    expect(failure.appError.message).not.toContain(root);
+  });
+});
+
+describe("attached text files (#2658)", () => {
+  test("are saved under their own name in the chat's local folder, with the local:// reference the message cites", async () => {
+    const sessionFile = sessionFileIn(root);
+    const saved = await createPasteFileStore().saveFile({
+      sessionFile,
+      name: "notes.txt",
+      text: "The secret word is PINEAPPLE.",
+    });
+    expect(saved).toEqual({ name: "notes.txt", reference: "local://notes.txt" });
+    expect(await readFile(join(localRootOf(sessionFile), "notes.txt"), "utf8")).toBe(
+      "The secret word is PINEAPPLE.",
+    );
+  });
+
+  test("a name that is taken gets the next free number, and the file already there is kept", async () => {
+    const sessionFile = sessionFileIn(root);
+    const folder = localRootOf(sessionFile);
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "notes.txt"), "earlier");
+    const store = createPasteFileStore();
+
+    expect((await store.saveFile({ sessionFile, name: "notes.txt", text: "a" })).name).toBe(
+      "notes-2.txt",
+    );
+    expect((await store.saveFile({ sessionFile, name: "notes.txt", text: "b" })).name).toBe(
+      "notes-3.txt",
+    );
+    expect((await store.saveFile({ sessionFile, name: "README", text: "c" })).name).toBe("README");
+    expect((await store.saveFile({ sessionFile, name: "README", text: "d" })).name).toBe(
+      "README-2",
+    );
+
+    expect(await readFile(join(folder, "notes.txt"), "utf8")).toBe("earlier");
+    expect(await readFile(join(folder, "notes-3.txt"), "utf8")).toBe("b");
+  });
+
+  test("a name is made safe for the folder: no path, no hidden file, no spaces", () => {
+    expect(safeLocalFileName("../../etc/passwd")).toBe("passwd");
+    expect(safeLocalFileName("C:\\Users\\me\\report.md")).toBe("report.md");
+    expect(safeLocalFileName(".env")).toBe("env");
+    expect(safeLocalFileName("meeting notes (draft).txt")).toBe("meeting-notes-draft.txt");
+    expect(safeLocalFileName("résumé.md")).toBe("resume.md");
+    expect(safeLocalFileName("日本語.txt")).toBe("attachment.txt");
+    expect(safeLocalFileName("///")).toBe("attachment");
+    const long = safeLocalFileName(`${"a".repeat(300)}.markdown`);
+    expect(long.length).toBe(100);
+    expect(long.endsWith(".markdown")).toBe(true);
+  });
+
+  test("a folder that cannot be created fails with a plain message that names the file, not a path", async () => {
+    const sessionFile = sessionFileIn(root);
+    await mkdir(join(root, "sessions"), { recursive: true });
+    await writeFile(sessionFile.slice(0, -".jsonl".length), "not a folder");
+
+    const failure: unknown = await createPasteFileStore()
+      .saveFile({ sessionFile, name: "notes.txt", text: "x" })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AppFailure);
+    if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+    expect(failure.appError.message).toBe(
+      "The attached file could not be saved to the chat's folder.",
     );
     expect(failure.appError.message).not.toContain(root);
   });

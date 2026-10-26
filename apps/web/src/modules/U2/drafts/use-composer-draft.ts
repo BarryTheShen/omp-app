@@ -1,6 +1,6 @@
 import type { AttachmentRef } from "@omp-app/contracts";
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import type { AttachmentManager } from "../attachments";
+import { type AttachmentManager, isCitedTextRef } from "../attachments";
 import type { DraftController } from "./drafts";
 
 /** The composer's text, as the draft binding sets it. */
@@ -52,6 +52,12 @@ export interface ComposerSendHold {
   readonly beginSend: () => void;
   /** Once the send has settled: what was typed meanwhile becomes the draft, or the box shows what the draft holds. */
   readonly endSend: () => void;
+  /**
+   * During the send, before its prompt: the message cites every text file by reference (issue 2658), so the draft drops their
+   * chips (`isCitedTextRef`: `text/*`, not a pasted-text chip). A send that fails keeps its references without the files, and a
+   * retry does not save them again.
+   */
+  readonly citeTextFiles: () => void;
 }
 
 /**
@@ -326,5 +332,13 @@ export function useComposerDraft({
     held.release();
   }, [attachments, attachmentsToSave, chat, composer, controller, restoreAttachments]);
 
-  return { beginSend, endSend };
+  const citeTextFiles = useCallback(() => {
+    if (sending.current === null) return;
+    const current = controller.getSnapshot();
+    const kept = current.attachments.filter((ref) => !isCitedTextRef(ref));
+    if (kept.length === current.attachments.length) return;
+    controller.setDraft(current.text, kept);
+  }, [controller]);
+
+  return { beginSend, endSend, citeTextFiles };
 }

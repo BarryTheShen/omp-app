@@ -437,6 +437,19 @@ export function pastedTextName(sequence: number, lineCount: number): string {
 /** The name `pastedTextName` gives. Any other attachment is a file the person chose, and is sent as it always was. */
 const PASTED_TEXT_NAME = /^Pasted text \d+ \(\d+ lines\)\.txt$/;
 
+/** Whether a name is a pasted-text chip's: its text is sent as omp's wrapped block (`withPastedText`), never as a file. */
+export function isPastedTextName(name: string): boolean {
+  return PASTED_TEXT_NAME.test(name);
+}
+
+/**
+ * Whether a draft's attachment is a text file the message cites by reference (issue 2658): `text/*`, and not a pasted-text
+ * chip. The composer saves such a file into the chat's folder at send; the draft and the send then leave its ref out.
+ */
+export function isCitedTextRef(ref: AttachmentRef): boolean {
+  return ref.mediaType.startsWith("text/") && !isPastedTextName(ref.name);
+}
+
 function unreadablePaste(): AppFailure {
   return new AppFailure({
     code: "internal",
