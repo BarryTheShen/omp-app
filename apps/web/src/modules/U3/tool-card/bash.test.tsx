@@ -105,6 +105,58 @@ describe("BashCard notes omp adds to a failed command", () => {
     expect(screen.getByText("No output")).toBeTruthy();
     expect(screen.queryByTestId("u3-bash-stdout")).toBeNull();
   });
+
+  test("omp's notices after the wall time (a missing pty) are not shown as output (#2666)", () => {
+    const listing = {
+      content: [
+        {
+          type: "text",
+          text: "total 8\nfile-a\n\nWall time: 1.20 seconds\npty requested but unavailable in this environment; ran without a terminal",
+        },
+      ],
+      details: { wallTimeMs: 1200, wallTimeNoticeEmitted: true },
+    };
+    render(<BashCard rendererProps={props(listing)} />);
+    expandToolCards();
+    expect(screen.getByTestId("u3-bash-stdout").querySelector("pre")?.textContent).toBe(
+      "total 8\nfile-a",
+    );
+  });
+
+  test("a notice with no wall time before it is not shown either, and a fast command's own paragraph stays", () => {
+    const quick = {
+      content: [
+        {
+          type: "text",
+          text: "first\n\nWall time: 0.01 seconds\n\npty requested but unavailable in this environment; ran without a terminal",
+        },
+      ],
+      details: { wallTimeMs: 10, wallTimeNoticeEmitted: false },
+    };
+    render(<BashCard rendererProps={props(quick)} />);
+    expandToolCards();
+    // The command printed the wall-time-looking paragraph itself: omp wrote no wall time for a run this short.
+    expect(screen.getByTestId("u3-bash-stdout").querySelector("pre")?.textContent).toBe(
+      "first\n\nWall time: 0.01 seconds",
+    );
+  });
+
+  test("a long command that printed nothing shows no output, not omp's placeholder and notices (#2666)", () => {
+    const silent = {
+      content: [
+        {
+          type: "text",
+          text: "(no output)\n\nWall time: 62.00 seconds\npty requested but unavailable in this environment; ran without a terminal\n\nCommand exited with code 1",
+        },
+      ],
+      details: { wallTimeMs: 62003, wallTimeNoticeEmitted: true, exitCode: 1 },
+    };
+    render(<BashCard rendererProps={props(silent)} />);
+    expandToolCards();
+    expect(screen.getByText("No output")).toBeTruthy();
+    expect(screen.queryByTestId("u3-bash-stdout")).toBeNull();
+    expect(screen.getByText("Command exited with code 1.")).toBeTruthy();
+  });
 });
 
 describe("BashCard", () => {

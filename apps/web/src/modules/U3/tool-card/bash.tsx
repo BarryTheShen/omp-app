@@ -248,10 +248,42 @@ const BashCommandResultSchema = z.looseObject({
   stderr: z.string().optional(),
 });
 
-/** omp appends "Wall time: N seconds" to the text it sends the model; the card shows wall time apart. */
-const WALL_TIME_SUFFIX = /\n*Wall time: [\d.]+ seconds?\s*$/;
-/** omp adds "Command exited with code N" after the wall time, for a failed command; the card shows the exit code apart. */
+/** omp's wall-time notice, the first of its notices after the output; the card shows wall time apart. */
+const WALL_TIME_LINE = /^Wall time: [\d.]+ seconds?$/;
+/**
+ * omp's other notices for the model after a command's output (omp v18.12.6 `packages/coding-agent/src/tools/bash.ts`:
+ * the timeout clamp `:490-501`, the ignored `ready` `:1047`, the missing pty `:1593`, the busy session shell `:450-451`).
+ * None of them is something the command printed.
+ */
+const OMP_NOTICE_LINES: readonly RegExp[] = [
+  /^Timeout clamped to \d+s \(requested \d+s; [^)]*\)\.$/,
+  /^Ignored ready: service-only, and no service name was given\.$/,
+  /^pty requested but unavailable in this environment; ran without a terminal$/,
+  /^Ran in a temporary shell while the session shell is busy with another command: .+$/,
+];
+/** omp adds "Command exited with code N" after its notices, for a failed command; the card shows the exit code apart. */
 const EXIT_CODE_SUFFIX = /\n*Command exited with code -?\d+\s*$/;
+/** What omp's bash tool sends the model for a command that printed nothing (v18.12.6 `tools/bash.ts:670-673`). */
+const NO_OUTPUT_PLACEHOLDER = "(no output)";
+
+/**
+ * The text without omp's notice block: after the output, omp writes a blank line, then its notices one to a line, the
+ * wall time first (v18.12.6 `tools/bash.ts:723-737`). The block goes only when every one of its lines is one of omp's
+ * notices, and a wall-time line counts only when omp says it wrote one (`wallTime`): otherwise a last paragraph that
+ * reads like one is the command's own.
+ */
+function withoutNoticeBlock(text: string, wallTime: boolean): string {
+  const start = text.lastIndexOf("\n\n");
+  if (start < 0) return text;
+  const lines = text
+    .slice(start + 2)
+    .replace(/\n+$/, "")
+    .split("\n");
+  const first = lines[0] ?? "";
+  const notices = wallTime && WALL_TIME_LINE.test(first) ? lines.slice(1) : lines;
+  const ompNotice = (line: string) => OMP_NOTICE_LINES.some((pattern) => pattern.test(line));
+  return notices.every(ompNotice) ? text.slice(0, start) : text;
+}
 
 /** Reads bash output from either the agent's bash tool or the RPC bash command. */
 export function decodeBashResult(value: unknown): BashResult | undefined {
@@ -304,19 +336,19 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
       ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
     };
   }
-  // omp writes its notes after the output: the wall time (only for a run of a second or more), then the exit code of a
-  // failed command. The card shows both as facts of its own (the meta row and the banner), so neither is part of what
-  // the command printed. With `wallTimeNoticeEmitted: false` there is no footer: a last line that reads like one is
-  // the command's own (omp's renderer strips it only when the flag is not false, `packages/tui/src/tools/bash.ts:328-330`).
+  // omp writes its notes after the output: the wall time (only for a run of a second or more) and its other notices
+  // (a missing pty, a clamped timeout…), then the exit code of a failed command. The card shows wall time and exit code
+  // as facts of its own (the meta row and the banner), and the notices are for the model, so none of them is part of
+  // what the command printed. With `wallTimeNoticeEmitted: false` there is no wall-time line: a last line that reads
+  // like one is the command's own (omp's renderer strips it only when the flag is not false,
+  // `packages/tui/src/tools/bash.ts:328-330`).
   const withoutExitCode =
     details.exitCode === undefined || details.exitCode === 0
       ? text
       : text.replace(EXIT_CODE_SUFFIX, "");
-  const withoutWallTime =
-    details.wallTimeMs === undefined || details.wallTimeNoticeEmitted === false
-      ? withoutExitCode
-      : withoutExitCode.replace(WALL_TIME_SUFFIX, "");
-  const output = withoutWallTime.replace(/\n+$/, "");
+  const wallTime = details.wallTimeMs !== undefined && details.wallTimeNoticeEmitted !== false;
+  const printed = withoutNoticeBlock(withoutExitCode, wallTime).replace(/\n+$/, "");
+  const output = printed === NO_OUTPUT_PLACEHOLDER ? "" : printed;
   const lines = output.length === 0 ? 0 : output.split("\n").length;
   // omp records a cut in `details.meta.truncation`, and only when it cut the output.
   const meta = OutputMetaSchema.safeParse(details.meta);
