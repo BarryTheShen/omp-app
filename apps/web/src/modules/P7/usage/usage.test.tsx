@@ -1,4 +1,4 @@
-import type { UsageLimitsResult } from "@omp-app/contracts";
+import { AppFailure, type UsageLimitsResult } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { UsageLimitsSource, UsagePort, UsageSnapshot } from "../contract";
@@ -113,5 +113,54 @@ describe("P7 usage popover", () => {
     expect(
       await screen.findByText("omp reports no usage limits for your signed-in accounts."),
     ).toBeTruthy();
+  });
+
+  test("reads the open chat's session totals when the panel opens, without Refresh (#2651)", async () => {
+    const ready = usagePort().getSnapshot();
+    let snapshot: UsageSnapshot = { ...ready, status: "idle", totals: null, lastTurn: null };
+    const listeners = new Set<(next: UsageSnapshot) => void>();
+    let reads = 0;
+    const port: UsagePort = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      refresh: async () => {
+        reads += 1;
+        snapshot = ready;
+        for (const listener of listeners) listener(snapshot);
+        return snapshot;
+      },
+    };
+    render(<UsagePopover limits={limitsSource(readyLimits)} port={port} />);
+    fireEvent.click(screen.getByRole("button", { name: /Usage/ }));
+    expect(await screen.findByText("$1.25")).toBeTruthy();
+    expect(reads).toBe(1);
+  });
+
+  test("says why the session's usage could not be read, in place of an empty section", async () => {
+    const empty: UsageSnapshot = {
+      ...usagePort().getSnapshot(),
+      status: "idle",
+      totals: null,
+      lastTurn: null,
+    };
+    const port: UsagePort = {
+      getSnapshot: () => empty,
+      subscribe: () => () => undefined,
+      refresh: async () => {
+        throw new AppFailure({
+          code: "internal",
+          message: "Loading session usage failed.",
+          retryable: true,
+        });
+      },
+    };
+    render(<UsagePopover limits={limitsSource(readyLimits)} port={port} />);
+    fireEvent.click(screen.getByRole("button", { name: /Usage/ }));
+    expect(await screen.findByText("Loading session usage failed.")).toBeTruthy();
   });
 });

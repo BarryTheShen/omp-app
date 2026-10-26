@@ -1,5 +1,5 @@
 import { Popover } from "@base-ui/react/popover";
-import type { UsageLimitsResult } from "@omp-app/contracts";
+import { AppFailure, type UsageLimitsResult } from "@omp-app/contracts";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import type { UsageLimitsSource, UsagePort, UsageTotals } from "../contract";
@@ -157,18 +157,33 @@ export function UsagePopover({
 }) {
   const snapshot = useUsageSnapshot(port);
   const [busy, setBusy] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
   const [limitsKey, setLimitsKey] = useState(0);
-  const refresh = async () => {
+  // The session's totals come from omp's `get_session_stats` (see `createUsagePort`): omp streams none, so they are read
+  // each time the panel opens, not only on Refresh (#2651). A failed read says why, in place of an empty section.
+  const readSession = useCallback(async () => {
     setBusy(true);
+    setReadError(null);
     try {
       await port.refresh();
+    } catch (cause) {
+      setReadError(
+        cause instanceof AppFailure ? cause.appError.message : "Loading session usage failed.",
+      );
     } finally {
       setBusy(false);
-      setLimitsKey((key) => key + 1);
     }
+  }, [port]);
+  const refresh = async () => {
+    await readSession();
+    setLimitsKey((key) => key + 1);
   };
   return (
-    <Popover.Root>
+    <Popover.Root
+      onOpenChange={(open) => {
+        if (open) void readSession();
+      }}
+    >
       <Popover.Trigger
         render={
           <Button
@@ -219,6 +234,16 @@ export function UsagePopover({
             {snapshot.status === "error" ? (
               <p role="alert" className="text-sm text-destructive">
                 {snapshot.error?.message ?? "Usage unavailable."}
+              </p>
+            ) : null}
+            {readError !== null ? (
+              <p role="alert" className="text-sm text-destructive">
+                {readError}
+              </p>
+            ) : null}
+            {!snapshot.totals && busy && snapshot.status !== "loading" ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                Reading this chat's usage…
               </p>
             ) : null}
             {snapshot.totals ? <UsageTotalsTable title="Session" totals={snapshot.totals} /> : null}
