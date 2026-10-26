@@ -92,13 +92,14 @@ flowchart LR
     D --> S
   end
   R0 <-->|"WebSocket: typed ports"| D
-  P <-->|"JSONL RPC over stdio"| O["omp's command line, built by the app<br/>--mode rpc-ui (one process per thread)"]
+  P <-->|"today: omp's JSONL RPC over stdio<br/>H5: the app's own protocol"| O["chat host, built by the app from omp's package<br/>(one process per thread; H5: on omp's SDK)"]
 ```
 
-- **One chat process per open thread**: omp's own command line in `--mode rpc-ui`, in the thread's folder, speaking omp's JSONL RPC to the server (`packages/omp-rpc`). The app builds it from the omp package it pins (`packages/server/scripts/build-chat-host.ts`), and the packages ship it compiled (`/usr/lib/omp-app/chat-host`); `chatCommand()` (`packages/server/src/omp-host/chat-command.ts`) starts it. The omp release the app downloads still answers omp's own commands (version, models, usage, config).
+- **Direction since 2026-10-26: omp's SDK only** (`reassessment/SDK-CHAT-HOST-PLAN.md`, module H5). Each chat process becomes the app's own chat host, which builds its session with omp's SDK and speaks the app's own protocol to the server. omp's RPC mode leaves the app.
+- **One chat process per open thread, today:** omp's own command line, built by the app from the omp package it pins (`packages/server/scripts/build-chat-host.ts`). The packages ship it compiled (`/usr/lib/omp-app/chat-host`), and `chatCommand()` (`packages/server/src/omp-host/chat-command.ts`) starts it. It still runs omp's RPC mode (`packages/omp-rpc`) until H5 replaces that. The same build answers omp's own commands (version, models, usage, config).
 - **The browser never parses omp's output itself.** All events go through one store (R0), and one function turns omp messages into assistant-ui messages. Every other module reads that store.
 - **Server state goes through typed ports** (`packages/contracts/src/ports/`): settings come from omp's own config files, plus app-only data (drafts, plan documents, checkpoints) in the app's data folder.
-- **Features omp cannot do over RPC** are gated by a capability with a visible reason (`upstream.*`), never faked.
+- **A feature the app does not offer yet** is gated by a capability with a visible reason, never faked. H5 brings omp's remaining terminal features through the SDK.
 
 ## Hard rules
 
@@ -119,7 +120,7 @@ From `AGENTS.md` (approved by the owner):
 | Path | What it is |
 |---|---|
 | `packages/contracts` | C0: shared types, ids, ports, descriptors, errors (`AppFailure`), the omp feature inventory, fixture format |
-| `packages/omp-rpc` | A0: omp's JSONL frame decoder, `RpcSession`, recorded fixtures |
+| `packages/omp-rpc` | A0 today: omp's JSONL frame decoder, `RpcSession`, recorded fixtures (removed by H5.6) |
 | `packages/client` | A0: the browser's WebSocket client with typed port proxies, reconnect and resume |
 | `packages/server` | A0 server shell and process registry; A1 stores under `src/modules/A1/` |
 | `apps/web` | The web app: U0 shell and tokens, R0 runtime, and one folder per module under `src/modules/` |
