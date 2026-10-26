@@ -714,20 +714,19 @@ describe("SessionCatalogSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
     const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
     const rename = within(menu).getByRole("menuitem", { name: "Rename Newest chat" });
-    expect((rename as HTMLButtonElement).disabled).toBe(true);
+    expect(rename.getAttribute("aria-disabled")).toBe("true");
     expect(rename.getAttribute("title")).toBeTruthy();
-    expect(
-      (within(menu).getByRole("menuitem", { name: "Archive Newest chat" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(
-      (within(menu).getByRole("menuitem", { name: "Delete Newest chat" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(
-      (within(menu).getByRole("menuitem", { name: "Pin Newest chat" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    for (const name of ["Archive Newest chat", "Delete Newest chat", "Pin Newest chat"]) {
+      const item = within(menu).getByRole("menuitem", { name });
+      // aria-disabled, not disabled: each keeps the pointer, so its title shows (#2657).
+      expect(item.getAttribute("aria-disabled"), name).toBe("true");
+      expect((item as HTMLButtonElement).disabled, name).toBe(false);
+      expect(item.getAttribute("title"), name).toBeTruthy();
+    }
+    // Choosing an unavailable item does nothing.
+    fireEvent.click(rename);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Pin Newest chat" }));
+    expect(screen.queryByRole("textbox", { name: /Rename/ })).toBeNull();
     expect(calls).toEqual([]);
   });
 
@@ -1234,7 +1233,7 @@ describe("SessionCatalogSidebar", () => {
     await waitFor(() => expect(document.activeElement?.textContent).toBe("New chat"));
   });
 
-  test("Delete is disabled, with a reason, when the session-file port is not available", async () => {
+  test("Delete is unavailable, with a reason the pointer can reach, when the session-file port is not available", async () => {
     render(
       withRegistry(
         createRegistry([]),
@@ -1246,8 +1245,13 @@ describe("SessionCatalogSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
     const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
     const remove = within(menu).getByRole("menuitem", { name: "Delete Newest chat" });
-    expect((remove as HTMLButtonElement).disabled).toBe(true);
+    // aria-disabled, not disabled: a disabled button takes no pointer events, so its title could never show (#2657).
+    expect(remove.getAttribute("aria-disabled")).toBe("true");
+    expect((remove as HTMLButtonElement).disabled).toBe(false);
     expect(remove.getAttribute("title")).toBe("Deleting a chat isn't available in the app yet.");
+    fireEvent.click(remove);
+    expect(screen.getByRole("menu", { name: "Actions for Newest chat" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   test("empty folders keep a recoverable New chat action", async () => {

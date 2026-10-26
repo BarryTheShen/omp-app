@@ -32,7 +32,7 @@ async function checkMenuItems(page: Page, menu: Locator): Promise<void> {
     elements.map((element) => {
       const rect = element.getBoundingClientRect();
       const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      const disabled = element instanceof HTMLButtonElement && element.disabled;
+      const disabled = element.getAttribute("aria-disabled") === "true";
       return {
         disabled,
         hit: top === element || element.contains(top),
@@ -42,8 +42,9 @@ async function checkMenuItems(page: Page, menu: Locator): Promise<void> {
   );
   console.log(`PROBE2164 items=${JSON.stringify(items)}`);
   expect(items.length).toBeGreaterThan(0);
-  // Pin and Archive are intentionally disabled when the host does not publish those actions.
-  expect(items.filter((item) => !item.disabled).every((item) => item.hit)).toBe(true);
+  // Every item takes the pointer, an unavailable one too: its reason is its title, which shows only under the pointer
+  // (#2657; Pin and Archive are unavailable when the host does not publish those actions).
+  expect(items.every((item) => item.hit)).toBe(true);
   const menuBox = await menu.boundingBox();
   expect(menuBox).not.toBeNull();
   if (menuBox !== null) {

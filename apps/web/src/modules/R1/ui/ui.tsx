@@ -200,6 +200,12 @@ function pendingNewChatOf(catalog: SessionCatalogModel): { current: object | nul
 /** The keys the presence hooks read chats by. Module-level, so the lists they return keep their identity between draws. */
 const sessionKey = (session: SessionMetadata): string => session.id;
 const runningKey = (chat: RunningSession): string => chat.id;
+/**
+ * A chat's More actions item. An unavailable one is aria-disabled (see the menu): it looks dimmed and keeps the pointer,
+ * so its reason shows when the pointer rests on it.
+ */
+const MENU_ITEM_CLASS =
+  "hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-transparent";
 
 export function SessionCatalogSidebar({
   catalog,
@@ -1187,11 +1193,14 @@ export function SessionCatalogSidebar({
                               }
                             }}
                           >
+                            {/* An unavailable item is aria-disabled, not disabled: a disabled button takes no pointer
+                                events, so its title, the reason, could never show (issue 2657). It stays in the menu's
+                                keyboard order, as a menu's unavailable items do, and does nothing when chosen. */}
                             <Button
                               aria-label={`Rename ${title}`}
-                              disabled={!canRename}
+                              aria-disabled={!canRename || undefined}
                               role="menuitem"
-                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              className={MENU_ITEM_CLASS}
                               size="xs"
                               title={
                                 canRename
@@ -1202,6 +1211,7 @@ export function SessionCatalogSidebar({
                               variant="ghost"
                               onClick={(event) => {
                                 event.stopPropagation();
+                                if (!canRename) return;
                                 setMenuSessionId(undefined);
                                 beginRename(session);
                               }}
@@ -1210,15 +1220,16 @@ export function SessionCatalogSidebar({
                             </Button>
                             <Button
                               aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
-                              disabled={!canPin || !onPinChange}
+                              aria-disabled={!canPin || !onPinChange || undefined}
                               role="menuitem"
-                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              className={MENU_ITEM_CLASS}
                               size="xs"
                               title={pinReason}
                               type="button"
                               variant="ghost"
                               onClick={(event) => {
                                 event.stopPropagation();
+                                if (!canPin || !onPinChange) return;
                                 void togglePin(session);
                               }}
                             >
@@ -1227,15 +1238,16 @@ export function SessionCatalogSidebar({
                             {running && stopRunning && confirmDeleteRunning ? (
                               <Button
                                 aria-label={`Delete and stop ${title}`}
-                                disabled={!canDelete}
+                                aria-disabled={!canDelete || undefined}
                                 role="menuitem"
-                                className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                                className={MENU_ITEM_CLASS}
                                 size="xs"
                                 title="Stop this chat, then delete it"
                                 type="button"
                                 variant="ghost"
                                 onClick={(event) => {
                                   event.stopPropagation();
+                                  if (!canDelete) return;
                                   setMenuSessionId(undefined);
                                   void deleteRunningSession(session.id, title);
                                 }}
@@ -1245,9 +1257,9 @@ export function SessionCatalogSidebar({
                             ) : null}
                             <Button
                               aria-label={`Delete ${title}`}
-                              disabled={!canDelete}
+                              aria-disabled={!canDelete || undefined}
                               role="menuitem"
-                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              className={MENU_ITEM_CLASS}
                               size="xs"
                               title={
                                 canDelete
@@ -1261,6 +1273,7 @@ export function SessionCatalogSidebar({
                               variant="ghost"
                               onClick={(event) => {
                                 event.stopPropagation();
+                                if (!canDelete) return;
                                 setMenuSessionId(undefined);
                                 void deleteSession(session, true);
                               }}
@@ -1269,9 +1282,9 @@ export function SessionCatalogSidebar({
                             </Button>
                             <Button
                               aria-label={`Archive ${title}`}
-                              disabled
+                              aria-disabled
                               role="menuitem"
-                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              className={MENU_ITEM_CLASS}
                               size="xs"
                               title={capabilityReason(
                                 archiveStatus,
@@ -1279,6 +1292,7 @@ export function SessionCatalogSidebar({
                               )}
                               type="button"
                               variant="ghost"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               Archive
                             </Button>
