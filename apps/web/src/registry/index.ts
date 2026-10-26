@@ -18,8 +18,11 @@ import { D7_EXECUTION_MODES_COMMAND } from "../modules/D7/modes/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
 import { I2_SETTINGS_SECTIONS } from "../modules/I2/settings";
+import { MEMORY_SETTINGS_SECTIONS } from "../modules/I3/settings/descriptors";
+import { STREAM_SETTINGS_SECTION } from "../modules/I4/settings/stream-descriptor";
 import { I5_SETTINGS_SECTIONS } from "../modules/I5/settings";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
+import { ADVISOR_SETTINGS_SECTION } from "../modules/P1/advisor/settings-section";
 import { P1_AGENT_HUB_DESCRIPTORS } from "../modules/P1/hub/descriptors";
 import { P3_DIALOG_DESCRIPTORS, P3_MESSAGE_DESCRIPTORS } from "../modules/P3/descriptors";
 import { P3_SHORTCUT_DESCRIPTORS } from "../modules/P3/shortcuts/descriptors";
@@ -79,11 +82,11 @@ export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
 
 /**
  * Every settings section the app offers, once each: S1 (appearance, interaction), S2 (files, LSP,
- * shell), S3 (tools, tasks), I5 (speech, services), I1 (MCP), I2 (plugins and Skills), D3 (provider
- * settings) and D1 (model). The Settings screen reads this one list; no screen or module concatenates
- * section lists of its own. The order is not presentation: the screen decides its own grouping and
- * order. A section belongs here when its module merges (one import, one spread), and the ownership
- * test fails when two sections claim one omp key.
+ * shell), S3 (tools, tasks), I5 (speech, services), I1 (MCP), I2 (plugins and Skills), I3 (memory),
+ * I4 (stream), D3 (provider settings), D1 (model) and P1 (the model's advisor). The Settings screen reads this one list; no screen
+ * or module concatenates section lists of its own. The order is not presentation: the screen decides
+ * its own grouping and order. A section belongs here when its module merges (one import, one spread),
+ * and the ownership test fails when two sections claim one omp key.
  */
 export const SETTINGS_SECTIONS: readonly SettingsSectionDescriptor[] = [
   ...S1_SETTINGS_SECTIONS,
@@ -93,7 +96,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDescriptor[] = [
   ...PROVIDER_SETTINGS_SECTIONS,
   ...I2_SETTINGS_SECTIONS,
   ...I1_SETTINGS_SECTIONS,
+  ...MEMORY_SETTINGS_SECTIONS,
+  STREAM_SETTINGS_SECTION,
   ...modelSettingsSections,
+  ADVISOR_SETTINGS_SECTION,
 ];
 
 /** A tool descriptor carries its renderer for U3.3's resolver; the registry holds the C0 part. */

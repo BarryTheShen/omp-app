@@ -62,6 +62,8 @@ const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
 
 /** These controls intentionally use a different shape than omp's persisted setting registration. */
 const DESIGN_DIFFERENCES: Readonly<Record<string, string>> = {
+  "advisor.immuneTurns":
+    "the app's select stores the numeric menu values exposed by omp's number setting (0 to 5 turns)",
   "compaction.thresholdPercent":
     "the app's select stores the numeric sentinel values exposed by omp's number menu",
   "compaction.thresholdTokens":

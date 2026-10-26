@@ -20,6 +20,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModelSettingsSection } from "@/modules/D1/settings";
+import { STREAM_SETTINGS_SECTION } from "@/modules/I4/settings/stream-descriptor";
+import { StreamSettings } from "@/modules/I4/settings/stream-settings";
 import {
   ContextSettings,
   type ContextSettingsScope,
@@ -565,6 +567,13 @@ export function SettingsScreen({
                       layer={layer}
                       onDirtyChange={reportDirty}
                       pool={pool}
+                    />
+                  ) : activeSection.id === STREAM_SETTINGS_SECTION.id ? (
+                    // omp stores the redaction patterns as strings; StreamSettings edits them as rows and maps back.
+                    <StreamSettings
+                      key={`${layer}:${activeSection.id}`}
+                      runtime={pool.get(activeSection, layer)}
+                      onDirtyChange={(dirty) => reportDirty(activeSection.id, dirty)}
                     />
                   ) : (
                     <RuntimeSettingsSection

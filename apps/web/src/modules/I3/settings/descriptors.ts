@@ -93,7 +93,8 @@ function section(
 export const MEMORY_GENERAL_SETTINGS_SECTION = section(
   "I3.memoryGeneral",
   "memory/General",
-  "Memory",
+  // omp's own name for the section. In the Settings screen it sits in the Memory tab, so "Memory" would repeat the tab.
+  "General",
   ["S5.memory-general"],
   [
     scalar(

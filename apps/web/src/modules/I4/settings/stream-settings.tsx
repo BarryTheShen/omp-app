@@ -18,6 +18,8 @@ import { STREAM_SETTINGS_SECTION } from "./stream-descriptor";
 
 export interface StreamSettingsProps {
   readonly runtime: SettingsRuntime;
+  /** Called with true while the section has edits not saved yet, as the other settings sections report it. */
+  readonly onDirtyChange?: (dirty: boolean) => void;
 }
 
 const PATTERN_KEY = "stream.redactPatterns";
@@ -99,8 +101,13 @@ function runtimeValue(key: string, value: SettingValue): SettingValue {
 }
 
 /** ConfigStore-backed Stream settings; S1 owns the editor/runtime grammar. */
-export function StreamSettings({ runtime }: StreamSettingsProps) {
+export function StreamSettings({ runtime, onDirtyChange }: StreamSettingsProps) {
   const state = useSettingsRuntime(runtime);
+  const hasStagedChanges =
+    Object.keys(state.staged?.edits ?? {}).length > 0 || state.unsavedKeys.length > 0;
+  useEffect(() => {
+    onDirtyChange?.(hasStagedChanges);
+  }, [hasStagedChanges, onDirtyChange]);
   useEffect(() => {
     if (state.config === null && state.phase === "idle") {
       void runtime.read().catch(() => undefined);

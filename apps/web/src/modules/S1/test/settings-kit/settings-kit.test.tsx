@@ -350,6 +350,45 @@ describe("S1 settings section", () => {
     );
   });
 
+  test("an enum whose choices are numbers stages the chosen number, not its text", () => {
+    const turns: SettingsSectionDescriptor = {
+      ...descriptor,
+      controls: [
+        {
+          key: "advisor.immuneTurns",
+          label: "Immune Turns",
+          kind: "enum",
+          secret: false,
+          options: [0, 3, 5].map((value) => ({ value, label: `${value} turns` })),
+          validate: (value) =>
+            !value.secret && typeof value.value === "number"
+              ? { valid: true }
+              : { valid: false, code: "choice", message: "Choose a number of turns." },
+          apply: "live",
+        },
+      ],
+    };
+    const stored: ConfigSnapshot = {
+      ...snapshot,
+      entries: [
+        { key: "advisor.immuneTurns", secret: false, value: 3, source: "default", overrides: [] },
+      ],
+    };
+    const staged: StagedSettings[] = [];
+    render(
+      <SettingsSection
+        descriptor={turns}
+        snapshot={stored}
+        staged={{ snapshot: stored, edits: {} }}
+        onStage={(next) => staged.push(next)}
+      />,
+    );
+    const select = screen.getByRole("combobox", { name: "Immune Turns" }) as HTMLSelectElement;
+    expect(select.value).toBe("3");
+    fireEvent.change(select, { target: { value: "5" } });
+    expect(staged.at(-1)?.edits["advisor.immuneTurns"]).toEqual({ secret: false, value: 5 });
+  });
+
   test("draws list controls inside the card, after the rows and above Save and Cancel", () => {
     render(
       <SettingsSection

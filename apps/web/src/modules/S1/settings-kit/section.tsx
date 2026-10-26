@@ -646,6 +646,15 @@ function parseControlValue(
   value: string,
 ): string | number | boolean | readonly string[] {
   if (control.kind === "boolean") return value === "true";
+  if (control.kind === "enum") {
+    // A select's value is always text: the chosen option's own value is staged, so a choice omp stores as a number
+    // (or true or false) is saved as one, not as its text.
+    const option = control.options?.find((candidate) => String(candidate.value) === value);
+    const chosen = option?.value;
+    return typeof chosen === "string" || typeof chosen === "number" || typeof chosen === "boolean"
+      ? chosen
+      : value;
+  }
   if (control.kind === "number" || control.kind === "duration") {
     // An emptied field is not 0: Number("") is 0, so it would be staged and saved without a word. It stays text, and
     // the control's own check says what it needs.
