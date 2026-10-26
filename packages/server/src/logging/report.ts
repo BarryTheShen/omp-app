@@ -66,8 +66,8 @@ function runsRpcMode(command: readonly string[]): boolean {
 
 /**
  * The omp processes that `ownerPid` started, from `ps -eo pid,ppid,rss,etime,args` output: the header, then each
- * process whose parent is `ownerPid` and whose command names omp or runs omp's RPC mode (the app's chat host, the
- * pinned `omp-<version>`). Other processes are left out, including those that only mention omp or omp-app in their
+ * process whose parent is `ownerPid` and whose command names omp or runs omp's RPC mode (the app's chat host, or omp's
+ * command line from source). Other processes are left out, including those that only mention omp or omp-app in their
  * arguments, and omp processes that other programs started.
  */
 export function ompProcessLines(psOutput: string, ownerPid: number): string[] {

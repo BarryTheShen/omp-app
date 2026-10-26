@@ -38,7 +38,7 @@ describe("omp probe cache", () => {
       PI_MODE: "test",
       OMP_APP_DATA_DIR: join(root, "app"),
     };
-    const identity = await probeCacheIdentity(binary, "omp 18.12.2", environment);
+    const identity = await probeCacheIdentity([binary], "omp 18.12.2", environment);
     await writeProbeCache(root, identity, rawResult(), { model: "fake" }, ["model", "noDefault"]);
 
     await expect(readProbeCache(root, identity)).resolves.toMatchObject({
@@ -53,13 +53,13 @@ describe("omp probe cache", () => {
     await expect(
       readProbeCache(
         root,
-        await probeCacheIdentity(binary, "omp 18.12.2", { ...environment, PI_MODE: "changed" }),
+        await probeCacheIdentity([binary], "omp 18.12.2", { ...environment, PI_MODE: "changed" }),
       ),
     ).resolves.toBeUndefined();
     const changedTime = new Date(Date.now() + 60_000);
     await utimes(binary, changedTime, changedTime);
     await expect(
-      readProbeCache(root, await probeCacheIdentity(binary, "omp 18.12.2", environment)),
+      readProbeCache(root, await probeCacheIdentity([binary], "omp 18.12.2", environment)),
     ).resolves.toBeUndefined();
 
     const cachePath = join(root, "omp-probe-cache.json");
@@ -82,7 +82,7 @@ describe("omp probe cache", () => {
       PI_CODING_AGENT_DIR: join(root, "agent"),
       OMP_APP_DATA_DIR: join(root, "app"),
     };
-    const identity = await probeCacheIdentity(binary, "omp 18.12.2", environment);
+    const identity = await probeCacheIdentity([binary], "omp 18.12.2", environment);
     const defaults = {
       loaded: {
         defaults: { model: "fake" },
@@ -104,7 +104,7 @@ describe("omp probe cache", () => {
       appDataDir: join(root, "app-data"),
     };
     const probeOptions = {
-      binary,
+      command: [binary],
       launchDirectory: root,
       pathEnvironment: process.env.PATH ?? "",
     };
@@ -129,7 +129,7 @@ describe("omp probe cache", () => {
     const root = await temporaryRoot();
     const binary = join(root, "omp");
     await writeFile(binary, "binary");
-    const identity = await probeCacheIdentity(binary, "omp 18.12.2", {});
+    const identity = await probeCacheIdentity([binary], "omp 18.12.2", {});
     await writeProbeCache(root, identity, rawResult(), {}, []);
     const hit = await readProbeCache(root, identity);
     expect(hit).toBeDefined();

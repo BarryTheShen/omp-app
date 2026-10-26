@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { listProcesses, ompProcessLines } from "./report";
 
 // `ps -eo pid,ppid,rss,etime,args` as it looked on the machine of the issue: the server (pid 500) started omp
-// processes and chats in omp's RPC mode (omp's command line from source, the installed chat host, the pinned
-// omp-<version>); the rest are other programs, some of which only mention omp, omp-app or rpc-ui in their arguments.
+// processes and chats in omp's RPC mode (omp's command line from source, the installed chat host); the rest are other
+// programs, some of which only mention omp, omp-app or rpc-ui in their arguments.
 const PS_OUTPUT = [
   "    PID    PPID     RSS     ELAPSED COMMAND",
   "    201     500  380000       02:00 omp --mode rpc-ui --model fake/fake-model",
@@ -17,7 +17,6 @@ const PS_OUTPUT = [
   "    209     500    4000       00:30 bash /home/me/projects/omp-app/.data/heavy.sh nice -n 10 bun run test",
   "    210     500  410000       01:30 bun /home/me/omp-app/node_modules/@oh-my-pi/pi-coding-agent/src/cli.ts --mode rpc-ui --model fake/fake-model",
   "    211     500  330000       01:30 /usr/lib/omp-app/chat-host --mode rpc-ui --resume /home/me/.omp/agent/sessions/chat.jsonl",
-  "    212     500  240000       01:30 /home/me/.omp/agent/app/omp/omp-18.12.6 --mode rpc-ui",
   "    213     500    2000       00:01 grep rpc-ui /home/me/.omp/agent/app/omp-app.log",
 ].join("\n");
 
@@ -64,7 +63,7 @@ describe("the debug report's omp processes", () => {
   test("keeps the header and the omp processes and chats that the given pid started, and nothing else", () => {
     const rows = PS_OUTPUT.split("\n");
 
-    const wanted = rows.filter((_, index) => [0, 1, 2, 8, 10, 11, 12].includes(index));
+    const wanted = rows.filter((_, index) => [0, 1, 2, 8, 10, 11].includes(index));
     expect(ompProcessLines(PS_OUTPUT, 500)).toEqual(wanted);
   });
 

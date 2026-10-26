@@ -7,7 +7,7 @@ Closing the window leaves the server running, so chats keep going; stop it with 
 The server the window starts uses port 4317, the port of the `omp-app` command and the user service, when it is free, so the web app keeps its stored settings (theme, sidebar, last chat) whichever of them started the server. When the port is busy, the server takes a free port instead.
 "Save debug log" (in the command palette) saves its file into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from.
 
-The window bundles the omp coding agent: every chat runs omp's own command line, which the app builds from the omp package it pins and the package holds compiled (`/usr/lib/omp-app-desktop/chat-host`), and omp's own commands run the omp release the app pins (named in `packages/server/src/omp-pin/pin.json`), never an omp installed on this computer. There is nothing to install.
+The window bundles the omp coding agent: every chat and every omp command runs omp's own command line, which the app builds from the omp package it pins and the package holds compiled (`/usr/lib/omp-app-desktop/chat-host`), never an omp installed on this computer. There is nothing to install.
 
 The package is `omp-app-desktop` and its menu entry is "omp app". It does not replace or touch the `omp-app` command package.
 
@@ -40,9 +40,9 @@ bun install --frozen-lockfile
 CHAT_HOST_BUN=/path/to/bun-1.4.3/bun bash packaging/build-desktop-deb.sh 0.1.451
 ```
 
-The package lands in `dist/desktop/omp-app-desktop_0.1.451_amd64.deb`, with `SHA256SUMS` next to it. The build downloads the omp release the app pins and checks it against the release's SHA-256 checksum, so it needs network access.
+The package lands in `dist/desktop/omp-app-desktop_0.1.451_amd64.deb`, with `SHA256SUMS` next to it.
 
-The Rust build needs four inputs that the build script creates and git ignores: the server (`src-tauri/binaries/`), the web app (`src-tauri/resources/web`), the chat host (`src-tauri/resources/chat-host`) and the pinned omp (`src-tauri/resources/omp`). So on a fresh checkout, run the build script once before the Rust checks:
+The Rust build needs three inputs that the build script creates and git ignores: the server (`src-tauri/binaries/`), the web app (`src-tauri/resources/web`) and the chat host (`src-tauri/resources/chat-host`). So on a fresh checkout, run the build script once before the Rust checks:
 
 ```
 cd apps/desktop/src-tauri

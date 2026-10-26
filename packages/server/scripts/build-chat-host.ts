@@ -19,15 +19,11 @@
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { CHAT_HOST_BUN_VERSION } from "./chat-host-bun";
 
-/**
- * The Bun omp 18.12.6's release is built with: `BUN_BE_BUN=1 <omp> --version` prints it, because a program Bun compiled
- * runs as that Bun with this variable set. Change it with the omp pin (`src/omp-pin/pin.json`).
- */
-const OMP_BUN_VERSION = "1.4.3";
-if (Bun.version !== OMP_BUN_VERSION) {
+if (Bun.version !== CHAT_HOST_BUN_VERSION) {
   console.error(
-    `The chat host is compiled with Bun ${OMP_BUN_VERSION}, the Bun omp's release is built with; this is Bun ${Bun.version}. Run this script with that Bun (CHAT_HOST_BUN in packaging/build-deb.sh).`,
+    `The chat host is compiled with Bun ${CHAT_HOST_BUN_VERSION}, the Bun omp's release is built with; this is Bun ${Bun.version}. Run this script with that Bun (CHAT_HOST_BUN in packaging/build-deb.sh).`,
   );
   process.exit(1);
 }

@@ -39,7 +39,7 @@ async function serverStore(
   const store = await createConfigStoreWithOmpDefaults(
     { agentDir: join(root, "agent"), appDataDir: join(root, "app-data") },
     {
-      binary,
+      command: [binary],
       launchDirectory: root,
       pathEnvironment: Bun.env.PATH ?? "",
       temporaryDirectoryBase: root,

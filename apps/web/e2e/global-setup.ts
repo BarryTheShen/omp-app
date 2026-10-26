@@ -1,63 +1,97 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
+import { CHAT_HOST_BUN_VERSION } from "../../../packages/server/scripts/chat-host-bun";
 
 /**
- * Live tests run every chat on the chat host the packages ship: omp's command line compiled by
- * `packages/server/scripts/build-chat-host.ts` (#2586). omp's command line run from source on the Bun that runs the tests
- * is not that program: on the test machine it failed `fix-1351` and `fix-1910` 7 times in 9 (a slow first reply, a settings change a
- * running chat did not see), which pass on the compiled one.
+ * Live tests run omp the way the packages ship it: the chat host, omp's command line compiled by
+ * `packages/server/scripts/build-chat-host.ts` (#2586), which runs every chat and answers omp's own commands. omp's
+ * command line run from source on the Bun that runs the tests is not that program: on the test machine it failed `fix-1351` and
+ * `fix-1910` 7 times in 9 (a slow first reply, a settings change a running chat did not see), which pass on the compiled
+ * one.
  *
  * Once per run, before the workers start, this puts the compiled chat host in `OMP_APP_CHAT_HOST_BIN`, which the app's
- * server reads (workers inherit the variable). A build is kept in `OMP_APP_CHAT_HOST_DIR` (on the test machine the shared
- * `/cache/bun/chat-host`), else this checkout's `.data/chat-host`, under a name from the lockfile and the build script, so
- * it is built once for each of their versions; a lock keeps parallel runs from building it twice.
+ * server and the harness read (workers inherit the variable). A build is kept in `OMP_APP_CHAT_HOST_DIR` (on the test machine the
+ * shared `/cache/bun/chat-host`), else this checkout's `.data/chat-host`, under a name from the lockfile and the build
+ * script, so it is built once for each of their versions; a lock keeps parallel runs from building it twice.
  *
- * The build needs the Bun omp's release is built with. `OMP_APP_CHAT_HOST_BUN` names it; else the omp release the app
- * pins serves as that Bun (a program Bun compiled runs as its Bun with `BUN_BE_BUN=1`).
+ * The build needs the Bun omp's release is built with (`chat-host-bun.ts`). `OMP_APP_CHAT_HOST_BUN` names it; else it is
+ * downloaded once from Bun's release into the same folder, checked against the release's `SHASUMS256.txt`, as
+ * `release.yml` does.
  */
 const APP_ROOT = resolve(process.cwd(), "../..");
 const BUILD_SCRIPT = join(APP_ROOT, "packages/server/scripts/build-chat-host.ts");
+const BUN_VERSION_FILE = join(APP_ROOT, "packages/server/scripts/chat-host-bun.ts");
 const LOCK_STALE_MS = 15 * 60_000;
-
-function pinnedOmp(): string {
-  const pin: unknown = JSON.parse(
-    readFileSync(join(APP_ROOT, "packages/server/src/omp-pin/pin.json"), "utf8"),
-  );
-  if (
-    typeof pin !== "object" ||
-    pin === null ||
-    !("version" in pin) ||
-    typeof pin.version !== "string"
-  ) {
-    throw new Error("packages/server/src/omp-pin/pin.json names no omp version");
-  }
-  return join(process.env.OMP_APP_OMP_DIR ?? join(APP_ROOT, ".data", "omp"), `omp-${pin.version}`);
-}
-
-/** The Bun command that runs the build script: `OMP_APP_CHAT_HOST_BUN`, else the pinned omp as its own Bun. */
-function buildCommand(): { readonly command: string; readonly env: NodeJS.ProcessEnv } {
-  const named = process.env.OMP_APP_CHAT_HOST_BUN;
-  if (named) return { command: named, env: process.env };
-  const omp = pinnedOmp();
-  if (!existsSync(omp)) {
-    throw new Error(
-      `The chat host is built with omp's Bun: set OMP_APP_CHAT_HOST_BUN, or put the app's omp at ${omp} (bun packages/server/scripts/fetch-omp.ts).`,
-    );
-  }
-  return { command: omp, env: { ...process.env, BUN_BE_BUN: "1" } };
-}
 
 function sleep(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/** Bun's release asset, as text or bytes: the download is checked by its checksum, never trusted by its address. */
+async function download(file: string): Promise<Uint8Array> {
+  const url = `https://github.com/oven-sh/bun/releases/download/bun-v${CHAT_HOST_BUN_VERSION}/${file}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+/** The Bun that compiles the chat host: `OMP_APP_CHAT_HOST_BUN`, else Bun's release, downloaded once into `dir`. */
+async function chatHostBun(dir: string): Promise<string> {
+  const named = process.env.OMP_APP_CHAT_HOST_BUN;
+  if (named) return named;
+  const bunDir = join(dir, `bun-${CHAT_HOST_BUN_VERSION}`);
+  const bun = join(bunDir, "bun-linux-x64", "bun");
+  if (existsSync(bun)) return bun;
+  const [zip, sums] = await Promise.all([
+    download("bun-linux-x64.zip"),
+    download("SHASUMS256.txt"),
+  ]);
+  const expected = new TextDecoder()
+    .decode(sums)
+    .split("\n")
+    .find((line) => line.trim().endsWith(" bun-linux-x64.zip"))
+    ?.split(/\s+/)[0];
+  const actual = createHash("sha256").update(zip).digest("hex");
+  if (expected === undefined || actual !== expected) {
+    throw new Error(`Bun ${CHAT_HOST_BUN_VERSION}'s download does not match its SHASUMS256.txt`);
+  }
+  const partial = `${bunDir}.${process.pid}.partial`;
+  rmSync(partial, { recursive: true, force: true });
+  mkdirSync(partial, { recursive: true });
+  writeFileSync(join(partial, "bun-linux-x64.zip"), zip);
+  const unzipped = spawnSync("unzip", ["-q", "bun-linux-x64.zip"], {
+    cwd: partial,
+    encoding: "utf8",
+  });
+  if (unzipped.status !== 0) {
+    rmSync(partial, { recursive: true, force: true });
+    throw new Error(
+      `unzip failed for Bun ${CHAT_HOST_BUN_VERSION}: ${unzipped.stderr || unzipped.error}`,
+    );
+  }
+  rmSync(join(partial, "bun-linux-x64.zip"));
+  // The folder is renamed into place whole, so one that is there without its binary was emptied by hand: replace it.
+  rmSync(bunDir, { recursive: true, force: true });
+  renameSync(partial, bunDir);
+  return bun;
+}
+
 /** The compiled chat host for this checkout's lockfile and build script, built once and then reused. */
-function compiledChatHost(): string {
+async function compiledChatHost(): Promise<string> {
   const key = createHash("sha256")
     .update(readFileSync(join(APP_ROOT, "bun.lock")))
     .update(readFileSync(BUILD_SCRIPT))
+    .update(readFileSync(BUN_VERSION_FILE))
     .digest("hex")
     .slice(0, 16);
   const dir = process.env.OMP_APP_CHAT_HOST_DIR ?? join(APP_ROOT, ".data", "chat-host");
@@ -77,11 +111,10 @@ function compiledChatHost(): string {
     }
     try {
       if (existsSync(target)) return target;
+      const bun = await chatHostBun(dir);
       const partial = `${target}.${process.pid}.partial`;
-      const { command, env } = buildCommand();
-      const built = spawnSync(command, [BUILD_SCRIPT, partial], {
+      const built = spawnSync(bun, [BUILD_SCRIPT, partial], {
         cwd: APP_ROOT,
-        env,
         encoding: "utf8",
         timeout: 10 * 60_000,
       });
@@ -99,7 +132,7 @@ function compiledChatHost(): string {
   }
 }
 
-export default function globalSetup(): void {
+export default async function globalSetup(): Promise<void> {
   if (process.env.OMP_APP_REAL_OMP !== "1" || process.env.OMP_APP_CHAT_HOST_BIN) return;
-  process.env.OMP_APP_CHAT_HOST_BIN = compiledChatHost();
+  process.env.OMP_APP_CHAT_HOST_BIN = await compiledChatHost();
 }

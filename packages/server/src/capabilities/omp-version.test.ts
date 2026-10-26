@@ -34,7 +34,7 @@ const ENV = { PATH: Bun.env.PATH ?? "/usr/bin:/bin" };
 describe("probeOmp", () => {
   test("reads the version of an omp that answers", async () => {
     const { binary, cwd } = await fakeOmp('echo "omp 18.7.0"');
-    expect(await probeOmp(binary, ENV, cwd)).toEqual({
+    expect(await probeOmp([binary], ENV, cwd)).toEqual({
       version: "18.7.0",
       health: { status: "ok" },
     });
@@ -42,7 +42,7 @@ describe("probeOmp", () => {
 
   test("says omp was not found when there is nothing to run", async () => {
     const { cwd } = await fakeOmp("true");
-    const result = await probeOmp(join(cwd, "no-such-omp"), ENV, cwd);
+    const result = await probeOmp([join(cwd, "no-such-omp")], ENV, cwd);
     expect(result).toEqual({
       version: null,
       health: { status: "unhealthy", detail: OMP_PROBLEM.notFound },
@@ -51,13 +51,13 @@ describe("probeOmp", () => {
 
   test("says omp could not start when it exits with an error, even if it printed a version", async () => {
     const { binary, cwd } = await fakeOmp('echo "omp 18.7.0"; exit 3');
-    const result = await probeOmp(binary, ENV, cwd);
+    const result = await probeOmp([binary], ENV, cwd);
     expect(result.health).toEqual({ status: "unhealthy", detail: OMP_PROBLEM.wouldNotStart });
   });
 
   test("says omp did not answer in time when it takes longer than it is given", async () => {
     const { binary, cwd } = await fakeOmp('sleep 5; echo "omp 18.7.0"');
-    const result = await probeOmp(binary, ENV, cwd, 100);
+    const result = await probeOmp([binary], ENV, cwd, 100);
     expect(result.health).toEqual({ status: "unhealthy", detail: OMP_PROBLEM.timedOut });
   });
 });
@@ -66,7 +66,7 @@ describe("probeOmpPatiently", () => {
   test("an omp that answers at once is asked once", async () => {
     const { binary, cwd } = await fakeOmp('echo "omp 18.7.0"');
     const retries: number[] = [];
-    const result = await probeOmpPatiently(binary, ENV, cwd, {
+    const result = await probeOmpPatiently([binary], ENV, cwd, {
       onRetry: (waited) => retries.push(waited),
     });
     expect(result.health).toEqual({ status: "ok" });
@@ -77,7 +77,7 @@ describe("probeOmpPatiently", () => {
     // Takes about 0.4 s: more than the quick wait, well within the patient one.
     const { binary, cwd } = await fakeOmp('sleep 0.4; echo "omp 18.7.0"');
     const retries: number[] = [];
-    const result = await probeOmpPatiently(binary, ENV, cwd, {
+    const result = await probeOmpPatiently([binary], ENV, cwd, {
       quickMs: 100,
       patientMs: 5_000,
       onRetry: (waited) => retries.push(waited),
@@ -90,7 +90,7 @@ describe("probeOmpPatiently", () => {
   test("an omp that does not answer even patiently is reported as not answering, after one retry", async () => {
     const { binary, cwd } = await fakeOmp("sleep 5");
     const retries: number[] = [];
-    const result = await probeOmpPatiently(binary, ENV, cwd, {
+    const result = await probeOmpPatiently([binary], ENV, cwd, {
       quickMs: 100,
       patientMs: 200,
       onRetry: (waited) => retries.push(waited),
@@ -102,7 +102,7 @@ describe("probeOmpPatiently", () => {
   test("a missing omp is not retried: nothing a longer wait could fix", async () => {
     const { cwd } = await fakeOmp("true");
     const retries: number[] = [];
-    const result = await probeOmpPatiently(join(cwd, "no-such-omp"), ENV, cwd, {
+    const result = await probeOmpPatiently([join(cwd, "no-such-omp")], ENV, cwd, {
       onRetry: (waited) => retries.push(waited),
     });
     expect(result.health.detail).toBe(OMP_PROBLEM.notFound);
@@ -113,7 +113,7 @@ describe("probeOmpPatiently", () => {
 describe("unhealthyAfterFailedChecks", () => {
   test("says no model is set up when omp lists no usable model", async () => {
     const { binary, cwd } = await fakeOmp(`echo '{"models":[]}'`);
-    expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
+    expect(await unhealthyAfterFailedChecks([binary], ENV, cwd)).toEqual({
       status: "unhealthy",
       detail: OMP_PROBLEM.noModel,
       code: "no_model",
@@ -122,7 +122,7 @@ describe("unhealthyAfterFailedChecks", () => {
 
   test("keeps the checks message when omp lists a model", async () => {
     const { binary, cwd } = await fakeOmp(`echo '{"models":[{"id":"fake-model"}]}'`);
-    expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
+    expect(await unhealthyAfterFailedChecks([binary], ENV, cwd)).toEqual({
       status: "unhealthy",
       detail: OMP_PROBLEM.checksFailed,
     });
@@ -130,7 +130,7 @@ describe("unhealthyAfterFailedChecks", () => {
 
   test("keeps the checks message when omp cannot list its models", async () => {
     const { binary, cwd } = await fakeOmp("exit 1");
-    expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
+    expect(await unhealthyAfterFailedChecks([binary], ENV, cwd)).toEqual({
       status: "unhealthy",
       detail: OMP_PROBLEM.checksFailed,
     });
@@ -142,14 +142,14 @@ describe("listUsableModels", () => {
     const { binary, cwd } = await fakeOmp(
       `echo '{"models":[{"provider":"fake","kind":"chat","id":"fake-model","selector":"fake/fake-model","name":"Fake Model"}]}'`,
     );
-    expect(await listUsableModels(binary, ENV, cwd)).toEqual([
+    expect(await listUsableModels([binary], ENV, cwd)).toEqual([
       { provider: "fake", modelId: "fake-model", name: "Fake Model" },
     ]);
   });
 
   test("a listing omp cannot give is a plain failure, not an empty list", async () => {
     const { binary, cwd } = await fakeOmp("exit 1");
-    await expect(listUsableModels(binary, ENV, cwd)).rejects.toMatchObject({
+    await expect(listUsableModels([binary], ENV, cwd)).rejects.toMatchObject({
       appError: { code: "unavailable", retryable: true },
     });
   });

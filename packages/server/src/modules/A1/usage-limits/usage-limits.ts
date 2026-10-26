@@ -7,8 +7,8 @@ export const USAGE_LIMITS_CACHE_MS = 60_000;
 export const USAGE_LIMITS_TIMEOUT_MS = 45_000;
 
 export interface UsageLimitStoreOptions {
-  /** The omp binary to run: the one the app pins (`src/omp-pin`), or a test's stand-in. */
-  readonly binary: string;
+  /** omp's command line (`ompCommand()`: the program and its leading arguments), or a test's stand-in. */
+  readonly command: readonly string[];
   /** Environment for omp, so it finds the same signed-in accounts the chats use. Defaults to this process's. */
   readonly env?: Record<string, string | undefined>;
   readonly timeoutMs?: number;
@@ -143,13 +143,13 @@ function stopProcessGroup(child: Bun.Subprocess<"pipe", "pipe", "pipe">): void {
  * since it can carry credentials. The process group is stopped when the read ends, however it ends.
  */
 async function runOmpUsage(
-  binary: string,
+  command: readonly string[],
   env: Record<string, string>,
   timeoutMs: number,
 ): Promise<OmpRun> {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
-    child = Bun.spawn([binary, "usage", "--json", "--redact"], {
+    child = Bun.spawn([...command, "usage", "--json", "--redact"], {
       env,
       stdout: "pipe",
       stderr: "pipe",
@@ -209,7 +209,7 @@ function environmentFor(env: Record<string, string | undefined>): Record<string,
  * only: no account names, emails or ids.
  */
 export class UsageLimitStoreService {
-  readonly #binary: string;
+  readonly #command: readonly string[];
   readonly #env: Record<string, string>;
   readonly #timeoutMs: number;
   readonly #cacheMs: number;
@@ -218,7 +218,7 @@ export class UsageLimitStoreService {
   #pending: Promise<UsageLimitsResult> | undefined;
 
   constructor(options: UsageLimitStoreOptions) {
-    this.#binary = options.binary;
+    this.#command = options.command;
     this.#env = environmentFor(options.env ?? process.env);
     this.#timeoutMs = options.timeoutMs ?? USAGE_LIMITS_TIMEOUT_MS;
     this.#cacheMs = options.cacheMs ?? USAGE_LIMITS_CACHE_MS;
@@ -237,7 +237,7 @@ export class UsageLimitStoreService {
   }
 
   async #load(): Promise<UsageLimitsResult> {
-    const run = await runOmpUsage(this.#binary, this.#env, this.#timeoutMs);
+    const run = await runOmpUsage(this.#command, this.#env, this.#timeoutMs);
     const result =
       run.kind === "failed" ? unavailable(run.reason) : parseUsageOutput(run.text, this.#now());
     this.#cache = { at: this.#now(), result };

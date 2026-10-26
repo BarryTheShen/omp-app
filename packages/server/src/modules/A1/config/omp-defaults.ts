@@ -29,7 +29,8 @@ const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
 const ConfigListSchema = z.record(z.string(), z.object({ value: JsonValueSchema.optional() }));
 
 export interface OmpDefaultsProbeOptions {
-  readonly binary: string;
+  /** omp's command line (`ompCommand()`: the program and its leading arguments), or a test's stand-in. */
+  readonly command: readonly string[];
   readonly launchDirectory: string;
   readonly pathEnvironment: string;
   readonly timeoutMs?: number;
@@ -174,7 +175,7 @@ async function runConfigList(
   temp: string,
   signal?: AbortSignal,
 ): Promise<OmpDefaultsLoaded> {
-  const binary = resolveBinary(options.binary, options.launchDirectory);
+  const command = resolveProgram(options.command, options.launchDirectory);
   const env = {
     PATH: options.pathEnvironment,
     HOME: home,
@@ -184,7 +185,7 @@ async function runConfigList(
   };
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
-    child = Bun.spawn([binary, "config", "list", "--json"], {
+    child = Bun.spawn([...command, "config", "list", "--json"], {
       cwd: temporaryRoot,
       env,
       stdout: "pipe",
@@ -266,7 +267,10 @@ function normalizeTimeout(timeoutMs: number | undefined): number {
   return Math.max(1, Math.floor(timeoutMs));
 }
 
-function resolveBinary(binary: string, launchDirectory: string): string {
-  if (isAbsolute(binary) || (!binary.includes("/") && !binary.includes("\\"))) return binary;
-  return resolve(launchDirectory, binary);
+/** The command with its program resolved against the launch folder when it is a relative path. */
+function resolveProgram(command: readonly string[], launchDirectory: string): readonly string[] {
+  const [program, ...rest] = command;
+  if (program === undefined) throw new Error("omp's command line is empty");
+  if (isAbsolute(program) || (!program.includes("/") && !program.includes("\\"))) return command;
+  return [resolve(launchDirectory, program), ...rest];
 }

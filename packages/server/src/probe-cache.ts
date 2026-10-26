@@ -59,20 +59,26 @@ function probeEnvironmentHash(environment: Readonly<Record<string, string>>): st
   return createHash("sha256").update(JSON.stringify(values)).digest("hex");
 }
 
-async function binaryIdentity(
-  binary: string,
+/**
+ * The file that holds omp for this command: its last element, the compiled chat host, or omp's `cli.ts` in a source
+ * checkout, whose path names the installed package and its hash.
+ */
+async function commandIdentity(
+  command: readonly string[],
 ): Promise<Pick<ProbeCacheIdentity, "path" | "size" | "mtimeMs">> {
-  const path = await realpath(binary).catch(() => resolve(binary));
+  const file = command.at(-1);
+  if (file === undefined) throw new Error("omp's command line is empty");
+  const path = await realpath(file).catch(() => resolve(file));
   const metadata = await stat(path);
   return { path, size: metadata.size, mtimeMs: metadata.mtimeMs };
 }
 
 export async function probeCacheIdentity(
-  binary: string,
+  command: readonly string[],
   version: string,
   environment: Readonly<Record<string, string>>,
 ): Promise<ProbeCacheIdentity> {
-  const identity = await binaryIdentity(binary);
+  const identity = await commandIdentity(command);
   return { ...identity, version, environmentHash: probeEnvironmentHash(environment) };
 }
 

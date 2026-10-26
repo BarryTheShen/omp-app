@@ -128,29 +128,22 @@ while (!ready.includes("READY")) {
 }
 
 /**
- * The omp the app runs: the release in `packages/server/src/omp-pin/pin.json`, from `OMP_APP_OMP_DIR` or this
- * checkout's `.data/omp` (`bun packages/server/scripts/fetch-omp.ts` puts it there), so fixtures record what the app
- * really talks to.
+ * The omp the app runs: its chat host, omp's own command line built from the omp package the app pins (#2586), so
+ * fixtures record what the app really talks to. `OMP_APP_CHAT_HOST_BIN` names the compiled one (the e2e global setup
+ * builds it); without it, omp's `cli.ts` from the installed package runs on this Bun.
  */
-async function pinnedOmp(): Promise<string> {
-  const pin: unknown = JSON.parse(
-    await readFile(path.resolve(import.meta.dir, "../../server/src/omp-pin/pin.json"), "utf8"),
-  );
-  if (
-    typeof pin !== "object" ||
-    pin === null ||
-    !("version" in pin) ||
-    typeof pin.version !== "string"
-  ) {
-    throw new Error("packages/server/src/omp-pin/pin.json names no omp version");
-  }
-  const dir = process.env.OMP_APP_OMP_DIR ?? path.resolve(import.meta.dir, "../../../.data/omp");
-  return path.join(dir, `omp-${pin.version}`);
+function ompCommandLine(): readonly string[] {
+  const binary = process.env.OMP_APP_CHAT_HOST_BIN;
+  if (binary) return [binary];
+  return [
+    process.execPath,
+    Bun.resolveSync("@oh-my-pi/pi-coding-agent/cli", path.resolve(import.meta.dir, "../../server")),
+  ];
 }
 
 const omp = Bun.spawn({
   cmd: [
-    await pinnedOmp(),
+    ...ompCommandLine(),
     "--mode",
     "rpc-ui",
     "--cwd",

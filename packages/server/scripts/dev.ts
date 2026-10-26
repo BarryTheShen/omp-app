@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { arch, cpus, homedir, platform, release, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -64,8 +66,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
-import { chatCommand } from "../src/omp-host/chat-command";
-import { ensurePinnedOmp, pinnedOmpPath } from "../src/omp-pin";
+import { chatCommand, ompCommand } from "../src/omp-host/chat-command";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -91,13 +92,11 @@ export interface CompositionServerOptions {
   readonly port?: number;
   readonly staticRoot?: string;
   /**
-   * Test seam: the omp binary that answers omp's commands (`--version`, `models`, `usage`, `config`; a wrapper script in
-   * some e2e specs). Without it the server runs the omp the app pins (`src/omp-pin`), downloaded once into
-   * `OMP_APP_OMP_DIR`, else `<app data>/omp`. Chats never run it: they run the chat host (`chatHostBinary`).
+   * Test seam: a program that stands in for omp's command line in omp's own commands (`--version`, `models`, `usage`,
+   * `config`; a wrapper script or a missing program in some e2e specs). Without it they run `ompCommand()`, the same
+   * command line as the chats.
    */
   readonly ompBin?: string;
-  /** Test seam: how the pinned omp is downloaded when it is missing; the default is `fetch`. */
-  readonly ompDownload?: (url: string) => Promise<Response>;
   readonly ompArgs?: readonly string[];
   /**
    * The chat host compiled to one program (`scripts/build-chat-host.ts`: omp's own command line, built from the pinned
@@ -176,28 +175,12 @@ export async function createCompositionServer(
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
   // A bad value stops the start before anything runs: the app must never listen for an address it cannot check.
   const remote = parseRemoteOrigin(env[REMOTE_ORIGIN_ENV]);
-  // Every chat, and the probe of a chat's commands, runs omp's command line built by the app (#2586).
-  const chats = chatCommand({
-    binary: options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN,
-    wrapper: options.chatWrapper,
-  });
-  // The omp the app pins, never one installed on the computer: omp's commands (version, models, usage, config) run it.
-  const ompDir = env.OMP_APP_OMP_DIR ?? join(appDataDir, "omp");
-  let ompBinary = options.ompBin ?? pinnedOmpPath(ompDir);
-  let installFailure: string | undefined;
-  if (options.ompBin === undefined) {
-    try {
-      ompBinary = await ensurePinnedOmp({
-        dir: ompDir,
-        logger,
-        // A folder named by OMP_APP_OMP_DIR may be shared by other versions of the app (the test machine's job cache).
-        removeOlder: env.OMP_APP_OMP_DIR === undefined,
-        ...(options.ompDownload === undefined ? {} : { fetch: options.ompDownload }),
-      });
-    } catch (error) {
-      installFailure = error instanceof Error ? error.message : String(error);
-    }
-  }
+  // omp's own command line, built by the app (#2586): it answers omp's commands and, in RPC mode, runs every chat and the
+  // probe of a chat's commands. Never an omp installed on the computer.
+  const chatHostBinary = options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN;
+  const chats = chatCommand({ binary: chatHostBinary, wrapper: options.chatWrapper });
+  const ompCmd =
+    options.ompBin === undefined ? ompCommand({ binary: chatHostBinary }) : [options.ompBin];
   logger.info("start", {
     version: serverVersion,
     pid: process.pid,
@@ -211,26 +194,31 @@ export async function createCompositionServer(
     home: homeDir,
     agent_dir: agentDir,
     app_data_dir: appDataDir,
-    omp_bin: ompBinary,
+    omp_bin: ompCmd.join(" "),
     log_file: logger.path,
   });
+  // The omp release that versions before the chat host downloaded into the app's data folder (about 257 MB) is never run
+  // again, so it goes.
+  const oldOmpDownload = join(appDataDir, "omp");
+  if (existsSync(oldOmpDownload)) {
+    try {
+      await rm(oldOmpDownload, { recursive: true, force: true });
+      logger.info("omp.old_download_removed", { path: oldOmpDownload });
+    } catch (error) {
+      logger.warn("omp.old_download_kept", {
+        path: oldOmpDownload,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const probeStarted = performance.now();
-  const probe: OmpProbe =
-    installFailure === undefined
-      ? await probeOmpPatiently(ompBinary, env, launchFolder, {
-          // A busy computer can need longer than a quiet one: it is asked once more, patiently.
-          onRetry: (waitedMs) => logger.warn("omp.probe_retry", { waited_ms: waitedMs }),
-        })
-      : {
-          version: null,
-          health: {
-            status: "unhealthy",
-            detail: `The app's omp could not be installed: ${installFailure}`,
-          },
-        };
+  const probe: OmpProbe = await probeOmpPatiently(ompCmd, env, launchFolder, {
+    // A busy computer can need longer than a quiet one: it is asked once more, patiently.
+    onRetry: (waitedMs) => logger.warn("omp.probe_retry", { waited_ms: waitedMs }),
+  });
   const ompProbeMs = Math.round(performance.now() - probeStarted);
   const defaultsProbe = {
-    binary: ompBinary,
+    command: ompCmd,
     launchDirectory: launchFolder,
     pathEnvironment: env.PATH ?? "",
   };
@@ -242,7 +230,7 @@ export async function createCompositionServer(
   let health = probe.health;
   if (probe.health.status === "ok" && probe.version !== null) {
     try {
-      cacheIdentity = await probeCacheIdentity(ompBinary, probe.version, env);
+      cacheIdentity = await probeCacheIdentity(ompCmd, probe.version, env);
       cacheHit = await readProbeCache(appDataDir, cacheIdentity);
     } catch {
       cacheIdentity = undefined;
@@ -281,7 +269,7 @@ export async function createCompositionServer(
       try {
         capabilityResult = await capabilityPromise;
       } catch (error) {
-        health = await unhealthyAfterFailedChecks(ompBinary, env, launchFolder);
+        health = await unhealthyAfterFailedChecks(ompCmd, env, launchFolder);
         logger.error("capabilities.probe_failed", {
           message: error instanceof Error ? error.message : String(error),
           ms: Math.round(performance.now() - capabilityStarted),
@@ -413,7 +401,7 @@ export async function createCompositionServer(
         ownPid: hostPid,
       }),
     capabilities,
-    usableModels: () => listUsableModels(ompBinary, env, launchFolder),
+    usableModels: () => listUsableModels(ompCmd, env, launchFolder),
     serverInfo: {
       instanceId,
       serverVersion,
@@ -435,7 +423,7 @@ export async function createCompositionServer(
                 directory: dirname(logger.path),
                 version: serverVersion,
                 now,
-                omp: { path: ompBinary, version: probe.version },
+                omp: { path: ompCmd.join(" "), version: probe.version },
                 processes: await listProcesses(process.pid),
                 secrets: [launchToken],
               }),
@@ -476,7 +464,7 @@ export async function createCompositionServer(
       environmentVariables: ompEnvironmentVariableNames,
     },
     {
-      binary: ompBinary,
+      command: ompCmd,
       launchDirectory: launchFolder,
       pathEnvironment: env.PATH ?? "",
     },
@@ -513,7 +501,7 @@ export async function createCompositionServer(
     watchRegistry: fileWatch,
   });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
-  const usageLimitStore = createUsageLimitStore({ env, binary: ompBinary });
+  const usageLimitStore = createUsageLimitStore({ env, command: ompCmd });
   const extensionCatalog = createExtensionCatalog({
     env,
     homeDir,

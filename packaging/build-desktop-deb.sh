@@ -5,8 +5,8 @@
 #
 # The package holds the "omp app" window (/usr/bin/omp-app-desktop), the server that window starts
 # (/usr/bin/omp-app-desktop-server: the omp-app command's server, compiled with Bun), the chat host that runs every
-# chat (omp's own command line, built from the pinned package: /usr/lib/omp-app-desktop/chat-host), the omp release the app pins for omp's own commands
-# (/usr/lib/omp-app-desktop/omp), the built web app (/usr/lib/omp-app-desktop/web) and an
+# chat and answers omp's own commands (omp's own command line, built from the pinned package:
+# /usr/lib/omp-app-desktop/chat-host), the built web app (/usr/lib/omp-app-desktop/web) and an
 # applications-menu entry. The server runs the omp it holds, so omp needs no separate install. The
 # package shares no file with the omp-app command package (packaging/build-deb.sh), so both can be
 # installed. The prerequisites are in apps/desktop/README.md.
@@ -42,10 +42,6 @@ bun build --compile --minify --target=bun-linux-x64 \
 # the `bun` on PATH. The script refuses any other Bun.
 "${CHAT_HOST_BUN:-bun}" packages/server/scripts/build-chat-host.ts "$crate/resources/chat-host"
 
-# The omp release the app pins (packages/server/src/omp-pin/pin.json) is bundled as a resource too
-# (resources/omp), beside the web app. The fetch checks the download against the release's SHA-256.
-bun packages/server/scripts/fetch-omp.ts "$crate/resources/omp"
-
 # Tauri builds the window and the .deb (the deb target only); the version comes from here.
 (cd "$desktop" && bun run tauri build --bundles deb --config "{\"version\": \"$version\"}")
 
@@ -69,9 +65,8 @@ cp "$built" "$out/$package"
   exit 1
 }
 paths=$(dpkg-deb -c "$out/$package" | awk '{ print $NF }')
-pinned=$(grep -o -E '"version": *"[^"]+"' packages/server/src/omp-pin/pin.json | grep -o -E '[0-9][^"]*')
 for path in usr/bin/omp-app-desktop usr/bin/omp-app-desktop-server \
-  usr/lib/omp-app-desktop/web/index.html usr/lib/omp-app-desktop/chat-host "usr/lib/omp-app-desktop/omp/omp-$pinned" \
+  usr/lib/omp-app-desktop/web/index.html usr/lib/omp-app-desktop/chat-host \
   usr/share/applications/omp-app-desktop.desktop; do
   grep -Fxq "$path" <<<"$paths" || {
     echo "the package has no $path" >&2

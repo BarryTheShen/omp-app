@@ -40,8 +40,9 @@ type OmpRun =
   | { readonly kind: "timed-out" }
   | { readonly kind: "exited"; readonly exitCode: number; readonly stdout: string };
 
+/** Runs omp's command line (`ompCommand()`: the program and its leading arguments) with `args` after it. */
 async function runOmp(
-  binary: string,
+  command: readonly string[],
   args: readonly string[],
   env: Record<string, string>,
   cwd: string,
@@ -49,7 +50,7 @@ async function runOmp(
 ): Promise<OmpRun> {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
-    child = Bun.spawn([binary, ...args], { cwd, env, stdout: "pipe", stderr: "pipe" });
+    child = Bun.spawn([...command, ...args], { cwd, env, stdout: "pipe", stderr: "pipe" });
   } catch {
     return { kind: "not-started" };
   }
@@ -82,12 +83,12 @@ async function runOmp(
 
 /** Runs `omp --version`: is omp there, does it start, and which version is it. */
 export async function probeOmp(
-  binary: string,
+  command: readonly string[],
   env: Record<string, string>,
   cwd: string,
   timeoutMs: number = OMP_VERSION_TIMEOUT_MS,
 ): Promise<OmpProbe> {
-  const run = await runOmp(binary, ["--version"], env, cwd, timeoutMs);
+  const run = await runOmp(command, ["--version"], env, cwd, timeoutMs);
   if (run.kind === "not-started") {
     return { version: null, health: { status: "unhealthy", detail: OMP_PROBLEM.notFound } };
   }
@@ -108,12 +109,12 @@ const ModelList = z.object({ models: z.array(z.unknown()) });
  * cannot say: it did not run, ran out of time, or printed something that is not that list.
  */
 async function countUsableModels(
-  binary: string,
+  command: readonly string[],
   env: Record<string, string>,
   cwd: string,
   timeoutMs: number,
 ): Promise<number | null> {
-  const run = await runOmp(binary, ["models", "--json"], env, cwd, timeoutMs);
+  const run = await runOmp(command, ["models", "--json"], env, cwd, timeoutMs);
   if (run.kind !== "exited" || run.exitCode !== 0) return null;
   let json: unknown;
   try {
@@ -145,12 +146,12 @@ function parseModels(stdout: string): z.infer<typeof ModelsOutput> | null {
  * cannot list them, so the picker says so instead of showing an empty list.
  */
 export async function listUsableModels(
-  binary: string,
+  command: readonly string[],
   env: Record<string, string>,
   cwd: string,
   timeoutMs: number = OMP_MODELS_TIMEOUT_MS,
 ): Promise<UsableModel[]> {
-  const run = await runOmp(binary, ["models", "--json"], env, cwd, timeoutMs);
+  const run = await runOmp(command, ["models", "--json"], env, cwd, timeoutMs);
   const list = run.kind === "exited" && run.exitCode === 0 ? parseModels(run.stdout) : null;
   if (list === null) {
     throw new AppFailure({
@@ -172,12 +173,12 @@ export async function listUsableModels(
  * checks message.
  */
 export async function unhealthyAfterFailedChecks(
-  binary: string,
+  command: readonly string[],
   env: Record<string, string>,
   cwd: string,
   timeoutMs: number = OMP_MODELS_TIMEOUT_MS,
 ): Promise<OmpHealth> {
-  if ((await countUsableModels(binary, env, cwd, timeoutMs)) === 0) {
+  if ((await countUsableModels(command, env, cwd, timeoutMs)) === 0) {
     return { status: "unhealthy", detail: OMP_PROBLEM.noModel, code: "no_model" };
   }
   return { status: "unhealthy", detail: OMP_PROBLEM.checksFailed };
@@ -198,14 +199,14 @@ export interface PatientOmpProbeOptions {
  * without omp until it is restarted.
  */
 export async function probeOmpPatiently(
-  binary: string,
+  command: readonly string[],
   env: Record<string, string>,
   cwd: string,
   options: PatientOmpProbeOptions = {},
 ): Promise<OmpProbe> {
   const started = performance.now();
-  const first = await probeOmp(binary, env, cwd, options.quickMs ?? OMP_VERSION_TIMEOUT_MS);
+  const first = await probeOmp(command, env, cwd, options.quickMs ?? OMP_VERSION_TIMEOUT_MS);
   if (first.health.detail !== OMP_PROBLEM.timedOut) return first;
   options.onRetry?.(Math.round(performance.now() - started));
-  return probeOmp(binary, env, cwd, options.patientMs ?? PATIENT_PROBE_TIMEOUT_MS);
+  return probeOmp(command, env, cwd, options.patientMs ?? PATIENT_PROBE_TIMEOUT_MS);
 }

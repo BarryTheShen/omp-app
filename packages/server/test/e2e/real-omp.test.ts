@@ -1,19 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import { FolderPath, RpcSessionPort, ThreadId } from "@omp-app/contracts";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
-import { pinnedOmpPath } from "../../src/omp-pin";
 
-/** The omp the app pins, from `OMP_APP_OMP_DIR` (the test machine's shared cache), else this checkout's `.data/omp`. */
-const REAL_OMP = pinnedOmpPath(
-  Bun.env.OMP_APP_OMP_DIR ?? resolve(import.meta.dir, "../../../../.data/omp"),
-);
 const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
-const realTest = Bun.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP) ? test : test.skip;
+// Runs when asked (OMP_APP_REAL_OMP=1). omp is the app's own build of its command line: the compiled chat host when
+// OMP_APP_CHAT_HOST_BIN names it (the e2e global setup builds it), else omp's `cli.ts` from source (`ompCommand()`).
+const realTest = Bun.env.OMP_APP_REAL_OMP === "1" ? test : test.skip;
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
 const providers: Bun.Subprocess[] = [];
@@ -116,7 +112,6 @@ describe("A0.9 real omp composition", () => {
       homeDir: home,
       agentDir,
       appDataDir,
-      ompBin: REAL_OMP,
       ompArgs: ["--model", "fake/fake-model"],
       staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     });

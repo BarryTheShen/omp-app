@@ -4,11 +4,10 @@
 #   packaging/build-deb.sh <version>      for example 0.1.451
 #
 # The package holds one self-contained command (/usr/bin/omp-app: Bun's runtime plus the server,
-# compiled from packages/server/scripts/omp-app.ts), the chat host that runs every chat (omp's own command line,
-# built from the pinned package: /usr/lib/omp-app/chat-host), the built web app (/usr/share/omp-app/web), a desktop entry, an icon,
-# and a user service (/usr/lib/systemd/user/omp-app.service) that its postinst enables for every user,
-# so the server starts at login. The omp release the app runs for omp's own commands is not in it: the
-# command downloads it on its first start (packages/server/src/omp-pin).
+# compiled from packages/server/scripts/omp-app.ts), the chat host that runs every chat and answers omp's own commands
+# (omp's own command line, built from the pinned package: /usr/lib/omp-app/chat-host), the built web app
+# (/usr/share/omp-app/web), a desktop entry, an icon, and a user service (/usr/lib/systemd/user/omp-app.service) that its
+# postinst enables for every user, so the server starts at login. omp needs no separate install.
 set -euo pipefail
 
 version=${1:?usage: packaging/build-deb.sh <version>}

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
@@ -8,7 +9,6 @@ import {
   type CompositionServerOptions,
   createCompositionServer,
 } from "../../scripts/dev";
-import { OMP_PIN, pinnedOmpPath } from "../../src/omp-pin";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
@@ -109,8 +109,7 @@ async function startServer(
     homeDir: home,
     agentDir,
     appDataDir,
-    ompBin,
-    // The fake answers omp's commands and, as the chat host, the probe's and the chats' RPC.
+    // The fake is the chat host: it answers omp's commands, and the probe's and the chats' RPC.
     chatHostBinary: ompBin,
     staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     ...(capabilityProbeSettings === undefined ? {} : { capabilityProbeSettings }),
@@ -173,12 +172,12 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("the omp the app pins", () => {
-  /** A server started without an omp binary: it resolves the pinned omp from OMP_APP_OMP_DIR itself. */
-  async function startPinned(
+describe("the omp the app runs", () => {
+  /** A server started with only a chat host: omp's commands and its chats both run it. */
+  async function startWithChatHost(
     root: string,
+    chatHost: string,
     environment: Readonly<Record<string, string>>,
-    ompDownload?: CompositionServerOptions["ompDownload"],
   ): Promise<CompositionServer> {
     const home = join(root, "home");
     const agentDir = join(root, "agent");
@@ -191,20 +190,17 @@ describe("the omp the app pins", () => {
       agentDir,
       appDataDir,
       staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
-      chatHostBinary: await fakeOmp(root),
-      ...(ompDownload === undefined ? {} : { ompDownload }),
+      chatHostBinary: chatHost,
     });
     servers.push(server);
     return server;
   }
 
-  test("runs the release in OMP_APP_OMP_DIR, never an omp found on PATH", async () => {
-    const root = await temporaryRoot("pinned-omp-");
-    const pinnedDir = join(root, "pinned");
+  test("runs omp's commands with the chat host, never an omp found on PATH", async () => {
+    const root = await temporaryRoot("chat-host-omp-");
     const pathDir = join(root, "path-bin");
-    await Promise.all([pinnedDir, pathDir].map((path) => mkdir(path, { recursive: true })));
-    const pinned = pinnedOmpPath(pinnedDir);
-    await writeFile(pinned, FAKE_OMP, { mode: 0o755 });
+    await mkdir(pathDir, { recursive: true });
+    const chatHost = await fakeOmp(root);
     // An omp on PATH that would fail every probe and records any start.
     await writeFile(
       join(pathDir, "omp"),
@@ -212,38 +208,37 @@ describe("the omp the app pins", () => {
       { mode: 0o755 },
     );
 
-    const server = await startPinned(root, {
-      OMP_APP_OMP_DIR: pinnedDir,
+    const server = await startWithChatHost(root, chatHost, {
       PATH: `${pathDir}:${Bun.env.PATH ?? ""}`,
     });
 
     expect(server.health.status).toBe("ok");
-    expect(await readFile(`${pinned}.spawnlog`, "utf8")).toContain("--version");
+    const runs = (await readFile(`${chatHost}.spawnlog`, "utf8")).trim().split("\n");
+    expect(runs).toContain("--version");
+    expect(runs).toContain("config list --json");
     await expect(readFile(join(pathDir, "omp.spawnlog"), "utf8")).rejects.toThrow();
   }, 30_000);
 
-  test("starts, and says why, when the pinned omp cannot be downloaded", async () => {
-    const root = await temporaryRoot("pinned-omp-missing-");
-    const urls: string[] = [];
+  test("starts, and says why, when the chat host is missing", async () => {
+    const root = await temporaryRoot("chat-host-missing-");
 
-    const server = await startPinned(
-      root,
-      { OMP_APP_OMP_DIR: join(root, "pinned") },
-      async (url) => {
-        urls.push(url);
-        return new Response("not here", { status: 404 });
-      },
-    );
+    const server = await startWithChatHost(root, join(root, "missing-chat-host"), {});
 
-    expect(urls).toEqual([
-      `https://github.com/can1357/oh-my-pi/releases/download/v${OMP_PIN.version}/omp-${process.platform}-${process.arch}`,
-    ]);
-    expect(server.health).toEqual({
-      status: "unhealthy",
-      detail: `The app's omp could not be installed: the download of omp ${OMP_PIN.version} failed (HTTP 404).`,
-    });
+    expect(server.health).toEqual({ status: "unhealthy", detail: "omp was not found." });
     // The server still answers, so the page can show the reason.
     expect((await welcomeFor(server)).type).toBe("welcome");
+  }, 30_000);
+
+  test("deletes the omp release that earlier versions downloaded into its data folder", async () => {
+    const root = await temporaryRoot("old-omp-download-");
+    const oldDownload = join(root, "app-data", "omp");
+    await mkdir(oldDownload, { recursive: true });
+    await writeFile(join(oldDownload, "omp-18.12.6"), "an earlier version's download");
+
+    const server = await startWithChatHost(root, await fakeOmp(root), {});
+
+    expect(server.health.status).toBe("ok");
+    expect(existsSync(oldDownload)).toBe(false);
   }, 30_000);
 });
 

@@ -4,7 +4,7 @@ A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent (oh-
 
 The logo is copied from omp under its [MIT licence](NOTICE).
 
-The app runs the omp release it pins, omp **18.12.6** (`packages/server/src/omp-pin/pin.json`), and no other. Features are still switched on by the capabilities omp reports when a session starts, not by version numbers.
+The app runs the omp release it pins, omp **18.12.6** (the `@oh-my-pi/pi-coding-agent` package in `packages/server/package.json`), and no other. Features are still switched on by the capabilities omp reports when a session starts, not by version numbers.
 
 ## Install
 
@@ -21,9 +21,9 @@ There are two packages of the same version. Take the window (`omp-app-desktop`) 
 
 The terminal command's package also installs a user service, `omp-app.service`, and turns it on for every user: from the next login the app's server runs in the background, so chats keep running with no browser or window open, and `omp-app` opens the browser on it. `omp-app <folder>` opens the running app on that folder, in place of the folder the app opened on before. Stop it until the next login with `systemctl --user stop omp-app`. To keep it from starting at your logins, use `systemctl --user mask --now omp-app` (a user cannot disable a service the package turned on for everyone); `systemctl --user unmask omp-app` undoes that. Removing the package turns the service off for everyone.
 
-The app runs the omp release it is built for (named in `packages/server/src/omp-pin/pin.json`, now 18.12.6), never an omp installed on your computer. The terminal command downloads that release from omp's GitHub releases on its first start into `~/.omp/agent/app/omp` (or the folder `OMP_APP_OMP_DIR` names) and checks it against the release's SHA-256 checksum; when a newer app moves to a newer release, the older releases' binaries there are deleted. The window carries that release in its package, so it downloads nothing. Every chat and omp command runs on it. `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
+The app runs the omp release it is built for (the `@oh-my-pi/pi-coding-agent` package in `packages/server/package.json`, now 18.12.6), never an omp installed on your computer. Both packages hold it as their chat host: omp's own command line, compiled from that package (`/usr/lib/omp-app/chat-host`; the window's is in `/usr/lib/omp-app-desktop`), so nothing is downloaded, and the omp release that earlier versions downloaded into `~/.omp/agent/app/omp` is deleted when the app starts. Every chat and omp command runs on it. `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
 
-If the app's omp cannot be downloaded, cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, instead of an app that cannot start chats, and the terminal prints the same warning. The checks are asked twice, the second time with a longer wait, because a busy computer can take more than five seconds to start omp.
+If the app's omp cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, instead of an app that cannot start chats, and the terminal prints the same warning. The checks are asked twice, the second time with a longer wait, because a busy computer can take more than five seconds to start omp.
 
 When omp starts but has no model set up, the page says "No model is set up yet" and what to set up instead of saying that omp is missing.
 
@@ -130,7 +130,7 @@ From `AGENTS.md` (approved by the owner):
 
 ## Development
 
-Prerequisites: [Bun](https://bun.sh) 1.3.14 or later and Google Chrome (the end-to-end tests use the system Chrome and never download browsers). The server and the live tests run the omp the app pins: `bun packages/server/scripts/fetch-omp.ts` puts it in `.data/omp` once (or set `OMP_APP_OMP_DIR` to a folder that holds it).
+Prerequisites: [Bun](https://bun.sh) 1.3.14 or later and Google Chrome (the end-to-end tests use the system Chrome and never download browsers). From source, the server runs omp's command line from the pinned package on your Bun. The live tests run the chat host the packages ship instead: their global setup (`apps/web/e2e/global-setup.ts`) builds it once per lockfile into `.data/chat-host` (or the folder `OMP_APP_CHAT_HOST_DIR` names), with the Bun omp's release is built with, which it downloads there once; `OMP_APP_CHAT_HOST_BIN` names one already built.
 
 ```bash
 bun install                 # install every workspace

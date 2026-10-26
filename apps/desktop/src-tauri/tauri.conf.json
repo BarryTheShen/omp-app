@@ -18,12 +18,11 @@
     "publisher": "Barry Shen <BarryTheShen@users.noreply.github.com>",
     "category": "DeveloperTool",
     "shortDescription": "Desktop window for the omp coding agent",
-    "longDescription": "A window around the omp app: a chat app for the omp coding agent. The window bundles the omp release it runs.",
+    "longDescription": "A window around the omp app: a chat app for the omp coding agent. The window bundles the omp it runs: omp's own command line, built from the omp release the app pins.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
     "externalBin": ["binaries/omp-app-desktop-server"],
     "resources": {
       "resources/web": "web",
-      "resources/omp": "omp",
       "resources/chat-host": "chat-host"
     },
     "linux": {

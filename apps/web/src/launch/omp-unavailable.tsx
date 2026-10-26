@@ -27,9 +27,9 @@ export function OmpUnavailableScreen({ reason, noModel = false }: OmpUnavailable
           {reason ?? "omp app could not use omp."}
         </p>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          omp app runs its own copy of omp, which it downloads from omp's GitHub releases the first
-          time it starts. If the download failed, check that this computer can reach github.com.
-          Then quit omp app (Ctrl+C in its terminal) and start it again.
+          omp app runs its own copy of omp, which comes with its package. If it is missing or does
+          not start, reinstall the package. Then quit omp app (Ctrl+C in its terminal) and start it
+          again.
         </p>
         <LogHint />
       </section>

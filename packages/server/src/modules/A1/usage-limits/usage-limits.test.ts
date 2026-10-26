@@ -79,7 +79,7 @@ const usageJson = JSON.stringify({
 describe("the provider usage limits omp reports", () => {
   test("summarises each provider's windows: the fullest account's share and reset, and how many accounts report it, with no identity", async () => {
     const service = new UsageLimitStoreService({
-      binary: await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`),
+      command: [await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`)],
       env: { PATH },
       now: () => 1_000,
     });
@@ -110,7 +110,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when omp does not answer within the deadline, and stops it", async () => {
     const service = new UsageLimitStoreService({
-      binary: await fakeOmp("sleep 5"),
+      command: [await fakeOmp("sleep 5")],
       env: { PATH },
       timeoutMs: 2_000,
     });
@@ -123,7 +123,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when omp stops with an error, and never shows what it wrote to stderr", async () => {
     const service = new UsageLimitStoreService({
-      binary: await fakeOmp("echo 'token sk-secret-value' >&2\nexit 3"),
+      command: [await fakeOmp("echo 'token sk-secret-value' >&2\nexit 3")],
       env: { PATH },
     });
 
@@ -135,7 +135,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when omp's output is not JSON", async () => {
     const service = new UsageLimitStoreService({
-      binary: await fakeOmp("echo 'not json at all'"),
+      command: [await fakeOmp("echo 'not json at all'")],
       env: { PATH },
     });
 
@@ -147,7 +147,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when the output has no reports list in a form the app reads", async () => {
     const service = new UsageLimitStoreService({
-      binary: await fakeOmp("echo '{\"generatedAt\": 1}'"),
+      command: [await fakeOmp("echo '{\"generatedAt\": 1}'")],
       env: { PATH },
     });
 
@@ -166,7 +166,7 @@ describe("the provider usage limits omp reports", () => {
     const runs = async () => (await readFile(counter, "utf8")).trim().split("\n").length;
     let now = 1_000;
     const service = new UsageLimitStoreService({
-      binary,
+      command: [binary],
       env: { PATH },
       now: () => now,
       cacheMs: 60_000,
@@ -186,7 +186,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says that omp could not be started when there is no omp to run", async () => {
     const service = new UsageLimitStoreService({
-      binary: "/nonexistent/omp-app-usage-limits-test/omp",
+      command: ["/nonexistent/omp-app-usage-limits-test/omp"],
       env: { PATH },
     });
 

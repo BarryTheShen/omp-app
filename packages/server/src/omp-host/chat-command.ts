@@ -1,4 +1,4 @@
-export interface ChatCommandOptions {
+export interface OmpCommandOptions {
   /**
    * The chat host compiled to one program (`scripts/build-chat-host.ts`), on the Bun omp's release is built with. The
    * packages install it beside the app's command, and the live tests build it (`apps/web/e2e/global-setup.ts`).
@@ -7,6 +7,9 @@ export interface ChatCommandOptions {
    * and missed a settings change while running, #2687).
    */
   readonly binary?: string | undefined;
+}
+
+export interface ChatCommandOptions extends OmpCommandOptions {
   /**
    * Test seam: a program each chat runs through, given the chat's whole command as its arguments. A wrapper does what
    * its test needs (waits, adds arguments, filters frames) and ends with `exec "$@"`.
@@ -15,14 +18,20 @@ export interface ChatCommandOptions {
 }
 
 /**
- * The program and leading arguments that start one chat: omp's own command line, built by the app from the omp package it
- * pins (#2586, SDK plan H1a), in `--mode rpc-ui`, the only mode that forwards extension and tool UI requests. The chat's
- * own arguments follow.
+ * omp's own command line, built by the app from the omp package it pins (#2586, SDK plan): the program and leading
+ * arguments, before omp's own arguments. It answers omp's commands (`--version`, `models`, `usage`, `config`) and runs
+ * chats (`chatCommand`).
+ */
+export function ompCommand(options: OmpCommandOptions = {}): readonly string[] {
+  return options.binary === undefined ? [process.execPath, ompCommandLine()] : [options.binary];
+}
+
+/**
+ * The program and leading arguments that start one chat: omp's command line in `--mode rpc-ui`, the only mode that
+ * forwards extension and tool UI requests. The chat's own arguments follow.
  */
 export function chatCommand(options: ChatCommandOptions = {}): readonly string[] {
-  const program =
-    options.binary === undefined ? [process.execPath, ompCommandLine()] : [options.binary];
-  const command = [...program, "--mode", "rpc-ui"];
+  const command = [...ompCommand(options), "--mode", "rpc-ui"];
   return options.wrapper === undefined ? command : [options.wrapper, ...command];
 }
 

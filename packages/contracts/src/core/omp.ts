@@ -11,8 +11,9 @@ import type * as Wire from "../omp-wire/rpc-wire.generated";
 export type * as OmpWire from "../omp-wire/rpc-wire.generated";
 
 /**
- * The omp release the app runs and supports: the one `packages/server/src/omp-pin/pin.json` pins, since the app starts
- * no other. The contracts package cannot read that file, so a test in `omp-pin.test.ts` keeps the two equal.
+ * The omp release the app runs and supports: the `@oh-my-pi/pi-coding-agent` version `packages/server/package.json` pins,
+ * whose command line the app builds into its chat host and runs, and no other. The contracts package cannot read that file,
+ * so `packages/server/src/omp-host/omp-version.test.ts` keeps the two equal.
  */
 export const OMP_FLOOR_VERSION = "18.12.6";
 

@@ -6,7 +6,7 @@
  */
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { probeOmp } from "../src/capabilities/omp-version";
 import {
   clearInstance,
@@ -34,7 +34,7 @@ import {
   readLogTail,
   stateDirectory,
 } from "../src/logging";
-import { OMP_PIN, pinnedOmpPath } from "../src/omp-pin";
+import { ompCommand } from "../src/omp-host/chat-command";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { type CompositionServer, createCompositionServer } from "./dev";
 
@@ -62,19 +62,18 @@ function webRoot(): string {
   );
 }
 
+/** The chat host the packages install beside the command: omp's own command line, built by the app (#2586). */
+const INSTALLED_CHAT_HOST = resolve(dirname(process.execPath), "../lib/omp-app/chat-host");
+/** A compiled command holds its sources in Bun's in-memory folder, where they cannot run as omp. */
+const COMPILED = import.meta.dir.startsWith("/$bunfs/");
+
 /**
- * The compiled chat host that runs every chat (#2586): `OMP_APP_CHAT_HOST_BIN`, else beside the installed command. A
- * source checkout has none; its server runs omp's command line from the pinned package on Bun instead.
+ * The chat host that runs omp's commands and every chat: `OMP_APP_CHAT_HOST_BIN`, else the installed one. A source
+ * checkout without either runs omp's command line from the pinned package on Bun instead.
  */
 function chatHostBinary(): string | undefined {
   if (Bun.env.OMP_APP_CHAT_HOST_BIN) return Bun.env.OMP_APP_CHAT_HOST_BIN;
-  const installed = resolve(dirname(process.execPath), "../lib/omp-app/chat-host");
-  if (existsSync(installed)) return installed;
-  // A compiled command holds its sources in Bun's in-memory folder, where they cannot run as a chat.
-  if (import.meta.dir.startsWith("/$bunfs/")) {
-    return fail(`the app's chat host is missing (${installed}). Reinstall the package.`);
-  }
-  return undefined;
+  return COMPILED || existsSync(INSTALLED_CHAT_HOST) ? INSTALLED_CHAT_HOST : undefined;
 }
 
 function isAlive(pid: number): boolean {
@@ -130,12 +129,7 @@ if (args.command === "version") {
 
 const home = homedir();
 const logDir = stateDirectory(Bun.env, home);
-// The omp the server runs: the one the app pins, in its app data unless OMP_APP_OMP_DIR says otherwise (see
-// `createCompositionServer`, which resolves the same folders).
-const appData =
-  Bun.env.OMP_APP_DATA_DIR ??
-  join(Bun.env.PI_CODING_AGENT_DIR ?? join(home, ".omp", "agent"), "app");
-const appOmp = pinnedOmpPath(Bun.env.OMP_APP_OMP_DIR ?? join(appData, "omp"));
+const chatHost = chatHostBinary();
 
 if (args.command === "logs") {
   const tail = readLogTail(logDir, args.lines ?? 100);
@@ -148,7 +142,8 @@ if (args.command === "debug-report") {
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(Bun.env))
     if (value !== undefined) environment[key] = value;
-  const probe = await probeOmp(appOmp, { ...environment, PATH: searchPath }, process.cwd());
+  const omp = ompCommand({ binary: chatHost });
+  const probe = await probeOmp(omp, { ...environment, PATH: searchPath }, process.cwd());
   const now = new Date();
   const target = resolve(process.cwd(), debugReportFileName(now));
   // The omp processes listed are the running server's: this command starts none of its own.
@@ -162,7 +157,7 @@ if (args.command === "debug-report") {
       directory: logDir,
       version,
       now,
-      omp: { path: appOmp, version: probe.version },
+      omp: { path: omp.join(" "), version: probe.version },
       processes: await listProcesses(running?.pid),
     }),
     { mode: 0o600 },
@@ -217,8 +212,8 @@ if (port !== 0 && !(await portIsFree(port))) {
   port = 0;
 }
 
-if (!existsSync(appOmp)) {
-  console.log(`Downloading omp ${OMP_PIN.version}, the omp this app runs (first start only)…`);
+if (chatHost !== undefined && !existsSync(chatHost)) {
+  fail(`the app's chat host is missing (${chatHost}). Reinstall the package.`);
 }
 let started: StartResult<CompositionServer>;
 try {
@@ -228,7 +223,7 @@ try {
       createCompositionServer({
         port,
         staticRoot: webRoot(),
-        chatHostBinary: chatHostBinary(),
+        chatHostBinary: chatHost,
         cwd: folder,
         env: { PATH: searchPath },
         serverVersion: version,
@@ -240,7 +235,7 @@ try {
   if (error instanceof PortTakenError) fail(error.message);
   throw error;
 }
-// Another start took the port first, while this one was downloading omp: this command is that one's "already running".
+// Another start took the port first, while this one was starting: this command is that one's "already running".
 if ("running" in started) attachToRunning(started.running);
 const { server } = started;
 const address = `${server.url}/#token=${encodeURIComponent(server.token)}`;
@@ -253,7 +248,7 @@ if (server.remoteUrl !== undefined) {
 }
 if (server.health.status !== "ok") {
   console.warn(
-    `\nWarning: ${server.health.detail ?? "omp is not working."} The app opens, but chats cannot start. If the download failed, check that this computer can reach github.com and start the app again; otherwise run \`omp-app debug-report\` and attach the file to an issue.`,
+    `\nWarning: ${server.health.detail ?? "omp is not working."} The app opens, but chats cannot start. Run \`omp-app debug-report\` and attach the file to an issue.`,
   );
 }
 if (args.open) openBrowser(address);
