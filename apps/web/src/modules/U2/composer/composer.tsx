@@ -53,6 +53,11 @@ export interface ComposerSurfaceProps {
   readonly policy?: SubmitPolicy;
   readonly autoFocus?: boolean;
   readonly disabled?: boolean;
+  /**
+   * Keeps the box apart from the draft while a send is in flight (`useComposerDraft`'s `beginSend` and `endSend`): the
+   * box empties at Enter and takes new text during the send (#2659). Without it the box is locked until the send settles.
+   */
+  readonly holdDraft?: { readonly begin: () => void; readonly end: () => void };
   /** The text box's accessible name. An edit box names itself, so it is not confused with the composer. */
   readonly inputLabel?: string;
   /**
@@ -203,6 +208,7 @@ export function ComposerSurface({
   capabilities = NO_CAPABILITIES,
   autoFocus = true,
   disabled = false,
+  holdDraft,
   inputLabel = "Message input",
   replaced = false,
   sendBlockedReason,
@@ -278,10 +284,21 @@ export function ComposerSurface({
       for (const kind of kinds) document.removeEventListener(kind, offer, true);
     };
   }, []);
+  // An Enter pressed while a send was in flight: it sends the box's text once that send has settled (see `submit`).
+  const pendingSubmit = useRef<{
+    readonly keyChord: ComposerKeyChord;
+    readonly delivery: PromptDelivery | undefined;
+  } | null>(null);
   const submit = useCallback(
     async (keyChord: ComposerKeyChord, delivery?: PromptDelivery) => {
-      if (disabled || notSentReason !== undefined || isSubmitting || !hasContent(text, attachments))
+      if (isSubmitting) {
+        // The box takes new text while a send is in flight (`holdDraft`): Enter sends that text once the send has settled.
+        if (holdDraft !== undefined && hasContent(text, attachments)) {
+          pendingSubmit.current = { keyChord, delivery };
+        }
         return;
+      }
+      if (disabled || notSentReason !== undefined || !hasContent(text, attachments)) return;
 
       // A `!` or `$` line is a command: it goes through U2's mode seam, never to the model as a prompt.
       const command = parseComposerMode(text);
@@ -315,6 +332,7 @@ export function ComposerSurface({
         return;
       }
       setError(null);
+      holdDraft?.begin();
       setIsSubmitting(true);
       const submittedText = text;
       try {
@@ -323,12 +341,13 @@ export function ComposerSurface({
         } else {
           for (const intent of intents) await submitPrompt(intent);
         }
-        if (latestText.current === submittedText) await composer.reset();
+        if (holdDraft === undefined && latestText.current === submittedText) await composer.reset();
         inputRef.current?.focus();
       } catch (cause) {
         setError(appFailure(cause).appError);
         inputRef.current?.focus();
       } finally {
+        holdDraft?.end();
         setIsSubmitting(false);
       }
     },
@@ -337,6 +356,7 @@ export function ComposerSurface({
       capabilities,
       composer,
       disabled,
+      holdDraft,
       isStreaming,
       isSubmitting,
       policy,
@@ -345,6 +365,12 @@ export function ComposerSurface({
       text,
     ],
   );
+  useEffect(() => {
+    if (isSubmitting || pendingSubmit.current === null) return;
+    const next = pendingSubmit.current;
+    pendingSubmit.current = null;
+    void submit(next.keyChord, next.delivery);
+  }, [isSubmitting, submit]);
 
   const handleCancel = useCallback(async () => {
     if (!canCancel || sendBlockedReason !== undefined) return;
@@ -589,7 +615,7 @@ export function ComposerSurface({
             data-focus-ring="parent"
             autoFocus={autoFocus}
             cancelOnEscape={false}
-            disabled={disabled || isSubmitting}
+            disabled={disabled || (isSubmitting && holdDraft === undefined)}
             onCompositionEnd={() => {
               composingRef.current = false;
             }}

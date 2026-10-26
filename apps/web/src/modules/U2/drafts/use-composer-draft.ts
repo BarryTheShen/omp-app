@@ -39,6 +39,19 @@ interface UseComposerDraftOptions {
   >;
   /** A prompt Up or Down recalled (U2.5) is not the draft. */
   readonly isRecalledPrompt: (text: string) => boolean;
+  /**
+   * Holds the chat's draft while a send settles (`useChatDraft`'s `hold`): no move runs until the text typed during
+   * the send is in the controller. Without it the composer only keeps its own text apart.
+   */
+  readonly hold?: () => () => void;
+}
+
+/** Keeps the box apart from the draft while a send is in flight (see `useComposerDraft`). */
+export interface ComposerSendHold {
+  /** At Enter: the box empties and takes new text, which the draft gets once the send has settled. */
+  readonly beginSend: () => void;
+  /** Once the send has settled: what was typed meanwhile becomes the draft, or the box shows what the draft holds. */
+  readonly endSend: () => void;
 }
 
 /**
@@ -78,7 +91,8 @@ export function useComposerDraft({
   composer,
   attachments,
   isRecalledPrompt,
-}: UseComposerDraftOptions): void {
+  hold,
+}: UseComposerDraftOptions): ComposerSendHold {
   // The controller this composer last loaded its draft for. A thread switch can keep this composer
   // mounted (a branch re-keys the chat), so a new controller clears the text and loads its own draft.
   const hydratedFor = useRef<DraftController | null>(null);
@@ -100,6 +114,11 @@ export function useComposerDraft({
   const lostAttachments = useRef<readonly AttachmentRef[]>([]);
   // The restore still loading, if any: a newer restore or a chat change replaces it (see `restoreAttachments`).
   const restoreAbort = useRef<AbortController | null>(null);
+  // The send in flight, from Enter until it has settled (see `beginSend`): the box and the controller stay apart
+  // meanwhile. The controller keeps the sent text until admission, and text typed in the box must not join it (#2659).
+  const sending = useRef<{ readonly chat: object; readonly release: () => void } | null>(null);
+  const latestText = useRef(text);
+  latestText.current = text;
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -122,6 +141,7 @@ export function useComposerDraft({
       // Before the chat's draft loads, what the manager holds is the chat's own (the previous chat's was cleared when
       // this chat opened): it is saved to the controller now, and the controller merges it with the stored draft.
       if (clearedFor.current !== owner) return;
+      if (sending.current !== null) return;
       if (restoring.current > 0) return;
       const draftAttachments = attachmentsToSave();
       if (sameRefs(draftAttachments, agreedAttachments.current)) return;
@@ -208,6 +228,7 @@ export function useComposerDraft({
     () =>
       controller.subscribe(() => {
         if (hydratedFor.current !== controller || isRecalledPrompt(text)) return;
+        if (sending.current !== null) return;
         const current = controller.getSnapshot();
         if (
           current.text === agreedText.current &&
@@ -227,6 +248,7 @@ export function useComposerDraft({
   const saveText = useCallback(
     (shown: string) => {
       if (clearedFor.current !== controller) return;
+      if (sending.current !== null) return;
       // Before the draft has loaded, an empty composer is the clear itself, not a deletion: saving it would blank the
       // chat's saved draft.
       if (hydratedFor.current !== controller && shown === "") return;
@@ -267,4 +289,38 @@ export function useComposerDraft({
     },
     [attachments, chat],
   );
+
+  const beginSend = useCallback(() => {
+    if (sending.current !== null) return;
+    sending.current = { chat, release: hold?.() ?? (() => undefined) };
+    composer.setText("");
+    restoreAttachments(controller, []);
+  }, [chat, composer, controller, hold, restoreAttachments]);
+
+  const endSend = useCallback(() => {
+    const held = sending.current;
+    if (held === null) return;
+    sending.current = null;
+    // A chat the person switched to during the send has its own text: the composer's sync for it is already running.
+    if (held.chat === chat) {
+      const typed = latestText.current;
+      const refs = attachmentsToSave();
+      if (typed !== "" || refs.length > 0) {
+        // What was typed during the send is the draft now. The sent text is gone from the controller (it was admitted)
+        // or kept in its failed sends (it failed).
+        agreedText.current = typed;
+        agreedAttachments.current = refs;
+        controller.setDraft(typed, refs);
+      } else {
+        // Nothing was typed: the box shows what the draft holds, empty after an admitted send, the text after a failed one.
+        const current = controller.getSnapshot();
+        agreedText.current = current.text;
+        composer.setText(current.text);
+        restoreAttachments(controller, current.attachments);
+      }
+    }
+    held.release();
+  }, [attachmentsToSave, chat, composer, controller, restoreAttachments]);
+
+  return { beginSend, endSend };
 }

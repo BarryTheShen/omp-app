@@ -46,6 +46,8 @@ export interface UseChatDraftResult {
   readonly resolveConflict: (choice: "local" | "remote") => Promise<void>;
   /** The chat shows a message it did not show before: a send in progress was admitted, so its draft clears now. */
   readonly noteSent: () => void;
+  /** Holds the chat's draft while the composer's send settles (see `ChatDraft.hold`). */
+  readonly hold: () => () => void;
 }
 
 /**
@@ -108,5 +110,6 @@ export function useChatDraft({
     retry: chat.retry,
     resolveConflict: chat.resolveConflict,
     noteSent: chat.noteSent,
+    hold: chat.hold,
   };
 }

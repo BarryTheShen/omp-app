@@ -27,6 +27,7 @@ import { useComposerDraftOwner } from "./draft-owner";
 
 export function DraftComposer({
   chat,
+  hold,
   controller,
   capabilities,
   submit,
@@ -49,6 +50,8 @@ export function DraftComposer({
   readonly controller: DraftController;
   /** The chat the draft belongs to (see `useChatDraft`): a different one once the person switches chats. */
   readonly chat: object;
+  /** Holds the chat's draft while a send settles (see `useChatDraft`'s `hold`). */
+  readonly hold: () => () => void;
   readonly capabilities: CapabilityMap;
   readonly submit: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void>;
@@ -108,7 +111,7 @@ export function DraftComposer({
     return () => controller.setLifecycleReader(undefined);
   }, [controller, lifecycleReader]);
   useComposerDraftOwner(controller);
-  useComposerDraft({
+  const { beginSend, endSend } = useComposerDraft({
     chat,
     controller,
     switching,
@@ -116,7 +119,9 @@ export function DraftComposer({
     composer: aui.composer,
     attachments: manager,
     isRecalledPrompt,
+    hold,
   });
+  const holdDraft = useMemo(() => ({ begin: beginSend, end: endSend }), [beginSend, endSend]);
   // assistant-ui keeps its own composer attachment list in the runtime. Clear that list when the draft owner changes,
   // before a New chat can submit it; U2's attachment manager is restored separately by useComposerDraft.
   const previousChat = useRef(chat);
@@ -137,6 +142,7 @@ export function DraftComposer({
       attachmentHoldReason={attachmentHoldReason(attachmentState)}
       sendBlockedReason={sendBlockedReason}
       submitPrompt={submit}
+      holdDraft={holdDraft}
       savePasteFile={savePasteFile}
       toolbar={toolbar}
       voice={voice}

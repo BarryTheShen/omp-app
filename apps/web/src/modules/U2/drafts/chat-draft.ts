@@ -82,6 +82,8 @@ export class ChatDraft {
   private current: DraftController;
   private phase: Phase = "loading";
   private busy = false;
+  /** The composer holds the draft while its send settles (see `hold`): nothing moves meanwhile. */
+  private heldByComposer = false;
   private observed: ChatDraftObservation = { loaded: false, hasMessages: false };
   private moves: Promise<void> = Promise.resolve();
   private pendingMove: DraftScope | null = null;
@@ -118,7 +120,7 @@ export class ChatDraft {
    */
   public observe(observation: ChatDraftObservation): void {
     this.observed = observation;
-    if (this.disposed || this.busy || !observation.loaded) return;
+    if (this.disposed || this.busy || this.heldByComposer || !observation.loaded) return;
     if (this.phase === "loading") {
       const folder = this.options.folder;
       // A send this browser made that the transcript does not show yet: the chat is not new, its prompt is on its way. The copy
@@ -156,6 +158,23 @@ export class ChatDraft {
       this.busy = false;
       this.observe(this.observed);
     }
+  };
+
+  /**
+   * The composer holds the chat's draft from Enter until its send has settled: the box is empty at once and takes new
+   * text, while the controller keeps the sent text until the send is admitted. No move runs while it holds, so the text
+   * typed meanwhile is in the controller before the draft moves into the chat (#2659). The returned function releases
+   * the hold once and reads the chat's state again.
+   */
+  public hold = (): (() => void) => {
+    this.heldByComposer = true;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.heldByComposer = false;
+      this.observe(this.observed);
+    };
   };
 
   /** Stops moving the draft. The composer disposes the controller it holds. */

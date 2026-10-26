@@ -11,7 +11,11 @@ import { afterEach, describe, expect, test } from "vitest";
 import { type AttachmentBlobStore, AttachmentManager, type StoredAttachment } from "../attachments";
 import { DraftController, type DraftTimer } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
-import { composerDraftForLifecycle, useComposerDraft } from "./use-composer-draft";
+import {
+  type ComposerSendHold,
+  composerDraftForLifecycle,
+  useComposerDraft,
+} from "./use-composer-draft";
 
 afterEach(cleanup);
 
@@ -1089,5 +1093,93 @@ describe("useComposerDraft: the same chat's draft moving to another scope", () =
 
     expect(box.value).toBe("ab");
     expect(box.selectionStart).toBe(1);
+  });
+});
+
+describe("useComposerDraft: a send in flight (#2659)", () => {
+  /** A composer whose send hold the test drives, as the composer's Enter and the send's end do. */
+  function renderHolding(controller: DraftController) {
+    const shown: ShownComposer = { text: "", type: () => undefined };
+    const hold: { current: ComposerSendHold | null } = { current: null };
+    const chat = {};
+    function Holding() {
+      const [text, setText] = useState("");
+      const composer = useMemo(() => ({ setText }), []);
+      shown.text = text;
+      shown.type = setText;
+      hold.current = useComposerDraft({
+        chat,
+        controller,
+        text,
+        composer,
+        attachments: noAttachments,
+        isRecalledPrompt: notRecalled,
+      });
+      return null;
+    }
+    render(<Holding />);
+    const send = (): ComposerSendHold => {
+      if (hold.current === null) throw new Error("the composer did not render");
+      return hold.current;
+    };
+    return { shown, send };
+  }
+
+  test("the box empties at Enter and takes new text, which the draft gets only once the send has settled", async () => {
+    const controller = new DraftController({
+      store: new ScopedDraftStore(),
+      scope: chatScope("chat-s"),
+      timers: noTimers,
+    });
+    await controller.load();
+    const { shown, send } = renderHolding(controller);
+    await waitFor(() => expect(controller.getSnapshot().status).toBe("ready"));
+    act(() => shown.type("first message"));
+    await waitFor(() => expect(controller.getSnapshot().text).toBe("first message"));
+
+    act(() => send().beginSend());
+    expect(shown.text).toBe("");
+    act(() => shown.type("typed during the send"));
+    // The draft keeps the sent text until the send settles: typed text joining it would go out again with it (#2645).
+    expect(controller.getSnapshot().text).toBe("first message");
+
+    await act(() =>
+      controller.submit(
+        { mode: "prompt", text: "first message", delivery: "new" },
+        async () => undefined,
+      ),
+    );
+    expect(shown.text).toBe("typed during the send");
+    act(() => send().endSend());
+    expect(controller.getSnapshot().text).toBe("typed during the send");
+    expect(shown.text).toBe("typed during the send");
+  });
+
+  test("with nothing typed meanwhile, a failed send shows its text in the box again", async () => {
+    const controller = new DraftController({
+      store: new ScopedDraftStore(),
+      scope: chatScope("chat-f"),
+      timers: noTimers,
+    });
+    await controller.load();
+    const { shown, send } = renderHolding(controller);
+    await waitFor(() => expect(controller.getSnapshot().status).toBe("ready"));
+    act(() => shown.type("refused message"));
+    await waitFor(() => expect(controller.getSnapshot().text).toBe("refused message"));
+
+    act(() => send().beginSend());
+    expect(shown.text).toBe("");
+    await act(async () => {
+      await expect(
+        controller.submit(
+          { mode: "prompt", text: "refused message", delivery: "new" },
+          async () => {
+            throw new Error("refused");
+          },
+        ),
+      ).rejects.toThrow("refused");
+    });
+    act(() => send().endSend());
+    expect(shown.text).toBe("refused message");
   });
 });

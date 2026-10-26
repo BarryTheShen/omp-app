@@ -410,6 +410,7 @@ function ActiveThreadReady({
           capabilities={capabilities}
           cancel={cancel}
           chat={chatDraft.chat}
+          hold={chatDraft.hold}
           controller={draftController}
           switching={history.isSwitching}
           footer={area("composerFooter")}

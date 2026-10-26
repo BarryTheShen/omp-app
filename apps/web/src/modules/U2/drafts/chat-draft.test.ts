@@ -158,6 +158,34 @@ describe("ChatDraft: a chat with no prompt yet", () => {
   });
 });
 
+describe("ChatDraft: the text typed right after a New chat's first send (#2659)", () => {
+  test("a first message that shows while the composer holds the chat moves its draft only once released, with the text typed meanwhile", async () => {
+    const store = new ScopedDraftStore();
+    const chat = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-n"),
+      startsUnsent: true,
+      timers: noTimers,
+    });
+    await chat.controller.load();
+    chat.observe({ loaded: true, hasMessages: false });
+    const release = chat.hold();
+    chat.observe({ loaded: true, hasMessages: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft);
+
+    chat.controller.setDraft("typed during the send", []);
+    release();
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot()).toMatchObject({
+        scope: threadScope("chat-n"),
+        text: "typed during the send",
+      }),
+    );
+  });
+});
+
 describe("ChatDraft: a chat that has messages", () => {
   test("keeps its own draft and never reads the new-chat draft", async () => {
     const store = new ScopedDraftStore();
