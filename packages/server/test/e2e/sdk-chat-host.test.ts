@@ -1,0 +1,211 @@
+/**
+ * The chat host on omp's SDK (SDK plan H5.1), end to end on the fake model provider: the server's client talks to one
+ * chat host over its stdin and stdout. Each test runs from source, and on the compiled program when
+ * OMP_APP_CHAT_HOST_BIN names one (the e2e global setup builds it). Runs when asked: OMP_APP_REAL_OMP=1.
+ */
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { FolderPath, ThreadId } from "@omp-app/contracts";
+import { CHAT_HOST_CHAT_ARG, type PromptResultEvent } from "@omp-app/contracts/chat-host";
+import { ChatHostClient } from "../../src/chat-host/client";
+import type { ChatEvent } from "../../src/chat-host/events";
+import { type OmpProcess, spawnOmpProcess } from "../../src/process/omp-process";
+
+const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
+const realTest = Bun.env.OMP_APP_REAL_OMP === "1" ? test : test.skip;
+
+const PROGRAMS: readonly {
+  readonly name: string;
+  readonly command: readonly string[] | undefined;
+}[] = [
+  {
+    name: "from source",
+    command: [process.execPath, resolve(import.meta.dir, "../../src/chat-host/main.ts")],
+  },
+  {
+    name: "compiled",
+    command: Bun.env.OMP_APP_CHAT_HOST_BIN ? [Bun.env.OMP_APP_CHAT_HOST_BIN] : undefined,
+  },
+];
+
+const roots: string[] = [];
+const processes: OmpProcess[] = [];
+const providers: Bun.Subprocess[] = [];
+
+// Stopping a chat waits for its session to close (omp's SIGTERM cleanup), which takes more than Bun's default 5 s on a
+// loaded machine.
+afterEach(async () => {
+  await Promise.all(processes.splice(0).map((chat) => chat.stop().catch(() => undefined)));
+  for (const provider of providers.splice(0)) {
+    provider.kill();
+    await provider.exited;
+  }
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+}, 60_000);
+
+/** The fake provider writes `fake/fake-model` into the agent folder's models.yml, then says READY. */
+async function startFakeProvider(agentDir: string): Promise<void> {
+  const provider = Bun.spawn(["bun", FAKE_PROVIDER, agentDir], {
+    cwd: agentDir,
+    // It runs until its stdin ends, so it ends with the test.
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  providers.push(provider);
+  const reader = provider.stdout.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    while (!text.includes("READY ")) {
+      const { done, value } = await reader.read();
+      if (done) throw new Error("the fake provider exited before READY");
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+interface Chat {
+  readonly client: ChatHostClient;
+  readonly process: OmpProcess;
+  readonly folder: string;
+  readonly events: { readonly seq: number; readonly event: ChatEvent }[];
+  /** Resolves with the first event that matches. */
+  next(match: (event: ChatEvent) => boolean): Promise<ChatEvent>;
+}
+
+async function startChat(command: readonly string[], args: readonly string[] = []): Promise<Chat> {
+  const root = await mkdtemp(join(tmpdir(), "omp-app-sdk-chat-host-"));
+  roots.push(root);
+  const home = join(root, "home");
+  const agentDir = join(root, "agent");
+  const folder = join(root, "workspace");
+  await Promise.all([home, agentDir, folder].map((dir) => mkdir(dir, { recursive: true })));
+  await startFakeProvider(agentDir);
+  const chatProcess = spawnOmpProcess({
+    threadId: ThreadId.parse("thread-sdk-chat-host"),
+    folder: FolderPath.parse(folder),
+    homeDir: home,
+    chatCommand: [...command, CHAT_HOST_CHAT_ARG],
+    args: ["--model", "fake/fake-model", ...args],
+    env: {
+      HOME: home,
+      PI_CODING_AGENT_DIR: agentDir,
+      ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
+    },
+  });
+  processes.push(chatProcess);
+  const client = new ChatHostClient(chatProcess);
+  const events: { seq: number; event: ChatEvent }[] = [];
+  const waiters: { match: (event: ChatEvent) => boolean; resolve: (event: ChatEvent) => void }[] =
+    [];
+  client.onEvent((event, seq) => {
+    events.push({ seq, event });
+    for (const waiter of [...waiters]) {
+      if (!waiter.match(event)) continue;
+      waiters.splice(waiters.indexOf(waiter), 1);
+      waiter.resolve(event);
+    }
+  });
+  await chatProcess.start();
+  return {
+    client,
+    process: chatProcess,
+    folder,
+    events,
+    next: (match) => {
+      const found = events.find((entry) => match(entry.event));
+      if (found) return Promise.resolve(found.event);
+      return new Promise((resolveEvent) => waiters.push({ match, resolve: resolveEvent }));
+    },
+  };
+}
+
+const resultOf =
+  (requestId: string) =>
+  (event: ChatEvent): event is PromptResultEvent =>
+    event.type === "prompt_result" && event.requestId === requestId;
+
+describe("the chat host on omp's SDK", () => {
+  for (const program of PROGRAMS) {
+    const programTest = program.command === undefined ? test.skip : realTest;
+    const command = program.command ?? [];
+
+    programTest(
+      `${program.name}: hello names the chat, and its state reads back`,
+      async () => {
+        const chat = await startChat(command);
+        const hello = await chat.client.hello;
+        expect(hello.protocol).toBe(1);
+        expect(hello.methods).toEqual(["prompt", "abort", "get_state", "set_event_options"]);
+        expect(hello.session.cwd).toBe(chat.folder);
+        const state = await chat.client.request("get_state", {});
+        expect(state.model).toMatchObject({ provider: "fake", id: "fake-model" });
+        expect(state.isStreaming).toBe(false);
+        expect(state.sessionId).toBe(hello.session.id);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a prompt streams the reply and ends with its result`,
+      async () => {
+        const chat = await startChat(command);
+        await chat.client.hello;
+        await chat.client.request("set_event_options", { messageUpdates: "delta" });
+        const answer = await chat.client.request("prompt", { text: "stream_code" });
+        expect(answer).toEqual({ resultFollows: true });
+        const result = await chat.next(resultOf("2"));
+        expect(result).toMatchObject({ status: "completed", agentInvoked: true });
+
+        const types = chat.events.map((entry) => entry.event.type);
+        expect(types.indexOf("agent_start")).toBeLessThan(types.indexOf("message_update"));
+        expect(types.lastIndexOf("agent_end")).toBeLessThan(types.indexOf("prompt_result"));
+        const updates = chat.events.filter((entry) => entry.event.type === "message_update");
+        expect(updates.length).toBeGreaterThan(1);
+        for (const { event } of updates) {
+          expect(event).toMatchObject({
+            messageId: expect.any(String),
+            message: { role: "assistant" },
+          });
+          expect(event).not.toHaveProperty("assistantMessageEvent.partial");
+        }
+        expect(chat.events.map((entry) => entry.seq)).toEqual(
+          chat.events.map((_, index) => index + 1),
+        );
+        expect((await chat.client.request("get_state", {})).messageCount).toBeGreaterThanOrEqual(2);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: Stop stops the reply, and the prompt's result says it was aborted`,
+      async () => {
+        const chat = await startChat(command);
+        await chat.client.hello;
+        await chat.client.request("prompt", { text: "stream_held" });
+        await chat.next((event) => event.type === "message_update");
+        expect((await chat.client.request("get_state", {})).isStreaming).toBe(true);
+        await chat.client.request("abort", {});
+        expect(await chat.next(resultOf("1"))).toMatchObject({ status: "aborted" });
+        expect((await chat.client.request("get_state", {})).isStreaming).toBe(false);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a chat that cannot start ends with the reason on stderr`,
+      async () => {
+        const chat = await startChat(command, ["--no-such-flag"]);
+        await expect(chat.client.hello).rejects.toMatchObject({ code: "closed" });
+        await chat.process.stderrSettled?.();
+        expect(chat.process.stderrTail).toContain("unknown flag --no-such-flag");
+      },
+      60_000,
+    );
+  }
+});

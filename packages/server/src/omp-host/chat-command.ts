@@ -18,9 +18,9 @@ export interface ChatCommandOptions extends OmpCommandOptions {
 }
 
 /**
- * omp's own command line, built by the app from the omp package it pins (#2586, SDK plan): the program and leading
- * arguments, before omp's own arguments. It answers omp's commands (`--version`, `models`, `usage`, `config`) and runs
- * chats (`chatCommand`).
+ * omp's own command line, from the omp package the app pins (#2586, SDK plan): the program and leading arguments, before
+ * omp's own arguments. The compiled chat host hands them to omp's command line (`src/chat-host/main.ts`). It answers
+ * omp's commands (`--version`, `models`, `usage`, `config`) and runs chats (`chatCommand`).
  */
 export function ompCommand(options: OmpCommandOptions = {}): readonly string[] {
   return options.binary === undefined ? [process.execPath, ompCommandLine()] : [options.binary];

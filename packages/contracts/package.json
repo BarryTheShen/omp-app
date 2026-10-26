@@ -6,6 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./ids": "./src/core/ids.ts",
+    "./chat-host": "./src/chat-host/protocol.ts",
+    "./chat-host/args": "./src/chat-host/args.ts",
     "./omp-wire/schema.json": "./src/omp-wire/rpc-wire.schema.json"
   },
   "scripts": {

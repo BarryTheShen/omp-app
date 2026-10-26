@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, type Hash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -13,16 +14,17 @@ import { join, resolve } from "node:path";
 import { CHAT_HOST_BUN_VERSION } from "../../../packages/server/scripts/chat-host-bun";
 
 /**
- * Live tests run omp the way the packages ship it: the chat host, omp's command line compiled by
- * `packages/server/scripts/build-chat-host.ts` (#2586), which runs every chat and answers omp's own commands. omp's
- * command line run from source on the Bun that runs the tests is not that program: on the test machine it failed `fix-1351` and
- * `fix-1910` 7 times in 9 (a slow first reply, a settings change a running chat did not see), which pass on the compiled
- * one.
+ * Live tests run omp the way the packages ship it: the chat host program compiled by
+ * `packages/server/scripts/build-chat-host.ts` (#2586, SDK plan H5.1), which runs every chat and answers omp's own
+ * commands. omp's command line run from source on the Bun that runs the tests is not that program: on the test machine it failed
+ * `fix-1351` and `fix-1910` 7 times in 9 (a slow first reply, a settings change a running chat did not see), which pass
+ * on the compiled one.
  *
  * Once per run, before the workers start, this puts the compiled chat host in `OMP_APP_CHAT_HOST_BIN`, which the app's
  * server and the harness read (workers inherit the variable). A build is kept in `OMP_APP_CHAT_HOST_DIR` (on the test machine the
- * shared `/cache/bun/chat-host`), else this checkout's `.data/chat-host`, under a name from the lockfile and the build
- * script, so it is built once for each of their versions; a lock keeps parallel runs from building it twice.
+ * shared `/cache/bun/chat-host`), else this checkout's `.data/chat-host`, under a name from everything the program is
+ * built from (`compiledChatHost`), so it is built once for each version of them; a lock keeps parallel runs from building
+ * it twice.
  *
  * The build needs the Bun omp's release is built with (`chat-host-bun.ts`). `OMP_APP_CHAT_HOST_BUN` names it; else it is
  * downloaded once from Bun's release into the same folder, checked against the release's `SHASUMS256.txt`, as
@@ -86,12 +88,34 @@ async function chatHostBun(dir: string): Promise<string> {
   return bun;
 }
 
-/** The compiled chat host for this checkout's lockfile and build script, built once and then reused. */
+/**
+ * The app's own code inside the program: its entry (`src/chat-host`) and the contracts it imports, with the manifests
+ * whose `exports` resolve them. A change there needs a new build as much as a new lockfile does.
+ */
+const PROGRAM_SOURCES = ["packages/server/src/chat-host", "packages/contracts/src"];
+const PROGRAM_MANIFESTS = ["packages/server/package.json", "packages/contracts/package.json"];
+
+function hashProgramSources(hash: Hash): Hash {
+  for (const dir of PROGRAM_SOURCES) {
+    const root = join(APP_ROOT, dir);
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.(ts|json)$/.test(file) && !file.endsWith(".test.ts"))
+      .sort();
+    for (const file of files)
+      hash.update(`${dir}/${file}\0`).update(readFileSync(join(root, file)));
+  }
+  for (const manifest of PROGRAM_MANIFESTS) hash.update(readFileSync(join(APP_ROOT, manifest)));
+  return hash;
+}
+
+/** The compiled chat host for this checkout's lockfile, build script and program sources, built once and then reused. */
 async function compiledChatHost(): Promise<string> {
-  const key = createHash("sha256")
-    .update(readFileSync(join(APP_ROOT, "bun.lock")))
-    .update(readFileSync(BUILD_SCRIPT))
-    .update(readFileSync(BUN_VERSION_FILE))
+  const key = hashProgramSources(
+    createHash("sha256")
+      .update(readFileSync(join(APP_ROOT, "bun.lock")))
+      .update(readFileSync(BUILD_SCRIPT))
+      .update(readFileSync(BUN_VERSION_FILE)),
+  )
     .digest("hex")
     .slice(0, 16);
   const dir = process.env.OMP_APP_CHAT_HOST_DIR ?? join(APP_ROOT, ".data", "chat-host");

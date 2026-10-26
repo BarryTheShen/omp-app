@@ -1,6 +1,6 @@
 /**
- * Compiles the chat host: omp's own command line (`@oh-my-pi/pi-coding-agent` `src/cli.ts`, the release package.json
- * pins), the way omp compiles its binary (18.12.6 `scripts/compile-binary.ts`, `compileCodingAgent`):
+ * Compiles the chat host program: the app's entry (`src/chat-host/main.ts`, SDK plan H5.1) with the omp release
+ * package.json pins, the way omp compiles its binary (18.12.6 `scripts/compile-binary.ts`, `compileCodingAgent`):
  * - precompiled bytecode, code splitting, names kept, omp's JSON-parse plugin and fetch user agent;
  * - omp's build constants: `PI_COMPILED`, `PI_DOCS_EMBED` (the package's shipped docs index) and
  *   `PI_TINY_TRANSFORMERS_VERSION` (the installed `@huggingface/transformers`);
@@ -10,9 +10,10 @@
  *   the installed packages, as omp's `scripts/legacy-pi-virtual-module.ts` builds it from its monorepo;
  * - on the Bun omp's release is built with. On the test machine's Bun 1.3.14 each chat kept about 130 MB more memory (SDK plan, H0).
  *
- * The server runs it as it ran omp's binary, `<chat host> --mode rpc-ui <arguments>` (`src/omp-host/chat-command.ts`).
- * omp's worker threads and subprocesses re-enter the same program with an argv selector of their own, which omp's entry
- * dispatches, so the program is omp's entry itself.
+ * The entry runs one chat on omp's SDK for `__omp_app_chat`, and hands every other argument list to omp's own command
+ * line: omp's worker threads and subprocesses re-enter the program with their selectors, and `--version`,
+ * `--smoke-test`, omp's subcommands, its terminal UI and `--mode rpc-ui` (what the server runs until H5.3) work as in
+ * omp's binary.
  *
  *   <that Bun> packages/server/scripts/build-chat-host.ts <outfile>
  */
@@ -312,7 +313,7 @@ async function legacyPiModulesPlugin(): Promise<Bun.BunPlugin> {
 
 const outfile = resolve(process.argv[2] ?? "chat-host");
 const output = await Bun.build({
-  entrypoints: [join(packageDir, "src/cli.ts")],
+  entrypoints: [join(import.meta.dir, "../src/chat-host/main.ts")],
   // omp's own (COMPILED_EXTERNAL_DEPENDENCIES): native runtime dependencies come from omp's on-demand install.
   external: ["fastembed", "onnxruntime-node"],
   files: { ...(await embeddedNativeAddon()), ...(await embeddedStatsDashboard()) },
