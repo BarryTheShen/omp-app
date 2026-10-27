@@ -26,7 +26,7 @@ function HostOwner({ hosts, thread }: { readonly hosts: Hosts; readonly thread: 
       new DialogHostController({
         overlay,
         capabilities,
-        answerExtensionUi: async () => undefined,
+        answerDialog: async () => undefined,
         render: () => null,
       }),
     [overlay, thread],

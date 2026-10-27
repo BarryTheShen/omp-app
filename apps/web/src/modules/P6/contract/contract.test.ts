@@ -46,7 +46,7 @@ function portFixture(
     setModes: async (changes: unknown) => {
       calls.push({ kind: "setModes", value: changes });
     },
-    answerExtensionUi: async () => undefined,
+    answerDialog: async () => undefined,
     answerHostTool: async () => undefined,
     answerHostUri: async () => undefined,
     onAddToolResult: async () => undefined,

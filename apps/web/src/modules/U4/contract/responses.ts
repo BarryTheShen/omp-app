@@ -4,8 +4,8 @@
  * citing omp `docs/rpc.md` lines 1085-1093).
  */
 
-import type { OmpWire, UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import { ApproveAnswer, type HostDialogAnswer } from "@omp-app/contracts/chat-host";
 import { z } from "zod";
 import type { AskDialogRequest, AskQuestion, ConfirmDialogRequest, DialogRequest } from "./dialog";
 import { DIALOG_REQUEST_KINDS } from "./dialog";
@@ -34,6 +34,8 @@ export const DialogResponseSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("input"), value: z.string() }),
   z.strictObject({ kind: z.literal("editor"), value: z.string() }),
   z.strictObject({ kind: z.literal("ask"), answers: z.array(AskAnswerValueSchema).min(1) }),
+  /** The approval choice the person took, as omp's own answer for it. */
+  z.strictObject({ kind: z.literal("approve"), answer: ApproveAnswer }),
 ]);
 export type DialogResponse = z.infer<typeof DialogResponseSchema>;
 
@@ -163,33 +165,33 @@ export function validateAskAnswers(
   return { ok: true };
 }
 
-/** Builds the exact `extension_ui_response` wire frame for one dialog result, preserving `id`. */
-export function toWireExtensionUiResponse(
-  id: UiRequestId,
-  result: DialogResult,
-): OmpWire.ExtensionUiResponse {
+/**
+ * The chat host's answer for one dialog result, in the host's shape for the dialog's method (`contracts/chat-host/
+ * dialogs.ts`). A closed dialog answers `{ cancelled: true }` (with `timedOut` when the app's countdown closed it); an
+ * approval closed without a choice is denied, as omp denies one.
+ */
+export function toHostDialogAnswer(result: DialogResult): HostDialogAnswer {
   if (result.outcome === "cancelled") {
-    return result.timedOut
-      ? { type: "extension_ui_response", id, cancelled: true, timedOut: true }
-      : { type: "extension_ui_response", id, cancelled: true };
+    if (result.kind === "approve") return "deny";
+    return result.timedOut ? { cancelled: true, timedOut: true } : { cancelled: true };
   }
   const { response } = result;
   switch (response.kind) {
     case "select":
     case "input":
     case "editor":
-      return { type: "extension_ui_response", id, value: response.value };
+      return { value: response.value };
     case "confirm":
-      return { type: "extension_ui_response", id, confirmed: response.confirmed };
+      return { confirmed: response.confirmed };
     case "ask":
       return {
-        type: "extension_ui_response",
-        id,
         answers: response.answers.map((answer) => ({
           id: answer.id,
           selectedOptions: [...answer.selectedOptions],
-          customInput: answer.customInput,
+          ...(answer.customInput === undefined ? {} : { customInput: answer.customInput }),
         })),
       };
+    case "approve":
+      return response.answer;
   }
 }

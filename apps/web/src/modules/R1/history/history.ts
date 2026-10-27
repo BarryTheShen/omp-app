@@ -148,6 +148,7 @@ export class SelectedThreadHistoryController {
   private readonly options: SelectedThreadHistoryOptions;
   private readonly client: AppClient;
   private readonly rpc: RpcSessionClient;
+  private readonly chat: PortClient<typeof ChatSessionPort>;
   private readonly sessionFiles: PortClient<typeof SessionFileStore>;
   private state: SelectedThreadHistoryState = Object.freeze({
     threadId: undefined,
@@ -200,6 +201,7 @@ export class SelectedThreadHistoryController {
     this.options = options;
     this.client = options.client;
     this.rpc = this.client.port(RpcSessionPortSchema);
+    this.chat = this.client.port(ChatSessionPort);
     this.sessionFiles = this.client.port(SessionFileStore);
   }
 
@@ -771,7 +773,7 @@ export class SelectedThreadHistoryController {
   private defaultStore(threadId: ThreadId): OmpRuntimeStore {
     const transport = {
       send: this.rpc.send,
-      answerExtensionUi: this.rpc.answerExtensionUi,
+      answer: this.chat.answer,
       answerHostTool: this.rpc.answerHostTool,
       answerHostUri: this.rpc.answerHostUri,
     };
@@ -953,22 +955,23 @@ export class SelectedThreadHistoryController {
   }
 
   /**
-   * Records the questions omp is still waiting on, so their dialogs show again. The replay applies a question as history
-   * and does not ask it again, because it cannot tell an answered question from an open one. The server keeps the open
-   * ones (`openQuestions`), and only those are shown again.
+   * Records the dialogs the chat's host is still waiting on, so they show again. The replay applies a dialog as history
+   * and does not ask it again, because it cannot tell an answered one from an open one. The server keeps the open ones
+   * (`openRequests`), and only those are shown again.
    */
   private async recordOpenQuestions(threadId: ThreadId, store: OmpRuntimeStore): Promise<void> {
-    const open = await this.rpc.openQuestions({ threadId });
-    for (const question of open) store.recordOpenQuestion(question.request, question.seq);
+    const open = await this.chat.openRequests({ threadId });
+    for (const { request, seq } of open) store.recordOpenQuestion(request, seq);
   }
 
   /**
-   * Shows the status, widgets and title omp holds for a chat when it is opened again. The replay covers only the events
-   * after the last turn's end, so a status set earlier is not in it; the server keeps the latest of each (`stateFrames`).
+   * Shows the status, widgets and title the chat's host holds when the chat is opened again. The replay covers only the
+   * events after the last turn's end, so a status set earlier is not in it; the server keeps the latest of each
+   * (`uiState`).
    */
   private async recordStateFrames(threadId: ThreadId, store: OmpRuntimeStore): Promise<void> {
-    const state = await this.rpc.stateFrames({ threadId });
-    for (const frame of state) store.recordState(frame.request, frame.seq);
+    const state = await this.chat.uiState({ threadId });
+    for (const { event, seq } of state) store.recordState(event, seq);
   }
 
   /** The chat's new id after a session switch (`moved`), or the id omp's own session update names. */

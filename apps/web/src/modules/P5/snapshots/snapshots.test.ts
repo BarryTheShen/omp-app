@@ -57,7 +57,7 @@ function runtimeState(
     },
     tools: { ...overrides.tools },
     pending: {
-      extensionUi: {},
+      dialogs: {},
       hostTools: {},
       hostUris: {},
       ...overrides.pending,
@@ -224,8 +224,8 @@ describe("P5 quiet-point snapshot coordination", () => {
       ["queued-steering", runtimeState({ queue: { ...base.queue, steering: ["later"] } })],
       ["queued-follow-up", runtimeState({ queue: { ...base.queue, followUp: ["later"] } })],
       [
-        "pending-extension-ui",
-        runtimeState({ pending: { ...base.pending, extensionUi: { request: pendingRequest } } }),
+        "pending-dialog",
+        runtimeState({ pending: { ...base.pending, dialogs: { request: pendingRequest } } }),
       ],
       [
         "pending-host-tool",

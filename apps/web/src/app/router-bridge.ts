@@ -92,7 +92,7 @@ export function RouterBridge({
       void router
         .sync(
           {
-            extensionUi: pending.extensionUi,
+            dialogs: pending.dialogs,
             hostTools: pending.hostTools,
             hostUris: pending.hostUris,
           },

@@ -1,53 +1,38 @@
 /**
- * U4's modal dialog request contracts (browser-only). Built on C0's copied
- * `extension_ui_request` wire shapes (`research/modules/U4.md` §3.2) and C0's branded
- * `UiRequestId`. Request state itself stays in R0 (`R0.1` pending state, `R0.5` answers it);
- * these types describe how one request is presented, never a second request store.
+ * U4's modal dialog request contracts (browser-only), built from the chat host's dialogs (`ui.select`, `ui.confirm`,
+ * `ui.input`, `ui.editor`, `ui.ask`, `ui.approve`; `contracts/chat-host/dialogs.ts`) and C0's branded `UiRequestId`.
+ * Request state itself stays in R0 (`pending.dialogs`, answered through R0's actions); these types describe how one
+ * request is presented, never a second request store.
  *
- * Dialog grammar (`modules/U4/README.md`, "Dialog grammar"): `select`, `confirm`, `input`,
- * `editor` and rich `ask` are modal (one at a time per thread, FIFO, through `DialogHost`).
- * `notify`, `setStatus`, `setWidget`, `setTitle`, `set_editor_text` and `open_url` are non-modal
- * presentation handoffs (see `presentation.ts`). `cancel` is a correlation signal that targets an
- * already-open request; it is never presented as its own dialog or handoff.
+ * Dialog grammar (`modules/U4/README.md`, "Dialog grammar"): `select`, `confirm`, `input`, `editor`, rich `ask` and
+ * `approve` are modal (one at a time per thread, FIFO, through `DialogHost`). The host's UI events that need no answer
+ * are non-modal presentation handoffs (see `presentation.ts`), and its `ui_cancel` closes an open dialog.
  */
 
-import type { CapabilityKey, OmpWire } from "@omp-app/contracts";
-import { AppFailure, UiRequestId } from "@omp-app/contracts";
+import type { CapabilityKey } from "@omp-app/contracts";
+import { UiRequestId } from "@omp-app/contracts";
+import {
+  ApproveAnswer,
+  type ApproveDialog,
+  type HostDialogRequest,
+} from "@omp-app/contracts/chat-host";
 import { z } from "zod";
 
-/** `omp.ui` gates OMP-origin extension-UI requests; app-origin dialogs settle locally. The
- *  `set_ask_dialog` command additionally gates rich `ask` (`research/modules/U4.md` §3.4). */
+/** `omp.ui` gates omp's dialogs; app-origin dialogs settle locally. The `set_ask_dialog` command additionally gates
+ *  rich `ask` (`research/modules/U4.md` §3.4). */
 export const DIALOG_CAPABILITY: CapabilityKey = "omp.ui";
 export const ASK_DIALOG_CAPABILITY: CapabilityKey = "omp.cmd.set_ask_dialog";
 
-/** The `extension_ui_request.method` values `DialogHost` presents as a modal dialog. */
-export const DIALOG_REQUEST_KINDS = ["select", "confirm", "input", "editor", "ask"] as const;
-export type DialogRequestKind = (typeof DIALOG_REQUEST_KINDS)[number];
-
-/** The `extension_ui_request.method` values normalized as non-modal presentation handoffs. */
-export const PRESENTATION_METHODS = [
-  "notify",
-  "setStatus",
-  "setWidget",
-  "setTitle",
-  "set_editor_text",
-  "open_url",
+/** The dialog kinds `DialogHost` presents as a modal dialog. */
+export const DIALOG_REQUEST_KINDS = [
+  "select",
+  "confirm",
+  "input",
+  "editor",
+  "ask",
+  "approve",
 ] as const;
-export type PresentationMethod = (typeof PRESENTATION_METHODS)[number];
-
-/** Targets an already-open request by id; the router closes it and ignores a later answer. */
-export const CANCEL_METHOD = "cancel";
-
-export type ExtensionUiMethod = OmpWire.ExtensionUiRequest["method"];
-
-/** Classifies one wire method into the three grammar buckets (`modules/U4/README.md` rules 2-4). */
-export function classifyExtensionUiMethod(
-  method: ExtensionUiMethod,
-): "modal" | "presentation" | "cancel" {
-  if (method === CANCEL_METHOD) return "cancel";
-  if ((DIALOG_REQUEST_KINDS as readonly string[]).includes(method)) return "modal";
-  return "presentation";
-}
+export type DialogRequestKind = (typeof DIALOG_REQUEST_KINDS)[number];
 
 const SelectOptionDetailSchema = z.strictObject({ description: z.string().min(1).optional() });
 export type SelectOptionDetail = z.infer<typeof SelectOptionDetailSchema>;
@@ -131,12 +116,34 @@ export const AskDialogRequestSchema = z.strictObject({
 });
 export type AskDialogRequest = z.infer<typeof AskDialogRequestSchema>;
 
+const ApprovalChoiceSchema = z.strictObject({
+  label: z.string().min(1),
+  /** omp's own answer for this choice: this call, this session, no, or one of the prompt's grants. */
+  answer: ApproveAnswer,
+});
+export type ApprovalChoice = z.infer<typeof ApprovalChoiceSchema>;
+
+/**
+ * A tool approval with omp's typed choices (`ui.approve`): each choice carries the answer omp takes for it, so the
+ * answer never depends on matching a label (issue 2361).
+ */
+export const ApproveDialogRequestSchema = z.strictObject({
+  kind: z.literal("approve"),
+  id: UiRequestId,
+  /** omp's full prompt: the tool, its reason and its details. */
+  title: z.string().min(1),
+  choices: z.array(ApprovalChoiceSchema).min(1),
+  timeoutMs: TimeoutMs.optional(),
+});
+export type ApproveDialogRequest = z.infer<typeof ApproveDialogRequestSchema>;
+
 export const DialogRequestSchema = z.discriminatedUnion("kind", [
   SelectDialogRequestSchema,
   ConfirmDialogRequestSchema,
   InputDialogRequestSchema,
   EditorDialogRequestSchema,
   AskDialogRequestSchema,
+  ApproveDialogRequestSchema,
 ]);
 export type DialogRequest = z.infer<typeof DialogRequestSchema>;
 
@@ -152,54 +159,81 @@ export function dialogName(request: DialogRequest): string {
 }
 
 /**
- * Converts one omp `extension_ui_request` whose `method` is a modal kind into a `DialogRequest`,
- * branding `id` and keeping every field name exact (`modules/U4/README.md` Plan item 1). Throws
- * `AppFailure(internal)` for a non-modal method: callers classify first with
- * `classifyExtensionUiMethod`.
+ * omp's approval choices in omp's order and words (18.12.6 `tools/approval.ts:740-759`, the labels it shows a host
+ * without an approval dialog): each grant for this session, each grant across sessions, this call only, this session
+ * when offered, and Deny; each with the answer omp takes for it.
  */
-export function toDialogRequest(request: OmpWire.ExtensionUiRequest): DialogRequest {
+export function approvalChoices(prompt: ApproveDialog["prompt"]): ApprovalChoice[] {
+  const grants = prompt.grants ?? [];
+  return [
+    ...grants.map((grant) => ({
+      label: grant.label,
+      answer: { grant: grant.scope, always: false } as const,
+    })),
+    ...grants.map((grant) => ({
+      label: grant.alwaysLabel,
+      answer: { grant: grant.scope, always: true } as const,
+    })),
+    { label: grants.length > 0 ? "Approve Once" : "Approve", answer: "once" as const },
+    ...(prompt.session ? [{ label: prompt.session, answer: "session" as const }] : []),
+    { label: "Deny", answer: "deny" as const },
+  ];
+}
+
+/** Converts one of the chat host's dialogs into a `DialogRequest`, branding `id` and keeping omp's field values. */
+export function toDialogRequest(request: HostDialogRequest): DialogRequest {
   const id = UiRequestId.parse(request.id);
   switch (request.method) {
-    case "select":
+    case "ui.select":
       return {
         kind: "select",
         id,
-        title: request.title,
-        options: request.options,
-        optionDetails: request.optionDetails,
-        timeoutMs: request.timeout,
+        title: request.params.title,
+        options: [...request.params.options],
+        optionDetails: request.params.optionDetails?.map((detail) => ({ ...detail })),
+        timeoutMs: request.params.timeout,
       };
-    case "confirm":
+    case "ui.confirm":
       return {
         kind: "confirm",
         id,
-        title: request.title,
-        message: request.message,
-        timeoutMs: request.timeout,
+        title: request.params.title,
+        message: request.params.message,
+        timeoutMs: request.params.timeout,
       };
-    case "input":
+    case "ui.input":
       return {
         kind: "input",
         id,
-        title: request.title,
-        placeholder: request.placeholder,
-        timeoutMs: request.timeout,
+        title: request.params.title,
+        placeholder: request.params.placeholder,
+        timeoutMs: request.params.timeout,
       };
-    case "editor":
+    case "ui.editor":
       return {
         kind: "editor",
         id,
-        title: request.title,
-        prefill: request.prefill,
-        promptStyle: request.promptStyle,
+        title: request.params.title,
+        prefill: request.params.prefill,
+        promptStyle: request.params.promptStyle,
       };
-    case "ask":
-      return { kind: "ask", id, questions: request.questions, timeoutMs: request.timeout };
-    default:
-      throw new AppFailure({
-        code: "internal",
-        message: `Expected a modal extension-UI request; got "${request.method}".`,
-        retryable: false,
-      });
+    case "ui.ask":
+      return {
+        kind: "ask",
+        id,
+        questions: request.params.questions.map((question) => ({
+          ...question,
+          options: question.options.map((option) => ({ ...option })),
+        })),
+        timeoutMs: request.params.timeout,
+      };
+    case "ui.approve":
+      return {
+        kind: "approve",
+        id,
+        title: request.params.prompt.full,
+        choices: approvalChoices(request.params.prompt),
+        timeoutMs: request.params.timeout,
+      };
   }
 }

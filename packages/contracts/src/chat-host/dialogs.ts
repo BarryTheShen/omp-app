@@ -138,3 +138,6 @@ export type UiEvent =
   | UiTitleEvent
   | UiEditorTextEvent
   | UiOpenUrlEvent;
+
+/** The UI events that need no answer: everything but `ui_cancel`, which closes a dialog. */
+export type UiPresentationEvent = Exclude<UiEvent, UiCancelEvent>;

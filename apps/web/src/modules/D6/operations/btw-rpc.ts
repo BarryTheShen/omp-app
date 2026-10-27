@@ -267,9 +267,10 @@ export function createBtwRpcController(
     threadId,
     source: {
       send: rpc.send,
+      // Only omp's `btw_*` notifications are asked for, and those are RPC notifications.
       subscribe: (listener) =>
         runtime.subscribeNotifications(["btw_delta", "btw_record"], (frame, _seq, replayed) =>
-          listener(frame, replayed),
+          listener(frame as RpcSessionNotification, replayed),
         ),
     },
   });

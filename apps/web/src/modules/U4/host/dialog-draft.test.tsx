@@ -1,11 +1,11 @@
-import type { CapabilityMap, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
+import type { CapabilityMap, ThreadId, UiRequestId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect, useRef } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OverlayHost, useOverlayHost } from "@/overlay";
 import type { DialogRequest } from "../contract";
 import type { DialogHostOpenOptions } from "../contract/dialog-host";
-import { toWireExtensionUiResponse } from "../contract/responses";
+import { toHostDialogAnswer } from "../contract/responses";
 import { renderDialogRequest } from "../dialogs/renderer";
 import { DialogHostController } from "./dialog-host";
 
@@ -26,7 +26,7 @@ function input(id: string, title: string): DialogRequest {
 
 /** A host with the real dialog renderers and the real overlay, and the answers it sends to omp. */
 function renderHost() {
-  const answers: OmpWire.ExtensionUiResponse[] = [];
+  const answers: { readonly id: string; readonly answer: unknown }[] = [];
   let made: DialogHostController | undefined;
   function Probe() {
     const overlay = useOverlayHost();
@@ -35,8 +35,8 @@ function renderHost() {
       ref.current = new DialogHostController({
         overlay,
         capabilities: ompUi,
-        answerExtensionUi: async (response) => {
-          answers.push(response);
+        answerDialog: async (id, answer) => {
+          answers.push({ id, answer });
         },
         render: renderDialogRequest,
       });
@@ -218,9 +218,7 @@ describe("the text never reaches omp, and other kinds carry no text", () => {
       timedOut: false,
       draft: "Fix the parser",
     });
-    expect(answers).toEqual([
-      { type: "extension_ui_response", id: "omp-wire-editor", cancelled: true },
-    ]);
+    expect(answers).toEqual([{ id: "omp-wire-editor", answer: { cancelled: true } }]);
   });
 
   test("a cancelled confirmation has no draft field at all", async () => {
@@ -240,17 +238,13 @@ describe("the text never reaches omp, and other kinds carry no text", () => {
     expect("draft" in result).toBe(false);
   });
 
-  test("the wire answer for a cancelled editor never carries its draft", () => {
+  test("the host's answer for a cancelled editor never carries its draft", () => {
     const result = {
       outcome: "cancelled" as const,
       kind: "editor" as const,
       timedOut: false,
       draft: "Typed text",
     };
-    expect(toWireExtensionUiResponse("omp-wire" as UiRequestId, result)).toEqual({
-      type: "extension_ui_response",
-      id: "omp-wire",
-      cancelled: true,
-    });
+    expect(toHostDialogAnswer(result)).toEqual({ cancelled: true });
   });
 });

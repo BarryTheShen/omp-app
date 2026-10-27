@@ -47,6 +47,19 @@ export type HostRequest = {
   };
 }[ChatHostHostMethod];
 
+/** The host's dialogs: the requests a person answers (`ui.*`), as against the calls of the app's tools and URIs. */
+export type HostDialogMethod = Extract<ChatHostHostMethod, `ui.${string}`>;
+export type HostDialogRequest = Extract<HostRequest, { readonly method: HostDialogMethod }>;
+
+/** Whether a host request is one of its dialogs. */
+export function isHostDialogRequest(request: HostRequest): request is HostDialogRequest {
+  return request.method.startsWith("ui.");
+}
+
+/** A dialog's answer, in the host's shape for its method. */
+export type HostDialogAnswer<M extends HostDialogMethod = HostDialogMethod> =
+  ChatHostHostMethodMap[M]["result"];
+
 /** A host request's envelope, as the server's chat session port carries it; the host built its params. */
 export const HostRequestSchema = z.custom<HostRequest>(
   (value) => {

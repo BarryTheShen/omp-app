@@ -25,7 +25,7 @@ function RouterPlayground() {
     hostRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: async () => {},
+      answerDialog: async () => {},
       render: renderDialogRequest,
     });
     routerRef.current = new ExtensionUiRequestRouterController({
@@ -41,34 +41,21 @@ function RouterPlayground() {
 
   useEffect(() => {
     if (!new URLSearchParams(window.location.search).has("presentation")) return;
-    void router.routeExtensionUi(
-      {
-        request: {
-          type: "extension_ui_request",
-          id: "router-presentation",
-          method: "notify",
-          message: "OAuth handoff presented",
-        },
-        receivedSeq: 2,
-      },
-      { threadId },
-    );
+    void router.routeNotification({ type: "ui_notify", message: "OAuth handoff presented" }, 2, {
+      threadId,
+    });
   }, [router]);
 
   const openOAuth = () => {
     void router
-      .routeExtensionUi(
+      .routeNotification(
         {
-          request: {
-            type: "extension_ui_request",
-            id: "router-oauth",
-            method: "open_url",
-            url: "https://accounts.example/authorize?token=ephemeral",
-            launchUrl: "https://localhost/callback",
-            instructions: "Continue in the provider window, then return here.",
-          },
-          receivedSeq: 1,
+          type: "ui_open_url",
+          url: "https://accounts.example/authorize?token=ephemeral",
+          launchUrl: "https://localhost/callback",
+          instructions: "Continue in the provider window, then return here.",
         },
+        1,
         { threadId },
       )
       .then(() => setStatus("OAuth handoff presented"));

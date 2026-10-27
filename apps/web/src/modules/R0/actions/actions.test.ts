@@ -1,7 +1,7 @@
 import type {
+  AnswerHostRequestArgs,
   AppError,
   CapabilityMap,
-  ExtensionUiResponse,
   HostToolResponse,
   HostUriResponse,
   RpcSessionSend,
@@ -9,7 +9,7 @@ import type {
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { notificationEvent } from "@/modules/R0/store/session-events";
+import { dialogEvent, notificationEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "../store/store";
 import { createQueueController, type QueueSnapshot } from "./actions";
 
@@ -31,9 +31,14 @@ function notification(store: OmpRuntimeStore, frame: unknown, seq: number): void
   store.ingest(notificationEvent(frame), seq);
 }
 
+/** A dialog the host asks: an input named "Name". */
+function askName(store: OmpRuntimeStore, seq: number): void {
+  store.ingest(dialogEvent({ id: "ui-1", method: "ui.input", params: { title: "Name" } }), seq);
+}
+
 function makeStore(
   answerHandlers: {
-    extension?: (response: ExtensionUiResponse) => Promise<void>;
+    dialog?: (args: AnswerHostRequestArgs) => Promise<void>;
     hostTool?: (response: HostToolResponse) => Promise<void>;
     hostUri?: (response: HostUriResponse) => Promise<void>;
   } = {},
@@ -41,8 +46,8 @@ function makeStore(
   return new OmpRuntimeStore({
     threadId,
     transport: {
-      answerExtensionUi: async ({ response }: { readonly response: ExtensionUiResponse }) => {
-        await answerHandlers.extension?.(response);
+      answer: async (args: AnswerHostRequestArgs) => {
+        await answerHandlers.dialog?.(args);
         return null;
       },
       answerHostTool: async ({ response }: { readonly response: HostToolResponse }) => {
@@ -193,11 +198,11 @@ describe("R0.5 QueueController", () => {
     ]);
   });
 
-  test("routes extension UI, host-tool, and host-URI answers only for pending requests", async () => {
+  test("routes dialog, host-tool, and host-URI answers only for pending requests", async () => {
     const answered: unknown[] = [];
     const store = makeStore({
-      extension: async (response) => {
-        answered.push(response);
+      dialog: async (args) => {
+        answered.push(args);
       },
       hostTool: async (response) => {
         answered.push(response);
@@ -206,11 +211,7 @@ describe("R0.5 QueueController", () => {
         answered.push(response);
       },
     });
-    notification(
-      store,
-      { type: "extension_ui_request", id: "ui-1", method: "ask", title: "Name" },
-      1,
-    );
+    askName(store, 1);
     notification(
       store,
       {
@@ -229,11 +230,6 @@ describe("R0.5 QueueController", () => {
     );
     const send: RpcSessionSend = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
-    const uiResponse = {
-      id: "ui-1",
-      type: "extension_ui_response",
-      value: "ok",
-    } as ExtensionUiResponse;
     const hostResponse = {
       id: "host-1",
       type: "host_tool_result",
@@ -245,11 +241,18 @@ describe("R0.5 QueueController", () => {
       url: "https://example.test",
       content: "ok",
     } as unknown as HostUriResponse;
-    await controller.answerExtensionUi(uiResponse);
+    await expect(controller.answerDialog("ui-gone", { value: "ok" })).rejects.toMatchObject({
+      appError: { code: "not_found" },
+    });
+    await controller.answerDialog("ui-1", { value: "ok" });
     await controller.answerHostTool(hostResponse);
     await controller.answerHostUri(uriResponse);
-    expect(answered).toEqual([uiResponse, hostResponse, uriResponse]);
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(answered).toEqual([
+      { threadId, id: "ui-1", answer: { value: "ok" } },
+      hostResponse,
+      uriResponse,
+    ]);
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
     expect(store.getSnapshot().pending.hostTools).toEqual({});
     expect(store.getSnapshot().pending.hostUris).toEqual({});
   });
@@ -257,26 +260,17 @@ describe("R0.5 QueueController", () => {
   test("rejects a second answer while the first answer is in flight", async () => {
     let resolveAnswer!: () => void;
     const store = makeStore({
-      extension: () =>
+      dialog: () =>
         new Promise<void>((resolve) => {
           resolveAnswer = resolve;
         }),
     });
-    notification(
-      store,
-      { type: "extension_ui_request", id: "ui-1", method: "ask", title: "Name" },
-      1,
-    );
+    askName(store, 1);
     const send: RpcSessionSend = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
-    const response = {
-      id: "ui-1",
-      type: "extension_ui_response",
-      value: "ok",
-    } as ExtensionUiResponse;
-    const first = controller.answerExtensionUi(response);
+    const first = controller.answerDialog("ui-1", { value: "ok" });
     await Promise.resolve();
-    await expect(controller.answerExtensionUi(response)).rejects.toMatchObject({
+    await expect(controller.answerDialog("ui-1", { value: "ok" })).rejects.toMatchObject({
       appError: { code: "conflict" },
     });
     resolveAnswer();

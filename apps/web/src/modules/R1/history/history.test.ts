@@ -3,7 +3,7 @@ import type {
   CapabilityMap,
   ChatSessionEvent,
   FolderPath,
-  OpenQuestionRecord,
+  OpenHostRequests,
   OpenThreadArgs,
   RpcSessionClient,
   ThreadId,
@@ -35,7 +35,7 @@ function untilAborted(gate: Promise<void>, signal: AbortSignal | undefined): Pro
 function createRpc(
   open: (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) => unknown,
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
-  questions: readonly OpenQuestionRecord[] = [],
+  questions: OpenHostRequests = [],
   holdFirstStateRead?: Promise<void>,
   historyFailure?: () => AppFailure | undefined,
   holdHistoryRead?: Promise<void>,
@@ -77,9 +77,10 @@ function createRpc(
       open(args, options),
     send: send as RpcSessionClient["send"],
     subscribe: async () => ({ stream: "A0.rpcSession/event/thread" as never }),
-    answerExtensionUi: async () => null,
-    openQuestions: async () => questions,
-    stateFrames: async () => [],
+    // The chat session port's own: the open dialogs and the UI state a reopened chat shows, and the answers.
+    answer: async () => null,
+    openRequests: async () => questions,
+    uiState: async () => [],
     answerHostTool: async () => null,
     answerHostUri: async () => null,
     setSubagentSubscription: async () => ({ level: "off" }),
@@ -874,11 +875,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
         {
           seq: 3,
           request: {
-            type: "extension_ui_request",
             id: "ui-open",
-            method: "confirm",
-            title: "Go on?",
-            message: "",
+            method: "ui.confirm",
+            params: { title: "Go on?", message: "" },
           },
         },
       ],
@@ -902,8 +901,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
     });
     const store = await controller.openExisting(threadOne);
     // Both were replayed as history, so the replay asks neither; the open one comes from the server's record.
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-open"]);
-    expect(store.getSnapshot().pending.extensionUi["ui-open"]).toMatchObject({ receivedSeq: 3 });
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-open"]);
+    expect(store.getSnapshot().pending.dialogs["ui-open"]).toMatchObject({ receivedSeq: 3 });
   });
 
   test("a question the server replays before it acknowledges the subscription is not asked again, and a live one is", async () => {
@@ -924,7 +923,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     });
     const store = await controller.openExisting(threadOne);
     expect(store.getSnapshot().lastSeq).toBe(1);
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
     // A question asked after the chat opened is live: it opens.
     subscriptions[0]?.listeners[0]?.(
       {
@@ -937,7 +936,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       } as ChatSessionEvent,
       2,
     );
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-live"]);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-live"]);
   });
 
   test("a chat opened again applies only what came after its last turn ended: the turns before are the session file's", async () => {
@@ -945,7 +944,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const store = new OmpRuntimeStore({ threadId: threadOne });
     const notified: string[] = [];
-    store.subscribeNotifications(["extension_ui_request"], (frame) => {
+    store.subscribeNotifications(["ui_notify"], (frame) => {
       notified.push("message" in frame ? String(frame.message) : frame.type);
     });
     const notice = (message: string) =>

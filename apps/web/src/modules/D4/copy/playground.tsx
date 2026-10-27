@@ -127,7 +127,7 @@ function Loaded({
     () =>
       new DialogHostController({
         overlay,
-        answerExtensionUi: async () => undefined,
+        answerDialog: async () => undefined,
         render: renderDialogRequest,
       }),
     [overlay],

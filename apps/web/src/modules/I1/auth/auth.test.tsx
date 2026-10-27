@@ -1,4 +1,4 @@
-import { AppFailure, type CapabilityMap, type OmpWire, ThreadId } from "@omp-app/contracts";
+import { AppFailure, type CapabilityMap, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
 import { afterEach, describe, expect, test } from "vitest";
@@ -120,7 +120,7 @@ function dialogHarness(
 }
 type AppOwnedDialogHarnessState = {
   controller: DialogHostController | undefined;
-  readonly answerExtensionUi: OmpWire.ExtensionUiResponse[];
+  readonly answers: { readonly id: string; readonly answer: unknown }[];
   readonly requestIds: string[];
 };
 
@@ -131,8 +131,8 @@ function AppOwnedDialogHarness({ state }: { readonly state: AppOwnedDialogHarnes
     controllerRef.current = new DialogHostController({
       overlay,
       capabilities: {},
-      answerExtensionUi: async (response) => {
-        state.answerExtensionUi.push(response);
+      answerDialog: async (id, answer) => {
+        state.answers.push({ id, answer });
       },
       render: (request, context) => {
         state.requestIds.push(request.id);
@@ -154,7 +154,7 @@ function AppOwnedDialogHarness({ state }: { readonly state: AppOwnedDialogHarnes
 function renderAppOwnedDialogHost(): AppOwnedDialogHarnessState {
   const state: AppOwnedDialogHarnessState = {
     controller: undefined,
-    answerExtensionUi: [],
+    answers: [],
     requestIds: [],
   };
   render(
@@ -342,7 +342,7 @@ describe("I1 MCP add wizard", () => {
     expect(result.test).toEqual({ status: "passed" });
     expect(state.requestIds).toHaveLength(6);
     expect(state.requestIds.every((id) => id.startsWith("app-"))).toBe(true);
-    expect(state.answerExtensionUi).toEqual([]);
+    expect(state.answers).toEqual([]);
   });
 
   test("rejects unsafe HTTP addresses, accepts paths and keeps query data out of the summary", async () => {

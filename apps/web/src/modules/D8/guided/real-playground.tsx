@@ -6,7 +6,6 @@ import {
   type RpcSessionClient,
   RpcSessionPort,
   type ThreadId,
-  UiRequestId,
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -99,6 +98,7 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
       if (!active) return;
 
       const rpc = client.port(RpcSessionPort) as RpcSessionClient;
+      const chat = client.port(ChatSessionPort);
       const opened = await rpc.open({ folderPath: FolderPath.parse(folder), start: "new" });
       if (!active) return;
       const threadId = opened.threadId;
@@ -113,14 +113,8 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
       dialogHost = new DialogHostController({
         overlay,
         capabilities: opened.capabilities,
-        answerExtensionUi: async (response, options) => {
-          await rpc.answerExtensionUi(
-            {
-              threadId,
-              response: { ...response, id: UiRequestId.parse(response.id) },
-            },
-            options,
-          );
+        answerDialog: async (id, answer, options) => {
+          await chat.answer({ threadId, id, answer }, options);
         },
         render: renderDialogRequest,
       });

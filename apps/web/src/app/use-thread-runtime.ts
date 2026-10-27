@@ -57,7 +57,7 @@ interface ThreadRuntimeInput {
   readonly setCommandStatus: Dispatch<SetStateAction<string | null>>;
   readonly setCommandError: Dispatch<SetStateAction<string | null>>;
   readonly openAgentHub: () => Promise<AgentHubOpenResult>;
-  readonly answerExtensionUiRef: { current: QueueController["answerExtensionUi"] | null };
+  readonly answerDialogRef: { current: QueueController["answerDialog"] | null };
 }
 
 export function useThreadRuntime({
@@ -75,7 +75,7 @@ export function useThreadRuntime({
   setCommandStatus,
   setCommandError,
   openAgentHub,
-  answerExtensionUiRef,
+  answerDialogRef,
 }: ThreadRuntimeInput) {
   const attachmentManager = useMemo(
     () =>
@@ -178,12 +178,12 @@ export function useThreadRuntime({
     [capabilities, messageSend, store],
   );
   useLayoutEffect(() => {
-    answerExtensionUiRef.current = (response, options) =>
-      queueController.answerExtensionUi(response, options);
+    answerDialogRef.current = (id, answer, options) =>
+      queueController.answerDialog(id, answer, options);
     return () => {
-      answerExtensionUiRef.current = null;
+      answerDialogRef.current = null;
     };
-  }, [queueController, answerExtensionUiRef]);
+  }, [queueController, answerDialogRef]);
   const queueAdapter = useMemo(() => createQueueAdapter(queueController), [queueController]);
   const queueOpen = useQueueOpen(queueAdapter);
   return {

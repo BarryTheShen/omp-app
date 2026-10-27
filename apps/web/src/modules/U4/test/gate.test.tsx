@@ -68,8 +68,14 @@ async function openFixtureHarness(): Promise<FixtureHarness> {
   const store = new OmpRuntimeStore({
     threadId,
     transport: {
-      answerExtensionUi: async ({ response }) => {
-        await session.answerExtensionUi(response as PortExtensionUiResponse);
+      // The fixture is a recorded omp-rpc session until H5.6: the host's answer is omp's RPC response with the same
+      // fields.
+      answer: async ({ id, answer }) => {
+        await session.answerExtensionUi({
+          type: "extension_ui_response",
+          id,
+          ...(answer as object),
+        } as unknown as PortExtensionUiResponse);
         return null;
       },
     },
@@ -124,8 +130,7 @@ function RealU4Harness({ state, queue }: { state: U4HarnessState; queue: QueueCo
     hostRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: (response, options) =>
-        queue.answerExtensionUi(response as PortExtensionUiResponse, options),
+      answerDialog: (id, answer, options) => queue.answerDialog(id, answer, options),
       render: renderDialogRequest,
     });
     routerRef.current = new ExtensionUiRequestRouterController({
@@ -156,18 +161,19 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
     try {
       await waitForSnapshot(
         harness.store,
-        (snapshot) => Object.keys(snapshot.pending.extensionUi).length > 0,
+        (snapshot) => Object.keys(snapshot.pending.dialogs).length > 0,
         EVENT_WAIT,
       );
-      const pending = Object.values(harness.store.getSnapshot().pending.extensionUi)[0];
-      if (pending?.request.method !== "ask") throw new Error("fixture did not produce ask request");
+      const pending = Object.values(harness.store.getSnapshot().pending.dialogs)[0];
+      if (pending?.request.method !== "ui.ask")
+        throw new Error("fixture did not produce ask request");
       await waitFor(() => {
         expect(state.router).toBeDefined();
         expect(state.host).toBeDefined();
       }, EVENT_WAIT);
       const router = state.router;
       if (!router) throw new Error("U4 router did not initialize");
-      const routing = router.routeExtensionUi(
+      const routing = router.routeDialog(
         { request: pending.request, receivedSeq: pending.receivedSeq },
         { threadId: harness.threadId },
       );
@@ -178,10 +184,10 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       await routing;
       await waitForSnapshot(
         harness.store,
-        (snapshot) => Object.keys(snapshot.pending.extensionUi).length === 0,
+        (snapshot) => Object.keys(snapshot.pending.dialogs).length === 0,
         EVENT_WAIT,
       );
-      expect(harness.store.getSnapshot().pending.extensionUi).toEqual({});
+      expect(harness.store.getSnapshot().pending.dialogs).toEqual({});
     } finally {
       await harness.close();
     }
@@ -197,8 +203,8 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
         host = new DialogHostController({
           overlay,
           capabilities,
-          answerExtensionUi: async (response) => {
-            answers.push(response);
+          answerDialog: async (id, answer) => {
+            answers.push({ id, answer });
           },
           render: renderDialogRequest,
         });
@@ -232,10 +238,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
     });
     // The restore runs once the dialog has unmounted and released its focus trap, so the check waits for it.
     await waitFor(() =>
-      expect(answers).toEqual([
-        { type: "extension_ui_response", id: "gate-confirm", cancelled: true },
-        "restored",
-      ]),
+      expect(answers).toEqual([{ id: "gate-confirm", answer: { cancelled: true } }, "restored"]),
     );
   });
 

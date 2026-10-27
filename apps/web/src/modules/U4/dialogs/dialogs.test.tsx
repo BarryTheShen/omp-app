@@ -2,7 +2,8 @@ import { AppFailure, type ThreadId, type UiRequestId } from "@omp-app/contracts"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AskDialogRequest, DialogRequest, DialogResponse } from "../contract";
-import { toWireExtensionUiResponse } from "../contract/responses";
+import { approvalChoices } from "../contract/dialog";
+import { toHostDialogAnswer } from "../contract/responses";
 import type { DialogRenderContext } from "../host";
 import { AskResultCard } from "./ask-result";
 import { renderDialogRequest } from "./renderer";
@@ -80,11 +81,7 @@ describe("select dialog", () => {
     expect(result.answers).toEqual([{ kind: "select", value: "Beryl" }]);
     const selectedResponse = result.answers[0];
     if (!selectedResponse) throw new Error("The selected response was not recorded.");
-    expect(
-      toWireExtensionUiResponse(request.id, { outcome: "answered", response: selectedResponse }),
-    ).toEqual({
-      type: "extension_ui_response",
-      id: request.id,
+    expect(toHostDialogAnswer({ outcome: "answered", response: selectedResponse })).toEqual({
       value: "Beryl",
     });
   });
@@ -296,6 +293,78 @@ describe("select dialog", () => {
       { kind: "select", value: "Approve" },
     ]);
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+});
+
+describe("approve dialog", () => {
+  /** omp's approval prompt with both grants and a session answer, as omp's `tools/approval.ts` builds it. */
+  const prompt = {
+    full: "Allow write to src/a.ts?",
+    compact: "Allow write?",
+    session: "Approve write for this session",
+    grants: [
+      { scope: "folder", label: "Allow this folder", alwaysLabel: "Always allow this folder" },
+      { scope: "target", label: "Allow this file", alwaysLabel: "Always allow this file" },
+    ],
+  } as const;
+
+  function approval(id: string, from: Parameters<typeof approvalChoices>[0] = prompt) {
+    return {
+      kind: "approve",
+      id: id as UiRequestId,
+      title: from.full,
+      choices: approvalChoices(from),
+    } satisfies DialogRequest;
+  }
+
+  test("shows omp's prompt over omp's choices, in omp's order", () => {
+    renderRequest(approval("approve-order"));
+    const listbox = screen.getByRole("listbox", { name: prompt.full });
+    const labels = [
+      "Allow this folder",
+      "Allow this file",
+      "Always allow this folder",
+      "Always allow this file",
+      "Approve Once",
+      "Approve write for this session",
+      "Deny",
+    ];
+    expect(within(listbox).getAllByRole("option")).toEqual(
+      labels.map((label) => within(listbox).getByRole("option", { name: label })),
+    );
+  });
+
+  test("the choice taken is answered with omp's answer for it, not with its label", () => {
+    const result = renderRequest(approval("approve-always-file"));
+    fireEvent.click(screen.getByRole("option", { name: "Always allow this file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([
+      { kind: "approve", answer: { grant: "target", always: true } },
+    ]);
+  });
+
+  test("Deny answers deny, and the session choice answers session", () => {
+    const denied = renderRequest(approval("approve-deny"));
+    fireEvent.click(screen.getByRole("option", { name: "Deny" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(denied.answers).toEqual([{ kind: "approve", answer: "deny" }]);
+    cleanup();
+    const session = renderRequest(approval("approve-session"));
+    fireEvent.click(screen.getByRole("option", { name: "Approve write for this session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(session.answers).toEqual([{ kind: "approve", answer: "session" }]);
+  });
+
+  test("an approval without grants offers Approve and Deny, and Approve answers once", () => {
+    const result = renderRequest(approval("approve-plain", { full: "Run ls?", compact: "ls" }));
+    const listbox = screen.getByRole("listbox", { name: "Run ls?" });
+    expect(within(listbox).getAllByRole("option")).toEqual([
+      within(listbox).getByRole("option", { name: "Approve" }),
+      within(listbox).getByRole("option", { name: "Deny" }),
+    ]);
+    fireEvent.click(screen.getByRole("option", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([{ kind: "approve", answer: "once" }]);
   });
 });
 

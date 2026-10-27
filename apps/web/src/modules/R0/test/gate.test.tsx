@@ -11,10 +11,10 @@ import type {
   ChatSessionEvent,
   EntryId,
   Fixture,
+  ExtensionUiResponse as PortExtensionUiResponse,
   RpcSessionSend,
   ThreadId,
   ToolCallId,
-  UiRequestId,
 } from "@omp-app/contracts";
 import { parseFixture } from "@omp-app/contracts";
 import { render, screen } from "@testing-library/react";
@@ -75,8 +75,13 @@ async function openHarness(scenario: Scenario): Promise<Harness> {
   const session = new RpcSession(duplex);
   const threadId = `${scenario}-thread` as ThreadId;
   const transport: OmpRuntimeTransport = {
-    answerExtensionUi: async ({ response }) => {
-      await session.answerExtensionUi(response);
+    // The fixture is a recorded omp-rpc session until H5.6: the host's answer is omp's RPC response with the same fields.
+    answer: async ({ id, answer }) => {
+      await session.answerExtensionUi({
+        type: "extension_ui_response",
+        id,
+        ...(answer as object),
+      } as unknown as PortExtensionUiResponse);
       return null;
     },
     answerHostTool: async ({ response }) => {
@@ -263,7 +268,7 @@ describe("R0 W2 recorded fixture runtime gate", () => {
     }
   });
 
-  test("ui-round-trip routes the extension request through R0.5 answer actions", async () => {
+  test("ui-round-trip routes the host's dialog through R0.5 answer actions", async () => {
     const harness = await openHarness("ui-round-trip");
     let queue: QueueController | undefined;
     let answerError: unknown;
@@ -272,11 +277,7 @@ describe("R0 W2 recorded fixture runtime gate", () => {
       harness.feedNotification(request);
       if (request.method === "ask" && queue) {
         void queue
-          .answerExtensionUi({
-            type: "extension_ui_response",
-            id: request.id as UiRequestId,
-            answers: [{ id: "db", selectedOptions: ["SQLite"] }],
-          })
+          .answerDialog(request.id, { answers: [{ id: "db", selectedOptions: ["SQLite"] }] })
           .catch((error: unknown) => {
             answerError = error;
           });

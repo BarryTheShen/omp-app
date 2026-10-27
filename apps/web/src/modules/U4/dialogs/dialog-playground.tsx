@@ -18,7 +18,7 @@ function DialogPlayground() {
     hostRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: async (response) => setLastAnswer(JSON.stringify(response)),
+      answerDialog: async (id, answer) => setLastAnswer(JSON.stringify({ id, answer })),
       render: renderDialogRequest,
     });
   }

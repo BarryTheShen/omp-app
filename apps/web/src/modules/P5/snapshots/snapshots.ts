@@ -41,7 +41,7 @@ export type QuietPointReason =
   | "tracked-tool-running"
   | "queued-steering"
   | "queued-follow-up"
-  | "pending-extension-ui"
+  | "pending-dialog"
   | "pending-host-tool"
   | "pending-host-uri"
   | "compacting"
@@ -202,7 +202,7 @@ export function checkQuietPoint(snapshot: QuietPointRuntimeSnapshot): QuietPoint
   if (Object.values(snapshot.tools).some(activeTool)) reasons.push("tracked-tool-running");
   if (snapshot.queue.steering.length > 0) reasons.push("queued-steering");
   if (snapshot.queue.followUp.length > 0) reasons.push("queued-follow-up");
-  if (hasPending(snapshot.pending, "extensionUi")) reasons.push("pending-extension-ui");
+  if (hasPending(snapshot.pending, "dialogs")) reasons.push("pending-dialog");
   if (hasPending(snapshot.pending, "hostTools")) reasons.push("pending-host-tool");
   if (hasPending(snapshot.pending, "hostUris")) reasons.push("pending-host-uri");
   if (snapshot.session.isCompacting) reasons.push("compacting");
@@ -220,7 +220,7 @@ function quietPointReason(check: QuietPointCheck): string {
     "tracked-tool-running": "a tracked tool is still running",
     "queued-steering": "steering work is queued",
     "queued-follow-up": "follow-up work is queued",
-    "pending-extension-ui": "an extension request is awaiting an answer",
+    "pending-dialog": "a question in this chat is waiting for an answer",
     "pending-host-tool": "a host tool request is awaiting an answer",
     "pending-host-uri": "a host URI request is awaiting an answer",
     compacting: "omp is compacting context",

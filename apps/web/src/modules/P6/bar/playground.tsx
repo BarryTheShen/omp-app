@@ -34,7 +34,7 @@ function createFixturePort(): QueuePort {
     submit: async () => undefined,
     promote: async () => ({ changed: true }),
     setModes: async () => undefined,
-    answerExtensionUi: async () => undefined,
+    answerDialog: async () => undefined,
     answerHostTool: async () => undefined,
     answerHostUri: async () => undefined,
     onAddToolResult: async () => undefined,

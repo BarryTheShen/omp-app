@@ -153,7 +153,7 @@ function ActiveThreadReady({
     otherVersions,
     openThread,
   });
-  const { overlay, commandGateway, answerExtensionUiRef, dialogHost } = useThreadDialogs({
+  const { overlay, commandGateway, answerDialogRef, dialogHost } = useThreadDialogs({
     commandStatus,
     commandError,
     setCommandStatus,
@@ -245,7 +245,7 @@ function ActiveThreadReady({
     setCommandStatus,
     setCommandError,
     openAgentHub,
-    answerExtensionUiRef,
+    answerDialogRef,
   });
   const { todoModel, rulesController, slots } = useThreadPanels({
     store,

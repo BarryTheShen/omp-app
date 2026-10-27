@@ -4,32 +4,18 @@ import {
   type CapabilityMap,
   type ChatSessionEvent,
   ChatSessionPort,
-  type ExtensionUiResponse,
   type RpcSessionEvent,
   RpcSessionPort,
   ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import {
-  ApprovalBook,
-  approvalAnswerForChoice,
-  approvalChoiceLabels,
-  requestOf,
-  resultOf,
-  rpcEventOf,
-  toolAnswerOf,
-  uiAnswerOf,
-} from "../modules/R0/store/rpc-frames";
+import { requestOf, resultOf, rpcEventOf, toolAnswerOf } from "../modules/R0/store/rpc-frames";
 import { withChatSessionShim } from "./chat-session-shim";
 
 const thread = ThreadId.parse("thread-shim");
 
-function event(
-  payload: ChatSessionEvent,
-  seq = 7,
-  approvals = new ApprovalBook(),
-): RpcSessionEvent {
-  return rpcEventOf(thread, payload, seq, approvals);
+function event(payload: ChatSessionEvent, seq = 7): RpcSessionEvent {
+  return rpcEventOf(payload, seq);
 }
 
 function chatEvent(value: Record<string, unknown>): ChatSessionEvent {
@@ -43,17 +29,6 @@ function hostRequest(
 ): ChatSessionEvent {
   return { kind: "host_request", request: { id, method, params } } as unknown as ChatSessionEvent;
 }
-
-/** omp's approval prompt with both grants and a session answer, as `tools/approval.ts` builds it. */
-const PROMPT = {
-  full: "Allow write to src/a.ts?",
-  compact: "Allow write?",
-  session: "Approve write for this session",
-  grants: [
-    { scope: "folder", label: "Allow this folder", alwaysLabel: "Always allow this folder" },
-    { scope: "target", label: "Allow this file", alwaysLabel: "Always allow this file" },
-  ],
-} as const;
 
 describe("the cutover shim's events: each session payload as the RPC event omp's RPC session made of it", () => {
   test("omp's own session events stay omp events, and the host's other events become notification frames", () => {
@@ -112,83 +87,38 @@ describe("the cutover shim's events: each session payload as the RPC event omp's
     });
   });
 
-  test("each UI event is the extension_ui_request omp sent, with an id its sequence decides", () => {
-    const cases: readonly (readonly [Record<string, unknown>, Record<string, unknown>])[] = [
-      [
-        { type: "ui_notify", message: "Saved", notifyType: "info" },
-        { method: "notify", message: "Saved", notifyType: "info" },
-      ],
-      [
-        { type: "ui_status", statusKey: "git", statusText: "main" },
-        { method: "setStatus", statusKey: "git", statusText: "main" },
-      ],
-      [
-        { type: "ui_widget", widgetKey: "w", widgetLines: ["a"] },
-        { method: "setWidget", widgetKey: "w", widgetLines: ["a"] },
-      ],
-      [
-        { type: "ui_title", title: "Fix" },
-        { method: "setTitle", title: "Fix" },
-      ],
-      [
-        { type: "ui_editor_text", text: "draft" },
-        { method: "set_editor_text", text: "draft" },
-      ],
-      [
-        { type: "ui_open_url", url: "https://x.test" },
-        { method: "open_url", url: "https://x.test" },
-      ],
-      [
-        { type: "ui_cancel", requestId: "9" },
-        { method: "cancel", targetId: "9" },
-      ],
+  test("each UI event passes as itself, and a dialog's cancel names the dialog it closes", () => {
+    const uiEvents: readonly Record<string, unknown>[] = [
+      { type: "ui_notify", message: "Saved", notifyType: "info" },
+      { type: "ui_status", statusKey: "git", statusText: "main" },
+      { type: "ui_widget", widgetKey: "w", widgetLines: ["a"] },
+      { type: "ui_title", title: "Fix" },
+      { type: "ui_editor_text", text: "draft" },
+      { type: "ui_open_url", url: "https://x.test" },
     ];
-    for (const [hostEvent, frame] of cases) {
-      expect(event(chatEvent(hostEvent), 12)).toEqual({
-        kind: "notification",
-        frame: { type: "extension_ui_request", id: "ui-12", ...frame },
-      });
+    for (const uiEvent of uiEvents) {
+      expect(event(chatEvent(uiEvent), 12)).toEqual({ kind: "notification", frame: uiEvent });
     }
-    // The same event at the same sequence is the same frame, for every listener.
-    expect(event(chatEvent({ type: "ui_title", title: "Fix" }), 12)).toEqual(
-      event(chatEvent({ type: "ui_title", title: "Fix" }), 12),
-    );
+    expect(event(chatEvent({ type: "ui_cancel", requestId: "9" }), 12)).toEqual({
+      kind: "notification",
+      frame: { type: "host_dialog_cancel", requestId: "9" },
+    });
   });
 
-  test("a dialog keeps the host's id, and an approval is omp's select with omp's labels in omp's order", () => {
-    expect(
-      event(hostRequest("3", "ui.confirm", { title: "Sure?", message: "Delete it", timeout: 5 })),
-    ).toEqual({
+  test("a dialog is the host's request, unchanged; an approval keeps omp's typed prompt", () => {
+    const confirm = { title: "Sure?", message: "Delete it", timeout: 5 };
+    expect(event(hostRequest("3", "ui.confirm", confirm))).toEqual({
+      kind: "notification",
+      frame: { type: "host_dialog", request: { id: "3", method: "ui.confirm", params: confirm } },
+    });
+    const prompt = { full: "Allow write to src/a.ts?", compact: "Allow write?" };
+    expect(event(hostRequest("5", "ui.approve", { prompt, timeout: 60 }))).toEqual({
       kind: "notification",
       frame: {
-        type: "extension_ui_request",
-        id: "3",
-        method: "confirm",
-        title: "Sure?",
-        message: "Delete it",
-        timeout: 5,
+        type: "host_dialog",
+        request: { id: "5", method: "ui.approve", params: { prompt, timeout: 60 } },
       },
     });
-    expect(event(hostRequest("5", "ui.approve", { prompt: PROMPT, timeout: 60 }))).toEqual({
-      kind: "notification",
-      frame: {
-        type: "extension_ui_request",
-        id: "5",
-        method: "select",
-        title: PROMPT.full,
-        options: [
-          "Allow this folder",
-          "Allow this file",
-          "Always allow this folder",
-          "Always allow this file",
-          "Approve Once",
-          "Approve write for this session",
-          "Deny",
-        ],
-        timeout: 60,
-      },
-    });
-    expect(approvalChoiceLabels({ full: "x", compact: "x" })).toEqual(["Approve", "Deny"]);
   });
 
   test("tool calls and URI reads and writes are the RPC host frames, and their cancels name the call", () => {
@@ -295,43 +225,6 @@ describe("the cutover shim's sends and answers", () => {
     expect(resultOf("get_tree", { nodes: [] })).toEqual({ nodes: [] });
   });
 
-  test("a dialog's answer is the host's answer without the RPC envelope", () => {
-    const value = {
-      type: "extension_ui_response",
-      id: "3",
-      value: "SQLite",
-    } as ExtensionUiResponse;
-    expect(uiAnswerOf(value, undefined)).toEqual({ value: "SQLite" });
-    const cancelled = {
-      type: "extension_ui_response",
-      id: "3",
-      cancelled: true,
-      timedOut: true,
-    } as ExtensionUiResponse;
-    expect(uiAnswerOf(cancelled, undefined)).toEqual({ cancelled: true, timedOut: true });
-  });
-
-  test("an approval's select answers map to omp's approval answers, and a closed or unknown choice denies", () => {
-    expect(approvalAnswerForChoice(PROMPT, "Approve Once")).toBe("once");
-    expect(approvalAnswerForChoice(PROMPT, "Approve write for this session")).toBe("session");
-    expect(approvalAnswerForChoice(PROMPT, "Allow this folder")).toEqual({
-      grant: "folder",
-      always: false,
-    });
-    expect(approvalAnswerForChoice(PROMPT, "Always allow this file")).toEqual({
-      grant: "target",
-      always: true,
-    });
-    expect(approvalAnswerForChoice(PROMPT, "Deny")).toBe("deny");
-    expect(approvalAnswerForChoice(PROMPT, undefined)).toBe("deny");
-    expect(
-      uiAnswerOf(
-        { type: "extension_ui_response", id: "5", cancelled: true } as ExtensionUiResponse,
-        PROMPT,
-      ),
-    ).toBe("deny");
-  });
-
   test("a tool's result answers its call, and fails when either the result or the response says so", () => {
     const content = [{ type: "text", text: "done" }];
     expect(
@@ -376,20 +269,6 @@ function fakeConnection() {
       (args as { method: string }).method === "prompt" ? { resultFollows: true } : { ok: true },
     ),
     answer: record("answer"),
-    openRequests: record("openRequests", () => [
-      { seq: 3, request: { id: "5", method: "ui.approve", params: { prompt: PROMPT } } },
-      {
-        seq: 4,
-        request: {
-          id: "8",
-          method: "tool.call",
-          params: { toolCallId: "c", toolName: "t", arguments: {} },
-        },
-      },
-    ]),
-    uiState: record("uiState", () => [
-      { seq: 6, event: { type: "ui_status", statusKey: "git", statusText: "main" } },
-    ]),
   };
   const app = {
     capabilities: async (): Promise<CapabilityMap> => {
@@ -482,46 +361,23 @@ describe("the cutover client: A0's RPC port served by the chat session port", ()
     expect(connection.capabilityReads()).toBe(1);
   });
 
-  test("an approval shown on the stream is answered through omp's label rule", async () => {
-    const connection = fakeConnection();
-    const shimmed = withChatSessionShim(connection.client);
-    await shimmed.subscribe(RpcSessionPort, "event", { scope: thread, onEvent: () => undefined });
-    connection.emit(hostRequest("5", "ui.approve", { prompt: PROMPT }), 2);
-    await shimmed.port(RpcSessionPort).answerExtensionUi({
-      threadId: thread,
-      response: { type: "extension_ui_response", id: "5", value: "Always allow this folder" },
-    } as never);
-    expect(connection.calls.at(-1)).toEqual({
-      method: "answer",
-      args: { threadId: thread, id: "5", answer: { grant: "folder", always: true } },
-    });
-  });
-
-  test("the open questions and the UI state are listed as A0's port listed them", async () => {
+  test("the RPC port's dialog methods are refused: the dialogs are answered and replayed on the chat session port", async () => {
     const connection = fakeConnection();
     const rpc = withChatSessionShim(connection.client).port(RpcSessionPort);
-    expect(await rpc.openQuestions({ threadId: thread })).toEqual([
-      {
-        seq: 3,
-        request: expect.objectContaining({
-          type: "extension_ui_request",
-          id: "5",
-          method: "select",
-        }),
-      },
-    ]);
-    expect(await rpc.stateFrames({ threadId: thread })).toEqual([
-      {
-        seq: 6,
-        request: {
-          type: "extension_ui_request",
-          id: "ui-6",
-          method: "setStatus",
-          statusKey: "git",
-          statusText: "main",
-        },
-      },
-    ]);
+    const calls = connection.calls.length;
+    await expect(
+      rpc.answerExtensionUi({
+        threadId: thread,
+        response: { type: "extension_ui_response", id: "5", value: "Deny" },
+      } as never),
+    ).rejects.toMatchObject({ appError: { code: "unavailable" } });
+    await expect(rpc.openQuestions({ threadId: thread })).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    await expect(rpc.stateFrames({ threadId: thread })).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    expect(connection.calls).toHaveLength(calls);
   });
 
   test("a tool's progress is the host's host_tool_update request, and its result an answer", async () => {

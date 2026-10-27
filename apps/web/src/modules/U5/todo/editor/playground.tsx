@@ -68,7 +68,7 @@ function EditorPlayground() {
     hostRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: async () => undefined,
+      answerDialog: async () => undefined,
       render: renderDialogRequest,
     });
     storeRef.current = createStore();

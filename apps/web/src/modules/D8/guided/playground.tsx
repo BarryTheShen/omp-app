@@ -94,7 +94,7 @@ function Playground() {
     const dialogs = new DialogHostController({
       overlay,
       capabilities: playgroundCapabilities,
-      answerExtensionUi: async () => {
+      answerDialog: async () => {
         throw new Error("The playground has no omp to answer.");
       },
       render: renderDialogRequest,

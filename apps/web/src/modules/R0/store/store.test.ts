@@ -5,11 +5,17 @@ import type {
   ProvisionalMessageKey,
   ThreadId,
   ToolCallId,
-  UiRequestId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { bashEvent, notificationEvent, promptResultEvent } from "./session-events";
+import {
+  bashEvent,
+  dialogCancelEvent,
+  dialogEvent,
+  notificationEvent,
+  promptResultEvent,
+  uiEvent,
+} from "./session-events";
 import { OmpRuntimeStore, type RuntimeMessage, rowIdOf } from "./store";
 
 const threadId = "thread-r0" as ThreadId;
@@ -899,13 +905,13 @@ describe("OmpRuntimeStore", () => {
     expect(received).toHaveLength(2);
   });
 
-  test("tracks queues, modes, todos, pending UI requests, and answers", async () => {
+  test("tracks queues, modes, todos, pending dialogs, and answers", async () => {
     const calls: unknown[] = [];
     const setTodoCalls: unknown[] = [];
     const store = new OmpRuntimeStore({
       threadId,
       transport: {
-        answerExtensionUi: async (args) => {
+        answer: async (args) => {
           calls.push(args);
           return null;
         },
@@ -952,42 +958,35 @@ describe("OmpRuntimeStore", () => {
 
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-1",
-        method: "confirm",
-        title: "Continue?",
-        message: "yes",
+        method: "ui.confirm",
+        params: { title: "Continue?", message: "yes" },
       }),
       4,
     );
-    expect(store.getSnapshot().pending.extensionUi["ui-1"]?.request).toMatchObject({
-      method: "confirm",
+    expect(store.getSnapshot().pending.dialogs["ui-1"]?.request).toMatchObject({
+      method: "ui.confirm",
+      params: { title: "Continue?" },
     });
-    await store.answerExtensionUi({
-      type: "extension_ui_response",
-      id: "ui-1" as UiRequestId,
-      confirmed: true,
-    });
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
-    expect(calls).toHaveLength(1);
+    await store.answerDialog("ui-1", { confirmed: true });
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
+    expect(calls).toEqual([{ threadId, id: "ui-1", answer: { confirmed: true } }]);
   });
 
-  test("omp's exit drops the questions it asked, since it can no longer answer them", () => {
+  test("omp's exit drops the dialogs it asked, since it can no longer answer them", () => {
     const store = new OmpRuntimeStore({ threadId });
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-open",
-        method: "confirm",
-        title: "Continue?",
-        message: "yes",
+        method: "ui.confirm",
+        params: { title: "Continue?", message: "yes" },
       }),
       2,
     );
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-open"]);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-open"]);
     ingest(
       store,
       {
@@ -997,7 +996,7 @@ describe("OmpRuntimeStore", () => {
       },
       3,
     );
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
     expect(store.getSnapshot().error).toMatchObject({ message: "omp exited (signal SIGKILL)" });
   });
 
@@ -1006,7 +1005,7 @@ describe("OmpRuntimeStore", () => {
     const store = new OmpRuntimeStore({
       threadId,
       transport: {
-        answerExtensionUi: async () => {
+        answer: async () => {
           await answered.promise;
           throw new AppFailure({
             code: "not_found",
@@ -1019,20 +1018,14 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-late",
-        method: "confirm",
-        title: "Continue?",
-        message: "yes",
+        method: "ui.confirm",
+        params: { title: "Continue?", message: "yes" },
       }),
       2,
     );
-    const answer = store.answerExtensionUi({
-      type: "extension_ui_response",
-      id: "ui-late" as UiRequestId,
-      confirmed: true,
-    });
+    const answer = store.answerDialog("ui-late", { confirmed: true });
     ingest(
       store,
       {
@@ -1055,7 +1048,7 @@ describe("OmpRuntimeStore", () => {
     const store = new OmpRuntimeStore({
       threadId,
       transport: {
-        answerExtensionUi: async () => {
+        answer: async () => {
           attempts += 1;
           if (attempts === 1) {
             throw new AppFailure({
@@ -1071,35 +1064,28 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-failed",
-        method: "confirm",
-        title: "Continue?",
-        message: "yes",
+        method: "ui.confirm",
+        params: { title: "Continue?", message: "yes" },
       }),
       2,
     );
-    const response = {
-      type: "extension_ui_response" as const,
-      id: "ui-failed" as UiRequestId,
-      confirmed: true,
-    };
-    await expect(store.answerExtensionUi(response)).rejects.toMatchObject({
+    await expect(store.answerDialog("ui-failed", { confirmed: true })).rejects.toMatchObject({
       appError: { code: "omp_exited", message: "The omp RPC transport closed" },
     });
     expect(store.getSnapshot().error).toBeNull();
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-failed"]);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-failed"]);
 
-    await store.answerExtensionUi(response);
+    await store.answerDialog("ui-failed", { confirmed: true });
     expect(store.getSnapshot().error).toBeNull();
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
   });
   test("a not-found answer keeps the store entry but leaves the conversation banner clear", async () => {
     const store = new OmpRuntimeStore({
       threadId,
       transport: {
-        answerExtensionUi: async () => {
+        answer: async () => {
           throw new AppFailure({
             code: "not_found",
             message: "No pending extension UI request",
@@ -1111,26 +1097,18 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-gone",
-        method: "confirm",
-        title: "Continue?",
-        message: "yes",
+        method: "ui.confirm",
+        params: { title: "Continue?", message: "yes" },
       }),
       2,
     );
 
-    await expect(
-      store.answerExtensionUi({
-        type: "extension_ui_response",
-        id: "ui-gone" as UiRequestId,
-        confirmed: true,
-      }),
-    ).rejects.toMatchObject({
+    await expect(store.answerDialog("ui-gone", { confirmed: true })).rejects.toMatchObject({
       appError: { code: "not_found", message: "No pending extension UI request" },
     });
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-gone"]);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-gone"]);
     expect(store.getSnapshot().error).toBeNull();
   });
 
@@ -1204,18 +1182,12 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1044, needsRefetch: false });
   });
 
-  test("records a request omp is waiting on even across a gap or a refetch in flight", () => {
+  test("records a dialog omp is waiting on even across a gap or a refetch in flight", () => {
     const store = new OmpRuntimeStore({ threadId });
     const ask = (id: string, seq: number) =>
       ingest(
         store,
-        notificationEvent({
-          type: "extension_ui_request",
-          id,
-          method: "confirm",
-          title: "Go on?",
-          message: "",
-        }),
+        dialogEvent({ id, method: "ui.confirm", params: { title: "Go on?", message: "" } }),
         seq,
       );
     // A fresh chat's first events predate the browser's subscription, so the first one it sees is
@@ -1226,8 +1198,8 @@ describe("OmpRuntimeStore", () => {
     // omp asks a question while the refetch is running. The refetch restores messages and state but
     // never this, so the request must be kept or omp waits forever for an answer nobody was shown.
     ask("ask-1", 7);
-    expect(store.getSnapshot().pending.extensionUi["ask-1"]?.request).toMatchObject({
-      method: "confirm",
+    expect(store.getSnapshot().pending.dialogs["ask-1"]?.request).toMatchObject({
+      method: "ui.confirm",
     });
     // Ordinary events in the gap are still dropped: the refetch covers them.
     ingest(store, { kind: "process", status: "running" }, 8);
@@ -1237,24 +1209,15 @@ describe("OmpRuntimeStore", () => {
       process: { status: "starting" },
     });
 
-    // omp withdrawing a request inside the gap removes it, and a later one is recorded too.
-    ingest(
-      store,
-      notificationEvent({
-        type: "extension_ui_request",
-        id: "cancel-1",
-        method: "cancel",
-        targetId: "ask-1",
-      }),
-      9,
-    );
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    // The host giving a dialog up inside the gap removes it, and a later one is recorded too.
+    ingest(store, dialogCancelEvent("ask-1"), 9);
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
     ask("ask-2", 10);
 
     // Ending the gap moves the cursor and leaves the pending request alone.
     store.resetSequence();
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 10, needsRefetch: false });
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ask-2"]);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ask-2"]);
   });
 
   test("a notification the passthrough does not reduce reaches its subscriber across a gap, once", () => {
@@ -1309,146 +1272,115 @@ describe("OmpRuntimeStore", () => {
     expect(heard).toEqual([3]);
   });
 
-  /**
-   * A routed UI frame by what it is: a dialog by its id (the host keeps a request's id), omp's cancel by the question it
-   * cancels, a notice by its words. The host's UI events carry no id of their own.
-   */
+  /** A forwarded frame by what it is: a dialog by its request's id, a notice by its words, anything else by its id or type. */
   function frameKey(routed: unknown): string {
     const frame = routed as { readonly type: string } & Record<string, unknown>;
-    if (frame.method === "cancel") return `cancel of ${String(frame.targetId)}`;
-    if (frame.method === "notify") return `notice: ${String(frame.message)}`;
+    if (frame.type === "host_dialog") return String((frame.request as { id: string }).id);
+    if (frame.type === "ui_notify") return `notice: ${String(frame.message)}`;
     return "id" in frame ? String(frame.id) : frame.type;
   }
 
-  test("across a gap, a question is kept from its router, and omp's cancel of it is routed", () => {
+  test("across a gap, a dialog is recorded but kept from its listeners, and the host's cancel drops it", () => {
     const store = new OmpRuntimeStore({ threadId });
     const routed: string[] = [];
-    store.subscribeNotifications(["extension_ui_request"], (frame) => {
+    store.subscribeNotifications(["host_dialog"], (frame) => {
       routed.push(frameKey(frame));
     });
-    // A fresh chat's first event is a gap: the question and its cancel both arrive inside it.
+    // A fresh chat's first event is a gap: the dialog and its cancel both arrive inside it.
     ingest(store, { kind: "process", status: "ready" }, 6);
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
-        id: "ask-1",
-        method: "confirm",
-        title: "Go on?",
-        message: "",
-      }),
+      dialogEvent({ id: "ask-1", method: "ui.confirm", params: { title: "Go on?", message: "" } }),
       7,
     );
-    expect(store.getSnapshot().pending.extensionUi["ask-1"]?.request).toMatchObject({
-      method: "confirm",
+    expect(store.getSnapshot().pending.dialogs["ask-1"]?.request).toMatchObject({
+      method: "ui.confirm",
     });
     expect(routed).toEqual([]);
-    ingest(
-      store,
-      notificationEvent({
-        type: "extension_ui_request",
-        id: "cancel-1",
-        method: "cancel",
-        targetId: "ask-1",
-      }),
-      8,
-    );
-    expect(routed).toEqual(["cancel of ask-1"]);
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    ingest(store, dialogCancelEvent("ask-1"), 8);
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
+    expect(routed).toEqual([]);
   });
 
-  test("a question, host call or sign-in prompt from the history is not asked again, and a live one is", () => {
+  test("a dialog, host call or sign-in page from the history is not asked again, and a live one is", () => {
     const store = new OmpRuntimeStore({ threadId });
     const notified: string[] = [];
     store.subscribeNotifications(
-      ["extension_ui_request", "host_tool_call", "host_uri_request"],
+      ["host_dialog", "host_tool_call", "host_uri_request", "ui_open_url", "ui_notify"],
       (frame) => notified.push(frameKey(frame)),
     );
-    // What a subscription from the start replays: a question that was answered, a host call and a URI request whose
-    // turns ended, a sign-in prompt, and a notice, which is still shown.
+    // What a subscription from the start replays: a dialog that was answered, a host call and a URI request whose
+    // turns ended, a sign-in page, and a notice, which is still shown.
     const replayed = [
-      {
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-old",
-        method: "select",
-        title: "Which database?",
-        options: [],
-      },
-      {
+        method: "ui.select",
+        params: { title: "Which database?", options: [] },
+      }),
+      notificationEvent({
         type: "host_tool_call",
         id: "host-old",
         toolCallId: "call-1",
         toolName: "lookup",
         arguments: {},
-      },
-      { type: "host_uri_request", id: "uri-old", operation: "read", url: "app://notes/1" },
-      {
-        type: "extension_ui_request",
-        id: "link-old",
-        method: "open_url",
-        url: "https://example.com/sign-in",
-      },
-      {
-        type: "extension_ui_request",
-        id: "notice-old",
-        method: "notify",
-        message: "Startup notice",
-      },
+      }),
+      notificationEvent({
+        type: "host_uri_request",
+        id: "uri-old",
+        operation: "read",
+        url: "app://notes/1",
+      }),
+      uiEvent({ type: "ui_open_url", url: "https://example.com/sign-in" }),
+      uiEvent({ type: "ui_notify", message: "Startup notice" }),
     ];
-    for (const [index, frame] of replayed.entries()) {
-      ingest(store, notificationEvent(frame), index + 1, true);
+    for (const [index, payload] of replayed.entries()) {
+      ingest(store, payload, index + 1, true);
     }
     expect(store.getSnapshot().lastSeq).toBe(5);
-    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(store.getSnapshot().pending.dialogs).toEqual({});
     expect(store.getSnapshot().pending.hostTools).toEqual({});
     expect(store.getSnapshot().pending.hostUris).toEqual({});
     expect(notified).toEqual(["notice: Startup notice"]);
-    // A question asked now is live: it opens and reaches the listeners.
+    // A dialog asked now is live: it opens and reaches the listeners.
     ingest(
       store,
-      notificationEvent({
-        type: "extension_ui_request",
+      dialogEvent({
         id: "ui-live",
-        method: "select",
-        title: "Which database?",
-        options: [],
+        method: "ui.select",
+        params: { title: "Which database?", options: [] },
       }),
       6,
     );
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-live"]);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-live"]);
     expect(notified).toEqual(["notice: Startup notice", "ui-live"]);
   });
 
-  test("a question omp is still waiting on is recorded as pending without moving the sequence, once", () => {
+  test("a dialog omp is still waiting on is recorded as pending without moving the sequence, once; a host call is not a dialog", () => {
     const store = new OmpRuntimeStore({ threadId });
     ingest(store, { kind: "process", status: "ready" }, 1);
-    store.recordOpenQuestion(
-      {
-        type: "extension_ui_request",
-        id: "ask-open",
-        method: "confirm",
-        title: "Go on?",
-        message: "",
-      },
-      7,
-    );
+    const open = {
+      id: "ask-open",
+      method: "ui.confirm",
+      params: { title: "Go on?", message: "" },
+    } as const;
+    store.recordOpenQuestion(open, 7);
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1 });
-    expect(store.getSnapshot().pending.extensionUi["ask-open"]).toMatchObject({
+    expect(store.getSnapshot().pending.dialogs["ask-open"]).toMatchObject({
       receivedSeq: 7,
-      request: { method: "confirm" },
+      request: { method: "ui.confirm" },
     });
     const revision = store.getSnapshot().revision;
+    store.recordOpenQuestion(open, 7);
     store.recordOpenQuestion(
       {
-        type: "extension_ui_request",
-        id: "ask-open",
-        method: "confirm",
-        title: "Go on?",
-        message: "",
+        id: "call-open",
+        method: "tool.call",
+        params: { toolCallId: "call-1", toolName: "lookup", arguments: {} },
       },
-      7,
+      8,
     );
     expect(store.getSnapshot().revision).toBe(revision);
+    expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ask-open"]);
   });
 
   test("records a tool call's start, progress and end across a gap, since history never restores them", () => {
@@ -1931,24 +1863,15 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:c1`]);
   });
 
-  test("a state frame the server holds reaches the subscribers as a replayed frame, and moves no sequence", () => {
+  test("a UI state event the server holds reaches the subscribers as replayed, and moves no sequence", () => {
     const store = new OmpRuntimeStore({ threadId });
     ingest(store, { kind: "process", status: "ready" }, 1);
-    const heard: Array<{ id: string; seq: number; replayed: boolean }> = [];
-    store.subscribeNotifications(["extension_ui_request"], (frame, seq, replayed) => {
-      heard.push({ id: "id" in frame ? String(frame.id) : frame.type, seq, replayed });
+    const heard: Array<{ type: string; seq: number; replayed: boolean }> = [];
+    store.subscribeNotifications(["ui_status"], (frame, seq, replayed) => {
+      heard.push({ type: frame.type, seq, replayed });
     });
-    store.recordState(
-      {
-        type: "extension_ui_request",
-        id: "state-build",
-        method: "setStatus",
-        statusKey: "build",
-        statusText: "Running",
-      },
-      2,
-    );
-    expect(heard).toEqual([{ id: "state-build", seq: 2, replayed: true }]);
+    store.recordState({ type: "ui_status", statusKey: "build", statusText: "Running" }, 2);
+    expect(heard).toEqual([{ type: "ui_status", seq: 2, replayed: true }]);
     expect(store.getSnapshot().lastSeq).toBe(1);
   });
 

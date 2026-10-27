@@ -7,7 +7,6 @@ import {
   type PortClient,
   type RpcSessionPort,
   type ThreadId,
-  UiRequestId,
 } from "@omp-app/contracts";
 import {
   type Dispatch,
@@ -91,10 +90,10 @@ export function useThreadDialogs({
     () => watchSavedCompactions(client, threadId, () => void refreshAfterCommandRef.current?.()),
     [client, threadId],
   );
-  // Answers go through R0's queue controller (assigned below), because it forgets the request once
-  // omp accepts the answer. Answering through the raw RPC port left the request "pending" in the
-  // store, and the router presented the same question a second time.
-  const answerExtensionUiRef = useRef<QueueController["answerExtensionUi"] | null>(null);
+  // Answers go through R0's queue controller (assigned below), because it forgets the dialog once
+  // the host accepts the answer. Answering past it left the dialog "pending" in the store, and the
+  // router presented the same question a second time.
+  const answerDialogRef = useRef<QueueController["answerDialog"] | null>(null);
   // The newest capability map, read when a question arrives, so replacing the map (a reconnect
   // reloads it) never rebuilds the host and cancels a question the user is looking at.
   const capabilitiesRef = useRef(capabilities);
@@ -108,23 +107,23 @@ export function useThreadDialogs({
       new DialogHostController({
         overlay,
         capabilities: () => capabilitiesRef.current,
-        answerExtensionUi: (response, options) => {
-          const answer = answerExtensionUiRef.current;
-          if (answer === null) {
+        answerDialog: (id, answer, options) => {
+          const send = answerDialogRef.current;
+          if (send === null) {
             throw new AppFailure({
               code: "unavailable",
               message: "omp's question can't be answered right now. Try again.",
               retryable: true,
             });
           }
-          return answer({ ...response, id: UiRequestId.parse(response.id) }, options);
+          return send(id, answer, options);
         },
         render: renderDialogRequest,
       }),
     [overlay, threadId],
   );
   useDisposeWhenReplaced(dialogHost);
-  return { overlay, commandGateway, answerExtensionUiRef, dialogHost };
+  return { overlay, commandGateway, answerDialogRef, dialogHost };
 }
 
 interface ThreadChatActionsInput {

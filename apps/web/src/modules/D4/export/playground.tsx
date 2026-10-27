@@ -155,7 +155,7 @@ function Loaded({ session }: { readonly session: Session }) {
     () =>
       new DialogHostController({
         overlay,
-        answerExtensionUi: async () => undefined,
+        answerDialog: async () => undefined,
         render: renderDialogRequest,
       }),
     [overlay],

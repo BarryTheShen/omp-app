@@ -1,8 +1,8 @@
 import type {
+  AnswerHostRequestArgs,
   AppError,
   ChatSessionEvent,
   EntryId,
-  ExtensionUiResponse,
   HostToolResponse,
   HostUriResponse,
   MessageKey,
@@ -19,6 +19,7 @@ import type {
   RpcSessionSend,
   ThreadId,
   ToolCallId,
+  UiStateEvent,
 } from "@omp-app/contracts";
 import {
   AppFailure,
@@ -27,8 +28,19 @@ import {
   persistedMessageKey,
   provisionalMessageKey,
 } from "@omp-app/contracts";
+import {
+  type HostDialogAnswer,
+  type HostDialogRequest,
+  type HostRequest,
+  isHostDialogRequest,
+} from "@omp-app/contracts/chat-host";
 import { createDraft, type Draft, finishDraft, freeze, original } from "immer";
-import { rpcEventOf, sharedApprovals } from "./rpc-frames";
+import {
+  type HostDialogCancelFrame,
+  type HostDialogFrame,
+  type HostUiEvent,
+  rpcEventOf,
+} from "./rpc-frames";
 
 type QueueMode = OmpWire.QueueMode;
 type SessionState = OmpWire.SessionState;
@@ -174,8 +186,9 @@ export interface QueueState {
   readonly liveSteered: number;
 }
 
-export interface PendingExtensionUiRequest {
-  readonly request: OmpWire.ExtensionUiRequest;
+/** A dialog the chat's host waits on (`ui.*`), as the host sent it, until it is answered or given up. */
+export interface PendingDialog {
+  readonly request: HostDialogRequest;
   readonly receivedSeq: number;
 }
 
@@ -190,7 +203,7 @@ export interface PendingHostUriRequest {
 }
 
 export interface PendingRequestsState {
-  readonly extensionUi: Readonly<Record<string, PendingExtensionUiRequest>>;
+  readonly dialogs: Readonly<Record<string, PendingDialog>>;
   readonly hostTools: Readonly<Record<string, PendingHostToolRequest>>;
   readonly hostUris: Readonly<Record<string, PendingHostUriRequest>>;
 }
@@ -272,7 +285,15 @@ export interface RuntimeSnapshot {
 }
 
 export type RuntimeStoreListener = (snapshot: RuntimeSnapshot) => void;
-export type RuntimeNotificationFrame = RpcSessionNotification;
+/**
+ * A notification frame: omp's RPC notifications still translated for their readers, the host's UI events as they come,
+ * and the store's own dialog frames (see `rpc-frames.ts`).
+ */
+export type RuntimeNotificationFrame =
+  | RpcSessionNotification
+  | HostUiEvent
+  | HostDialogFrame
+  | HostDialogCancelFrame;
 export type RuntimeNotificationListener = (
   frame: RuntimeNotificationFrame,
   seq: number,
@@ -309,22 +330,18 @@ interface UndeliveredEvent {
 const MAX_UNDELIVERED = 200;
 
 /**
- * Extension UI methods that only present state (a notice, a status, a widget or a title). Applying one again is harmless
+ * The host's UI events that only present state (a notice, a status, a widget or a title). Applying one again is harmless
  * and no answer is owed, so a listener attached later may be given the ones that arrived before it.
  */
-const PRESENTATION_METHODS: Readonly<Record<string, true>> = {
-  notify: true,
-  setStatus: true,
-  setTitle: true,
-  setWidget: true,
-};
+const PRESENTATION_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "ui_notify",
+  "ui_status",
+  "ui_title",
+  "ui_widget",
+]);
 
 function isPresentationFrame(frame: Record<string, unknown>): boolean {
-  return (
-    frame.type === "extension_ui_request" &&
-    typeof frame.method === "string" &&
-    PRESENTATION_METHODS[frame.method] === true
-  );
+  return typeof frame.type === "string" && PRESENTATION_EVENT_TYPES.has(frame.type);
 }
 
 function keepUndelivered<T>(queue: T[], item: T): void {
@@ -335,7 +352,8 @@ function keepUndelivered<T>(queue: T[], item: T): void {
 /** The A0 methods needed by this store; all other runtime actions belong to later R0 parts. */
 export interface OmpRuntimeTransport {
   readonly send?: RpcSessionSend;
-  readonly answerExtensionUi?: RpcSessionClient["answerExtensionUi"];
+  /** Answers one of the host's dialogs (`A0.chatSession.answer`). */
+  readonly answer?: (args: AnswerHostRequestArgs, options?: PortCallOptions) => Promise<null>;
   readonly answerHostTool?: RpcSessionClient["answerHostTool"];
   readonly answerHostUri?: RpcSessionClient["answerHostUri"];
 }
@@ -366,32 +384,22 @@ const EMPTY_QUEUE: QueueState = Object.freeze({
   liveSteered: 0,
 });
 const EMPTY_PENDING: PendingRequestsState = Object.freeze({
-  extensionUi: Object.freeze({}),
+  dialogs: Object.freeze({}),
   hostTools: Object.freeze({}),
   hostUris: Object.freeze({}),
 });
 const EMPTY_PROCESS: ProcessState = Object.freeze({ status: "starting", error: null });
 /**
- * Extension UI methods that ask the person for an answer or a click: the modal questions, and a sign-in prompt
- * (`open_url`). A replayed one is never presented again (see `ingest`).
+ * Whether a notification frame asks the person for something: a dialog, a host call, or a sign-in page to open
+ * (`ui_open_url`). A replayed one is never presented again (see `ingest`).
  */
-const ASKING_EXTENSION_METHODS: ReadonlySet<string> = new Set([
-  "select",
-  "confirm",
-  "input",
-  "editor",
-  "ask",
-  "open_url",
-]);
-
-/** Whether a notification frame asks the person for something: a question, a host call, or a sign-in prompt. */
 function isAskingFrame(frame: unknown): boolean {
   if (!isRecord(frame)) return false;
-  if (frame.type === "host_tool_call" || frame.type === "host_uri_request") return true;
   return (
-    frame.type === "extension_ui_request" &&
-    typeof frame.method === "string" &&
-    ASKING_EXTENSION_METHODS.has(frame.method)
+    frame.type === "host_dialog" ||
+    frame.type === "ui_open_url" ||
+    frame.type === "host_tool_call" ||
+    frame.type === "host_uri_request"
   );
 }
 
@@ -1088,10 +1096,10 @@ function cancelActiveTools(next: MutableSnapshot): void {
   }
 }
 
-/** omp that exited can take no answer: its questions are no longer open, and the router closes their dialogs. */
-function dropExtensionUiRequests(next: MutableSnapshot): void {
+/** A host that exited can take no answer: its dialogs are no longer open, and the router closes them. */
+function dropDialogs(next: MutableSnapshot): void {
   const pending = copyPending(next);
-  pending.extensionUi = {};
+  pending.dialogs = {};
   setPending(next, pending);
 }
 
@@ -1395,14 +1403,14 @@ function hydratePersistedMessages(
 }
 
 interface PendingDraft {
-  extensionUi: Record<string, PendingExtensionUiRequest>;
+  dialogs: Record<string, PendingDialog>;
   hostTools: Record<string, PendingHostToolRequest>;
   hostUris: Record<string, PendingHostUriRequest>;
 }
 
 function copyPending(next: MutableSnapshot): PendingDraft {
   return {
-    extensionUi: { ...next.pending.extensionUi },
+    dialogs: { ...next.pending.dialogs },
     hostTools: { ...next.pending.hostTools },
     hostUris: { ...next.pending.hostUris },
   };
@@ -1618,11 +1626,7 @@ export class OmpRuntimeStore {
    * move its readers to the session events.
    */
   public ingest(payload: ChatSessionEvent, seq: number, fromHistory = false): void {
-    this.ingestRpc(
-      rpcEventOf(this.snapshot.threadId, payload, seq, sharedApprovals),
-      seq,
-      fromHistory,
-    );
+    this.ingestRpc(rpcEventOf(payload, seq), seq, fromHistory);
   }
 
   private ingestRpc(event: RpcSessionEvent, seq: number, fromHistory: boolean): void {
@@ -1712,11 +1716,6 @@ export class OmpRuntimeStore {
   ): void {
     const next = mutableSnapshot(this.snapshot);
     const rawFrame = eventValue.frame;
-    const isExtensionCancel =
-      eventValue.kind === "notification" &&
-      isRecord(rawFrame) &&
-      rawFrame.type === "extension_ui_request" &&
-      rawFrame.method === "cancel";
     // A question or host call from the history is not recorded (see `ingest`).
     const isNotification = eventValue.kind === "notification" && !askingFromHistory;
     if (isNotification) this.reduceNotification(next, rawFrame, seq);
@@ -1733,11 +1732,9 @@ export class OmpRuntimeStore {
       next.needsRefetch = true;
       this.commit(next);
     }
-    // After the commit, so a listener reads the state this event left. A question stays out of its
-    // router (it is recorded above); omp's cancel of one is routed, as before.
-    if (isNotification && isExtensionCancel) {
-      this.forwardAcrossGap(rawFrame, seq, false);
-    } else if (isNotification && !isAskingFrame(rawFrame)) {
+    // After the commit, so a listener reads the state this event left. A dialog or host call stays out of its router (it
+    // is recorded above, and the host's cancel of one drops it from `pending`, which closes it).
+    if (isNotification && !isAskingFrame(rawFrame)) {
       this.forwardAcrossGap(rawFrame, seq, fromHistory);
     }
     if (toolEvent) this.forwardOmpEvent(eventValue.event as OmpEvent, seq, fromHistory);
@@ -1922,23 +1919,25 @@ export class OmpRuntimeStore {
   }
 
   /**
-   * A failed answer is thrown to the caller; this store keeps its pending entry until the transport accepts it. The dialog
-   * host keeps `invalid_args` and `omp_exited` questions open for retry, but closes to the default result on `not_found`.
-   * None of these failures are written to the thread's banner.
+   * Answers one of the host's dialogs in the host's shape for its method. A failed answer is thrown to the caller; this
+   * store keeps the dialog pending until the transport accepts the answer. The dialog host keeps `invalid_args` and
+   * `omp_exited` questions open for retry, but closes to the default result on `not_found`. None of these failures are
+   * written to the thread's banner.
    */
-  public async answerExtensionUi(
-    response: ExtensionUiResponse,
+  public async answerDialog(
+    id: string,
+    answer: HostDialogAnswer,
     options?: PortCallOptions,
   ): Promise<void> {
-    if (!this.transport.answerExtensionUi) {
-      const error = errorForUnavailable("answerExtensionUi");
+    if (!this.transport.answer) {
+      const error = errorForUnavailable("answer");
       this.fail(error);
       throw new AppFailure(error);
     }
-    await this.transport.answerExtensionUi({ threadId: this.snapshot.threadId, response }, options);
+    await this.transport.answer({ threadId: this.snapshot.threadId, id, answer }, options);
     const next = mutableSnapshot(this.snapshot);
     const pending = copyPending(next);
-    delete pending.extensionUi[response.id];
+    delete pending.dialogs[id];
     setPending(next, pending);
     this.commit(next);
   }
@@ -2065,26 +2064,27 @@ export class OmpRuntimeStore {
   }
 
   /**
-   * Shows a question omp is still waiting on, when its chat is opened again. The replay cannot say which of its questions
-   * were answered (omp writes nothing when one is), so the server's record of the open ones is recorded here. It does not
-   * move the sequence: the question's event was replayed before, or is still to come.
+   * Shows a dialog the chat's host still waits on, when its chat is opened again (the port's `openRequests`). The
+   * replay cannot say which dialogs were answered, so the server's record of the open ones is recorded here; a tool or
+   * URI call is not a dialog and is left out. It does not move the sequence: the dialog's event was replayed before, or
+   * is still to come.
    */
-  public recordOpenQuestion(request: OmpWire.ExtensionUiRequest, seq: number): void {
-    if (this.snapshot.pending.extensionUi[request.id] !== undefined) return;
+  public recordOpenQuestion(request: HostRequest, seq: number): void {
+    if (!isHostDialogRequest(request)) return;
+    if (this.snapshot.pending.dialogs[request.id] !== undefined) return;
     const next = mutableSnapshot(this.snapshot);
     const pending = copyPending(next);
-    pending.extensionUi[request.id] = { request: cloneValue(request), receivedSeq: seq };
+    pending.dialogs[request.id] = { request: cloneValue(request), receivedSeq: seq };
     setPending(next, pending);
     this.commit(next);
   }
 
   /**
-   * Shows a status, widget or title omp holds for this chat when the chat is opened again (see the server's
-   * `stateFrames`). Like `recordOpenQuestion`, it does not move the sequence: the frame's event was replayed before, or
-   * is still to come.
+   * Shows a status, widget or title the chat's host holds when the chat is opened again (the port's `uiState`). Like
+   * `recordOpenQuestion`, it does not move the sequence: the event was replayed before, or is still to come.
    */
-  public recordState(frame: OmpWire.ExtensionUiRequest, seq: number): void {
-    this.forwardNotification(frame, seq, true);
+  public recordState(event: UiStateEvent, seq: number): void {
+    this.forwardNotification(event, seq, true);
   }
 
   private fail(error: AppError): void {
@@ -2137,7 +2137,7 @@ export class OmpRuntimeStore {
       this.streamKeys.clear();
       cancelActiveTools(next);
       updatePrompt(next, { streaming: false });
-      dropExtensionUiRequests(next);
+      dropDialogs(next);
     }
   }
 
@@ -2272,28 +2272,16 @@ export class OmpRuntimeStore {
     const frame = rawFrame as Record<string, unknown>;
     const pending = copyPending(next);
     switch (frame.type) {
-      case "extension_ui_request": {
-        const id = asString(frame.id);
-        if (!id) return;
-        if (frame.method === "cancel") {
-          const targetId = asString(frame.targetId);
-          if (targetId) delete pending.extensionUi[targetId];
-          setPending(next, pending);
-          return;
-        }
-        if (
-          frame.method !== "select" &&
-          frame.method !== "confirm" &&
-          frame.method !== "input" &&
-          frame.method !== "editor" &&
-          frame.method !== "ask"
-        ) {
-          return;
-        }
-        pending.extensionUi[id] = {
-          request: cloneValue(frame) as unknown as OmpWire.ExtensionUiRequest,
-          receivedSeq: seq,
-        };
+      case "host_dialog": {
+        const request = (frame as unknown as HostDialogFrame).request;
+        if (!isRecord(request) || !isHostDialogRequest(request as HostRequest)) return;
+        pending.dialogs[request.id] = { request: cloneValue(request), receivedSeq: seq };
+        setPending(next, pending);
+        return;
+      }
+      case "host_dialog_cancel": {
+        const requestId = asString(frame.requestId);
+        if (requestId) delete pending.dialogs[requestId];
         setPending(next, pending);
         return;
       }

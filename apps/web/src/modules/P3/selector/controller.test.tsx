@@ -43,7 +43,7 @@ function SelectorHarness({
   if (hostRef.current === null) {
     hostRef.current = new DialogHostController({
       overlay,
-      answerExtensionUi: async () => undefined,
+      answerDialog: async () => undefined,
       render: renderDialogRequest,
     });
   }

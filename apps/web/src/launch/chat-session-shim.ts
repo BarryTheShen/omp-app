@@ -2,8 +2,9 @@
  * The cutover's shim (SDK plan H5.4a, `reassessment/SDK-CHAT-HOST-PLAN.md`, "H5.4 design"). The browser's readers still
  * speak A0's RPC port, while the server serves the chat session port. This client serves A0's RPC port from
  * `A0.chatSession`, with R0's translation (`modules/R0/store/rpc-frames.ts`): each session payload becomes one RPC event,
- * sends become requests by method, and the RPC answers become `answer`. Every other port passes through. The later H5.4
- * parts move the readers off it, and H5.4h deletes it.
+ * sends become requests by method, and the RPC answers of host tools and URIs become `answer`. The host's dialogs are
+ * answered on the chat session port itself since H5.4c, so the RPC port's dialog methods are refused here. Every other
+ * port passes through. The later H5.4 parts move the readers off it, and H5.4h deletes it.
  */
 import {
   type AppClient,
@@ -24,26 +25,29 @@ import {
   RpcSessionPort,
 } from "@omp-app/contracts";
 import {
-  type ApprovalBook,
-  openQuestionsOf,
   requestOf,
   resultOf,
   rpcEventOf,
-  sharedApprovals,
-  stateFramesOf,
   toolAnswerOf,
-  uiAnswerOf,
   uriAnswerOf,
 } from "../modules/R0/store/rpc-frames";
 
 type RpcSessionClient = PortClient<typeof RpcSessionPort>;
 type ChatSessionClient = PortClient<typeof ChatSessionPort>;
 
+/** The RPC port's dialog methods: the dialogs are answered and replayed on the chat session port (H5.4c). */
+function dialogsMoved(method: string): AppFailure {
+  return new AppFailure({
+    code: "unavailable",
+    message: `omp's questions are answered on the chat session port; ${method} is not served here.`,
+    retryable: false,
+  });
+}
+
 /** A0's RPC port, served by the chat session port. */
 function rpcSessionClientOver(
   chat: ChatSessionClient,
   capabilities: () => Promise<CapabilityMap>,
-  approvals: ApprovalBook,
 ): RpcSessionClient {
   const rpc: RpcSessionClient = {
     open: async (args, options) => {
@@ -71,16 +75,15 @@ function rpcSessionClientOver(
       return resultOf(method, result) as Awaited<ReturnType<RpcSessionClient["send"]>>;
     },
     subscribe: (args, options) => chat.subscribe(args, options),
-    answerExtensionUi: async ({ threadId, response }, options) => {
-      const approval = approvals.take(threadId, response.id);
-      return chat.answer(
-        { threadId, id: response.id, answer: uiAnswerOf(response, approval) },
-        options,
-      );
+    answerExtensionUi: async () => {
+      throw dialogsMoved("answerExtensionUi");
     },
-    openQuestions: async (args, options) =>
-      openQuestionsOf(args.threadId, await chat.openRequests(args, options), approvals),
-    stateFrames: async (args, options) => stateFramesOf(await chat.uiState(args, options)),
+    openQuestions: async () => {
+      throw dialogsMoved("openQuestions");
+    },
+    stateFrames: async () => {
+      throw dialogsMoved("stateFrames");
+    },
     answerHostTool: async ({ threadId, response }, options) => {
       if (response.type === "host_tool_update") {
         await chat.request(
@@ -119,7 +122,6 @@ type ChatListener = (payload: ChatSessionEvent, seq: number) => void;
  * same function in `onEvent` and to `subscription.onEvent` still attaches it once, as the client promises.
  */
 export function withChatSessionShim(client: AppClient): AppClient {
-  const approvals = sharedApprovals;
   let capabilities: Promise<CapabilityMap> | undefined;
   const readCapabilities = (): Promise<CapabilityMap> => {
     capabilities ??= client
@@ -131,7 +133,7 @@ export function withChatSessionShim(client: AppClient): AppClient {
       });
     return capabilities;
   };
-  const rpc = rpcSessionClientOver(client.port(ChatSessionPort), readCapabilities, approvals);
+  const rpc = rpcSessionClientOver(client.port(ChatSessionPort), readCapabilities);
   const isRpcPort = (port: { readonly name: string }): boolean => port.name === RpcSessionPort.name;
 
   return {
@@ -146,13 +148,11 @@ export function withChatSessionShim(client: AppClient): AppClient {
     port: ((port) => (isRpcPort(port) ? rpc : client.port(port))) as AppClient["port"],
     subscribe: (async (port, event, options) => {
       if (!isRpcPort(port)) return client.subscribe(port, event, options);
-      const threadId = options?.scope ?? "";
       const wrapped = new WeakMap<RpcListener, ChatListener>();
       const wrap = (listener: RpcListener): ChatListener => {
         let chatListener = wrapped.get(listener);
         if (chatListener === undefined) {
-          chatListener = (payload, seq) =>
-            listener(rpcEventOf(threadId, payload, seq, approvals), seq);
+          chatListener = (payload, seq) => listener(rpcEventOf(payload, seq), seq);
           wrapped.set(listener, chatListener);
         }
         return chatListener;

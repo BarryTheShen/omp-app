@@ -96,8 +96,8 @@ function r1Controller(omp: RecordedOmp, sourceStore: OmpRuntimeStore) {
     }),
     send: omp.send,
     close: async () => null,
-    openQuestions: async () => [],
-    stateFrames: async () => [],
+    openRequests: async () => [],
+    uiState: async () => [],
   };
   const client = {
     port: () => rpc,

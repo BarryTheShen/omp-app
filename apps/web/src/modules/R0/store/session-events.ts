@@ -1,5 +1,10 @@
 import type { ChatSessionEvent, OmpWire, RpcSessionEvent } from "@omp-app/contracts";
-import type { ChatEvent, HostRequest } from "@omp-app/contracts/chat-host";
+import type {
+  ChatEvent,
+  HostDialogRequest,
+  HostRequest,
+  UiPresentationEvent,
+} from "@omp-app/contracts/chat-host";
 
 /** omp's RPC dialog methods: the chat host asks them as host requests (`ui.<method>`). */
 const DIALOG_METHODS: ReadonlySet<string> = new Set([
@@ -10,7 +15,7 @@ const DIALOG_METHODS: ReadonlySet<string> = new Set([
   "ask",
 ]);
 
-/** omp's other RPC UI methods and the chat host's events for them (the inverse of `rpc-frames.ts` `UI_EVENT_METHODS`). */
+/** omp's other RPC UI methods and the chat host's events for them. */
 const UI_EVENT_TYPES: Readonly<Record<string, string>> = {
   notify: "ui_notify",
   setStatus: "ui_status",
@@ -26,6 +31,21 @@ function event(fields: Record<string, unknown>): ChatSessionEvent {
 
 function hostRequest(fields: Record<string, unknown>): ChatSessionEvent {
   return { kind: "host_request", request: fields as unknown as HostRequest };
+}
+
+/** One of the chat host's dialogs, as the session port carries it. */
+export function dialogEvent(request: HostDialogRequest): ChatSessionEvent {
+  return { kind: "host_request", request };
+}
+
+/** The chat host gave a dialog up (omp's abort or timeout). */
+export function dialogCancelEvent(requestId: string): ChatSessionEvent {
+  return { kind: "event", event: { type: "ui_cancel", requestId } };
+}
+
+/** One of the chat host's UI events that need no answer. */
+export function uiEvent(uiEventFields: UiPresentationEvent): ChatSessionEvent {
+  return { kind: "event", event: uiEventFields };
 }
 
 /**

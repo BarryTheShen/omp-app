@@ -103,7 +103,7 @@ function WorkspacePlayground() {
     hostRef.current = new DialogHostController({
       overlay,
       capabilities: noOmpUi,
-      answerExtensionUi: async () => {
+      answerDialog: async () => {
         setNotice("Unexpected OMP dialog answer route.");
         throw new Error("App-owned workspace dialogs must not answer an OMP UI request.");
       },

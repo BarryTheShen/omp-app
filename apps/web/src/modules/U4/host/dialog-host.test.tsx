@@ -1,4 +1,4 @@
-import type { CapabilityMap, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
+import type { CapabilityMap, ThreadId, UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
@@ -35,7 +35,7 @@ function request(
 interface HarnessState {
   controller: DialogHostController | undefined;
   overlay: OverlayHostApi | undefined;
-  answers: OmpWire.ExtensionUiResponse[];
+  answers: { readonly id: string; readonly answer: unknown }[];
   answer: ((response: DialogResponse) => Promise<void>) | undefined;
   deadlines: Record<string, number | undefined>;
   failures: number;
@@ -58,7 +58,7 @@ function Harness({
     controllerRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: async (response) => {
+      answerDialog: async (id, answer) => {
         if (state.failures > 0) {
           state.failures -= 1;
           throw new AppFailure({
@@ -70,7 +70,7 @@ function Harness({
             retryable: state.failureCode === "omp_exited",
           });
         }
-        state.answers.push(response);
+        state.answers.push({ id, answer });
       },
       render: (dialogRequest, context) => {
         state.answer = context.answer;
@@ -171,9 +171,7 @@ describe("DialogHostController", () => {
       kind: "confirm",
       timedOut: false,
     });
-    expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "first", cancelled: true },
-    ]);
+    expect(state.answers).toEqual([{ id: "first", answer: { cancelled: true } }]);
 
     await waitFor(() => expect(screen.getByTestId("body-second")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
@@ -202,9 +200,7 @@ describe("DialogHostController", () => {
       outcome: "answered",
       response: { kind: "confirm", confirmed: true },
     });
-    expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "failed-once", confirmed: true },
-    ]);
+    expect(state.answers).toEqual([{ id: "failed-once", answer: { confirmed: true } }]);
   });
 
   test("an answer for a question the app no longer has closes the dialog, with no retry", async () => {
@@ -284,9 +280,7 @@ describe("DialogHostController", () => {
       kind: "select",
       timedOut: false,
     });
-    expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "abort-me", cancelled: true },
-    ]);
+    expect(state.answers).toEqual([{ id: "abort-me", answer: { cancelled: true } }]);
     // The restore runs once the dialog has unmounted and released its focus trap, so the check waits for it.
     await waitFor(() => expect(restored).toEqual(["restored"]));
   });
@@ -373,9 +367,7 @@ describe("DialogHostController", () => {
     const pending = controller.confirm(timeoutRequest, { threadId: threadA });
 
     await expect(pending).resolves.toBe(false);
-    expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "timeout", cancelled: true, timedOut: true },
-    ]);
+    expect(state.answers).toEqual([{ id: "timeout", answer: { cancelled: true, timedOut: true } }]);
     await waitFor(() => expect(screen.queryByTestId("body-timeout")).toBeNull());
   });
 
@@ -434,7 +426,7 @@ describe("DialogHostController", () => {
     const unavailable = new DialogHostController({
       overlay: state.overlay as OverlayHostApi,
       capabilities: {},
-      answerExtensionUi: async () => {},
+      answerDialog: async () => {},
       render: () => null,
     });
 
@@ -452,7 +444,7 @@ describe("DialogHostController", () => {
     const lazy = new DialogHostController({
       overlay: state.overlay as OverlayHostApi,
       capabilities: () => current,
-      answerExtensionUi: async () => {},
+      answerDialog: async () => {},
       render: () => <p>Question</p>,
     });
 
@@ -525,9 +517,7 @@ describe("DialogHostController outside press", () => {
       kind: "select",
       timedOut: false,
     });
-    expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "omp-question", cancelled: true },
-    ]);
+    expect(state.answers).toEqual([{ id: "omp-question", answer: { cancelled: true } }]);
   });
 
   test("a press outside still closes an app dialog, which settles as cancelled", async () => {
@@ -570,9 +560,7 @@ describe("DialogHostController answers that do not reach omp (issue 1387)", () =
       kind: "select",
       timedOut: false,
     });
-    expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "cancel-failed", cancelled: true },
-    ]);
+    expect(state.answers).toEqual([{ id: "cancel-failed", answer: { cancelled: true } }]);
   });
 
   test("an Escape whose answer fails to reach omp shows the question again, saying the answer was not sent", async () => {
@@ -589,7 +577,7 @@ describe("DialogHostController answers that do not reach omp (issue 1387)", () =
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await expect(pending).resolves.toMatchObject({ outcome: "answered" });
-    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "escape-failed" }]);
+    expect(state.answers).toMatchObject([{ id: "escape-failed" }]);
   });
 
   test("a timeout whose answer cannot reach omp leaves the question open for the person to answer", async () => {
@@ -621,7 +609,7 @@ describe("DialogHostController answers that do not reach omp (issue 1387)", () =
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await expect(pending).resolves.toBe(true);
-    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "timeout-failed" }]);
+    expect(state.answers).toMatchObject([{ id: "timeout-failed" }]);
   });
 
   test("an abort whose cancellation cannot reach omp closes the question, with no error", async () => {

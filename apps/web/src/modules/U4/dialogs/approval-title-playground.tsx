@@ -28,7 +28,7 @@ function ApprovalTitlePlayground() {
     hostRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: async () => {},
+      answerDialog: async () => {},
       render: renderDialogRequest,
     });
   }

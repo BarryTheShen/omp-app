@@ -2,7 +2,6 @@ import type { AddToolResultOptions } from "@assistant-ui/react";
 import type {
   CapabilityKey,
   CapabilityMap,
-  ExtensionUiResponse,
   HostCallId,
   HostToolResponse,
   HostUriResponse,
@@ -12,6 +11,7 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import type { HostDialogAnswer } from "@omp-app/contracts/chat-host";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../store/store";
 
 export type QueueLane = "steering" | "followUp";
@@ -82,7 +82,8 @@ export interface QueuePort {
     options?: { readonly signal?: AbortSignalLike },
   ): Promise<QueueMutationResult>;
   setModes(changes: QueueModeChanges): Promise<void>;
-  answerExtensionUi(response: ExtensionUiResponse, options?: PortCallOptions): Promise<void>;
+  /** Answers one of the host's dialogs, in the host's shape for its method. */
+  answerDialog(id: string, answer: HostDialogAnswer, options?: PortCallOptions): Promise<void>;
   answerHostTool(response: HostToolResponse, options?: PortCallOptions): Promise<void>;
   answerHostUri(response: HostUriResponse, options?: PortCallOptions): Promise<void>;
   onAddToolResult(options: AddToolResultOptions): Promise<void>;
@@ -287,19 +288,20 @@ export class QueueController implements QueuePort {
     }
   }
 
-  public async answerExtensionUi(
-    response: ExtensionUiResponse,
+  public async answerDialog(
+    id: string,
+    answer: HostDialogAnswer,
     options?: PortCallOptions,
   ): Promise<void> {
     const capability = "omp.ui" as CapabilityKey;
-    this.requireCapability(capability, "Extension UI answers are unavailable for this runtime");
-    const id = response.id;
-    if (!this.store.getSnapshot().pending.extensionUi[id]) {
-      throw notFound("The extension UI request is no longer pending");
-    }
-    await this.withAnswerLock(`extension-ui:${id}`, () =>
-      this.store.answerExtensionUi(response, options),
+    this.requireCapability(
+      capability,
+      "Answers to omp's questions are unavailable for this runtime",
     );
+    if (!this.store.getSnapshot().pending.dialogs[id]) {
+      throw notFound("omp no longer waits for an answer to that question");
+    }
+    await this.withAnswerLock(`dialog:${id}`, () => this.store.answerDialog(id, answer, options));
   }
 
   public async answerHostTool(

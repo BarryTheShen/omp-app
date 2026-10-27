@@ -1,11 +1,11 @@
-import type { OmpWire, UiRequestId } from "@omp-app/contracts";
-import { AppFailure, CapabilityKey } from "@omp-app/contracts";
+import type { UiRequestId } from "@omp-app/contracts";
+import { CapabilityKey } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import {
   ASK_DIALOG_CAPABILITY,
   AskDialogRequestSchema,
+  approvalChoices,
   ConfirmDialogRequestSchema,
-  classifyExtensionUiMethod,
   DIALOG_CAPABILITY,
   DialogRequestSchema,
   EditorDialogRequestSchema,
@@ -16,6 +16,17 @@ import {
 
 const id = "req-1" as UiRequestId;
 
+/** omp's approval prompt with both grants and a session answer, as omp's `tools/approval.ts` builds it. */
+const PROMPT = {
+  full: "Allow write to src/a.ts?",
+  compact: "Allow write?",
+  session: "Approve write for this session",
+  grants: [
+    { scope: "folder", label: "Allow this folder", alwaysLabel: "Always allow this folder" },
+    { scope: "target", label: "Allow this file", alwaysLabel: "Always allow this file" },
+  ],
+} as const;
+
 describe("capability constants", () => {
   test("name the two capabilities the dialog grammar gates on", () => {
     expect(CapabilityKey.safeParse(DIALOG_CAPABILITY).success).toBe(true);
@@ -25,20 +36,24 @@ describe("capability constants", () => {
   });
 });
 
-describe("classifyExtensionUiMethod", () => {
-  test("buckets every wire method into modal, presentation or cancel", () => {
-    expect(classifyExtensionUiMethod("select")).toBe("modal");
-    expect(classifyExtensionUiMethod("confirm")).toBe("modal");
-    expect(classifyExtensionUiMethod("input")).toBe("modal");
-    expect(classifyExtensionUiMethod("editor")).toBe("modal");
-    expect(classifyExtensionUiMethod("ask")).toBe("modal");
-    expect(classifyExtensionUiMethod("cancel")).toBe("cancel");
-    expect(classifyExtensionUiMethod("notify")).toBe("presentation");
-    expect(classifyExtensionUiMethod("setStatus")).toBe("presentation");
-    expect(classifyExtensionUiMethod("setWidget")).toBe("presentation");
-    expect(classifyExtensionUiMethod("setTitle")).toBe("presentation");
-    expect(classifyExtensionUiMethod("set_editor_text")).toBe("presentation");
-    expect(classifyExtensionUiMethod("open_url")).toBe("presentation");
+describe("approvalChoices", () => {
+  test("lists omp's choices in omp's order, each with the answer omp takes for it", () => {
+    expect(approvalChoices(PROMPT)).toEqual([
+      { label: "Allow this folder", answer: { grant: "folder", always: false } },
+      { label: "Allow this file", answer: { grant: "target", always: false } },
+      { label: "Always allow this folder", answer: { grant: "folder", always: true } },
+      { label: "Always allow this file", answer: { grant: "target", always: true } },
+      { label: "Approve Once", answer: "once" },
+      { label: "Approve write for this session", answer: "session" },
+      { label: "Deny", answer: "deny" },
+    ]);
+  });
+
+  test("without grants or a session answer, this call is plain Approve, beside Deny", () => {
+    expect(approvalChoices({ full: "Run ls?", compact: "ls" })).toEqual([
+      { label: "Approve", answer: "once" },
+      { label: "Deny", answer: "deny" },
+    ]);
   });
 });
 
@@ -175,122 +190,116 @@ describe("AskDialogRequestSchema", () => {
 });
 
 describe("DialogRequestSchema", () => {
-  test("discriminates all five modal kinds and rejects an unknown kind", () => {
+  test("discriminates all six modal kinds and rejects an unknown kind", () => {
     for (const candidate of [
       { kind: "select", id, title: "T", options: ["A"] },
       { kind: "confirm", id, title: "T", message: "M" },
       { kind: "input", id, title: "T" },
       { kind: "editor", id, title: "T" },
       { kind: "ask", id, questions: [{ id: "q", question: "Q", options: [{ label: "A" }] }] },
+      { kind: "approve", id, title: "T", choices: [{ label: "Deny", answer: "deny" }] },
     ]) {
       expect(DialogRequestSchema.safeParse(candidate).success).toBe(true);
     }
     expect(DialogRequestSchema.safeParse({ kind: "notify", id, message: "hi" }).success).toBe(
       false,
     );
+    expect(
+      DialogRequestSchema.safeParse({
+        kind: "approve",
+        id,
+        title: "T",
+        choices: [{ label: "Allow", answer: "Approve Once" }],
+      }).success,
+    ).toBe(false);
   });
 });
 
 describe("toDialogRequest", () => {
-  test("converts each modal wire request, branding id and keeping field names exact", () => {
-    const select = toDialogRequest({
-      type: "extension_ui_request",
-      id: "wire-1",
-      method: "select",
-      title: "Pick",
-      options: ["A", "B"],
-      timeout: 2_000,
-    } satisfies OmpWire.ExtensionUiRequest);
-    expect(select).toEqual({
+  test("converts each of the host's dialogs, branding id and keeping omp's field values", () => {
+    expect(
+      toDialogRequest({
+        id: "host-1",
+        method: "ui.select",
+        params: { title: "Pick", options: ["A", "B"], timeout: 2_000 },
+      }),
+    ).toEqual({
       kind: "select",
-      id: "wire-1",
+      id: "host-1",
       title: "Pick",
       options: ["A", "B"],
       optionDetails: undefined,
       timeoutMs: 2_000,
     });
-
-    const confirm = toDialogRequest({
-      type: "extension_ui_request",
-      id: "wire-2",
-      method: "confirm",
-      title: "Continue?",
-      message: "Sure?",
-    } satisfies OmpWire.ExtensionUiRequest);
-    expect(confirm).toEqual({
+    expect(
+      toDialogRequest({
+        id: "host-2",
+        method: "ui.confirm",
+        params: { title: "Continue?", message: "Sure?" },
+      }),
+    ).toEqual({
       kind: "confirm",
-      id: "wire-2",
+      id: "host-2",
       title: "Continue?",
       message: "Sure?",
       timeoutMs: undefined,
     });
-
-    const input = toDialogRequest({
-      type: "extension_ui_request",
-      id: "wire-3",
-      method: "input",
-      title: "Name",
-      placeholder: "Jane",
-    } satisfies OmpWire.ExtensionUiRequest);
-    expect(input).toEqual({
+    expect(
+      toDialogRequest({
+        id: "host-3",
+        method: "ui.input",
+        params: { title: "Name", placeholder: "Jane" },
+      }),
+    ).toEqual({
       kind: "input",
-      id: "wire-3",
+      id: "host-3",
       title: "Name",
       placeholder: "Jane",
       timeoutMs: undefined,
     });
-
-    const editor = toDialogRequest({
-      type: "extension_ui_request",
-      id: "wire-4",
-      method: "editor",
-      title: "Edit",
-      prefill: "hello",
-      promptStyle: true,
-    } satisfies OmpWire.ExtensionUiRequest);
-    expect(editor).toEqual({
+    expect(
+      toDialogRequest({
+        id: "host-4",
+        method: "ui.editor",
+        params: { title: "Edit", prefill: "hello", promptStyle: true },
+      }),
+    ).toEqual({
       kind: "editor",
-      id: "wire-4",
+      id: "host-4",
       title: "Edit",
       prefill: "hello",
       promptStyle: true,
     });
-
-    const ask = toDialogRequest({
-      type: "extension_ui_request",
-      id: "wire-5",
-      method: "ask",
-      questions: [{ id: "q1", question: "Which?", options: [{ label: "A" }] }],
-      timeout: 10_000,
-    } satisfies OmpWire.ExtensionUiRequest);
-    expect(ask).toEqual({
+    expect(
+      toDialogRequest({
+        id: "host-5",
+        method: "ui.ask",
+        params: {
+          questions: [{ id: "q1", question: "Which?", options: [{ label: "A" }] }],
+          timeout: 10_000,
+        },
+      }),
+    ).toEqual({
       kind: "ask",
-      id: "wire-5",
+      id: "host-5",
       questions: [{ id: "q1", question: "Which?", options: [{ label: "A" }] }],
       timeoutMs: 10_000,
     });
   });
 
-  test("throws AppFailure(internal) for a non-modal method", () => {
-    expect(() =>
-      toDialogRequest({
-        type: "extension_ui_request",
-        id: "wire-6",
-        method: "notify",
-        message: "hi",
-      } satisfies OmpWire.ExtensionUiRequest),
-    ).toThrow(AppFailure);
-    try {
-      toDialogRequest({
-        type: "extension_ui_request",
-        id: "wire-7",
-        method: "cancel",
-        targetId: "wire-1",
-      } satisfies OmpWire.ExtensionUiRequest);
-      throw new Error("expected toDialogRequest to throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(AppFailure);
-      expect((error as AppFailure).appError.code).toBe("internal");
-    }
+  test("an approval becomes a dialog of its own, with omp's prompt and its typed choices", () => {
+    const approval = toDialogRequest({
+      id: "host-6",
+      method: "ui.approve",
+      params: { prompt: PROMPT, timeout: 60_000 },
+    });
+    expect(approval).toEqual({
+      kind: "approve",
+      id: "host-6",
+      title: PROMPT.full,
+      choices: approvalChoices(PROMPT),
+      timeoutMs: 60_000,
+    });
+    expect(DialogRequestSchema.safeParse(approval).success).toBe(true);
   });
 });

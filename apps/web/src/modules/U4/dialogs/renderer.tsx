@@ -1,6 +1,7 @@
 import { AppFailure } from "@omp-app/contracts";
 import type { DialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
+import { ApproveDialog } from "./approve";
 import { AskDialog } from "./ask";
 import { ConfirmDialog } from "./confirm";
 import { EditorDialog } from "./editor";
@@ -31,6 +32,8 @@ export function renderDialogRequest(request: DialogRequest, context: DialogRende
       return <EditorDialog request={request} context={context} />;
     case "ask":
       return <AskDialog request={request} context={context} />;
+    case "approve":
+      return <ApproveDialog request={request} context={context} />;
     default:
       return unreachable(request);
   }

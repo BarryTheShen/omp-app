@@ -1,5 +1,3 @@
-import type { OmpWire } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import {
   NotifyHandoffSchema,
@@ -90,69 +88,43 @@ describe("openUrlCopyTarget", () => {
 });
 
 describe("toPresentationHandoff", () => {
-  test("converts each of the six wire requests, keeping field names exact", () => {
+  test("converts each of the host's six UI events, keeping omp's field values", () => {
     expect(
-      toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w1",
-        method: "notify",
-        message: "Done",
-        notifyType: "warning",
-      } satisfies OmpWire.ExtensionUiRequest),
+      toPresentationHandoff({ type: "ui_notify", message: "Done", notifyType: "warning" }),
     ).toEqual({ kind: "notify", message: "Done", notifyType: "warning" });
-
+    expect(toPresentationHandoff({ type: "ui_status", statusKey: "k" })).toEqual({
+      kind: "setStatus",
+      statusKey: "k",
+      statusText: undefined,
+    });
     expect(
       toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w2",
-        method: "setStatus",
-        statusKey: "k",
-      } satisfies OmpWire.ExtensionUiRequest),
-    ).toEqual({ kind: "setStatus", statusKey: "k", statusText: undefined });
-
-    expect(
-      toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w3",
-        method: "setWidget",
+        type: "ui_widget",
         widgetKey: "w",
         widgetLines: ["a"],
         widgetPlacement: "aboveEditor",
-      } satisfies OmpWire.ExtensionUiRequest),
+      }),
     ).toEqual({
       kind: "setWidget",
       widgetKey: "w",
       widgetLines: ["a"],
       widgetPlacement: "aboveEditor",
     });
-
+    expect(toPresentationHandoff({ type: "ui_title", title: "T" })).toEqual({
+      kind: "setTitle",
+      title: "T",
+    });
+    expect(toPresentationHandoff({ type: "ui_editor_text", text: "hello" })).toEqual({
+      kind: "set_editor_text",
+      text: "hello",
+    });
     expect(
       toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w4",
-        method: "setTitle",
-        title: "T",
-      } satisfies OmpWire.ExtensionUiRequest),
-    ).toEqual({ kind: "setTitle", title: "T" });
-
-    expect(
-      toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w5",
-        method: "set_editor_text",
-        text: "hello",
-      } satisfies OmpWire.ExtensionUiRequest),
-    ).toEqual({ kind: "set_editor_text", text: "hello" });
-
-    expect(
-      toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w6",
-        method: "open_url",
+        type: "ui_open_url",
         url: "https://x",
         launchUrl: "https://short",
         instructions: "paste this",
-      } satisfies OmpWire.ExtensionUiRequest),
+      }),
     ).toEqual({
       kind: "open_url",
       url: "https://x",
@@ -161,23 +133,12 @@ describe("toPresentationHandoff", () => {
     });
   });
 
-  test("throws AppFailure(internal) for a modal or cancel method", () => {
-    expect(() =>
-      toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w7",
-        method: "confirm",
-        title: "T",
-        message: "M",
-      } satisfies OmpWire.ExtensionUiRequest),
-    ).toThrow(AppFailure);
-    expect(() =>
-      toPresentationHandoff({
-        type: "extension_ui_request",
-        id: "w8",
-        method: "cancel",
-        targetId: "w1",
-      } satisfies OmpWire.ExtensionUiRequest),
-    ).toThrow(AppFailure);
+  test("a widget with no lines clears it: the handoff has no lines either", () => {
+    expect(toPresentationHandoff({ type: "ui_widget", widgetKey: "w" })).toEqual({
+      kind: "setWidget",
+      widgetKey: "w",
+      widgetLines: undefined,
+      widgetPlacement: undefined,
+    });
   });
 });

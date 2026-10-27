@@ -20,7 +20,7 @@ function ApprovalPlayground() {
     hostRef.current = new DialogHostController({
       overlay,
       capabilities,
-      answerExtensionUi: async () => {},
+      answerDialog: async () => {},
       render: renderDialogRequest,
     });
     approvalRef.current = new ApprovalPortController({ dialogHost: hostRef.current });

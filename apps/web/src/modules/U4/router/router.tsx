@@ -2,11 +2,12 @@
 
 import type { HostCallId, OmpWire, UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import type { HostDialogRequest, UiPresentationEvent } from "@omp-app/contracts/chat-host";
 import { useState } from "react";
 import { InlineError } from "@/components/blocks";
 import type { OverlayHostApi } from "@/overlay";
 import type { OmpRuntimeStore, RuntimeNotificationFrame } from "../../R0/store";
-import { classifyExtensionUiMethod, toDialogRequest } from "../contract/dialog";
+import { toDialogRequest } from "../contract/dialog";
 import type { DialogHost } from "../contract/dialog-host";
 import type { HostRequestAnswer, HostRequestAnswerAdapter } from "../contract/host-answers";
 import {
@@ -30,9 +31,23 @@ export interface PresentationSink {
 }
 
 export interface RouterPendingSnapshot {
-  readonly extensionUi: Readonly<Record<string, PendingRequestLike<OmpWire.ExtensionUiRequest>>>;
+  readonly dialogs: Readonly<Record<string, PendingRequestLike<HostDialogRequest>>>;
   readonly hostTools: Readonly<Record<string, PendingRequestLike<OmpWire.HostToolCallRequest>>>;
   readonly hostUris: Readonly<Record<string, PendingRequestLike<OmpWire.HostUriRequest>>>;
+}
+
+/** The chat host's UI events the router presents: everything that needs no answer. */
+const PRESENTATION_EVENT_TYPES = [
+  "ui_notify",
+  "ui_status",
+  "ui_widget",
+  "ui_title",
+  "ui_editor_text",
+  "ui_open_url",
+] as const satisfies readonly UiPresentationEvent["type"][];
+
+function isPresentationEvent(frame: RuntimeNotificationFrame): frame is UiPresentationEvent {
+  return (PRESENTATION_EVENT_TYPES as readonly string[]).includes(frame.type);
 }
 export interface ExtensionUiRouterOptions {
   readonly dialogHost: CancellableDialogHost;
@@ -134,10 +149,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
   private readonly overlay: OverlayHostApi;
   private readonly hostAnswers: HostRequestAnswerAdapter;
   private readonly presentations: PresentationSink | undefined;
-  private readonly pending = new Map<
-    string,
-    "extension" | "host-tool" | "host-uri" | "presentation"
-  >();
+  private readonly pending = new Map<string, "dialog" | "host-tool" | "host-uri">();
   private readonly presentationOverlays = new Map<string, string>();
   private readonly failedPresentationIds = new Set<string>();
 
@@ -148,48 +160,40 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
     this.presentations = options.presentations;
   }
 
-  public async routeExtensionUi(
-    pending: PendingRequestLike<OmpWire.ExtensionUiRequest>,
+  public async routeDialog(
+    pending: PendingRequestLike<HostDialogRequest>,
     context: RouterContext,
   ): Promise<void> {
     const request = pending.request;
     const id = request.id as UiRequestId;
-    if (request.method === "cancel") {
-      this.dialogHost.cancel(request.targetId as UiRequestId);
-      this.closePresentation(request.targetId);
-      this.pending.delete(request.targetId);
-      return;
-    }
     if (this.pending.has(id)) return;
-    this.pending.set(
-      id,
-      classifyExtensionUiMethod(request.method) === "modal" ? "extension" : "presentation",
-    );
+    this.pending.set(id, "dialog");
     try {
-      if (classifyExtensionUiMethod(request.method) === "modal") {
-        await this.dialogHost.open(toDialogRequest(request), {
-          threadId: context.threadId,
-          signal: context.signal,
-        });
-      } else {
-        const handoff = toPresentationHandoff(request);
-        if (handoff.kind === "open_url") this.routeOAuth(id, handoff);
-        else await this.routePresentation(handoff, context, id);
-      }
+      await this.dialogHost.open(toDialogRequest(request), {
+        threadId: context.threadId,
+        signal: context.signal,
+      });
     } finally {
       this.pending.delete(id);
     }
   }
 
-  /** Routes a non-modal request or cancellation from R0's notification-frame subscription. */
+  /** Presents one of the chat host's UI events from R0's notification subscription; each is shown once, by its sequence. */
   public async routeNotification(
     frame: RuntimeNotificationFrame,
     seq: number,
     context: RouterContext,
   ): Promise<void> {
-    if (frame.type !== "extension_ui_request") return;
-    if (classifyExtensionUiMethod(frame.method) === "modal") return;
-    await this.routeSafely({ request: frame, receivedSeq: seq }, { ...context, sequence: seq });
+    if (!isPresentationEvent(frame)) return;
+    // The host's UI events have no id of their own: the event's sequence names its overlay.
+    const id = `ui-${seq}`;
+    try {
+      const handoff = toPresentationHandoff(frame);
+      if (handoff.kind === "open_url") this.routeOAuth(id, handoff);
+      else await this.routePresentation(handoff, { ...context, sequence: seq }, id);
+    } catch {
+      this.showRoutingFailure(id);
+    }
   }
 
   public async routeHostRequest(
@@ -206,43 +210,38 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
   }
 
   public async sync(snapshot: RouterPendingSnapshot, context: RouterContext): Promise<void> {
-    this.closeDropped(snapshot.extensionUi);
+    this.closeDropped(snapshot.dialogs);
     const requests = [
-      ...Object.values(snapshot.extensionUi),
-      ...Object.values(snapshot.hostTools),
-      ...Object.values(snapshot.hostUris),
-    ].sort((left, right) => left.receivedSeq - right.receivedSeq);
-    for (const pending of requests) {
-      if (pending.request.type === "extension_ui_request") {
-        await this.routeSafely(pending as PendingRequestLike<OmpWire.ExtensionUiRequest>, context);
-      } else {
-        await this.routeHostRequest(
-          pending as PendingRequestLike<OmpWire.HostToolCallRequest | OmpWire.HostUriRequest>,
-          context,
-        );
-      }
+      ...Object.values(snapshot.dialogs).map((pending) => ({ kind: "dialog" as const, pending })),
+      ...[...Object.values(snapshot.hostTools), ...Object.values(snapshot.hostUris)].map(
+        (pending) => ({ kind: "host" as const, pending }),
+      ),
+    ].sort((left, right) => left.pending.receivedSeq - right.pending.receivedSeq);
+    for (const entry of requests) {
+      if (entry.kind === "dialog") await this.routeSafely(entry.pending, context);
+      else await this.routeHostRequest(entry.pending, context);
     }
   }
 
   /**
-   * Closes an open question whose request R0 no longer holds: omp exited, so nothing can answer it now. Nothing is sent
-   * back. The newest is closed first, so the host does not hand a question queued behind it to a dialog that is about
-   * to close.
+   * Closes an open dialog whose request R0 no longer holds: the host gave it up (`ui_cancel`), or its process ended, so
+   * nothing can answer it now. Nothing is sent back. The newest is closed first, so the host does not hand a dialog
+   * queued behind it to one that is about to close.
    */
-  private closeDropped(extensionUi: RouterPendingSnapshot["extensionUi"]): void {
+  private closeDropped(dialogs: RouterPendingSnapshot["dialogs"]): void {
     for (const [id, kind] of [...this.pending].reverse()) {
-      if (kind === "extension" && extensionUi[id] === undefined) {
+      if (kind === "dialog" && dialogs[id] === undefined) {
         this.dialogHost.cancel(id as UiRequestId);
       }
     }
   }
 
   private async routeSafely(
-    pending: PendingRequestLike<OmpWire.ExtensionUiRequest>,
+    pending: PendingRequestLike<HostDialogRequest>,
     context: RouterContext,
   ): Promise<void> {
     try {
-      await this.routeExtensionUi(pending, context);
+      await this.routeDialog(pending, context);
     } catch {
       this.showRoutingFailure(String(pending.request.id));
     }
@@ -301,7 +300,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
   private async routePresentation(
     handoff: Exclude<PresentationHandoff, { readonly kind: "open_url" }>,
     context: RouterContext,
-    id: UiRequestId,
+    id: string,
   ): Promise<void> {
     if (this.presentations) {
       await this.presentations.present(handoff, context);
@@ -316,11 +315,11 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
         </div>
       ),
     });
-    this.presentationOverlays.set(String(id), overlay.id);
+    this.presentationOverlays.set(id, overlay.id);
     void overlay.closed;
   }
 
-  private routeOAuth(id: UiRequestId, handoff: OpenUrlHandoff): void {
+  private routeOAuth(id: string, handoff: OpenUrlHandoff): void {
     safeHttpUrl(handoff.url);
     if (handoff.launchUrl) safeHttpUrl(handoff.launchUrl);
     const overlay = this.overlay.open({
@@ -329,23 +328,18 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
         <OAuthPrompt handoff={handoff} onDone={() => close("programmatic")} />
       ),
     });
-    this.presentationOverlays.set(String(id), overlay.id);
-  }
-
-  private closePresentation(id: string): void {
-    const overlayId = this.presentationOverlays.get(id);
-    if (overlayId) this.overlay.close(overlayId, "programmatic");
-    this.presentationOverlays.delete(id);
+    this.presentationOverlays.set(id, overlay.id);
   }
 }
 
+/** Presents the chat host's UI events (`ui_notify`, `ui_status`, …) as R0's store forwards them. */
 export function subscribeNonModalExtensionUi(
   store: Pick<OmpRuntimeStore, "subscribeNotifications">,
   router: ExtensionUiRequestRouterController,
   context: RouterContext,
 ): () => void {
   return store.subscribeNotifications(
-    ["extension_ui_request"],
+    PRESENTATION_EVENT_TYPES,
     (frame, seq, replayed) => void router.routeNotification(frame, seq, { ...context, replayed }),
   );
 }

@@ -1,5 +1,6 @@
 import type { UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import { HOST_METHOD_ANSWERS } from "@omp-app/contracts/chat-host";
 import { describe, expect, test } from "vitest";
 import type { AskDialogRequest, AskQuestion, ConfirmDialogRequest } from "./dialog";
 import {
@@ -9,7 +10,7 @@ import {
   defaultAskAnswers,
   defaultDialogResult,
   resolveConfirm,
-  toWireExtensionUiResponse,
+  toHostDialogAnswer,
   validateAskAnswers,
 } from "./responses";
 
@@ -257,47 +258,55 @@ describe("validateAskAnswers", () => {
   });
 });
 
-describe("toWireExtensionUiResponse", () => {
-  test("builds the exact wire shape for each answered kind", () => {
-    expect(
-      toWireExtensionUiResponse(id, {
-        outcome: "answered",
-        response: { kind: "select", value: "A" },
-      }),
-    ).toEqual({ type: "extension_ui_response", id, value: "A" });
-    expect(
-      toWireExtensionUiResponse(id, {
-        outcome: "answered",
-        response: { kind: "confirm", confirmed: true },
-      }),
-    ).toEqual({ type: "extension_ui_response", id, confirmed: true });
-    expect(
-      toWireExtensionUiResponse(id, {
-        outcome: "answered",
-        response: { kind: "ask", answers: [{ id: "q1", selectedOptions: ["A"] }] },
-      }),
-    ).toEqual({
-      type: "extension_ui_response",
-      id,
-      answers: [{ id: "q1", selectedOptions: ["A"], customInput: undefined }],
+describe("toHostDialogAnswer", () => {
+  test("builds the host's answer for each answered kind, one the host takes for its dialog", () => {
+    const value = toHostDialogAnswer({
+      outcome: "answered",
+      response: { kind: "select", value: "A" },
     });
+    expect(value).toEqual({ value: "A" });
+    expect(HOST_METHOD_ANSWERS["ui.select"].safeParse(value).success).toBe(true);
+    const confirmed = toHostDialogAnswer({
+      outcome: "answered",
+      response: { kind: "confirm", confirmed: true },
+    });
+    expect(confirmed).toEqual({ confirmed: true });
+    expect(HOST_METHOD_ANSWERS["ui.confirm"].safeParse(confirmed).success).toBe(true);
+    const asked = toHostDialogAnswer({
+      outcome: "answered",
+      response: {
+        kind: "ask",
+        answers: [
+          { id: "q1", selectedOptions: ["A"] },
+          { id: "q2", selectedOptions: [], customInput: "mine" },
+        ],
+      },
+    });
+    expect(asked).toEqual({
+      answers: [
+        { id: "q1", selectedOptions: ["A"] },
+        { id: "q2", selectedOptions: [], customInput: "mine" },
+      ],
+    });
+    expect(HOST_METHOD_ANSWERS["ui.ask"].safeParse(asked).success).toBe(true);
+    const approved = toHostDialogAnswer({
+      outcome: "answered",
+      response: { kind: "approve", answer: { grant: "folder", always: true } },
+    });
+    expect(approved).toEqual({ grant: "folder", always: true });
+    expect(HOST_METHOD_ANSWERS["ui.approve"].safeParse(approved).success).toBe(true);
   });
 
-  test("builds the cancelled wire shape with and without timedOut", () => {
-    expect(
-      toWireExtensionUiResponse(id, { outcome: "cancelled", kind: "input", timedOut: false }),
-    ).toEqual({
-      type: "extension_ui_response",
-      id,
+  test("a closed dialog is cancelled, timed out when the countdown closed it; a closed approval is denied", () => {
+    expect(toHostDialogAnswer({ outcome: "cancelled", kind: "input", timedOut: false })).toEqual({
       cancelled: true,
     });
-    expect(
-      toWireExtensionUiResponse(id, { outcome: "cancelled", kind: "ask", timedOut: true }),
-    ).toEqual({
-      type: "extension_ui_response",
-      id,
+    expect(toHostDialogAnswer({ outcome: "cancelled", kind: "ask", timedOut: true })).toEqual({
       cancelled: true,
       timedOut: true,
     });
+    expect(toHostDialogAnswer({ outcome: "cancelled", kind: "approve", timedOut: true })).toBe(
+      "deny",
+    );
   });
 });

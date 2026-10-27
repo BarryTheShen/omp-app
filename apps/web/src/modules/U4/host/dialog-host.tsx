@@ -1,7 +1,8 @@
 "use client";
 
-import type { AppError, CapabilityMap, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
+import type { AppError, CapabilityMap, ThreadId, UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import type { HostDialogAnswer } from "@omp-app/contracts/chat-host";
 import type { ReactNode } from "react";
 import type { OverlayHostApi, OverlayOpenResult } from "@/overlay";
 import {
@@ -17,7 +18,7 @@ import {
   type DialogResult,
   type DialogResultFor,
   defaultDialogResult,
-  toWireExtensionUiResponse,
+  toHostDialogAnswer,
   validateAskAnswers,
 } from "../contract/responses";
 
@@ -53,8 +54,10 @@ export interface DialogHostControllerOptions {
    * lived owner: the host is not rebuilt (cancelling an open question) when a map is replaced.
    */
   readonly capabilities?: CapabilityMap | (() => CapabilityMap | undefined);
-  readonly answerExtensionUi: (
-    response: OmpWire.ExtensionUiResponse,
+  /** Answers one of the chat host's dialogs in the host's shape (R0's `answerDialog`). */
+  readonly answerDialog: (
+    id: string,
+    answer: HostDialogAnswer,
     options?: { readonly signal?: AbortSignal },
   ) => Promise<void>;
   readonly render: DialogRenderer;
@@ -129,7 +132,7 @@ function cancelledResult(entry: DialogEntry, timedOut: boolean): DialogResult {
 export class DialogHostController implements DialogHost {
   private readonly overlay: OverlayHostApi;
   private readonly capabilities: CapabilityMap | (() => CapabilityMap | undefined) | undefined;
-  private readonly answerExtensionUi: DialogHostControllerOptions["answerExtensionUi"];
+  private readonly answerDialog: DialogHostControllerOptions["answerDialog"];
   private readonly render: DialogRenderer;
   private readonly queues = new Map<string, DialogEntry[]>();
   private readonly active = new Map<string, DialogEntry>();
@@ -140,7 +143,7 @@ export class DialogHostController implements DialogHost {
   public constructor(options: DialogHostControllerOptions) {
     this.overlay = options.overlay;
     this.capabilities = options.capabilities;
-    this.answerExtensionUi = options.answerExtensionUi;
+    this.answerDialog = options.answerDialog;
     this.render = options.render;
   }
 
@@ -448,9 +451,8 @@ export class DialogHostController implements DialogHost {
       return;
     }
     entry.state = "settling";
-    const wire = toWireExtensionUiResponse(entry.request.id, result);
     try {
-      await this.answerExtensionUi(wire);
+      await this.answerDialog(entry.request.id, toHostDialogAnswer(result));
     } catch (error) {
       throw asFailure(error, "Answering the dialog request failed.");
     }
