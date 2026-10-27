@@ -1,5 +1,7 @@
 import {
   type CapabilityMap,
+  type ChatSessionClient,
+  ChatSessionPort,
   PasteFileStore,
   ProviderErrorPort,
   RpcSessionPort,
@@ -58,6 +60,7 @@ export function useThreadServices({
     [providerErrors],
   );
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
+  const chat = useMemo(() => client.port(ChatSessionPort) as ChatSessionClient, [client]);
   const guardedSend = useMemo(() => guardOmpSend(rpc.send), [rpc.send]);
   // A prompt the person sends ends a finished run's notice (endNoticeOnPrompt); other sends are unchanged.
   const messageSend = useMemo(
@@ -79,7 +82,7 @@ export function useThreadServices({
   const agents = useThreadAgents({
     threadId,
     store,
-    session: rpc,
+    session: chat,
     files: sessionFiles,
     capabilities,
   });

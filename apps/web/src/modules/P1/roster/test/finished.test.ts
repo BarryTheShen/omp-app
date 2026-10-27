@@ -238,17 +238,17 @@ describe("a reload lists the chat's finished workers in the roster", () => {
   });
 });
 
-/** A session whose state reports `sessionFile`, and which records every command it is asked. */
+/** A session whose state reports `sessionFile`, and which records every request it is asked. */
 function sessionReporting(
   sessionFile: unknown,
   asked: unknown[] = [],
-): Pick<SubagentSession, "send"> {
+): Pick<SubagentSession, "request"> {
   return {
-    send: async (args: unknown) => {
+    request: async (args: unknown) => {
       asked.push(args);
       return { sessionFile };
     },
-  } as unknown as Pick<SubagentSession, "send">;
+  } as unknown as Pick<SubagentSession, "request">;
 }
 
 describe("a chat's finished workers, read through its live omp", () => {
@@ -277,7 +277,7 @@ describe("a chat's finished workers, read through its live omp", () => {
       capabilities: available,
     });
     const listed = await source.list();
-    expect(asked).toEqual([{ threadId, command: { type: "get_state" } }]);
+    expect(asked).toEqual([{ threadId, method: "get_state", params: {} }]);
     expect(listed.map((item) => item.agent.id)).toEqual(["Done"]);
   });
 
@@ -314,7 +314,7 @@ describe("a chat's finished workers, read through its live omp", () => {
       capabilities: fallback,
     });
     expect((await source.list()).map((item) => item.agent.id)).toEqual(["Done"]);
-    expect(asked).toEqual([{ threadId, command: { type: "get_state" } }]);
+    expect(asked).toEqual([{ threadId, method: "get_state", params: {} }]);
   });
 
   test("lists nothing while the chat has no session file, and finds its workers once it has one", async () => {
@@ -322,8 +322,8 @@ describe("a chat's finished workers, read through its live omp", () => {
     const source = createChatFinishedWorkers({
       threadId,
       session: {
-        send: async () => ({ sessionFile }),
-      } as unknown as Pick<SubagentSession, "send">,
+        request: async () => ({ sessionFile }),
+      } as unknown as Pick<SubagentSession, "request">,
       files: files([worker("Done")]),
       capabilities: available,
     });

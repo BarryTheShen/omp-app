@@ -32,9 +32,12 @@ function fakeClient(
   const sent = options.sent ?? [];
   const levels = options.levels ?? [];
   const runtime = new OmpRuntimeStore({ threadId, transport: {} as OmpRuntimeTransport });
-  const send = async (args: { command: { type: string } }): Promise<unknown> => {
-    sent.push({ type: args.command.type, args: args.command });
-    switch (args.command.type) {
+  const request = async (args: {
+    method: string;
+    params: Record<string, unknown>;
+  }): Promise<unknown> => {
+    sent.push({ type: args.method, args: args.params });
+    switch (args.method) {
       case "get_subagents":
         return {
           subagents: [
@@ -74,14 +77,14 @@ function fakeClient(
         }
         return undefined;
       default:
-        throw new Error(`unexpected command ${args.command.type}`);
+        throw new Error(`unexpected method ${args.method}`);
     }
   };
   const setSubagentSubscription = async (args: { level: "off" | "progress" | "events" }) => {
     levels.push(args.level);
     return { level: options.appliedLevel ?? args.level };
   };
-  const session = { send, setSubagentSubscription } as SubagentSession;
+  const session = { request, setSubagentSubscription } as unknown as SubagentSession;
   const client = createSubagentClient({
     threadId,
     session,
@@ -108,6 +111,9 @@ describe("P1 subagent client commands", () => {
       "cancel_subagent",
     ]);
     expect(sent[1]?.args).toMatchObject({ subagentId, fromByte: 10 });
+    // The host steers and cancels the subagent the call names, and steers it with the user's words.
+    expect(sent[2]?.args).toEqual({ subagentId, message: "continue the work" });
+    expect(sent[3]?.args).toEqual({ subagentId });
     await client.dispose();
   });
 

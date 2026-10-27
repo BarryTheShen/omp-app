@@ -4,7 +4,8 @@ import {
   AppFailure,
   AppPort,
   type CapabilityMap,
-  RpcSessionPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   SessionFileStore,
   ThreadId,
 } from "@omp-app/contracts";
@@ -68,11 +69,11 @@ async function startHub(
   const [server, capabilities] = await Promise.all([app.serverInfo({}), app.capabilities({})]);
   const history = createSelectedThreadHistoryController({ client, folder: server.launchFolder });
   const store = await history.openExisting(threadId);
-  const rpc = client.port(RpcSessionPort);
-  const subagents = createSubagentClient({ threadId, session: rpc, runtime: store, capabilities });
+  const chat = client.port(ChatSessionPort) as ChatSessionClient;
+  const subagents = createSubagentClient({ threadId, session: chat, runtime: store, capabilities });
   const finished = createChatFinishedWorkers({
     threadId,
-    session: rpc,
+    session: chat,
     files: client.port(SessionFileStore),
     capabilities,
   });

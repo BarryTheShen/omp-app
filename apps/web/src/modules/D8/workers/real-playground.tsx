@@ -1,5 +1,6 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
   FolderPath,
@@ -103,7 +104,7 @@ function RealWorkersPanel({ folder }: { readonly folder: string }) {
       };
       subagents = createSubagentClient({
         threadId,
-        session: rpc,
+        session: client.port(ChatSessionPort) as ChatSessionClient,
         runtime,
         capabilities: opened.capabilities,
       });

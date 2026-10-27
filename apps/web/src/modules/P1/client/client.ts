@@ -2,8 +2,8 @@ import {
   type AppError,
   AppFailure,
   type CapabilityMap,
+  type ChatSessionClient,
   type PortCallOptions,
-  type RpcSessionClient,
   SessionFilePath,
   SubagentId,
   type ThreadId,
@@ -24,7 +24,8 @@ import {
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { isUsable } from "@/registry-core/hooks";
 
-export type SubagentSession = Pick<RpcSessionClient, "send" | "setSubagentSubscription">;
+/** What P1 needs of the chat session port: the host's subagent methods and the subscription. */
+export type SubagentSession = Pick<ChatSessionClient, "request" | "setSubagentSubscription">;
 
 export type P1ClientNotification = {
   readonly seq: number;
@@ -130,8 +131,8 @@ class SubagentClientImpl implements SubagentClient {
     this.ensureLive();
     requiredCapability(this.capabilities, "roster");
     try {
-      const result = await this.session.send(
-        { threadId: this.threadId, command: { type: "get_subagents" } },
+      const result = await this.session.request(
+        { threadId: this.threadId, method: "get_subagents", params: {} },
         options,
       );
       if (!result || typeof result !== "object" || !("subagents" in result)) {
@@ -175,11 +176,11 @@ class SubagentClientImpl implements SubagentClient {
       throw failure("invalid_args", "fromByte must be a non-negative integer");
     }
     try {
-      const result = await this.session.send(
+      const result = await this.session.request(
         {
           threadId: this.threadId,
-          command: {
-            type: "get_subagent_messages",
+          method: "get_subagent_messages",
+          params: {
             subagentId,
             ...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
             ...(options.fromByte === undefined ? {} : { fromByte: options.fromByte }),
@@ -204,8 +205,8 @@ class SubagentClientImpl implements SubagentClient {
     this.ensureLive();
     requiredCapability(this.capabilities, "cancel");
     try {
-      const result = await this.session.send(
-        { threadId: this.threadId, command: { type: "cancel_subagent", subagentId } },
+      const result = await this.session.request(
+        { threadId: this.threadId, method: "cancel_subagent", params: { subagentId } },
         options,
       );
       const parsed = CancelAgentResultSchema.parse(result);
@@ -227,15 +228,14 @@ class SubagentClientImpl implements SubagentClient {
     requiredCapability(this.capabilities, "steer");
     if (message.trim().length === 0) throw failure("invalid_args", "Steer message cannot be blank");
     try {
-      await this.session.send(
-        { threadId: this.threadId, command: { type: "steer_subagent", subagentId, message } },
+      await this.session.request(
+        { threadId: this.threadId, method: "steer_subagent", params: { subagentId, message } },
         options,
       );
     } catch (error) {
       const cause = asP1Failure(error, failure("omp_error", "Subagent steer request failed", true));
-      // omp's RPC answer carries the command and error fields in a typed result
-      // (docs/rpc.md, "Steering subagents"; rpc-mode.ts:2243-2255, v18.8.9). Preserve
-      // the command-typed refusal instead of classifying its human-readable error text.
+      // The host's refusal names the method it refused (`omp.command`, the session port's failure), so a refused steer is
+      // told apart from a transport failure without reading omp's words.
       if (cause.appError.omp?.command === "steer_subagent")
         throw failure("conflict", "omp did not take the message", true);
       throw cause;

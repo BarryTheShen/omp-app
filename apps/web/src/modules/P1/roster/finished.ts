@@ -102,10 +102,10 @@ export function createFinishedWorkerSource(
   return Object.freeze(source);
 }
 
-/** What a chat-scoped finished-worker source needs: the chat, its live omp session, its files and what omp can do. */
+/** What a chat-scoped finished-worker source needs: the chat, its session port, its files and what omp can do. */
 export interface ChatFinishedWorkersOptions {
   readonly threadId: ThreadId;
-  readonly session: Pick<SubagentSession, "send">;
+  readonly session: Pick<SubagentSession, "request">;
   readonly files: SessionTranscriptFiles;
   readonly capabilities: CapabilityMap;
 }
@@ -124,7 +124,7 @@ export function createChatFinishedWorkers(
     files,
     sessionFile: async () => {
       if (!isUsable(capabilities, "host.session-files")) return undefined;
-      const state = await session.send({ threadId, command: { type: "get_state" } });
+      const state = await session.request({ threadId, method: "get_state", params: {} });
       const parsed = SessionFilePath.safeParse(state.sessionFile);
       return parsed.success ? parsed.data : undefined;
     },

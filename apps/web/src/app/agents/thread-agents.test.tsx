@@ -68,8 +68,8 @@ function filesWithFinishedWorker(): SessionTranscriptFiles {
 function fakeOmp() {
   const levels: Array<{ readonly threadId: string; readonly level: string }> = [];
   const session = {
-    send: async (args: { command: { type: string } }) => {
-      if (args.command.type === "get_subagents") {
+    request: async (args: { method: string }) => {
+      if (args.method === "get_subagents") {
         return {
           subagents: [
             {
@@ -87,7 +87,7 @@ function fakeOmp() {
           ],
         };
       }
-      throw new Error(`unexpected command ${args.command.type}`);
+      throw new Error(`unexpected method ${args.method}`);
     },
     setSubagentSubscription: async (args: { threadId: string; level: string }) => {
       levels.push({ threadId: args.threadId, level: args.level });
@@ -167,10 +167,10 @@ describe("ThreadAgents", () => {
 
   test("a worker that ended before the roster subscribed is listed from its transcript, and found by its id", async () => {
     const session = {
-      send: async (args: { command: { type: string } }) => {
-        if (args.command.type === "get_subagents") return { subagents: [] };
-        if (args.command.type === "get_state") return { sessionFile: "/workspace/.omp/chat.jsonl" };
-        throw new Error(`unexpected command ${args.command.type}`);
+      request: async (args: { method: string }) => {
+        if (args.method === "get_subagents") return { subagents: [] };
+        if (args.method === "get_state") return { sessionFile: "/workspace/.omp/chat.jsonl" };
+        throw new Error(`unexpected method ${args.method}`);
       },
       setSubagentSubscription: async (args: { level: string }) => ({ level: args.level }),
     } as unknown as SubagentSession;
@@ -231,12 +231,12 @@ describe("ThreadAgents", () => {
 
   test("after a reload, a worker that finished in the chat's files is in its roster", async () => {
     const session = {
-      send: async (args: { command: { type: string } }) => {
-        if (args.command.type === "get_subagents") return { subagents: [] };
-        if (args.command.type === "get_state") {
+      request: async (args: { method: string }) => {
+        if (args.method === "get_subagents") return { subagents: [] };
+        if (args.method === "get_state") {
           return { sessionFile: "/workspace/.omp/sessions/main.jsonl" };
         }
-        throw new Error(`unexpected command ${args.command.type}`);
+        throw new Error(`unexpected method ${args.method}`);
       },
       setSubagentSubscription: async (args: { level: string }) => ({ level: args.level }),
     } as unknown as SubagentSession;
@@ -327,7 +327,7 @@ describe("the chat's subagents in the transcript", () => {
     // The connection is already refused (an expired launch link), so the release that closing the chat sends fails.
     const levels: Array<{ readonly threadId: string; readonly level: string }> = [];
     const refused = {
-      send: omp.session.send,
+      request: omp.session.request,
       setSubagentSubscription: async (args: { threadId: string; level: string }) => {
         levels.push(args);
         if (args.level === "off") throw new Error("Launch link has expired");

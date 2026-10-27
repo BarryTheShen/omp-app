@@ -11,6 +11,8 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   AppPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   type FolderPath,
   RpcSessionPort,
   type SessionFile,
@@ -84,7 +86,7 @@ async function openSession(client: AppClient): Promise<Session> {
   const controller = new OmpRuntimeController({ capabilities, send: rpc.send, store });
   const subagents = createSubagentClient({
     threadId,
-    session: rpc,
+    session: client.port(ChatSessionPort) as ChatSessionClient,
     runtime: store,
     capabilities,
   });

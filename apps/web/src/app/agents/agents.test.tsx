@@ -137,7 +137,7 @@ describe("Agents tab subscription", () => {
   test("the roster asks omp for progress only once the Agents tab is shown", async () => {
     const levels: string[] = [];
     const session = {
-      send: async () => ({ subagents: [] }),
+      request: async () => ({ subagents: [] }),
       setSubagentSubscription: async (args: { level: string }) => {
         levels.push(args.level);
         return { level: args.level };

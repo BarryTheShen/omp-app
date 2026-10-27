@@ -260,14 +260,14 @@ interface OmpAnswer {
   readonly ompError?: string;
 }
 
-/** A fake omp session: it records every command it is sent, and answers as `answer` says. */
+/** A fake chat session port: it records every request it is sent, and answers as `answer` says. */
 function fakeSession(answer: OmpAnswer): {
   readonly session: SubagentSession;
   readonly sent: unknown[];
 } {
   const sent: unknown[] = [];
   const session = {
-    send: async (args: unknown) => {
+    request: async (args: unknown) => {
       sent.push(args);
       if (answer.ompError !== undefined) {
         throw new AppFailure({
@@ -277,10 +277,10 @@ function fakeSession(answer: OmpAnswer): {
           omp: { command: "steer_subagent", error: answer.ompError },
         });
       }
-      return answer.reply === undefined || answer.reply === "accepted" ? undefined : answer.reply;
+      return answer.reply === undefined || answer.reply === "accepted" ? {} : answer.reply;
     },
     setSubagentSubscription: async (args: { level: string }) => ({ level: args.level }),
-  } as SubagentSession;
+  } as unknown as SubagentSession;
   return { session, sent };
 }
 
@@ -321,12 +321,12 @@ describe("CC8: cancel and steer send the typed command, succeed or fail in plain
       item.command === "cancel" ? client.cancel(worker) : client.steer(worker, item.message ?? ""),
     );
 
-    // The whole call, not only its type: the worker, the message and the thread must be the ones asked for.
-    const command =
+    // The whole call, not only its method: the worker, the message and the thread must be the ones asked for.
+    const call =
       item.command === "cancel"
-        ? { type: "cancel_subagent", subagentId: worker }
-        : { type: "steer_subagent", subagentId: worker, message: item.message };
-    expect(sent).toEqual(item.expect.sent ? [{ threadId: THREAD, command }] : []);
+        ? { method: "cancel_subagent", params: { subagentId: worker } }
+        : { method: "steer_subagent", params: { subagentId: worker, message: item.message } };
+    expect(sent).toEqual(item.expect.sent ? [{ threadId: THREAD, ...call }] : []);
     if (item.expect.outcome === "resolves") {
       expect(outcome).toBeUndefined();
     } else {
