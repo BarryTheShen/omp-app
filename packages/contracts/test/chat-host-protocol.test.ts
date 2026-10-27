@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  HOST_METHOD_ANSWERS,
+  isChatHostHostMethod,
   isChatHostMethod,
   parseChatHostParams,
   parseHostLine,
@@ -186,5 +188,40 @@ describe("requests from the server", () => {
       expect(parseChatHostParams(method, { entryId: "" }).ok).toBe(false);
       expect(parseChatHostParams(method, {}).ok).toBe(false);
     }
+  });
+});
+
+describe("the host's dialogs", () => {
+  test("the host may ask too, and the server's answer is read as a response", () => {
+    const asked = parseHostLine(
+      JSON.stringify({
+        kind: "request",
+        id: "host-1",
+        method: "ui.confirm",
+        params: { title: "Go on?", message: "It runs the check" },
+      }),
+    );
+    expect(asked.ok && asked.value.kind).toBe("request");
+    const answered = parseServerLine(
+      JSON.stringify({ kind: "response", id: "host-1", ok: true, result: { confirmed: true } }),
+    );
+    expect(answered.ok && answered.value.kind).toBe("response");
+  });
+
+  test("only the dialogs are the host's methods, never the server's or an object's inherited names", () => {
+    expect(isChatHostHostMethod("ui.approve")).toBe(true);
+    expect(isChatHostHostMethod("prompt")).toBe(false);
+    expect(isChatHostHostMethod("toString")).toBe(false);
+  });
+
+  test("an answer is checked against its dialog: omp's typed approvals, and a closed dialog", () => {
+    const approve = HOST_METHOD_ANSWERS["ui.approve"];
+    expect(approve.safeParse({ grant: "folder", always: true }).success).toBe(true);
+    expect(approve.safeParse("once").success).toBe(true);
+    expect(approve.safeParse({ grant: "anywhere", always: true }).success).toBe(false);
+    expect(approve.safeParse("Approve Once").success).toBe(false);
+    const confirm = HOST_METHOD_ANSWERS["ui.confirm"];
+    expect(confirm.safeParse({ cancelled: true, timedOut: true }).success).toBe(true);
+    expect(confirm.safeParse({ confirmed: "yes" }).success).toBe(false);
   });
 });

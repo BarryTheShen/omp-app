@@ -26,6 +26,7 @@ import { type ParseResult, parseJson } from "../core/errors";
 type Session = AgentSession;
 
 export { CHAT_HOST_CHAT_ARG } from "./args";
+export * from "./dialogs";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
 
@@ -99,16 +100,10 @@ export interface ChatHostEvent<E extends { readonly type: string } = { readonly 
   readonly event: E;
 }
 
-export const ChatHostHostLine = z.union([ChatHostHello, ChatHostResponse, ChatHostEvent]);
-export type ChatHostHostLine = ChatHostHello | ChatHostResponse | ChatHostEvent;
-
-/** Parses one line the host wrote. A failure names what is wrong, never the line itself. */
-export function parseHostLine(line: string): ParseResult<ChatHostHostLine> {
-  return parseJson(ChatHostHostLine, line);
-}
-
-// Server → host
-
+/**
+ * A request. The server sends the protocol's methods; the host sends its own (`ChatHostHostMethodMap`: the dialogs).
+ * Each side answers the other's requests with responses.
+ */
 export const ChatHostRequest = z.object({
   kind: z.literal("request"),
   id: RequestId,
@@ -117,9 +112,27 @@ export const ChatHostRequest = z.object({
 });
 export type ChatHostRequest = z.infer<typeof ChatHostRequest>;
 
-/** Parses one line the server wrote. The method's params are checked by `parseChatHostParams`. */
-export function parseServerLine(line: string): ParseResult<ChatHostRequest> {
-  return parseJson(ChatHostRequest, line);
+export const ChatHostHostLine = z.union([
+  ChatHostHello,
+  ChatHostResponse,
+  ChatHostEvent,
+  ChatHostRequest,
+]);
+export type ChatHostHostLine = ChatHostHello | ChatHostResponse | ChatHostEvent | ChatHostRequest;
+
+/** Parses one line the host wrote. A failure names what is wrong, never the line itself. */
+export function parseHostLine(line: string): ParseResult<ChatHostHostLine> {
+  return parseJson(ChatHostHostLine, line);
+}
+
+// Server → host
+
+export const ChatHostServerLine = z.union([ChatHostRequest, ChatHostResponse]);
+export type ChatHostServerLine = ChatHostRequest | ChatHostResponse;
+
+/** Parses one line the server wrote: a request, or an answer to one of the host's. A request's params are checked by `parseChatHostParams`. */
+export function parseServerLine(line: string): ParseResult<ChatHostServerLine> {
+  return parseJson(ChatHostServerLine, line);
 }
 
 // Methods
@@ -492,6 +505,11 @@ export interface ChatHostMethodMap {
   readonly fork: { readonly params: EntryParams; readonly result: { readonly cancelled: boolean } };
   /** Rewinds in place. Refused while the session is busy. */
   readonly navigate_tree: { readonly params: EntryParams; readonly result: NavigateTreeResult };
+  /** Turns the host's `ui.ask` dialog on or off; off, omp asks with selects and editors. */
+  readonly set_ask_dialog: {
+    readonly params: EnabledParams;
+    readonly result: { readonly enabled: boolean };
+  };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -528,6 +546,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   branch: EntryParams,
   fork: EntryParams,
   navigate_tree: EntryParams,
+  set_ask_dialog: EnabledParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */

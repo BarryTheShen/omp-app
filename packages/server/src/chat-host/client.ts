@@ -6,15 +6,33 @@
  * - `request` resolves with the method's result, or rejects with `ChatHostRequestError` (the host's code and message,
  *   or `closed` when the host ended first). Requests may be answered out of order; each answer carries its id.
  * - Events reach `onEvent` listeners in the order the host wrote them.
+ * - The host's own requests (its dialogs, SDK plan H5.2d) go to the `onRequest` handler, whose result or error is sent
+ *   back as the response. Without a handler, or for a method the host does not have, the answer is `unknown_method`.
  */
 import {
   type ChatHostErrorCode,
   type ChatHostHello,
+  type ChatHostHostMethod,
+  type ChatHostHostMethodMap,
   type ChatHostMethod,
   type ChatHostMethodMap,
+  type ChatHostRequest,
+  isChatHostHostMethod,
   parseHostLine,
 } from "@omp-app/contracts/chat-host";
 import type { ChatEvent } from "./events";
+
+/** A request from the host, with its method's params. */
+export type HostRequest = {
+  readonly [M in ChatHostHostMethod]: {
+    readonly id: string;
+    readonly method: M;
+    readonly params: ChatHostHostMethodMap[M]["params"];
+  };
+}[ChatHostHostMethod];
+
+/** Answers one of the host's requests; the host checks the answer against the method's own. */
+export type HostRequestHandler = (request: HostRequest) => Promise<unknown>;
 
 /** A transport of lines: the host's stdin to write, its stdout to read. */
 export interface LineDuplex {
@@ -55,6 +73,7 @@ export class ChatHostClient {
   #buffer = "";
   #nextId = 0;
   #closed: ChatHostRequestError | undefined;
+  #requestHandler: HostRequestHandler | undefined;
 
   constructor(
     duplex: LineDuplex,
@@ -104,6 +123,11 @@ export class ChatHostClient {
     return () => this.#listeners.delete(listener);
   }
 
+  /** Sets the one handler that answers the host's requests (its dialogs). */
+  onRequest(handler: HostRequestHandler): void {
+    this.#requestHandler = handler;
+  }
+
   /** Stops reading the host; open requests reject as closed. */
   dispose(): void {
     this.#end(new ChatHostRequestError("closed", "The chat host client was closed."));
@@ -143,7 +167,44 @@ export class ChatHostClient {
         for (const listener of this.#listeners) listener(event, message.seq);
         return;
       }
+      case "request":
+        void this.#answer(message);
+        return;
     }
+  }
+
+  /** Answers one of the host's requests through the handler. */
+  async #answer(request: ChatHostRequest): Promise<void> {
+    let body: object;
+    const handler = this.#requestHandler;
+    if (!handler || !isChatHostHostMethod(request.method)) {
+      body = {
+        ok: false,
+        error: { code: "unknown_method", message: `Unknown method: ${request.method}` },
+      };
+    } else {
+      try {
+        // The host sends its own methods' params; the handler reads them as such.
+        const result = await handler({ ...request, method: request.method } as HostRequest);
+        body = { ok: true, result };
+      } catch (error) {
+        body = {
+          ok: false,
+          error: {
+            code: "failed",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+    }
+    if (this.#closed) return;
+    await Promise.resolve(
+      this.#duplex.writeLine(`${JSON.stringify({ kind: "response", id: request.id, ...body })}\n`),
+    ).catch((error: unknown) =>
+      this.#onInvalidLine(
+        `an answer to the host's ${request.method} could not be sent: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
   }
 
   #settle(id: string, settle: (pending: Pending) => void): void {

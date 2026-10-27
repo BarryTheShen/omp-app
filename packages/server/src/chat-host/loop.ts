@@ -68,6 +68,7 @@ import {
   startPrompt,
 } from "./prompt-results";
 import type { ChatSession } from "./session-factory";
+import { HostRequests, HostUIContext } from "./ui-context";
 
 export interface ChatLoopOptions {
   readonly chat: ChatSession;
@@ -116,6 +117,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const results = new PromptResults(session, emit);
   const tracker = new ExtensionMessageTracker();
   const gate = new InputGate();
+  /** Dialogs wait here for the server's answers; tools and extensions get them through omp's UI context. */
+  const requests = new HostRequests(writeMessage);
+  const ui = new HostUIContext(requests, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
   const abortBuiltinCommands = (): void => {
@@ -148,6 +152,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   };
   writeMessage(hello);
 
+  chat.setToolUIContext(ui, true);
   await initializeExtensions(session, {
     mode: "rpc",
     reportSendError: (action, error) =>
@@ -174,6 +179,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       if (!result.cancelled && detachesRun) results.abortOpen();
       return result;
     },
+    uiContext: ui,
   });
   session.subscribe((event) => {
     events.forward(event);
@@ -382,6 +388,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         leafId: session.sessionManager.getLeafId(),
       };
     },
+    set_ask_dialog: async ({ enabled }) => {
+      ui.askDialogEnabled = enabled;
+      return { enabled };
+    },
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
@@ -562,6 +572,12 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       log(`chat host: skipped a line from the server: ${parsed.error.message}`);
       continue;
     }
+    if (parsed.value.kind === "response") {
+      if (!requests.settle(parsed.value)) {
+        log(`chat host: an answer to no waiting dialog: ${parsed.value.id}`);
+      }
+      continue;
+    }
     const { id, method } = parsed.value;
     if (!isChatHostMethod(method)) {
       respondError(id, "unknown_method", `Unknown method: ${method}`);
@@ -593,6 +609,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     }
     serial = serial.then(() => answer(id, () => handler(params.value, sequence)));
   }
+  // Nobody is left to answer: a waiting dialog fails instead of holding its tool or extension forever.
+  requests.closeAll("The app closed the chat");
   await serial;
 }
 
