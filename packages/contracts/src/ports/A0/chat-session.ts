@@ -10,6 +10,7 @@ import {
   type ChatHostMethodMap,
   HostRequestSchema,
   isChatHostMethod,
+  type ShellRunResult,
   type UiStatusEvent,
   type UiTitleEvent,
   type UiWidgetEvent,
@@ -21,10 +22,29 @@ import { SessionFilePath, ThreadId } from "../../core/ids";
 import {
   OpenThreadArgs,
   ProcessStatus,
+  SetSubagentSubscriptionArgs,
+  SetSubagentSubscriptionResult,
   SubscribeArgs,
   SubscribeResult,
   ThreadRef,
 } from "./rpc-session";
+
+const MessageUpdates = z.enum(["full", "delta"]);
+
+/**
+ * One connection's choice of message updates. The chat's host gets the viewers' choices as one: `full` when any viewer
+ * asks for it, else `delta`. omp's RPC event-type filter has no counterpart: the host sends every event, and one stream
+ * serves every viewer, so a browser filters types itself.
+ */
+export const SetEventOptionsArgs = z.strictObject({
+  threadId: ThreadId,
+  messageUpdates: MessageUpdates,
+});
+export type SetEventOptionsArgs = z.infer<typeof SetEventOptionsArgs>;
+
+/** What the chat's host was told; absent while it keeps its own default (`full`). */
+export const SetEventOptionsResult = z.strictObject({ messageUpdates: MessageUpdates.optional() });
+export type SetEventOptionsResult = z.infer<typeof SetEventOptionsResult>;
 
 export const ChatOpenResult = z.strictObject({
   threadId: ThreadId,
@@ -127,10 +147,38 @@ const HostRequestPayload = z.strictObject({
   request: HostRequestSchema,
 });
 
+/**
+ * A `!` (`bash`) or `$` (`python`) run, which omp reports only to its caller: published to every viewer of the chat
+ * when it starts and when it ends, with omp's result (absent when the run failed).
+ */
+const ShellRunPayload = z.strictObject({
+  kind: z.literal("shell"),
+  method: z.enum(["bash", "python"]),
+  /** The command or code, as the caller sent it. */
+  input: z.string(),
+  status: z.enum(["running", "ended"]),
+  startedAt: z.number().nonnegative(),
+  result: z
+    .custom<ShellRunResult>((value) => typeof value === "object" && value !== null)
+    .optional(),
+});
+
+/**
+ * The chat moved to a new session (a new chat, a branch or a fork): its stream continues under the new id, and the old
+ * id still names the chat.
+ */
+const MovedPayload = z.strictObject({
+  kind: z.literal("moved"),
+  threadId: ThreadId,
+  sessionFile: SessionFilePath,
+});
+
 export const ChatSessionEvent = z.discriminatedUnion("kind", [
   ChatEventPayload,
   ChatProcessPayload,
   HostRequestPayload,
+  ShellRunPayload,
+  MovedPayload,
 ]);
 export type ChatSessionEvent = z.infer<typeof ChatSessionEvent>;
 
@@ -145,6 +193,11 @@ export const ChatSessionPort = definePort({
     answer: { args: AnswerHostRequestArgs, result: z.null() },
     openRequests: { args: ThreadRef, result: OpenHostRequests },
     uiState: { args: ThreadRef, result: UiState },
+    setSubagentSubscription: {
+      args: SetSubagentSubscriptionArgs,
+      result: SetSubagentSubscriptionResult,
+    },
+    setEventOptions: { args: SetEventOptionsArgs, result: SetEventOptionsResult },
   },
   events: { event: { payload: ChatSessionEvent } },
 });

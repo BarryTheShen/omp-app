@@ -27,6 +27,10 @@ import {
   type OpenHostRequests,
   type OpenThreadArgs,
   SessionFilePath,
+  type SetEventOptionsArgs,
+  type SetEventOptionsResult,
+  type SetSubagentSubscriptionArgs,
+  type SetSubagentSubscriptionResult,
   type StreamKey,
   type SubscribeArgs,
   ThreadId,
@@ -42,6 +46,7 @@ import {
   type HostToolDefinition,
   type HostUriSchemeDefinition,
   parseChatHostParams,
+  type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
 import { modelUnavailableFailure, savedModelFromOmpText } from "@omp-app/omp-rpc";
 import { z } from "zod";
@@ -79,7 +84,31 @@ interface ChatEntry {
   hostRegistrations: Promise<void>;
   /** The app turned omp's ask dialog on; a replaced process is told again. */
   askDialogOptedIn: boolean;
+  /** Each connection's subagent level and message updates; the chat's host gets them as one (`#arbitrate`). */
+  readonly preferences: Map<string, Preference>;
+  /** What the chat's host was told; undefined until it is, and again once its process is replaced. */
+  appliedLevel?: SubagentLevel;
+  appliedMessageUpdates?: MessageUpdates;
+  /** Arbitrations run one after another. */
+  arbitration: Promise<void>;
 }
+
+type SubagentLevel = SetSubagentSubscriptionArgs["level"];
+type MessageUpdates = SetEventOptionsArgs["messageUpdates"];
+
+interface Preference {
+  readonly level: SubagentLevel;
+  readonly messageUpdates?: MessageUpdates;
+}
+
+const LEVEL_RANK: Readonly<Record<SubagentLevel, number>> = { off: 0, progress: 1, events: 2 };
+
+/** The methods that move the chat to another session; omp's own id for the chat changes with them. */
+const SESSION_SWITCH_METHODS: ReadonlySet<ChatHostMethod> = new Set([
+  "new_session",
+  "branch",
+  "fork",
+]);
 
 /** One kind of host registration: per connection, then per owner. */
 type Registrations<T> = ReadonlyMap<string, ReadonlyMap<string, readonly T[]>>;
@@ -209,6 +238,8 @@ function requestFailure(method: string, error: unknown): AppFailure {
 export class ChatSessionPortRuntime {
   readonly #context: A0PortContext;
   readonly #entries = new Map<ThreadId, ChatEntry>();
+  /** A chat's earlier ids, after a session switch moved it: each names the id it moved to. */
+  readonly #aliases = new Map<ThreadId, ThreadId>();
 
   constructor(context: A0PortContext) {
     this.#context = context;
@@ -228,11 +259,14 @@ export class ChatSessionPortRuntime {
     answer: (args) => this.answer(args as AnswerHostRequestArgs),
     openRequests: (args) => this.openRequests(args as { threadId: ThreadId }),
     uiState: (args) => this.uiState(args as { threadId: ThreadId }),
+    setSubagentSubscription: (args, call) =>
+      this.setSubagentSubscription(args as SetSubagentSubscriptionArgs, call),
+    setEventOptions: (args, call) => this.setEventOptions(args as SetEventOptionsArgs, call),
   };
 
   /** The session file an open chat runs, known before omp writes it (a new chat writes its file after its first reply). */
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined {
-    return this.#entries.get(threadId)?.bootstrap.sessionFile;
+    return this.#entryOrUndefined(threadId)?.bootstrap.sessionFile;
   }
 
   async open(args: OpenThreadArgs, call: PortHandlerContext): Promise<ChatOpenResult> {
@@ -285,6 +319,8 @@ export class ChatSessionPortRuntime {
       hostUriSchemes: new Map(),
       hostRegistrations: Promise.resolve(),
       askDialogOptedIn: false,
+      preferences: new Map(),
+      arbitration: Promise.resolve(),
     };
     entry.unsubscribe = this.#listen(entry);
     this.#entries.set(bootstrap.threadId, entry);
@@ -373,6 +409,14 @@ export class ChatSessionPortRuntime {
             (params.value as ChatHostMethodMap["set_host_uri_schemes"]["params"]).schemes,
           );
     }
+    // omp reports a `!` or `$` run only to its caller: every viewer hears it start and end.
+    if (method === "bash" || method === "python") {
+      return this.#shellRun(
+        entry,
+        method,
+        params.value as ChatHostMethodMap[typeof method]["params"],
+      );
+    }
     const result = await this.#send(
       entry,
       method,
@@ -384,7 +428,40 @@ export class ChatSessionPortRuntime {
         params.value as ChatHostMethodMap["set_ask_dialog"]["params"]
       ).enabled;
     }
+    if (SESSION_SWITCH_METHODS.has(method)) await this.#refreshIdentity(entry);
     return result;
+  }
+
+  /** One connection's subagent level: the chat's host gets the highest of its viewers'. */
+  async setSubagentSubscription(
+    args: SetSubagentSubscriptionArgs,
+    call: PortHandlerContext,
+  ): Promise<SetSubagentSubscriptionResult> {
+    const entry = this.#entry(args.threadId);
+    await this.#ensureRunning(entry);
+    entry.preferences.set(call.connectionId, {
+      ...this.#preference(entry, call.connectionId),
+      level: args.level,
+    });
+    await this.#arbitrate(entry);
+    return { level: entry.appliedLevel ?? "off" };
+  }
+
+  /** One connection's message updates: the chat's host gets `full` when any viewer asks for it, else `delta`. */
+  async setEventOptions(
+    args: SetEventOptionsArgs,
+    call: PortHandlerContext,
+  ): Promise<SetEventOptionsResult> {
+    const entry = this.#entry(args.threadId);
+    await this.#ensureRunning(entry);
+    entry.preferences.set(call.connectionId, {
+      ...this.#preference(entry, call.connectionId),
+      messageUpdates: args.messageUpdates,
+    });
+    await this.#arbitrate(entry);
+    return entry.appliedMessageUpdates === undefined
+      ? {}
+      : { messageUpdates: entry.appliedMessageUpdates };
   }
 
   /** The browser's answer to a host request, checked against the request's method before the host gets it. */
@@ -436,55 +513,66 @@ export class ChatSessionPortRuntime {
   }
 
   async close(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {
-    const entry = this.#entries.get(args.threadId);
+    const entry = this.#entryOrUndefined(args.threadId);
     if (entry === undefined) return null;
+    const viewed = (entry.viewers.get(call.connectionId) ?? 0) > 0;
     this.#releaseView(entry, call.connectionId);
+    if (!viewed) return null;
+    entry.preferences.delete(call.connectionId);
     // The connection's last view of the chat takes its tools and URI schemes with it.
     if (!entry.viewers.has(call.connectionId)) {
       await this.#releaseRegistrations(entry, call.connectionId);
     }
+    // Only a chat others still watch is told the viewers' preferences again: the last view leaving tells the host nothing.
+    if (entry.viewers.size > 0) await this.#arbitrateQuietly(entry);
     return null;
   }
 
   /**
    * A browser connection closed (a tab closed or reloaded, the network lost): every view it held is released, as if it
-   * had closed each one, with its tools and URI schemes. A process nobody watches is stopped by the registry after its
-   * idle time, unless it is working.
+   * had closed each one, with its tools, URI schemes and preferences. A process nobody watches is stopped by the
+   * registry after its idle time, unless it is working.
    */
   async releaseConnection(connectionId: string): Promise<void> {
-    for (const entry of [...this.#entries.values()]) {
+    const stillWatched: ChatEntry[] = [];
+    for (const entry of [...new Set(this.#entries.values())]) {
       const count = entry.viewers.get(connectionId) ?? 0;
       if (count === 0) continue;
       entry.viewers.delete(connectionId);
+      entry.preferences.delete(connectionId);
       for (let view = 0; view < count; view += 1) {
         this.#context.processRegistry.release(entry.bootstrap.threadId);
       }
       await this.#releaseRegistrations(entry, connectionId);
+      if (entry.viewers.size > 0) stillWatched.push(entry);
     }
+    await Promise.all(stillWatched.map((entry) => this.#arbitrateQuietly(entry)));
   }
 
   /** How many views one connection holds on a chat. */
   viewsOf(threadId: ThreadId, connectionId: string): number {
-    return this.#entries.get(threadId)?.viewers.get(connectionId) ?? 0;
+    return this.#entryOrUndefined(threadId)?.viewers.get(connectionId) ?? 0;
   }
 
   /** How many views every connection holds on a chat together: the count the chat's process is watched by. */
   watcherCount(threadId: ThreadId): number {
     let total = 0;
-    for (const count of this.#entries.get(threadId)?.viewers.values() ?? []) total += count;
+    for (const count of this.#entryOrUndefined(threadId)?.viewers.values() ?? []) total += count;
     return total;
   }
 
   /** Lets go of every view one connection holds on a chat, as deleting the chat does; other connections keep theirs. */
   async releaseViews(threadId: ThreadId, connectionId: string): Promise<void> {
-    const entry = this.#entries.get(threadId);
+    const entry = this.#entryOrUndefined(threadId);
     const count = entry?.viewers.get(connectionId) ?? 0;
     if (entry === undefined || count === 0) return;
     entry.viewers.delete(connectionId);
+    entry.preferences.delete(connectionId);
     for (let view = 0; view < count; view += 1) {
       this.#context.processRegistry.release(entry.bootstrap.threadId);
     }
     await this.#releaseRegistrations(entry, connectionId);
+    if (entry.viewers.size > 0) await this.#arbitrateQuietly(entry);
   }
 
   /**
@@ -492,7 +580,7 @@ export class ChatSessionPortRuntime {
    * running process serves gets nothing: no process starts for it.
    */
   restoreViews(threadId: ThreadId, connectionId: string, count: number): void {
-    const entry = this.#entries.get(threadId);
+    const entry = this.#entryOrUndefined(threadId);
     const registry = this.#context.processRegistry;
     if (entry === undefined || !registry.has(entry.bootstrap.threadId)) return;
     if (registry.isStopping(entry.bootstrap.threadId)) return;
@@ -504,11 +592,12 @@ export class ChatSessionPortRuntime {
   }
 
   async dispose(): Promise<void> {
-    for (const entry of this.#entries.values()) {
+    for (const entry of new Set(this.#entries.values())) {
       entry.unsubscribe();
       entry.client.dispose();
     }
     this.#entries.clear();
+    this.#aliases.clear();
     await this.#context.processRegistry.closeAll();
   }
 
@@ -573,6 +662,7 @@ export class ChatSessionPortRuntime {
       if (payload.status === "exited" || payload.status === "error") this.#closeRequests(entry);
       return;
     }
+    if (payload.kind !== "event") return;
     const { event } = payload;
     if (event.type === "ui_cancel" || event.type === "tool_cancel" || event.type === "uri_cancel") {
       this.#closeRequest(entry, event.requestId);
@@ -653,15 +743,8 @@ export class ChatSessionPortRuntime {
         retryable: false,
       });
     }
+    this.#moveProcess(entry.bootstrap.threadId, identity.threadId);
     const provisional = entry.bootstrap.threadId;
-    // The registry refuses an id another process holds: the chat is open in another tab or window.
-    try {
-      this.#context.processRegistry.rekey(provisional, identity.threadId);
-    } catch (error) {
-      if (error instanceof AppFailure && error.appError.code === "conflict")
-        throw chatOpenElsewhere(error);
-      throw error;
-    }
     this.#entries.delete(provisional);
     entry.bootstrap = {
       ...entry.bootstrap,
@@ -772,6 +855,8 @@ export class ChatSessionPortRuntime {
     // The replaced process's questions can never be answered, and its UI state goes with it.
     this.#closeRequests(entry);
     entry.uiState.clear();
+    entry.appliedLevel = undefined;
+    entry.appliedMessageUpdates = undefined;
     entry.bootstrap = { ...entry.bootstrap, args };
     entry.process = process;
     entry.client = new ChatHostClient(process);
@@ -779,18 +864,20 @@ export class ChatSessionPortRuntime {
     entry.unsubscribe = this.#listen(entry);
     await this.#start(entry);
     await this.#reapply(entry);
+    // Only what a viewer asked for is told to the new process; a chat nobody tuned keeps the host's defaults.
+    if (entry.preferences.size > 0) await this.#arbitrate(entry);
   }
 
   /** Whether the chat's host says it has settled; a chat nothing holds counts as settled. */
   async #isSettled(threadId: ThreadId): Promise<boolean> {
-    const entry = this.#entries.get(threadId);
+    const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined) return true;
     return (await entry.client.request("get_state", {})).isSettled;
   }
 
   /** The registry stopped a chat's process on purpose: its entry can't serve again, so the next open starts fresh. */
   #forgetStopped(threadId: ThreadId, process: OmpProcess): void {
-    const entry = this.#entries.get(threadId);
+    const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined || entry.process !== process) return;
     this.#forget(entry);
   }
@@ -799,7 +886,11 @@ export class ChatSessionPortRuntime {
     entry.unsubscribe();
     entry.client.dispose();
     this.#closeRequests(entry);
-    this.#entries.delete(entry.bootstrap.threadId);
+    const current = entry.bootstrap.threadId;
+    this.#entries.delete(current);
+    for (const [alias, target] of this.#aliases) {
+      if (alias === current || target === current) this.#aliases.delete(alias);
+    }
   }
 
   /** Forgets an entry whose open failed, and lets go of the process it acquired. */
@@ -930,13 +1021,154 @@ export class ChatSessionPortRuntime {
     if (entry.askDialogOptedIn) await this.#send(entry, "set_ask_dialog", { enabled: true });
   }
 
+  /** The entry a thread id names: its own, or the one it moved to by a session switch. */
+  #entryOrUndefined(threadId: ThreadId): ChatEntry | undefined {
+    const own = this.#entries.get(threadId);
+    if (own !== undefined) return own;
+    let current = threadId;
+    const seen = new Set<ThreadId>();
+    for (
+      let next = this.#aliases.get(current);
+      next !== undefined && !seen.has(current);
+      next = this.#aliases.get(current)
+    ) {
+      seen.add(current);
+      current = next;
+    }
+    return this.#entries.get(current);
+  }
+
   /** The entry a thread id names; a chat whose process is stopping serves nothing. */
   #entry(threadId: ThreadId): ChatEntry {
-    const entry = this.#entries.get(threadId);
-    if (entry === undefined || this.#context.processRegistry.isStopping(threadId)) {
+    const entry = this.#entryOrUndefined(threadId);
+    if (entry === undefined || this.#context.processRegistry.isStopping(entry.bootstrap.threadId)) {
       throw notFound(`No open thread ${threadId}`);
     }
     return entry;
+  }
+
+  #preference(entry: ChatEntry, connectionId: string): Preference {
+    return entry.preferences.get(connectionId) ?? { level: "off" };
+  }
+
+  /**
+   * The viewers' preferences as one, told to the chat's host when they changed: the highest subagent level, and `full`
+   * message updates when any viewer asks for them, else `delta`. With no viewer asking, the host's own default (`full`)
+   * comes back.
+   */
+  #arbitrate(entry: ChatEntry): Promise<void> {
+    const work = entry.arbitration.then(async () => {
+      const preferences = [...entry.preferences.values()];
+      const level = preferences.reduce<SubagentLevel>(
+        (best, preference) =>
+          LEVEL_RANK[preference.level] > LEVEL_RANK[best] ? preference.level : best,
+        "off",
+      );
+      const messageUpdates: MessageUpdates | undefined = preferences.some(
+        (preference) => preference.messageUpdates === "full",
+      )
+        ? "full"
+        : preferences.some((preference) => preference.messageUpdates === "delta")
+          ? "delta"
+          : undefined;
+      if (entry.appliedLevel !== level) {
+        await this.#send(entry, "set_subagent_subscription", { level });
+        entry.appliedLevel = level;
+      }
+      if (messageUpdates !== entry.appliedMessageUpdates) {
+        await this.#send(entry, "set_event_options", { messageUpdates: messageUpdates ?? "full" });
+        entry.appliedMessageUpdates = messageUpdates;
+      }
+    });
+    entry.arbitration = work.catch(() => undefined);
+    return work;
+  }
+
+  /** An arbitration a viewer leaving starts: its failure is logged, not the leaving connection's. */
+  async #arbitrateQuietly(entry: ChatEntry): Promise<void> {
+    await this.#arbitrate(entry).catch((error: unknown) =>
+      this.#context.logger?.warn("chat_session.arbitration_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+
+  /**
+   * A `!` or `$` run, which omp reports only to its caller: every viewer hears it start and end, and the process is held
+   * while it runs. A viewer giving up does not end the run.
+   */
+  async #shellRun(
+    entry: ChatEntry,
+    method: "bash" | "python",
+    params: ChatHostMethodMap["bash" | "python"]["params"],
+  ): Promise<ShellRunResult> {
+    const release = this.#context.processRegistry.holdCommand(entry.bootstrap.threadId);
+    const startedAt = Date.now();
+    const input = "command" in params ? params.command : params.code;
+    this.#receive(entry, { kind: "shell", method, input, status: "running", startedAt });
+    let result: ShellRunResult | undefined;
+    try {
+      result = await this.#send(entry, method, params as never);
+      return result;
+    } finally {
+      this.#receive(entry, {
+        kind: "shell",
+        method,
+        input,
+        status: "ended",
+        startedAt,
+        ...(result === undefined ? {} : { result }),
+      });
+      release();
+    }
+  }
+
+  /**
+   * After a session switch, the chat moves to omp's new id for it: the registry is rekeyed, viewers on the old id hear
+   * the move, the stream carries on under the new id with its history, and the old id stays an alias.
+   */
+  async #refreshIdentity(entry: ChatEntry): Promise<void> {
+    const identity = await this.#identity(entry);
+    const current = entry.bootstrap.threadId;
+    if (identity.threadId === current && identity.sessionFile === entry.bootstrap.sessionFile)
+      return;
+    const existing = this.#entries.get(identity.threadId);
+    if (existing !== undefined && existing !== entry) {
+      throw new AppFailure({
+        code: "conflict",
+        message: "omp switched to a session already open in another chat.",
+        retryable: false,
+      });
+    }
+    // The registry's rekey can refuse; it runs first, so a refusal leaves the stream and the process as they were.
+    this.#moveProcess(current, identity.threadId);
+    this.#publish(entry, {
+      kind: "moved",
+      threadId: identity.threadId,
+      sessionFile: identity.sessionFile,
+    });
+    const stream = chatSessionEventStream(identity.threadId);
+    this.#context.replay.moveStream(entry.stream, stream);
+    this.#aliases.set(current, identity.threadId);
+    this.#entries.delete(current);
+    entry.bootstrap = {
+      ...entry.bootstrap,
+      threadId: identity.threadId,
+      sessionFile: identity.sessionFile,
+    };
+    entry.stream = stream;
+    this.#entries.set(identity.threadId, entry);
+  }
+
+  /** Moves a process to the chat's own id; the registry refuses an id another process holds (a chat open elsewhere). */
+  #moveProcess(from: ThreadId, to: ThreadId): void {
+    try {
+      this.#context.processRegistry.rekey(from, to);
+    } catch (error) {
+      if (error instanceof AppFailure && error.appError.code === "conflict")
+        throw chatOpenElsewhere(error);
+      throw error;
+    }
   }
 
   #openResult(entry: ChatEntry): ChatOpenResult {
