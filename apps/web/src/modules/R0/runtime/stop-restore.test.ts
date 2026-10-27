@@ -3,7 +3,7 @@ import {
   type CapabilityMap,
   CapabilityStatus,
   type ChatSessionEvent,
-  type RpcSessionSend,
+  type ChatSessionRequest,
   ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
@@ -31,8 +31,8 @@ describe("Stop with queued input on the plain-abort paths", () => {
   test("without the restoring command in the capabilities, Stop sends plain abort and hands nothing back", async () => {
     const commands: unknown[] = [];
     const handedBack: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createOmpRuntime({
@@ -42,15 +42,15 @@ describe("Stop with queued input on the plain-abort paths", () => {
       onQueueRestored: (stopped) => handedBack.push(stopped),
     });
     await controller.cancel();
-    expect(commands).toEqual([{ type: "abort" }]);
+    expect(commands).toEqual([{ method: "abort", params: {} }]);
     expect(handedBack).toEqual([]);
   });
 
   test("when omp rejects the restoring command, Stop reports the failure, sends no plain abort, and keeps the queue", async () => {
     const commands: unknown[] = [];
     const handedBack: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       throw new AppFailure({
         code: "omp_error",
         message: "omp refused the command",
@@ -64,7 +64,7 @@ describe("Stop with queued input on the plain-abort paths", () => {
       onQueueRestored: (stopped) => handedBack.push(stopped),
     });
     await expect(controller.cancel()).rejects.toThrow(AppFailure);
-    expect(commands).toEqual([{ type: "abort_and_restore_queue" }]);
+    expect(commands).toEqual([{ method: "abort_and_restore_queue", params: {} }]);
     expect(handedBack).toEqual([]);
   });
 });

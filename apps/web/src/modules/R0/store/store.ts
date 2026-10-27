@@ -2,6 +2,7 @@ import type {
   AnswerHostRequestArgs,
   AppError,
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId,
   MessageKey,
   OmpEvent,
@@ -13,7 +14,6 @@ import type {
   ProvisionalMessageKey,
   RpcSessionEvent,
   RpcSessionNotification,
-  RpcSessionSend,
   ThreadId,
   ToolCallId,
   UiStateEvent,
@@ -26,6 +26,7 @@ import {
   provisionalMessageKey,
 } from "@omp-app/contracts";
 import {
+  type ChatHostState,
   type HostDialogAnswer,
   type HostDialogRequest,
   type HostRequest,
@@ -362,7 +363,8 @@ function keepUndelivered<T>(queue: T[], item: T): void {
 
 /** The A0 methods needed by this store; all other runtime actions belong to later R0 parts. */
 export interface OmpRuntimeTransport {
-  readonly send?: RpcSessionSend;
+  /** The chat session port's requests (`A0.chatSession.request`). */
+  readonly request?: ChatSessionRequest;
   /** Answers one of the host's requests: a dialog, a tool call, a URI read or write (`A0.chatSession.answer`). */
   readonly answer?: (args: AnswerHostRequestArgs, options?: PortCallOptions) => Promise<null>;
   /** Sends a running tool call's progress (the host's `host_tool_update`); answers whether the call still runs. */
@@ -1888,21 +1890,30 @@ export class OmpRuntimeStore {
     this.commit(next);
   }
 
+  /**
+   * Applies the chat host's `get_state` answer. The host answers with omp's session state, field for field; the store
+   * keeps omp's RPC types until H5.6 removes them, and the two differ only in readonly arrays inside the model.
+   */
+  public applyHostState(state: ChatHostState, options?: { readonly asOfSeq?: number }): void {
+    this.applySessionState(state as unknown as Partial<SessionState>, options);
+  }
+
   /** Typed action used by U5; the server result remains authoritative. */
   public async setTodos(
     phases: readonly TodoPhase[],
     options?: PortCallOptions,
   ): Promise<readonly TodoPhase[]> {
-    if (!this.transport.send) {
+    if (!this.transport.request) {
       const error = errorForUnavailable("setTodos");
       this.fail(error);
       throw new AppFailure(error);
     }
     try {
-      const result = await this.transport.send(
+      const result = await this.transport.request(
         {
           threadId: this.snapshot.threadId,
-          command: { type: "set_todos", phases: cloneValue(phases) as TodoPhase[] },
+          method: "set_todos",
+          params: { phases: cloneValue(phases) as TodoPhase[] },
         },
         options,
       );

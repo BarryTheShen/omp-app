@@ -1,4 +1,4 @@
-import { type CapabilityMap, type RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import { type CapabilityMap, type ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { optIntoRichAsk, richAskOffered } from "./rich-ask";
 
@@ -20,18 +20,18 @@ describe("rich ask questions", () => {
     ).toBe(false);
   });
 
-  test("opts the session in with one set_ask_dialog command", async () => {
+  test("opts the session in with one set_ask_dialog request", async () => {
     const sent: unknown[] = [];
-    const send: RpcSessionSend = async (args) => {
+    const request: ChatSessionRequest = async (args) => {
       sent.push(args);
       return { enabled: true } as never;
     };
-    await optIntoRichAsk(send, threadId);
-    expect(sent).toEqual([{ threadId, command: { type: "set_ask_dialog", enabled: true } }]);
+    await optIntoRichAsk(request, threadId);
+    expect(sent).toEqual([{ threadId, method: "set_ask_dialog", params: { enabled: true } }]);
   });
 
   test("fails with a typed error when omp does not confirm the opt-in", async () => {
-    const send: RpcSessionSend = async () => ({ enabled: false }) as never;
+    const send: ChatSessionRequest = async () => ({ enabled: false }) as never;
     await expect(optIntoRichAsk(send, threadId)).rejects.toMatchObject({
       appError: { code: "omp_error" },
     });

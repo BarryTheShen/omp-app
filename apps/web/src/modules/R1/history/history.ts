@@ -773,7 +773,7 @@ export class SelectedThreadHistoryController {
 
   private defaultStore(threadId: ThreadId): OmpRuntimeStore {
     const transport: OmpRuntimeTransport = {
-      send: this.rpc.send,
+      request: this.chat.request,
       answer: this.chat.answer,
       updateHostTool: ({ threadId: callThreadId, params }, options) =>
         this.chat.request({ threadId: callThreadId, method: "host_tool_update", params }, options),

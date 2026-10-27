@@ -12,13 +12,13 @@ import type {
   AttachmentRef,
   CapabilityKey,
   CapabilityMap,
+  ChatSessionRequest,
   MessageKey,
-  OmpCommand,
   OmpMessage,
   OmpWire,
   PortCallOptions,
-  RpcSessionSend,
 } from "@omp-app/contracts";
+import type { PromptParams } from "@omp-app/contracts/chat-host";
 import { AppFailure } from "@omp-app/contracts";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { credentialFailureFromMessage, credentialStatusError } from "@/modules/D3/auth/credential";
@@ -46,13 +46,14 @@ export interface PromptIntent {
   readonly attachmentRefs?: readonly AttachmentRef[];
   readonly delivery: PromptDelivery;
   readonly signal?: AbortSignalLike;
-  /** Bash only: keep the output out of the model's context (`!!`). omp's RPC bash command takes no such flag, so the runtime refuses the intent. */
+  /** Bash only: keep the output out of the model's context (`!!`). The runtime refuses it until the app offers it. */
   readonly excludeFromContext?: boolean;
 }
 
 export interface OmpRuntimeOptions {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  /** The chat session port's requests (`ChatSessionClient.request`), as the app guards them. */
+  readonly send: ChatSessionRequest;
   readonly capabilities?: CapabilityMap;
   /** Supplies the file attachment adapter used by the composer. */
   readonly attachments?: AttachmentAdapter;
@@ -1119,11 +1120,11 @@ export function promptFromAppend(
   };
 }
 
-function promptCommand(intent: PromptIntent): OmpCommand {
+/** A prompt's params for the chat host: a steer or follow-up sent while a reply streams says how omp queues it. */
+function promptParams(intent: PromptIntent): PromptParams {
   const images = intent.images && intent.images.length > 0 ? [...intent.images] : undefined;
   return {
-    type: "prompt",
-    message: intent.text,
+    text: intent.text,
     ...(images ? { images } : {}),
     ...(intent.delivery === "new" ? {} : { streamingBehavior: intent.delivery }),
   };
@@ -1132,7 +1133,7 @@ function promptCommand(intent: PromptIntent): OmpCommand {
 /** The R0.3 runtime binding used by both React and headless tests. */
 export class OmpRuntimeController {
   private readonly store: OmpRuntimeStore;
-  private readonly send: RpcSessionSend;
+  private readonly send: ChatSessionRequest;
   private readonly projector = new RuntimeMessageProjector();
   private readonly converter = createMemoizedMessageConverter();
   private capabilities: CapabilityMap;
@@ -1221,7 +1222,8 @@ export class OmpRuntimeController {
         await this.send(
           {
             threadId: this.store.getSnapshot().threadId,
-            command: { type: "bash", command: intent.text },
+            method: "bash",
+            params: { command: intent.text },
           },
           { signal: intent.signal },
         );
@@ -1261,7 +1263,7 @@ export class OmpRuntimeController {
       : undefined;
     try {
       await this.send(
-        { threadId: snapshot.threadId, command: promptCommand(intent) },
+        { threadId: snapshot.threadId, method: "prompt", params: promptParams(intent) },
         { signal: intent.signal },
       );
     } catch (error) {
@@ -1285,7 +1287,7 @@ export class OmpRuntimeController {
     }
     try {
       await this.send(
-        { threadId: this.store.getSnapshot().threadId, command: { type: command } },
+        { threadId: this.store.getSnapshot().threadId, method: command, params: {} },
         options,
       );
     } catch (error) {
@@ -1301,10 +1303,11 @@ export class OmpRuntimeController {
     const threadId = this.store.getSnapshot().threadId;
     let restored: OmpWire.AbortAndRestoreQueueResult;
     try {
-      restored = await this.send(
-        { threadId, command: { type: "abort_and_restore_queue" } },
+      // The host's restored queue is omp's own: the same messages, with images in omp's form.
+      restored = (await this.send(
+        { threadId, method: "abort_and_restore_queue", params: {} },
         options,
-      );
+      )) as unknown as OmpWire.AbortAndRestoreQueueResult;
     } catch (error) {
       throw asFailure(error, "Cancelling the omp session failed");
     }

@@ -1,8 +1,8 @@
 import type { AppClient } from "@omp-app/client";
 import {
   CapabilityStatus,
+  type ChatSessionClient,
   type OmpWire,
-  type RpcSessionClient,
   type ThreadId,
 } from "@omp-app/contracts";
 import { afterEach, describe, expect, test } from "vitest";
@@ -156,26 +156,26 @@ describe("D1 model catalog projection", () => {
   });
 });
 
-describe("D1 A0.8 RPC model source", () => {
-  test("routes catalog and session selection through the typed port", async () => {
+describe("D1 model source on the chat session port", () => {
+  test("routes catalog and session selection through the chat session port", async () => {
     const calls: unknown[] = [];
     const session = {
-      send: async (args: unknown) => {
+      request: async (args: unknown) => {
         calls.push(args);
-        const command = (args as { readonly command: { readonly type: string } }).command.type;
-        if (command === "get_available_models") return { models: [rawModel("alpha", "one")] };
+        const { method } = args as { readonly method: string };
+        if (method === "get_available_models") return { models: [rawModel("alpha", "one")] };
         return rawModel("alpha", "one");
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const client = {
       port: () => session,
     } as unknown as AppClient;
     const source = createRpcModelCatalogSource(client, threadId);
     await source.getAvailableModels();
     await source.setModel({ provider: "alpha", modelId: "one" });
-    expect(calls).toHaveLength(2);
-    expect(
-      calls.map((call) => (call as { readonly command: { readonly type: string } }).command.type),
-    ).toEqual(["get_available_models", "set_model"]);
+    expect(calls).toEqual([
+      { threadId, method: "get_available_models", params: {} },
+      { threadId, method: "set_model", params: { provider: "alpha", modelId: "one" } },
+    ]);
   });
 });

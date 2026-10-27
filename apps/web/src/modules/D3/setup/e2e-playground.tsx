@@ -1,4 +1,4 @@
-import { AppPort, RpcSessionPort } from "@omp-app/contracts";
+import { AppPort, ChatSessionPort } from "@omp-app/contracts";
 import { createRoot } from "react-dom/client";
 import { createChatSessionAppClient } from "../../../launch/chat-session-shim";
 import { APP_TOKEN_STORAGE_KEY, websocketUrl } from "../../../launch/token";
@@ -13,12 +13,12 @@ async function mount(): Promise<void> {
   window.addEventListener("pagehide", () => client.dispose(), { once: true });
   const serverInfo = await client.port(AppPort).serverInfo({});
   const opened = await client
-    .port(RpcSessionPort)
+    .port(ChatSessionPort)
     .open({ folderPath: serverInfo.launchFolder, start: "new" });
   const setup = createProviderSetup({
     client,
     threadId: opened.threadId,
-    capabilities: opened.capabilities,
+    capabilities: await client.port(AppPort).capabilities({}),
   });
   createRoot(container).render(<ProviderSetupPanel setup={setup} />);
 }

@@ -3,28 +3,34 @@ import type {
   CapabilityMap,
   ModeChangeArgs,
   ModeChangeResult,
-  OmpCommandMap,
   PortCallOptions,
   ThreadId,
 } from "@omp-app/contracts";
-import type { ModeCommandResult, ModeRequest, ModeSnapshot, ToolAvailability } from "./models";
+import type { ChatHostMethodMap } from "@omp-app/contracts/chat-host";
+import type {
+  GetStateResult,
+  ModeCommandResult,
+  ModeRequest,
+  ModeSnapshot,
+  ToolAvailability,
+} from "./models";
 
 /** AP4 gateway seam: the server reads omp's reply into a typed outcome; D7 never matches command text. */
 export interface ModeCommandGateway {
   readonly change: (args: ModeChangeArgs, options?: PortCallOptions) => Promise<ModeChangeResult>;
 }
 
-/** A0.8 direct RPC seam for the modes omp reports and changes over RPC; params and results stay owned by @omp-app/contracts. */
+/** The chat host's requests for the modes omp reports and changes; params and results are the host's (`@omp-app/contracts`). */
 export interface ModeRpc {
-  readonly getState: (options?: PortCallOptions) => Promise<OmpCommandMap["get_state"]["result"]>;
+  readonly getState: (options?: PortCallOptions) => Promise<GetStateResult>;
   readonly setFastMode: (
-    args: OmpCommandMap["set_fast_mode"]["params"],
+    args: ChatHostMethodMap["set_fast_mode"]["params"],
     options?: PortCallOptions,
-  ) => Promise<OmpCommandMap["set_fast_mode"]["result"]>;
+  ) => Promise<ChatHostMethodMap["set_fast_mode"]["result"]>;
   readonly setSlowMode: (
-    args: OmpCommandMap["set_slow_mode"]["params"],
+    args: ChatHostMethodMap["set_slow_mode"]["params"],
     options?: PortCallOptions,
-  ) => Promise<OmpCommandMap["set_slow_mode"]["result"]>;
+  ) => Promise<ChatHostMethodMap["set_slow_mode"]["result"]>;
 }
 
 export interface ExecutionModePort {

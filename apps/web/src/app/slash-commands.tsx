@@ -2,6 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
+  type ChatSessionRequest,
   type CommandRunResult,
   type McpCommandActionArgs,
   type McpCommandActionResult,
@@ -9,7 +10,6 @@ import {
   type ModeChangeResult,
   modeChangeFromCommand,
   type PortCallOptions,
-  type RpcSessionSend,
   SESSION_DELETE_OTHER_VIEW,
   SESSION_DELETE_RUNNING_TURN,
   type SessionDeleteCommandArgs,
@@ -919,34 +919,32 @@ export function routeSubmit({
   return provider.route(intent.text);
 }
 
-/** The commands that send text to omp's model or to its command handling. Only these can run a guarded form. */
+/** The requests that send text to omp's model or to its command handling. Only these can run a guarded form. */
 const SENDS_TEXT_TO_OMP: Record<string, true> = {
   prompt: true,
   steer: true,
   follow_up: true,
-  abort_and_prompt: true,
 };
 
-/** The text a command sends to omp, when it is one of those commands. */
-function textSentToOmp(command: unknown): string | undefined {
-  if (typeof command !== "object" || command === null) return undefined;
-  const type = "type" in command ? command.type : undefined;
-  const message = "message" in command ? command.message : undefined;
-  if (typeof type !== "string" || SENDS_TEXT_TO_OMP[type] !== true) return undefined;
-  return typeof message === "string" ? message : undefined;
+/** The text a request sends to omp, when it is one of those requests. */
+function textSentToOmp(method: string, params: unknown): string | undefined {
+  if (SENDS_TEXT_TO_OMP[method] !== true) return undefined;
+  if (typeof params !== "object" || params === null) return undefined;
+  const text = "text" in params ? params.text : undefined;
+  return typeof text === "string" ? text : undefined;
 }
 
 /**
- * The send path under every route that is not the composer's own submit (a retry, an edit, a queued message): a
+ * The request path under every route that is not the composer's own submit (a retry, an edit, a queued message): a
  * guarded form is refused before it leaves the browser. The composer routes these forms to the app first
  * (`routeSubmit`), so this refusal is the net under the other paths.
  */
-export function guardOmpSend(send: RpcSessionSend): RpcSessionSend {
+export function guardOmpSend(request: ChatSessionRequest): ChatSessionRequest {
   return (args, options) => {
-    const text = textSentToOmp(args.command);
+    const text = textSentToOmp(args.method, args.params);
     const name = text === undefined ? null : guardedCommandName(text);
     if (name !== null) return Promise.reject(refusedSend(name));
-    return send(args, options);
+    return request(args, options);
   };
 }
 

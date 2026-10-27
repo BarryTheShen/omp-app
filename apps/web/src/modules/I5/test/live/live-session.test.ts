@@ -2,26 +2,26 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
-  type RpcSessionEvent,
-  type RpcSessionPort,
+  type ChatSessionEvent,
+  type ChatSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { I5_LIVE_CAPABILITY } from "../../contract";
 import { createLiveVoiceSession, type FinishedVoiceTurn } from "../../live/live-session";
 
-/** A fake omp: it answers the live commands as the RPC docs describe, and lets a test emit live frames. */
+/** A fake chat host: it answers the live requests as omp does, and lets a test emit live events. */
 class FakeOmp {
   readonly sends: unknown[] = [];
-  readonly listeners = new Set<(payload: RpcSessionEvent, seq: number) => void>();
+  readonly listeners = new Set<(payload: ChatSessionEvent, seq: number) => void>();
   refuseStart: AppFailure | undefined;
   refuseStop: AppFailure | undefined;
   /** omp runs one live session at a time: a live_start while one is active is refused, and live_stop or live_end ends it. */
   active = false;
-  async send(args: unknown): Promise<unknown> {
+  async request(args: unknown): Promise<unknown> {
     this.sends.push(args);
-    const command = (args as { command: { type: string; muted?: boolean } }).command;
-    if (command.type === "live_start") {
+    const { method, params } = args as { method: string; params: { muted?: boolean } };
+    if (method === "live_start") {
       if (this.refuseStart !== undefined) throw this.refuseStart;
       if (this.active) {
         throw new AppFailure({
@@ -33,33 +33,33 @@ class FakeOmp {
       this.active = true;
       return { voice: "sol" };
     }
-    if (command.type === "live_stop") {
+    if (method === "live_stop") {
       if (this.refuseStop !== undefined) throw this.refuseStop;
       this.active = false;
-      return null;
+      return {};
     }
-    if (command.type === "live_mute") return { muted: command.muted === true };
-    return undefined;
+    if (method === "live_mute") return { muted: params.muted === true };
+    return {};
   }
   async subscribe() {
     return {
-      stream: "A0.rpcSession/event/live-thread",
+      stream: "A0.chatSession/event/live-thread",
       lastSeq: 0,
-      onEvent: (listener: (payload: RpcSessionEvent, seq: number) => void) => {
+      onEvent: (listener: (payload: ChatSessionEvent, seq: number) => void) => {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
       },
       unsubscribe: async () => undefined,
     };
   }
-  emit(frame: Record<string, unknown>, seq = 1): void {
+  emit(event: Record<string, unknown>, seq = 1): void {
     // omp's session ends on its own live_end, so a later start is not refused.
-    if (frame.type === "live_end") this.active = false;
-    const payload = { kind: "notification", frame } as unknown as RpcSessionEvent;
+    if (event.type === "live_end") this.active = false;
+    const payload = { kind: "event", event } as unknown as ChatSessionEvent;
     for (const listener of [...this.listeners]) listener(payload, seq);
   }
   commandTypes(): string[] {
-    return this.sends.map((entry) => (entry as { command: { type: string } }).command.type);
+    return this.sends.map((entry) => (entry as { method: string }).method);
   }
 }
 
@@ -69,7 +69,7 @@ const available: CapabilityMap = {
 
 function sessionFixture(omp: FakeOmp, capabilities: CapabilityMap = available) {
   const client = {
-    port: () => omp as unknown as RpcSessionPort,
+    port: () => omp as unknown as ChatSessionPort,
     subscribe: () => omp.subscribe(),
   } as unknown as AppClient;
   const admitted: FinishedVoiceTurn[] = [];

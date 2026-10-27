@@ -3,10 +3,10 @@ import {
   AppFailure,
   type CapabilityKey,
   type CapabilityMap,
+  type ChatSessionClient,
+  ChatSessionPort,
   type OmpWire,
   type PortCallOptions,
-  type RpcSessionClient,
-  RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import {
@@ -251,21 +251,21 @@ export class ThinkingLevelsController implements ThinkingLevelsPort {
 }
 
 export function createRpcThinkingSource(client: AppClient, threadId: ThreadId): ThinkingSource {
-  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  const session = client.port(ChatSessionPort) as ChatSessionClient;
   return {
     getAvailableLevels: async (options) =>
       (
-        (await session.send(
-          { threadId, command: { type: "get_available_thinking_levels" } },
+        await session.request(
+          { threadId, method: "get_available_thinking_levels", params: {} },
           options,
-        )) as OmpWire.GetAvailableThinkingLevelsResult
+        )
       ).levels,
     setLevel: async (level, options) => {
-      await session.send({ threadId, command: { type: "set_thinking_level", level } }, options);
+      await session.request({ threadId, method: "set_thinking_level", params: { level } }, options);
     },
     cycleLevel: async (options) =>
-      (await session.send(
-        { threadId, command: { type: "cycle_thinking_level" } },
+      (await session.request(
+        { threadId, method: "cycle_thinking_level", params: {} },
         options,
       )) as OmpWire.ThinkingLevelCycleResult | null,
   };

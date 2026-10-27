@@ -1,5 +1,10 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import type { ChatSessionEvent, OmpMessage, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type {
+  ChatSessionEvent,
+  ChatSessionRequest,
+  OmpMessage,
+  ThreadId,
+} from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ompEvent } from "@/modules/R0/store/session-events";
@@ -42,7 +47,7 @@ afterEach(() => {
 
 const threadId = "u1-earlier-steps-test" as ThreadId;
 const capabilities = { "omp.cmd.prompt": { state: "available" as const, via: "rpc" as const } };
-const send: RpcSessionSend = async () => undefined as never;
+const send: ChatSessionRequest = async () => undefined as never;
 
 function stepLabel(index: number): string {
   return `step-${String(index).padStart(4, "0")}`;

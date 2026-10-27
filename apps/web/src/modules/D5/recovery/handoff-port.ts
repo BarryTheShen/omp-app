@@ -1,18 +1,21 @@
 import {
   AppFailure,
-  type OmpWire,
-  type RpcSessionClient,
+  type ChatSessionClient,
   SessionFilePath,
   type ThreadId,
 } from "@omp-app/contracts";
+import type { ChatHostMethodMap } from "@omp-app/contracts/chat-host";
 import { type HandoffPort, type HandoffRequest, HandoffResult } from "../contract";
 
 /**
  * omp's handoff answer as the contract's HandoffResult. omp answers `{ savedPath? }` when it made a
- * handoff and `null` when it made none, which is a failure here, not a success. Refusals (a reply in
- * flight, nothing to hand off) reach the caller as the send's own failure.
+ * handoff (a path omp left out arrives as no key at all) and `null` when it made none, which is a failure
+ * here, not a success. Refusals (a reply in flight, nothing to hand off) reach the caller as the request's
+ * own failure.
  */
-export function handoffResultOf(payload: OmpWire.HandoffResult | null): HandoffResult {
+export function handoffResultOf(
+  payload: Partial<NonNullable<ChatHostMethodMap["handoff"]["result"]>> | null,
+): HandoffResult {
   if (payload === null) {
     throw new AppFailure({
       code: "unavailable",
@@ -32,20 +35,22 @@ export function handoffResultOf(payload: OmpWire.HandoffResult | null): HandoffR
   });
 }
 
-/** The `HandoffPort` over A0's typed `send`, for the thread that `threadId` names at the call. */
+/** The `HandoffPort` over the chat session port, for the thread that `threadId` names at the call. */
 export function createHandoffPort(
-  session: Pick<RpcSessionClient, "send">,
+  session: Pick<ChatSessionClient, "request">,
   threadId: () => ThreadId,
 ): HandoffPort {
   return {
     createHandoff: async (request?: HandoffRequest) => {
       // An empty focus is no focus: `/handoff` with nothing after it sends the bare command.
       const instructions = request?.customInstructions?.trim();
-      const command =
+      const params =
         instructions === undefined || instructions === ""
-          ? { type: "handoff" as const }
-          : { type: "handoff" as const, customInstructions: instructions };
-      return handoffResultOf(await session.send({ threadId: threadId(), command }));
+          ? {}
+          : { customInstructions: instructions };
+      return handoffResultOf(
+        await session.request({ threadId: threadId(), method: "handoff", params }),
+      );
     },
   };
 }

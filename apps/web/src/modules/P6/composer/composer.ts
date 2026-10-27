@@ -57,7 +57,6 @@ export interface DequeueToEditResult {
   readonly removed: boolean;
   readonly restored: boolean;
   readonly choice: QueueDraftConflictChoice;
-  readonly imagesDropped: boolean;
 }
 
 function invalidArgs(message: string): AppFailure {
@@ -286,8 +285,7 @@ export async function dequeueToEdit(
       throw invalidArgs("A draft is already being edited; choose which text to keep");
     }
     choice = await options.chooseConflict({ queued, existing });
-    if (choice === "cancel")
-      return { removed: false, restored: false, choice, imagesDropped: false };
+    if (choice === "cancel") return { removed: false, restored: false, choice };
   }
   const removed = await controller.removeForEdit(queueItemId);
   if (!removed.changed) {
@@ -299,12 +297,7 @@ export async function dequeueToEdit(
   }
   if (choice === "queued") await options.restoreDraft(queued, removed.images);
   else await options.restoreDraft(existing);
-  return {
-    removed: true,
-    restored: true,
-    choice,
-    imagesDropped: removed.imagesDropped === true,
-  };
+  return { removed: true, restored: true, choice };
 }
 
 export { restoreDraft };

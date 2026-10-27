@@ -1,10 +1,10 @@
 import type { AppClient } from "@omp-app/client";
 import {
+  type ChatSessionClient,
+  ChatSessionPort,
   ProviderAccountStore,
   type ProviderCredentialKind,
   type RedactedProvider,
-  type RpcSessionClient,
-  RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import { z } from "zod";
@@ -36,7 +36,7 @@ export function signInLabel(signIn: ProviderSignIn): string {
   }
 }
 
-/** omp's login list as its session answers `get_login_providers` (rpc-mode.ts:2314-2321). */
+/** omp's login list as the chat host answers `get_login_providers`. */
 const LoginList = z.looseObject({
   providers: z.array(z.looseObject({ id: z.string(), authenticated: z.boolean() })),
 });
@@ -57,9 +57,9 @@ async function loginAuthentication(
   threadId: ThreadId,
 ): Promise<ReadonlyMap<string, boolean> | null> {
   try {
-    const rpc = client.port(RpcSessionPort) as RpcSessionClient;
+    const session = client.port(ChatSessionPort) as ChatSessionClient;
     const list = LoginList.parse(
-      await rpc.send({ threadId, command: { type: "get_login_providers" } }),
+      await session.request({ threadId, method: "get_login_providers", params: {} }),
     );
     return new Map(list.providers.map((provider) => [provider.id, provider.authenticated]));
   } catch {

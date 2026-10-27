@@ -1,9 +1,9 @@
 import type {
   CapabilityMap,
+  ChatSessionRequest,
   EntryId,
   OmpWire,
   PortCallOptions,
-  RpcSessionSend,
   SessionFilePath,
   ThreadId,
 } from "@omp-app/contracts";
@@ -30,7 +30,8 @@ type BranchingController = Pick<OmpBranchingController, "switchTo">;
 /** The R0.4 seam used after omp reports the new session identity. */
 export interface ConversationTransitionOptions {
   readonly store: SourceStore;
-  readonly send: RpcSessionSend;
+  /** The chat session port's requests, as the app guards them. */
+  readonly send: ChatSessionRequest;
   /** R0.4 owns thread switching and history reload; P4 never creates a second reload path. */
   readonly branchingController: BranchingController;
   readonly capabilities?: CapabilityMap;
@@ -104,7 +105,7 @@ function throwIfAborted(signal: AbortSignalLike | undefined): void {
   );
 }
 
-function sessionFileFromState(state: OmpWire.SessionState): SessionFilePath | null {
+function sessionFileFromState(state: { readonly sessionFile?: string }): SessionFilePath | null {
   if (state.sessionFile === undefined) return null;
   try {
     return SessionFilePathSchema.parse(state.sessionFile);
@@ -113,7 +114,7 @@ function sessionFileFromState(state: OmpWire.SessionState): SessionFilePath | nu
   }
 }
 
-function sessionIdFromState(state: OmpWire.SessionState): ThreadId {
+function sessionIdFromState(state: { readonly sessionId: string }): ThreadId {
   try {
     return ThreadIdSchema.parse(state.sessionId);
   } catch (error) {
@@ -186,7 +187,7 @@ function cancelledResult(
  */
 export class OmpConversationTransitionPort implements ConversationTransitionPort {
   private readonly store: SourceStore;
-  private readonly send: RpcSessionSend;
+  private readonly send: ChatSessionRequest;
   private readonly branchingController: BranchingController;
   private readonly isBusy: (() => boolean) | undefined;
   private readonly pickCount: () => number;
@@ -227,10 +228,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
       try {
         result = branchResult(
           await this.send(
-            {
-              threadId: sourceThreadId,
-              command: { type: "branch", entryId: request.entryId },
-            },
+            { threadId: sourceThreadId, method: "branch", params: { entryId: request.entryId } },
             request.signal === undefined ? undefined : { signal: request.signal },
           ),
         );
@@ -276,10 +274,8 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
           await this.send(
             {
               threadId: sourceThreadId,
-              command: {
-                type: "fork",
-                ...(request.entryId === undefined ? {} : { entryId: request.entryId }),
-              },
+              method: "fork",
+              params: request.entryId === undefined ? {} : { entryId: request.entryId },
             },
             request.signal === undefined ? undefined : { signal: request.signal },
           ),
@@ -345,10 +341,11 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
     try {
       // The command may already have changed omp's session before A0 observes the cancellation.
       // Reconcile without the aborted signal so R0 can hydrate that new identity if needed.
-      const state = (await this.send({
+      const state = await this.send({
         threadId: sourceThreadId,
-        command: { type: "get_state" },
-      })) as OmpWire.SessionState;
+        method: "get_state",
+        params: {},
+      });
       const threadId = sessionIdFromState(state);
       if (threadId !== sourceThreadId) await this.branchingController.switchTo(threadId);
     } catch (error) {
@@ -368,15 +365,16 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
     readonly sessionFile: SessionFilePath | null;
     readonly switched: boolean;
   }> {
-    let state: OmpWire.SessionState;
+    let state: { readonly sessionId: string; readonly sessionFile?: string };
     try {
       // A successful branch/fork has already changed omp's process identity. Do not pass the
       // caller's cancellation signal here: cancellation cannot undo that server-side change, and
       // leaving the new identity unreloaded would lose the active branch from the UI.
-      state = (await this.send({
+      state = await this.send({
         threadId: sourceThreadId,
-        command: { type: "get_state" },
-      })) as OmpWire.SessionState;
+        method: "get_state",
+        params: {},
+      });
       const threadId = sessionIdFromState(state);
       if (threadId === sourceThreadId) {
         throw conflict(

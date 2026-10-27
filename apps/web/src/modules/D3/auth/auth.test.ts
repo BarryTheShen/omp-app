@@ -14,19 +14,19 @@ function capabilities(overrides: Partial<CapabilityMap> = {}): CapabilityMap {
   };
 }
 
-function fakeClient(send: (args: unknown) => Promise<unknown>): AppClient {
+function fakeClient(request: (args: unknown) => Promise<unknown>): AppClient {
   return {
-    port: () => ({ send }) as never,
+    port: () => ({ request }) as never,
   } as unknown as AppClient;
 }
 
-describe("D3 RPC authentication adapter", () => {
-  test("discovers typed providers and sends login through A0's RpcSession port", async () => {
+describe("D3 authentication adapter", () => {
+  test("discovers typed providers and sends login through the chat session port", async () => {
     const calls: unknown[] = [];
     const client = fakeClient(async (args) => {
       calls.push(args);
-      const command = (args as { command: { type: string } }).command;
-      return command.type === "get_login_providers"
+      const { method } = args as { method: string };
+      return method === "get_login_providers"
         ? {
             providers: [
               { id: "provider-a", name: "Provider A", available: true, authenticated: false },
@@ -44,8 +44,8 @@ describe("D3 RPC authentication adapter", () => {
       providerId: "provider-a",
     });
     expect(calls).toEqual([
-      { threadId, command: { type: "get_login_providers" } },
-      { threadId, command: { type: "login", providerId: "provider-a" } },
+      { threadId, method: "get_login_providers", params: {} },
+      { threadId, method: "login", params: { providerId: "provider-a" } },
     ]);
   });
 

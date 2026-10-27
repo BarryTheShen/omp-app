@@ -3,9 +3,9 @@ import {
   type AppError,
   AppFailure,
   type CapabilityKey,
+  type ChatSessionRequest,
   type EntryId,
   type OmpWire,
-  type RpcSessionSend,
   type ThreadId,
 } from "@omp-app/contracts";
 import { renderHook } from "@testing-library/react";
@@ -28,7 +28,7 @@ import type { P3PromptRuntime } from "../runs/handoff";
 import { useP3RunHandlers } from "../runs/hooks";
 import { createP3Runs, type P3Runs } from "../runs/runs";
 
-/** One command the app sent to omp, as the transport saw it. */
+/** One request the app sent to omp, as the transport saw it. */
 export interface SentCommand {
   readonly threadId: string;
   readonly type: string;
@@ -102,11 +102,11 @@ function answer<T>(value: T | Error): T {
 }
 
 /**
- * The transport omp sits behind. It answers the two commands a branch sends and nothing else: every other command
- * throws, so a flow that sends an unexpected command fails loudly instead of passing.
+ * The transport omp sits behind. It answers the two requests a branch sends and nothing else: every other request
+ * throws, so a flow that sends an unexpected request fails loudly instead of passing.
  */
 export function ompTransport(options: Pick<RunOptions, "branch" | "getState">): {
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly sent: SentCommand[];
 } {
   const sent: SentCommand[] = [];
@@ -114,11 +114,12 @@ export function ompTransport(options: Pick<RunOptions, "branch" | "getState">): 
   let branchCalls = 0;
   const send = (async (args: {
     threadId: ThreadId;
-    command: { readonly type: string; readonly entryId?: string };
+    method: string;
+    params: { readonly entryId?: string };
   }) => {
-    const entry = args.command.entryId === undefined ? {} : { entryId: args.command.entryId };
-    sent.push({ threadId: String(args.threadId), type: args.command.type, ...entry });
-    switch (args.command.type) {
+    const entry = args.params.entryId === undefined ? {} : { entryId: args.params.entryId };
+    sent.push({ threadId: String(args.threadId), type: args.method, ...entry });
+    switch (args.method) {
       case "branch": {
         const last = branchAnswers.length - 1;
         if (last < 0) throw new Error("The run harness needs at least one branch answer");
@@ -129,9 +130,9 @@ export function ompTransport(options: Pick<RunOptions, "branch" | "getState">): 
       case "get_state":
         return answer(options.getState ?? STATE_AFTER_BRANCH);
       default:
-        throw new Error(`The run harness does not answer ${args.command.type}`);
+        throw new Error(`The run harness does not answer ${args.method}`);
     }
-  }) as unknown as RpcSessionSend;
+  }) as unknown as ChatSessionRequest;
   return { send, sent };
 }
 

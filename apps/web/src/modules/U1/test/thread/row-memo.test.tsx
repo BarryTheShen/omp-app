@@ -6,8 +6,8 @@ import { AssistantRuntimeProvider, type MessageState } from "@assistant-ui/react
 import type {
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -53,7 +53,7 @@ const threadId = "u1-row-memo" as ThreadId;
 const capabilities: CapabilityMap = {
   "omp.cmd.prompt": { state: "available", via: "rpc" },
 };
-const send: RpcSessionSend = async () => undefined as never;
+const send: ChatSessionRequest = async () => undefined as never;
 const usage = {
   input: 1,
   output: 1,

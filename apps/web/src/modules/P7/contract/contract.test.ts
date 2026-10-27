@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import type { OmpWire, RpcSessionClient, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionClient, OmpWire, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type {
   CompactionStateSource,
@@ -122,8 +122,8 @@ describe("P7 context and usage schemas", () => {
   });
 });
 
-describe("P7 typed RPC adapters", () => {
-  test("refreshes usage through get_session_stats and compacts through typed commands", async () => {
+describe("P7 adapters on the chat host's requests", () => {
+  test("refreshes usage through get_session_stats and compacts through the host's requests", async () => {
     const calls: unknown[] = [];
     const usageSnapshot = {
       sessionId: threadId,
@@ -152,15 +152,15 @@ describe("P7 typed RPC adapters", () => {
       subscribe: () => () => undefined,
     };
     const session = {
-      send: async (args: unknown) => {
+      request: async (args: unknown) => {
         calls.push(args);
-        const command = (args as { readonly command: { readonly type: string } }).command.type;
-        if (command === "get_session_stats") return rawStats();
-        if (command === "compact")
+        const { method } = args as { readonly method: string };
+        if (method === "get_session_stats") return rawStats();
+        if (method === "compact")
           return { summary: "done", firstKeptEntryId: "entry-1", tokensBefore: 100 };
-        return undefined;
+        return {};
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const client = { port: () => session } as unknown as AppClient;
     const usage = createUsagePort(usageSource, client, threadId);
     const compaction = createCompactionPort(compactionSource, client, threadId);
@@ -173,9 +173,11 @@ describe("P7 typed RPC adapters", () => {
     expect(seen).toEqual([60]);
     await compaction.compact({ customInstructions: "focus" });
     await compaction.setAutoCompaction({ enabled: true });
-    expect(
-      calls.map((call) => (call as { readonly command: { readonly type: string } }).command.type),
-    ).toEqual(["get_session_stats", "compact", "set_auto_compaction"]);
+    expect(calls).toEqual([
+      { threadId, method: "get_session_stats", params: {} },
+      { threadId, method: "compact", params: { customInstructions: "focus" } },
+      { threadId, method: "set_auto_compaction", params: { enabled: true } },
+    ]);
   });
 
   test("compaction lifecycle state remains source-owned", () => {

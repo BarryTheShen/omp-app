@@ -1,9 +1,8 @@
 import type {
   AppError,
   CapabilityMap,
+  ChatSessionClient,
   FolderPath,
-  PortClient,
-  RpcSessionPort,
   ThreadId,
 } from "@omp-app/contracts";
 import { useCallback } from "react";
@@ -38,7 +37,7 @@ interface AppSurfacesInput {
   readonly openNewChatFromSidebar: (threadId: ThreadId) => Promise<void>;
   readonly openSidebarChat: (threadId: ThreadId) => Promise<boolean>;
   readonly catalogRefresh: CatalogRefresh;
-  readonly rpc: PortClient<typeof RpcSessionPort>;
+  readonly chat: ChatSessionClient;
   readonly controller: SelectedThreadHistoryController | null;
   readonly reportNewChat: (status: NewChatStatus) => void;
   readonly newChatTicketNow: ActiveThreadProps["newChatTicketNow"];
@@ -64,7 +63,7 @@ export function useAppSurfaces({
   openNewChatFromSidebar,
   openSidebarChat,
   catalogRefresh,
-  rpc,
+  chat,
   controller,
   reportNewChat,
   newChatTicketNow,
@@ -116,7 +115,7 @@ export function useAppSurfaces({
             }
             onDeletedOpenThread={() => controller?.close()}
             stopRunning={async (threadId) => {
-              await rpc.send({ threadId, command: { type: "abort" } });
+              await chat.request({ threadId, method: "abort", params: {} });
             }}
             currentTurnRunning={() =>
               controller?.getSnapshot().store?.getSnapshot().prompt.streaming === true

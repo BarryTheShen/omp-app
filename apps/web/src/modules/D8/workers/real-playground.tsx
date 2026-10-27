@@ -1,11 +1,10 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  AppPort,
   type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
   FolderPath,
-  type RpcSessionClient,
-  RpcSessionPort,
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -88,25 +87,26 @@ function RealWorkersPanel({ folder }: { readonly folder: string }) {
       await waitForClient(client);
       if (!active) return;
 
-      const rpc = client.port(RpcSessionPort) as RpcSessionClient;
-      const opened = await rpc.open({ folderPath: FolderPath.parse(folder), start: "new" });
+      const chat = client.port(ChatSessionPort) as ChatSessionClient;
+      const opened = await chat.open({ folderPath: FolderPath.parse(folder), start: "new" });
       if (!active) return;
       const threadId = opened.threadId;
       const runtime = new OmpRuntimeStore({ threadId });
       subscription = await client.subscribe(ChatSessionPort, "event", { scope: threadId });
       subscription.onEvent((event, sequence) => runtime.ingest(event, sequence));
-      const session = await rpc.send({ threadId, command: { type: "get_state" } });
-      runtime.applySessionState(session);
+      const state = await chat.request({ threadId, method: "get_state", params: {} });
+      runtime.applyHostState(state);
+      const capabilities = await client.port(AppPort).capabilities({});
       if (!active) return;
 
       window.sendRealWorkersPrompt = async (message) => {
-        await rpc.send({ threadId, command: { type: "prompt", message } });
+        await chat.request({ threadId, method: "prompt", params: { text: message } });
       };
       subagents = createSubagentClient({
         threadId,
-        session: client.port(ChatSessionPort) as ChatSessionClient,
+        session: chat,
         runtime,
-        capabilities: opened.capabilities,
+        capabilities,
       });
       const store = new AgentRosterStore({ threadId, client: subagents });
       roster = store;
@@ -114,7 +114,7 @@ function RealWorkersPanel({ folder }: { readonly folder: string }) {
         roster: store,
         start: () => store.start(),
         client: subagents,
-        capabilities: () => opened.capabilities,
+        capabilities: () => capabilities,
         debugLog: (cause) => console.error("[omp-app] workers panel:", cause),
       });
       if (active) setController(workers);

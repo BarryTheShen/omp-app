@@ -1,4 +1,5 @@
-import type { CapabilityMap, OmpWire, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { RemoveQueuedMessageResult } from "@omp-app/contracts/chat-host";
 import { describe, expect, test } from "vitest";
 import { createQueueController } from "@/modules/R0/actions";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "@/modules/R0/store";
@@ -17,7 +18,7 @@ function storeWithQueuedMessage(): OmpRuntimeStore {
   });
 }
 
-async function restoreRemovedMessage(result: OmpWire.RemoveQueuedMessageResult) {
+async function restoreRemovedMessage(result: RemoveQueuedMessageResult) {
   const store = storeWithQueuedMessage();
   store.applySessionState({
     isStreaming: true,
@@ -27,8 +28,8 @@ async function restoreRemovedMessage(result: OmpWire.RemoveQueuedMessageResult) 
     queuedMessages: { steering: [], followUp: ["queued item"] },
   });
   const sent: unknown[] = [];
-  const send: RpcSessionSend = async ({ command }) => {
-    sent.push(command);
+  const send: ChatSessionRequest = async ({ method, params }) => {
+    sent.push({ method, params });
     return result as never;
   };
   const queue = createQueueAdapter(createQueueController({ store, send, capabilities }));
@@ -53,26 +54,24 @@ describe("P6 acceptance: removed queue content reaches draft restoration", () =>
       data: "aGVsbG8=",
       mimeType: "image/png",
     };
-    const result = await restoreRemovedMessage({ removed: true, images: [image] });
-    expect(result.outcome).toEqual({
+    const result = await restoreRemovedMessage({
       removed: true,
-      restored: true,
-      choice: "queued",
-      imagesDropped: false,
+      text: "queued item",
+      images: [image],
     });
+    expect(result.outcome).toEqual({ removed: true, restored: true, choice: "queued" });
     expect(result.restored).toEqual({ text: "queued item", images: [image] });
     expect(result.sent).toEqual([
-      { type: "remove_queued_message", message: "queued item", queue: "followUp" },
+      {
+        method: "remove_queued_message",
+        params: { message: "queued item", queue: "followUp" },
+      },
     ]);
   });
 
-  test("an omp omission marker reaches the edit result; ordinary text removal stays clean", async () => {
-    const omitted = await restoreRemovedMessage({ removed: true, imagesDropped: true });
-    expect(omitted.outcome.imagesDropped).toBe(true);
-    expect(omitted.restored).toEqual({ text: "queued item" });
-
-    const textOnly = await restoreRemovedMessage({ removed: true });
-    expect(textOnly.outcome.imagesDropped).toBe(false);
+  test("a removed message without images restores its text alone", async () => {
+    const textOnly = await restoreRemovedMessage({ removed: true, text: "queued item" });
+    expect(textOnly.outcome).toEqual({ removed: true, restored: true, choice: "queued" });
     expect(textOnly.restored).toEqual({ text: "queued item" });
   });
 });

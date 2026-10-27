@@ -10,8 +10,9 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   AppPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   type FolderPath,
-  RpcSessionPort,
   type SessionFile,
   SessionFileStore,
   type ThreadId,
@@ -83,7 +84,6 @@ async function newestThreadId(client: AppClient, folder: FolderPath): Promise<Th
 
 async function openSession(client: AppClient): Promise<Session> {
   const app = client.port(AppPort);
-  const rpc = client.port(RpcSessionPort);
   const [capabilities, serverInfo] = await Promise.all([app.capabilities({}), app.serverInfo({})]);
   const threadId = await newestThreadId(client, serverInfo.launchFolder);
   const history = createSelectedThreadHistoryController({
@@ -91,7 +91,8 @@ async function openSession(client: AppClient): Promise<Session> {
     folder: serverInfo.launchFolder,
   });
   const store = await history.openExisting(threadId);
-  const controller = new OmpRuntimeController({ capabilities, send: rpc.send, store });
+  const chat = client.port(ChatSessionPort) as ChatSessionClient;
+  const controller = new OmpRuntimeController({ capabilities, send: chat.request, store });
   return { store, controller, history, threadId };
 }
 

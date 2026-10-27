@@ -1,4 +1,9 @@
-import type { OmpCommandGateway, PortClient, RpcSessionClient, ThreadId } from "@omp-app/contracts";
+import type {
+  ChatSessionClient,
+  OmpCommandGateway,
+  PortClient,
+  ThreadId,
+} from "@omp-app/contracts";
 import type { SlashAppCommand } from "@/modules/D2/slash";
 import { createExportPort, createExportSlashCommands } from "@/modules/D4/export";
 import type { OmpRuntimeStore } from "@/modules/R0/store/store";
@@ -11,7 +16,7 @@ export interface ExportCommandsOptions {
   readonly store: Pick<OmpRuntimeStore, "getSnapshot">;
   /** Loads the page of messages older than the ones shown; undefined when no chat is open. */
   readonly loadOlder: (() => Promise<void>) | undefined;
-  readonly session: Pick<RpcSessionClient, "send">;
+  readonly session: Pick<ChatSessionClient, "request">;
   readonly gateway: Pick<PortClient<typeof OmpCommandGateway>, "dump">;
   readonly dialogs: DialogHost;
   readonly download: (fileName: string, text: string) => void;

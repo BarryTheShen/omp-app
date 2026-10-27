@@ -1,11 +1,18 @@
-import type { EntryId, OmpMessage, OmpWire, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type {
+  ChatSessionRequest,
+  EntryId,
+  OmpMessage,
+  OmpWire,
+  ThreadId,
+} from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { PromptIntent } from "../runtime/runtime";
 import type { OmpRuntimeStore, RuntimeMessage, TranscriptEntry } from "../store/store";
 
 export interface BranchingOptions {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  /** The chat session port's requests, as the app guards them. */
+  readonly send: ChatSessionRequest;
   /** R0.3's one prompt admission path; branching never sends a prompt itself. */
   readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   /** R0.2's history reload for the newly selected session/head. */
@@ -109,7 +116,7 @@ function pathToEntry(
  */
 export class OmpBranchingController {
   private readonly store: OmpRuntimeStore;
-  private readonly send: RpcSessionSend;
+  private readonly send: ChatSessionRequest;
   private readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   private readonly reloadHistory: () => Promise<void>;
   private readonly switchThread: (threadId: ThreadId) => Promise<void>;
@@ -160,10 +167,11 @@ export class OmpBranchingController {
   private async reconcileBranch(): Promise<ThreadId> {
     const sourceThreadId = this.store.getSnapshot().threadId;
     try {
-      const state = (await this.send({
+      const state = await this.send({
         threadId: sourceThreadId,
-        command: { type: "get_state" },
-      })) as OmpWire.SessionState;
+        method: "get_state",
+        params: {},
+      });
       this.branchNeedsReconcile = false;
       const nextThreadId = state.sessionId as ThreadId;
       await this.switchThread(nextThreadId);
@@ -208,12 +216,13 @@ export class OmpBranchingController {
   /** Branches the source chat at an entry, then opens omp's new chat. The chat keeps the name omp gave it. */
   private async branchAndReload(entryId: EntryId): Promise<ThreadId> {
     const sourceThreadId = this.store.getSnapshot().threadId;
-    let result: OmpWire.BranchResult;
+    let result: { readonly cancelled: boolean };
     try {
-      result = (await this.send({
+      result = await this.send({
         threadId: sourceThreadId,
-        command: { type: "branch", entryId },
-      })) as OmpWire.BranchResult;
+        method: "branch",
+        params: { entryId },
+      });
     } catch (error) {
       throw asFailure(error, "Branching the session failed");
     }

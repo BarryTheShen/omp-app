@@ -3,10 +3,10 @@ import {
   type AbortSignalLike,
   AppFailure,
   type CapabilityMap,
+  type ChatSessionClient,
+  type ChatSessionEvent,
+  ChatSessionPort,
   type PortCallOptions,
-  type RpcSessionClient,
-  type RpcSessionEvent,
-  RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import { z } from "zod";
@@ -39,13 +39,13 @@ export interface SlashCommandCatalogController {
 
 /**
  * omp's slash-command catalog for one chat. It reads `get_available_commands` once and then follows the
- * `available_commands_update` frames omp pushes when its command list changes. A failed read keeps the
+ * `available_commands` events the chat host sends when omp's command list changes. A failed read keeps the
  * last good list and records the failure, so the popover can say what went wrong.
  */
 export function createSlashCommandCatalog(
   options: SlashCommandCatalogOptions,
 ): SlashCommandCatalogController {
-  const rpc = options.client.port(RpcSessionPort) as RpcSessionClient;
+  const session = options.client.port(ChatSessionPort) as ChatSessionClient;
   const listeners = new Set<(snapshot: SlashCommandCatalogValue) => void>();
   let disposed = false;
   let snapshot: SlashCommandCatalogValue = {
@@ -56,7 +56,7 @@ export function createSlashCommandCatalog(
   let inFlight: Promise<readonly SlashCommandValue[]> | undefined;
   // Counts live updates. A reply that was requested before a live update may be older than it, so it is ignored.
   let liveUpdates = 0;
-  let subscription: AppClientSubscription<RpcSessionEvent> | undefined;
+  let subscription: AppClientSubscription<ChatSessionEvent> | undefined;
   let subscribing: Promise<void> | undefined;
   let unsubscribeEvents: (() => void) | undefined;
 
@@ -72,16 +72,16 @@ export function createSlashCommandCatalog(
     return commands;
   };
 
-  const handleEvent = (payload: RpcSessionEvent): void => {
-    if (payload.kind !== "notification" || !isAvailableCommandsUpdate(payload.frame)) return;
+  const handleEvent = (payload: ChatSessionEvent): void => {
+    if (payload.kind !== "event" || !isAvailableCommandsUpdate(payload.event)) return;
     liveUpdates += 1;
-    applyReady(payload.frame.commands);
+    applyReady(payload.event.commands);
   };
 
   const ensureSubscription = async (): Promise<void> => {
     if (disposed || subscription !== undefined) return;
     subscribing ??= options.client
-      .subscribe(RpcSessionPort, "event", { scope: options.threadId })
+      .subscribe(ChatSessionPort, "event", { scope: options.threadId })
       .then((next) => {
         if (disposed) {
           // The catalog was disposed while subscribing; nothing else can release this subscription.
@@ -151,8 +151,8 @@ export function createSlashCommandCatalog(
     const pending = (async (): Promise<readonly SlashCommandValue[]> => {
       try {
         await ensureSubscription();
-        const reply = await rpc.send(
-          { threadId: options.threadId, command: { type: "get_available_commands" } },
+        const reply = await session.request(
+          { threadId: options.threadId, method: "get_available_commands", params: {} },
           callOptions,
         );
         if (liveUpdates !== liveAtRequest) return snapshot.commands;
@@ -204,7 +204,7 @@ export function createSlashCommandCatalog(
 
 const CommandRecord = z.record(z.string(), z.unknown());
 const AvailableCommandsUpdateFrame = z.object({
-  type: z.literal("available_commands_update"),
+  type: z.literal("available_commands"),
   commands: z.array(z.unknown()),
 });
 
@@ -264,9 +264,9 @@ function boundInput(value: unknown): unknown {
 }
 
 function isAvailableCommandsUpdate(
-  frame: unknown,
-): frame is z.infer<typeof AvailableCommandsUpdateFrame> {
-  return AvailableCommandsUpdateFrame.safeParse(frame).success;
+  event: unknown,
+): event is z.infer<typeof AvailableCommandsUpdateFrame> {
+  return AvailableCommandsUpdateFrame.safeParse(event).success;
 }
 
 /** A short fingerprint of the list, so a view can tell that the list changed. */

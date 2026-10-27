@@ -2,9 +2,9 @@ import type { AddToolResultOptions } from "@assistant-ui/react";
 import type {
   CapabilityKey,
   CapabilityMap,
+  ChatSessionRequest,
   OmpWire,
   PortCallOptions,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
@@ -72,8 +72,6 @@ export interface QueueMutationResult {
   readonly changed: boolean;
   /** Returned only when a queued message was removed; the composer can restore these images. */
   readonly images?: readonly OmpWire.ImageContent[];
-  /** omp omitted the images because the full removal response exceeded its transport limit. */
-  readonly imagesDropped?: boolean;
 }
 
 export type QueueListener = (snapshot: QueueSnapshot) => void;
@@ -110,7 +108,8 @@ export interface QueuePort {
 
 export interface QueueControllerOptions {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  /** The chat session port's requests, as the app guards them. */
+  readonly send: ChatSessionRequest;
   readonly capabilities?: CapabilityMap;
 }
 
@@ -193,7 +192,7 @@ function commandCapability(command: QueueCommandCapability): CapabilityKey {
 /** R0.5's one-state queue and pending-request action controller. */
 export class QueueController implements QueuePort {
   private readonly store: OmpRuntimeStore;
-  private readonly send: RpcSessionSend;
+  private readonly send: ChatSessionRequest;
   private capabilities: CapabilityMap;
   private readonly answering = new Set<string>();
 
@@ -227,9 +226,9 @@ export class QueueController implements QueuePort {
       await this.send(
         {
           threadId: this.threadId(),
-          command: {
-            type: command,
-            message: intent.text,
+          method: command,
+          params: {
+            text: intent.text,
             ...(intent.images && intent.images.length > 0 ? { images: [...intent.images] } : {}),
           },
         },
@@ -248,21 +247,15 @@ export class QueueController implements QueuePort {
       const result = await this.send(
         {
           threadId: this.threadId(),
-          command: {
-            type: "remove_queued_message",
-            message: item.message,
-            queue: item.lane,
-          },
+          method: "remove_queued_message",
+          params: { message: item.message, queue: item.lane },
         },
         { signal: item.signal },
       );
-      const removed = isRecord(result) && result.removed === true;
-      if (!removed) return { changed: false };
-      const response = result as OmpWire.RemoveQueuedMessageResult;
+      if (!result.removed) return { changed: false };
       return {
         changed: true,
-        ...(response.images ? { images: response.images } : {}),
-        ...(response.imagesDropped ? { imagesDropped: true } : {}),
+        ...(result.images ? { images: result.images as OmpWire.ImageContent[] } : {}),
       };
     } catch (error) {
       throw asFailure(error, "Removing the queued message failed");
@@ -278,13 +271,10 @@ export class QueueController implements QueuePort {
     this.requireCapability(capability, "Promoting queued messages is unavailable for this runtime");
     try {
       const result = await this.send(
-        {
-          threadId: this.threadId(),
-          command: { type: "promote_queued_message", message },
-        },
+        { threadId: this.threadId(), method: "promote_queued_message", params: { message } },
         options,
       );
-      return { changed: isRecord(result) && result.promoted === true };
+      return { changed: result.promoted };
     } catch (error) {
       throw asFailure(error, "Promoting the queued message failed");
     }
@@ -391,22 +381,19 @@ export class QueueController implements QueuePort {
       switch (command) {
         case "set_steering_mode":
           await this.send(
-            { threadId: this.threadId(), command: { type: command, mode: mode as QueueMode } },
+            { threadId: this.threadId(), method: command, params: { mode: mode as QueueMode } },
             { signal },
           );
           break;
         case "set_follow_up_mode":
           await this.send(
-            { threadId: this.threadId(), command: { type: command, mode: mode as QueueMode } },
+            { threadId: this.threadId(), method: command, params: { mode: mode as QueueMode } },
             { signal },
           );
           break;
         case "set_interrupt_mode":
           await this.send(
-            {
-              threadId: this.threadId(),
-              command: { type: command, mode: mode as InterruptMode },
-            },
+            { threadId: this.threadId(), method: command, params: { mode: mode as InterruptMode } },
             { signal },
           );
           break;

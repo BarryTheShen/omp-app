@@ -7,13 +7,13 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
+  type ChatSessionRequest,
   McpCommandPromptListResult,
   McpCommandResourceListResult,
   McpCommandServerListResult,
   McpCommandServerSummary,
   McpCommandsPort,
   type PortClient,
-  type RpcSessionSend,
   type SessionDeleteCommandResult,
   ThreadId,
 } from "@omp-app/contracts";
@@ -541,11 +541,15 @@ describe("#957 /share never reaches omp unconfirmed", () => {
     expect(copy).toHaveBeenCalledTimes(1);
   });
 
-  test("a prompt, steer or follow-up in a form of /share never reaches omp, and other commands pass", async () => {
-    const send = vi.fn(async () => undefined) as unknown as RpcSessionSend;
+  test("a prompt, steer or follow-up in a form of /share never reaches omp, and other requests pass", async () => {
+    const send = vi.fn(async () => undefined) as unknown as ChatSessionRequest;
     const guarded = guardOmpSend(send);
-    const sent = (type: string, message: string) =>
-      guarded({ threadId, command: { type, message } } as unknown as Parameters<RpcSessionSend>[0]);
+    const sent = (method: string, text: string) =>
+      guarded({
+        threadId,
+        method,
+        params: { text },
+      } as unknown as Parameters<ChatSessionRequest>[0]);
     for (const type of ["prompt", "steer", "follow_up"]) {
       await expect(sent(type, "/share extra")).rejects.toMatchObject({
         appError: { code: "unavailable", retryable: false },
@@ -1353,14 +1357,15 @@ describe("#2633 /forget-approvals asks first, like the other typed forms that de
   });
 
   test("a retry, an edit or a queued message cannot send it past the question", async () => {
-    const send = vi.fn(async () => undefined) as unknown as RpcSessionSend;
+    const send = vi.fn(async () => undefined) as unknown as ChatSessionRequest;
     const guarded = guardOmpSend(send);
-    for (const type of ["prompt", "steer", "follow_up"]) {
+    for (const method of ["prompt", "steer", "follow_up"]) {
       await expect(
         guarded({
           threadId,
-          command: { type, message: "/forget-approvals" },
-        } as unknown as Parameters<RpcSessionSend>[0]),
+          method,
+          params: { text: "/forget-approvals" },
+        } as unknown as Parameters<ChatSessionRequest>[0]),
       ).rejects.toMatchObject({ appError: { code: "unavailable", retryable: false } });
     }
     expect(send).not.toHaveBeenCalled();

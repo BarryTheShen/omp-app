@@ -1,5 +1,6 @@
 import type {
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId,
   MessageKey,
   ProvisionalMessageKey,
@@ -917,12 +918,12 @@ describe("OmpRuntimeStore", () => {
           calls.push(args);
           return null;
         },
-        send: async (args) => {
+        request: (async (args: unknown) => {
           setTodoCalls.push(args);
           return {
             todoPhases: [{ name: "main", tasks: [{ content: "server", status: "pending" }] }],
           };
-        },
+        }) as unknown as ChatSessionRequest,
       },
     });
     omp(store, { type: "queue_update", steering: ["steer me"], followUp: ["later"] }, 1);
@@ -943,7 +944,8 @@ describe("OmpRuntimeStore", () => {
     await store.setTodos([{ name: "main", tasks: [{ content: "client", status: "pending" }] }]);
     expect(setTodoCalls[0]).toMatchObject({
       threadId,
-      command: { type: "set_todos", phases: [{ name: "main" }] },
+      method: "set_todos",
+      params: { phases: [{ name: "main" }] },
     });
     expect(store.getSnapshot().todoPhases).toEqual([
       { name: "main", tasks: [{ content: "server", status: "pending" }] },

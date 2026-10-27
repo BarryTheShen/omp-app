@@ -1,11 +1,10 @@
-import type { OmpWire, RpcSessionClient } from "@omp-app/contracts";
 import {
   AppFailure,
   type CapabilityMap,
+  type ChatSessionClient,
   EntryId,
   OmpCommandGateway,
   type PortClient,
-  type RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import {
@@ -127,7 +126,7 @@ export function useThreadDialogs({
 }
 
 interface ThreadChatActionsInput {
-  readonly rpc: PortClient<typeof RpcSessionPort>;
+  readonly chat: ChatSessionClient;
   readonly capabilities: CapabilityMap;
   readonly branchAvailable: boolean;
   readonly dialogHost: DialogHostController;
@@ -144,7 +143,7 @@ interface ThreadChatActionsInput {
 }
 
 export function useThreadChatActions({
-  rpc,
+  chat,
   capabilities,
   branchAvailable,
   dialogHost,
@@ -162,17 +161,17 @@ export function useThreadChatActions({
   const branchMessages = useMemo(
     () => ({
       list: async (requestThreadId: ThreadId, signal?: AbortSignal) => {
-        const result = (await rpc.send(
-          { threadId: requestThreadId, command: { type: "get_branch_messages" } },
+        const result = await chat.request(
+          { threadId: requestThreadId, method: "get_branch_messages", params: {} },
           { signal },
-        )) as OmpWire.GetBranchMessagesResult;
+        );
         return result.messages.map((message) => ({
           entryId: EntryId.parse(message.entryId),
           text: message.text,
         }));
       },
     }),
-    [rpc],
+    [chat],
   );
   const selectorController = useP3PreviousMessageSelectorController({
     available:
@@ -209,12 +208,12 @@ export function useThreadChatActions({
         threadId,
         store,
         loadOlder: onLoadOlder,
-        session: rpc as RpcSessionClient,
+        session: chat,
         gateway: commandGateway,
         dialogs: dialogHost,
         download: saveTextFile,
       }),
-    [commandGateway, dialogHost, onLoadOlder, rpc, store, threadId],
+    [chat, commandGateway, dialogHost, onLoadOlder, store, threadId],
   );
   const shareController = useShareFromChat({
     client,

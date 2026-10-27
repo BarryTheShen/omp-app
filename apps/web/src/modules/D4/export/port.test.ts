@@ -1,4 +1,4 @@
-import type { OmpCommandGateway, PortClient, RpcSessionClient } from "@omp-app/contracts";
+import type { ChatSessionClient, OmpCommandGateway, PortClient } from "@omp-app/contracts";
 import { AppFailure, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { KeyedTranscriptMessage } from "@/modules/U1/copy";
@@ -77,7 +77,7 @@ function portWith(
   const sent: unknown[] = [];
   const dumped: unknown[] = [];
   const session = {
-    send: (args: unknown) => {
+    request: (args: unknown) => {
       sent.push(args);
       return options.send?.() ?? Promise.resolve({ path: "omp-session-fixture.html" });
     },
@@ -91,7 +91,7 @@ function portWith(
   const port = createExportPort({
     threadId,
     history: options.history ?? loadedHistory(options.messages ?? recordedEntries),
-    session: session as unknown as Pick<RpcSessionClient, "send">,
+    session: session as unknown as Pick<ChatSessionClient, "request">,
     gateway: gateway as unknown as Pick<PortClient<typeof OmpCommandGateway>, "dump">,
   });
   return { port, sent, dumped };
@@ -232,7 +232,7 @@ describe("HTML pages", () => {
       send: () => Promise.resolve({ path: "omp-session-fixture.html" }),
     });
     const result = await port.export({ format: "html", threadId });
-    expect(sent).toEqual([{ threadId, command: { type: "export_html" } }]);
+    expect(sent).toEqual([{ threadId, method: "export_html", params: {} }]);
     expect(result).toEqual({
       kind: "path",
       format: "html",

@@ -1,6 +1,6 @@
 import type { AppClient } from "@omp-app/client";
-import type { CapabilityMap, FolderPath, RpcSessionClient, ThreadId } from "@omp-app/contracts";
-import { RpcSessionPort } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionClient, FolderPath, ThreadId } from "@omp-app/contracts";
+import { ChatSessionPort } from "@omp-app/contracts";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { ThinkingLevel } from "@/modules/D1/contract";
@@ -86,11 +86,11 @@ export function readSessionState(
   store: OmpRuntimeStore,
   threadId: ThreadId,
 ): Promise<void> {
-  const rpc = client.port(RpcSessionPort) as RpcSessionClient;
+  const chat = client.port(ChatSessionPort) as ChatSessionClient;
   const asOfSeq = store.getSnapshot().lastSeq;
-  return rpc
-    .send({ threadId, command: { type: "get_state" } })
-    .then((state) => store.applySessionState(state, { asOfSeq }))
+  return chat
+    .request({ threadId, method: "get_state", params: {} })
+    .then((state) => store.applyHostState(state, { asOfSeq }))
     .catch((error: unknown) => {
       reportClientError({
         kind: "error",

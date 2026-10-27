@@ -1,5 +1,10 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import type { ChatSessionEvent, OmpMessage, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type {
+  ChatSessionEvent,
+  ChatSessionRequest,
+  OmpMessage,
+  ThreadId,
+} from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -67,7 +72,7 @@ const assistantMessage = (
   } as unknown as OmpMessage;
 };
 
-function send(): RpcSessionSend {
+function send(): ChatSessionRequest {
   return async () => undefined as never;
 }
 const testSend = send();

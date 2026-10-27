@@ -9,8 +9,10 @@ import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive } from "@as
 import type {
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId,
   Fixture,
+  OmpCommand,
   ExtensionUiResponse as PortExtensionUiResponse,
   RpcSessionSend,
   ThreadId,
@@ -20,6 +22,7 @@ import { parseFixture } from "@omp-app/contracts";
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, test } from "vitest";
+import { commandOf } from "@/modules/R0/store/rpc-frames";
 import { notificationEvent, ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
@@ -48,7 +51,7 @@ interface Harness {
   readonly session: RpcSession;
   readonly store: OmpRuntimeStore;
   readonly controller: ReturnType<typeof createOmpRuntime>;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly threadId: ThreadId;
   readonly feedNotification: (frame: unknown) => void;
   close(): Promise<void>;
@@ -96,7 +99,12 @@ async function openHarness(scenario: Scenario): Promise<Harness> {
     store.ingest(sessionEventOfRpc(event), seq);
   });
   await session.start();
-  const send: RpcSessionSend = (args, options) => session.send(args.command, options) as never;
+  // The fixtures are recorded omp-rpc sessions until H5.6: the runtime's requests reach them as RPC commands.
+  const send = ((args: { method: string; params: unknown }, options: unknown) =>
+    session.send(
+      commandOf(args.method, args.params) as unknown as OmpCommand,
+      options as never,
+    )) as unknown as ChatSessionRequest;
   const controller = createOmpRuntime({ store, send, capabilities });
   return {
     session,
@@ -165,7 +173,7 @@ function GateRuntime({
   send,
 }: {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
 }): ReactElement {
   const { runtime } = useOmpRuntime({ store, send, capabilities });
   return (
@@ -283,7 +291,8 @@ describe("R0 W2 recorded fixture runtime gate", () => {
     try {
       await harness.send({
         threadId: harness.threadId,
-        command: { type: "set_ask_dialog", enabled: true },
+        method: "set_ask_dialog",
+        params: { enabled: true },
       });
       await harness.controller.submitPrompt({ mode: "prompt", text: "ask_user", delivery: "new" });
       const settled = await waitForSnapshot(
@@ -372,12 +381,12 @@ describe("R0 W2 recorded fixture runtime gate", () => {
       entryId,
     );
     const commands: string[] = [];
-    const send: RpcSessionSend = (async ({ command }) => {
-      commands.push(command.type);
-      if (command.type === "branch") return { text: "source", cancelled: false };
-      if (command.type === "get_state") return { sessionId: "new-thread" };
+    const send = (async ({ method }: { method: string }) => {
+      commands.push(method);
+      if (method === "branch") return { text: "source", cancelled: false };
+      if (method === "get_state") return { sessionId: "new-thread" };
       return undefined;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const ui = render(<GateRuntime store={store} send={send} />);
     const controller = createOmpBranchingController({
       store,

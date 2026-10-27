@@ -5,13 +5,13 @@ import { providerSignIn, readProviderSignIns, signInLabel } from "./sign-in";
 
 const threadId = ThreadId.parse("d3-sign-in");
 
-/** A client whose account store and omp session answer with the given results. */
+/** A client whose account store and chat session answer with the given results. */
 function fakeClient(accounts: unknown, login: unknown): AppClient {
   return {
     port: (port: unknown) =>
       port === ProviderAccountStore
         ? { listProviders: async () => accounts }
-        : { send: async () => login },
+        : { request: async () => login },
   } as unknown as AppClient;
 }
 
@@ -80,7 +80,7 @@ describe("readProviderSignIns", () => {
         listProviders: async () => {
           throw new Error("unavailable");
         },
-        send: async () => {
+        request: async () => {
           throw new Error("unavailable");
         },
       }),

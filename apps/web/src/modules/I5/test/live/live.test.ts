@@ -1,32 +1,32 @@
 import type { AppClient } from "@omp-app/client";
-import type { AppFailure, RpcSessionEvent, RpcSessionPort, ThreadId } from "@omp-app/contracts";
+import type { AppFailure, ChatSessionEvent, ChatSessionPort, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { I5_LIVE_CAPABILITY } from "../../contract";
 import { createLiveVoiceAdapter } from "../../live";
 
 class FakeClient {
   readonly sends: unknown[] = [];
-  readonly listeners = new Set<(payload: RpcSessionEvent, seq: number) => void>();
-  async send(args: unknown): Promise<unknown> {
+  readonly listeners = new Set<(payload: ChatSessionEvent, seq: number) => void>();
+  async request(args: unknown): Promise<unknown> {
     this.sends.push(args);
-    const command = (args as { command: { type: string } }).command;
-    if (command.type === "live_start") return { voice: "test-voice" };
-    if (command.type === "live_mute") return { muted: true };
-    return undefined;
+    const { method } = args as { method: string };
+    if (method === "live_start") return { voice: "test-voice" };
+    if (method === "live_mute") return { muted: true };
+    return {};
   }
   async subscribe() {
     return {
-      stream: "A0.rpcSession/event/live-thread",
+      stream: "A0.chatSession/event/live-thread",
       lastSeq: 0,
-      onEvent: (listener: (payload: RpcSessionEvent, seq: number) => void) => {
+      onEvent: (listener: (payload: ChatSessionEvent, seq: number) => void) => {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
       },
       unsubscribe: async () => undefined,
     };
   }
-  emit(frame: Record<string, unknown>, seq = 1): void {
-    const payload = { kind: "notification", frame } as unknown as RpcSessionEvent;
+  emit(event: Record<string, unknown>, seq = 1): void {
+    const payload = { kind: "event", event } as unknown as ChatSessionEvent;
     for (const listener of [...this.listeners]) listener(payload, seq);
   }
 }
@@ -35,7 +35,7 @@ const capabilities = { [I5_LIVE_CAPABILITY]: { state: "available" as const, via:
 
 function adapterFixture(fake = new FakeClient(), capabilityMap = capabilities) {
   const client = {
-    port: () => fake as unknown as RpcSessionPort,
+    port: () => fake as unknown as ChatSessionPort,
     subscribe: () => fake.subscribe(),
   } as unknown as AppClient;
   const adapter = createLiveVoiceAdapter({
@@ -48,15 +48,18 @@ function adapterFixture(fake = new FakeClient(), capabilityMap = capabilities) {
   return { adapter, fake };
 }
 
-describe("I5 live RPC adapter", () => {
+describe("I5 live voice adapter", () => {
   test("starts, stops, mutes and gates missing live capability", async () => {
     const { adapter, fake } = adapterFixture();
     await adapter.start({ voice: "test-voice" });
     await adapter.mute({ muted: true });
     await adapter.stop();
-    expect(
-      fake.sends.map((entry) => (entry as { command: { type: string } }).command.type),
-    ).toEqual(["live_stop", "live_start", "live_mute", "live_stop"]);
+    expect(fake.sends.map((entry) => (entry as { method: string }).method)).toEqual([
+      "live_stop",
+      "live_start",
+      "live_mute",
+      "live_stop",
+    ]);
     await adapter.dispose();
 
     const unavailable = adapterFixture(new FakeClient(), {});

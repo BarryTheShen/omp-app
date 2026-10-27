@@ -12,11 +12,12 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   AppPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   type FolderPath,
   OmpCommandGateway,
   type PortClient,
   type RpcSessionClient,
-  RpcSessionPort,
   type SessionFile,
   SessionFileStore,
   type ThreadId,
@@ -52,7 +53,7 @@ interface Session {
   readonly controller: OmpRuntimeController;
   readonly history: SelectedThreadHistoryController;
   readonly threadId: ThreadId;
-  readonly rpc: RpcSessionClient;
+  readonly chat: ChatSessionClient;
   readonly gateway: PortClient<typeof OmpCommandGateway>;
 }
 
@@ -83,7 +84,6 @@ async function newestThreadId(client: AppClient, folder: FolderPath): Promise<Th
 
 async function openSession(client: AppClient): Promise<Session> {
   const app = client.port(AppPort);
-  const rpc = client.port(RpcSessionPort) as RpcSessionClient;
   const [capabilities, serverInfo] = await Promise.all([app.capabilities({}), app.serverInfo({})]);
   const threadId = await newestThreadId(client, serverInfo.launchFolder);
   const windowBytes = windowBytesFromUrl();
@@ -98,8 +98,9 @@ async function openSession(client: AppClient): Promise<Session> {
         }),
   });
   const store = await history.openExisting(threadId);
-  const controller = new OmpRuntimeController({ capabilities, send: rpc.send, store });
-  return { store, controller, history, threadId, rpc, gateway: client.port(OmpCommandGateway) };
+  const chat = client.port(ChatSessionPort) as ChatSessionClient;
+  const controller = new OmpRuntimeController({ capabilities, send: chat.request, store });
+  return { store, controller, history, threadId, chat, gateway: client.port(OmpCommandGateway) };
 }
 
 /** The chat's messages in transcript order, with the keys the app gave them. */
@@ -168,7 +169,7 @@ function Loaded({ session }: { readonly session: Session }) {
     const port = createExportPort({
       threadId: session.threadId,
       history: chatHistoryOf(session),
-      session: session.rpc,
+      session: session.chat,
       gateway: session.gateway,
     });
     return createExportSlashCommands({

@@ -4,7 +4,6 @@ import {
   ChatSessionPort,
   PasteFileStore,
   ProviderErrorPort,
-  RpcSessionPort,
   SessionFileStore,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -59,9 +58,8 @@ export function useThreadServices({
     (text: string) => providerErrors.parse({ text }),
     [providerErrors],
   );
-  const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const chat = useMemo(() => client.port(ChatSessionPort) as ChatSessionClient, [client]);
-  const guardedSend = useMemo(() => guardOmpSend(rpc.send), [rpc.send]);
+  const guardedSend = useMemo(() => guardOmpSend(chat.request), [chat]);
   // A prompt the person sends ends a finished run's notice (endNoticeOnPrompt); other sends are unchanged.
   const messageSend = useMemo(
     () => endNoticeOnPrompt(guardedSend, p3Runs.status),
@@ -92,7 +90,7 @@ export function useThreadServices({
     lastUserVersions,
     connection,
     resolveProviderError,
-    rpc,
+    chat,
     guardedSend,
     messageSend,
     savePasteFile,

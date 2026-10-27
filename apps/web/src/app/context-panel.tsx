@@ -1,8 +1,8 @@
 import type { AppClient } from "@omp-app/client";
 import {
+  type ChatSessionClient,
+  ChatSessionPort,
   type OmpWire,
-  type RpcSessionClient,
-  RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -90,12 +90,12 @@ async function refreshSession(
   store: OmpRuntimeStore,
   threadId: ThreadId,
 ): Promise<void> {
-  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  const chat = client.port(ChatSessionPort) as ChatSessionClient;
   // The answer describes omp as of this request: a run that starts after it is newer than the answer.
   const asOfSeq = store.getSnapshot().lastSeq;
-  await session
-    .send({ threadId, command: { type: "get_state" } })
-    .then((state) => store.applySessionState(state, { asOfSeq }));
+  await chat
+    .request({ threadId, method: "get_state", params: {} })
+    .then((state) => store.applyHostState(state, { asOfSeq }));
 }
 
 /**

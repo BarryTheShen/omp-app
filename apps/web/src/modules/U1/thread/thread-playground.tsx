@@ -1,13 +1,15 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  ChatSessionRequest,
   Fixture,
+  OmpCommand,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { commandOf } from "@/modules/R0/store/rpc-frames";
 import { ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
 import { AppShell } from "@/shell";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
@@ -128,10 +130,12 @@ function ThreadPlayground() {
     };
   }, [fixture, store]);
 
-  const send = useCallback<RpcSessionSend>(async (args, options) => {
+  // The fixture still plays omp's RPC frames until H5.6 rewrites it: the runtime's requests reach it as RPC commands.
+  const send = useCallback<ChatSessionRequest>(async (args, options) => {
     const session = sessionRef.current;
     if (session === undefined) throw new Error("Fixture session is not ready");
-    return (await session.send(args.command, options)) as never;
+    const command = commandOf(args.method, args.params) as unknown as OmpCommand;
+    return (await session.send(command, options)) as never;
   }, []);
   const { runtime } = useOmpRuntime({ store, send, capabilities: CAPABILITIES });
 

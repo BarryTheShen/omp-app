@@ -1,8 +1,8 @@
 import type {
   CapabilityMap,
+  ChatSessionRequest,
   DescriptorId,
   EntryId,
-  RpcSessionSend,
   SessionEntryHead,
   ThreadId,
 } from "@omp-app/contracts";
@@ -89,35 +89,35 @@ const AVAILABLE: CapabilityMap = {
   "omp.cmd.fork": { state: "available", via: "rpc" },
 };
 
-/** A fake omp: the tree, branch and fork commands, and the new session's identity. */
-function fakeOmp(calls: string[], failFork = false): RpcSessionSend {
-  const answer = async (args: { command: { type: string; entryId?: string } }) => {
-    const { command } = args;
-    calls.push(`${command.type}${command.entryId ? ` ${command.entryId}` : ""}`);
-    if (command.type === "get_tree") return { tree: TREE, leafId: "e-4" };
-    if (command.type === "branch") return { text: "", cancelled: false };
-    if (command.type === "fork") {
+/** A fake omp: the tree, branch and fork requests, and the new session's identity. */
+function fakeOmp(calls: string[], failFork = false): ChatSessionRequest {
+  const answer = async (args: { method: string; params: { entryId?: string } }) => {
+    const { method, params } = args;
+    calls.push(`${method}${params.entryId ? ` ${params.entryId}` : ""}`);
+    if (method === "get_tree") return { tree: TREE, leafId: "e-4" };
+    if (method === "branch") return { text: "", cancelled: false };
+    if (method === "fork") {
       if (failFork) throw new Error("internal");
       return { text: "", cancelled: false };
     }
-    if (command.type === "get_state") return { sessionId: "branched-thread" };
-    throw new Error(`The fake omp does not answer ${command.type}.`);
+    if (method === "get_state") return { sessionId: "branched-thread" };
+    throw new Error(`The fake omp does not answer ${method}.`);
   };
-  return answer as unknown as RpcSessionSend;
+  return answer as unknown as ChatSessionRequest;
 }
 
-function heldOmp(gate: Promise<void>): RpcSessionSend {
+function heldOmp(gate: Promise<void>): ChatSessionRequest {
   const base = fakeOmp([]);
   return (async (args: unknown) => {
-    const request = args as { command: { type: string } };
-    if (request.command.type === "get_tree") await gate;
+    const request = args as { method: string };
+    if (request.method === "get_tree") await gate;
     return base(args as never);
-  }) as unknown as RpcSessionSend;
+  }) as unknown as ChatSessionRequest;
 }
 
 interface HarnessProps {
   readonly currentThread: ThreadId;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly switchThread: ConversationTransitionOptions["switchThread"];
   readonly capabilities: CapabilityMap;
   readonly holder: { registry?: ShortcutRegistry };

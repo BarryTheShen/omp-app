@@ -9,7 +9,7 @@ const available: CapabilityMap = {
 };
 
 describe("D2.3 slash command catalog", () => {
-  test("reads omp's real command list and follows its live update frames", async () => {
+  test("reads omp's real command list and follows the host's live updates", async () => {
     const fake = fakeSlashClient();
     const catalog = createSlashCommandCatalog({
       client: fake.client,
@@ -25,8 +25,8 @@ describe("D2.3 slash command catalog", () => {
       "show",
     );
 
-    fake.emitNotification({
-      type: "available_commands_update",
+    fake.emitEvent({
+      type: "available_commands",
       commands: [{ name: "live-skill", source: "skill", description: "Pushed by omp" }],
     });
     expect(catalog.getSnapshot().commands.map((command) => command.name)).toEqual(["live-skill"]);
@@ -36,7 +36,7 @@ describe("D2.3 slash command catalog", () => {
     expect(fake.unsubscribed()).toBe(1);
   });
 
-  test("fails closed without the capability: no RPC is sent and the state says unavailable", async () => {
+  test("fails closed without the capability: nothing is sent and the state says unavailable", async () => {
     const fake = fakeSlashClient();
     const catalog = createSlashCommandCatalog({
       client: fake.client,
@@ -100,8 +100,8 @@ describe("D2.3 slash command catalog", () => {
 
     reply = "pending";
     const second = catalog.refresh();
-    fake.emitNotification({
-      type: "available_commands_update",
+    fake.emitEvent({
+      type: "available_commands",
       commands: [{ name: "newer", source: "custom" }],
     });
     pending.resolve({ commands: [{ name: "older", source: "builtin" }] });
@@ -162,7 +162,7 @@ describe("D2.3 slash command catalog", () => {
     const before = heard.length;
 
     catalog.dispose();
-    fake.emitNotification({ type: "available_commands_update", commands: [] });
+    fake.emitEvent({ type: "available_commands", commands: [] });
 
     expect(heard).toHaveLength(before);
   });

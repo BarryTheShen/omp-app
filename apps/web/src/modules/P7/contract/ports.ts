@@ -1,12 +1,12 @@
 import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
+  type ChatSessionClient,
+  ChatSessionPort,
   type OmpCommandGateway,
   type OmpWire,
   type PortCallOptions,
   type PortClient,
-  type RpcSessionClient,
-  RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import type {
@@ -124,7 +124,7 @@ export function createUsagePort(
   client: AppClient,
   threadId: ThreadId,
 ): UsagePort {
-  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  const session = client.port(ChatSessionPort) as ChatSessionClient;
   const listeners = new Set<(snapshot: UsageSnapshot) => void>();
   let refreshed: UsageSnapshot | null = null;
   const current = (): UsageSnapshot => refreshed ?? source.getSnapshot();
@@ -140,10 +140,11 @@ export function createUsagePort(
     },
     refresh: async (options) => {
       try {
-        const stats = (await session.send(
-          { threadId, command: { type: "get_session_stats" } },
+        // The host answers with omp's own session stats, the shape omp-wire describes until H5.6 retypes it.
+        const stats = (await session.request(
+          { threadId, method: "get_session_stats", params: {} },
           options,
-        )) as OmpWire.SessionStats;
+        )) as unknown as OmpWire.SessionStats;
         const next = UsageSnapshot.parse({
           ...source.getSnapshot(),
           status: "ready",
@@ -181,32 +182,30 @@ export function createUsagePort(
   };
 }
 
-/** Calls typed compaction RPCs while lifecycle state remains owned by R0's projection. */
+/** Calls the host's compaction requests while lifecycle state remains owned by R0's projection. */
 export function createCompactionPort(
   source: CompactionStateSource,
   client: AppClient,
   threadId: ThreadId,
 ): CompactionPort {
-  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  const session = client.port(ChatSessionPort) as ChatSessionClient;
   return {
     getSnapshot: () => source.getSnapshot(),
     subscribe: (listener) => source.subscribe(listener),
     compact: async (request = {}, options) =>
-      (await session.send(
+      (await session.request(
         {
           threadId,
-          command: {
-            type: "compact",
-            ...(request.customInstructions
-              ? { customInstructions: request.customInstructions }
-              : {}),
-          },
+          method: "compact",
+          params: request.customInstructions
+            ? { customInstructions: request.customInstructions }
+            : {},
         },
         options,
-      )) as OmpWire.CompactionResult,
+      )) as unknown as OmpWire.CompactionResult,
     setAutoCompaction: async (request, options) => {
-      await session.send(
-        { threadId, command: { type: "set_auto_compaction", enabled: request.enabled } },
+      await session.request(
+        { threadId, method: "set_auto_compaction", params: { enabled: request.enabled } },
         options,
       );
     },

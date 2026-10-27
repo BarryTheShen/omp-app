@@ -30,7 +30,6 @@ function queueController(
   removeResult: {
     changed: boolean;
     images?: readonly OmpWire.ImageContent[];
-    imagesDropped?: boolean;
   } = {
     changed: true,
   },
@@ -139,12 +138,7 @@ describe("P6 composer queue policy", () => {
         restored.push(request.text);
       },
     });
-    expect(result).toEqual({
-      removed: true,
-      restored: true,
-      choice: "queued",
-      imagesDropped: false,
-    });
+    expect(result).toEqual({ removed: true, restored: true, choice: "queued" });
     expect(calls).toEqual(["queued text"]);
     expect(restored).toEqual(["queued text"]);
   });
@@ -160,28 +154,8 @@ describe("P6 composer queue policy", () => {
         restored.push({ text: request.text, images });
       },
     });
-    expect(result).toEqual({
-      removed: true,
-      restored: true,
-      choice: "queued",
-      imagesDropped: false,
-    });
+    expect(result).toEqual({ removed: true, restored: true, choice: "queued" });
     expect(restored).toEqual([{ text: "queued text", images: [image] }]);
-  });
-
-  test("dequeue-to-edit reports omitted images while restoring text", async () => {
-    const { controller } = queueController(snapshot, { changed: true, imagesDropped: true });
-    const id = controller.getSnapshot().items[0]?.id;
-    if (!id) throw new Error("missing queue id");
-    const restored: unknown[] = [];
-    const result = await dequeueToEdit(controller, id, {
-      getDraft: () => ({ text: "", attachmentRefs: [] }),
-      restoreDraft: (request, images) => {
-        restored.push({ text: request.text, images });
-      },
-    });
-    expect(result.imagesDropped).toBe(true);
-    expect(restored).toEqual([{ text: "queued text", images: undefined }]);
   });
 
   test("dequeue-to-edit refuses and restores nothing when omp removed nothing", async () => {
@@ -230,12 +204,7 @@ describe("P6 composer queue policy", () => {
         restore.count += 1;
       },
     });
-    expect(result).toEqual({
-      removed: false,
-      restored: false,
-      choice: "cancel",
-      imagesDropped: false,
-    });
+    expect(result).toEqual({ removed: false, restored: false, choice: "cancel" });
     expect(calls).toEqual([]);
     expect(restore.count).toBe(0);
   });

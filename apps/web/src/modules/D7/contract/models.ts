@@ -1,4 +1,5 @@
-import { AppError, CapabilityKey, CapabilityStatus, type OmpCommandMap } from "@omp-app/contracts";
+import { AppError, CapabilityKey, CapabilityStatus } from "@omp-app/contracts";
+import type { ChatHostState } from "@omp-app/contracts/chat-host";
 import { z } from "zod";
 
 /**
@@ -179,7 +180,19 @@ export type D7Capability = (typeof D7_CAPABILITIES)[number];
 export const D7CapabilityStatus = z.partialRecord(z.enum(D7_CAPABILITIES), CapabilityStatus);
 export type D7CapabilityStatus = z.infer<typeof D7CapabilityStatus>;
 
-export type D7StateRpcCommand = "get_state" | "set_fast_mode" | "set_slow_mode";
-export type D7StateRpcResults = Pick<OmpCommandMap, D7StateRpcCommand>;
-export type GetStateResult = OmpCommandMap["get_state"]["result"];
-export type SetFastModeResult = OmpCommandMap["set_fast_mode"]["result"];
+/**
+ * What D7 reads of the chat's state (the chat host's `get_state`): Fast and Slow mode, and the usage limit. A field
+ * the host did not report is absent, and D7 says so.
+ */
+export type GetStateResult = Pick<ChatHostState, "sessionId"> &
+  Partial<
+    Pick<
+      ChatHostState,
+      | "fastModeEnabled"
+      | "fastModeActive"
+      | "slowModeSupported"
+      | "slowModeEnabled"
+      | "slowModeScope"
+      | "usageLimit"
+    >
+  >;

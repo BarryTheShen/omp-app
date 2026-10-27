@@ -214,6 +214,19 @@ export function requestOf(command: Record<string, unknown>): {
   return { method, params };
 }
 
+/**
+ * A host request as the RPC command omp took, the inverse of `requestOf`: for the stand-ins that still play omp's RPC
+ * frames (a recorded fixture session) until H5.6 rewrites them on the host's protocol.
+ */
+export function commandOf(method: string, params: unknown): Record<string, unknown> {
+  const fields = { ...(params as Record<string, unknown>) };
+  if ((method === "prompt" || method === "steer" || method === "follow_up") && "text" in fields) {
+    const { text, ...rest } = fields;
+    return { type: method, ...rest, message: text };
+  }
+  return { type: method, ...fields };
+}
+
 /** A host's result as the RPC result the readers know: `prompt` answers whether the model runs. */
 export function resultOf(method: string, result: unknown): unknown {
   if (method === "prompt") {

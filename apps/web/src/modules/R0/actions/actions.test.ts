@@ -2,7 +2,7 @@ import type {
   AnswerHostRequestArgs,
   AppError,
   CapabilityMap,
-  RpcSessionSend,
+  ChatSessionRequest,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
@@ -64,7 +64,7 @@ function makeStore(
 describe("R0.5 QueueController", () => {
   test("derives one queue snapshot from R0.1 and notifies subscribers", () => {
     const store = makeStore();
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
     const snapshots: QueueSnapshot[] = [];
     const unsubscribe = controller.subscribe((snapshot) => snapshots.push(snapshot));
@@ -88,19 +88,19 @@ describe("R0.5 QueueController", () => {
     unsubscribe();
   });
 
-  test("submits steer and follow-up through their queue commands", async () => {
+  test("submits steer and follow-up through their queue requests", async () => {
     const store = makeStore();
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createQueueController({ store, send, capabilities });
     await controller.submit({ text: "steer me", delivery: "steer" });
     await controller.submit({ text: "follow me", delivery: "followUp" });
     expect(commands).toEqual([
-      { type: "steer", message: "steer me" },
-      { type: "follow_up", message: "follow me" },
+      { method: "steer", params: { text: "steer me" } },
+      { method: "follow_up", params: { text: "follow me" } },
     ]);
   });
 
@@ -111,7 +111,7 @@ describe("R0.5 QueueController", () => {
       message: "Queue admission was refused",
       retryable: false,
     } satisfies AppError);
-    const send: RpcSessionSend = async () => {
+    const send: ChatSessionRequest = async () => {
       throw failure;
     };
     const controller = createQueueController({ store, send, capabilities });
@@ -123,9 +123,9 @@ describe("R0.5 QueueController", () => {
   test("removes and promotes without maintaining a second queue array", async () => {
     const store = makeStore();
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
-      if (command.type === "remove_queued_message") return { removed: false } as never;
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
+      if (method === "remove_queued_message") return { removed: false } as never;
       return { promoted: true } as never;
     };
     const controller = createQueueController({ store, send, capabilities });
@@ -134,28 +134,27 @@ describe("R0.5 QueueController", () => {
     });
     await expect(controller.promote("next")).resolves.toEqual({ changed: true });
     expect(commands).toEqual([
-      { type: "remove_queued_message", message: "stale", queue: "followUp" },
-      { type: "promote_queued_message", message: "next" },
+      { method: "remove_queued_message", params: { message: "stale", queue: "followUp" } },
+      { method: "promote_queued_message", params: { message: "next" } },
     ]);
     expect(controller.getSnapshot().followUp).toEqual([]);
   });
-  test("returns restored images and the transport-omission marker only for a removed message", async () => {
+  test("returns a removed message's images, and nothing for a message omp no longer had", async () => {
     const image = { type: "image", data: "aGVsbG8=", mimeType: "image/png" } as const;
     const store = makeStore();
-    let response: unknown = { removed: true, images: [image] };
-    const send: RpcSessionSend = async () => response as never;
+    let response: unknown = { removed: true, text: "with image", images: [image] };
+    const send: ChatSessionRequest = async () => response as never;
     const controller = createQueueController({ store, send, capabilities });
 
     await expect(controller.remove({ lane: "followUp", message: "with image" })).resolves.toEqual({
       changed: true,
       images: [image],
     });
-    response = { removed: true, imagesDropped: true };
-    await expect(controller.remove({ lane: "followUp", message: "large image" })).resolves.toEqual({
+    response = { removed: true, text: "text only" };
+    await expect(controller.remove({ lane: "followUp", message: "text only" })).resolves.toEqual({
       changed: true,
-      imagesDropped: true,
     });
-    response = { removed: false, imagesDropped: true, images: [image] };
+    response = { removed: false };
     await expect(controller.remove({ lane: "followUp", message: "already gone" })).resolves.toEqual(
       {
         changed: false,
@@ -170,18 +169,18 @@ describe("R0.5 QueueController", () => {
       message: "queued message was already dequeued",
       retryable: false,
     } satisfies AppError);
-    const send: RpcSessionSend = async () => {
+    const send: ChatSessionRequest = async () => {
       throw failure;
     };
     const controller = createQueueController({ store, send, capabilities });
     await expect(controller.remove({ lane: "steering", message: "gone" })).rejects.toBe(failure);
   });
 
-  test("changes queue modes in deterministic command order", async () => {
+  test("changes queue modes in deterministic request order", async () => {
     const store = makeStore();
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createQueueController({ store, send, capabilities });
@@ -191,9 +190,9 @@ describe("R0.5 QueueController", () => {
       interruptMode: "wait",
     });
     expect(commands).toEqual([
-      { type: "set_steering_mode", mode: "one-at-a-time" },
-      { type: "set_follow_up_mode", mode: "all" },
-      { type: "set_interrupt_mode", mode: "wait" },
+      { method: "set_steering_mode", params: { mode: "one-at-a-time" } },
+      { method: "set_follow_up_mode", params: { mode: "all" } },
+      { method: "set_interrupt_mode", params: { mode: "wait" } },
     ]);
   });
 
@@ -210,7 +209,7 @@ describe("R0.5 QueueController", () => {
       hostCallEvent({ id: "uri-1", method: "uri.read", params: { url: "app://notes/a" } }),
       3,
     );
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
     const toolResult = { content: [{ type: "text" as const, text: "done" }] };
     await expect(controller.answerDialog("ui-gone", { value: "ok" })).rejects.toMatchObject({
@@ -244,7 +243,7 @@ describe("R0.5 QueueController", () => {
       },
     });
     callRead(store, 1);
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
     const partialResult = { content: [{ type: "text" as const, text: "half" }] };
     await expect(controller.updateHostTool("host-1", partialResult)).resolves.toBe(true);
@@ -261,7 +260,7 @@ describe("R0.5 QueueController", () => {
         }),
     });
     askName(store, 1);
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
     const first = controller.answerDialog("ui-1", { value: "ok" });
     await Promise.resolve();
@@ -280,7 +279,7 @@ describe("R0.5 QueueController", () => {
       },
     });
     callRead(store, 1);
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
     await controller.onAddToolResult({
       messageId: "message-1",
@@ -294,10 +293,10 @@ describe("R0.5 QueueController", () => {
     ]);
   });
 
-  test("capability failures are typed and do not send commands", async () => {
+  test("capability failures are typed and do not send requests", async () => {
     const store = makeStore();
     let sent = false;
-    const send: RpcSessionSend = async () => {
+    const send: ChatSessionRequest = async () => {
       sent = true;
       return undefined as never;
     };

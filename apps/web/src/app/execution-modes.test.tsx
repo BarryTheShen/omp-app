@@ -52,16 +52,18 @@ function fakeClient(): { readonly client: AppClient; readonly commands: string[]
   };
   // Slow mode is kept per chat: a change made in one chat does not show in another.
   const slowOn = new Map<string, boolean>();
-  const rpc = {
-    send: async ({
+  const chat = {
+    request: async ({
       threadId,
-      command,
+      method,
+      params,
     }: {
       readonly threadId: string;
-      readonly command: { readonly type: string; readonly enabled?: boolean };
+      readonly method: string;
+      readonly params: { readonly enabled?: boolean };
     }) => {
-      if (command.type === "set_slow_mode") {
-        const enabled = command.enabled === true;
+      if (method === "set_slow_mode") {
+        const enabled = params.enabled === true;
         slowOn.set(threadId, enabled);
         commands.push(`set_slow_mode ${enabled ? "on" : "off"}`);
         return { enabled };
@@ -77,7 +79,7 @@ function fakeClient(): { readonly client: AppClient; readonly commands: string[]
     },
   };
   const client = {
-    port: (port: unknown) => (port === OmpCommandGateway ? gateway : rpc),
+    port: (port: unknown) => (port === OmpCommandGateway ? gateway : chat),
   } as unknown as AppClient;
   return { client, commands };
 }

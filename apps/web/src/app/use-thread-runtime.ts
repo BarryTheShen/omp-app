@@ -1,11 +1,10 @@
 import {
   AttachmentBlobStore,
   type CapabilityMap,
+  type ChatSessionClient,
+  type ChatSessionRequest,
   DraftScope,
   MAX_ATTACHMENT_BYTES,
-  type PortClient,
-  type RpcSessionPort,
-  type RpcSessionSend,
   type ThreadId,
 } from "@omp-app/contracts";
 import {
@@ -48,9 +47,9 @@ interface ThreadRuntimeInput {
   readonly folder: ActiveThreadProps["folder"];
   readonly store: OmpRuntimeStore;
   readonly threadId: ThreadId;
-  readonly rpc: PortClient<typeof RpcSessionPort>;
-  readonly guardedSend: RpcSessionSend;
-  readonly messageSend: RpcSessionSend;
+  readonly chat: ChatSessionClient;
+  readonly guardedSend: ChatSessionRequest;
+  readonly messageSend: ChatSessionRequest;
   readonly switchChat: ActiveThreadProps["switchChat"];
   readonly p3Runs: P3Runs;
   readonly overlay: OverlayHostApi;
@@ -66,7 +65,7 @@ export function useThreadRuntime({
   folder,
   store,
   threadId,
-  rpc,
+  chat,
   guardedSend,
   messageSend,
   switchChat,
@@ -104,8 +103,8 @@ export function useThreadRuntime({
   const p3Handlers = useP3RunHandlers({ store, send: guardedSend, switchChat, runs: p3Runs });
   // The banner of an omp that stopped on its own offers this: the server starts omp again on this chat.
   const restartOmp = useCallback(async (): Promise<void> => {
-    await rpc.restart({ threadId });
-  }, [rpc, threadId]);
+    await chat.restart({ threadId });
+  }, [chat, threadId]);
   useRetryShortcut({ threadId, status: p3Runs.status, retry: p3Handlers.retry });
   useAgentHubShortcut(openAgentHub);
   useComposerClipboardShortcuts({ notify: setCommandStatus, fail: setCommandError });

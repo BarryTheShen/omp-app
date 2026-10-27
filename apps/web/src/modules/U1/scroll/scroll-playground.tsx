@@ -2,9 +2,9 @@ import { AssistantRuntimeProvider, ThreadPrimitive } from "@assistant-ui/react";
 import type {
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId as EntryIdType,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { EntryId } from "@omp-app/contracts";
@@ -115,7 +115,7 @@ function createScrollFixture(): ScrollFixture {
   return { store, entries, nextSequence: 2 };
 }
 
-const noRpcSend: RpcSessionSend = async () => undefined as never;
+const noRequest: ChatSessionRequest = async () => undefined as never;
 
 function ScrollPlayground() {
   const [fixture] = useState(createScrollFixture);
@@ -132,7 +132,7 @@ function ScrollPlayground() {
   const scrollController = useThreadScrollController(transcriptRootRef);
   const { runtime } = useOmpRuntime({
     store: fixture.store,
-    send: noRpcSend,
+    send: noRequest,
     capabilities: CAPABILITIES,
   });
 

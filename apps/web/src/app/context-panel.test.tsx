@@ -21,12 +21,12 @@ function fakeStore(overrides: Readonly<Record<string, unknown>> = {}): OmpRuntim
   return {
     getSnapshot: () => ({ session }),
     subscribe: () => () => undefined,
-    applySessionState: () => undefined,
+    applyHostState: () => undefined,
   } as unknown as OmpRuntimeStore;
 }
 
 const fakeClient = {
-  port: () => ({ send: async () => ({}) }),
+  port: () => ({ request: async () => ({}) }),
 } as unknown as AppClient;
 
 describe("the Context panel's compaction state", () => {
@@ -70,7 +70,11 @@ describe("the Context panel", () => {
   test("after a compaction the panel reports how many tokens it compacted", async () => {
     const compactingClient = {
       port: () => ({
-        send: async () => ({ summary: "done", firstKeptEntryId: "entry-1", tokensBefore: 120_000 }),
+        request: async () => ({
+          summary: "done",
+          firstKeptEntryId: "entry-1",
+          tokensBefore: 120_000,
+        }),
       }),
     } as unknown as AppClient;
     render(
@@ -87,7 +91,11 @@ describe("the Context panel", () => {
   test("after a compaction the transcript is read again, because the compaction writes an entry the transcript does not show yet", async () => {
     const compactingClient = {
       port: () => ({
-        send: async () => ({ summary: "done", firstKeptEntryId: "entry-1", tokensBefore: 120_000 }),
+        request: async () => ({
+          summary: "done",
+          firstKeptEntryId: "entry-1",
+          tokensBefore: 120_000,
+        }),
       }),
     } as unknown as AppClient;
     const onCompacted = vi.fn();

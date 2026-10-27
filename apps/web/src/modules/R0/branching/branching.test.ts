@@ -1,4 +1,4 @@
-import type { EntryId, OmpWire, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionRequest, EntryId, OmpWire, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../store/store";
@@ -9,7 +9,7 @@ const branchedThread = "branched-thread" as ThreadId;
 const userEntry = "user-entry" as EntryId;
 const calls: Array<{
   readonly type: string;
-  readonly command: unknown;
+  readonly payload: unknown;
   readonly threadId?: ThreadId;
 }> = [];
 
@@ -29,19 +29,19 @@ function storeWithUserEntry(): OmpRuntimeStore {
   return store;
 }
 
-/** omp's answers to the two commands a branch sends. Any other command, a rename included, throws here. */
+/** omp's answers to the two requests a branch sends. Any other request, a rename included, throws here. */
 function sendFor(
   branchResult: OmpWire.BranchResult | AppFailure = { text: "original draft", cancelled: false },
-): RpcSessionSend {
-  return (async (args) => {
-    calls.push({ type: args.command.type, command: args.command, threadId: args.threadId });
-    if (args.command.type === "branch") {
+): ChatSessionRequest {
+  return (async (args: { threadId: ThreadId; method: string; params: unknown }) => {
+    calls.push({ type: args.method, payload: args.params, threadId: args.threadId });
+    if (args.method === "branch") {
       if (branchResult instanceof AppFailure) throw branchResult;
       return branchResult;
     }
-    if (args.command.type === "get_state") return { sessionId: branchedThread };
-    throw new Error(`unexpected command ${args.command.type}`);
-  }) as RpcSessionSend;
+    if (args.method === "get_state") return { sessionId: branchedThread };
+    throw new Error(`unexpected request ${args.method}`);
+  }) as unknown as ChatSessionRequest;
 }
 
 describe("OmpBranchingController", () => {
@@ -183,7 +183,7 @@ describe("OmpBranchingController", () => {
       store,
       send: sendFor(),
       submitPrompt: async (intent) => {
-        calls.push({ type: "submit", command: intent });
+        calls.push({ type: "submit", payload: intent });
       },
       switchThread: async () => {},
       reloadHistory: async () => {},
@@ -192,7 +192,7 @@ describe("OmpBranchingController", () => {
     await controller.regenerateFrom(userEntry);
 
     expect(calls.map((call) => call.type)).toEqual(["branch", "get_state", "submit"]);
-    expect(calls.find((call) => call.type === "submit")?.command).toMatchObject({
+    expect(calls.find((call) => call.type === "submit")?.payload).toMatchObject({
       text: "original draft",
       delivery: "new",
     });
@@ -205,7 +205,7 @@ describe("OmpBranchingController", () => {
       store,
       send: sendFor(),
       submitPrompt: async (intent) => {
-        calls.push({ type: "submit", command: intent });
+        calls.push({ type: "submit", payload: intent });
       },
       switchThread: async () => {},
       reloadHistory: async () => {},

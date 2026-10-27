@@ -9,7 +9,6 @@ import type { ShortcutRegistry } from "@/shortcuts/registry";
 /** What Alt+Up says, in plain English. */
 export const QUEUE_DEQUEUE_MESSAGES = {
   restored: "Brought the last queued message back into the message box.",
-  imagesDropped: "The queued message was brought back, but its images were too large to restore.",
   nothingQueued: "No queued message to bring back.",
   alreadySent: "That message is already part of omp's reply, so it cannot be brought back.",
   boxHasText: "The message box already has text. Clear it, then press Alt+Up again.",
@@ -68,11 +67,7 @@ export function registerQueueDequeueShortcut({
         restoreDraft: restore,
       });
       if (!result.removed) return;
-      notify(
-        result.imagesDropped
-          ? QUEUE_DEQUEUE_MESSAGES.imagesDropped
-          : QUEUE_DEQUEUE_MESSAGES.restored,
-      );
+      notify(QUEUE_DEQUEUE_MESSAGES.restored);
     } catch (error: unknown) {
       // dequeueToEdit throws when the message has left the queue since the check above,
       // and when the box cannot take the text back.

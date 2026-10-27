@@ -8,10 +8,10 @@ import {
 import type {
   AttachmentRef,
   CapabilityMap,
+  ChatSessionRequest,
   Draft,
   DraftScope,
   Revision,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, checkScrubbed } from "@omp-app/contracts";
@@ -75,7 +75,7 @@ function createRuntime(
   const store = new OmpRuntimeStore({ threadId: "u2-cc6-thread" as ThreadId });
   store.applySessionState(fixture.getState);
   const sends: unknown[] = [];
-  const send: RpcSessionSend = async (args) => {
+  const send: ChatSessionRequest = async (args) => {
     sends.push(args);
     await options.beforeSend?.();
     return undefined as never;
@@ -382,7 +382,8 @@ describe("U2 composer CC6 acceptance", () => {
       delivery: "new",
     });
     expect(runtime.sends[0]).toMatchObject({
-      command: { type: "prompt", message: "Summarize the current session" },
+      method: "prompt",
+      params: { text: "Summarize the current session" },
     });
     expect((input as HTMLTextAreaElement).value).toBe("");
     view.unmount();
@@ -405,7 +406,8 @@ describe("U2 composer CC6 acceptance", () => {
     await waitFor(() => expect(streaming.sends).toHaveLength(1));
     expect(steered[0]?.delivery).toBe("steer");
     expect(streaming.sends[0]).toMatchObject({
-      command: { type: "prompt", message: "Inspect the assertion", streamingBehavior: "steer" },
+      method: "prompt",
+      params: { text: "Inspect the assertion", streamingBehavior: "steer" },
     });
     first.unmount();
 
@@ -428,7 +430,8 @@ describe("U2 composer CC6 acceptance", () => {
     await waitFor(() => expect(streaming.sends).toHaveLength(2));
     expect(followedUp[0]?.delivery).toBe("followUp");
     expect(streaming.sends[1]).toMatchObject({
-      command: { type: "prompt", message: "Run the test suite", streamingBehavior: "followUp" },
+      method: "prompt",
+      params: { text: "Run the test suite", streamingBehavior: "followUp" },
     });
   });
 
@@ -599,9 +602,9 @@ describe("U2 composer CC6 acceptance", () => {
       mimeType: "image/png",
     });
     expect(runtime.sends[0]).toMatchObject({
-      command: {
-        type: "prompt",
-        message: "",
+      method: "prompt",
+      params: {
+        text: "",
         images: [{ type: "image", data: "AA==", mimeType: "image/png" }],
       },
     });
@@ -681,7 +684,10 @@ describe("U2 composer CC6 acceptance", () => {
       text: "printf hello",
       delivery: "new",
     });
-    expect(runtime.sends[0]).toMatchObject({ command: { type: "bash", command: "printf hello" } });
+    expect(runtime.sends[0]).toMatchObject({
+      method: "bash",
+      params: { command: "printf hello" },
+    });
     view.unmount();
   });
 

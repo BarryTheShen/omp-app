@@ -2,9 +2,9 @@ import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/
 import type {
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
@@ -75,7 +75,7 @@ function assistant(
   };
 }
 
-function send(): RpcSessionSend {
+function send(): ChatSessionRequest {
   return async () => undefined as never;
 }
 const testSend = send();

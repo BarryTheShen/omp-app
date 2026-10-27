@@ -2,12 +2,12 @@ import type { AppClient } from "@omp-app/client";
 import type {
   CapabilityKey,
   CapabilityMap,
+  ChatSessionClient,
   OmpWire,
   PortCallOptions,
-  RpcSessionClient,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure, RpcSessionPort } from "@omp-app/contracts";
+import { AppFailure, ChatSessionPort } from "@omp-app/contracts";
 import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
 import type { ProviderSignIn } from "@/modules/D3/contract";
 import {
@@ -302,28 +302,29 @@ export class ModelCatalogModel implements ModelCatalogPort {
   }
 }
 
-/** Real browser implementation over A0.8's typed RpcSession port. */
+/** Real browser implementation over the chat session port (SDK plan H5.4f). */
 export function createRpcModelCatalogSource(
   client: AppClient,
   threadId: ThreadId,
 ): ModelCatalogSource {
-  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  const session = client.port(ChatSessionPort) as ChatSessionClient;
   return {
     readSignIns: async () => readProviderSignIns({ client, threadId }),
     getAvailableModels: async (options) => {
-      const result = await session.send(
-        { threadId, command: { type: "get_available_models" } },
+      const result = await session.request(
+        { threadId, method: "get_available_models", params: {} },
         options,
       );
-      return (result as OmpWire.GetAvailableModelsResult).models;
+      return result.models as unknown as readonly OmpWire.ModelInfo[];
     },
     setModel: async (model, options) =>
-      (await session.send(
+      (await session.request(
         {
           threadId,
-          command: { type: "set_model", provider: model.provider, modelId: model.modelId },
+          method: "set_model",
+          params: { provider: model.provider, modelId: model.modelId },
         },
         options,
-      )) as OmpWire.ModelInfo,
+      )) as unknown as OmpWire.ModelInfo,
   };
 }

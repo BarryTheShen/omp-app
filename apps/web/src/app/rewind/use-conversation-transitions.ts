@@ -1,4 +1,4 @@
-import type { CapabilityMap, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { useMemo } from "react";
 import {
   type ConversationTransitionPort,
@@ -12,7 +12,7 @@ import { conversationBusy } from "./rewind-tree";
 
 export interface ConversationTransitionOptions {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly capabilities: CapabilityMap;
   readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   /** R1's thread switch: it loads the chosen session's history before it resolves. */

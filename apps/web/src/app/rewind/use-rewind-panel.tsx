@@ -1,4 +1,4 @@
-import type { CapabilityMap, DescriptorId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, DescriptorId, ThreadId } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Surface } from "@/layout";
 import type { ConversationTransitionPort } from "@/modules/P4/transitions";
@@ -15,7 +15,7 @@ const COMPOSER_INPUT = 'textarea[aria-label="Message input"]';
 export interface RewindPanelOptions {
   readonly threadId: ThreadId;
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly capabilities: CapabilityMap;
   readonly transitions: ConversationTransitionPort;
 }

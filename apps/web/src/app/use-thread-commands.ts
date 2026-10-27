@@ -1,14 +1,13 @@
-import type { RpcSessionClient } from "@omp-app/contracts";
 import {
   AppFailure,
   AppPort,
   type CapabilityMap,
+  type ChatSessionClient,
+  type ChatSessionRequest,
   type DescriptorId,
   McpCommandsPort,
   type OmpCommandGateway,
   type PortClient,
-  type RpcSessionPort,
-  type RpcSessionSend,
   type ThreadId,
 } from "@omp-app/contracts";
 import {
@@ -74,7 +73,7 @@ interface ThreadPaletteInput {
   readonly overlay: OverlayHostApi;
   readonly client: ActiveThreadProps["client"];
   readonly threadId: ThreadId;
-  readonly rpc: PortClient<typeof RpcSessionPort>;
+  readonly chat: ChatSessionClient;
   readonly store: OmpRuntimeStore;
   readonly setCommandError: Dispatch<SetStateAction<string | null>>;
   readonly setCommandStatus: Dispatch<SetStateAction<string | null>>;
@@ -95,7 +94,7 @@ export function useThreadPalette({
   overlay,
   client,
   threadId,
-  rpc,
+  chat,
   store,
   setCommandError,
   setCommandStatus,
@@ -137,12 +136,12 @@ export function useThreadPalette({
       restoreFocus: composerInput() ?? undefined,
     });
   }, [capabilities, client, overlay, threadId]);
-  // omp's goal over RPC: the typed `/goal` and the palette's goal commands (use-goal-command.ts).
+  // omp's goal on the chat host: the typed `/goal` and the palette's goal commands (use-goal-command.ts).
   const { command: goalCommand, runFromPalette: runGoalFromPalette } = useGoalCommands({
     capabilities,
     fail: setCommandError,
     notify: setCommandStatus,
-    rpc: rpc as RpcSessionClient,
+    request: chat.request,
     store,
     threadId,
   });
@@ -299,7 +298,7 @@ interface ThreadSlashCommandsInput {
   readonly store: OmpRuntimeStore;
   readonly capabilities: CapabilityMap;
   readonly client: ActiveThreadProps["client"];
-  readonly guardedSend: RpcSessionSend;
+  readonly guardedSend: ChatSessionRequest;
   readonly runtimeController: OmpRuntime["controller"];
   readonly switchChat: ActiveThreadProps["switchChat"];
   readonly pickCount: ActiveThreadProps["pickCount"];

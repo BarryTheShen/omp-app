@@ -1,12 +1,13 @@
-import { AppFailure, type CapabilityMap, type ThreadId } from "@omp-app/contracts";
+import {
+  AppFailure,
+  type CapabilityMap,
+  type ChatSessionRequest,
+  type ThreadId,
+} from "@omp-app/contracts";
 import { useCallback, useMemo } from "react";
 import type { SlashAppCommand } from "@/modules/D2/slash";
 import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
-import {
-  createAutonomyPort,
-  type GoalRpcSender,
-  type GoalRuntimeStore,
-} from "@/modules/D8/goal/runtime";
+import { createAutonomyPort, type GoalRuntimeStore } from "@/modules/D8/goal/runtime";
 import { reportClientError } from "./client-errors";
 import { goalSlashCommand } from "./slash-commands";
 
@@ -14,7 +15,8 @@ const CHANGE_FAILED = "The goal could not be changed. Try again.";
 
 export interface GoalCommandOptions {
   readonly capabilities: CapabilityMap;
-  readonly rpc: { readonly send: GoalRpcSender };
+  /** The chat session port's requests. */
+  readonly request: ChatSessionRequest;
   readonly store: GoalRuntimeStore;
   readonly threadId: ThreadId;
   /** The header line for what omp now has. */
@@ -30,7 +32,7 @@ export interface GoalCommands {
   readonly runFromPalette: (args: string) => void;
 }
 
-/** Waits for the selected chat's process to be ready before a direct RPC command runs. */
+/** Waits for the selected chat's process to be ready before a goal request runs. */
 function waitForGoalProcess(store: GoalRuntimeStore): Promise<void> {
   const status = store.getSnapshot().process.status;
   if (status === "ready" || status === "running") return Promise.resolve();
@@ -59,18 +61,18 @@ function waitForGoalProcess(store: GoalRuntimeStore): Promise<void> {
 }
 
 /**
- * omp's goal over its RPC, for the typed `/goal` and the palette's goal commands. The D8 autonomy port sends each
+ * omp's goal on the chat host, for the typed `/goal` and the palette's goal commands. The D8 autonomy port sends each
  * request for the chat on screen only. A chat whose omp has no `goal` command is refused before anything is sent.
  */
 export function useGoalCommands({
   capabilities,
-  rpc,
+  request,
   store,
   threadId,
   notify,
   fail,
 }: GoalCommandOptions): GoalCommands {
-  const autonomy = useMemo(() => createAutonomyPort({ rpc: rpc.send, store }), [rpc.send, store]);
+  const autonomy = useMemo(() => createAutonomyPort({ request, store }), [request, store]);
   const sendGoal = useCallback(
     async (args: GoalRpcArgs): Promise<GoalRpcResult> => {
       if (capabilities["omp.cmd.goal"]?.state !== "available") {

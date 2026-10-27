@@ -1,10 +1,10 @@
-import type { SendCommandArgs } from "@omp-app/contracts";
+import type { ChatSessionRequest } from "@omp-app/contracts";
 import { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { notificationEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "../../R0/store";
 import type { Goal, GoalModeState, GoalRpcResult, GoalUpdatedEvent } from "../contract";
-import { createAutonomyPort, type GoalRpcSender } from "./runtime";
+import { createAutonomyPort } from "./runtime";
 
 const threadId = ThreadId.parse("thread-goal-port");
 
@@ -29,19 +29,19 @@ function resultFor(goal: Goal): GoalRpcResult {
 }
 
 describe("createAutonomyPort", () => {
-  test("sends typed goal RPC, forwards validated R0 goal updates and null for unreadable ones", async () => {
+  test("sends the goal request, forwards validated R0 goal updates and null for unreadable ones", async () => {
     const goal = makeGoal();
     const store = new OmpRuntimeStore({ threadId });
-    const sent: SendCommandArgs<"goal">[] = [];
-    const rpc: GoalRpcSender = async (args) => {
+    const sent: unknown[] = [];
+    const request = (async (args: { method: string; params: { op: string } }) => {
       sent.push(args);
-      if (args.command.op !== "get") throw new Error("Unexpected goal operation in this test.");
+      if (args.params.op !== "get") throw new Error("Unexpected goal operation in this test.");
       return resultFor(goal);
-    };
-    const autonomy = createAutonomyPort({ rpc, store });
+    }) as unknown as ChatSessionRequest;
+    const autonomy = createAutonomyPort({ request, store });
 
     await expect(autonomy.goal(threadId, { op: "get" })).resolves.toEqual(resultFor(goal));
-    expect(sent).toEqual([{ threadId, command: { type: "goal", op: "get" } }]);
+    expect(sent).toEqual([{ threadId, method: "goal", params: { op: "get" } }]);
 
     const updates: (GoalUpdatedEvent | null)[] = [];
     const unsubscribe = autonomy.subscribeGoal(threadId, (event) => updates.push(event));
@@ -68,8 +68,8 @@ describe("createAutonomyPort", () => {
   test("rejects goal calls made for a different runtime thread", async () => {
     const goal = makeGoal();
     const store = new OmpRuntimeStore({ threadId });
-    const rpc = async () => resultFor(goal);
-    const autonomy = createAutonomyPort({ rpc, store });
+    const request = (async () => resultFor(goal)) as unknown as ChatSessionRequest;
+    const autonomy = createAutonomyPort({ request, store });
     const otherThreadId = ThreadId.parse("another-thread");
 
     await expect(autonomy.goal(otherThreadId, { op: "get" })).rejects.toMatchObject({

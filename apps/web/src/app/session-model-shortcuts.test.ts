@@ -73,7 +73,7 @@ interface WorldOptions {
 interface World {
   readonly options: SessionModelShortcutOptions;
   readonly registry: ShortcutRegistry;
-  /** The RPC commands omp received, in order. Sign-in reads are not recorded. */
+  /** The requests omp received, by method, in order. Sign-in reads are not recorded. */
   readonly sent: string[];
   /** The model ids the chat set, in order. */
   readonly modelsSet: string[];
@@ -96,18 +96,19 @@ function world(setup: WorldOptions): World {
   const session = { model: wire(setup.start), thinkingLevel: "off" };
   const listeners = new Set<() => void>();
 
-  const rpc = {
-    send: async (request: {
-      readonly command: { readonly type: string } & Record<string, unknown>;
+  const chat = {
+    request: async (request: {
+      readonly method: string;
+      readonly params: Record<string, unknown>;
     }) => {
-      const { command } = request;
-      if (command.type === "get_login_providers") throw new Error("sign-ins are not read here");
-      sent.push(command.type);
-      switch (command.type) {
+      const { method, params } = request;
+      if (method === "get_login_providers") throw new Error("sign-ins are not read here");
+      sent.push(method);
+      switch (method) {
         case "get_available_models":
           return { models: ["a", "b", "c"].map(wire) };
         case "set_model": {
-          const id = String(command.modelId);
+          const id = String(params.modelId);
           if (setup.refuseModel) {
             throw new AppFailure({
               code: "internal",
@@ -124,12 +125,12 @@ function world(setup: WorldOptions): World {
         case "get_available_thinking_levels":
           return { levels: [...levels] };
         case "set_thinking_level":
-          omp.thinkingLevel = String(command.level);
-          return undefined;
+          omp.thinkingLevel = String(params.level);
+          return {};
         case "cycle_thinking_level":
           return { level: "low" };
         default:
-          throw new Error(`no answer for ${command.type}`);
+          throw new Error(`no answer for ${method}`);
       }
     },
   };
@@ -156,7 +157,7 @@ function world(setup: WorldOptions): World {
     },
   };
   const client = {
-    port: (token: unknown) => (token === ConfigStore ? config : rpc),
+    port: (token: unknown) => (token === ConfigStore ? config : chat),
     subscribe: async () => ({
       onEvent: () => () => undefined,
       unsubscribe: async () => undefined,
@@ -170,7 +171,7 @@ function world(setup: WorldOptions): World {
         listeners.delete(listener);
       };
     },
-    applySessionState: (state: {
+    applyHostState: (state: {
       readonly model?: OmpWire.ModelInfo;
       readonly thinkingLevel?: string;
     }) => {

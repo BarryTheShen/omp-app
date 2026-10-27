@@ -1,4 +1,4 @@
-import type { EntryId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionRequest, EntryId, ThreadId } from "@omp-app/contracts";
 import {
   type ReactNode,
   useCallback,
@@ -28,7 +28,7 @@ import { useRewindTree } from "./use-rewind-tree";
 export interface RewindPanelProps {
   readonly threadId: ThreadId;
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly labelsAvailable: boolean;
   readonly transitions: ConversationTransitionPort;
   /** Changes each time a command opens the panel again: focus moves back into the panel. */

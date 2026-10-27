@@ -1,4 +1,4 @@
-import { AppFailure, ThreadId } from "@omp-app/contracts";
+import { AppFailure, type ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
 import type { TodoPhase } from "../contract";
@@ -101,10 +101,10 @@ describe("TodoStoreAdapter", () => {
     const runtime = new OmpRuntimeStore({
       threadId,
       transport: {
-        send: async (request) => {
+        request: (async (request: unknown) => {
           calls.push(request);
           return { todoPhases: canonical };
-        },
+        }) as unknown as ChatSessionRequest,
       },
     });
     const adapter = new TodoStoreAdapter({ store: runtime, now });
@@ -113,7 +113,7 @@ describe("TodoStoreAdapter", () => {
 
     await expect(adapter.setTodos(phases)).resolves.toEqual(canonical);
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(calls).toMatchObject([{ threadId, command: { type: "set_todos", phases } }]);
+    expect(calls).toMatchObject([{ threadId, method: "set_todos", params: { phases } }]);
     expect(adapter.getSnapshot()).toMatchObject({ source: "set_todos", phases: canonical });
   });
 

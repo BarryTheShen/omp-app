@@ -1,4 +1,4 @@
-import type { ToolCallId } from "@omp-app/contracts";
+import type { ChatSessionRequest, ToolCallId } from "@omp-app/contracts";
 import {
   Descriptor,
   type Descriptor as DescriptorValue,
@@ -223,7 +223,7 @@ describe("U5 W3 live todo fixture", () => {
     const runtime = new OmpRuntimeStore({
       threadId,
       transport: {
-        send: async (request) => {
+        request: (async (request: unknown) => {
           calls.push(request);
           expect(runtime.getSnapshot().todoPhases).toEqual([]);
           return {
@@ -232,13 +232,13 @@ describe("U5 W3 live todo fixture", () => {
               tasks: phase.tasks.map((task) => ({ ...task })),
             })),
           };
-        },
+        }) as unknown as ChatSessionRequest,
       },
     });
     const adapter = new TodoStoreAdapter({ store: runtime });
 
     await expect(adapter.setTodos(requested)).resolves.toEqual(canonical);
-    expect(calls).toMatchObject([{ command: { type: "set_todos", phases: requested } }]);
+    expect(calls).toMatchObject([{ method: "set_todos", params: { phases: requested } }]);
     expect(adapter.getSnapshot().source).toBe("set_todos");
     expect(adapter.getSnapshot().phases).toEqual(canonical);
     expect(adapter.getSnapshot().phases).not.toEqual(requested);

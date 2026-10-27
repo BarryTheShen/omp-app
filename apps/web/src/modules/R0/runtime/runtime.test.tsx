@@ -10,9 +10,9 @@ import type {
   AppError,
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   MessageKey,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
@@ -366,7 +366,7 @@ describe("R0.3 assistant-ui runtime", () => {
       },
       1,
     );
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createOmpRuntime({ store, send, capabilities });
     const firstAdapter = controller.createAdapter();
     const firstView = (firstAdapter.messages ?? [])[0];
@@ -393,7 +393,7 @@ describe("R0.3 assistant-ui runtime", () => {
       } as ChatSessionEvent,
       1,
     );
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createOmpRuntime({ store, send, capabilities });
     const runningView = (controller.createAdapter().messages ?? [])[0];
     if (!runningView) throw new Error("expected the command's row");
@@ -425,10 +425,10 @@ describe("R0.3 assistant-ui runtime", () => {
 
   test("submits through the typed prompt port and resolves at admission", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    const calls: Array<{ readonly command: unknown }> = [];
+    const calls: Array<{ readonly method: string; readonly params: unknown }> = [];
     let admit!: (value: unknown) => void;
-    const send: RpcSessionSend = async (args) => {
-      calls.push({ command: args.command });
+    const send: ChatSessionRequest = async (args) => {
+      calls.push({ method: args.method, params: args.params });
       return new Promise((resolve) => {
         admit = resolve;
       }) as never;
@@ -440,14 +440,14 @@ describe("R0.3 assistant-ui runtime", () => {
       delivery: "new",
     });
     await Promise.resolve();
-    expect(calls).toEqual([{ command: { type: "prompt", message: "hello" } }]);
+    expect(calls).toEqual([{ method: "prompt", params: { text: "hello" } }]);
     let settled = false;
     void submission.then(() => {
       settled = true;
     });
     await Promise.resolve();
     expect(settled).toBe(false);
-    admit({ agentInvoked: true });
+    admit({ resultFollows: true });
     await expect(submission).resolves.toBeUndefined();
   });
 
@@ -458,7 +458,7 @@ describe("R0.3 assistant-ui runtime", () => {
       message: "Prompt was refused",
       retryable: false,
     } satisfies AppError);
-    const send: RpcSessionSend = async () => {
+    const send: ChatSessionRequest = async () => {
       throw failure;
     };
     const controller = createOmpRuntime({ store, send, capabilities });
@@ -470,7 +470,7 @@ describe("R0.3 assistant-ui runtime", () => {
   test("a prompt marks its chat sent while it is sent, and a refused prompt unmarks it", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const seen: boolean[] = [];
-    const send: RpcSessionSend = async () => {
+    const send: ChatSessionRequest = async () => {
       seen.push(store.getSnapshot().prompt.sent);
       throw new AppFailure({
         code: "permission",
@@ -488,7 +488,7 @@ describe("R0.3 assistant-ui runtime", () => {
 
   test("a slash command does not mark its chat sent, since omp answers it without a message", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    const send: RpcSessionSend = (async () => ({ agentInvoked: false })) as never;
+    const send: ChatSessionRequest = (async () => ({ resultFollows: false })) as never;
     const controller = createOmpRuntime({ store, send, capabilities });
     await controller.submitPrompt({ mode: "prompt", text: "/usage", delivery: "new" });
     expect(store.getSnapshot().prompt.sent).toBe(false);
@@ -497,8 +497,8 @@ describe("R0.3 assistant-ui runtime", () => {
   test("gates Python without sending a replacement prompt", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createOmpRuntime({ store, send, capabilities });
@@ -513,7 +513,7 @@ describe("R0.3 assistant-ui runtime", () => {
   test("a plain new prompt shows its row before its request goes out, and a refused one takes it away", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const rowsAtSend: number[] = [];
-    const send: RpcSessionSend = async () => {
+    const send: ChatSessionRequest = async () => {
       rowsAtSend.push(store.getSnapshot().pendingPrompts.length);
       throw new AppFailure({
         code: "permission",
@@ -536,7 +536,7 @@ describe("R0.3 assistant-ui runtime", () => {
   test("the row of a plain new prompt is a user row with its text, and omp's echo takes its place", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const admitted = Promise.withResolvers<void>();
-    const send: RpcSessionSend = async () => admitted.promise as never;
+    const send: ChatSessionRequest = async () => admitted.promise as never;
     const controller = createOmpRuntime({ store, send, capabilities });
     const submission = controller.submitPrompt({ mode: "prompt", text: "hello", delivery: "new" });
     const [row] = controller.messages();
@@ -577,7 +577,7 @@ describe("R0.3 assistant-ui runtime", () => {
       },
     ]);
     const answered = Promise.withResolvers<void>();
-    const send: RpcSessionSend = async () => answered.promise as never;
+    const send: ChatSessionRequest = async () => answered.promise as never;
     const controller = createOmpRuntime({ store, send, capabilities });
     void controller.submitPrompt({ mode: "prompt", text: "next question", delivery: "new" });
     const waiting = store.getSnapshot().pendingPrompts[0]?.key;
@@ -608,7 +608,7 @@ describe("R0.3 assistant-ui runtime", () => {
       ...capabilities,
       "omp.cmd.bash": { state: "available", via: "rpc" },
     };
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createOmpRuntime({ store, send, capabilities: bashCapabilities });
     await controller.submitPrompt({
       mode: "prompt",
@@ -628,8 +628,8 @@ describe("R0.3 assistant-ui runtime", () => {
   test("gates a bash command that keeps its output out of the model, without sending it", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createOmpRuntime({ store, send, capabilities });
@@ -649,14 +649,14 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];
 
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const available = createOmpRuntime({ store, send, capabilities }).createAdapter();
     expect(available.onCancel).toBeTypeOf("function");
     await available.onCancel?.();
-    expect(commands).toEqual([{ type: "abort" }]);
+    expect(commands).toEqual([{ method: "abort", params: {} }]);
 
     const unavailable = createOmpRuntime({ store, send, capabilities: {} }).createAdapter();
     expect(unavailable.onCancel).toBeUndefined();
@@ -679,8 +679,8 @@ describe("R0.3 assistant-ui runtime", () => {
     };
     const commands: unknown[] = [];
     const handedBack: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return withdrawn as never;
     };
     const controller = createOmpRuntime({
@@ -693,7 +693,7 @@ describe("R0.3 assistant-ui runtime", () => {
       onQueueRestored: (restored) => handedBack.push(restored),
     });
     await controller.cancel();
-    expect(commands).toEqual([{ type: "abort_and_restore_queue" }]);
+    expect(commands).toEqual([{ method: "abort_and_restore_queue", params: {} }]);
     expect(handedBack).toEqual([{ threadId, restored: withdrawn }]);
   });
 
@@ -701,8 +701,8 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];
     const handedBack: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createOmpRuntime({
@@ -715,13 +715,13 @@ describe("R0.3 assistant-ui runtime", () => {
       onQueueRestored: (restored) => handedBack.push(restored),
     });
     await controller.cancel();
-    expect(commands).toEqual([{ type: "abort" }]);
+    expect(commands).toEqual([{ method: "abort", params: {} }]);
     expect(handedBack).toEqual([]);
   });
 
   test("offers edit and regenerate only while omp can branch", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const onEdit = async () => undefined;
     const onReload = async () => undefined;
     const branchable = {
@@ -754,8 +754,8 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     ompEvent(store, { type: "agent_start" }, 1);
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createOmpRuntime({ store, send, capabilities });
@@ -774,8 +774,8 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     ompEvent(store, { type: "agent_start" }, 1);
     const commands: unknown[] = [];
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
       return undefined as never;
     };
     const controller = createOmpRuntime({ store, send, capabilities });
@@ -789,7 +789,7 @@ describe("R0.3 assistant-ui runtime", () => {
       delivery: "steer",
     });
     expect(commands).toEqual([
-      { type: "prompt", message: "also check the tests", streamingBehavior: "steer" },
+      { method: "prompt", params: { text: "also check the tests", streamingBehavior: "steer" } },
     ]);
   });
 
@@ -801,9 +801,9 @@ describe("R0.3 assistant-ui runtime", () => {
     };
     const commands: unknown[] = [];
     let finish!: (value: unknown) => void;
-    const send: RpcSessionSend = async ({ command }) => {
-      commands.push(command);
-      if (command.type === "bash") {
+    const send: ChatSessionRequest = async ({ method, params }) => {
+      commands.push({ method, params });
+      if (method === "bash") {
         return new Promise((resolve) => {
           finish = resolve;
         }) as never;
@@ -814,14 +814,17 @@ describe("R0.3 assistant-ui runtime", () => {
     const bash = controller.submitPrompt({ mode: "bash", text: "printf hello", delivery: "new" });
     await Promise.resolve();
     await controller.cancel();
-    expect(commands).toEqual([{ type: "bash", command: "printf hello" }, { type: "abort_bash" }]);
+    expect(commands).toEqual([
+      { method: "bash", params: { command: "printf hello" } },
+      { method: "abort_bash", params: {} },
+    ]);
     finish(undefined);
     await expect(bash).resolves.toBeUndefined();
   });
 
   test("uses prompt_result for running state without conflating session_settled", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const controller = createOmpRuntime({ store, send, capabilities });
     ompEvent(store, { type: "agent_start" }, 1);
     expect(controller.createAdapter().isRunning).toBe(true);
@@ -842,7 +845,7 @@ describe("R0.3 assistant-ui runtime", () => {
 
   test("installs the external-store runtime through the React hook", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const result = renderHook(() => useOmpRuntime({ store, send, capabilities }));
     expect(result.result.current.runtime).toBeDefined();
     expect(result.result.current.controller).toBeInstanceOf(Object);
@@ -850,7 +853,7 @@ describe("R0.3 assistant-ui runtime", () => {
   });
   test("installs the supplied attachment adapter in the external composer runtime", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    const send: RpcSessionSend = async () => undefined as never;
+    const send: ChatSessionRequest = async () => undefined as never;
     const addedFiles: string[] = [];
     const attachments: AttachmentAdapter = {
       accept: "text/plain",
@@ -1018,7 +1021,7 @@ describe("R0.3 assistant-ui runtime", () => {
     ompEvent(store, { type: "agent_end" }, 9);
     const views = createOmpRuntime({
       store,
-      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+      send: (() => Promise.resolve()) as unknown as ChatSessionRequest,
     }).messages();
     expect(views.map((view) => view.record.message.role)).toEqual([
       "user",
@@ -1083,7 +1086,7 @@ describe("R0.3 assistant-ui runtime", () => {
     });
     const runningViews = createOmpRuntime({
       store,
-      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+      send: (() => Promise.resolve()) as unknown as ChatSessionRequest,
     }).messages();
     expect(
       runningViews
@@ -1094,7 +1097,7 @@ describe("R0.3 assistant-ui runtime", () => {
 
     const views = createOmpRuntime({
       store,
-      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+      send: (() => Promise.resolve()) as unknown as ChatSessionRequest,
     }).messages();
     const assistantViews = views.filter((view) => view.record.message.role === "assistant");
     expect(assistantViews).toHaveLength(3);
@@ -1201,7 +1204,7 @@ describe("R0.3 assistant-ui runtime", () => {
     }
     const runtime = createOmpRuntime({
       store,
-      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+      send: (() => Promise.resolve()) as unknown as ChatSessionRequest,
     });
     const views = runtime.messages();
     // The hidden message is left out, and the tool result still belongs to the call before it.

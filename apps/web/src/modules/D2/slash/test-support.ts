@@ -1,9 +1,9 @@
 import type { AppClient } from "@omp-app/client";
 import {
+  type ChatSessionEvent,
+  ChatSessionPort,
   type CommandRunResult,
   OmpCommandGateway,
-  type RpcSessionEvent,
-  RpcSessionPort,
 } from "@omp-app/contracts";
 import realOutputs from "./fixtures/real-command-outputs.json";
 import realCatalog from "./fixtures/real-get-available-commands.json";
@@ -16,14 +16,14 @@ export const REAL_COMMAND_OUTPUTS = realOutputs;
 
 export interface FakeSlashClient {
   readonly client: AppClient;
-  /** The RPC command types the catalog sent, in order. */
+  /** The chat host methods the catalog asked, in order. */
   readonly sent: string[];
   /** The commands the gateway was asked to run, in order. */
   readonly runs: string[];
   /** How many times the live event subscription was released. */
   readonly unsubscribed: () => number;
-  /** Pushes an omp frame to the live event stream, as R0 forwards it. */
-  readonly emitNotification: (frame: unknown) => void;
+  /** Pushes one of the chat host's events to the live event stream. */
+  readonly emitEvent: (event: unknown) => void;
 }
 
 export interface FakeSlashClientOptions {
@@ -36,12 +36,12 @@ export interface FakeSlashClientOptions {
 export function fakeSlashClient(options: FakeSlashClientOptions = {}): FakeSlashClient {
   const sent: string[] = [];
   const runs: string[] = [];
-  const listeners = new Set<(payload: RpcSessionEvent) => void>();
+  const listeners = new Set<(payload: ChatSessionEvent) => void>();
   let released = 0;
-  const rpc = {
-    send: async (args: { readonly command: { readonly type: string } }) => {
-      sent.push(args.command.type);
-      if (args.command.type !== "get_available_commands") throw new Error("unexpected RPC command");
+  const session = {
+    request: async (args: { readonly method: string }) => {
+      sent.push(args.method);
+      if (args.method !== "get_available_commands") throw new Error("unexpected request");
       return options.commands ? await options.commands() : { commands: REAL_COMMAND_LIST };
     },
   };
@@ -53,14 +53,14 @@ export function fakeSlashClient(options: FakeSlashClientOptions = {}): FakeSlash
   };
   const client = {
     port: (port: unknown) => {
-      if (port === RpcSessionPort) return rpc;
+      if (port === ChatSessionPort) return session;
       if (port === OmpCommandGateway) return gateway;
-      throw new Error("the slash tests use only the RPC session and the command gateway");
+      throw new Error("the slash tests use only the chat session and the command gateway");
     },
     subscribe: async () => ({
-      stream: "A0.rpcSession.event",
+      stream: "A0.chatSession.event",
       lastSeq: 0,
-      onEvent(listener: (payload: RpcSessionEvent) => void) {
+      onEvent(listener: (payload: ChatSessionEvent) => void) {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
@@ -76,9 +76,8 @@ export function fakeSlashClient(options: FakeSlashClientOptions = {}): FakeSlash
     sent,
     runs,
     unsubscribed: () => released,
-    emitNotification: (frame) => {
-      for (const listener of [...listeners])
-        listener({ kind: "notification", frame } as RpcSessionEvent);
+    emitEvent: (event) => {
+      for (const listener of [...listeners]) listener({ kind: "event", event } as ChatSessionEvent);
     },
   };
 }

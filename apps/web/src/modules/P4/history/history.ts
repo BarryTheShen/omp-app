@@ -1,8 +1,7 @@
 import type {
+  ChatSessionRequest,
   EntryId,
-  OmpWire,
   PortCallOptions,
-  RpcSessionSend,
   SessionEntryHead,
   ThreadId,
 } from "@omp-app/contracts";
@@ -17,7 +16,8 @@ import { ReadOnlyTreeLabelSchema } from "../contract";
 
 /** The port seam used by the cursor; A0/R0 remain the only owners of transport and stores. */
 export interface OmpSessionTreePortOptions {
-  readonly send: RpcSessionSend;
+  /** The chat session port's requests, as the app guards them. */
+  readonly send: ChatSessionRequest;
   readonly sessionFile?: TreeSnapshot["sessionFile"];
   readonly labelsCapability?: TreeSnapshot["labelsCapability"];
 }
@@ -123,7 +123,13 @@ function lastEntry(entries: readonly SessionEntryHead[]): EntryCursor["nextSince
   return entries.at(-1)?.id;
 }
 
-function cursorFromResult(threadId: ThreadId, result: OmpWire.SessionEntries): EntryCursor {
+/** A page of entries as the host sends it; each entry is parsed here. */
+interface EntriesPage {
+  readonly entries: readonly unknown[];
+  readonly leafId: string | null;
+}
+
+function cursorFromResult(threadId: ThreadId, result: EntriesPage): EntryCursor {
   const entries = result.entries.map(normalizeEntry);
   return {
     threadId,
@@ -135,7 +141,7 @@ function cursorFromResult(threadId: ThreadId, result: OmpWire.SessionEntries): E
 
 /** Typed browser adapter over omp's get_entries/get_tree commands. */
 export class OmpSessionTreePort implements SessionTreePort {
-  private readonly send: RpcSessionSend;
+  private readonly send: ChatSessionRequest;
   private readonly sessionFile: TreeSnapshot["sessionFile"];
   private readonly labelsCapability: TreeSnapshot["labelsCapability"];
   private readonly listeners = new Map<ThreadId, Set<(snapshot: TreeSnapshot) => void>>();
@@ -148,10 +154,10 @@ export class OmpSessionTreePort implements SessionTreePort {
 
   public async load(threadId: ThreadId, signal?: AbortSignal): Promise<EntryCursor> {
     try {
-      const result = (await this.send(
-        { threadId, command: { type: "get_entries" } },
+      const result = await this.send(
+        { threadId, method: "get_entries", params: {} },
         this.callOptions(signal),
-      )) as OmpWire.SessionEntries;
+      );
       return cursorFromResult(threadId, result);
     } catch (error) {
       throw asAppFailure(error, "Loading omp session history failed");
@@ -164,10 +170,10 @@ export class OmpSessionTreePort implements SessionTreePort {
     signal?: AbortSignal,
   ): Promise<EntryCursor> {
     try {
-      const result = (await this.send(
-        { threadId, command: { type: "get_entries", since } },
+      const result = await this.send(
+        { threadId, method: "get_entries", params: { since } },
         this.callOptions(signal),
-      )) as OmpWire.SessionEntries;
+      );
       return cursorFromResult(threadId, result);
     } catch (error) {
       throw asAppFailure(error, "Loading newer omp session history failed");
@@ -176,10 +182,10 @@ export class OmpSessionTreePort implements SessionTreePort {
 
   public async readTree(threadId: ThreadId, signal?: AbortSignal): Promise<TreeSnapshot> {
     try {
-      const result = (await this.send(
-        { threadId, command: { type: "get_tree" } },
+      const result = await this.send(
+        { threadId, method: "get_tree", params: {} },
         this.callOptions(signal),
-      )) as OmpWire.SessionTree;
+      );
       const { tree, labels } = normalizeTreeNodes(result.tree);
       const snapshot: TreeSnapshot = {
         threadId,

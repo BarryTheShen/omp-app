@@ -51,10 +51,10 @@ describe("I5 W5 gate", () => {
       metadata: { modality: "voice" },
     });
   });
-  test("typed live frames replay through the adapter and admit the final transcript once", async () => {
+  test("typed live events replay through the adapter and admit the final transcript once", async () => {
     const listeners = new Set<(event: unknown) => void>();
     const client = {
-      port: () => ({ send: async () => ({ voice: "arbor" }) }),
+      port: () => ({ request: async () => ({ voice: "arbor" }) }),
       subscribe: async () => ({
         onEvent: (listener: (event: unknown) => void) => {
           listeners.add(listener);
@@ -72,8 +72,8 @@ describe("I5 W5 gate", () => {
     const finals: unknown[] = [];
     adapter.onFinalTranscript((message) => finals.push(message));
     await adapter.start();
-    for (const frame of LIVE_RPC_FIXTURE)
-      for (const listener of listeners) listener({ kind: "notification", frame });
+    for (const event of LIVE_RPC_FIXTURE)
+      for (const listener of listeners) listener({ kind: "event", event });
     expect(adapter.getSnapshot().phase).toBe("error");
     expect(finals).toHaveLength(1);
     expect(finals[0]).toMatchObject({ id: "voice:live-fixture:user:0" });

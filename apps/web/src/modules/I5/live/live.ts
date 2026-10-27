@@ -2,12 +2,12 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { AppClient } from "@omp-app/client";
 import type {
   CapabilityMap,
+  ChatSessionClient,
+  ChatSessionEvent,
   PortCallOptions,
-  RpcSessionClient,
-  RpcSessionEvent,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure, RpcSessionPort } from "@omp-app/contracts";
+import { AppFailure, ChatSessionPort } from "@omp-app/contracts";
 import {
   asVoiceFailure,
   finalizeVoiceTranscript,
@@ -76,8 +76,9 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
   const levelIntervalMs = options.levelIntervalMs ?? 100;
   let state = EMPTY_STATE;
   const capabilities = options.capabilities ?? {};
-  const rpc = options.client.port(RpcSessionPort);
-  const rpcSend = rpc.send.bind(rpc) as RpcSessionClient["send"];
+  const session = options.client.port(ChatSessionPort) as ChatSessionClient;
+  const liveStop = (callOptions?: PortCallOptions) =>
+    session.request({ threadId: options.threadId, method: "live_stop", params: {} }, callOptions);
   let unsubscribeEvents: (() => void) | undefined;
   let levelTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingLevels: { input: number; output: number } | undefined;
@@ -167,21 +168,19 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
     }
   };
   const subscribe = async (): Promise<void> => {
-    const subscription = await options.client.subscribe(RpcSessionPort, "event", {
+    const subscription = await options.client.subscribe(ChatSessionPort, "event", {
       scope: options.threadId,
     });
-    unsubscribeEvents = subscription.onEvent((payload: RpcSessionEvent) => {
-      if (payload.kind !== "notification" || !isLiveFrame(payload.frame)) return;
-      handleNotification(payload.frame);
+    unsubscribeEvents = subscription.onEvent((payload: ChatSessionEvent) => {
+      if (payload.kind !== "event" || !isLiveFrame(payload.event)) return;
+      handleNotification(payload.event as unknown as Record<string, unknown>);
     });
   };
   const start = async (args: LiveStartArgs = {}, callOptions?: PortCallOptions) => {
     requireLive();
     // omp keeps a session until live_stop ends it, and a page that reloaded or was left leaves one behind: end it first.
     // With no session omp does nothing, and a failure here is left for the start itself to report.
-    await rpcSend({ threadId: options.threadId, command: { type: "live_stop" } }).catch(
-      () => undefined,
-    );
+    await liveStop().catch(() => undefined);
     if (unsubscribeEvents === undefined) await subscribe();
     const sessionId = state.sessionId ?? sessionIdFactory();
     state = LiveStateSchema.parse({
@@ -193,8 +192,8 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
     });
     emit();
     try {
-      const result = await rpcSend(
-        { threadId: options.threadId, command: { type: "live_start", ...args } },
+      const result = await session.request(
+        { threadId: options.threadId, method: "live_start", params: args },
         callOptions,
       );
       state = LiveStateSchema.parse({
@@ -214,7 +213,7 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
     state = LiveStateSchema.parse({ ...state, phase: "stopping" });
     emit();
     try {
-      await rpcSend({ threadId: options.threadId, command: { type: "live_stop" } }, callOptions);
+      await liveStop(callOptions);
     } catch (error) {
       throw fail(error, "Stopping live voice failed");
     }
@@ -222,8 +221,8 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
   const mute = async (args: LiveMuteArgs = {}, callOptions?: PortCallOptions) => {
     requireLive();
     try {
-      const result = await rpcSend(
-        { threadId: options.threadId, command: { type: "live_mute", ...args } },
+      const result = await session.request(
+        { threadId: options.threadId, method: "live_mute", params: args },
         callOptions,
       );
       state = LiveStateSchema.parse({
@@ -240,9 +239,7 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
   const dispose = async (): Promise<void> => {
     // Leaving the chat ends the session omp holds, and its microphone with it. The page is going, so a failed stop is not shown.
     if (OMP_SESSION_PHASES.has(state.phase)) {
-      await rpcSend({ threadId: options.threadId, command: { type: "live_stop" } }).catch(
-        () => undefined,
-      );
+      await liveStop().catch(() => undefined);
     }
     if (levelTimer !== undefined) clearTimeout(levelTimer);
     levelTimer = undefined;

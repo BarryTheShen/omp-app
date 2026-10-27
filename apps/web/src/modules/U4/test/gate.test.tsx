@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
   CapabilityMap,
+  ChatSessionRequest,
   Fixture,
+  OmpCommand,
   ExtensionUiResponse as PortExtensionUiResponse,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, parseFixture } from "@omp-app/contracts";
@@ -17,6 +18,7 @@ import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures"
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import { QueueController } from "../../R0/actions/actions";
+import { commandOf } from "../../R0/store/rpc-frames";
 import { sessionEventOfRpc } from "../../R0/store/session-events";
 import { OmpRuntimeStore, type RuntimeSnapshot } from "../../R0/store/store";
 import { renderDialogRequest } from "../dialogs";
@@ -85,7 +87,11 @@ async function openFixtureHarness(): Promise<FixtureHarness> {
     store.ingest(sessionEventOfRpc(event), sequence);
   });
   await session.start();
-  const send: RpcSessionSend = (args, options) => session.send(args.command, options) as never;
+  const send = (async (args: { method: string; params: unknown }, options: unknown) =>
+    session.send(
+      commandOf(args.method, args.params) as unknown as OmpCommand,
+      options as never,
+    )) as unknown as ChatSessionRequest;
   const queue = new QueueController({ store, send, capabilities });
   await session.send({ type: "set_ask_dialog", enabled: true });
   const prompt = session.send({ type: "prompt", message: "ask_user" });

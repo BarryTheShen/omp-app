@@ -1,7 +1,7 @@
 import {
+  type ChatSessionClient,
   type OmpCommandGateway,
   type PortClient,
-  type RpcSessionClient,
   ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
@@ -48,8 +48,8 @@ function mountedWith(choice?: string) {
     store,
     loadOlder: undefined,
     session: {
-      send: () => Promise.reject(new Error("no session call is expected in this test")),
-    } as unknown as Pick<RpcSessionClient, "send">,
+      request: () => Promise.reject(new Error("no session call is expected in this test")),
+    } as unknown as Pick<ChatSessionClient, "request">,
     gateway,
     dialogs,
     download: (fileName, text) => downloads.push({ fileName, text }),

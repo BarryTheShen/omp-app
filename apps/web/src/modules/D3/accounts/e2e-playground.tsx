@@ -1,4 +1,4 @@
-import { AppPort, RpcSessionPort } from "@omp-app/contracts";
+import { AppPort, ChatSessionPort } from "@omp-app/contracts";
 import { createRoot } from "react-dom/client";
 import { createChatSessionAppClient } from "../../../launch/chat-session-shim";
 import { APP_TOKEN_STORAGE_KEY, websocketUrl } from "../../../launch/token";
@@ -14,8 +14,9 @@ async function mount(): Promise<void> {
   window.addEventListener("pagehide", () => client.dispose(), { once: true });
   const serverInfo = await client.port(AppPort).serverInfo({});
   const opened = await client
-    .port(RpcSessionPort)
+    .port(ChatSessionPort)
     .open({ folderPath: serverInfo.launchFolder, start: "new" });
+  const capabilities = await client.port(AppPort).capabilities({});
   const dialogs = {
     confirm: async (request: ConfirmDialogRequest, _options: DialogHostOpenOptions) =>
       window.confirm(request.message),
@@ -24,13 +25,13 @@ async function mount(): Promise<void> {
     client,
     threadId: opened.threadId,
     providerId: "provider-a",
-    capabilities: opened.capabilities,
+    capabilities,
     dialogs,
   });
   createRoot(container).render(
     <ProviderAccountsPanel
       accounts={accounts}
-      available={opened.capabilities["host.provider-accounts"]?.state === "available"}
+      available={capabilities["host.provider-accounts"]?.state === "available"}
     />,
   );
 }

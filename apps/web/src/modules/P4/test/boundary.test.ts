@@ -11,12 +11,6 @@ const FORBIDDEN_IMPORT =
 /** A raw transport: a direct request, a socket or an event stream. P4 reaches omp only through its typed seam. */
 const RAW_TRANSPORT = /\bfetch\s*\(|new WebSocket\s*\(|\bEventSource\b|\bXMLHttpRequest\b/;
 
-/** omp's send seam and its wire types, by name. */
-const OMP_SEAM = /\b(?:RpcSessionSend|OmpWire)\b/;
-
-/** The only shipped files that name omp's seam: the history reader and the conversation transitions. */
-const ADAPTERS = ["history/history.ts", "transitions/transitions.ts"];
-
 /** An import of an adapter or of R0's runtime: a static import, a side-effect import, or a dynamic one. */
 const ADAPTER_OR_RUNTIME_IMPORT =
   /(?:from\s+|import\(\s*|import\s+|require\(\s*)["'](?:\.\.?\/(?:history|transitions)(?:\/[^"']*)?|@\/modules\/R0\/[^"']*)["']/;
@@ -50,15 +44,6 @@ describe("W6 boundary: shipped P4 code has no server, wire or raw-transport impo
         .filter((file) => RAW_TRANSPORT.test(file.text))
         .map((file) => file.path),
     ).toEqual([]);
-  });
-
-  test("only the history reader and the conversation transitions name omp's send seam or its wire types", () => {
-    expect(
-      scannedSources()
-        .filter((file) => OMP_SEAM.test(file.text))
-        .map((file) => file.path)
-        .sort(),
-    ).toEqual([...ADAPTERS].sort());
   });
 
   test("the selector and labels views, controllers and models import contract types, not the adapters or R0", () => {

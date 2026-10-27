@@ -1,5 +1,5 @@
 import type { AppendMessage } from "@assistant-ui/react";
-import type { CapabilityMap, OmpWire, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, OmpWire, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { createQueueController } from "../../R0/actions/actions";
@@ -76,12 +76,12 @@ function harness(state: P6GetStateFixture = P6_GET_STATE_STREAMING, removeAccept
   const store = new OmpRuntimeStore({ threadId: state.sessionId as ThreadId });
   store.applySessionState(state);
   const commands: unknown[] = [];
-  const send: RpcSessionSend = async ({ command }) => {
-    commands.push(command);
-    if (command.type === "remove_queued_message") {
+  const send: ChatSessionRequest = async ({ method, params }) => {
+    commands.push({ method, params });
+    if (method === "remove_queued_message") {
       return { removed: removeAccepted } as never;
     }
-    if (command.type === "promote_queued_message") {
+    if (method === "promote_queued_message") {
       return { promoted: true } as never;
     }
     return undefined as never;
@@ -154,8 +154,8 @@ describe("P6 CC2/CC6 acceptance gate", () => {
     state.adapter.adapter.enqueue(appendMessage("follow after yield"));
     await waitFor(() =>
       expect(state.commands).toEqual([
-        { type: "steer", message: "steer this" },
-        { type: "follow_up", message: "follow after yield" },
+        { method: "steer", params: { text: "steer this" } },
+        { method: "follow_up", params: { text: "follow after yield" } },
       ]),
     );
 
@@ -201,9 +201,9 @@ describe("P6 CC2/CC6 acceptance gate", () => {
 
     await waitFor(() =>
       expect(state.commands).toEqual([
-        { type: "set_steering_mode", mode: "one-at-a-time" },
-        { type: "set_follow_up_mode", mode: "all" },
-        { type: "set_interrupt_mode", mode: "wait" },
+        { method: "set_steering_mode", params: { mode: "one-at-a-time" } },
+        { method: "set_follow_up_mode", params: { mode: "all" } },
+        { method: "set_interrupt_mode", params: { mode: "wait" } },
       ]),
     );
     expect(P6_GET_STATE_STREAMING.interruptMode).toBe("immediate");
@@ -227,9 +227,8 @@ describe("P6 CC2/CC6 acceptance gate", () => {
 
     await waitFor(() =>
       expect(state.commands).toContainEqual({
-        type: "remove_queued_message",
-        message: "summarize after yield",
-        queue: "followUp",
+        method: "remove_queued_message",
+        params: { message: "summarize after yield", queue: "followUp" },
       }),
     );
     expect(state.adapter.getSnapshot().items.map(({ prompt }) => prompt)).toEqual([
@@ -290,7 +289,7 @@ describe("P6 CC2/CC6 acceptance gate", () => {
       "omp already sent this steering message into the reply.",
     );
     expect(state.commands).not.toContainEqual(
-      expect.objectContaining({ type: "remove_queued_message" }),
+      expect.objectContaining({ method: "remove_queued_message" }),
     );
     state.adapter.dispose();
   });
@@ -309,9 +308,8 @@ describe("P6 CC2/CC6 acceptance gate", () => {
       "summarize after yield",
     ]);
     expect(state.commands).toContainEqual({
-      type: "remove_queued_message",
-      message: "summarize after yield",
-      queue: "followUp",
+      method: "remove_queued_message",
+      params: { message: "summarize after yield", queue: "followUp" },
     });
     state.adapter.dispose();
   });

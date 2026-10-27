@@ -1,8 +1,8 @@
 import type {
+  ChatSessionClient,
   DumpScope,
   OmpCommandGateway,
   PortClient,
-  RpcSessionClient,
   ThreadId,
 } from "@omp-app/contracts";
 import type { KeyedTranscriptMessage } from "@/modules/U1/copy";
@@ -25,8 +25,8 @@ export interface ExportPortOptions {
    * holds only the newest window of a long chat, and a file says it holds the whole chat.
    */
   readonly history: ChatHistory<KeyedTranscriptMessage>;
-  /** A0.8's typed session client. `export_html` runs as one typed command, with no output path. */
-  readonly session: Pick<RpcSessionClient, "send">;
+  /** The chat session port. `export_html` runs as one request, with no output path. */
+  readonly session: Pick<ChatSessionClient, "request">;
   /** A1's typed `/dump`, `/dump all` and `/dump anon` reports (A1 issue 793). */
   readonly gateway: Pick<PortClient<typeof OmpCommandGateway>, "dump">;
 }
@@ -117,8 +117,8 @@ export function createExportPort(options: ExportPortOptions): ExportPort {
     }
     const saved = await asFailure(
       () =>
-        options.session.send(
-          { threadId: options.threadId, command: { type: "export_html" } },
+        options.session.request(
+          { threadId: options.threadId, method: "export_html", params: {} },
           { signal },
         ),
       "omp could not save the HTML page.",

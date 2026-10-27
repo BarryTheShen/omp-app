@@ -1,4 +1,4 @@
-import type { OmpWire, RpcSessionSend, SessionEntryHead, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionRequest, SessionEntryHead, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { EntryCursor, SessionTreePort, TreeSnapshot } from "../contract";
@@ -109,10 +109,10 @@ function deferred<T>() {
 describe("OmpSessionTreePort", () => {
   test("maps get_entries/get_tree while retaining unknown entry fields and labels", async () => {
     const commands: string[] = [];
-    const send: RpcSessionSend = async (args) => {
-      commands.push(args.command.type);
-      if (args.command.type === "get_entries") {
-        return { entries: [entry("a-1", null)], leafId: "a-1" } as OmpWire.SessionEntries;
+    const send = (async (args: { method: string }) => {
+      commands.push(args.method);
+      if (args.method === "get_entries") {
+        return { entries: [entry("a-1", null)], leafId: "a-1" };
       }
       return {
         tree: [
@@ -123,8 +123,8 @@ describe("OmpSessionTreePort", () => {
           },
         ],
         leafId: "a-1",
-      } as OmpWire.SessionTree;
-    };
+      };
+    }) as unknown as ChatSessionRequest;
     const port = new OmpSessionTreePort({ send });
 
     const cursor = await port.load(threadA);
@@ -148,10 +148,10 @@ describe("OmpSessionTreePort", () => {
     }
     if (!node) throw new Error("Expected the deep-tree fixture to have a root.");
 
-    const send: RpcSessionSend = async (args) => {
-      if (args.command.type === "get_entries") return { entries: [], leafId: null };
+    const send = (async (args: { method: string }) => {
+      if (args.method === "get_entries") return { entries: [], leafId: null };
       return { tree: [node], leafId: `a-${String(depth - 1).padStart(5, "0")}` };
-    };
+    }) as unknown as ChatSessionRequest;
     const snapshot = await new OmpSessionTreePort({ send }).readTree(threadA);
 
     expect(snapshot.labels).toHaveLength(1);

@@ -1,9 +1,9 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import type {
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -26,7 +26,7 @@ const CHIP = "Pasted text 1 (3 lines).txt";
 const userMessage = (content: string): OmpMessage =>
   ({ role: "user", content, timestamp: 1_759_600_000_000 }) as unknown as OmpMessage;
 
-const testSend: RpcSessionSend = async () => undefined as never;
+const testSend: ChatSessionRequest = async () => undefined as never;
 
 function RuntimeThread({ store }: { readonly store: OmpRuntimeStore }) {
   const { runtime } = useOmpRuntime({ store, send: testSend, capabilities: assistantCapabilities });

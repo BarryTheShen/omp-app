@@ -1,4 +1,4 @@
-import type { CapabilityMap, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { endNoticeOnPrompt } from "@/modules/P3/runs";
@@ -17,8 +17,8 @@ const capabilities: CapabilityMap = {
   "omp.cmd.set_interrupt_mode": { state: "available", via: "rpc" },
 };
 
-/** A queue whose sends go through the same wrapper the app uses, with a finished notice shown. */
-function queueWithNotice(send: RpcSessionSend, phase: "sent" | "sending" = "sent") {
+/** A queue whose requests go through the same wrapper the app uses, with a finished notice shown. */
+function queueWithNotice(send: ChatSessionRequest, phase: "sent" | "sending" = "sent") {
   const status = createP3RunStatus();
   status.set({ phase, chatThreadId: threadId, sourceThreadId: threadId } as unknown as P3RunState);
   const store = new OmpRuntimeStore({ threadId, transport: {} as OmpRuntimeTransport });
@@ -32,22 +32,20 @@ function queueWithNotice(send: RpcSessionSend, phase: "sent" | "sending" = "sent
 
 describe("a queued message ends the notice once omp accepts it", () => {
   test("a queued follow-up that omp accepts ends a finished notice", async () => {
-    const send = vi.fn(async () => ({ success: true }));
-    const { queue, status } = queueWithNotice(send as unknown as RpcSessionSend);
+    const send = vi.fn(async () => ({}));
+    const { queue, status } = queueWithNotice(send as unknown as ChatSessionRequest);
 
     await queue.submit({ text: "follow later", delivery: "followUp" });
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: expect.objectContaining({ type: "follow_up", message: "follow later" }),
-      }),
+      expect.objectContaining({ method: "follow_up", params: { text: "follow later" } }),
       expect.anything(),
     );
     expect(status.getSnapshot()).toEqual({ phase: "idle" });
   });
 
   test("a queued steer that omp accepts ends a finished notice", async () => {
-    const send = vi.fn(async () => ({ success: true }));
-    const { queue, status } = queueWithNotice(send as unknown as RpcSessionSend);
+    const send = vi.fn(async () => ({}));
+    const { queue, status } = queueWithNotice(send as unknown as ChatSessionRequest);
 
     await queue.submit({ text: "steer now", delivery: "steer" });
     expect(status.getSnapshot()).toEqual({ phase: "idle" });
@@ -57,7 +55,7 @@ describe("a queued message ends the notice once omp accepts it", () => {
     const refused = vi.fn(async () => {
       throw new AppFailure({ code: "omp_error", message: "omp is busy", retryable: true });
     });
-    const { queue, status } = queueWithNotice(refused as unknown as RpcSessionSend);
+    const { queue, status } = queueWithNotice(refused as unknown as ChatSessionRequest);
 
     await expect(queue.submit({ text: "keep me", delivery: "followUp" })).rejects.toMatchObject({
       appError: { code: "omp_error" },
@@ -66,8 +64,8 @@ describe("a queued message ends the notice once omp accepts it", () => {
   });
 
   test("a queued message does not end a run that is still sending", async () => {
-    const send = vi.fn(async () => ({ success: true }));
-    const { queue, status } = queueWithNotice(send as unknown as RpcSessionSend, "sending");
+    const send = vi.fn(async () => ({}));
+    const { queue, status } = queueWithNotice(send as unknown as ChatSessionRequest, "sending");
 
     await queue.submit({ text: "wait for the run", delivery: "followUp" });
     expect(status.getSnapshot().phase).toBe("sending");

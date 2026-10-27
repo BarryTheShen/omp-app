@@ -153,18 +153,6 @@ describe("Alt+Up brings the last queued message back into the box", () => {
     expect(restoredImages).toEqual([images]);
   });
 
-  test("says the images were too large when omp omitted them from the successful removal", async () => {
-    const { press, restored, restoredImages, notify } = setup({ followUp: ["large picture"] }, "", {
-      removeResult: { changed: true, imagesDropped: true },
-    });
-    press();
-    await vi.waitFor(() =>
-      expect(notify).toHaveBeenCalledWith(QUEUE_DEQUEUE_MESSAGES.imagesDropped),
-    );
-    expect(restored).toEqual(["large picture"]);
-    expect(restoredImages).toEqual([undefined]);
-  });
-
   test("when the message leaves the queue after the check, says so in the header and changes nothing", async () => {
     const { press, restored, removed, notify, fail } = setup({ followUp: ["follow up"] }, "", {
       leaveAfterCheck: true,

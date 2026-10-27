@@ -1,7 +1,7 @@
 import {
   AppFailure,
   type CapabilityMap,
-  type RpcSessionSend,
+  type ChatSessionRequest,
   type ThreadId,
 } from "@omp-app/contracts";
 import { ASK_DIALOG_CAPABILITY, DIALOG_CAPABILITY } from "../contract/dialog";
@@ -23,10 +23,14 @@ export function richAskOffered(capabilities: CapabilityMap): boolean {
  * which options are ticked. The opt-in lasts for one omp process; the server sends it again after a restart.
  * Fails with a typed `omp_error` when omp does not confirm it.
  */
-export async function optIntoRichAsk(send: RpcSessionSend, threadId: ThreadId): Promise<void> {
-  const result: unknown = await send({
+export async function optIntoRichAsk(
+  request: ChatSessionRequest,
+  threadId: ThreadId,
+): Promise<void> {
+  const result: unknown = await request({
     threadId,
-    command: { type: "set_ask_dialog", enabled: true },
+    method: "set_ask_dialog",
+    params: { enabled: true },
   });
   if (!isEnabledAnswer(result)) {
     throw new AppFailure({

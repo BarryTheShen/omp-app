@@ -3,8 +3,8 @@ import {
   AppFailure,
   type CapabilityKey,
   type CapabilityMap,
-  type RpcSessionClient,
-  RpcSessionPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import type { AuthPort, AuthStatus, LoginProvider } from "../contract";
@@ -75,9 +75,9 @@ function statusError(failure: AppFailure, selectedProvider: string): AuthStatus 
   });
 }
 
-/** A0.8 RPC adapter. U4's router receives login's open_url/input requests; this adapter never handles URLs or secrets. */
+/** Sign-ins on the chat session port. U4's router shows a login's page and code requests; this adapter never handles URLs or secrets. */
 export function createAuthPort(options: AuthAdapterOptions): AuthPort {
-  const rpc = options.client.port(RpcSessionPort) as RpcSessionClient;
+  const session = options.client.port(ChatSessionPort) as ChatSessionClient;
   const capabilities = options.capabilities ?? {};
   const requireCapability = (capability: keyof typeof AUTH_CAPABILITIES): void => {
     const key = AUTH_CAPABILITIES[capability];
@@ -90,8 +90,8 @@ export function createAuthPort(options: AuthAdapterOptions): AuthPort {
     async getLoginProviders(callOptions) {
       requireCapability("getLoginProviders");
       try {
-        const result = await rpc.send(
-          { threadId: options.threadId, command: { type: "get_login_providers" } },
+        const result = await session.request(
+          { threadId: options.threadId, method: "get_login_providers", params: {} },
           callOptions,
         );
         const providers = Array.isArray(result?.providers) ? result.providers : [];
@@ -106,8 +106,8 @@ export function createAuthPort(options: AuthAdapterOptions): AuthPort {
       requireCapability("login");
       const selectedProvider = providerId(rawProviderId);
       try {
-        const result = await rpc.send(
-          { threadId: options.threadId, command: { type: "login", providerId: selectedProvider } },
+        const result = await session.request(
+          { threadId: options.threadId, method: "login", params: { providerId: selectedProvider } },
           callOptions,
         );
         const returnedProvider =

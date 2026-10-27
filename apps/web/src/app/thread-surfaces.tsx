@@ -1,7 +1,7 @@
 import type {
   CapabilityMap,
+  ChatSessionRequest,
   ProviderErrorResult,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import type { Dispatch, SetStateAction } from "react";
@@ -70,7 +70,7 @@ interface ThreadSurfacesInput {
   readonly agents: ThreadAgents | null;
   readonly agentsReveal: number;
   readonly resolveProviderError: (text: string) => Promise<ProviderErrorResult>;
-  readonly guardedSend: RpcSessionSend;
+  readonly guardedSend: ChatSessionRequest;
   readonly transitions: ConversationTransitionPort;
   readonly diagnosticPanel: "reports" | "security" | null;
   readonly diagnosticPanelOpen: boolean;

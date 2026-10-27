@@ -1,8 +1,15 @@
-import { type CapabilityMap, ThreadId } from "@omp-app/contracts";
+import { type CapabilityMap, type ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import type { Goal, GoalRpcResult } from "@/modules/D8/contract";
-import type { GoalRpcSender } from "@/modules/D8/goal/runtime";
+
+/** The chat host's goal request, as the hook sends it. */
+type GoalRpcSender = (args: {
+  readonly threadId: ThreadId;
+  readonly method: string;
+  readonly params: unknown;
+}) => Promise<GoalRpcResult>;
+
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import { useGoalCommands } from "./use-goal-command";
 
@@ -36,7 +43,7 @@ function renderGoals(options: {
   const { result } = renderHook(() =>
     useGoalCommands({
       capabilities: options.capabilities ?? available,
-      rpc: { send: options.send },
+      request: options.send as unknown as ChatSessionRequest,
       store,
       threadId: options.chat ?? threadId,
       notify,
@@ -59,7 +66,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
       ),
     );
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]?.[0]).toEqual({ threadId, command: { type: "goal", op: "pause" } });
+    expect(send.mock.calls[0]?.[0]).toEqual({ threadId, method: "goal", params: { op: "pause" } });
     expect(fail).toHaveBeenLastCalledWith(null);
   });
 
@@ -72,7 +79,8 @@ describe("#1261 the goal commands send through the chat on screen", () => {
     });
     expect(send.mock.calls[0]?.[0]).toEqual({
       threadId,
-      command: { type: "goal", op: "create", objective: "Ship the release notes" },
+      method: "goal",
+      params: { op: "create", objective: "Ship the release notes" },
     });
   });
   test("waits for a starting chat's omp to become ready before running the typed goal command", async () => {

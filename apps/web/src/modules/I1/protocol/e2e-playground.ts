@@ -1,8 +1,8 @@
 import {
   AppFailure,
   AppPort,
-  type RpcSessionClient,
-  RpcSessionPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import { createChatSessionAppClient } from "../../../launch/chat-session-shim";
@@ -38,7 +38,7 @@ async function runMcpIntegration(): Promise<void> {
   if (token === null) throw new Error("The app session token was not available.");
 
   const client = createChatSessionAppClient({ url: websocketUrl(window.location), token });
-  let rpc: RpcSessionClient | undefined;
+  let chat: ChatSessionClient | undefined;
   let threadId: ThreadId | undefined;
   let protocol: McpProtocolAdapter | undefined;
   let secondProtocol: McpProtocolAdapter | undefined;
@@ -52,24 +52,25 @@ async function runMcpIntegration(): Promise<void> {
   const failures: string[] = [];
   try {
     const serverInfo = await client.port(AppPort).serverInfo({});
-    rpc = client.port(RpcSessionPort);
-    const opened = await rpc.open({
+    chat = client.port(ChatSessionPort) as ChatSessionClient;
+    const opened = await chat.open({
       folderPath: serverInfo.launchFolder,
       start: "new",
     });
     threadId = opened.threadId;
-    if (opened.capabilities["host.mcp"]?.state !== "available") {
+    const capabilities = await client.port(AppPort).capabilities({});
+    if (capabilities["host.mcp"]?.state !== "available") {
       throw new Error("The MCP server capability was not published.");
     }
     protocol = createMcpProtocolAdapter({
       client,
       threadId,
-      capabilities: opened.capabilities,
+      capabilities,
     });
     secondProtocol = createMcpProtocolAdapter({
       client,
       threadId,
-      capabilities: opened.capabilities,
+      capabilities,
     });
 
     const serverList = await protocol.servers.list();
@@ -169,50 +170,53 @@ async function runMcpIntegration(): Promise<void> {
       parameters: { type: "object" },
       loadMode: "essential" as const,
     };
-    await rpc.send({
+    await chat.request({
       threadId,
       registrationOwner: rawToolOwnerOne,
-      command: { type: "set_host_tools", tools: [rawToolOne] },
+      method: "set_host_tools",
+      params: { tools: [rawToolOne] },
     });
-    await rpc.send({
+    await chat.request({
       threadId,
       registrationOwner: rawToolOwnerTwo,
-      command: { type: "set_host_tools", tools: [rawToolTwo] },
+      method: "set_host_tools",
+      params: { tools: [rawToolTwo] },
     });
-    const bothToolNames = (await rpc.send({ threadId, command: { type: "get_state" } })).dumpTools
-      ?.map((tool) => tool.name)
+    const bothToolNames = (
+      await chat.request({ threadId, method: "get_state", params: {} })
+    ).dumpTools
+      .map((tool) => tool.name)
       .filter((name) => name.startsWith("e2e_raw_"));
-    if (!bothToolNames?.includes("e2e_raw_one") || !bothToolNames.includes("e2e_raw_two")) {
+    if (!bothToolNames.includes("e2e_raw_one") || !bothToolNames.includes("e2e_raw_two")) {
       throw new Error("A second host registration replaced the first one in omp.");
     }
-    await rpc.send({
+    await chat.request({
       threadId,
       registrationOwner: rawToolOwnerOne,
-      command: { type: "set_host_tools", tools: [] },
+      method: "set_host_tools",
+      params: { tools: [] },
     });
     const remainingToolNames = (
-      await rpc.send({ threadId, command: { type: "get_state" } })
+      await chat.request({ threadId, method: "get_state", params: {} })
     ).dumpTools
-      ?.map((tool) => tool.name)
+      .map((tool) => tool.name)
       .filter((name) => name.startsWith("e2e_raw_"));
-    if (
-      remainingToolNames?.includes("e2e_raw_one") ||
-      !remainingToolNames?.includes("e2e_raw_two")
-    ) {
+    if (remainingToolNames.includes("e2e_raw_one") || !remainingToolNames.includes("e2e_raw_two")) {
       throw new Error("Removing one host owner removed another owner's tool.");
     }
-    await rpc.send({
+    await chat.request({
       threadId,
       registrationOwner: rawToolOwnerTwo,
-      command: { type: "set_host_tools", tools: [] },
+      method: "set_host_tools",
+      params: { tools: [] },
     });
 
-    const missingDescription = await rpc
-      .send({
+    const missingDescription = await chat
+      .request({
         threadId,
         registrationOwner: crypto.randomUUID(),
-        command: {
-          type: "set_host_tools",
+        method: "set_host_tools",
+        params: {
           tools: [
             {
               name: "e2e_missing_description",
@@ -267,7 +271,7 @@ async function runMcpIntegration(): Promise<void> {
     }
 
     root.dataset.i1McpTestResult = JSON.stringify({
-      hostMcp: opened.capabilities["host.mcp"]?.state,
+      hostMcp: capabilities["host.mcp"]?.state,
       serverCount: serverList.servers.length,
       serverName: initialServer.name,
       serverCommand: initialServer.command,
@@ -292,16 +296,18 @@ async function runMcpIntegration(): Promise<void> {
     failures.push(errorMessage(error));
   } finally {
     try {
-      if (rpc !== undefined && threadId !== undefined) {
-        await rpc.send({
+      if (chat !== undefined && threadId !== undefined) {
+        await chat.request({
           threadId,
           registrationOwner: rawToolOwnerOne,
-          command: { type: "set_host_tools", tools: [] },
+          method: "set_host_tools",
+          params: { tools: [] },
         });
-        await rpc.send({
+        await chat.request({
           threadId,
           registrationOwner: rawToolOwnerTwo,
-          command: { type: "set_host_tools", tools: [] },
+          method: "set_host_tools",
+          params: { tools: [] },
         });
       }
     } catch {

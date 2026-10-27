@@ -1,4 +1,4 @@
-import type { RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { useEffect, useMemo } from "react";
 import { createOmpBranchingController } from "@/modules/R0/branching";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
@@ -10,7 +10,7 @@ import type { P3Runs } from "./runs";
 export interface P3RunHooksOptions {
   /** The open chat's store: its branch controller reads the source entries from here. */
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   /**
    * Switches to the chat a branch made. The chat is opened again even when its id already names it: omp moves the
    * running session to the branch in place, so the store on screen can still be the source's (see root's `switchChat`).

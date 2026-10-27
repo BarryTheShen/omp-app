@@ -1,8 +1,8 @@
 import type {
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { INVENTORY } from "@omp-app/contracts";
@@ -57,11 +57,11 @@ function assistantMessage(text: string): Extract<OmpMessage, { role: "assistant"
   };
 }
 
-const NO_RPC_SEND: RpcSessionSend = async () => undefined as never;
+const NO_REQUEST: ChatSessionRequest = async () => undefined as never;
 
 export interface U1AcceptanceFixture {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
   readonly updateAssistant: () => void;
   readonly finishAssistant: () => void;
   readonly failRuntime: () => void;
@@ -121,5 +121,5 @@ export function createU1AcceptanceFixture(): U1AcceptanceFixture {
     });
   };
 
-  return { store, send: NO_RPC_SEND, updateAssistant, finishAssistant, failRuntime };
+  return { store, send: NO_REQUEST, updateAssistant, finishAssistant, failRuntime };
 }

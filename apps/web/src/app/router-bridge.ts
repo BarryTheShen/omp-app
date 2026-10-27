@@ -1,4 +1,4 @@
-import type { HostCallId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionRequest, HostCallId, ThreadId } from "@omp-app/contracts";
 import { useEffect, useMemo } from "react";
 import type { NotificationProjector } from "@/modules/N1/notifications";
 import type { QueueController } from "@/modules/R0/actions";
@@ -34,7 +34,7 @@ export function RouterBridge({
   readonly notificationProjector: NotificationProjector;
   readonly askDialogOffered: boolean;
   readonly switching: boolean;
-  readonly send: RpcSessionSend;
+  readonly send: ChatSessionRequest;
 }) {
   // Stable: the router must not be rebuilt every time some overlay opens or closes.
   const overlay = useStableOverlayHost();

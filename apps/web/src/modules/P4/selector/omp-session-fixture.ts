@@ -1,4 +1,4 @@
-import type { OmpWire, RpcSessionSend } from "@omp-app/contracts";
+import type { ChatSessionRequest } from "@omp-app/contracts";
 import { ThreadId } from "@omp-app/contracts";
 import type { TreeSnapshot } from "../contract";
 import { OmpSessionTreePort } from "../history";
@@ -185,12 +185,12 @@ export class OmpSessionBuilder {
 
 /** Reads a fixture through the app's own omp adapter, so omp's string labels are normalized as in the app. */
 export async function fixtureSnapshot(fixture: OmpSessionFixture): Promise<TreeSnapshot> {
-  const send: RpcSessionSend = async (args) => {
-    if (args.command.type !== "get_tree") {
-      throw new Error(`The fixture answers get_tree only, not ${args.command.type}.`);
+  const send = (async (args: { readonly method: string }) => {
+    if (args.method !== "get_tree") {
+      throw new Error(`The fixture answers get_tree only, not ${args.method}.`);
     }
-    return { tree: fixture.tree, leafId: fixture.leafId } as OmpWire.SessionTree;
-  };
+    return { tree: fixture.tree, leafId: fixture.leafId };
+  }) as unknown as ChatSessionRequest;
   return new OmpSessionTreePort({ send }).readTree(fixture.threadId);
 }
 

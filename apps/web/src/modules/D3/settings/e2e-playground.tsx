@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import { AppFailure, AppPort, type ConfigWriteArgs, RpcSessionPort } from "@omp-app/contracts";
+import { AppFailure, AppPort, ChatSessionPort, type ConfigWriteArgs } from "@omp-app/contracts";
 import { createRoot } from "react-dom/client";
 import { createChatSessionAppClient } from "../../../launch/chat-session-shim";
 import { APP_TOKEN_STORAGE_KEY, websocketUrl } from "../../../launch/token";
@@ -86,12 +86,11 @@ async function mount(): Promise<void> {
   const client = createChatSessionAppClient({ url: websocketUrl(window.location), token });
   window.addEventListener("pagehide", () => client.dispose(), { once: true });
   const serverInfo = await client.port(AppPort).serverInfo({});
-  const opened = await client
-    .port(RpcSessionPort)
-    .open({ folderPath: serverInfo.launchFolder, start: "new" });
+  await client.port(ChatSessionPort).open({ folderPath: serverInfo.launchFolder, start: "new" });
+  const capabilities = await client.port(AppPort).capabilities({});
   const controller = createProviderSettingsController({
     client,
-    capabilities: opened.capabilities,
+    capabilities,
     folder: serverInfo.launchFolder,
   });
   await controller.runtime(controller.selectedSectionId()).read();

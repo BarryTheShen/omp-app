@@ -1,10 +1,10 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  AppPort,
+  type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
   FolderPath,
-  type RpcSessionClient,
-  RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useRef, useState } from "react";
@@ -22,7 +22,7 @@ import { useGuidedGoal } from "./hook";
 import { GuidedGoalView } from "./view";
 
 interface ActiveSession {
-  readonly rpc: RpcSessionClient;
+  readonly chat: ChatSessionClient;
   readonly threadId: ThreadId;
 }
 
@@ -97,22 +97,22 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
       await waitForClient(client);
       if (!active) return;
 
-      const rpc = client.port(RpcSessionPort) as RpcSessionClient;
-      const chat = client.port(ChatSessionPort);
-      const opened = await rpc.open({ folderPath: FolderPath.parse(folder), start: "new" });
+      const chat = client.port(ChatSessionPort) as ChatSessionClient;
+      const opened = await chat.open({ folderPath: FolderPath.parse(folder), start: "new" });
       if (!active) return;
       const threadId = opened.threadId;
-      activeSession = { rpc, threadId };
+      activeSession = { chat, threadId };
       const runtime = new OmpRuntimeStore({ threadId });
       subscription = await client.subscribe(ChatSessionPort, "event", { scope: threadId });
       subscription.onEvent((event, sequence) => runtime.ingest(event, sequence));
-      const session = await rpc.send({ threadId, command: { type: "get_state" } });
-      runtime.applySessionState(session);
+      const state = await chat.request({ threadId, method: "get_state", params: {} });
+      runtime.applyHostState(state);
+      const capabilities = await client.port(AppPort).capabilities({});
       if (!active) return;
 
       dialogHost = new DialogHostController({
         overlay,
-        capabilities: opened.capabilities,
+        capabilities,
         answerDialog: async (id, answer, options) => {
           await chat.answer({ threadId, id, answer }, options);
         },
@@ -121,11 +121,11 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
       guided = new GuidedGoalController({
         threadId,
         autonomy: createAutonomyPort({
-          rpc: (args, callOptions) => rpc.send(args, callOptions),
+          request: chat.request,
           store: runtime,
         }),
         dialogs: dialogHost,
-        capabilities: () => opened.capabilities,
+        capabilities: () => capabilities,
         goal: goalSourceOf(runtime),
         restoreFocus: () =>
           requestAnimationFrame(() =>
@@ -205,9 +205,10 @@ window.unmountRealGuidedGoal = () => {
 /** Reads the goal back from omp itself (`goal get`), so the spec checks what omp stored. */
 window.readRealGoal = async () => {
   if (!activeSession) throw new Error("No real conversation is open.");
-  const result = await activeSession.rpc.send({
+  const result = await activeSession.chat.request({
     threadId: activeSession.threadId,
-    command: { type: "goal", op: "get" },
+    method: "goal",
+    params: { op: "get" },
   });
   if (result.goal === null) return null;
   return {

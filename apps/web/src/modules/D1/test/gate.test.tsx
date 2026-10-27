@@ -2,6 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   CapabilityStatus,
+  type ChatSessionClient,
   type ConfigEntry,
   type ConfigListResult,
   type ConfigWriteArgs,
@@ -10,7 +11,6 @@ import {
   type JsonValue,
   type OmpWire,
   type Revision,
-  type RpcSessionClient,
   type ThreadId,
 } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -52,10 +52,10 @@ function memoryRecentPort(): RecentModelsPort {
   };
 }
 
-type RpcRequest = {
+type ChatRequest = {
   readonly threadId: ThreadId;
-  readonly command: {
-    readonly type: string;
+  readonly method: string;
+  readonly params: {
     readonly provider?: string;
     readonly modelId?: string;
     readonly level?: string;
@@ -76,13 +76,13 @@ function capabilities() {
 }
 
 function fakeRpcClient(
-  calls: RpcRequest[],
+  calls: ChatRequest[],
   options: { readonly failCatalog?: boolean } = {},
 ): AppClient {
   const session = {
-    send: async (request: RpcRequest): Promise<unknown> => {
+    request: async (request: ChatRequest): Promise<unknown> => {
       calls.push(request);
-      switch (request.command.type) {
+      switch (request.method) {
         case "get_available_models":
           if (options.failCatalog) {
             throw new AppFailure({
@@ -100,12 +100,12 @@ function fakeRpcClient(
         case "cycle_thinking_level":
           return null;
         case "set_thinking_level":
-          return undefined;
+          return {};
         default:
-          throw new Error(`Unexpected D1 RPC command: ${request.command.type}`);
+          throw new Error(`Unexpected D1 request: ${request.method}`);
       }
     },
-  } as unknown as RpcSessionClient;
+  } as unknown as ChatSessionClient;
   return { port: () => session } as unknown as AppClient;
 }
 
@@ -179,7 +179,7 @@ afterEach(cleanup);
 
 describe("D1 scope, catalog and thinking acceptance", () => {
   test("runs session selection and thinking discovery through omp's exact RPC result shapes", async () => {
-    const calls: RpcRequest[] = [];
+    const calls: ChatRequest[] = [];
     const client = fakeRpcClient(calls);
     const catalog = new ModelCatalogModel({
       source: createRpcModelCatalogSource(client, threadId),
@@ -221,7 +221,7 @@ describe("D1 scope, catalog and thinking acceptance", () => {
     await thinking.cycle("forward");
     expect(thinking.getSnapshot().current).toBe("off");
 
-    expect(calls.map((call) => call.command.type)).toEqual([
+    expect(calls.map((call) => call.method)).toEqual([
       "get_available_models",
       "get_login_providers",
       "set_model",
@@ -229,13 +229,15 @@ describe("D1 scope, catalog and thinking acceptance", () => {
       "cycle_thinking_level",
       "set_thinking_level",
     ]);
-    expect(calls[2]).toMatchObject({
+    expect(calls[2]).toEqual({
       threadId,
-      command: { type: "set_model", provider: "fixture-provider", modelId: "fast-chat" },
+      method: "set_model",
+      params: { provider: "fixture-provider", modelId: "fast-chat" },
     });
-    expect(calls[5]).toMatchObject({
+    expect(calls[5]).toEqual({
       threadId,
-      command: { type: "set_thinking_level", level: "off" },
+      method: "set_thinking_level",
+      params: { level: "off" },
     });
 
     catalog.dispose();
@@ -243,7 +245,7 @@ describe("D1 scope, catalog and thinking acceptance", () => {
   });
 
   test("keeps reply scope gated and routes saved-default changes through role settings, not set_model", async () => {
-    const calls: RpcRequest[] = [];
+    const calls: ChatRequest[] = [];
     const client = fakeRpcClient(calls);
     const catalog = new ModelCatalogModel({
       source: createRpcModelCatalogSource(client, threadId),
@@ -263,7 +265,7 @@ describe("D1 scope, catalog and thinking acceptance", () => {
     await expect(
       catalog.apply({ model: D1_SAVED_DEFAULT_FIXTURE, scope: "default" }),
     ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
-    expect(calls.filter((call) => call.command.type === "set_model")).toHaveLength(0);
+    expect(calls.filter((call) => call.method === "set_model")).toHaveLength(0);
 
     const writes: ConfigWriteArgs[] = [];
     const settings = createConfigModelSettingsPort(projectConfigClient(writes), {
@@ -288,7 +290,7 @@ describe("D1 scope, catalog and thinking acceptance", () => {
     ]);
     expect(roles.getSnapshot().settings.modelRoles.default).toBe("fixture-provider/reasoner-large");
     expect(catalog.getSnapshot().current).toEqual(D1_SESSION_MODEL_FIXTURE);
-    expect(calls.filter((call) => call.command.type === "set_model")).toHaveLength(0);
+    expect(calls.filter((call) => call.method === "set_model")).toHaveLength(0);
 
     roles.dispose();
     catalog.dispose();
@@ -375,7 +377,7 @@ describe("D1 CC4 and CC10 settings surfaces", () => {
     hub.dispose();
     cleanup();
 
-    const failedCalls: RpcRequest[] = [];
+    const failedCalls: ChatRequest[] = [];
     const failedCatalog = new ModelCatalogModel({
       source: createRpcModelCatalogSource(
         fakeRpcClient(failedCalls, { failCatalog: true }),

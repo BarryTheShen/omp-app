@@ -1,4 +1,10 @@
-import type { CapabilityMap, EntryId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type {
+  CapabilityMap,
+  ChatSessionRequest,
+  EntryId,
+  RpcSessionSend,
+  ThreadId,
+} from "@omp-app/contracts";
 import { AppFailure, persistedMessageKey, SessionFilePath } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { createOmpBranchingController } from "@/modules/R0/branching/branching";
@@ -40,14 +46,22 @@ function rpc(
     readonly failTargetHistory?: boolean;
     readonly transitionFailure?: AppFailure;
   } = {},
-): RpcSessionSend {
-  return (async ({ threadId, command }) => {
-    calls.push({ threadId, type: command.type });
-    if (command.type === "branch" || command.type === "fork") {
+): ChatSessionRequest {
+  return (async ({
+    threadId,
+    method,
+    params,
+  }: {
+    threadId: ThreadId;
+    method: string;
+    params: { readonly since?: string };
+  }) => {
+    calls.push({ threadId, type: method });
+    if (method === "branch" || method === "fork") {
       if (options.transitionFailure) throw options.transitionFailure;
       return response as never;
     }
-    if (command.type === "get_state") {
+    if (method === "get_state") {
       if (threadId === targetThread && options.failTargetHistory) {
         throw new AppFailure({
           code: "omp_error",
@@ -57,14 +71,22 @@ function rpc(
       }
       return { sessionId: targetThread, sessionFile: "/workspace/target.jsonl" } as never;
     }
-    if (command.type === "get_entries") {
+    if (method === "get_entries") {
       return {
-        entries: command.since === undefined ? [entry(sourceEntry, null, "source text")] : [],
+        entries: params.since === undefined ? [entry(sourceEntry, null, "source text")] : [],
         leafId: sourceEntry,
       } as never;
     }
-    throw new Error(`Unexpected transition history command: ${command.type}`);
-  }) as RpcSessionSend;
+    throw new Error(`Unexpected transition history request: ${method}`);
+  }) as unknown as ChatSessionRequest;
+}
+
+/** R0's history loader sends omp's RPC commands until H5.4g; it reads through the same fake. */
+function historySendOver(send: ChatSessionRequest): RpcSessionSend {
+  return (async ({ threadId, command }: { threadId: ThreadId; command: { type: string } }) => {
+    const { type, ...params } = command;
+    return send({ threadId, method: type, params } as never);
+  }) as unknown as RpcSessionSend;
 }
 
 function branchController(
@@ -80,7 +102,7 @@ function branchController(
 }
 function activeHistoryController(
   source: OmpRuntimeStore,
-  send: RpcSessionSend,
+  send: ChatSessionRequest,
   onStore?: (store: OmpRuntimeStore) => void,
 ) {
   let activeThreadId = source.getSnapshot().threadId;
@@ -97,7 +119,7 @@ function activeHistoryController(
       activeStore = new OmpRuntimeStore({ threadId });
       onStore?.(activeStore);
       activeLoader = new SessionHistoryLoader({
-        send,
+        send: historySendOver(send),
         threadId,
         store: activeStore,
         readWindow: async () => ({
@@ -287,12 +309,12 @@ describe("OmpConversationTransitionPort", () => {
     const source = sourceStore();
     const before = source.getSnapshot();
     const switched: ThreadId[] = [];
-    const send = (async ({ command }) => {
-      if (command.type === "branch") {
+    const send = (async ({ method }: { method: string }) => {
+      if (method === "branch") {
         throw new AppFailure({ code: "conflict", message: "omp is busy", retryable: true });
       }
       throw new Error("get_state should not run");
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const port = createOmpConversationTransitionPort({
       store: source,
       send,
@@ -345,11 +367,11 @@ describe("OmpConversationTransitionPort", () => {
     const pending = new Promise<{ readonly cancelled: boolean }>((resolve) => {
       release = resolve;
     });
-    const send = (async ({ threadId, command }) => {
-      calls.push({ threadId, type: command.type });
-      if (command.type === "fork") return pending as never;
+    const send = (async ({ threadId, method }: { threadId: ThreadId; method: string }) => {
+      calls.push({ threadId, type: method });
+      if (method === "fork") return pending as never;
       return { sessionId: targetThread } as never;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const port = createOmpConversationTransitionPort({
       store: source,
       send,
@@ -374,7 +396,7 @@ describe("OmpConversationTransitionPort", () => {
     const send = (async () => {
       calls += 1;
       return { cancelled: false } as never;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const unavailablePort = createOmpConversationTransitionPort({
       store: source,
       send,
@@ -429,10 +451,10 @@ describe("OmpConversationTransitionPort", () => {
   test("rejects an identity that does not move off the source session", async () => {
     const source = sourceStore();
     const switched: ThreadId[] = [];
-    const send = (async ({ command }) => {
-      if (command.type === "get_state") return { sessionId: sourceThread } as never;
+    const send = (async ({ method }: { method: string }) => {
+      if (method === "get_state") return { sessionId: sourceThread } as never;
       return { cancelled: false } as never;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const port = createOmpConversationTransitionPort({
       store: source,
       send,
@@ -451,10 +473,10 @@ describe("OmpConversationTransitionPort", () => {
     const source = sourceStore();
     const before = source.getSnapshot();
     const switched: ThreadId[] = [];
-    const send = (async ({ command }) => {
-      if (command.type === "branch") return { text: "", cancelled: false } as never;
+    const send = (async ({ method }: { method: string }) => {
+      if (method === "branch") return { text: "", cancelled: false } as never;
       return { sessionId: "" } as never;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const port = createOmpConversationTransitionPort({
       store: source,
       send,
@@ -481,7 +503,7 @@ describe("OmpConversationTransitionPort", () => {
     const send = (async () => {
       calls += 1;
       return { cancelled: false } as never;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const request: ForkRequest = { threadId: sourceThread, signal: controller.signal };
     const port = createOmpConversationTransitionPort({
       store: source,
@@ -503,11 +525,11 @@ describe("OmpConversationTransitionPort", () => {
     const answer = rpc({ text: "source text", cancelled: false }, calls);
     let picks = 0;
     // The person opens another chat while omp is still answering the branch.
-    const send = (async (args, options) => {
-      const result = await answer(args, options);
-      if (args.command.type === "branch") picks += 1;
+    const send = (async (args: { method: string }, options: unknown) => {
+      const result = await answer(args as never, options as never);
+      if (args.method === "branch") picks += 1;
       return result;
-    }) as RpcSessionSend;
+    }) as unknown as ChatSessionRequest;
     const switched: ThreadId[] = [];
     const port = createOmpConversationTransitionPort({
       store: source,

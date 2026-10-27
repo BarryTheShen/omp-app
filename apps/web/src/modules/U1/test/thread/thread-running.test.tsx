@@ -6,8 +6,8 @@ import { AssistantRuntimeProvider, type MessageState } from "@assistant-ui/react
 import type {
   CapabilityMap,
   ChatSessionEvent,
+  ChatSessionRequest,
   OmpMessage,
-  RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
@@ -41,7 +41,7 @@ afterEach(() => {
 const threadId = "u1-thread-running" as ThreadId;
 // Module scope: the runtime's options keep their identity, so the chat is not rebuilt between renders.
 const capabilities: CapabilityMap = { "omp.cmd.prompt": { state: "available", via: "rpc" } };
-const send: RpcSessionSend = async () => undefined as never;
+const send: ChatSessionRequest = async () => undefined as never;
 const usage = {
   input: 1,
   output: 1,

@@ -1,10 +1,10 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  AppPort,
+  type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
   FolderPath,
-  type RpcSessionClient,
-  RpcSessionPort,
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -101,21 +101,21 @@ function RealGoalPanel({ folder }: { readonly folder: string }) {
       await waitForClient(client);
       if (!active) return;
 
-      const rpc = client.port(RpcSessionPort) as RpcSessionClient;
-      const chat = client.port(ChatSessionPort);
-      const opened = await rpc.open({ folderPath: FolderPath.parse(folder), start: "new" });
+      const chat = client.port(ChatSessionPort) as ChatSessionClient;
+      const opened = await chat.open({ folderPath: FolderPath.parse(folder), start: "new" });
       if (!active) return;
       const threadId = opened.threadId;
       const runtime = new OmpRuntimeStore({ threadId });
       subscription = await client.subscribe(ChatSessionPort, "event", { scope: threadId });
       subscription.onEvent((event, sequence) => runtime.ingest(event, sequence));
-      const session = await rpc.send({ threadId, command: { type: "get_state" } });
-      runtime.applySessionState(session);
+      const state = await chat.request({ threadId, method: "get_state", params: {} });
+      runtime.applyHostState(state);
+      const capabilities = await client.port(AppPort).capabilities({});
       if (!active) return;
 
       dialogHost = new DialogHostController({
         overlay,
-        capabilities: opened.capabilities,
+        capabilities,
         answerDialog: async (id, answer, options) => {
           await chat.answer({ threadId, id, answer }, options);
         },
@@ -131,12 +131,12 @@ function RealGoalPanel({ folder }: { readonly folder: string }) {
       goalController = new GoalController({
         threadId,
         autonomy: createAutonomyPort({
-          rpc: (args, callOptions) => rpc.send(args, callOptions),
+          request: chat.request,
           store: runtime,
         }),
         runtime,
         dialogs: dialogHost,
-        capabilities: () => opened.capabilities,
+        capabilities: () => capabilities,
         continuationModes: {
           getSnapshot: () => continuationModesOf(settings.getSnapshot().config),
           subscribe: (listener) => settings.subscribe(() => listener()),

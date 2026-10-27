@@ -1,4 +1,4 @@
-import { AppFailure, type RpcSessionClient, ThreadId } from "@omp-app/contracts";
+import { AppFailure, type ChatSessionClient, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import realHandoff from "./fixtures/real-handoff.json";
 import { createHandoffPort, handoffResultOf } from "./handoff-port";
@@ -8,11 +8,11 @@ const threadId = ThreadId.parse("thread-d54-port");
 function recordingSession(answer: () => Promise<unknown>) {
   const sent: unknown[] = [];
   const session = {
-    send: (args: unknown) => {
+    request: (args: unknown) => {
       sent.push(args);
       return answer();
     },
-  } as unknown as Pick<RpcSessionClient, "send">;
+  } as unknown as Pick<ChatSessionClient, "request">;
   return { sent, session };
 }
 
@@ -44,7 +44,7 @@ describe("handoffResultOf", () => {
 });
 
 describe("createHandoffPort", () => {
-  test("sends omp's handoff command for the open thread, with the focus only when the person gave some", async () => {
+  test("asks the host for a handoff of the open thread, with the focus only when the person gave some", async () => {
     const recorded = recordingSession(() => Promise.resolve({}));
     const port = createHandoffPort(recorded.session, () => threadId);
 
@@ -53,9 +53,9 @@ describe("createHandoffPort", () => {
     await port.createHandoff({ customInstructions: "  Keep the test plan.  " });
 
     expect(recorded.sent).toEqual([
-      { threadId, command: { type: "handoff" } },
-      { threadId, command: { type: "handoff" } },
-      { threadId, command: { type: "handoff", customInstructions: "Keep the test plan." } },
+      { threadId, method: "handoff", params: {} },
+      { threadId, method: "handoff", params: {} },
+      { threadId, method: "handoff", params: { customInstructions: "Keep the test plan." } },
     ]);
   });
 
@@ -67,7 +67,7 @@ describe("createHandoffPort", () => {
 
     await expect(port.createHandoff()).rejects.toThrow("No handoff was made.");
     expect(recorded.sent).toEqual([
-      { threadId: ThreadId.parse("thread-d54-later"), command: { type: "handoff" } },
+      { threadId: ThreadId.parse("thread-d54-later"), method: "handoff", params: {} },
     ]);
   });
 
