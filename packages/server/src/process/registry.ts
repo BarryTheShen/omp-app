@@ -1,7 +1,6 @@
 import type { ProcessStatus, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import type { RpcSessionTimer } from "@omp-app/omp-rpc";
-import type { OmpProcess, OmpProcessOptions } from "./omp-process";
+import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "./omp-process";
 
 /**
  * Each omp process holds about 380 MB while idle, so a chat nobody watches is stopped after two
@@ -24,7 +23,7 @@ function stopRefused(purpose: StopPurpose): AppFailure {
   });
 }
 
-function defaultTimer(): RpcSessionTimer {
+function defaultTimer(): ProcessTimer {
   return {
     setTimeout: (handler, delayMs) => globalThis.setTimeout(handler, delayMs),
     clearTimeout: (handle) => globalThis.clearTimeout(handle as number | Timer),
@@ -37,7 +36,7 @@ export interface OmpProcessRegistryOptions {
   /** Makes a thread's omp: `spawnOmpProcess` with the pinned omp in the server, a stand-in in tests. */
   readonly createProcess: (options: OmpProcessOptions) => OmpProcess;
   /** Injectable for deterministic idle-close tests; defaults to the global timer. */
-  readonly timer?: RpcSessionTimer;
+  readonly timer?: ProcessTimer;
 }
 
 /**
@@ -83,7 +82,7 @@ interface Entry {
 export class OmpProcessRegistry {
   readonly #idleCloseMs: number;
   readonly #createProcess: (options: OmpProcessOptions) => OmpProcess;
-  readonly #timer: RpcSessionTimer;
+  readonly #timer: ProcessTimer;
   readonly #entries = new Map<ThreadId, Entry>();
   readonly #stopping = new Map<ThreadId, Promise<void>>();
   /** The process of each thread whose stop failed, until a stop of it succeeds: a wait for the thread tries it again. */
@@ -120,7 +119,7 @@ export class OmpProcessRegistry {
 
   /**
    * Returns the thread's process, creating it if this is the first viewer. Does not call
-   * `start()`: construct any `RpcSession` around the returned duplex first, then start it,
+   * `start()`: construct the `ChatHostClient` around the returned duplex first, then start it,
    * so no early output is missed.
    */
   acquire(options: OmpProcessOptions): OmpProcess {

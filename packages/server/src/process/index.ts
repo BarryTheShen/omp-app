@@ -5,6 +5,7 @@ export {
   type OmpProcessEvent,
   type OmpProcessListener,
   type OmpProcessOptions,
+  type ProcessTimer,
   type SpawnOmpProcessOptions,
   spawnOmpProcess,
 } from "./omp-process";

@@ -1,7 +1,7 @@
 /**
  * A0's runtime for chats on the chat host (SDK plan H5.3, `reassessment/SDK-CHAT-HOST-PLAN.md`, "H5.3 design"): one chat
- * host process per chat, the protocol's requests and events, and the duties of A0's RPC runtime (`./rpc-session.ts`)
- * carried over. H5.3a has the core:
+ * host process per chat, the protocol's requests and events, and the duties A0's RPC runtime had until H5.6b removed it.
+ * H5.3a has the core:
  * - opening a chat: new, resumed from its file, the folder's newest (`--continue`), with a picked model;
  * - requests;
  * - the chat's stream;
@@ -52,7 +52,6 @@ import {
   parseChatHostParams,
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
-import { modelUnavailableFailure, savedModelFromOmpText } from "@omp-app/omp-rpc";
 import { z } from "zod";
 import { ChatHostClient, ChatHostRequestError } from "../../chat-host/client";
 import {
@@ -64,7 +63,8 @@ import {
 } from "../../modules/A1/gateway/command-session";
 import type { OmpProcess, OmpProcessOptions } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
-import type { A0PortContext, ThreadBootstrap } from "./rpc-session";
+import type { A0PortContext, ThreadBootstrap } from "./context";
+import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
 
 interface ChatEntry {
@@ -276,7 +276,7 @@ function requestFailure(method: string, error: unknown): AppFailure {
         omp,
       });
     case "agent_busy":
-      // RPC's words for omp's refusal (`rpc-session.ts` `agentBusyFailure`): plain words, never omp's own text.
+      // The words A0's RPC port used for omp's refusal: plain words, never omp's own text.
       return new AppFailure({
         code: "agent_busy",
         message: "omp is still working on something.",
@@ -470,6 +470,9 @@ export class ChatSessionPortRuntime {
     }
     const entry = this.#entry(args.threadId);
     await this.#ensureRunning(entry);
+    // A call the browser gave up while its chat started again reaches no host: the browser was told it was cancelled,
+    // as omp's RPC port refused a cancelled command before writing it.
+    if (call.signal.aborted) throw cancelled("The command was cancelled.");
     const method = args.method as ChatHostMethod;
     const params = parseChatHostParams(method, args.params);
     if (!params.ok) {

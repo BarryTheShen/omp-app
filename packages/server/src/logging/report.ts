@@ -59,16 +59,19 @@ export function buildDebugReport(options: DebugReportOptions): string {
 /** A command word that names omp: `omp`, or the same with a script extension (`omp.js`, `omp.ts`). */
 const OMP_COMMAND = /^omp(\.[cm]?[jt]s)?$/;
 
-/** Whether a command runs omp's RPC mode: every chat does, whichever program runs it. */
-function runsRpcMode(command: readonly string[]): boolean {
-  return command.some((token, index) => token === "--mode" && command[index + 1] === "rpc-ui");
+/**
+ * Whether a command word is the app's chat host, which runs every chat: the program the packages install
+ * (`chat-host`), or its entry from source (`src/chat-host/main.ts`).
+ */
+function isChatHost(token: string): boolean {
+  return basename(token) === "chat-host" || token.endsWith("/chat-host/main.ts");
 }
 
 /**
  * The omp processes that `ownerPid` started, from `ps -eo pid,ppid,rss,etime,args` output: the header, then each
- * process whose parent is `ownerPid` and whose command names omp or runs omp's RPC mode (the app's chat host, or omp's
- * command line from source). Other processes are left out, including those that only mention omp or omp-app in their
- * arguments, and omp processes that other programs started.
+ * process whose parent is `ownerPid` and whose command names omp or the app's chat host. Other processes are left out,
+ * including those that only mention omp, omp-app or a chat's argument in their arguments, and omp processes that other
+ * programs started.
  */
 export function ompProcessLines(psOutput: string, ownerPid: number): string[] {
   const [header = "", ...rows] = psOutput.split("\n");
@@ -76,7 +79,7 @@ export function ompProcessLines(psOutput: string, ownerPid: number): string[] {
     const [, parent, , , ...command] = line.trim().split(/\s+/);
     return (
       Number(parent) === ownerPid &&
-      (command.some((token) => OMP_COMMAND.test(basename(token))) || runsRpcMode(command))
+      command.some((token) => OMP_COMMAND.test(basename(token)) || isChatHost(token))
     );
   });
   return [header, ...owned];

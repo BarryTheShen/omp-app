@@ -3,12 +3,27 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
-import { FolderPath, RpcSessionPort, ThreadId } from "@omp-app/contracts";
+import { ChatSessionPort, FolderPath, ThreadId } from "@omp-app/contracts";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
+
+/** Whether a chat session event is the host's `prompt_result`: a turn the app asked for has ended. */
+function isPromptResult(payload: unknown): boolean {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "kind" in payload &&
+    payload.kind === "event" &&
+    "event" in payload &&
+    typeof payload.event === "object" &&
+    payload.event !== null &&
+    "type" in payload.event &&
+    payload.event.type === "prompt_result"
+  );
+}
 
 const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
 // Runs when asked (OMP_APP_REAL_OMP=1). omp is the app's own build of its command line: the compiled chat host when
-// OMP_APP_CHAT_HOST_BIN names it (the e2e global setup builds it), else omp's `cli.ts` from source (`ompCommand()`).
+// OMP_APP_CHAT_HOST_BIN names it (the e2e global setup builds it), else the chat host's entry from source.
 const realTest = Bun.env.OMP_APP_REAL_OMP === "1" ? test : test.skip;
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
@@ -130,31 +145,23 @@ describe("A0.9 real omp composition", () => {
       webSocketFactory,
       reconnect: { maxAttempts: 2 },
     });
-    const rpc = client.port(RpcSessionPort);
-    const opened = await rpc.open({ folderPath: FolderPath.parse(folderPath), start: "new" });
-    const subscription = await client.subscribe(RpcSessionPort, "event", {
+    const chat = client.port(ChatSessionPort);
+    const opened = await chat.open({ folderPath: FolderPath.parse(folderPath), start: "new" });
+    const subscription = await client.subscribe(ChatSessionPort, "event", {
       scope: opened.threadId,
     });
-    const firstEvents: Array<{ kind: string; seq: number }> = [];
+    const firstEvents: Array<{ prompted: boolean; seq: number }> = [];
     const stopFirst = subscription.onEvent((payload, seq) => {
-      if (typeof payload === "object" && payload !== null && "kind" in payload) {
-        firstEvents.push({ kind: String(payload.kind), seq });
-      }
+      firstEvents.push({ prompted: isPromptResult(payload), seq });
     });
 
-    await rpc.send({
+    await chat.request({
       threadId: opened.threadId,
-      command: { type: "prompt", message: "hello from A0.9" },
+      method: "prompt",
+      params: { text: "hello from A0.9" },
     });
-    const prompt = await waitForEvent(subscription, (payload) => {
-      return (
-        typeof payload === "object" &&
-        payload !== null &&
-        "kind" in payload &&
-        payload.kind === "prompt_result"
-      );
-    });
-    expect(firstEvents.some((event) => event.kind === "prompt_result")).toBe(true);
+    const prompt = await waitForEvent(subscription, isPromptResult);
+    expect(firstEvents.some((event) => event.prompted)).toBe(true);
     const lastSeq = Math.max(subscription.lastSeq, prompt.seq);
     stopFirst();
     client.dispose();
@@ -165,29 +172,23 @@ describe("A0.9 real omp composition", () => {
       webSocketFactory,
       reconnect: { maxAttempts: 2 },
     });
-    const reconnectingRpc = reconnectingClient.port(RpcSessionPort);
-    const reopened = await reconnectingRpc.open({ threadId: ThreadId.parse(opened.threadId) });
+    const reconnectingChat = reconnectingClient.port(ChatSessionPort);
+    const reopened = await reconnectingChat.open({ threadId: ThreadId.parse(opened.threadId) });
     expect(reopened.threadId).toBe(opened.threadId);
-    const replayed = await reconnectingClient.subscribe(RpcSessionPort, "event", {
+    const replayed = await reconnectingClient.subscribe(ChatSessionPort, "event", {
       scope: opened.threadId,
       afterSeq: Math.max(0, lastSeq - 1),
     });
     expect(replayed.lastSeq).toBeGreaterThanOrEqual(lastSeq);
 
-    await reconnectingRpc.send({
+    await reconnectingChat.request({
       threadId: opened.threadId,
-      command: { type: "prompt", message: "second turn" },
+      method: "prompt",
+      params: { text: "second turn" },
     });
-    const secondPrompt = await waitForEvent(replayed, (payload) => {
-      return (
-        typeof payload === "object" &&
-        payload !== null &&
-        "kind" in payload &&
-        payload.kind === "prompt_result"
-      );
-    });
+    const secondPrompt = await waitForEvent(replayed, isPromptResult);
     expect(secondPrompt.seq).toBeGreaterThan(lastSeq);
-    await reconnectingRpc.close({ threadId: opened.threadId });
+    await reconnectingChat.close({ threadId: opened.threadId });
     reconnectingClient.dispose();
   });
 });

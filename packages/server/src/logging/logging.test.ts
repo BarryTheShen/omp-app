@@ -232,7 +232,7 @@ describe("debug report", () => {
       version: "0.1.999",
       now: new Date("2026-10-07T07:08:09.000Z"),
       omp: { path: "/usr/bin/omp", version: "18.7.0" },
-      processes: "PID RSS ELAPSED COMMAND\n123 380000 02:00 omp --mode rpc-ui",
+      processes: "PID RSS ELAPSED COMMAND\n123 380000 02:00 chat-host __omp_app_chat",
       lines: 10,
     });
     expect(report).toContain("omp app debug report");
@@ -241,7 +241,7 @@ describe("debug report", () => {
     expect(report).toContain("--- last 10 log lines ---");
     expect(report).toContain("n=49");
     expect(report).not.toContain("n=39 ");
-    expect(report).toContain("123 380000 02:00 omp --mode rpc-ui");
+    expect(report).toContain("123 380000 02:00 chat-host __omp_app_chat");
     expect(report).not.toContain("thisisnotallowed1");
     expect(debugReportFileName(new Date("2026-10-07T07:08:09.000Z"))).toBe(
       "omp-app-debug-20261007-070809.log",

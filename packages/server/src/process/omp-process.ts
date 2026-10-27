@@ -9,7 +9,7 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, checkScrubbed, OmpProcessId as OmpProcessIdSchema } from "@omp-app/contracts";
-import type { RpcDuplex, RpcSessionTimer } from "@omp-app/omp-rpc";
+import type { LineDuplex } from "../chat-host/client";
 import { ensureAppDataDir } from "../modules/A1/fs/app-data";
 import { writeFileAtomic } from "../modules/A1/fs/atomic-file";
 
@@ -41,15 +41,15 @@ export interface OmpProcessOptions {
   /** Grace period between SIGTERM and SIGKILL. Default 5000 ms. */
   readonly terminationGraceMs?: number;
   /** Injectable for deterministic tests; defaults to the global timer. */
-  readonly timer?: RpcSessionTimer;
+  readonly timer?: ProcessTimer;
   /** Injectable for deterministic tests; defaults to `Bun.spawn`. */
   readonly spawn?: typeof Bun.spawn;
 }
 
 export interface SpawnOmpProcessOptions extends OmpProcessOptions {
   /**
-   * The program and leading arguments that start the chat: omp's command line in RPC mode, built by the app
-   * (`chatCommand()` in `omp-host/chat-command.ts`), or a test's stand-in.
+   * The program and leading arguments that start the chat: the chat host's `chat` command, built by the app
+   * (`chatHostCommand()` in `omp-host/chat-command.ts`), or a test's stand-in.
    */
   readonly chatCommand: readonly string[];
 }
@@ -64,12 +64,17 @@ export interface OmpProcessEvent {
 
 export type OmpProcessListener = (event: OmpProcessEvent) => void;
 
+/** The timer a process and the registry wait with; a test passes one it fires itself. */
+export interface ProcessTimer {
+  setTimeout(handler: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
 /**
- * One spawned chat process (the app's chat host, which speaks omp's RPC protocol) and its lifecycle. Implements
- * `RpcDuplex` so an `RpcSession` can be built directly around it: construct the session first (so its `onChunk`
- * subscription is registered), then call `start()`.
+ * One spawned chat process (the app's chat host) and its lifecycle. It is the line duplex a `ChatHostClient` reads:
+ * construct the client first (so its `onChunk` subscription is registered), then call `start()`.
  */
-export interface OmpProcess extends RpcDuplex {
+export interface OmpProcess extends LineDuplex {
   readonly threadId: ThreadId;
   readonly folder: FolderPath;
   readonly status: ProcessStatus;
@@ -93,7 +98,7 @@ export interface OmpProcess extends RpcDuplex {
 
 type OmpSubprocess = Bun.Subprocess<"pipe", "pipe", "pipe">;
 
-function defaultTimer(): RpcSessionTimer {
+function defaultTimer(): ProcessTimer {
   return {
     setTimeout: (handler, delayMs) => globalThis.setTimeout(handler, delayMs),
     clearTimeout: (handle) => globalThis.clearTimeout(handle as number | Timer),
@@ -148,7 +153,7 @@ class SpawnedOmpProcess implements OmpProcess {
   readonly #envOverrides: Readonly<Record<string, string | undefined>>;
   readonly #maxStderrBytes: number;
   readonly #terminationGraceMs: number;
-  readonly #timer: RpcSessionTimer;
+  readonly #timer: ProcessTimer;
   readonly #spawn: typeof Bun.spawn;
   readonly #listeners = new Set<OmpProcessListener>();
   readonly #chunkListeners = new Set<(chunk: Uint8Array) => void>();

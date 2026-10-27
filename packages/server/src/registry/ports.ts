@@ -59,7 +59,7 @@ export function createPortRegistry(registrations: readonly PortRegistration[] = 
 /**
  * The empty default registry, for tests and tools that compose their own. The running app composes
  * its registrations with their runtime contexts (process registry, replay hub, stores) where the
- * server starts: `createPortRegistry([...createA0PortRegistrations(a0), ...createA1PortRegistrations(a1)])`
- * in A0.9's dev command.
+ * server starts: `createPortRegistry([...createA0Runtime(a0).registrations, ...createA1PortRegistrations(a1)])`
+ * in the dev command (`scripts/dev.ts`).
  */
 export const PORT_REGISTRY: PortRegistry = createPortRegistry();

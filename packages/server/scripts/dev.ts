@@ -98,11 +98,11 @@ export interface CompositionServerOptions {
   readonly ompArgs?: readonly string[];
   /**
    * The chat host compiled to one program (`scripts/build-chat-host.ts`: the app's entry with omp's command line, built
-   * from the pinned package), which runs every chat. Default: `OMP_APP_CHAT_HOST_BIN`; without either, omp's command
-   * line from the pinned package (`src/cli.ts`) on the Bun running this server.
+   * from the pinned package), which runs every chat. Default: `OMP_APP_CHAT_HOST_BIN`; without either, the chat host's
+   * entry from source (`src/chat-host/main.ts`) on the Bun running this server.
    */
   readonly chatHostBinary?: string;
-  /** Test seam: a program every chat runs through, given the chat's whole command as its arguments (`chatCommand()`). */
+  /** Test seam: a program every chat runs through, given the chat's whole command as its arguments (`chatHostCommand()`). */
   readonly chatWrapper?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;
@@ -429,7 +429,7 @@ export async function createCompositionServer(
           },
         }),
   };
-  const a0Runtime = createA0Runtime(a0Context, { chatHost: true });
+  const a0Runtime = createA0Runtime(a0Context);
   const sessionFileStore = createServerSessionFileStore({
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,

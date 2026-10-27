@@ -12,7 +12,7 @@ import {
 import { truncate } from "../../logging";
 import { fileWatchMessage } from "../../modules/A1/fs/file-watch-registry";
 import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
-import type { A0PortContext } from "./rpc-session";
+import type { A0PortContext } from "./context";
 
 /**
  * The health the page reads: the start-up checks, and the watched files the app cannot see changes for right now.

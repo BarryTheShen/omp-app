@@ -13,7 +13,7 @@ import {
 } from "@omp-app/contracts";
 import { CHAT_HOST_CHAT_ARG } from "@omp-app/contracts/chat-host";
 import { ChatSessionPortRuntime } from "../../src/ports/A0/chat-session";
-import type { A0PortContext } from "../../src/ports/A0/rpc-session";
+import type { A0PortContext } from "../../src/ports/A0/context";
 import {
   OmpProcessRegistry,
   type OmpProcessRegistryOptions,

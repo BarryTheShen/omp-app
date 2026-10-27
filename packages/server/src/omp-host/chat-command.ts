@@ -24,19 +24,10 @@ export interface ChatCommandOptions extends OmpCommandOptions {
 /**
  * omp's own command line, from the omp package the app pins (#2586, SDK plan): the program and leading arguments, before
  * omp's own arguments. The compiled chat host hands them to omp's command line (`src/chat-host/main.ts`). It answers
- * omp's commands (`--version`, `models`, `usage`, `config`) and runs chats (`chatCommand`).
+ * omp's commands (`--version`, `models`, `usage`, `config`); chats run on `chatHostCommand`.
  */
 export function ompCommand(options: OmpCommandOptions = {}): readonly string[] {
   return options.binary === undefined ? [process.execPath, ompCommandLine()] : [options.binary];
-}
-
-/**
- * The program and leading arguments that start one chat: omp's command line in `--mode rpc-ui`, the only mode that
- * forwards extension and tool UI requests. The chat's own arguments follow.
- */
-export function chatCommand(options: ChatCommandOptions = {}): readonly string[] {
-  const command = [...ompCommand(options), "--mode", "rpc-ui"];
-  return options.wrapper === undefined ? command : [options.wrapper, ...command];
 }
 
 /**

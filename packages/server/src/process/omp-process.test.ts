@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
-import { FrameDecoder, type RpcSessionTimer } from "@omp-app/omp-rpc";
+import type { ProcessTimer } from "./omp-process";
 import {
   homeFolderArguments,
   type OmpProcess,
@@ -14,7 +14,7 @@ import {
 const FAKE_OMP = resolve(import.meta.dir, "test-fixtures/fake-omp.ts");
 const threadId = ThreadId.parse("thread-a0-5-process");
 
-class ManualTimer implements RpcSessionTimer {
+class ManualTimer implements ProcessTimer {
   #nextId = 0;
   readonly callbacks = new Map<number, () => void>();
 
@@ -109,7 +109,7 @@ function waitForEvent(
   });
 }
 
-/** Awaits a decoded stdout frame matching the predicate, using the real FrameDecoder. */
+/** Awaits a stdout line (one JSON object) matching the predicate. */
 function waitForFrame(
   process: OmpProcess,
   predicate: (frame: Record<string, unknown>) => boolean,
@@ -120,7 +120,8 @@ function waitForFrame(
     let pump: ReturnType<typeof setInterval> | undefined;
     let guard: ReturnType<typeof setTimeout> | undefined;
     let unsubscribe = (): void => undefined;
-    const decoder = new FrameDecoder();
+    const decoder = new TextDecoder();
+    let buffered = "";
     const cleanup = () => {
       if (pump !== undefined) {
         clearInterval(pump);
@@ -134,11 +135,16 @@ function waitForFrame(
     };
     const onChunk = (chunk: Uint8Array): void => {
       if (settled) return;
-      for (const event of decoder.push(chunk)) {
-        if (event.type !== "frame" || !predicate(event.frame)) continue;
+      buffered += decoder.decode(chunk, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.trim() === "") continue;
+        const frame = JSON.parse(line) as Record<string, unknown>;
+        if (!predicate(frame)) continue;
         settled = true;
         cleanup();
-        resolvePromise(event.frame);
+        resolvePromise(frame);
         return;
       }
     };
@@ -160,7 +166,7 @@ function waitForFrame(
 }
 
 describe("OmpProcess spawn and stdio", () => {
-  test("spawns argv-only in the thread's folder, delivers the ready frame, and assigns a processId", async () => {
+  test("spawns argv-only in the thread's folder, delivers its first lines, and assigns a processId", async () => {
     const folder = await temporaryFolder();
     const process = track(
       spawnOmpProcess({
@@ -214,7 +220,7 @@ describe("OmpProcess spawn and stdio", () => {
         spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
       );
       await process.start();
-      await waitForFrame(process, (frame) => frame.type === "ready");
+      await waitForFrame(process, (frame) => frame.kind === "hello");
       await process.stop();
     };
     await startProcess();
@@ -234,7 +240,7 @@ describe("OmpProcess spawn and stdio", () => {
       spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
     );
     await process.start();
-    await waitForFrame(process, (frame) => frame.type === "ready");
+    await waitForFrame(process, (frame) => frame.kind === "hello");
     await process.stop();
     expect(await readFile(policy, "utf8")).toBe(
       "codexResets:\n  autoRedeem: no\nclaudeResets:\n  autoRedeem: no\n",
@@ -280,7 +286,7 @@ describe("OmpProcess spawn and stdio", () => {
         }),
       );
       await process.start();
-      await waitForFrame(process, (frame) => frame.type === "ready");
+      await waitForFrame(process, (frame) => frame.kind === "hello");
       expect(process.status).toBe("running");
     } finally {
       await chmod(drafts, 0o755);
@@ -293,12 +299,17 @@ describe("OmpProcess spawn and stdio", () => {
       spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
     );
     await process.start();
-    await waitForFrame(process, (frame) => frame.type === "ready");
+    await waitForFrame(process, (frame) => frame.kind === "hello");
 
-    await process.writeLine('{"id":"cmd-1","type":"get_state"}\n');
-    const response = await waitForFrame(process, (frame) => frame.type === "response");
+    await process.writeLine('{"kind":"request","id":"cmd-1","method":"get_state","params":{}}\n');
+    const response = await waitForFrame(process, (frame) => frame.kind === "response");
 
-    expect(response).toMatchObject({ id: "cmd-1", command: "get_state", success: true });
+    expect(response).toEqual({
+      kind: "response",
+      id: "cmd-1",
+      ok: true,
+      result: { method: "get_state" },
+    });
   });
 
   test("rejects start() once stopped, and stop() is idempotent", async () => {
@@ -307,7 +318,7 @@ describe("OmpProcess spawn and stdio", () => {
       spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
     );
     await process.start();
-    await waitForFrame(process, (frame) => frame.type === "ready");
+    await waitForFrame(process, (frame) => frame.kind === "hello");
 
     await process.stop();
     expect(process.status).toBe("stopped");
@@ -355,7 +366,7 @@ describe("OmpProcess shutdown", () => {
     });
 
     await process.start();
-    await waitForFrame(process, (frame) => frame.type === "ready");
+    await waitForFrame(process, (frame) => frame.kind === "hello");
     await process.stop();
 
     expect(process.status).toBe("stopped");
@@ -379,7 +390,7 @@ describe("OmpProcess shutdown", () => {
     );
 
     await process.start();
-    await waitForFrame(process, (frame) => frame.type === "ready");
+    await waitForFrame(process, (frame) => frame.kind === "hello");
 
     const stopPromise = process.stop();
     const pump = setInterval(() => timer.fireAll(), 5);
@@ -407,7 +418,7 @@ describe("OmpProcess shutdown", () => {
     );
 
     await process.start();
-    await waitForFrame(process, (frame) => frame.type === "ready");
+    await waitForFrame(process, (frame) => frame.kind === "hello");
 
     await expect(process.stop()).rejects.toThrow("could not be waited for");
     expect(process.status).not.toBe("stopped");

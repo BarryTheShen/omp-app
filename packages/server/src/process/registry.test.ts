@@ -6,7 +6,7 @@ import {
   OmpProcessId as OmpProcessIdSchema,
   ThreadId,
 } from "@omp-app/contracts";
-import type { RpcSessionTimer } from "@omp-app/omp-rpc";
+import type { ProcessTimer } from "./index";
 import {
   type OmpProcess,
   type OmpProcessEvent,
@@ -14,7 +14,7 @@ import {
   OmpProcessRegistry,
 } from "./index";
 
-class ManualTimer implements RpcSessionTimer {
+class ManualTimer implements ProcessTimer {
   #nextId = 0;
   readonly callbacks = new Map<number, () => void>();
 

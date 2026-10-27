@@ -1,23 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { listProcesses, ompProcessLines } from "./report";
 
-// `ps -eo pid,ppid,rss,etime,args` as it looked on the machine of the issue: the server (pid 500) started omp
-// processes and chats in omp's RPC mode (omp's command line from source, the installed chat host); the rest are other
-// programs, some of which only mention omp, omp-app or rpc-ui in their arguments.
+// `ps -eo pid,ppid,rss,etime,args` on a machine where the server (pid 500) started chats on the chat host (installed, and
+// its entry from source) and omp's command line; the rest are other programs, some of which only mention omp, omp-app or
+// a chat's argument in their arguments.
 const PS_OUTPUT = [
   "    PID    PPID     RSS     ELAPSED COMMAND",
-  "    201     500  380000       02:00 omp --mode rpc-ui --model fake/fake-model",
-  "    202     500  120000       03:00 bun /home/me/.bun/bin/omp --mode rpc-ui",
-  "    203       1  380000       09:00 omp --mode rpc-ui",
+  "    201     500  380000       02:00 /usr/lib/omp-app/chat-host __omp_app_chat --model fake/fake-model",
+  "    202     500  120000       03:00 bun /home/me/.bun/bin/omp models --json",
+  "    203       1  380000       09:00 /usr/lib/omp-app/chat-host __omp_app_chat",
   "    204     500   90000       01:00 node /home/me/projects/omp-app/node_modules/.bin/vite preview --port 6280",
   "    205     500   50000       01:00 python3 /tmp/runner.py --target omp-app",
   "    206     999   70000       05:00 /usr/bin/python3 /home/me/nightly-job.py omp-app",
   "    207     500    1000       00:01 ps -eo pid,ppid,rss,etime,args",
   "    208     500  150000       00:30 omp",
   "    209     500    4000       00:30 bash /home/me/projects/omp-app/.data/heavy.sh nice -n 10 bun run test",
-  "    210     500  410000       01:30 bun /home/me/omp-app/node_modules/@oh-my-pi/pi-coding-agent/src/cli.ts --mode rpc-ui --model fake/fake-model",
-  "    211     500  330000       01:30 /usr/lib/omp-app/chat-host --mode rpc-ui --resume /home/me/.omp/agent/sessions/chat.jsonl",
-  "    213     500    2000       00:01 grep rpc-ui /home/me/.omp/agent/app/omp-app.log",
+  "    210     500  410000       01:30 bun /home/me/omp-app/packages/server/src/chat-host/main.ts __omp_app_chat --model fake/fake-model",
+  "    211     500  330000       01:30 /usr/lib/omp-app/chat-host __omp_app_chat --resume /home/me/.omp/agent/sessions/chat.jsonl",
+  "    213     500    2000       00:01 grep __omp_app_chat /home/me/.omp/agent/app/omp-app.log",
 ].join("\n");
 
 /** The pids a `listProcesses` listing names (its header and any message line are skipped). */

@@ -427,17 +427,3 @@ export async function probeCapabilitiesPatiently(
     deadlineMs: patient?.deadlineMs ?? PATIENT_PROBE_DEADLINE_MS,
   });
 }
-
-/** Applies a thread's negotiated protocol to an immutable copy of the server-wide map. */
-export function capabilitiesForProtocol(
-  serverCapabilities: CapabilityMap,
-  protocolVersion: 1 | 2,
-): CapabilityMap {
-  return CapabilityMap.parse({
-    ...serverCapabilities,
-    "omp.protocol.v2":
-      protocolVersion === 2
-        ? available("rpc")
-        : unavailable("this thread remained on RPC protocol v1 (omp-v18.12.6:docs/rpc.md:40-58)"),
-  });
-}

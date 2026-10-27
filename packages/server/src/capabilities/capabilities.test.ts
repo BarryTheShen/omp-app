@@ -1,16 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import {
-  CapabilityMap,
-  D8_AP6_UNAVAILABLE_REASONS,
-  FolderPath,
-  OMP_COMMAND_NAMES,
-} from "@omp-app/contracts";
+import { D8_AP6_UNAVAILABLE_REASONS, FolderPath, OMP_COMMAND_NAMES } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import {
   type CapabilityProbeResult,
-  capabilitiesForProtocol,
   HELLO_SOURCE,
   probeCapabilities,
   probeCapabilitiesPatiently,
@@ -283,15 +277,5 @@ describe("probeCapabilities", () => {
     expect(await readKey({})).not.toBe("");
     expect(await readKey({ ANTHROPIC_API_KEY: "" })).not.toBe("");
     expect(await readKey({ ANTHROPIC_API_KEY: "the-users-own-key" })).toBe("the-users-own-key");
-  });
-});
-
-describe("capabilitiesForProtocol", () => {
-  test("a thread on omp's RPC protocol 1 has no protocol 2 features, and the rest of the map is kept", async () => {
-    const { result } = await runProbe();
-    const threadMap = capabilitiesForProtocol(result.capabilities, 1);
-    expect(threadMap["omp.protocol.v2"]).toMatchObject({ state: "unavailable", via: "rpc" });
-    expect(threadMap["omp.cmd.get_state"]).toEqual(result.capabilities["omp.cmd.get_state"]);
-    expect(threadMap).toEqual(CapabilityMap.parse(threadMap));
   });
 });

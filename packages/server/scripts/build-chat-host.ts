@@ -12,8 +12,7 @@
  *
  * The entry runs one chat on omp's SDK for `__omp_app_chat`, and hands every other argument list to omp's own command
  * line: omp's worker threads and subprocesses re-enter the program with their selectors, and `--version`,
- * `--smoke-test`, omp's subcommands, its terminal UI and `--mode rpc-ui` (what the server runs until H5.3) work as in
- * omp's binary.
+ * `--smoke-test`, omp's subcommands and its terminal UI work as in omp's binary.
  *
  *   <that Bun> packages/server/scripts/build-chat-host.ts <outfile>
  */

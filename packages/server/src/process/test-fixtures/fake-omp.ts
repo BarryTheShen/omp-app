@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Minimal stand-in for `omp --mode rpc-ui`, used only by A0.5's OmpProcess tests. It is never a
- * real agent: it emits one `ready` frame, echoes every JSONL command on stdin as a trivial
- * success `response`, and otherwise behaves exactly as the test controlling it asks:
+ * Minimal stand-in for a chat process, used only by A0.5's OmpProcess tests. It is never a real agent: it writes a
+ * chat host's `hello`, answers every request on stdin with a trivial success `response` that names the method, and
+ * otherwise behaves exactly as the test controlling it asks:
  *
  * - `FAKE_OMP_STDERR`: text to write to stderr once at startup.
  * - `FAKE_OMP_EXIT_CODE`: when set, exit with this code shortly after starting (simulates a crash).
@@ -23,11 +23,11 @@ if (Bun.env.FAKE_OMP_IGNORE_SIGTERM === "1") {
 
 console.log(
   JSON.stringify({
-    type: "ready",
-    protocolVersion: 1,
-    supportedProtocolVersions: [1, 2],
-    maxFrameBytes: 1048576,
-    maxReassembledFrameBytes: 67108864,
+    kind: "hello",
+    protocol: 1,
+    ompVersion: "18.12.6",
+    methods: ["get_state"],
+    session: { id: "fake-session", file: null, cwd: process.cwd() },
   }),
 );
 
@@ -51,19 +51,18 @@ for await (const chunk of Bun.stdin.stream()) {
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (line.length === 0) continue;
-    let command: { id?: unknown; type?: unknown };
+    let request: { id?: unknown; method?: unknown };
     try {
-      command = JSON.parse(line) as { id?: unknown; type?: unknown };
+      request = JSON.parse(line) as { id?: unknown; method?: unknown };
     } catch {
       continue;
     }
     console.log(
       JSON.stringify({
-        type: "response",
-        id: typeof command.id === "string" ? command.id : undefined,
-        command: typeof command.type === "string" ? command.type : "unknown",
-        success: true,
-        data: {},
+        kind: "response",
+        id: typeof request.id === "string" ? request.id : undefined,
+        ok: true,
+        result: { method: typeof request.method === "string" ? request.method : "unknown" },
       }),
     );
   }

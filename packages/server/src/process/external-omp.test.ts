@@ -17,7 +17,7 @@ function tableWithLease(): string {
 
 describe("matchExternalOmp", () => {
   test("an omp that resumes this chat's file is a running writer of it", () => {
-    const ps = `4101 /home/user/.bun/bin/omp --mode rpc-ui --resume ${sessionFile}`;
+    const ps = `4101 /home/user/.bun/bin/omp --resume ${sessionFile}`;
     expect(matchExternalOmp(ps, sessionId, sessionFile)).toBe("running");
   });
 
@@ -27,7 +27,7 @@ describe("matchExternalOmp", () => {
   });
 
   test("an omp for another chat does not count", () => {
-    const ps = `4103 omp --mode rpc-ui --resume ${otherFile}`;
+    const ps = `4103 omp --resume ${otherFile}`;
     expect(matchExternalOmp(ps, sessionId, sessionFile)).toBe("none");
   });
 
@@ -51,7 +51,7 @@ describe("matchExternalOmp", () => {
   });
 
   test("the rename host this server started is not another omp, even though it names the file", () => {
-    const ps = `4107 omp --mode rpc-ui --resume ${sessionFile}`;
+    const ps = `4107 omp --resume ${sessionFile}`;
     expect(matchExternalOmp(ps, sessionId, sessionFile, 4107)).toBe("none");
     expect(matchExternalOmp(ps, sessionId, sessionFile, 4108)).toBe("running");
   });
@@ -100,7 +100,7 @@ describe("findExternalOmp", () => {
         ownPid: 4107,
         platform: "linux",
         readUnixSockets: async () => "",
-        readTable: async () => `4107 omp --mode rpc-ui --resume ${sessionFile}`,
+        readTable: async () => `4107 omp --resume ${sessionFile}`,
       }),
     ).resolves.toBe("none");
   });

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, readFile, readlink, realpath, rm } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FolderPath, ThreadId } from "@omp-app/contracts";
-import { RpcSession } from "@omp-app/omp-rpc";
-import { chatCommand } from "../omp-host/chat-command";
+import { ChatHostClient } from "../chat-host/client";
+import { chatHostCommand } from "../omp-host/chat-command";
 import { type OmpProcess, spawnOmpProcess } from "./omp-process";
 
 // Starting a real chat (omp's command line, built from the pinned package) takes seconds and varies under load (it timed out while ten
@@ -44,7 +44,7 @@ afterEach(async () => {
 });
 
 realTest(
-  "starts the chat host in an isolated HOME/agent dir and completes get_state through RpcSession",
+  "starts the chat host in an isolated HOME/agent dir and reads its state through the chat host client",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "omp-app-a0-5-real-"));
     temporaryRoots.push(root);
@@ -61,7 +61,7 @@ realTest(
       threadId: ThreadId.parse("thread-a0-5-real"),
       folder,
       homeDir: home,
-      chatCommand: chatCommand(),
+      chatCommand: chatHostCommand(),
       env: {
         HOME: home,
         PI_CODING_AGENT_DIR: agentDir,
@@ -69,16 +69,16 @@ realTest(
       },
     });
     liveProcesses.push(process);
-    const session = new RpcSession(process);
+    const client = new ChatHostClient(process);
 
     await process.start();
-    await session.start();
-    const state = await session.send({ type: "get_state" });
+    await client.hello;
+    const state = await client.request("get_state", {});
 
     expect(process.status).toBe("running");
     expect(process.processId).toBeDefined();
     expect(state.sessionFile).toContain(agentDir);
-    await session.close();
+    client.dispose();
   },
 );
 
@@ -95,7 +95,7 @@ realTest(
       threadId: ThreadId.parse("thread-1143-home"),
       folder,
       homeDir: home,
-      chatCommand: chatCommand(),
+      chatCommand: chatHostCommand(),
       env: {
         HOME: home,
         PI_CODING_AGENT_DIR: agentDir,
@@ -103,19 +103,19 @@ realTest(
       },
     });
     liveProcesses.push(process);
-    const session = new RpcSession(process);
+    const client = new ChatHostClient(process);
 
     await process.start();
-    await session.start();
-    const state = await session.send({ type: "get_state" });
+    await client.hello;
+    const state = await client.request("get_state", {});
     // omp saves the first message as it admits it; the placeholder key makes the model reply an error, which is not the point here.
-    await session.send({ type: "prompt", message: "hello" }).catch(() => undefined);
+    await client.request("prompt", { text: "hello" }).catch(() => undefined);
 
     const workingFolder = await readlink(`/proc/${process.pid}/cwd`);
     expect(workingFolder).toBe(await realpath(home));
     const sessionFile = state.sessionFile;
     if (sessionFile === undefined) throw new Error("omp reported no session file");
     expect(await waitForSessionCwd(sessionFile)).toBe(await realpath(home));
-    await session.close();
+    client.dispose();
   },
 );
