@@ -70,6 +70,7 @@ import {
   startPrompt,
 } from "./prompt-results";
 import type { ChatSession } from "./session-factory";
+import { cancelSubagent, readSubagentTranscript, SubagentRoster, steerSubagent } from "./subagents";
 import { HostRequests, HostUIContext } from "./ui-context";
 
 export interface ChatLoopOptions {
@@ -94,6 +95,8 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "python",
   "login",
   "host_tool_update",
+  // A subagent's answer to a message can take a step; omp answers it outside the command order too.
+  "steer_subagent",
 ]);
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
@@ -133,6 +136,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const ui = new HostUIContext(requests, emit);
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);
+  const subagents = new SubagentRoster(chat.subagentEventBus, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
   const abortBuiltinCommands = (): void => {
@@ -227,6 +231,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     if (!result.cancelled) {
       gate.commitSessionChange(sequence);
       if (options.endsOpenPrompts) results.abortOpen();
+      // The old session's subagents are not this one's (omp clears its registry the same way).
+      subagents.clear();
       await emitAvailableCommands();
     }
     return result;
@@ -464,6 +470,20 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     host_tool_update: async ({ callId, partialResult }) => ({
       delivered: hostTools.update(callId, partialResult),
     }),
+    set_subagent_subscription: async ({ level }) => {
+      subagents.setLevel(level);
+      return { level: subagents.level };
+    },
+    get_subagents: async () => ({ subagents: subagents.list() }),
+    get_subagent_messages: async (selector) =>
+      readSubagentTranscript(subagents.transcriptFile(selector), selector.fromByte),
+    cancel_subagent: async ({ subagentId }) => ({
+      cancelled: await cancelSubagent(subagents, subagentId),
+    }),
+    steer_subagent: async ({ subagentId, message }) => {
+      await steerSubagent(subagents, subagentId, message, log);
+      return {};
+    },
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
@@ -685,6 +705,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // schemes leave omp's process-wide router.
   requests.closeAll("The app closed the chat");
   hostUris.clear();
+  subagents.dispose();
   await serial;
 }
 

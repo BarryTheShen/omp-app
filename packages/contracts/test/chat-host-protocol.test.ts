@@ -268,3 +268,26 @@ describe("the app's tools and URI schemes", () => {
     expect(read.safeParse({ content: "<p>", contentType: "text/html" }).success).toBe(false);
   });
 });
+
+describe("subagents", () => {
+  test("a transcript is asked for by a subagent or by its file, from a byte offset", () => {
+    expect(
+      parseChatHostParams("get_subagent_messages", { subagentId: "a", fromByte: 120 }).ok,
+    ).toBe(true);
+    expect(parseChatHostParams("get_subagent_messages", { sessionFile: "/s/a.jsonl" }).ok).toBe(
+      true,
+    );
+    expect(parseChatHostParams("get_subagent_messages", { fromByte: 120 }).ok).toBe(false);
+  });
+
+  test("a message to a subagent has text, and the event level is one omp has", () => {
+    expect(parseChatHostParams("steer_subagent", { subagentId: "a", message: "stop now" }).ok).toBe(
+      true,
+    );
+    expect(parseChatHostParams("steer_subagent", { subagentId: "a", message: "   " }).ok).toBe(
+      false,
+    );
+    expect(parseChatHostParams("set_subagent_subscription", { level: "events" }).ok).toBe(true);
+    expect(parseChatHostParams("set_subagent_subscription", { level: "all" }).ok).toBe(false);
+  });
+});

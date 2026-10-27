@@ -19,6 +19,14 @@ import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
 import { HostToolUpdateParams, SetHostToolsParams, SetHostUriSchemesParams } from "./host-tools";
+import {
+  SteerSubagentParams,
+  SubagentIdParams,
+  SubagentMessagesParams,
+  type SubagentSnapshot,
+  SubagentSubscriptionParams,
+  type SubagentTranscript,
+} from "./subagents";
 
 /**
  * omp's session, for the types of its own objects in the protocol (the model, todos, usage, statistics). Type-only:
@@ -30,6 +38,7 @@ export { CHAT_HOST_CHAT_ARG } from "./args";
 export * from "./dialogs";
 export * from "./host-requests";
 export * from "./host-tools";
+export * from "./subagents";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
 
@@ -548,6 +557,26 @@ export interface ChatHostMethodMap {
     readonly params: HostToolUpdateParams;
     readonly result: { readonly delivered: boolean };
   };
+  /** Which subagent events the host sends; answers the level now in force. */
+  readonly set_subagent_subscription: {
+    readonly params: SubagentSubscriptionParams;
+    readonly result: SubagentSubscriptionParams;
+  };
+  readonly get_subagents: {
+    readonly params: EmptyParams;
+    readonly result: { readonly subagents: readonly SubagentSnapshot[] };
+  };
+  readonly get_subagent_messages: {
+    readonly params: SubagentMessagesParams;
+    readonly result: SubagentTranscript;
+  };
+  /** omp's hard kill of a running subagent; `cancelled: false` for one that is not running. */
+  readonly cancel_subagent: {
+    readonly params: SubagentIdParams;
+    readonly result: { readonly cancelled: boolean };
+  };
+  /** Sends the app's message to a running subagent, answered once it is accepted; runs in the background. */
+  readonly steer_subagent: { readonly params: SteerSubagentParams; readonly result: EmptyParams };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -590,6 +619,11 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_host_tools: SetHostToolsParams,
   set_host_uri_schemes: SetHostUriSchemesParams,
   host_tool_update: HostToolUpdateParams,
+  set_subagent_subscription: SubagentSubscriptionParams,
+  get_subagents: EmptyParams,
+  get_subagent_messages: SubagentMessagesParams,
+  cancel_subagent: SubagentIdParams,
+  steer_subagent: SteerSubagentParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */
