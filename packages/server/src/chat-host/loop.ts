@@ -62,6 +62,7 @@ import {
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
 import { type ChatEvent, SessionEventStream } from "./events";
+import { GoalController } from "./goal";
 import { pageMessages, selectEntries } from "./history";
 import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
@@ -133,8 +134,16 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   };
 
   const events = new SessionEventStream(emit);
-  const results = new PromptResults(session, emit);
-  const settle = new SettleWatcher(session, emit, log);
+  // A decided goal continuation keeps the session unsettled, and its stretch ends with `session_settled` even if it is
+  // dropped (omp's `watchedScheduledTurnProbe`).
+  const goal = new GoalController(session, log, () => void settle.check());
+  const scheduledTurn = (): boolean => {
+    const pending = goal.continuationPending;
+    if (pending) settle.markActive();
+    return pending;
+  };
+  const results = new PromptResults(session, emit, scheduledTurn);
+  const settle = new SettleWatcher(session, emit, log, scheduledTurn);
   /** Prompts being admitted and answers outside the command order: drained before the chat ends. */
   const background = new Set<Promise<unknown>>();
   const track = (task: Promise<unknown>): void => {
@@ -217,21 +226,35 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     },
     trackAgentInvokingMessage: (task) => tracker.track(task),
     wrapSessionChange: async (change, { detachesRun }) => {
-      const result = await change();
-      if (!result.cancelled) {
-        if (detachesRun) results.abortOpen();
-        // A detached run sends no terminal `agent_end` to settle on.
-        void settle.check();
+      // An extension's session change gets the same goal hold and reattach as the host's.
+      await goal.beginSessionChange();
+      // Unknown until the change returns: one that throws counts as detached, as in omp.
+      let cancelled: boolean | undefined;
+      try {
+        const result = await change();
+        cancelled = result.cancelled;
+        return result;
+      } finally {
+        await goal.endSessionChange({ detachedRun: detachesRun && cancelled !== true });
+        if (cancelled === false) {
+          if (detachesRun) results.abortOpen();
+          // A detached run sends no terminal `agent_end` to settle on.
+          void settle.check();
+        }
       }
-      return result;
     },
     uiContext: ui,
   });
   session.subscribe((event) => {
     events.forward(event);
+    // Before the prompt results and the settle report, so a continuation decided at this `agent_end` counts as pending.
+    goal.observe(event);
     results.observe(event);
     settle.observe(event);
   });
+  // A goal journaled in the session comes back (paused if it was active, as omp's terminal does at start).
+  await goal.reconcile();
+  await goal.settled();
   session.subscribeCommandMetadataChanged(() => {
     void emitAvailableCommands().catch((error: unknown) =>
       log(`chat host: the command list could not be read: ${errorMessage(error)}`),
@@ -249,7 +272,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     change: () => Promise<Result>,
     options: { readonly endsOpenPrompts: boolean },
   ): Promise<Result> => {
-    let result: Result;
+    let result: Result | undefined;
+    await goal.beginSessionChange();
     try {
       result = await change();
     } catch (error) {
@@ -257,6 +281,12 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       if (error instanceof SessionBusyError)
         throw new HostMethodError("session_busy", error.message);
       throw error;
+    } finally {
+      // A branch or fork leaves its run streaming; a new chat detaches it.
+      await goal.endSessionChange({
+        detachedRun: options.endsOpenPrompts && result?.cancelled !== true,
+      });
+      await goal.settled();
     }
     if (!result.cancelled) {
       gate.commitSessionChange(sequence);
@@ -283,11 +313,17 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     ) => Promise<ChatHostMethodMap[M]["result"]>;
   } = {
     abort: async () => {
+      // Before the abort, so the stopped run's own `agent_end` schedules no goal turn.
+      goal.stopForHostAbort();
       abortBuiltinCommands();
       await session.abort({ reason: USER_INTERRUPT_LABEL });
       return {};
     },
-    get_state: async () => readState(session),
+    get_state: async () => {
+      // A goal exit the last turn started restores the tools first.
+      await goal.settled();
+      return readState(session);
+    },
     set_event_options: async (params) => events.setOptions(params),
     remove_queued_message: async ({ message, queue }) => {
       const taken = session.takeQueuedMessage(message, queue);
@@ -300,6 +336,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       // As omp's Escape: the queue is taken back before the abort, so neither the stopped run nor the abort's own drain
       // of the queue can send it (`rpc-mode.ts:1963-1972`).
       const restored = session.clearQueue({ forInterrupt: true });
+      goal.stopForHostAbort();
       abortBuiltinCommands();
       await session.abort({ reason: USER_INTERRUPT_LABEL });
       return {
@@ -429,9 +466,16 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       // omp's rewind (`selector-controller.ts:1393-1442`): the leaf moves in the same session file, the later turns
       // stay as a branch, and a picked prompt rewinds past itself and comes back for the composer.
       refuseWhileBusy("rewind the session");
-      const { cancelled, editorText, editorImages } = await session.navigateTree(entryId, {
-        summarize: false,
-      });
+      // A tree move is a session change for the goal: held during it, and the running goal stays.
+      await goal.beginSessionChange();
+      let moved: Awaited<ReturnType<typeof session.navigateTree>>;
+      try {
+        moved = await session.navigateTree(entryId, { summarize: false });
+      } finally {
+        await goal.endSessionChange();
+        await goal.settled();
+      }
+      const { cancelled, editorText, editorImages } = moved;
       return {
         cancelled,
         ...(editorText !== undefined ? { editorText } : {}),
@@ -516,6 +560,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       await steerSubagent(subagents, subagentId, message, log);
       return {};
     },
+    goal: async (params) => goal.handle(params),
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {

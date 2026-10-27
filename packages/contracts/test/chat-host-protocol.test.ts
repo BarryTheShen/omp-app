@@ -291,3 +291,13 @@ describe("subagents", () => {
     expect(parseChatHostParams("set_subagent_subscription", { level: "all" }).ok).toBe(false);
   });
 });
+
+describe("goal mode", () => {
+  test("a goal operation is one of omp's, and a token budget is a positive whole number", () => {
+    const create = { op: "create", objective: "Ship the release" };
+    expect(parseChatHostParams("goal", { ...create, token_budget: 5000 }).ok).toBe(true);
+    expect(parseChatHostParams("goal", { op: "finish" }).ok).toBe(false);
+    expect(parseChatHostParams("goal", { ...create, token_budget: 0 }).ok).toBe(false);
+    expect(parseChatHostParams("goal", { ...create, token_budget: 2.5 }).ok).toBe(false);
+  });
+});

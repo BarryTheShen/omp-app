@@ -15,6 +15,7 @@ import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
+import type { Goal } from "@oh-my-pi/pi-tui/tools/goal";
 import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
@@ -577,6 +578,24 @@ export interface ChatHostMethodMap {
   };
   /** Sends the app's message to a running subagent, answered once it is accepted; runs in the background. */
   readonly steer_subagent: { readonly params: SteerSubagentParams; readonly result: EmptyParams };
+  /** omp's goal mode: read, create, resume, pause or drop the chat's goal. */
+  readonly goal: { readonly params: GoalParams; readonly result: GoalAnswer };
+}
+
+/** omp's goal operations, with its own field names (`token_budget`). */
+export const GoalParams = z.object({
+  op: z.enum(["get", "create", "resume", "pause", "drop"]),
+  /** Required to create. */
+  objective: z.string().optional(),
+  /** A whole number of tokens the goal may use. */
+  token_budget: z.int().positive().optional(),
+});
+export type GoalParams = z.infer<typeof GoalParams>;
+
+/** The chat's goal and goal-mode state after the operation; null without a goal. */
+export interface GoalAnswer {
+  readonly goal: Goal | null;
+  readonly state: NonNullable<ReturnType<Session["getGoalModeState"]>> | null;
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -624,6 +643,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_subagent_messages: SubagentMessagesParams,
   cancel_subagent: SubagentIdParams,
   steer_subagent: SteerSubagentParams,
+  goal: GoalParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */
