@@ -20,6 +20,7 @@ import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
 import { HostToolUpdateParams, SetHostToolsParams, SetHostUriSchemesParams } from "./host-tools";
+import { LiveMuteParams, LiveStartParams } from "./live";
 import {
   SteerSubagentParams,
   SubagentIdParams,
@@ -39,6 +40,7 @@ export { CHAT_HOST_CHAT_ARG } from "./args";
 export * from "./dialogs";
 export * from "./host-requests";
 export * from "./host-tools";
+export * from "./live";
 export * from "./subagents";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
@@ -595,6 +597,21 @@ export interface ChatHostMethodMap {
    * omp admitted the run; refused while work runs or when plan mode is off.
    */
   readonly approve_plan: { readonly params: ApprovePlanParams; readonly result: ApprovePlanResult };
+  /**
+   * omp's live voice session on this chat's session, answered once it records; one at a time. Runs outside the
+   * one-at-a-time order, as in omp.
+   */
+  readonly live_start: {
+    readonly params: LiveStartParams;
+    readonly result: { readonly voice: string };
+  };
+  /** Ends the live session once it has stopped; nothing without one. */
+  readonly live_stop: { readonly params: EmptyParams; readonly result: EmptyParams };
+  /** Refused without a live session. */
+  readonly live_mute: {
+    readonly params: LiveMuteParams;
+    readonly result: { readonly muted: boolean };
+  };
 }
 
 export const GetPlanParams = z.object({ planFilePath: z.string().min(1).optional() });
@@ -693,6 +710,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_plan_mode: EnabledParams,
   get_plan: GetPlanParams,
   approve_plan: ApprovePlanParams,
+  live_start: LiveStartParams,
+  live_stop: EmptyParams,
+  live_mute: LiveMuteParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */

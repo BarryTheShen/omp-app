@@ -66,6 +66,7 @@ import { GoalController } from "./goal";
 import { pageMessages, selectEntries } from "./history";
 import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
+import { LiveVoice } from "./live";
 import { HostMethodError } from "./method-error";
 import type { LineWriter } from "./output";
 import { PlanMode } from "./plan";
@@ -104,6 +105,8 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "host_tool_update",
   // A subagent's answer to a message can take a step; omp answers it outside the command order too.
   "steer_subagent",
+  // A live session connects before it answers; omp starts it outside the command order too.
+  "live_start",
 ]);
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
@@ -160,6 +163,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const hostUris = new HostUriSchemes(requests, emit);
   const subagents = new SubagentRoster(chat.subagentEventBus, emit);
   const plan = new PlanMode(session);
+  const live = new LiveVoice(session, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
   const abortBuiltinCommands = (): void => {
@@ -580,6 +584,12 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     },
     get_plan: async ({ planFilePath }) => plan.read(planFilePath),
     approve_plan: async ({ planFilePath, title }) => plan.approve(planFilePath, title ?? ""),
+    live_start: async (params) => live.start(params),
+    live_stop: async () => {
+      await live.stop();
+      return {};
+    },
+    live_mute: async ({ muted }) => live.setMuted(muted),
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
@@ -803,6 +813,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // is disposed by the entry.
   requests.closeAll("The app closed the chat");
   hostUris.clear();
+  // The live call (microphone, socket) ends before the session it hands work to, as in omp.
+  await live.stop();
   await serial;
   abortBuiltinCommands();
   while (background.size > 0) await Promise.allSettled([...background]);

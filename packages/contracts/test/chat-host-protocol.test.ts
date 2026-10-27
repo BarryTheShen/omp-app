@@ -315,3 +315,15 @@ describe("plan mode", () => {
     expect(parseChatHostParams("set_plan_mode", {}).ok).toBe(false);
   });
 });
+
+describe("live voice", () => {
+  test("a start may name a voice and instructions, and a mute without a side toggles", () => {
+    expect(parseChatHostParams("live_start", {}).ok).toBe(true);
+    expect(parseChatHostParams("live_start", { voice: "cove", instructions: "Be brief." }).ok).toBe(
+      true,
+    );
+    expect(parseChatHostParams("live_start", { voice: 3 }).ok).toBe(false);
+    expect(parseChatHostParams("live_mute", {}).ok).toBe(true);
+    expect(parseChatHostParams("live_mute", { muted: "yes" }).ok).toBe(false);
+  });
+});

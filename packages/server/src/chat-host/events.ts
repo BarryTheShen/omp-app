@@ -14,6 +14,7 @@ import type {
   CommandOutputEvent,
   ConfigUpdateEvent,
   EventOptions,
+  LiveEvent,
   PromptResultEvent,
   SessionInfoUpdateEvent,
   SessionSettledEvent,
@@ -55,7 +56,8 @@ export type ChatEvent =
   | ToolCancelEvent
   | UriCancelEvent
   | SubagentEvent
-  | SessionSettledEvent;
+  | SessionSettledEvent
+  | LiveEvent;
 
 export class SessionEventStream {
   readonly #emit: (event: ChatEvent) => void;
