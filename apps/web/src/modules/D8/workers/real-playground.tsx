@@ -1,8 +1,9 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  type ChatSessionEvent,
+  ChatSessionPort,
   FolderPath,
   type RpcSessionClient,
-  type RpcSessionEvent,
   RpcSessionPort,
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useState } from "react";
@@ -74,7 +75,7 @@ function RealWorkersPanel({ folder }: { readonly folder: string }) {
   useEffect(() => {
     let active = true;
     let client: AppClient | undefined;
-    let subscription: AppClientSubscription<RpcSessionEvent> | undefined;
+    let subscription: AppClientSubscription<ChatSessionEvent> | undefined;
     let subagents: SubagentClient | undefined;
     let roster: AgentRosterStore | undefined;
     let workers: WorkersController | undefined;
@@ -91,7 +92,7 @@ function RealWorkersPanel({ folder }: { readonly folder: string }) {
       if (!active) return;
       const threadId = opened.threadId;
       const runtime = new OmpRuntimeStore({ threadId });
-      subscription = await client.subscribe(RpcSessionPort, "event", { scope: threadId });
+      subscription = await client.subscribe(ChatSessionPort, "event", { scope: threadId });
       subscription.onEvent((event, sequence) => runtime.ingest(event, sequence));
       const session = await rpc.send({ threadId, command: { type: "get_state" } });
       runtime.applySessionState(session);

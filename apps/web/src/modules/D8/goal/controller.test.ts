@@ -1,4 +1,4 @@
-import { AppFailure, type CapabilityMap, RpcSessionEvent, ThreadId } from "@omp-app/contracts";
+import { AppFailure, type CapabilityMap, ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../../R0/store";
 import type { ConfirmDialogRequest, DialogRequest, DialogResultFor } from "../../U4/contract";
@@ -211,7 +211,7 @@ describe("GoalController", () => {
     expect(controller.getSnapshot().continuation?.label).toBe(OMP_WONT_CONTINUE);
 
     runtime.ingest(
-      RpcSessionEvent.parse({ kind: "session_settled", event: { type: "session_settled" } }),
+      ChatSessionEvent.parse({ kind: "event", event: { type: "session_settled" } }),
       1,
     );
     expect(controller.getSnapshot().goalState?.sessionSettled).toBe(true);

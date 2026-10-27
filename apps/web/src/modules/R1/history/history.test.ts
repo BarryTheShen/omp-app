@@ -1,11 +1,11 @@
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   FolderPath,
   OpenQuestionRecord,
   OpenThreadArgs,
   RpcSessionClient,
-  RpcSessionEvent,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, SessionFileStore, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
@@ -94,7 +94,7 @@ function createRpc(
 
 interface SubscriptionRecord {
   readonly options?: SubscribeOptions;
-  readonly listeners: Array<(event: RpcSessionEvent, seq: number) => void>;
+  readonly listeners: Array<(event: ChatSessionEvent, seq: number) => void>;
   unsubscribed: boolean;
   /** How many subscriptions the app had made when this one was let go. */
   subscribesWhenUnsubscribed?: number;
@@ -103,7 +103,7 @@ interface SubscriptionRecord {
 function fakeClient(
   rpc: RpcSessionClient,
   subscriptions: SubscriptionRecord[],
-  replayed: readonly RpcSessionEvent[] = [],
+  replayed: readonly ChatSessionEvent[] = [],
   failSubscriptionAt?: number,
   subscriptionFailure: Error = new Error("The connection dropped"),
 ): AppClient {
@@ -125,7 +125,7 @@ function fakeClient(
       for (const [index, event] of replayed.entries()) {
         options?.onEvent?.(event, index + 1);
       }
-      const subscription: AppClientSubscription<RpcSessionEvent> = {
+      const subscription: AppClientSubscription<ChatSessionEvent> = {
         stream: "A0.rpcSession/event/thread" as never,
         lastSeq: options?.afterSeq ?? 0,
         onEvent: (listener) => {
@@ -697,9 +697,10 @@ describe("SelectedThreadHistoryController open and paging", () => {
     if (!moved) throw new Error("initial subscription did not attach");
     moved(
       {
-        kind: "notification",
-        frame: { type: "session_info_update", sessionId: threadTwo },
-      } as RpcSessionEvent,
+        kind: "moved",
+        threadId: threadTwo,
+        sessionFile: "/workspace/two.jsonl",
+      } as ChatSessionEvent,
       1,
     );
     await vi.waitFor(() => expect(controller.getSnapshot().threadId).toBe(threadTwo));
@@ -762,7 +763,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     });
     const store = await controller.openExisting(threadOne);
     await controller.resume(12);
-    const event: RpcSessionEvent = { kind: "process", status: "running" };
+    const event: ChatSessionEvent = { kind: "process", status: "running" };
     const resumed = subscriptions[1]?.listeners[0];
     if (!resumed) throw new Error("resume subscription did not attach");
     resumed(event, 13);
@@ -796,17 +797,17 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const live = subscriptions[0]?.listeners[0];
     if (!live) throw new Error("initial subscription did not attach");
     // The prompt's first events arrive while the first history load waits for its entries.
-    live({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 6);
+    live({ kind: "event", event: { type: "agent_start" } } as ChatSessionEvent, 6);
     live(
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "tool_execution_start",
           toolCallId: "bash-1",
           toolName: "bash",
           args: { command: "sleep 20; echo first" },
         },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       7,
     );
     entriesHeld.resolve();
@@ -825,7 +826,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions, [
-        { kind: "process", status: "ready" } as RpcSessionEvent,
+        { kind: "process", status: "ready" } as ChatSessionEvent,
       ]),
       folder,
     });
@@ -839,18 +840,18 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions, [
         {
-          kind: "notification",
-          frame: {
+          kind: "event",
+          event: {
             type: "extension_error",
             extensionPath: "/extensions/startup-error-1421.ts",
             event: "session_start",
             error: "notes index is locked",
           },
-        } as RpcSessionEvent,
+        } as ChatSessionEvent,
         {
           kind: "process",
           status: "ready",
-        } as RpcSessionEvent,
+        } as ChatSessionEvent,
       ]),
       folder,
     });
@@ -885,25 +886,17 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions, [
         {
-          kind: "notification",
-          frame: {
-            type: "extension_ui_request",
-            id: "ui-done",
-            method: "confirm",
-            title: "Done?",
-            message: "",
-          },
-        } as RpcSessionEvent,
+          kind: "host_request",
+          request: { id: "ui-done", method: "ui.confirm", params: { title: "Done?", message: "" } },
+        } as ChatSessionEvent,
         {
-          kind: "notification",
-          frame: {
-            type: "extension_ui_request",
+          kind: "host_request",
+          request: {
             id: "ui-open",
-            method: "confirm",
-            title: "Go on?",
-            message: "",
+            method: "ui.confirm",
+            params: { title: "Go on?", message: "" },
           },
-        } as RpcSessionEvent,
+        } as ChatSessionEvent,
       ]),
       folder,
     });
@@ -919,15 +912,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions, [
         {
-          kind: "notification",
-          frame: {
-            type: "extension_ui_request",
+          kind: "host_request",
+          request: {
             id: "ui-old",
-            method: "select",
-            title: "Which database?",
-            options: [],
+            method: "ui.select",
+            params: { title: "Which database?", options: [] },
           },
-        } as RpcSessionEvent,
+        } as ChatSessionEvent,
       ]),
       folder,
     });
@@ -937,15 +928,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
     // A question asked after the chat opened is live: it opens.
     subscriptions[0]?.listeners[0]?.(
       {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
+        kind: "host_request",
+        request: {
           id: "ui-live",
-          method: "select",
-          title: "Which database?",
-          options: [],
+          method: "ui.select",
+          params: { title: "Which database?", options: [] },
         },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-live"]);
@@ -957,24 +946,21 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const store = new OmpRuntimeStore({ threadId: threadOne });
     const notified: string[] = [];
     store.subscribeNotifications(["extension_ui_request"], (frame) => {
-      notified.push("id" in frame ? String(frame.id) : frame.type);
+      notified.push("message" in frame ? String(frame.message) : frame.type);
     });
-    const notice = (id: string, message: string) =>
-      ({
-        kind: "notification",
-        frame: { type: "extension_ui_request", id, method: "notify", message },
-      }) as RpcSessionEvent;
+    const notice = (message: string) =>
+      ({ kind: "event", event: { type: "ui_notify", message } }) as ChatSessionEvent;
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions, [
-        notice("notice-turn-one", "Turn one"),
-        { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent,
-        notice("notice-turn-two", "Turn two"),
+        notice("Turn one"),
+        { kind: "event", event: { type: "session_settled" } } as ChatSessionEvent,
+        notice("Turn two"),
       ]),
       createStore: () => store,
       folder,
     });
     await controller.openExisting(threadOne);
-    expect(notified).toEqual(["notice-turn-two"]);
+    expect(notified).toEqual(["Turn two"]);
     expect(store.getSnapshot().lastSeq).toBe(3);
   });
 
@@ -1021,23 +1007,24 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const oldStore = await controller.openExisting(threadOne);
     const rekey = subscriptions[0]?.listeners[0];
     if (!rekey) throw new Error("initial subscription did not attach");
-    oldStore.ingest({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    oldStore.ingest({ kind: "event", event: { type: "agent_start" } } as ChatSessionEvent, 1);
     oldStore.ingest(
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "message_start",
           messageId: "live-message",
           message: { role: "assistant", content: [{ type: "text", text: "live" }] },
         },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     rekey(
       {
-        kind: "notification",
-        frame: { type: "session_info_update", sessionId: threadTwo },
-      } as RpcSessionEvent,
+        kind: "moved",
+        threadId: threadTwo,
+        sessionFile: "/workspace/two.jsonl",
+      } as ChatSessionEvent,
       3,
     );
     for (
@@ -1057,7 +1044,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(subscriptions[1]?.options?.scope).toBe(threadTwo);
     const rekeyed = subscriptions[1]?.listeners[0];
     if (!rekeyed) throw new Error("re-keyed subscription did not attach");
-    rekeyed({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 4);
+    rekeyed({ kind: "event", event: { type: "session_settled" } } as ChatSessionEvent, 4);
     await Promise.resolve();
     expect(oldStore.getSnapshot().prompt.streaming).toBe(false);
   });
@@ -1080,9 +1067,10 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
     rekey(
       {
-        kind: "notification",
-        frame: { type: "session_info_update", sessionId: threadTwo },
-      } as RpcSessionEvent,
+        kind: "moved",
+        threadId: threadTwo,
+        sessionFile: "/workspace/two.jsonl",
+      } as ChatSessionEvent,
       1,
     );
     await vi.waitFor(() => expect(saved).toContain(threadTwo));
@@ -1136,9 +1124,10 @@ describe("SelectedThreadHistoryController open and paging", () => {
     if (!rekey) throw new Error("initial subscription did not attach");
     rekey(
       {
-        kind: "notification",
-        frame: { type: "session_info_update", sessionId: threadTwo },
-      } as RpcSessionEvent,
+        kind: "moved",
+        threadId: threadTwo,
+        sessionFile: "/workspace/two.jsonl",
+      } as ChatSessionEvent,
       1,
     );
     await vi.waitFor(() =>
@@ -1193,16 +1182,17 @@ describe("SelectedThreadHistoryController open and paging", () => {
     if (!rekey) throw new Error("initial subscription did not attach");
     rekey(
       {
-        kind: "notification",
-        frame: { type: "session_info_update", sessionId: threadTwo },
-      } as RpcSessionEvent,
+        kind: "moved",
+        threadId: threadTwo,
+        sessionFile: "/workspace/two.jsonl",
+      } as ChatSessionEvent,
       1,
     );
     await stateReadStarted.promise;
 
     const rekeyed = subscriptions[1]?.listeners[0];
     if (!rekeyed) throw new Error("re-keyed subscription did not attach");
-    rekeyed({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 2);
+    rekeyed({ kind: "event", event: { type: "session_settled" } } as ChatSessionEvent, 2);
     await vi.waitFor(() => expect(saved).toContain(threadTwo));
 
     expect(controller.getSnapshot().threadId).toBe(threadTwo);
@@ -1236,7 +1226,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const listener = subscriptions[0]?.listeners[0];
     if (!listener) throw new Error("subscription did not attach");
     calls.length = 0;
-    listener({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 1);
+    listener({ kind: "event", event: { type: "session_settled" } } as ChatSessionEvent, 1);
     for (let index = 0; index < 20 && calls.length < 2; index += 1) await Promise.resolve();
     // get_state brings the model, context and usage; get_entries pairs the turn with its entries.
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
@@ -1320,17 +1310,24 @@ describe("SelectedThreadHistoryController open and paging", () => {
     // The command ran and ended while the load's first read is still in flight. The ended event must not be skipped:
     // the load's read may have come before omp wrote the command's entry, and nothing else would read it again.
     listener(
-      { kind: "bash", status: "running", command: "echo hi", startedAt: 1 } as RpcSessionEvent,
+      {
+        kind: "shell",
+        method: "bash",
+        input: "echo hi",
+        status: "running",
+        startedAt: 1,
+      } as ChatSessionEvent,
       1,
     );
     listener(
       {
-        kind: "bash",
+        kind: "shell",
+        method: "bash",
+        input: "echo hi",
         status: "ended",
-        command: "echo hi",
         startedAt: 1,
         result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     releaseFirstRead();
@@ -1508,7 +1505,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     expect(store.getSnapshot().error).toMatchObject({
@@ -1628,7 +1625,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     await controller.openExisting(threadOne);
     const ready = subscriptions[0]?.listeners[0];
     if (ready === undefined) throw new Error("history subscription did not attach");
-    ready({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    ready({ kind: "process", status: "ready" } as ChatSessionEvent, 2);
     expect(controller.getSnapshot().isLoading).toBe(false);
     expect(loads).toBe(1);
   });
@@ -1662,7 +1659,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     const switched = await controller.openExisting(threadTwo);
     const listener = subscriptions[1]?.listeners[0];
     if (!listener) throw new Error("the switched chat did not subscribe");
-    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    listener({ kind: "process", status: "ready" } as ChatSessionEvent, 2);
     await vi.waitFor(() => expect(reads.count).toBe(3));
     expect(controller.getSnapshot()).toMatchObject({
       threadId: threadTwo,
@@ -1742,10 +1739,10 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
-    subscription.listeners[0]?.({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    subscription.listeners[0]?.({ kind: "process", status: "ready" } as ChatSessionEvent, 3);
 
     await vi.waitFor(() => expect(historyReads).toBe(2));
     expect(controller.getSnapshot()).toMatchObject({
@@ -1790,13 +1787,13 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
-    listener({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    listener({ kind: "process", status: "starting" } as ChatSessionEvent, 3);
     for (let index = 0; index < 8; index += 1) await Promise.resolve();
     expect(historyReads).toBe(1);
-    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    listener({ kind: "process", status: "ready" } as ChatSessionEvent, 4);
     await vi.waitFor(() => expect(historyReads).toBe(2));
     heldHistoryRead.resolve();
   });
@@ -1834,10 +1831,10 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
-    send({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    send({ kind: "process", status: "ready" } as ChatSessionEvent, 3);
     await vi.waitFor(() => expect(historyReads).toBe(2));
     expect(controller.getSnapshot()).toMatchObject({
       threadId: threadOne,
@@ -1851,10 +1848,10 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       4,
     );
-    send({ kind: "process", status: "ready" } as RpcSessionEvent, 5);
+    send({ kind: "process", status: "ready" } as ChatSessionEvent, 5);
     await vi.waitFor(() => expect(historyReads).toBe(3));
     expect(controller.getSnapshot()).toMatchObject({
       threadId: threadOne,
@@ -1905,10 +1902,10 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
-    send({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    send({ kind: "process", status: "ready" } as ChatSessionEvent, 3);
     await vi.waitFor(() => expect(historyReads).toBe(2));
     expect(controller.getSnapshot()).toMatchObject({
       threadId: threadOne,
@@ -1998,7 +1995,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     await controller.openExisting(threadOne);
     const listener = subscriptions[0]?.listeners[0];
     if (!listener) throw new Error("history event listener did not attach");
-    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    listener({ kind: "process", status: "ready" } as ChatSessionEvent, 2);
     await vi.waitFor(() => expect(historyReads).toBe(2));
     const refresh = controller.refreshAfterCommand();
     await vi.waitFor(() => expect(historyReads).toBe(3));
@@ -2012,7 +2009,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
 });
 
 describe("SelectedThreadHistoryController when omp stops after a settled turn", () => {
-  const settle = { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent;
+  const settle = { kind: "event", event: { type: "session_settled" } } as ChatSessionEvent;
   const omExit = (): AppFailure =>
     new AppFailure({ code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true });
 
@@ -2044,17 +2041,17 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
     const store = await controller.openExisting(threadOne);
     const listener = subscriptions[0]?.listeners[0];
     if (!listener) throw new Error("subscription did not attach");
-    listener({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    listener({ kind: "event", event: { type: "agent_start" } } as ChatSessionEvent, 1);
     listener(
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "tool_execution_start",
           toolCallId: "bash-1",
           toolName: "bash",
           args: { command: "echo done" },
         },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const rows = toolRows(store);
@@ -2128,17 +2125,17 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
     const store = await controller.openExisting(threadOne);
     const listener = subscriptions[0]?.listeners[0];
     if (!listener) throw new Error("subscription did not attach");
-    listener({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    listener({ kind: "event", event: { type: "agent_start" } } as ChatSessionEvent, 1);
     listener(
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "tool_execution_start",
           toolCallId: "bash-1",
           toolName: "bash",
           args: { command: "echo done" },
         },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const rows = toolRows(store);
@@ -2154,7 +2151,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
     // omp is back: its process is ready again, and the chat reloads by itself, once.
     refreshFails = false;
     calls.length = 0;
-    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    listener({ kind: "process", status: "ready" } as ChatSessionEvent, 4);
     await vi.waitFor(() =>
       expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]),
     );
@@ -2170,8 +2167,8 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
 });
 
 describe("SelectedThreadHistoryController turns that run after the chat is left", () => {
-  const settle = { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent;
-  const start = { kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent;
+  const settle = { kind: "event", event: { type: "session_settled" } } as ChatSessionEvent;
+  const start = { kind: "event", event: { type: "agent_start" } } as ChatSessionEvent;
 
   /** The fake connection, with the chats it lets go of recorded in `released`. */
   function recordingRpc(
@@ -2195,7 +2192,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     };
   }
 
-  function deliver(subscription: SubscriptionRecord | undefined, payload: RpcSessionEvent): void {
+  function deliver(subscription: SubscriptionRecord | undefined, payload: ChatSessionEvent): void {
     for (const listener of [...(subscription?.listeners ?? [])]) listener(payload, 2);
   }
 

@@ -1,15 +1,16 @@
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   EntryId,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { bashEvent, notificationEvent, ompEvent } from "@/modules/R0/store/session-events";
 import { createRegistry, RegistryProvider, registerRenderers } from "@/registry-core";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
@@ -81,7 +82,7 @@ const testSend = send();
 
 function readyStore(): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId });
-  store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+  store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
   return store;
 }
 function RuntimeThread({
@@ -178,25 +179,19 @@ describe("ThreadShell states", () => {
     renderThread(store);
     expect(screen.queryByText("Conversation settled")).toBeNull();
     // omp ends the turn without echoing the prompt: its row goes, and the older chat is settled again.
-    store.ingest(
-      { kind: "omp", event: { type: "agent_end", messages: [] } } as unknown as RpcSessionEvent,
-      2,
-    );
+    store.ingest(ompEvent({ type: "agent_end", messages: [] }) as unknown as ChatSessionEvent, 2);
     await waitFor(() => expect(screen.getByText("Conversation settled")).toBeTruthy());
   });
 
   test("names an extension's error under its own heading, not as a conversation that stopped", () => {
     const store = readyStore();
     store.ingest(
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_error",
-          extensionPath: "/extensions/notes-ext/index.ts",
-          event: "session_start",
-          error: "index is locked",
-        },
-      } as unknown as RpcSessionEvent,
+      notificationEvent({
+        type: "extension_error",
+        extensionPath: "/extensions/notes-ext/index.ts",
+        event: "session_start",
+        error: "index is locked",
+      }),
       2,
     );
     renderThread(store);
@@ -230,7 +225,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "error",
         error: { code: "permission", message: "The runtime was blocked", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const retry = vi.fn();
@@ -251,7 +246,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const restart = vi.fn(async () => undefined);
@@ -276,21 +271,21 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const answer = Promise.withResolvers<void>();
     renderThread(store, { onRestartOmp: () => answer.promise });
 
     fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
-    store.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    store.ingest({ kind: "process", status: "starting" } as ChatSessionEvent, 3);
     await screen.findByRole("button", { name: "Restarting…" });
     expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
       "omp exited (signal SIGKILL)",
     );
     expect(screen.getByText("The conversation could not continue.")).toBeTruthy();
     answer.resolve();
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 4);
     expect(store.getSnapshot().process.status).toBe("ready");
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
@@ -301,12 +296,12 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "error",
         error: { code: "permission", message: "The runtime was blocked", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     renderThread(store, { onRetry: vi.fn() });
     expect(screen.getByRole("alert")).toBeTruthy();
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 3);
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
   test("clears the source failure after a rejected restart recovers", async () => {
@@ -316,7 +311,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const restart = vi.fn(async () => {
@@ -334,7 +329,7 @@ describe("ThreadShell states", () => {
     expect(screen.getByRole("button", { name: "Restart omp" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 3);
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
@@ -345,13 +340,13 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     renderThread(store, { onRestartOmp: vi.fn(async () => undefined) });
     expect(screen.getByRole("alert")).toBeTruthy();
-    store.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    store.ingest({ kind: "process", status: "starting" } as ChatSessionEvent, 3);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 4);
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
@@ -362,7 +357,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const other = new OmpRuntimeStore({ threadId: "other-thread" as ThreadId });
@@ -371,7 +366,7 @@ describe("ThreadShell states", () => {
     const view = renderThread(failed, { onRestartOmp: () => restart.promise });
 
     fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
-    failed.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    failed.ingest({ kind: "process", status: "starting" } as ChatSessionEvent, 3);
     await screen.findByRole("button", { name: "Restarting…" });
     expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
       "omp exited (signal SIGKILL)",
@@ -385,17 +380,11 @@ describe("ThreadShell states", () => {
   test("puts a stopped omp's notice in the footer, after the last message", async () => {
     const store = readyStore();
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_start", messageId: "m-1", message: assistant("hello") },
-      },
+      ompEvent({ type: "message_start", messageId: "m-1", message: assistant("hello") }),
       2,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_end", messageId: "m-1", message: assistant("hello") },
-      },
+      ompEvent({ type: "message_end", messageId: "m-1", message: assistant("hello") }),
       3,
     );
     store.ingest(
@@ -403,7 +392,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       4,
     );
     renderThread(store, { onRestartOmp: vi.fn(async () => undefined) });
@@ -425,7 +414,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const restart = vi.fn(async () => {
@@ -452,7 +441,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "exited",
         error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const restart = vi.fn(async () => {
@@ -477,7 +466,7 @@ describe("ThreadShell states", () => {
         kind: "process",
         status: "error",
         error: { code: "permission", message: "The runtime was blocked", retryable: true },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     renderThread(store, { onRestartOmp: vi.fn() });
@@ -488,20 +477,14 @@ describe("ThreadShell states", () => {
   test("renders a settled status after a real store message", async () => {
     const store = readyStore();
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_start", messageId: "m-1", message: assistant("hello") },
-      },
+      ompEvent({ type: "message_start", messageId: "m-1", message: assistant("hello") }),
       2,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_end", messageId: "m-1", message: assistant("hello") },
-      },
+      ompEvent({ type: "message_end", messageId: "m-1", message: assistant("hello") }),
       3,
     );
-    store.ingest({ kind: "omp", event: { type: "agent_end", messages: [] } }, 4);
+    store.ingest(ompEvent({ type: "agent_end", messages: [] }), 4);
     renderThread(store);
     expect(await screen.findByText("hello")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("Conversation settled");
@@ -509,35 +492,29 @@ describe("ThreadShell states", () => {
 
   test("keeps one stable row while the store replaces a streaming message", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "m-stream",
-          message: assistant("first"),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "m-stream",
+        message: assistant("first"),
+      }),
       2,
     );
     const view = renderThread(store);
     expect(document.querySelectorAll('[data-slot="u1-thread-message"]')).toHaveLength(1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_update",
-          messageId: "m-stream",
-          message: assistant("firstsecond"),
-          assistantMessageEvent: {
-            type: "text_delta",
-            contentIndex: 0,
-            delta: "second",
-            partial: assistant("firstsecond"),
-          },
+      ompEvent({
+        type: "message_update",
+        messageId: "m-stream",
+        message: assistant("firstsecond"),
+        assistantMessageEvent: {
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "second",
+          partial: assistant("firstsecond"),
         },
-      },
+      }),
       3,
     );
     expect(document.querySelectorAll('[data-slot="u1-thread-message"]')).toHaveLength(1);
@@ -550,10 +527,7 @@ describe("descriptor and nested row slots", () => {
   test("uses a registered U0 renderer by descriptor and otherwise keeps the default row", () => {
     const store = readyStore();
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_start", messageId: "m-2", message: assistant("hello") },
-      },
+      ompEvent({ type: "message_start", messageId: "m-2", message: assistant("hello") }),
       2,
     );
     const registry = createRegistry(U1MessageDescriptors);
@@ -683,22 +657,16 @@ describe("a `!` command's row once its entry takes its place", () => {
   test("the row stays the same element, and a collapse the user made survives the swap", async () => {
     const store = readyStore();
     store.ingest(
-      {
-        kind: "bash",
-        status: "running",
-        command: "echo hi",
-        startedAt: 1_759_600_000_000,
-      } as unknown as RpcSessionEvent,
+      bashEvent({ status: "running", command: "echo hi", startedAt: 1_759_600_000_000 }),
       2,
     );
     store.ingest(
-      {
-        kind: "bash",
+      bashEvent({
         status: "ended",
         command: "echo hi",
         startedAt: 1_759_600_000_000,
         result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
-      } as unknown as RpcSessionEvent,
+      }),
       3,
     );
     const { container } = renderThread(store, {

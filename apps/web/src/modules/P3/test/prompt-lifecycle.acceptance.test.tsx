@@ -1,9 +1,14 @@
 // The completed, aborted and provider-error prompt_result frames plus session_settled are recorded under packages/omp-rpc/fixtures.
 // The pending frame remains the documented shape (rpc-types.ts:241-246 at omp v18.12.6).
-import type { RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store";
+import {
+  ompEvent,
+  promptResultEvent,
+  SESSION_SETTLED_EVENT,
+} from "@/modules/R0/store/session-events";
 import {
   BRANCHED_CHAT,
   promptAborted,
@@ -25,11 +30,16 @@ function receive(
   event: unknown,
   seq: number,
 ): void {
-  store.ingest({ kind, event } as unknown as RpcSessionEvent, seq);
+  store.ingest(
+    kind === "prompt_result"
+      ? promptResultEvent(event as OmpWire.PromptResultEvent)
+      : SESSION_SETTLED_EVENT,
+    seq,
+  );
 }
 
 function receiveOmp(store: OmpRuntimeStore, event: unknown, seq: number): void {
-  store.ingest({ kind: "omp", event } as unknown as RpcSessionEvent, seq);
+  store.ingest(ompEvent(event as OmpWire.RpcAgentEvent), seq);
 }
 
 describe("acceptance: a prompt's result and the session's settling are separate facts", () => {
@@ -130,7 +140,7 @@ describe("acceptance: a prompt's result and the session's settling are separate 
     if (!branchStore) throw new Error("the branched chat store was not created");
 
     await act(async () => {
-      branchStore.ingest({ kind: "process", status: "exited" } as RpcSessionEvent, 1);
+      branchStore.ingest({ kind: "process", status: "exited" } as ChatSessionEvent, 1);
     });
     expect(branchStore.getSnapshot().process.status).toBe("exited");
     expect(run.runs.status.getSnapshot()).toMatchObject({
@@ -175,7 +185,7 @@ describe("acceptance: a prompt's result and the session's settling are separate 
 
     await act(async () => {
       receiveOmp(branchStore, { type: "agent_start" }, 1);
-      branchStore.ingest({ kind: "process", status: "exited" } as RpcSessionEvent, 2);
+      branchStore.ingest({ kind: "process", status: "exited" } as ChatSessionEvent, 2);
     });
     expect(branchStore.getSnapshot().prompt.admitted).toBe(true);
     expect(run.runs.status.getSnapshot()).toMatchObject({

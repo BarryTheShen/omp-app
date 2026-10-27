@@ -1,7 +1,7 @@
 import type {
+  ChatSessionEvent,
   EntryId,
   OmpWire,
-  RpcSessionEvent,
   RpcSessionSend,
   SessionEntryWindow,
   SessionEntryWindowArgs,
@@ -34,8 +34,8 @@ async function flushMicrotasks(times = 20): Promise<void> {
 }
 
 /** A `process` envelope event, as the real transport would deliver it. */
-function processEvent(status: string): RpcSessionEvent {
-  return { kind: "process", status } as RpcSessionEvent;
+function processEvent(status: string): ChatSessionEvent {
+  return { kind: "process", status } as ChatSessionEvent;
 }
 
 function entry(id: string, parentId: string | null, text: string): Record<string, unknown> {
@@ -886,7 +886,7 @@ describe("SessionHistoryLoader and a run that starts while the load's answer is 
     const loading = loader.loadInitial();
     await flushMicrotasks();
     // The run's first event reaches the store while omp's answer to the load's get_state is still on its way.
-    store.ingest({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    store.ingest({ kind: "event", event: { type: "agent_start" } } as ChatSessionEvent, 1);
     answer.resolve({ sessionId: "s1", isStreaming: false });
     await loading;
     expect(store.getSnapshot().prompt.streaming).toBe(true);

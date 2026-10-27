@@ -8,9 +8,9 @@ import type {
 import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   EntryId,
   Fixture,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
   ToolCallId,
@@ -20,6 +20,7 @@ import { parseFixture } from "@omp-app/contracts";
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, test } from "vitest";
+import { notificationEvent, ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
@@ -91,11 +92,11 @@ async function openHarness(scenario: Scenario): Promise<Harness> {
   let seq = 0;
   const feedNotification = (frame: unknown): void => {
     seq += 1;
-    store.ingest({ kind: "notification", frame } as RpcSessionEvent, seq);
+    store.ingest(notificationEvent(frame), seq);
   };
   session.onEvent((event) => {
     seq += 1;
-    store.ingest(event, seq);
+    store.ingest(sessionEventOfRpc(event), seq);
   });
   await session.start();
   const send: RpcSessionSend = (args, options) => session.send(args.command, options) as never;
@@ -307,7 +308,7 @@ describe("R0 W2 recorded fixture runtime gate", () => {
 
   test("a seq gap triggers R0.2 refetch and resumes at the remembered stream cursor", async () => {
     const store = new OmpRuntimeStore({ threadId: "gap-thread" as ThreadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 5);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 5);
     expect(store.getSnapshot().needsRefetch).toBe(true);
     const send: RpcSessionSend = async ({ command }) => {
       if (command.type === "get_state") return { sessionId: "gap-thread" } as never;
@@ -326,7 +327,7 @@ describe("R0 W2 recorded fixture runtime gate", () => {
     try {
       const recovered = await waitForSnapshot(store, (snapshot) => !snapshot.needsRefetch);
       expect(recovered.lastSeq).toBe(5);
-      store.ingest({ kind: "process", status: "running" } as RpcSessionEvent, 6);
+      store.ingest({ kind: "process", status: "running" } as ChatSessionEvent, 6);
       expect(store.getSnapshot().needsRefetch).toBe(false);
     } finally {
       unsubscribe();
@@ -350,25 +351,19 @@ describe("R0 W2 recorded fixture runtime gate", () => {
       entryId,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "branch-user",
-          message: { role: "user", content: "source", timestamp: 1 },
-        },
-      } as RpcSessionEvent,
+      ompEvent({
+        type: "message_start",
+        messageId: "branch-user",
+        message: { role: "user", content: "source", timestamp: 1 },
+      }),
       1,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_end",
-          messageId: "branch-user",
-          message: { role: "user", content: "source", timestamp: 1 },
-        },
-      } as RpcSessionEvent,
+      ompEvent({
+        type: "message_end",
+        messageId: "branch-user",
+        message: { role: "user", content: "source", timestamp: 1 },
+      }),
       2,
     );
     store.pairEndedMessages(

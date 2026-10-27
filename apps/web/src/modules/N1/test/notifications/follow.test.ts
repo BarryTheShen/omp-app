@@ -1,4 +1,4 @@
-import type { RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent } from "@omp-app/contracts";
 import { ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
@@ -9,7 +9,7 @@ const chatB = ThreadIdSchema.parse("thread-follow-b");
 
 /** One omp event as a chat's stream applies it. The cast is the boundary to the store's typed event union. */
 function omp(store: OmpRuntimeStore, event: Record<string, unknown>, seq: number): void {
-  store.ingest({ kind: "omp", event } as unknown as RpcSessionEvent, seq);
+  store.ingest({ kind: "event", event } as unknown as ChatSessionEvent, seq);
 }
 
 function noticeEvent(message: string): Record<string, unknown> {

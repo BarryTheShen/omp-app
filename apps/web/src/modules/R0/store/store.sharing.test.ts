@@ -1,5 +1,6 @@
-import type { RpcSessionEvent, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { bashEvent, notificationEvent } from "./session-events";
 import { OmpRuntimeStore } from "./store";
 
 const threadId = "thread-sharing" as ThreadId;
@@ -21,7 +22,7 @@ function historyEntry(index: number) {
 }
 
 function ingest(store: OmpRuntimeStore, event: unknown, seq: number): void {
-  store.ingest(event as RpcSessionEvent, seq);
+  store.ingest(event as ChatSessionEvent, seq);
 }
 
 /** A store whose chat holds `count` messages from history, as a long chat does after its window fills. */
@@ -36,7 +37,7 @@ function streamedUpdateMs(store: OmpRuntimeStore): number {
   let seq = 0;
   const send = (event: unknown) => {
     seq += 1;
-    ingest(store, { kind: "omp", event }, seq);
+    ingest(store, { kind: "event", event }, seq);
   };
   send({ type: "message_start", messageId: "live", message: userMessage("0", at) });
   const batches: number[] = [];
@@ -61,7 +62,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "a", message: userMessage("first", at) },
       },
       1,
@@ -69,7 +70,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_end", messageId: "a", message: userMessage("first", at) },
       },
       2,
@@ -77,7 +78,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "b", message: userMessage("second", at + 1) },
       },
       3,
@@ -85,7 +86,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_end", messageId: "b", message: userMessage("second", at + 1) },
       },
       4,
@@ -99,7 +100,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "message_update",
           messageId: "b",
@@ -124,7 +125,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "a", message: userMessage("hi", at) },
       },
       1,
@@ -132,7 +133,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_end", messageId: "a", message: userMessage("hi", at) },
       },
       2,
@@ -167,25 +168,25 @@ describe("OmpRuntimeStore structural sharing", () => {
       commits += 1;
     });
     const events: unknown[] = [
-      { kind: "omp", event: { type: "agent_start" } },
+      { kind: "event", event: { type: "agent_start" } },
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "m1", message: userMessage("hi", at) },
       },
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_update", messageId: "m1", message: userMessage("hi!", at) },
       },
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_end", messageId: "m1", message: userMessage("hi!", at) },
       },
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "tool_execution_start", toolCallId: "t1", toolName: "bash", args: {} },
       },
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "tool_execution_update",
           toolCallId: "t1",
@@ -194,7 +195,7 @@ describe("OmpRuntimeStore structural sharing", () => {
         },
       },
       {
-        kind: "omp",
+        kind: "event",
         event: {
           type: "tool_execution_end",
           toolCallId: "t1",
@@ -203,19 +204,16 @@ describe("OmpRuntimeStore structural sharing", () => {
           isError: false,
         },
       },
-      { kind: "bash", status: "running", command: "ls", startedAt: 1 },
+      bashEvent({ status: "running", command: "ls", startedAt: 1 }),
       { kind: "process", status: "ready" },
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ask-1",
-          method: "select",
-          title: "Pick",
-          options: ["a"],
-        },
-      },
-      { kind: "session_settled", event: { type: "session_settled" } },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ask-1",
+        method: "select",
+        title: "Pick",
+        options: ["a"],
+      }),
+      { kind: "event", event: { type: "session_settled" } },
     ];
     const perEvent = events.map((event, index) => {
       const before = commits;
@@ -234,7 +232,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "r", message: userMessage("x", at) },
       },
       1,
@@ -242,7 +240,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_update", messageId: "r", message: userMessage("xy", at) },
       },
       2,
@@ -250,7 +248,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_end", messageId: "r", message: userMessage("xy", at) },
       },
       3,
@@ -258,7 +256,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "r", message: userMessage("xy", at) },
       },
       4,
@@ -274,7 +272,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "message_start", messageId: "w", message: userMessage("w", at) },
       },
       1,
@@ -282,7 +280,7 @@ describe("OmpRuntimeStore structural sharing", () => {
     ingest(
       store,
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "tool_execution_start", toolCallId: "t", toolName: "read", args: {} },
       },
       2,

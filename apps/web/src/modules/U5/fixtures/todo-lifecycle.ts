@@ -1,4 +1,4 @@
-import type { RpcSessionEvent } from "@omp-app/contracts";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import type { TodoPhase, TodoTask } from "../todo/contract";
 
 /**
@@ -197,28 +197,22 @@ export const TODO_FIXTURE_REMINDER = {
  * omp's committed reminder and payload-free auto-clear notification.
  */
 export const TODO_FIXTURE_EVENTS = [
-  {
-    kind: "omp",
-    event: {
-      type: "tool_execution_start",
-      toolCallId: TODO_FIXTURE_TOOL_CALL_ID,
-      toolName: "todo",
-      args: TODO_FIXTURE_TOOL_ARGS,
-    },
-  },
-  {
-    kind: "omp",
-    event: {
-      type: "tool_execution_end",
-      toolCallId: TODO_FIXTURE_TOOL_CALL_ID,
-      toolName: "todo",
-      result: TODO_FIXTURE_TOOL_RESULT,
-      isError: false,
-    },
-  },
-  { kind: "omp", event: TODO_FIXTURE_REMINDER },
-  { kind: "omp", event: { type: "todo_auto_clear" } },
-] satisfies readonly RpcSessionEvent[];
+  ompEvent({
+    type: "tool_execution_start",
+    toolCallId: TODO_FIXTURE_TOOL_CALL_ID,
+    toolName: "todo",
+    args: TODO_FIXTURE_TOOL_ARGS,
+  }),
+  ompEvent({
+    type: "tool_execution_end",
+    toolCallId: TODO_FIXTURE_TOOL_CALL_ID,
+    toolName: "todo",
+    result: TODO_FIXTURE_TOOL_RESULT,
+    isError: false,
+  }),
+  ompEvent(TODO_FIXTURE_REMINDER),
+  ompEvent({ type: "todo_auto_clear" }),
+];
 
 export function cloneTodoFixturePhases(): TodoPhase[] {
   return TODO_FIXTURE_PHASES.map((phase) => ({

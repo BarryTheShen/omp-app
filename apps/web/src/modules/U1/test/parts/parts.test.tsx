@@ -1,8 +1,9 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import type { OmpMessage, RpcSessionEvent, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionEvent, OmpMessage, RpcSessionSend, ThreadId } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { FilePart, ImagePart, MessageParts, SourcePart } from "../../parts";
@@ -94,21 +95,9 @@ function RuntimeThread({
 
 function renderThinkingMessage(source: OmpMessage, thinking: "visible" | "hidden") {
   const store = new OmpRuntimeStore({ threadId });
-  store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
-  store.ingest(
-    {
-      kind: "omp",
-      event: { type: "message_start", messageId: "narration-1", message: source },
-    } as RpcSessionEvent,
-    2,
-  );
-  store.ingest(
-    {
-      kind: "omp",
-      event: { type: "message_end", messageId: "narration-1", message: source },
-    } as RpcSessionEvent,
-    3,
-  );
+  store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
+  store.ingest(ompEvent({ type: "message_start", messageId: "narration-1", message: source }), 2);
+  store.ingest(ompEvent({ type: "message_end", messageId: "narration-1", message: source }), 3);
   const storage = new MemoryThinkingVisibilityStore();
   storage.set(`omp.u1.thinking.visibility.${threadId}`, thinking === "visible");
   return render(
@@ -166,38 +155,29 @@ describe("U1.3 standalone parts", () => {
 
   test("uses the user bubble surface while assistant rows remain full width", () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "user-1",
-          message: assistantMessage("user", "hello"),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "user-1",
+        message: assistantMessage("user", "hello"),
+      }),
       2,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "developer-1",
-          message: assistantMessage("developer", "system note"),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "developer-1",
+        message: assistantMessage("developer", "system note"),
+      }),
       3,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "assistant-1",
-          message: assistantMessage("assistant", "answer"),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "assistant-1",
+        message: assistantMessage("assistant", "answer"),
+      }),
       4,
     );
     render(<RuntimeThread store={store} />);
@@ -210,19 +190,16 @@ describe("U1.3 standalone parts", () => {
 
   test("MessageParts renders the elided-call note from assistant metadata under the answer", () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "assistant-elided",
-          message: {
-            ...assistantMessage("assistant", "answer"),
-            strippedToolCalls: 2,
-          } as unknown as OmpMessage,
-        },
-      } as RpcSessionEvent,
+      ompEvent({
+        type: "message_start",
+        messageId: "assistant-elided",
+        message: {
+          ...assistantMessage("assistant", "answer"),
+          strippedToolCalls: 2,
+        } as unknown as OmpMessage,
+      }),
       2,
     );
     render(<RuntimeThread store={store} />);
@@ -231,7 +208,7 @@ describe("U1.3 standalone parts", () => {
 
   test("MessageParts ignores elided-call metadata on user messages and zero counts", () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     for (const [messageId, message, sequence] of [
       [
         "user-elided",
@@ -247,13 +224,7 @@ describe("U1.3 standalone parts", () => {
         3,
       ],
     ] as const) {
-      store.ingest(
-        {
-          kind: "omp",
-          event: { type: "message_start", messageId, message },
-        } as RpcSessionEvent,
-        sequence,
-      );
+      store.ingest(ompEvent({ type: "message_start", messageId, message }), sequence);
     }
     render(<RuntimeThread store={store} />);
     expect(screen.queryByText(/tool call[s]? elided — no result on this branch/)).toBeNull();
@@ -264,16 +235,13 @@ describe("U1.3 standalone parts", () => {
       ...assistantMessage("assistant", "answer without usage"),
       usage: undefined,
     } as unknown as OmpMessage;
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "assistant-no-usage",
-          message: noUsage,
-        },
-      } as RpcSessionEvent,
+      ompEvent({
+        type: "message_start",
+        messageId: "assistant-no-usage",
+        message: noUsage,
+      }),
       2,
     );
     render(<RuntimeThread store={store} />);
@@ -282,16 +250,13 @@ describe("U1.3 standalone parts", () => {
   });
   test("does not show partial usage while an assistant message is still running", () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "assistant-running-usage",
-          message: assistantMessage("assistant", "streaming answer"),
-        },
-      } as RpcSessionEvent,
+      ompEvent({
+        type: "message_start",
+        messageId: "assistant-running-usage",
+        message: assistantMessage("assistant", "streaming answer"),
+      }),
       2,
     );
     render(<RuntimeThread store={store} />);
@@ -302,38 +267,29 @@ describe("U1.3 standalone parts", () => {
   test("every message surface lets a long unbroken word wrap inside it", () => {
     const store = new OmpRuntimeStore({ threadId });
     const token = "x".repeat(300);
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "user-1",
-          message: assistantMessage("user", token),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "user-1",
+        message: assistantMessage("user", token),
+      }),
       2,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "developer-1",
-          message: assistantMessage("developer", token),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "developer-1",
+        message: assistantMessage("developer", token),
+      }),
       3,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "assistant-1",
-          message: assistantMessage("assistant", token),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "assistant-1",
+        message: assistantMessage("assistant", token),
+      }),
       4,
     );
     render(<RuntimeThread store={store} />);
@@ -346,16 +302,13 @@ describe("U1.3 standalone parts", () => {
 
   test("draws a row's actions after its bubble, inside the message row", () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "user-1",
-          message: assistantMessage("user", "hello"),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "user-1",
+        message: assistantMessage("user", "hello"),
+      }),
       2,
     );
     render(<RuntimeThread actions={<button type="button">Probe action</button>} store={store} />);
@@ -372,27 +325,21 @@ describe("U1.3 standalone parts", () => {
 
   test("keeps the line breaks in a person's own message and nowhere else", () => {
     const store = new OmpRuntimeStore({ threadId });
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "user-1",
-          message: assistantMessage("user", "line one\nline two"),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "user-1",
+        message: assistantMessage("user", "line one\nline two"),
+      }),
       2,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_start",
-          messageId: "assistant-1",
-          message: assistantMessage("assistant", [{ type: "text", text: "soft one\nsoft two" }]),
-        },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: "assistant-1",
+        message: assistantMessage("assistant", [{ type: "text", text: "soft one\nsoft two" }]),
+      }),
       3,
     );
     render(<RuntimeThread store={store} />);

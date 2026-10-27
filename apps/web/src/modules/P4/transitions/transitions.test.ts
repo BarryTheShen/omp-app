@@ -3,6 +3,7 @@ import { AppFailure, persistedMessageKey, SessionFilePath } from "@omp-app/contr
 import { describe, expect, test, vi } from "vitest";
 import { createOmpBranchingController } from "@/modules/R0/branching/branching";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
+import { promptResultEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import type { ForkRequest } from "../contract";
 import { createOmpConversationTransitionPort } from ".";
@@ -399,15 +400,12 @@ describe("OmpConversationTransitionPort", () => {
 
     const unsettledSource = sourceStore();
     unsettledSource.ingest(
-      {
-        kind: "prompt_result",
-        event: {
-          type: "prompt_result",
-          agentInvoked: false,
-          status: "aborted",
-          sessionSettled: false,
-        },
-      } as never,
+      promptResultEvent({
+        type: "prompt_result",
+        agentInvoked: false,
+        status: "aborted",
+        sessionSettled: false,
+      }) as never,
       1,
     );
     expect(unsettledSource.getSnapshot().prompt).toMatchObject({

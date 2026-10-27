@@ -1,4 +1,4 @@
-import type { RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent } from "@omp-app/contracts";
 import { ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
@@ -20,7 +20,7 @@ function chat() {
 }
 
 function omp(store: OmpRuntimeStore, event: Record<string, unknown>, sequence: number): void {
-  store.ingest({ kind: "omp", event } as unknown as RpcSessionEvent, sequence);
+  store.ingest({ kind: "event", event } as unknown as ChatSessionEvent, sequence);
 }
 
 describe("TranscriptNoticeList", () => {

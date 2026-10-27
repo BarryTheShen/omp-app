@@ -1,5 +1,6 @@
 import type {
   AppError,
+  ChatSessionEvent,
   EntryId,
   ExtensionUiResponse,
   HostToolResponse,
@@ -27,6 +28,7 @@ import {
   provisionalMessageKey,
 } from "@omp-app/contracts";
 import { createDraft, type Draft, finishDraft, freeze, original } from "immer";
+import { rpcEventOf, sharedApprovals } from "./rpc-frames";
 
 type QueueMode = OmpWire.QueueMode;
 type SessionState = OmpWire.SessionState;
@@ -1602,17 +1604,28 @@ export class OmpRuntimeStore {
   }
 
   /**
-   * Apply exactly one contiguous A0 envelope event. Replays are ignored. A gap is not applied: the
-   * caller must refetch history and call `resetSequence` before the next event can change state,
-   * except that a request omp is waiting on is recorded anyway (`ingestAcrossGap`). Every seq is
-   * remembered (`latestSeenSeq`) so the refetch resumes where the stream really is.
+   * Apply exactly one contiguous event of the chat session port. Replays are ignored. A gap is not applied: the caller
+   * must refetch history and call `resetSequence` before the next event can change state, except that a request omp is
+   * waiting on is recorded anyway (`ingestAcrossGap`). Every seq is remembered (`latestSeenSeq`) so the refetch resumes
+   * where the stream really is.
    *
    * `fromHistory` marks an event that a subscription from the stream's start replays before it is acknowledged. Such an
-   * event is applied, except a frame that asks the person something (a question, a host call, a sign-in prompt): a replay
+   * event is applied, except one that asks the person something (a question, a host call, a sign-in prompt): a replay
    * cannot say whether such a request was answered since, so it is not asked again. The questions a chat's omp still
    * waits on are recorded from the server's record instead (`recordOpenQuestion`).
+   *
+   * Inside, the store still reads A0's RPC shapes, translated once here (`rpc-frames.ts`), until the later H5.4 parts
+   * move its readers to the session events.
    */
-  public ingest(event: RpcSessionEvent, seq: number, fromHistory = false): void {
+  public ingest(payload: ChatSessionEvent, seq: number, fromHistory = false): void {
+    this.ingestRpc(
+      rpcEventOf(this.snapshot.threadId, payload, seq, sharedApprovals),
+      seq,
+      fromHistory,
+    );
+  }
+
+  private ingestRpc(event: RpcSessionEvent, seq: number, fromHistory: boolean): void {
     if (!Number.isSafeInteger(seq) || seq < 1) {
       throw new RangeError("event seq must be a positive safe integer");
     }
@@ -1668,7 +1681,13 @@ export class OmpRuntimeStore {
     if (setsPromptLifecycle(eventValue)) this.promptEventSeq = seq;
     next.lastSeq = seq;
     this.commit(next);
-    if (event.kind === "omp") this.forwardOmpEvent(event.event, seq, fromHistory);
+    if (event.kind === "omp") {
+      this.forwardOmpEvent(event.event, seq, fromHistory);
+      // omp's RPC session classified a goal update as an omp event while D8 listens for it as a frame, so a goal that
+      // changed during a run never reached the goal panel (found in H5.4a). It is handed on as a frame too.
+      if (event.event.type === "goal_updated")
+        this.forwardNotification(event.event, seq, fromHistory);
+    }
     if (event.kind === "notification" && !askingFromHistory && !wasForwardedAcrossGap)
       this.forwardNotification(event.frame, seq, fromHistory);
   }
@@ -2385,6 +2404,11 @@ export class OmpRuntimeStore {
         return;
       case "tool_execution_end":
         this.reduceToolEnd(next, event);
+        return;
+      // omp's RPC session sent goal updates as omp events, and the store read them only as notification frames, so a
+      // goal created, paused or finished during a run never reached the goal until a state read (found in H5.4a).
+      case "goal_updated":
+        reduceGoalUpdated(next, event);
         return;
       case "queue_update":
         if (Array.isArray(event.steering) && Array.isArray(event.followUp)) {

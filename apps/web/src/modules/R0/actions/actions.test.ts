@@ -4,12 +4,12 @@ import type {
   ExtensionUiResponse,
   HostToolResponse,
   HostUriResponse,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { notificationEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "../store/store";
 import { createQueueController, type QueueSnapshot } from "./actions";
 
@@ -28,7 +28,7 @@ const capabilities: CapabilityMap = {
 };
 
 function notification(store: OmpRuntimeStore, frame: unknown, seq: number): void {
-  store.ingest({ kind: "notification", frame } as RpcSessionEvent, seq);
+  store.ingest(notificationEvent(frame), seq);
 }
 
 function makeStore(

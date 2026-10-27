@@ -1,14 +1,9 @@
 import type { AppendMessage } from "@assistant-ui/react";
-import type {
-  CapabilityMap,
-  OmpWire,
-  RpcSessionEvent,
-  RpcSessionSend,
-  ThreadId,
-} from "@omp-app/contracts";
+import type { CapabilityMap, OmpWire, RpcSessionSend, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { createQueueController } from "../../R0/actions/actions";
+import { ompEvent } from "../../R0/store/session-events";
 import { OmpRuntimeStore } from "../../R0/store/store";
 import { QueueLaneBar } from "../bar";
 import { queueSubmitPolicy } from "../composer";
@@ -94,7 +89,7 @@ function harness(state: P6GetStateFixture = P6_GET_STATE_STREAMING, removeAccept
   const port = createQueueController({ store, send, capabilities });
   const adapter = createQueueAdapter(port);
   const ingestQueue = (event: OmpWire.QueueUpdateEvent, seq: number): void => {
-    store.ingest({ kind: "omp", event } as RpcSessionEvent, seq);
+    store.ingest(ompEvent(event), seq);
   };
   return { store, port, adapter, commands, ingestQueue };
 }

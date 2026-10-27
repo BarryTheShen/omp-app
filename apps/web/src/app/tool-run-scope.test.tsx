@@ -1,4 +1,4 @@
-import type { BackgroundJobStop, RpcSessionEvent } from "@omp-app/contracts";
+import type { BackgroundJobStop, ChatSessionEvent } from "@omp-app/contracts";
 import { ThreadId } from "@omp-app/contracts";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useContext } from "react";
@@ -37,16 +37,16 @@ function addLaunch(
   };
   store.ingest(
     {
-      kind: "omp",
+      kind: "event",
       event: { type: "message_start", messageId, message },
-    } as unknown as RpcSessionEvent,
+    } as unknown as ChatSessionEvent,
     seq,
   );
   store.ingest(
     {
-      kind: "omp",
+      kind: "event",
       event: { type: "message_end", messageId, message },
-    } as unknown as RpcSessionEvent,
+    } as unknown as ChatSessionEvent,
     seq + 1,
   );
   return {

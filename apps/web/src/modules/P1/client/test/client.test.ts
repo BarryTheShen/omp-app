@@ -1,8 +1,9 @@
-import type { RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent } from "@omp-app/contracts";
 import { AppFailure, type CapabilityMap, SubagentId, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "@/modules/R0/store";
+import { notificationEvent } from "@/modules/R0/store/session-events";
 import { createSubagentClient, type SubagentClient, type SubagentSession } from "../client";
 
 const threadId = ThreadId.parse("thread-p1");
@@ -222,9 +223,9 @@ describe("P1 subscription arbitration and R0 notification handoff", () => {
     const unsubscribe = client.subscribeNotifications(({ event, seq }) => {
       received.push({ type: event.type, seq });
     });
-    const lifecycle: RpcSessionEvent = {
-      kind: "notification",
-      frame: {
+    const lifecycle: ChatSessionEvent = {
+      kind: "event",
+      event: {
         type: "subagent_lifecycle",
         payload: {
           id: subagentId,
@@ -235,22 +236,20 @@ describe("P1 subscription arbitration and R0 notification handoff", () => {
         },
       },
     };
-    const progress: RpcSessionEvent = {
-      kind: "notification",
-      frame: {
-        type: "subagent_progress",
-        payload: {
-          index: 0,
-          agent: "worker",
-          agentSource: "project",
-          task: "work",
-          progress: { phase: "working" },
-        },
+    // omp's RPC progress frame, as the chat host sends it.
+    const progress = notificationEvent({
+      type: "subagent_progress",
+      payload: {
+        index: 0,
+        agent: "worker",
+        agentSource: "project",
+        task: "work",
+        progress: { phase: "working" },
       },
-    };
-    const nested: RpcSessionEvent = {
-      kind: "notification",
-      frame: {
+    });
+    const nested: ChatSessionEvent = {
+      kind: "event",
+      event: {
         type: "subagent_event",
         payload: { id: subagentId, event: { type: "agent_start" } },
       },

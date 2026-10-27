@@ -1,6 +1,7 @@
 import { EntryId as EntryIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { captureP3EditSource, isImageContent, storedEntryId } from "./source";
 import { pngImage, sourceThread, storeWithUserMessage, userEntry } from "./test-support";
 
@@ -56,13 +57,10 @@ describe("storedEntryId", () => {
   test("gives no entry id to a row omp has not saved", () => {
     const store = new OmpRuntimeStore({ threadId: sourceThread });
     store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_end",
-          message: { role: "user", content: [{ type: "text", text: "Explain" }], timestamp: 1 },
-        },
-      },
+      ompEvent({
+        type: "message_end",
+        message: { role: "user", content: [{ type: "text", text: "Explain" }], timestamp: 1 },
+      }),
       1,
     );
     const [key] = store.getSnapshot().messageOrder;
@@ -81,7 +79,7 @@ describe("storedEntryId", () => {
       content: [{ type: "text" as const, text: "Explain" }],
       timestamp: 1,
     };
-    store.ingest({ kind: "omp", event: { type: "message_end", message: streamed } }, 1);
+    store.ingest(ompEvent({ type: "message_end", message: streamed }), 1);
     const [streamedKey] = store.getSnapshot().messageOrder;
     expect(streamedKey).toBeDefined();
     store.pairEndedMessages([

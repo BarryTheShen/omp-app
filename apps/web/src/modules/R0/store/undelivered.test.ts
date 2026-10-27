@@ -1,5 +1,6 @@
-import type { RpcSessionEvent, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { notificationEvent } from "./session-events";
 import { OmpRuntimeStore } from "./store";
 
 const threadId = "thread-undelivered" as ThreadId;
@@ -9,18 +10,20 @@ const threadId = "thread-undelivered" as ThreadId;
  * union, which the store checks when it reads them.
  */
 function apply(store: OmpRuntimeStore, event: unknown, seq: number, replayed = false): void {
-  store.ingest(event as RpcSessionEvent, seq, replayed);
+  store.ingest(event as ChatSessionEvent, seq, replayed);
 }
 
 function notifyFrame(message: string): unknown {
-  return {
-    kind: "notification",
-    frame: { type: "extension_ui_request", id: `notify-${message}`, method: "notify", message },
-  };
+  return notificationEvent({
+    type: "extension_ui_request",
+    id: `notify-${message}`,
+    method: "notify",
+    message,
+  });
 }
 
 function ompNotice(message: string): unknown {
-  return { kind: "omp", event: { type: "notice", level: "warning", message } };
+  return { kind: "event", event: { type: "notice", level: "warning", message } };
 }
 
 describe("presentation frames no listener was attached for", () => {
@@ -50,16 +53,13 @@ describe("presentation frames no listener was attached for", () => {
     const store = new OmpRuntimeStore({ threadId });
     apply(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ask-1",
-          method: "confirm",
-          title: "Go on?",
-          message: "",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ask-1",
+        method: "confirm",
+        title: "Go on?",
+        message: "",
+      }),
       1,
     );
     const heard: number[] = [];
@@ -105,7 +105,7 @@ describe("omp events applied before a listener attaches", () => {
   test("a typed listener is given its own types, and the rest wait for a listener of theirs", () => {
     const store = new OmpRuntimeStore({ threadId });
     apply(store, ompNotice("notice"), 1, true);
-    apply(store, { kind: "omp", event: { type: "agent_start" } }, 2, true);
+    apply(store, { kind: "event", event: { type: "agent_start" } }, 2, true);
     const starts: number[] = [];
     store.subscribeOmpEvents(["agent_start"], (_event, seq) => starts.push(seq));
     const all: number[] = [];

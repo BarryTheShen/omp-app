@@ -1,17 +1,19 @@
 // A message row is drawn again only when its message changes, or when a value its slots read changes. The rows here are
 // drawn through a slot that records each draw, so a row the thread skips is a row that is not recorded. The rows render
 // asynchronously, so each test waits for the rows it is about before it asserts on draws.
+
 import { AssistantRuntimeProvider, type MessageState } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import {
@@ -89,23 +91,17 @@ function user(text: string): OmpMessage {
  */
 function transcript(texts: readonly string[], lastStreaming = false): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId });
-  store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+  store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
   texts.forEach((text, index) => {
     const messageId = `m-${index}`;
     const message = index % 2 === 0 ? user(text) : assistant(text);
-    store.ingest(
-      { kind: "omp", event: { type: "message_start", messageId, message } },
-      2 + index * 2,
-    );
+    store.ingest(ompEvent({ type: "message_start", messageId, message }), 2 + index * 2);
     if (!(lastStreaming && index === texts.length - 1)) {
-      store.ingest(
-        { kind: "omp", event: { type: "message_end", messageId, message } },
-        3 + index * 2,
-      );
+      store.ingest(ompEvent({ type: "message_end", messageId, message }), 3 + index * 2);
     }
   });
   if (!lastStreaming)
-    store.ingest({ kind: "omp", event: { type: "agent_end", messages: [] } }, 2 + texts.length * 2);
+    store.ingest(ompEvent({ type: "agent_end", messages: [] }), 2 + texts.length * 2);
   return store;
 }
 
@@ -181,20 +177,17 @@ describe("U1 message rows are drawn again only when their message or a value the
 
     act(() => {
       store.ingest(
-        {
-          kind: "omp",
-          event: {
-            type: "message_update",
-            messageId: "m-1",
-            message: assistant("bravo again"),
-            assistantMessageEvent: {
-              type: "text_delta",
-              contentIndex: 0,
-              delta: " again",
-              partial: assistant("bravo again"),
-            },
+        ompEvent({
+          type: "message_update",
+          messageId: "m-1",
+          message: assistant("bravo again"),
+          assistantMessageEvent: {
+            type: "text_delta",
+            contentIndex: 0,
+            delta: " again",
+            partial: assistant("bravo again"),
           },
-        },
+        }),
         5,
       );
     });

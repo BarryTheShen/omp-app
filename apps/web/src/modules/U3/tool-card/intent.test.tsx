@@ -1,4 +1,4 @@
-import type { RpcSessionEvent, ThreadId, ToolCallId } from "@omp-app/contracts";
+import type { ChatSessionEvent, ThreadId, ToolCallId } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OmpRuntimeStore, type ToolCallState } from "@/modules/R0/store/store";
@@ -36,8 +36,8 @@ const endEvent: Record<string, unknown> = {
 function toolStateAfter(...events: readonly Record<string, unknown>[]): ToolCallState {
   const store = new OmpRuntimeStore({ threadId });
   events.forEach((event, index) => {
-    const wrapped: unknown = { kind: "omp", event };
-    store.ingest(wrapped as RpcSessionEvent, index + 1, false);
+    const wrapped: unknown = { kind: "event", event };
+    store.ingest(wrapped as ChatSessionEvent, index + 1, false);
   });
   const state = store.getSnapshot().tools[callId];
   if (state === undefined) throw new Error("The store did not record the call.");

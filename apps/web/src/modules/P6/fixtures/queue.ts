@@ -1,4 +1,4 @@
-import type { OmpWire, RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
 
 /**
  * P6's exact inventory boundary. Keep this list explicit so a renamed or newly assigned row breaks
@@ -249,18 +249,18 @@ export const P6_ATTACHMENT_ADMISSION_FIXTURE = {
 } as const;
 
 /** The two lifecycle events are separate in omp: yield first, quiescence only when settled. */
-export const P6_PROMPT_RESULT_FIXTURE: RpcSessionEvent = {
-  kind: "prompt_result",
+export const P6_PROMPT_RESULT_FIXTURE: ChatSessionEvent = {
+  kind: "event",
   event: {
     type: "prompt_result",
+    requestId: "prompt-result-1",
     agentInvoked: true,
     status: "completed",
     sessionSettled: false,
-    id: "prompt-result-1",
   },
 };
 
-export const P6_SESSION_SETTLED_FIXTURE: RpcSessionEvent = {
-  kind: "session_settled",
+export const P6_SESSION_SETTLED_FIXTURE: ChatSessionEvent = {
+  kind: "event",
   event: { type: "session_settled" },
 };

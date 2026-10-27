@@ -2,12 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
+  ChatSessionEvent,
   Fixture,
   FolderPath,
   OpenThreadArgs,
   OpenThreadResult,
   RpcSessionClient,
-  RpcSessionEvent,
   RpcSessionSend,
   SessionFile,
   SessionFileChanged,
@@ -21,6 +21,7 @@ import { FixtureSession } from "@omp-app/omp-rpc/fixtures";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { sessionEventOfRpc } from "@/modules/R0/store/session-events";
 import { ShortcutRegistryProvider } from "@/shortcuts";
 import type { DialogHost } from "../../U4/contract/dialog-host";
 import { SessionActionsController } from "../actions";
@@ -141,7 +142,7 @@ function openResult(threadId: ThreadId): OpenThreadResult {
 
 interface SubscriptionRecord {
   readonly options?: SubscribeOptions;
-  readonly listeners: Array<(event: RpcSessionEvent, seq: number) => void>;
+  readonly listeners: Array<(event: ChatSessionEvent, seq: number) => void>;
   unsubscribed: boolean;
 }
 
@@ -192,7 +193,7 @@ function createHistoryClient(
       subscriptions.push(record);
       // Like the real client, the onEvent listener is attached before the request.
       if (options?.onEvent) record.listeners.push(options.onEvent);
-      const subscription: AppClientSubscription<RpcSessionEvent> = {
+      const subscription: AppClientSubscription<ChatSessionEvent> = {
         stream: "A0.rpcSession/event/thread" as never,
         lastSeq: options?.afterSeq ?? 0,
         onEvent: (listener) => {
@@ -238,7 +239,9 @@ async function replayPromptToSubscriptions(
     sequence += 1;
     for (const subscription of subscriptions) {
       if (subscription.unsubscribed) continue;
-      for (const listener of [...subscription.listeners]) listener(event, sequence);
+      for (const listener of [...subscription.listeners]) {
+        listener(sessionEventOfRpc(event), sequence);
+      }
     }
   });
   await session.start();

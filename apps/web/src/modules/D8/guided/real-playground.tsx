@@ -1,8 +1,9 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  type ChatSessionEvent,
+  ChatSessionPort,
   FolderPath,
   type RpcSessionClient,
-  type RpcSessionEvent,
   RpcSessionPort,
   type ThreadId,
   UiRequestId,
@@ -86,7 +87,7 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
   useEffect(() => {
     let active = true;
     let client: AppClient | undefined;
-    let subscription: AppClientSubscription<RpcSessionEvent> | undefined;
+    let subscription: AppClientSubscription<ChatSessionEvent> | undefined;
     let dialogHost: DialogHostController | undefined;
     let guided: GuidedGoalController | undefined;
 
@@ -103,7 +104,7 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
       const threadId = opened.threadId;
       activeSession = { rpc, threadId };
       const runtime = new OmpRuntimeStore({ threadId });
-      subscription = await client.subscribe(RpcSessionPort, "event", { scope: threadId });
+      subscription = await client.subscribe(ChatSessionPort, "event", { scope: threadId });
       subscription.onEvent((event, sequence) => runtime.ingest(event, sequence));
       const session = await rpc.send({ threadId, command: { type: "get_state" } });
       runtime.applySessionState(session);

@@ -9,15 +9,16 @@ import {
 import type {
   AppError,
   CapabilityMap,
+  ChatSessionEvent,
   MessageKey,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { act, fireEvent, render, renderHook } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
+import { promptResultEvent } from "../store/session-events";
 import type { RuntimeMessage } from "../store/store";
 import { OmpRuntimeStore } from "../store/store";
 import {
@@ -113,7 +114,7 @@ function runtimeMessage(
 }
 
 function ompEvent(store: OmpRuntimeStore, event: unknown, seq: number): void {
-  store.ingest({ kind: "omp", event } as RpcSessionEvent, seq);
+  store.ingest({ kind: "event", event } as unknown as ChatSessionEvent, seq);
 }
 
 function messageParts(message: ThreadMessageLike): readonly Record<string, unknown>[] {
@@ -372,7 +373,7 @@ describe("R0.3 assistant-ui runtime", () => {
     if (!firstView) throw new Error("expected a message view");
     const firstConverted = firstAdapter.convertMessage(firstView, 0);
 
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 2);
     const secondAdapter = controller.createAdapter();
     const secondView = (secondAdapter.messages ?? [])[0];
     if (!secondView) throw new Error("expected a message view");
@@ -383,7 +384,13 @@ describe("R0.3 assistant-ui runtime", () => {
   test("a `!` command is a row while it runs, and stays a row with omp's answer once it ends", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.ingest(
-      { kind: "bash", status: "running", command: "echo hi", startedAt: 1 } as RpcSessionEvent,
+      {
+        kind: "shell",
+        method: "bash",
+        input: "echo hi",
+        status: "running",
+        startedAt: 1,
+      } as ChatSessionEvent,
       1,
     );
     const send: RpcSessionSend = async () => undefined as never;
@@ -398,12 +405,13 @@ describe("R0.3 assistant-ui runtime", () => {
 
     store.ingest(
       {
-        kind: "bash",
+        kind: "shell",
+        method: "bash",
+        input: "echo hi",
         status: "ended",
-        command: "echo hi",
         startedAt: 1,
         result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
-      } as RpcSessionEvent,
+      } as ChatSessionEvent,
       2,
     );
     const endedView = (controller.createAdapter().messages ?? [])[0];
@@ -660,7 +668,7 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.ingest(
       {
-        kind: "omp",
+        kind: "event",
         event: { type: "queue_update", steering: ["steer first"], followUp: ["follow second"] },
       } as Parameters<OmpRuntimeStore["ingest"]>[0],
       1,
@@ -818,23 +826,17 @@ describe("R0.3 assistant-ui runtime", () => {
     ompEvent(store, { type: "agent_start" }, 1);
     expect(controller.createAdapter().isRunning).toBe(true);
     store.ingest(
-      {
-        kind: "prompt_result",
-        event: {
-          type: "prompt_result",
-          agentInvoked: true,
-          status: "completed",
-          sessionSettled: false,
-        },
-      } as RpcSessionEvent,
+      promptResultEvent({
+        type: "prompt_result",
+        agentInvoked: true,
+        status: "completed",
+        sessionSettled: false,
+      }),
       2,
     );
     expect(controller.createAdapter().isRunning).toBe(false);
     expect(store.getSnapshot().prompt.sessionSettled).toBe(false);
-    store.ingest(
-      { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent,
-      3,
-    );
+    store.ingest({ kind: "event", event: { type: "session_settled" } } as ChatSessionEvent, 3);
     expect(store.getSnapshot().prompt.sessionSettled).toBe(true);
   });
 

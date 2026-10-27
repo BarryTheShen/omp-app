@@ -1,5 +1,6 @@
-import { RpcSessionEvent, ThreadId } from "@omp-app/contracts";
+import { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { notificationEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "../../R0/store";
 import type { GoalModeState } from "../contract";
 import { GuidedGoalController } from "./controller";
@@ -50,10 +51,9 @@ describe("goalSourceOf", () => {
     });
 
     store.ingest(
-      RpcSessionEvent.parse({
-        kind: "notification",
-        frame: { type: "goal_updated", goal: activeGoal.goal, state: activeGoal },
-      }),
+      ChatSessionEvent.parse(
+        notificationEvent({ type: "goal_updated", goal: activeGoal.goal, state: activeGoal }),
+      ),
       1,
     );
 

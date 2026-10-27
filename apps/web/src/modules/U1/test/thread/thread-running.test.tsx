@@ -1,17 +1,19 @@
 // The thread's root says a run is on while one is, and a run that starts or ends draws no row whose message did not change.
 // A run adds its own placeholder row and flips the last message's position, so those rows may draw; the earlier rows,
 // whose messages did not change, must not.
+
 import { AssistantRuntimeProvider, type MessageState } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { type ThreadRowSlots, ThreadShell } from "../../thread";
@@ -79,23 +81,20 @@ function user(text: string): OmpMessage {
 /** One message per text, alternating from a user message; the chat has finished its last run. */
 function transcript(texts: readonly string[]): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId });
-  store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+  store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
   texts.forEach((text, index) => {
     const messageId = `m-${index}`;
     const message = index % 2 === 0 ? user(text) : assistant(text);
     store.ingest(
-      { kind: "omp", event: { type: "message_start", messageId, message } },
+      ompEvent({ type: "message_start", messageId, message }),
       store.getSnapshot().lastSeq + 1,
     );
     store.ingest(
-      { kind: "omp", event: { type: "message_end", messageId, message } },
+      ompEvent({ type: "message_end", messageId, message }),
       store.getSnapshot().lastSeq + 1,
     );
   });
-  store.ingest(
-    { kind: "omp", event: { type: "agent_end", messages: [] } },
-    store.getSnapshot().lastSeq + 1,
-  );
+  store.ingest(ompEvent({ type: "agent_end", messages: [] }), store.getSnapshot().lastSeq + 1);
   return store;
 }
 
@@ -143,18 +142,12 @@ describe("U1 thread root says a run is on, and a run's start or end draws no ear
     expect(threadRoot()?.getAttribute("data-thread-running")).toBeNull();
 
     act(() => {
-      store.ingest(
-        { kind: "omp", event: { type: "agent_start" } },
-        store.getSnapshot().lastSeq + 1,
-      );
+      store.ingest(ompEvent({ type: "agent_start" }), store.getSnapshot().lastSeq + 1);
     });
     await waitFor(() => expect(threadRoot()?.getAttribute("data-thread-running")).toBe("true"));
 
     act(() => {
-      store.ingest(
-        { kind: "omp", event: { type: "agent_end", messages: [] } },
-        store.getSnapshot().lastSeq + 1,
-      );
+      store.ingest(ompEvent({ type: "agent_end", messages: [] }), store.getSnapshot().lastSeq + 1);
     });
     await waitFor(() => expect(threadRoot()?.getAttribute("data-thread-running")).toBeNull());
   });
@@ -171,10 +164,7 @@ describe("U1 thread root says a run is on, and a run's start or end draws no ear
     drawn.length = 0;
 
     act(() => {
-      store.ingest(
-        { kind: "omp", event: { type: "agent_start" } },
-        store.getSnapshot().lastSeq + 1,
-      );
+      store.ingest(ompEvent({ type: "agent_start" }), store.getSnapshot().lastSeq + 1);
     });
     await act(async () => {
       await sleep(200);
@@ -183,10 +173,7 @@ describe("U1 thread root says a run is on, and a run's start or end draws no ear
 
     drawn.length = 0;
     act(() => {
-      store.ingest(
-        { kind: "omp", event: { type: "agent_end", messages: [] } },
-        store.getSnapshot().lastSeq + 1,
-      );
+      store.ingest(ompEvent({ type: "agent_end", messages: [] }), store.getSnapshot().lastSeq + 1);
     });
     await act(async () => {
       await sleep(200);

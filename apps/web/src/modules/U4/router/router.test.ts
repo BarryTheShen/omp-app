@@ -1,11 +1,6 @@
-import type {
-  HostCallId,
-  OmpWire,
-  RpcSessionEvent,
-  ThreadId,
-  UiRequestId,
-} from "@omp-app/contracts";
+import type { HostCallId, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
+import { notificationEvent } from "@/modules/R0/store/session-events";
 import type { OverlayHostApi, OverlayOpenOptions, OverlayOpenResult } from "@/overlay";
 import { NotificationProjector } from "../../N1/notifications";
 import { OmpRuntimeStore } from "../../R0/store";
@@ -146,7 +141,7 @@ describe("ExtensionUiRequestRouterController", () => {
     });
     const unsubscribe = subscribeNonModalExtensionUi(store, router, { threadId });
     const send = (request: OmpWire.ExtensionUiRequest, sequence: number) => {
-      store.ingest({ kind: "notification", frame: request } as RpcSessionEvent, sequence);
+      store.ingest(notificationEvent(request), sequence);
     };
 
     send(

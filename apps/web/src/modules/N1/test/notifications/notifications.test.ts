@@ -1,4 +1,4 @@
-import type { OmpWire, RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
@@ -16,7 +16,7 @@ function publishRuntimeEvent(
   event: Record<string, unknown>,
   sequence: number,
 ) {
-  store.ingest({ kind: "omp", event } as unknown as RpcSessionEvent, sequence);
+  store.ingest({ kind: "event", event } as unknown as ChatSessionEvent, sequence);
 }
 
 function model(id: string, name: string): OmpWire.ModelInfo {
@@ -146,7 +146,7 @@ describe("NotificationProjector", () => {
     const store = new OmpRuntimeStore({ threadId });
     const projector = new NotificationProjector({ source: store, events: store });
     const omp = (message: string, level: "info" | "warning") =>
-      ({ kind: "omp", event: { type: "notice", level, message } }) as unknown as RpcSessionEvent;
+      ({ kind: "event", event: { type: "notice", level, message } }) as unknown as ChatSessionEvent;
     store.ingest(omp("xd://: mounted one", "info"), 1);
     store.ingest(omp("Disk is almost full", "warning"), 2);
     store.ingest(omp("Replayed warning", "warning"), 3, true);
@@ -533,7 +533,7 @@ describe("NotificationProjector", () => {
     );
     expect(projector.getBus().get(threadId, "retry:active")).toBeDefined();
 
-    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 3);
     store.resetSequence(3);
     expect(projector.getBus().get(threadId, "retry:active")).toBeUndefined();
 
@@ -561,7 +561,7 @@ describe("NotificationProjector", () => {
     const store = new OmpRuntimeStore({ threadId });
     const projector = new NotificationProjector({ source: store, events: store });
     const omp = (message: string, level: "info" | "warning") =>
-      ({ kind: "omp", event: { type: "notice", level, message } }) as unknown as RpcSessionEvent;
+      ({ kind: "event", event: { type: "notice", level, message } }) as unknown as ChatSessionEvent;
     store.ingest(omp("Replayed info", "info"), 1, true);
     store.ingest(omp("Replayed warning", "warning"), 2, true);
     store.ingest(omp("New warning", "warning"), 3);

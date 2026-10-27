@@ -1,6 +1,7 @@
 import type { SendCommandArgs } from "@omp-app/contracts";
-import { RpcSessionEvent, ThreadId } from "@omp-app/contracts";
+import { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { notificationEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "../../R0/store";
 import type { Goal, GoalModeState, GoalRpcResult, GoalUpdatedEvent } from "../contract";
 import { createAutonomyPort, type GoalRpcSender } from "./runtime";
@@ -45,24 +46,20 @@ describe("createAutonomyPort", () => {
     const updates: (GoalUpdatedEvent | null)[] = [];
     const unsubscribe = autonomy.subscribeGoal(threadId, (event) => updates.push(event));
     store.ingest(
-      RpcSessionEvent.parse({
-        kind: "notification",
-        frame: { type: "goal_updated", goal: "invalid" },
-      }),
+      ChatSessionEvent.parse(notificationEvent({ type: "goal_updated", goal: "invalid" })),
       1,
     );
     expect(updates).toEqual([null]);
     store.ingest(
-      RpcSessionEvent.parse({
-        kind: "notification",
-        frame: { type: "goal_updated", goal, state: modeState(goal) },
-      }),
+      ChatSessionEvent.parse(
+        notificationEvent({ type: "goal_updated", goal, state: modeState(goal) }),
+      ),
       2,
     );
     expect(updates).toEqual([null, { type: "goal_updated", goal, state: modeState(goal) }]);
     unsubscribe();
     store.ingest(
-      RpcSessionEvent.parse({ kind: "notification", frame: { type: "goal_updated", goal: null } }),
+      ChatSessionEvent.parse(notificationEvent({ type: "goal_updated", goal: null })),
       3,
     );
     expect(updates).toHaveLength(2);

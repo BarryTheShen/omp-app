@@ -1,13 +1,14 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import type {
+  ChatSessionEvent,
   EntryId,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { MessageParts } from "../../parts";
@@ -41,12 +42,9 @@ function RuntimeThread({ store }: { readonly store: OmpRuntimeStore }) {
 
 function sentStore(content: string): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId });
-  store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+  store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 1);
   store.ingest(
-    {
-      kind: "omp",
-      event: { type: "message_start", messageId: "user-1", message: userMessage(content) },
-    },
+    ompEvent({ type: "message_start", messageId: "user-1", message: userMessage(content) }),
     2,
   );
   return store;

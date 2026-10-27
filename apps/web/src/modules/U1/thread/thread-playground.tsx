@@ -8,6 +8,7 @@ import type {
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
 import { AppShell } from "@/shell";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
@@ -113,7 +114,9 @@ function ThreadPlayground() {
     if (fixture === undefined) return;
     const duplex = new FixtureSession({ fixture, realtime: true });
     const session = new RpcSession(duplex);
-    const unsubscribe = session.onEvent((event) => store.ingest(event, ++sequenceRef.current));
+    const unsubscribe = session.onEvent((event) =>
+      store.ingest(sessionEventOfRpc(event), ++sequenceRef.current),
+    );
     sessionRef.current = session;
     void session.start().catch((error: unknown) => {
       setLoadError(error instanceof Error ? error.message : "Fixture session failed to start");
@@ -136,17 +139,11 @@ function ThreadPlayground() {
     const session = sessionRef.current;
     if (session === undefined || mode === "streaming" || mode === "settled") return;
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_start", messageId: "msg-image", message: IMAGE_USER_MESSAGE },
-      },
+      ompEvent({ type: "message_start", messageId: "msg-image", message: IMAGE_USER_MESSAGE }),
       ++sequenceRef.current,
     );
     store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_end", messageId: "msg-image", message: IMAGE_USER_MESSAGE },
-      },
+      ompEvent({ type: "message_end", messageId: "msg-image", message: IMAGE_USER_MESSAGE }),
       ++sequenceRef.current,
     );
     void session.send({ type: "prompt", message: "run_bash" }).then(

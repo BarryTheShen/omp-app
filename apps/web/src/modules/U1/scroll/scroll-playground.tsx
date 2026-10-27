@@ -1,9 +1,9 @@
 import { AssistantRuntimeProvider, ThreadPrimitive } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   EntryId as EntryIdType,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
@@ -12,6 +12,7 @@ import { useCallback, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { RENDERERS, registry } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
@@ -75,7 +76,7 @@ function userMessage(text: string, timestamp: number): Extract<OmpMessage, { rol
 
 function createScrollFixture(): ScrollFixture {
   const store = new OmpRuntimeStore({ threadId: THREAD_ID });
-  const ready: RpcSessionEvent = { kind: "process", status: "ready" };
+  const ready: ChatSessionEvent = { kind: "process", status: "ready" };
   store.ingest(ready, 1);
   const entries: ScrollHistoryEntry[] = [];
   let parentId: EntryIdType | null = null;
@@ -142,10 +143,11 @@ function ScrollPlayground() {
     const text = `Streaming response ${index} is starting.`;
     openStream.current = { id, timestamp, text };
     fixture.store.ingest(
-      {
-        kind: "omp",
-        event: { type: "message_start", messageId: id, message: assistantMessage(text, timestamp) },
-      },
+      ompEvent({
+        type: "message_start",
+        messageId: id,
+        message: assistantMessage(text, timestamp),
+      }),
       sequence.current++,
     );
     setStreamCount(index);
@@ -159,15 +161,12 @@ function ScrollPlayground() {
     open.text += delta;
     const partial = assistantMessage(open.text, open.timestamp);
     fixture.store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_update",
-          messageId: open.id,
-          message: partial,
-          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta, partial },
-        },
-      },
+      ompEvent({
+        type: "message_update",
+        messageId: open.id,
+        message: partial,
+        assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta, partial },
+      }),
       sequence.current++,
     );
   }, [fixture.store]);
@@ -177,20 +176,14 @@ function ScrollPlayground() {
     if (open === null) return;
     openStream.current = null;
     fixture.store.ingest(
-      {
-        kind: "omp",
-        event: {
-          type: "message_end",
-          messageId: open.id,
-          message: assistantMessage(open.text, open.timestamp),
-        },
-      },
+      ompEvent({
+        type: "message_end",
+        messageId: open.id,
+        message: assistantMessage(open.text, open.timestamp),
+      }),
       sequence.current++,
     );
-    fixture.store.ingest(
-      { kind: "omp", event: { type: "agent_end", messages: [] } },
-      sequence.current++,
-    );
+    fixture.store.ingest(ompEvent({ type: "agent_end", messages: [] }), sequence.current++);
   }, [fixture.store]);
 
   const prependOlder = useCallback(() => {

@@ -19,8 +19,8 @@ import {
   rpcEventOf,
   toolAnswerOf,
   uiAnswerOf,
-  withChatSessionShim,
-} from "./chat-session-shim";
+} from "../modules/R0/store/rpc-frames";
+import { withChatSessionShim } from "./chat-session-shim";
 
 const thread = ThreadId.parse("thread-shim");
 

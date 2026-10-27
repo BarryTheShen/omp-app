@@ -1,11 +1,12 @@
 import type {
   CapabilityMap,
+  ChatSessionEvent,
   OmpMessage,
-  RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { INVENTORY } from "@omp-app/contracts";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "../../R0/store";
 
 /**
@@ -70,34 +71,26 @@ export interface U1AcceptanceFixture {
 export function createU1AcceptanceFixture(): U1AcceptanceFixture {
   const store = new OmpRuntimeStore({ threadId: THREAD_ID });
   let sequence = 0;
-  const ingest = (event: RpcSessionEvent): void => {
+  const ingest = (event: ChatSessionEvent): void => {
     sequence += 1;
     store.ingest(event, sequence);
   };
   const user = userMessage("Summarize this fixture conversation.");
   ingest({ kind: "process", status: "ready" });
-  ingest({
-    kind: "omp",
-    event: { type: "message_start", messageId: "u1-acceptance-user", message: user },
-  });
-  ingest({
-    kind: "omp",
-    event: { type: "message_end", messageId: "u1-acceptance-user", message: user },
-  });
-  ingest({
-    kind: "omp",
-    event: {
+  ingest(ompEvent({ type: "message_start", messageId: "u1-acceptance-user", message: user }));
+  ingest(ompEvent({ type: "message_end", messageId: "u1-acceptance-user", message: user }));
+  ingest(
+    ompEvent({
       type: "message_start",
       messageId: ASSISTANT_MESSAGE_ID,
       message: assistantMessage("The fixture response"),
-    },
-  });
+    }),
+  );
 
   const updateAssistant = (): void => {
     const partial = assistantMessage("The fixture response is **stable** across deltas.");
-    ingest({
-      kind: "omp",
-      event: {
+    ingest(
+      ompEvent({
         type: "message_update",
         messageId: ASSISTANT_MESSAGE_ID,
         message: partial,
@@ -107,19 +100,18 @@ export function createU1AcceptanceFixture(): U1AcceptanceFixture {
           delta: " is **stable** across deltas.",
           partial,
         },
-      },
-    });
+      }),
+    );
   };
   const finishAssistant = (): void => {
-    ingest({
-      kind: "omp",
-      event: {
+    ingest(
+      ompEvent({
         type: "message_end",
         messageId: ASSISTANT_MESSAGE_ID,
         message: assistantMessage("The fixture response is **stable** across deltas."),
-      },
-    });
-    ingest({ kind: "omp", event: { type: "agent_end", messages: [] } });
+      }),
+    );
+    ingest(ompEvent({ type: "agent_end", messages: [] }));
   };
   const failRuntime = (): void => {
     ingest({

@@ -2,7 +2,7 @@ import {
   AppFailure,
   type CapabilityMap,
   CapabilityStatus,
-  type RpcSessionEvent,
+  type ChatSessionEvent,
   type RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
@@ -23,7 +23,7 @@ function queuedStore(): OmpRuntimeStore {
     steering: ["steer first"],
     followUp: ["follow second"],
   };
-  store.ingest({ kind: "omp", event } as unknown as RpcSessionEvent, 1);
+  store.ingest({ kind: "event", event } as unknown as ChatSessionEvent, 1);
   return store;
 }
 

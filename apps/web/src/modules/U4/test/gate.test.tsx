@@ -17,6 +17,7 @@ import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures"
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import { QueueController } from "../../R0/actions/actions";
+import { sessionEventOfRpc } from "../../R0/store/session-events";
 import { OmpRuntimeStore, type RuntimeSnapshot } from "../../R0/store/store";
 import { renderDialogRequest } from "../dialogs";
 import { DialogHostController } from "../host";
@@ -75,7 +76,7 @@ async function openFixtureHarness(): Promise<FixtureHarness> {
   });
   session.onEvent((event) => {
     sequence += 1;
-    store.ingest(event, sequence);
+    store.ingest(sessionEventOfRpc(event), sequence);
   });
   await session.start();
   const send: RpcSessionSend = (args, options) => session.send(args.command, options) as never;

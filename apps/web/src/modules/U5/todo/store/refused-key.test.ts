@@ -1,5 +1,6 @@
 import { ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { promptResultEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { TodoStoreAdapter } from "./store";
 
@@ -8,22 +9,19 @@ const now = () => new Date("2026-10-05T00:00:00.000Z");
 
 /** omp's failed prompt, as the runtime receives it (a `prompt_result` with an error). */
 function failedPrompt(httpStatus: number): unknown {
-  return {
-    kind: "prompt_result",
-    event: {
-      type: "prompt_result",
-      agentInvoked: true,
-      status: "error",
-      sessionSettled: true,
-      error: {
-        message: "401 Invalid API key",
-        retryable: false,
-        provider: "openai",
-        model: "gpt-6-luna",
-        httpStatus,
-      },
+  return promptResultEvent({
+    type: "prompt_result",
+    agentInvoked: true,
+    status: "error",
+    sessionSettled: true,
+    error: {
+      message: "401 Invalid API key",
+      retryable: false,
+      provider: "openai",
+      model: "gpt-6-luna",
+      httpStatus,
     },
-  };
+  });
 }
 
 describe("the todo list and a failed prompt", () => {

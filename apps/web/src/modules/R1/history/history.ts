@@ -2,16 +2,17 @@ import type { AppClient } from "@omp-app/client";
 import type {
   AppError,
   CapabilityMap,
+  ChatSessionEvent,
   FolderPath,
   ModelChoice,
   OpenThreadArgs,
   PortClient,
   RpcSessionClient,
-  RpcSessionEvent,
   ThreadId,
 } from "@omp-app/contracts";
 import {
   AppFailure,
+  ChatSessionPort,
   RpcSessionPort as RpcSessionPortSchema,
   SessionFileStore,
 } from "@omp-app/contracts";
@@ -27,7 +28,7 @@ import { pickedModelFor, rememberPickedModel } from "./picked-model";
 interface EventSubscription {
   readonly stream: string;
   readonly lastSeq: number;
-  onEvent(listener: (payload: RpcSessionEvent, seq: number) => void): () => void;
+  onEvent(listener: (payload: ChatSessionEvent, seq: number) => void): () => void;
   unsubscribe(): Promise<void>;
 }
 
@@ -110,8 +111,8 @@ function unavailable(message: string): AppFailure {
 }
 
 /** Whether an event ends the turn a chat was running: the turn settled, or omp stopped under it. */
-function turnEnded(payload: RpcSessionEvent): boolean {
-  if (payload.kind === "session_settled") return true;
+function turnEnded(payload: ChatSessionEvent): boolean {
+  if (payload.kind === "event") return payload.event.type === "session_settled";
   return (
     payload.kind === "process" &&
     (payload.status === "stopped" || payload.status === "exited" || payload.status === "error")
@@ -120,7 +121,7 @@ function turnEnded(payload: RpcSessionEvent): boolean {
 
 /** An event a subscription replayed, with its sequence. */
 interface ReplayedEvent {
-  readonly payload: RpcSessionEvent;
+  readonly payload: ChatSessionEvent;
   readonly seq: number;
 }
 
@@ -860,7 +861,7 @@ export class SelectedThreadHistoryController {
     let replay: ReplayedEvent[] | undefined;
     // A replayed event is applied as history: a question, host call or sign-in prompt in it is not asked again (see
     // `ingest`). The questions still open are recorded by `recordOpenQuestions`.
-    const apply = (payload: RpcSessionEvent, seq: number, replayed: boolean) => {
+    const apply = (payload: ChatSessionEvent, seq: number, replayed: boolean) => {
       if (!baselined) {
         baselined = true;
         if (store.getSnapshot().lastSeq === 0) store.resetSequence(seq - 1);
@@ -882,7 +883,12 @@ export class SelectedThreadHistoryController {
       // After each settled turn, omp has persisted the turn: refetch so its messages pair with their entries (edit and
       // branch need entry ids) and get_state brings the model, context and usage. While the thread is still loading
       // (replayed settles), the initial load covers it.
-      if (payload.kind === "session_settled" && this.loader && !this.state.isLoading) {
+      if (
+        payload.kind === "event" &&
+        payload.event.type === "session_settled" &&
+        this.loader &&
+        !this.state.isLoading
+      ) {
         void this.loader.refreshAfterTurn().catch((error: unknown) => {
           const failure = asFailure(error, "Refreshing the session after the turn failed");
           if (failure.appError.code === "cancelled") return;
@@ -899,7 +905,12 @@ export class SelectedThreadHistoryController {
       // A `!` command that ended has no turn to settle, so its entry is read again. The read is queued behind the chat's load
       // when one is running: a settled turn's read is skipped during a load, and a `!` command's must not be, since nothing
       // else reads the entry. A replayed `!` command needs no read: the history the chat loads holds its entry.
-      if (payload.kind === "bash" && payload.status === "ended" && !replayed) {
+      if (
+        payload.kind === "shell" &&
+        payload.method === "bash" &&
+        payload.status === "ended" &&
+        !replayed
+      ) {
         void this.refreshAfterCommand();
       }
       const nextThreadId = this.sessionIdFromEvent(payload);
@@ -907,7 +918,7 @@ export class SelectedThreadHistoryController {
         void this.rekeyInProcess(nextThreadId);
       }
     };
-    const onEvent = (payload: RpcSessionEvent, seq: number) => {
+    const onEvent = (payload: ChatSessionEvent, seq: number) => {
       if (replay !== undefined) replay.push({ payload, seq });
       else apply(payload, seq, false);
     };
@@ -918,7 +929,7 @@ export class SelectedThreadHistoryController {
     replay = collected;
     let subscription: EventSubscription;
     try {
-      subscription = await (this.client.subscribe(RpcSessionPortSchema, "event", {
+      subscription = await (this.client.subscribe(ChatSessionPort, "event", {
         scope: threadId,
         ...(afterSeq === undefined ? {} : { afterSeq }),
         onEvent,
@@ -960,11 +971,11 @@ export class SelectedThreadHistoryController {
     for (const frame of state) store.recordState(frame.request, frame.seq);
   }
 
-  private sessionIdFromEvent(event: RpcSessionEvent): ThreadId | undefined {
-    if (event.kind !== "notification") return undefined;
-    const frame = event.frame;
-    if (frame.type !== "session_info_update") return undefined;
-    return frame.sessionId as ThreadId;
+  /** The chat's new id after a session switch (`moved`), or the id omp's own session update names. */
+  private sessionIdFromEvent(payload: ChatSessionEvent): ThreadId | undefined {
+    if (payload.kind === "moved") return payload.threadId;
+    if (payload.kind !== "event" || payload.event.type !== "session_info_update") return undefined;
+    return payload.event.sessionId as ThreadId;
   }
 
   private rekeyInProcess(threadId: ThreadId): Promise<void> {

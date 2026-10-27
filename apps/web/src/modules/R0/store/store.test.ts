@@ -1,14 +1,15 @@
 import type {
+  ChatSessionEvent,
   EntryId,
   MessageKey,
   ProvisionalMessageKey,
-  RpcSessionEvent,
   ThreadId,
   ToolCallId,
   UiRequestId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { bashEvent, notificationEvent, promptResultEvent } from "./session-events";
 import { OmpRuntimeStore, type RuntimeMessage, rowIdOf } from "./store";
 
 const threadId = "thread-r0" as ThreadId;
@@ -41,11 +42,11 @@ function assistant(
 }
 
 function ingest(store: OmpRuntimeStore, event: unknown, seq: number, fromHistory = false): void {
-  store.ingest(event as RpcSessionEvent, seq, fromHistory);
+  store.ingest(event as ChatSessionEvent, seq, fromHistory);
 }
 
 function omp(store: OmpRuntimeStore, event: unknown, seq: number): void {
-  ingest(store, { kind: "omp", event }, seq);
+  ingest(store, { kind: "event", event }, seq);
 }
 
 describe("OmpRuntimeStore", () => {
@@ -341,15 +342,12 @@ describe("OmpRuntimeStore", () => {
     omp(aborted, { type: "tool_execution_start", toolCallId: "abort-tool", toolName: "bash" }, 1);
     ingest(
       aborted,
-      {
-        kind: "prompt_result",
-        event: {
-          type: "prompt_result",
-          agentInvoked: true,
-          status: "aborted",
-          sessionSettled: false,
-        },
-      },
+      promptResultEvent({
+        type: "prompt_result",
+        agentInvoked: true,
+        status: "aborted",
+        sessionSettled: false,
+      }),
       2,
     );
     expect(aborted.getSnapshot().tools["abort-tool" as ToolCallId]?.status).toBe("cancelled");
@@ -366,7 +364,7 @@ describe("OmpRuntimeStore", () => {
       },
       2,
     );
-    ingest(settled, { kind: "session_settled", event: { type: "session_settled" } }, 3);
+    ingest(settled, { kind: "event", event: { type: "session_settled" } }, 3);
     expect(settled.getSnapshot().tools["partial-tool" as ToolCallId]).toMatchObject({
       status: "cancelled",
       partialResult: "part",
@@ -383,16 +381,13 @@ describe("OmpRuntimeStore", () => {
     for (let index = 1; index <= 25; index += 1) {
       ingest(
         store,
-        {
-          kind: "prompt_result",
-          event: {
-            type: "prompt_result",
-            agentInvoked: true,
-            status: "completed",
-            sessionSettled: false,
-            id: `prompt-${index}`,
-          },
-        },
+        promptResultEvent({
+          type: "prompt_result",
+          agentInvoked: true,
+          status: "completed",
+          sessionSettled: false,
+          id: `prompt-${index}`,
+        }),
         index,
       );
     }
@@ -514,13 +509,13 @@ describe("OmpRuntimeStore", () => {
       result: "boom",
       isError: true,
     });
-    ingest(store, { kind: "session_settled", event: { type: "session_settled" } }, 7);
+    ingest(store, { kind: "event", event: { type: "session_settled" } }, 7);
     expect(store.getSnapshot().tools["done" as ToolCallId]).toMatchObject({ status: "success" });
     expect(store.getSnapshot().tools["failed" as ToolCallId]).toMatchObject({ status: "error" });
 
     // A call the settle already cancelled stays cancelled when a late update arrives: the turn is over.
     omp(store, event("tool_execution_start", { toolCallId: "cut" }), 8);
-    ingest(store, { kind: "session_settled", event: { type: "session_settled" } }, 9);
+    ingest(store, { kind: "event", event: { type: "session_settled" } }, 9);
     omp(store, event("tool_execution_update", { toolCallId: "cut", partialResult: "late" }), 10);
     expect(store.getSnapshot().tools["cut" as ToolCallId]).toMatchObject({ status: "cancelled" });
   });
@@ -712,16 +707,13 @@ describe("OmpRuntimeStore", () => {
     omp(store, { type: "agent_start" }, 1);
     ingest(
       store,
-      {
-        kind: "prompt_result",
-        event: {
-          type: "prompt_result",
-          agentInvoked: true,
-          status: "aborted",
-          sessionSettled: false,
-          id: "p1",
-        },
-      },
+      promptResultEvent({
+        type: "prompt_result",
+        agentInvoked: true,
+        status: "aborted",
+        sessionSettled: false,
+        id: "p1",
+      }),
       2,
     );
     expect(store.getSnapshot().prompt).toMatchObject({
@@ -731,7 +723,7 @@ describe("OmpRuntimeStore", () => {
       sessionSettled: false,
     });
 
-    ingest(store, { kind: "session_settled", event: { type: "session_settled" } }, 3);
+    ingest(store, { kind: "event", event: { type: "session_settled" } }, 3);
     expect(store.getSnapshot().prompt).toMatchObject({ sessionSettled: true });
     expect(store.getSnapshot().prompt.promptResult).toMatchObject({ status: "aborted" });
     ingest(
@@ -754,17 +746,14 @@ describe("OmpRuntimeStore", () => {
     omp(store, { type: "agent_start" }, 1);
     ingest(
       store,
-      {
-        kind: "prompt_result",
-        event: {
-          type: "prompt_result",
-          agentInvoked: true,
-          status: "error",
-          sessionSettled: true,
-          id: "p1",
-          error: { message: "400 fake provider failure", retryable: false, httpStatus: 400 },
-        },
-      },
+      promptResultEvent({
+        type: "prompt_result",
+        agentInvoked: true,
+        status: "error",
+        sessionSettled: true,
+        id: "p1",
+        error: { message: "400 fake provider failure", retryable: false, httpStatus: 400 },
+      }),
       2,
     );
     expect(store.getSnapshot().error).toMatchObject({
@@ -797,10 +786,10 @@ describe("OmpRuntimeStore", () => {
       other.push(frame.type);
     });
 
-    ingest(store, { kind: "notification", frame: lifecycle }, 1);
-    ingest(store, { kind: "notification", frame: progress }, 2);
-    ingest(store, { kind: "notification", frame: command }, 3);
-    ingest(store, { kind: "notification", frame: progress }, 2);
+    ingest(store, notificationEvent(lifecycle), 1);
+    ingest(store, notificationEvent(progress), 2);
+    ingest(store, notificationEvent(command), 3);
+    ingest(store, notificationEvent(progress), 2);
 
     expect(received).toEqual([
       { type: "subagent_lifecycle", seq: 1, frame: lifecycle },
@@ -809,7 +798,7 @@ describe("OmpRuntimeStore", () => {
     expect(other).toEqual(["command_output"]);
     unsubscribe();
     unsubscribeOther();
-    ingest(store, { kind: "notification", frame: lifecycle }, 4);
+    ingest(store, notificationEvent(lifecycle), 4);
     expect(received).toHaveLength(2);
     expect(other).toEqual(["command_output"]);
   });
@@ -831,10 +820,7 @@ describe("OmpRuntimeStore", () => {
       const created = { enabled: true, mode: "active", goal: goal("active") };
       ingest(
         store,
-        {
-          kind: "notification",
-          frame: { type: "goal_updated", goal: goal("active"), state: created },
-        },
+        notificationEvent({ type: "goal_updated", goal: goal("active"), state: created }),
         1,
       );
       expect(store.getSnapshot().session.goal).toEqual(created);
@@ -842,10 +828,7 @@ describe("OmpRuntimeStore", () => {
       const paused = { enabled: false, mode: "active", goal: goal("paused") };
       ingest(
         store,
-        {
-          kind: "notification",
-          frame: { type: "goal_updated", goal: goal("paused"), state: paused },
-        },
+        notificationEvent({ type: "goal_updated", goal: goal("paused"), state: paused }),
         2,
       );
       expect(store.getSnapshot().session.goal).toEqual(paused);
@@ -856,46 +839,29 @@ describe("OmpRuntimeStore", () => {
       const created = { enabled: true, mode: "active", goal: goal("active") };
       ingest(
         store,
-        {
-          kind: "notification",
-          frame: { type: "goal_updated", goal: goal("active"), state: created },
-        },
+        notificationEvent({ type: "goal_updated", goal: goal("active"), state: created }),
         1,
       );
-      ingest(
-        store,
-        { kind: "notification", frame: { type: "goal_updated", goal: goal("active", 1200) } },
-        2,
-      );
+      ingest(store, notificationEvent({ type: "goal_updated", goal: goal("active", 1200) }), 2);
       expect(store.getSnapshot().session.goal).toEqual({ ...created, goal: goal("active", 1200) });
-      ingest(store, { kind: "notification", frame: { type: "goal_updated", goal: null } }, 3);
+      ingest(store, notificationEvent({ type: "goal_updated", goal: null }), 3);
       expect(store.getSnapshot().session.goal).toBeNull();
     });
 
     test("an update with no mode and no mode held leaves the goal unset, and a replayed sequence is applied once", () => {
       const store = new OmpRuntimeStore({ threadId });
-      ingest(
-        store,
-        { kind: "notification", frame: { type: "goal_updated", goal: goal("active") } },
-        1,
-      );
+      ingest(store, notificationEvent({ type: "goal_updated", goal: goal("active") }), 1);
       expect(store.getSnapshot().session.goal).toBeNull();
       const created = { enabled: true, mode: "active", goal: goal("active") };
       ingest(
         store,
-        {
-          kind: "notification",
-          frame: { type: "goal_updated", goal: goal("active"), state: created },
-        },
+        notificationEvent({ type: "goal_updated", goal: goal("active"), state: created }),
         2,
       );
       const revision = store.getSnapshot().session.revision;
       ingest(
         store,
-        {
-          kind: "notification",
-          frame: { type: "goal_updated", goal: goal("active"), state: created },
-        },
+        notificationEvent({ type: "goal_updated", goal: goal("active"), state: created }),
         2,
       );
       expect(store.getSnapshot().session.revision).toBe(revision);
@@ -915,7 +881,7 @@ describe("OmpRuntimeStore", () => {
 
     omp(store, { type: "agent_start" }, 1);
     omp(store, { type: "agent_end" }, 2);
-    ingest(store, { kind: "notification", frame: { type: "command_output", text: "output" } }, 3);
+    ingest(store, notificationEvent({ type: "command_output", text: "output" }), 3);
     omp(store, { type: "agent_start" }, 2);
     omp(store, { type: "agent_start" }, 5);
 
@@ -986,16 +952,13 @@ describe("OmpRuntimeStore", () => {
 
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ui-1",
-          method: "confirm",
-          title: "Continue?",
-          message: "yes",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ui-1",
+        method: "confirm",
+        title: "Continue?",
+        message: "yes",
+      }),
       4,
     );
     expect(store.getSnapshot().pending.extensionUi["ui-1"]?.request).toMatchObject({
@@ -1015,16 +978,13 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ui-open",
-          method: "confirm",
-          title: "Continue?",
-          message: "yes",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ui-open",
+        method: "confirm",
+        title: "Continue?",
+        message: "yes",
+      }),
       2,
     );
     expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-open"]);
@@ -1059,16 +1019,13 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ui-late",
-          method: "confirm",
-          title: "Continue?",
-          message: "yes",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ui-late",
+        method: "confirm",
+        title: "Continue?",
+        message: "yes",
+      }),
       2,
     );
     const answer = store.answerExtensionUi({
@@ -1114,16 +1071,13 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ui-failed",
-          method: "confirm",
-          title: "Continue?",
-          message: "yes",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ui-failed",
+        method: "confirm",
+        title: "Continue?",
+        message: "yes",
+      }),
       2,
     );
     const response = {
@@ -1157,16 +1111,13 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ui-gone",
-          method: "confirm",
-          title: "Continue?",
-          message: "yes",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ui-gone",
+        method: "confirm",
+        title: "Continue?",
+        message: "yes",
+      }),
       2,
     );
 
@@ -1189,18 +1140,10 @@ describe("OmpRuntimeStore", () => {
     const unsubscribe = store.subscribe(() => {
       notifications += 1;
     });
-    ingest(
-      store,
-      { kind: "notification", frame: { type: "future_notification", payload: { x: 1 } } },
-      1,
-    );
+    ingest(store, notificationEvent({ type: "future_notification", payload: { x: 1 } }), 1);
     expect(store.getSnapshot().lastSeq).toBe(1);
     const revision = store.getSnapshot().revision;
-    ingest(
-      store,
-      { kind: "notification", frame: { type: "future_notification", payload: { x: 2 } } },
-      1,
-    );
+    ingest(store, notificationEvent({ type: "future_notification", payload: { x: 2 } }), 1);
     expect(store.getSnapshot().revision).toBe(revision);
 
     ingest(store, { kind: "process", status: "ready" }, 3);
@@ -1266,16 +1209,13 @@ describe("OmpRuntimeStore", () => {
     const ask = (id: string, seq: number) =>
       ingest(
         store,
-        {
-          kind: "notification",
-          frame: {
-            type: "extension_ui_request",
-            id,
-            method: "confirm",
-            title: "Go on?",
-            message: "",
-          },
-        },
+        notificationEvent({
+          type: "extension_ui_request",
+          id,
+          method: "confirm",
+          title: "Go on?",
+          message: "",
+        }),
         seq,
       );
     // A fresh chat's first events predate the browser's subscription, so the first one it sees is
@@ -1300,15 +1240,12 @@ describe("OmpRuntimeStore", () => {
     // omp withdrawing a request inside the gap removes it, and a later one is recorded too.
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "cancel-1",
-          method: "cancel",
-          targetId: "ask-1",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "cancel-1",
+        method: "cancel",
+        targetId: "ask-1",
+      }),
       9,
     );
     expect(store.getSnapshot().pending.extensionUi).toEqual({});
@@ -1331,25 +1268,22 @@ describe("OmpRuntimeStore", () => {
     );
     const started = { type: "subagent_lifecycle", payload: { id: "worker-1", status: "started" } };
     const ended = { type: "subagent_lifecycle", payload: { id: "worker-1", status: "completed" } };
-    ingest(store, { kind: "notification", frame: started }, 1);
+    ingest(store, notificationEvent(started), 1);
     // Seq 2 never arrives, so the worker's end falls inside a gap: no refetch restores a worker's end.
-    ingest(store, { kind: "notification", frame: ended }, 3);
+    ingest(store, notificationEvent(ended), 3);
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1, needsRefetch: true });
     expect(heard).toEqual([
       { type: "subagent_lifecycle", seq: 1, replayed: false },
       { type: "subagent_lifecycle", seq: 3, replayed: false },
     ]);
     // A replay that sends the end again does not deliver it twice.
-    ingest(store, { kind: "notification", frame: ended }, 3);
+    ingest(store, notificationEvent(ended), 3);
     expect(heard).toHaveLength(2);
     // The refetch ends, the stream carries on, and later passthrough notifications are delivered as before.
     store.resetSequence();
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: { type: "subagent_progress", payload: { id: "worker-2", progress: 1 } },
-      },
+      notificationEvent({ type: "subagent_progress", payload: { id: "worker-2", progress: 1 } }),
       4,
     );
     expect(heard).toHaveLength(3);
@@ -1364,37 +1298,45 @@ describe("OmpRuntimeStore", () => {
     const ended = { type: "subagent_lifecycle", payload: { id: "worker-1", status: "completed" } };
 
     ingest(store, { kind: "process", status: "ready" }, 1);
-    ingest(store, { kind: "notification", frame: ended }, 3);
+    ingest(store, notificationEvent(ended), 3);
     expect(heard).toEqual([3]);
 
     store.resetSequence(0);
     ingest(store, { kind: "process", status: "ready" }, 1);
     ingest(store, { kind: "process", status: "running" }, 2);
-    ingest(store, { kind: "notification", frame: ended }, 3);
+    ingest(store, notificationEvent(ended), 3);
 
     expect(heard).toEqual([3]);
   });
+
+  /**
+   * A routed UI frame by what it is: a dialog by its id (the host keeps a request's id), omp's cancel by the question it
+   * cancels, a notice by its words. The host's UI events carry no id of their own.
+   */
+  function frameKey(routed: unknown): string {
+    const frame = routed as { readonly type: string } & Record<string, unknown>;
+    if (frame.method === "cancel") return `cancel of ${String(frame.targetId)}`;
+    if (frame.method === "notify") return `notice: ${String(frame.message)}`;
+    return "id" in frame ? String(frame.id) : frame.type;
+  }
 
   test("across a gap, a question is kept from its router, and omp's cancel of it is routed", () => {
     const store = new OmpRuntimeStore({ threadId });
     const routed: string[] = [];
     store.subscribeNotifications(["extension_ui_request"], (frame) => {
-      routed.push("id" in frame ? String(frame.id) : frame.type);
+      routed.push(frameKey(frame));
     });
     // A fresh chat's first event is a gap: the question and its cancel both arrive inside it.
     ingest(store, { kind: "process", status: "ready" }, 6);
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ask-1",
-          method: "confirm",
-          title: "Go on?",
-          message: "",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ask-1",
+        method: "confirm",
+        title: "Go on?",
+        message: "",
+      }),
       7,
     );
     expect(store.getSnapshot().pending.extensionUi["ask-1"]?.request).toMatchObject({
@@ -1403,18 +1345,15 @@ describe("OmpRuntimeStore", () => {
     expect(routed).toEqual([]);
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "cancel-1",
-          method: "cancel",
-          targetId: "ask-1",
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "cancel-1",
+        method: "cancel",
+        targetId: "ask-1",
+      }),
       8,
     );
-    expect(routed).toEqual(["cancel-1"]);
+    expect(routed).toEqual(["cancel of ask-1"]);
     expect(store.getSnapshot().pending.extensionUi).toEqual({});
   });
 
@@ -1423,7 +1362,7 @@ describe("OmpRuntimeStore", () => {
     const notified: string[] = [];
     store.subscribeNotifications(
       ["extension_ui_request", "host_tool_call", "host_uri_request"],
-      (frame) => notified.push("id" in frame ? String(frame.id) : String(frame.type)),
+      (frame) => notified.push(frameKey(frame)),
     );
     // What a subscription from the start replays: a question that was answered, a host call and a URI request whose
     // turns ended, a sign-in prompt, and a notice, which is still shown.
@@ -1457,30 +1396,27 @@ describe("OmpRuntimeStore", () => {
       },
     ];
     for (const [index, frame] of replayed.entries()) {
-      ingest(store, { kind: "notification", frame }, index + 1, true);
+      ingest(store, notificationEvent(frame), index + 1, true);
     }
     expect(store.getSnapshot().lastSeq).toBe(5);
     expect(store.getSnapshot().pending.extensionUi).toEqual({});
     expect(store.getSnapshot().pending.hostTools).toEqual({});
     expect(store.getSnapshot().pending.hostUris).toEqual({});
-    expect(notified).toEqual(["notice-old"]);
+    expect(notified).toEqual(["notice: Startup notice"]);
     // A question asked now is live: it opens and reaches the listeners.
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: "ui-live",
-          method: "select",
-          title: "Which database?",
-          options: [],
-        },
-      },
+      notificationEvent({
+        type: "extension_ui_request",
+        id: "ui-live",
+        method: "select",
+        title: "Which database?",
+        options: [],
+      }),
       6,
     );
     expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-live"]);
-    expect(notified).toEqual(["notice-old", "ui-live"]);
+    expect(notified).toEqual(["notice: Startup notice", "ui-live"]);
   });
 
   test("a question omp is still waiting on is recorded as pending without moving the sequence, once", () => {
@@ -2020,15 +1956,12 @@ describe("OmpRuntimeStore", () => {
     const store = new OmpRuntimeStore({ threadId });
     ingest(
       store,
-      {
-        kind: "notification",
-        frame: {
-          type: "extension_error",
-          extensionPath: "/extensions/notes-ext/index.ts",
-          event: "session_start",
-          error: "index is locked",
-        },
-      },
+      notificationEvent({
+        type: "extension_error",
+        extensionPath: "/extensions/notes-ext/index.ts",
+        event: "session_start",
+        error: "index is locked",
+      }),
       1,
     );
     ingest(store, { kind: "process", status: "ready" }, 2);
@@ -2085,11 +2018,11 @@ describe("a `!` command's row in the store", () => {
 
   test("a command is one row from its running event to its ended event, which keeps omp's answer on it", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at }), 1);
     expect(store.getSnapshot().commands).toEqual([
       { seq: 1, startedAt: at, command: "echo hi", phase: "running" },
     ]);
-    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    ingest(store, bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }), 2);
     expect(store.getSnapshot().commands).toEqual([
       { seq: 1, startedAt: at, command: "echo hi", phase: "ended", result },
     ]);
@@ -2097,8 +2030,8 @@ describe("a `!` command's row in the store", () => {
 
   test("the entry omp writes for the command takes the row's place, so the row goes and the message shows", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
-    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at }), 1);
+    ingest(store, bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }), 2);
     store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
     expect(store.getSnapshot().commands).toEqual([]);
     expect(Object.keys(store.getSnapshot().messages).some((key) => key.endsWith(":e1"))).toBe(true);
@@ -2106,8 +2039,8 @@ describe("a `!` command's row in the store", () => {
 
   test("the entry takes the row's key too, so the row keeps its element when the entry replaces it", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
-    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at }), 1);
+    ingest(store, bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }), 2);
     store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
     const entry = Object.values(store.getSnapshot().messages).find(
       (message) => message.entryId === "e1",
@@ -2118,10 +2051,10 @@ describe("a `!` command's row in the store", () => {
 
   test("an ended event that a viewer replays from before it subscribed only drops its running row", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1, true);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at }), 1, true);
     ingest(
       store,
-      { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result },
+      bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }),
       2,
       true,
     );
@@ -2131,16 +2064,16 @@ describe("a `!` command's row in the store", () => {
   test("an ended command whose entry the transcript already holds adds no row of its own", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
-    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at }), 1);
+    ingest(store, bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }), 2);
     expect(store.getSnapshot().commands).toEqual([]);
   });
 
   test("an older entry of an identical command does not take a new command's row; its own entry does", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.pairEndedMessages([bashEntry("e0", "echo hi", "hi\n", at - 1_000)], "e0" as EntryId);
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
-    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at }), 1);
+    ingest(store, bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }), 2);
     expect(store.getSnapshot().commands).toHaveLength(1);
     store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
     expect(store.getSnapshot().commands).toEqual([]);
@@ -2148,8 +2081,8 @@ describe("a `!` command's row in the store", () => {
 
   test("a command whose call failed ends as an ended row with no answer, which its entry replaces by its text", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "running", command: "sleep 1", startedAt: at }, 1);
-    ingest(store, { kind: "bash", status: "ended", command: "sleep 1", startedAt: at }, 2);
+    ingest(store, bashEvent({ status: "running", command: "sleep 1", startedAt: at }), 1);
+    ingest(store, bashEvent({ status: "ended", command: "sleep 1", startedAt: at }), 2);
     expect(store.getSnapshot().commands).toEqual([
       { seq: 1, startedAt: at, command: "sleep 1", phase: "ended" },
     ]);
@@ -2159,7 +2092,7 @@ describe("a `!` command's row in the store", () => {
 
   test("an ended command whose running event this viewer never saw still shows its answer", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 5);
+    ingest(store, bashEvent({ status: "ended", command: "echo hi", startedAt: at, result }), 5);
     expect(store.getSnapshot().commands).toEqual([
       { seq: 5, startedAt: at, command: "echo hi", phase: "ended", result },
     ]);
@@ -2167,8 +2100,8 @@ describe("a `!` command's row in the store", () => {
 
   test("a bash event across a sequence gap is still recorded, so no running row is lost in the gap", () => {
     const store = new OmpRuntimeStore({ threadId });
-    ingest(store, { kind: "bash", status: "running", command: "sleep 1", startedAt: at }, 1);
-    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at + 1 }, 3);
+    ingest(store, bashEvent({ status: "running", command: "sleep 1", startedAt: at }), 1);
+    ingest(store, bashEvent({ status: "running", command: "echo hi", startedAt: at + 1 }), 3);
     expect(store.getSnapshot().commands.map((command) => command.command)).toEqual([
       "sleep 1",
       "echo hi",
@@ -2365,15 +2298,12 @@ describe("the row of a plain prompt, until omp's echo takes its place", () => {
     store.markPromptSent({ text: "dropped" });
     ingest(
       store,
-      {
-        kind: "prompt_result",
-        event: {
-          type: "prompt_result",
-          agentInvoked: true,
-          status: "aborted",
-          sessionSettled: false,
-        },
-      },
+      promptResultEvent({
+        type: "prompt_result",
+        agentInvoked: true,
+        status: "aborted",
+        sessionSettled: false,
+      }),
       1,
     );
     expect(store.getSnapshot()).toMatchObject({ messageOrder: [], pendingPrompts: [] });

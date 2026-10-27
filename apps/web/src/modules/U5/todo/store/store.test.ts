@@ -18,7 +18,7 @@ const phases: TodoPhase[] = [
 ];
 
 function event(runtime: OmpRuntimeStore, value: unknown, sequence: number): void {
-  runtime.ingest({ kind: "omp", event: value } as never, sequence);
+  runtime.ingest({ kind: "event", event: value } as never, sequence);
 }
 
 describe("TodoStoreAdapter", () => {
