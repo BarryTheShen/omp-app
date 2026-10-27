@@ -1,18 +1,17 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  AppFailure,
   type CapabilityKey,
   CapabilityMap,
   type CapabilityStatus,
   D8_AP6_UNAVAILABLE_REASONS,
   FolderPath,
   OMP_COMMAND_NAMES,
-  type OmpCommand,
   type OmpCommandName,
   ThreadId,
 } from "@omp-app/contracts";
-import { RpcSession } from "@omp-app/omp-rpc";
+import type { ChatHostHello } from "@omp-app/contracts/chat-host";
+import { ChatHostClient } from "../chat-host/client";
 import { spawnOmpProcess } from "../process";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
@@ -23,7 +22,7 @@ export const PATIENT_PROBE_TIMEOUT_MS = 20_000;
 export const PATIENT_PROBE_DEADLINE_MS = 60_000;
 const PROBE_TIMEOUT_REASON =
   "omp capability probe timed out before all capabilities were confirmed";
-const COMMAND_TIMEOUT_REASON = "omp did not return a command response before the probe timed out";
+/** omp's own launch flags, which the chat host reads as omp does: no session file, no title, nothing loaded. */
 const PROBE_OMP_ARGS = [
   "--no-session",
   "--no-title",
@@ -31,30 +30,10 @@ const PROBE_OMP_ARGS = [
   "--no-skills",
   "--no-rules",
 ] as const;
-export const RPC_NO_SESSION_SOURCE =
-  "omp-v18.12.6:packages/coding-agent/src/cli/flag-tables.ts:316-319; cli/args.ts:350-353";
 
-/** The source of the generic unknown-command branch used by all command probes. */
-export const RPC_UNKNOWN_COMMAND_SOURCE =
-  "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-mode.ts:2675-2678";
-/** The source of the response/error contract used to classify invalid arguments. */
-export const RPC_INVALID_ARGUMENT_SOURCE =
-  "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-mode.ts:1936-1941,2656-2658; docs/rpc.md:115-120,304-311";
-
-/**
- * Commands the app does not send yet, so the probe does not send them either. A bare frame is a valid
- * call for `btw_cancel` (it cancels the running side question). The other four either need arguments
- * the probe does not have or only read, and the app has no use for them yet. Each reports unavailable
- * with `NOT_PROBED_REASON`.
- */
-const UNPROBED_COMMANDS: ReadonlySet<OmpCommandName> = new Set<OmpCommandName>([
-  "get_logout_accounts",
-  "logout",
-  "btw",
-  "btw_cancel",
-  "get_btw_history",
-]);
-const NOT_PROBED_REASON = "not probed: the app does not send this command yet";
+/** Where every command's answer comes from: the chat host's first line lists the methods it answers. */
+export const HELLO_SOURCE =
+  "the chat host's hello (packages/contracts/src/chat-host/protocol.ts, ChatHostHello.methods)";
 
 const MCP_RECONNECT_UNAVAILABLE: CapabilityStatus = {
   state: "unavailable",
@@ -91,104 +70,15 @@ export const DEFAULT_HOST_CAPABILITIES = [
   "host.workspace-state",
 ] as const satisfies readonly CapabilityKey[];
 
-export type CommandProbeKind = "read-only" | "invalid-arguments";
-
-export interface CommandProbeEvidence {
-  readonly kind: CommandProbeKind;
-  /** The command's canonical schema documentation, plus the dispatcher/error sources. */
-  readonly source: string;
-}
-
-const COMMAND_DOCUMENTATION_SOURCE: Readonly<Record<OmpCommandName, string>> = {
-  negotiate_protocol: "omp-v18.12.6:docs/rpc.md:139-142",
-  prompt: "omp-v18.12.6:docs/rpc.md:126-137",
-  steer: "omp-v18.12.6:docs/rpc.md:126-137",
-  follow_up: "omp-v18.12.6:docs/rpc.md:126-137",
-  remove_queued_message: "omp-v18.12.6:docs/rpc.md:126-137",
-  promote_queued_message: "omp-v18.12.6:docs/rpc.md:126-137",
-  abort: "omp-v18.12.6:docs/rpc.md:126-137",
-  abort_and_prompt: "omp-v18.12.6:docs/rpc.md:126-137",
-  abort_and_restore_queue: "omp-v18.12.6:docs/rpc.md:135,415-421",
-  new_session: "omp-v18.12.6:docs/rpc.md:126-137",
-  open_session: "omp-v18.12.6:docs/rpc.md:126-137",
-  get_state: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_fast_mode: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_slow_mode: "omp-v18.12.6:docs/rpc.md:147,580-611",
-  goal: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_ask_dialog: "omp-v18.12.6:docs/rpc.md:143-152",
-  get_available_commands: "omp-v18.12.6:docs/rpc.md:143-152",
-  get_entries: "omp-v18.12.6:docs/rpc.md:143-152",
-  get_tree: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_todos: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_host_tools: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_host_uri_schemes: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_subagent_subscription: "omp-v18.12.6:docs/rpc.md:143-152",
-  set_event_filter: "omp-v18.12.6:docs/rpc.md:143-152",
-  get_subagents: "omp-v18.12.6:docs/rpc.md:143-152",
-  get_subagent_messages: "omp-v18.12.6:docs/rpc.md:143-152",
-  cancel_subagent: "omp-v18.12.6:docs/rpc.md:143-152",
-  steer_subagent: "omp-v18.12.6:docs/rpc.md:143-152",
-  live_start: "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
-  live_stop: "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
-  live_mute: "omp-v18.12.6:packages/coding-agent/src/modes/rpc/rpc-types.ts:76-78",
-  set_model: "omp-v18.12.6:docs/rpc.md:163-169",
-  cycle_model: "omp-v18.12.6:docs/rpc.md:163-169",
-  get_available_models: "omp-v18.12.6:docs/rpc.md:163-169",
-  set_thinking_level: "omp-v18.12.6:docs/rpc.md:171-177",
-  cycle_thinking_level: "omp-v18.12.6:docs/rpc.md:171-177",
-  get_available_thinking_levels: "omp-v18.12.6:docs/rpc.md:171-177",
-  set_steering_mode: "omp-v18.12.6:docs/rpc.md:179-183",
-  set_follow_up_mode: "omp-v18.12.6:docs/rpc.md:179-183",
-  set_interrupt_mode: "omp-v18.12.6:docs/rpc.md:179-183",
-  compact: "omp-v18.12.6:docs/rpc.md:185-188",
-  set_auto_compaction: "omp-v18.12.6:docs/rpc.md:185-188",
-  set_cache_warming: "omp-v18.12.6:docs/rpc.md:190-205",
-  set_auto_retry: "omp-v18.12.6:docs/rpc.md:207-210",
-  abort_retry: "omp-v18.12.6:docs/rpc.md:207-210",
-  bash: "omp-v18.12.6:docs/rpc.md:212-222",
-  abort_bash: "omp-v18.12.6:docs/rpc.md:212-222",
-  get_session_stats: "omp-v18.12.6:docs/rpc.md:224-236",
-  export_html: "omp-v18.12.6:docs/rpc.md:224-236",
-  switch_session: "omp-v18.12.6:docs/rpc.md:224-236",
-  branch: "omp-v18.12.6:docs/rpc.md:224-236",
-  fork: "omp-v18.12.6:docs/rpc.md:224-236",
-  get_branch_messages: "omp-v18.12.6:docs/rpc.md:224-236",
-  get_last_assistant_text: "omp-v18.12.6:docs/rpc.md:224-236",
-  set_session_name: "omp-v18.12.6:docs/rpc.md:224-236",
-  handoff: "omp-v18.12.6:docs/rpc.md:224-236",
-  get_messages: "omp-v18.12.6:docs/rpc.md:240-247",
-  get_messages_page: "omp-v18.12.6:docs/rpc.md:240-247",
-  get_login_providers: "omp-v18.12.6:docs/rpc.md:249-259",
-  login: "omp-v18.12.6:docs/rpc.md:249-259",
-  get_logout_accounts: "omp-v18.12.6:docs/rpc.md:253-254,262-264",
-  logout: "omp-v18.12.6:docs/rpc.md:253-254,262-264",
-  predict_word: "omp-v18.12.6:docs/rpc.md:269-294",
-  predict_word_feedback: "omp-v18.12.6:docs/rpc.md:269-294",
-  btw: "omp-v18.12.6:docs/rpc.md:298,1071-1137",
-  btw_cancel: "omp-v18.12.6:docs/rpc.md:299,1104-1110",
-  get_btw_history: "omp-v18.12.6:docs/rpc.md:300,1113-1116",
-};
-
-export const COMMAND_PROBE_EVIDENCE: Readonly<Record<OmpCommandName, CommandProbeEvidence>> =
-  Object.fromEntries(
-    OMP_COMMAND_NAMES.map((command) => [
-      command,
-      {
-        kind: command.startsWith("get_") ? "read-only" : "invalid-arguments",
-        source: `${COMMAND_DOCUMENTATION_SOURCE[command]}; ${RPC_UNKNOWN_COMMAND_SOURCE}; ${RPC_INVALID_ARGUMENT_SOURCE}`,
-      },
-    ]),
-  ) as Record<OmpCommandName, CommandProbeEvidence>;
-
 export interface CapabilityProbeOptions {
   /** The isolated cwd for the short-lived probe process, normally a directory under app data. */
   readonly cwd: FolderPath;
-  /** The command that starts a chat (`chatCommand()` in `omp-host/chat-command.ts`), or a test's stand-in. */
+  /** The command that starts a chat host (`chatHostCommand()` in `omp-host/chat-command.ts`), or a test's stand-in. */
   readonly chatCommand: readonly string[];
   readonly env?: Readonly<Record<string, string | undefined>>;
-  /** Maximum time allowed for an individual omp command. */
+  /** Maximum time allowed for the chat host to start and say hello. */
   readonly timeoutMs?: number;
-  /** Maximum time allowed for startup and the complete command loop. */
+  /** Maximum time allowed for the whole check, the gh check included. */
   readonly deadlineMs?: number;
   readonly ghBinary?: string;
   readonly hostCapabilities?: readonly CapabilityKey[];
@@ -206,6 +96,10 @@ export interface CapabilityProbeCommandResult {
   readonly reason?: string;
 }
 
+/**
+ * What the check found, as the probe cache keeps it. `protocolVersion` is 2 for a chat host: its protocol has what omp's
+ * RPC protocol 2 added, `message_update` events in the delta form (`set_event_options`).
+ */
 export interface CapabilityProbeRawResult {
   readonly commandResults: Readonly<Record<OmpCommandName, CapabilityProbeCommandResult>>;
   readonly protocolVersion: 1 | 2;
@@ -218,22 +112,10 @@ export interface CapabilityProbeResult {
   readonly raw: CapabilityProbeRawResult;
 }
 
-/** True when any answer of the probe came from running out of time, so the probe cannot be trusted. */
-export function probeRanOutOfTime(result: CapabilityProbeResult): boolean {
-  return result.evidence.some(
-    (entry) => entry.reason === PROBE_TIMEOUT_REASON || entry.reason === COMMAND_TIMEOUT_REASON,
-  );
+/** True when the chat host did not say hello in time, so the check confirmed nothing and cannot be trusted. */
+export function probeTimedOut(result: CapabilityProbeResult): boolean {
+  return result.evidence.some((entry) => entry.reason === PROBE_TIMEOUT_REASON);
 }
-
-/** True when the whole probe ran out of time before it confirmed one thing (every answer is a timeout). */
-export function probeTimedOutEntirely(result: CapabilityProbeResult): boolean {
-  return (
-    result.evidence.length > 0 &&
-    result.evidence.every((entry) => entry.reason === PROBE_TIMEOUT_REASON)
-  );
-}
-
-type CommandProbeResult = CapabilityProbeCommandResult;
 
 function unavailable(detail: string): CapabilityStatus {
   return { state: "unavailable", via: "rpc", detail };
@@ -247,68 +129,8 @@ function commandCapability(command: OmpCommandName): `omp.cmd.${OmpCommandName}`
   return `omp.cmd.${command}`;
 }
 
-function commandFailureReason(cause: unknown): string {
-  if (cause instanceof AppFailure) {
-    const error = cause.appError.omp?.error ?? cause.appError.message;
-    if (error.startsWith("Unknown command:")) {
-      return `${error} (${RPC_UNKNOWN_COMMAND_SOURCE})`;
-    }
-    if (cause.appError.code === "omp_error") {
-      return `omp recognized the command but rejected the probe arguments (${RPC_INVALID_ARGUMENT_SOURCE})`;
-    }
-    return `probe failed with ${cause.appError.code}`;
-  }
-  return COMMAND_TIMEOUT_REASON;
-}
-
-function commandPayload(command: OmpCommandName): Record<string, unknown> {
-  switch (command) {
-    case "set_host_tools":
-      return { tools: [] };
-    case "set_host_uri_schemes":
-      return { schemes: [] };
-    case "set_subagent_subscription":
-      return { level: "off" };
-    case "set_event_filter":
-      return { events: [], messageUpdates: "delta" };
-    case "live_stop":
-      return {};
-    case "negotiate_protocol":
-      return { protocolVersion: 2 };
-    default:
-      return {};
-  }
-}
-
-async function probeCommand(
-  session: RpcSession,
-  command: OmpCommandName,
-  timeoutMs: number,
-): Promise<CommandProbeResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const payload = {
-      id: `capability-${command}`,
-      type: command,
-      ...commandPayload(command),
-    } as OmpCommand;
-    await session.send(payload, { signal: controller.signal });
-    return { available: true };
-  } catch (cause) {
-    // Our own wait ran out: omp did not answer in time. That is a timeout, which the patient probe
-    // asks again; the cancelled failure it raises would read as a verdict and never be retried.
-    if (controller.signal.aborted) return { available: false, reason: COMMAND_TIMEOUT_REASON };
-    return {
-      available:
-        cause instanceof AppFailure &&
-        cause.appError.code === "omp_error" &&
-        !(cause.appError.omp?.error ?? cause.appError.message).startsWith("Unknown command:"),
-      reason: commandFailureReason(cause),
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+function notAnswered(command: OmpCommandName): string {
+  return `the chat host does not answer ${command}`;
 }
 
 async function probeGh(
@@ -398,24 +220,18 @@ export function capabilityProbeResultFromRaw(
   );
   for (const command of OMP_COMMAND_NAMES) {
     const result = raw.commandResults[command];
-    const unprobed = UNPROBED_COMMANDS.has(command);
-    const reason = timedOut
-      ? PROBE_TIMEOUT_REASON
-      : result?.reason === PROBE_TIMEOUT_REASON || result?.reason === COMMAND_TIMEOUT_REASON
-        ? result.reason
-        : unprobed
-          ? NOT_PROBED_REASON
-          : (result?.reason ?? "command unavailable");
+    const answered = !timedOut && result?.available === true;
+    const reason = timedOut ? PROBE_TIMEOUT_REASON : (result?.reason ?? notAnswered(command));
     addCapability(
       capabilities,
       commandCapability(command),
-      unprobed || result?.available !== true ? unavailable(reason) : available("rpc"),
+      answered ? available("rpc") : unavailable(reason),
     );
     evidence.push({
       command,
-      status: unprobed || result?.available !== true ? "unavailable" : "available",
-      ...(reason === "command unavailable" ? {} : { reason }),
-      source: COMMAND_PROBE_EVIDENCE[command].source,
+      status: answered ? "available" : "unavailable",
+      ...(answered ? {} : { reason }),
+      source: HELLO_SOURCE,
     });
   }
   addCapability(
@@ -425,20 +241,21 @@ export function capabilityProbeResultFromRaw(
       ? unavailable(PROBE_TIMEOUT_REASON)
       : raw.protocolVersion === 2
         ? available("rpc")
-        : unavailable("omp did not negotiate protocol v2 (omp-v18.12.6:docs/rpc.md:40-58)"),
+        : unavailable("this omp sends no message deltas"),
   );
+  // The chat host hands omp's dialogs and UI events to the app as its `ui.*` requests and `ui_*` events.
   addCapability(
     capabilities,
     "omp.ui",
     timedOut ? unavailable(PROBE_TIMEOUT_REASON) : available("rpc"),
   );
-  const featureProbes: ReadonlyArray<readonly [CapabilityKey, OmpCommandName]> = [
+  const features: ReadonlyArray<readonly [CapabilityKey, OmpCommandName]> = [
     ["omp.host-tools", "set_host_tools"],
     ["omp.host-uris", "set_host_uri_schemes"],
     ["omp.subagent-events", "set_subagent_subscription"],
     ["omp.live-voice", "live_stop"],
   ];
-  for (const [feature, command] of featureProbes) {
+  for (const [feature, command] of features) {
     const result = raw.commandResults[command];
     addCapability(
       capabilities,
@@ -447,7 +264,7 @@ export function capabilityProbeResultFromRaw(
         ? unavailable(PROBE_TIMEOUT_REASON)
         : result?.available === true
           ? available("rpc")
-          : unavailable(result?.reason ?? `the ${command} probe was unavailable`),
+          : unavailable(result?.reason ?? notAnswered(command)),
     );
   }
   for (const key of hostCapabilities) {
@@ -499,20 +316,35 @@ function isolatedProbeEnvironment(
   return environment;
 }
 
-function timedOutProbeResult(
-  hostCapabilities: readonly CapabilityKey[],
-  reason: string,
-): CapabilityProbeResult {
+function timedOutProbeResult(hostCapabilities: readonly CapabilityKey[]): CapabilityProbeResult {
   const commandResults = Object.fromEntries(
-    OMP_COMMAND_NAMES.map((command) => [command, { available: false, reason }]),
+    OMP_COMMAND_NAMES.map((command) => [
+      command,
+      { available: false, reason: PROBE_TIMEOUT_REASON },
+    ]),
   ) as Record<OmpCommandName, CapabilityProbeCommandResult>;
   return capabilityProbeResultFromRaw({ commandResults, protocolVersion: 1 }, { hostCapabilities });
 }
 
+/** What a chat host's hello says about each of omp's commands: answered when the host lists its method. */
+function commandResultsOf(
+  hello: ChatHostHello,
+): Record<OmpCommandName, CapabilityProbeCommandResult> {
+  const methods = new Set(hello.methods);
+  return Object.fromEntries(
+    OMP_COMMAND_NAMES.map((command) => [
+      command,
+      methods.has(command)
+        ? { available: true }
+        : { available: false, reason: notAnswered(command) },
+    ]),
+  ) as Record<OmpCommandName, CapabilityProbeCommandResult>;
+}
+
 /**
- * Starts one isolated chat process (the chat command), probes the command surface, then always closes it.
- * The result is safe to publish in both the welcome frame and AppPort; callers apply the negotiated
- * protocol version to a thread with `capabilitiesForProtocol`.
+ * Starts one isolated chat host, the program the chats run, reads the methods its hello lists, then always stops it.
+ * omp's RPC-only commands (`negotiate_protocol`, `set_event_filter`, `open_session`, …) are no methods of the chat
+ * host, so they read as unavailable. The result is safe to publish in both the welcome frame and AppPort.
  */
 export async function probeCapabilities(
   options: CapabilityProbeOptions,
@@ -529,7 +361,7 @@ export async function probeCapabilities(
   const deadlineAt = Date.now() + (options.deadlineMs ?? DEFAULT_PROBE_DEADLINE_MS);
   const hostCapabilities = options.hostCapabilities ?? DEFAULT_HOST_CAPABILITIES;
   const threadId = ThreadId.parse(`capability-probe-${crypto.randomUUID()}`);
-  const process = spawnOmpProcess({
+  const hostProcess = spawnOmpProcess({
     threadId,
     folder: FolderPath.parse(probeCwd),
     chatCommand: options.chatCommand,
@@ -537,52 +369,34 @@ export async function probeCapabilities(
     env: probeEnv,
     terminationGraceMs: Math.min(timeoutMs, 1_000),
   });
-  const session = new RpcSession(process);
+  const client = new ChatHostClient(hostProcess);
   const remainingMs = (): number => Math.max(1, deadlineAt - Date.now());
   try {
+    let hello: ChatHostHello;
     try {
-      await withTimeout(process.start(), Math.min(timeoutMs, remainingMs()));
-      await withTimeout(session.start(), Math.min(timeoutMs, remainingMs()));
+      await withTimeout(hostProcess.start(), Math.min(timeoutMs, remainingMs()));
+      hello = await withTimeout(client.hello, Math.min(timeoutMs, remainingMs()));
     } catch (cause) {
       if (
         Date.now() >= deadlineAt ||
         (cause instanceof Error && cause.message === "capability probe timed out")
       ) {
-        return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
+        return timedOutProbeResult(hostCapabilities);
       }
       throw cause;
     }
-    const commandResults = new Map<OmpCommandName, CommandProbeResult>();
-    for (const command of OMP_COMMAND_NAMES) {
-      if (UNPROBED_COMMANDS.has(command)) {
-        commandResults.set(command, { available: false, reason: NOT_PROBED_REASON });
-        continue;
-      }
-      if (Date.now() >= deadlineAt)
-        return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
-      const result = await probeCommand(session, command, Math.min(timeoutMs, remainingMs()));
-      commandResults.set(command, result);
-      if (Date.now() >= deadlineAt)
-        return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
-    }
-
-    if (Date.now() >= deadlineAt)
-      return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
     const ghAvailable = await probeGh(
       options.ghBinary ?? "gh",
       probeEnv,
       Math.min(DEFAULT_GH_TIMEOUT_MS, remainingMs()),
     );
-    const raw = {
-      commandResults: Object.fromEntries(commandResults.entries()) as Record<
-        OmpCommandName,
-        CapabilityProbeCommandResult
-      >,
-      protocolVersion: session.protocolVersion,
-    } satisfies CapabilityProbeRawResult;
-    return capabilityProbeResultFromRaw(raw, { hostCapabilities, githubAvailable: ghAvailable });
+    return capabilityProbeResultFromRaw(
+      { commandResults: commandResultsOf(hello), protocolVersion: 2 },
+      { hostCapabilities, githubAvailable: ghAvailable },
+    );
   } finally {
-    await session.close();
+    client.dispose();
+    await hostProcess.stop();
     await rm(probeCwd, { recursive: true, force: true });
   }
 }
@@ -605,7 +419,7 @@ export async function probeCapabilitiesPatiently(
   const { patient, onRetry, ...probeOptions } = options;
   const started = performance.now();
   const first = await probeCapabilities(probeOptions);
-  if (!probeRanOutOfTime(first)) return first;
+  if (!probeTimedOut(first)) return first;
   onRetry?.(Math.round(performance.now() - started));
   return probeCapabilities({
     ...probeOptions,

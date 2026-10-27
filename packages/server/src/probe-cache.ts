@@ -6,7 +6,8 @@ import { z } from "zod";
 import type { CapabilityProbeRawResult } from "./capabilities";
 import type { OmpDefaultsProbeResult } from "./modules/A1/config/omp-defaults";
 
-const CACHE_SCHEMA = 2;
+/** 3 since the capability check reads the chat host's hello (SDK plan H5.6a): a result the RPC check cached is not read. */
+const CACHE_SCHEMA = 3;
 const CACHE_FILE = "omp-probe-cache.json";
 
 export type ProbeCacheIdentity = {

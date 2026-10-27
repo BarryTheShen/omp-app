@@ -1,5 +1,6 @@
-import { normalizeChord, validateRegistry } from "@omp-app/contracts";
+import { type CapabilityMap, normalizeChord, validateRegistry } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { isDescriptorAvailable } from "@/registry-core/hooks";
 import { ShortcutRegistry } from "@/shortcuts/registry";
 import { R1_DESCRIPTORS, R1_SESSION_LIST_SCOPE } from ".";
 
@@ -35,6 +36,26 @@ describe("R1 descriptor coverage", () => {
     ]);
     expect(byId.get("R1.sessionPinAccountSelector")?.requires).toEqual(["host.session-pins"]);
     expect(byId.get("R1.sessionRename")?.requires).toEqual(["omp.cmd.set_session_name"]);
+  });
+
+  test("Open session is offered on the chat host, which answers no open_session: it needs the saved session files", () => {
+    const openSession = R1_DESCRIPTORS.find((descriptor) => descriptor.id === "R1.openSession");
+    if (!openSession) throw new Error("R1.openSession is missing");
+    const chatHost: CapabilityMap = {
+      "omp.cmd.open_session": {
+        state: "unavailable",
+        via: "rpc",
+        detail: "the chat host does not answer open_session",
+      },
+      "host.session-files": { state: "available", via: "host" },
+    };
+    expect(isDescriptorAvailable(openSession, chatHost)).toBe(true);
+    expect(
+      isDescriptorAvailable(openSession, {
+        ...chatHost,
+        "host.session-files": { state: "unavailable", via: "host", detail: "no session files" },
+      }),
+    ).toBe(false);
   });
 
   test("declares only the three session-list chords, each on the list's own scope and focus", () => {

@@ -74,6 +74,18 @@ describe("omp probe cache", () => {
     await expect(readProbeCache(root, identity)).resolves.toBeUndefined();
   });
 
+  test("a result the RPC capability check cached (schema 2) is not read, so the chat host's check runs again", async () => {
+    const root = await temporaryRoot();
+    const binary = join(root, "omp");
+    await writeFile(binary, "binary");
+    const identity = await probeCacheIdentity([binary], "omp 18.12.6", {});
+    await writeProbeCache(root, identity, rawResult(), { model: "fake" }, ["model"]);
+    const cachePath = join(root, "omp-probe-cache.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf8")) as Record<string, unknown>;
+    await writeFile(cachePath, JSON.stringify({ ...cached, schema: 2 }));
+    await expect(readProbeCache(root, identity)).resolves.toBeUndefined();
+  });
+
   test("a cache hit preserves available registry keys without defaults", async () => {
     const root = await temporaryRoot();
     const binary = join(root, "omp");

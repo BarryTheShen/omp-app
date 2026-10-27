@@ -20,7 +20,8 @@ export const R1_DESCRIPTORS = [
     owner: "R1",
     title: "Open session",
     covers: ["F3.open-session"],
-    requires: ["omp.cmd.open_session"],
+    // It opens the app's session browser, which lists the saved session files; omp's `open_session` is not involved.
+    requires: ["host.session-files"],
   },
   {
     kind: "command",

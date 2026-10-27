@@ -10,6 +10,7 @@ import {
   FolderPath,
   WelcomeFrame,
 } from "@omp-app/contracts";
+import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import {
   type CompositionServer,
   type CompositionServerOptions,
@@ -20,9 +21,10 @@ const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
 
-// A server start runs real omp probes, and the partial-timeout case waits out its 4 s probe limit twice (#2217).
+// A server start runs real omp probes, and a check that times out waits out its limit twice (the patient retry, #2217).
 // bun's 5 s default failed these tests under load, so each one allows 30 s.
 
+/** omp's command line for `--version` and `config list --json`; with `__omp_app_chat`, a chat host that says hello. */
 const FAKE_OMP = `#!/usr/bin/env bun
 require("node:fs").appendFileSync(import.meta.path + ".spawnlog", Bun.argv.slice(2).join(" ") + "\\n");
 if (Bun.argv.includes("--version")) {
@@ -33,39 +35,19 @@ if (Bun.argv.slice(-3).join(" ") === "config list --json") {
   process.stdout.write(JSON.stringify({ model: { type: "string", value: "fake-default" }, "registry.only": { type: "string" } }));
   process.exit(0);
 }
-console.log(JSON.stringify({ type: "ready", protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }));
-const slowCommand = Bun.env.FAKE_SLOW_COMMAND;
-const slowMs = Number(Bun.env.FAKE_SLOW_MS ?? 0);
-const silentCommand = Bun.env.FAKE_SILENT_COMMAND;
-let pending = "";
-function respond(command) {
-  if (command.type === "negotiate_protocol") {
-    console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: true, data: { protocolVersion: 2 } }));
-    return;
-  }
-  if (command.type === "prompt" || command.type === "abort_and_prompt") {
-    console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: false, error: "message is required" }));
-    return;
-  }
-  if (command.type === "get_state") {
-    console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: true, data: { sessionId: "thread-capability", sessionFile: process.cwd() + "/session.jsonl" } }));
-    return;
-  }
-  console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: true, data: {} }));
+// The fake speaks no omp RPC: a start without the chat host's argument ends at once.
+if (!Bun.argv.includes("__omp_app_chat")) process.exit(2);
+if (Bun.env.FAKE_NO_HELLO !== "1") {
+  console.log(JSON.stringify({
+    kind: "hello",
+    protocol: 1,
+    ompVersion: "18.6.1",
+    methods: ${JSON.stringify(CHAT_HOST_METHODS)},
+    session: { id: "thread-capability", file: process.cwd() + "/session.jsonl", cwd: process.cwd() },
+  }));
 }
-for await (const chunk of Bun.stdin.stream()) {
-  pending += new TextDecoder().decode(chunk);
-  const lines = pending.split("\\n");
-  pending = lines.pop() ?? "";
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const command = JSON.parse(line);
-    if (command.type === silentCommand) continue;
-    if (command.type === slowCommand) {
-      // This child-process timer exercises the server's real timeout boundary; parent fake timers cannot control it.
-      setTimeout(() => respond(command), slowMs);
-    } else respond(command);
-  }
+for await (const _chunk of Bun.stdin.stream()) {
+  // A chat host reads requests until it is stopped; the check sends none.
 }
 `;
 
@@ -292,7 +274,7 @@ describe("composition capability wiring", () => {
   test("entire capability timeouts make server health unhealthy and are not cached", async () => {
     const root = await temporaryRoot("capabilities-entire-timeout-");
     const binary = await fakeOmp(root);
-    const server = await startServer(binary, { FAKE_SILENT_COMMAND: "negotiate_protocol" }, root, {
+    const server = await startServer(binary, { FAKE_NO_HELLO: "1" }, root, {
       timeoutMs: 200,
       deadlineMs: 400,
       patient: { timeoutMs: 200, deadlineMs: 400 },
@@ -308,29 +290,18 @@ describe("composition capability wiring", () => {
     ).toBeUndefined();
   }, 30_000);
 
-  test("partial capability timeouts keep health ok and are not cached", async () => {
-    const root = await temporaryRoot("capabilities-partial-timeout-");
-    const binary = await fakeOmp(root);
-    const server = await startServer(
-      binary,
-      { FAKE_SLOW_COMMAND: "get_state", FAKE_SLOW_MS: "8000" },
-      root,
-      {
-        timeoutMs: 4_000,
-        deadlineMs: 30_000,
-        patient: { timeoutMs: 4_000, deadlineMs: 30_000 },
-      },
-    );
+  test("publishes what the chats answer: the chat host's methods, and omp's RPC-only commands as unavailable", async () => {
+    const root = await temporaryRoot("capabilities-hello-");
+    const server = await startServer(await fakeOmp(root), {}, root);
     const client = clientFor(server);
     expect(await client.port(AppPort).health({})).toEqual({ status: "ok" });
-    expect(await client.port(AppPort).capabilities({})).toMatchObject({
-      "omp.cmd.get_state": { state: "unavailable", via: "rpc" },
-      "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+    const capabilities = await client.port(AppPort).capabilities({});
+    expect(capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "rpc" });
+    expect(capabilities["omp.cmd.negotiate_protocol"]).toMatchObject({
+      state: "unavailable",
+      detail: "the chat host does not answer negotiate_protocol",
     });
     client.dispose();
-    expect(
-      await readFile(join(root, "app-data", "omp-probe-cache.json"), "utf8").catch(() => undefined),
-    ).toBeUndefined();
   }, 30_000);
   test("reports unhealthy and rejects open when omp is missing", async () => {
     const root = await temporaryRoot("capabilities-missing-");

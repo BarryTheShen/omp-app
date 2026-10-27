@@ -16,8 +16,7 @@ import {
   type PatientProbeOptions,
   probeCapabilitiesPatiently,
   probeGithubRefs,
-  probeRanOutOfTime,
-  probeTimedOutEntirely,
+  probeTimedOut,
 } from "../src/capabilities";
 import {
   listUsableModels,
@@ -65,7 +64,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
-import { chatCommand, chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
+import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -174,12 +173,9 @@ export async function createCompositionServer(
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
   // A bad value stops the start before anything runs: the app must never listen for an address it cannot check.
   const remote = parseRemoteOrigin(env[REMOTE_ORIGIN_ENV]);
-  // omp's own command line, built by the app (#2586): it answers omp's commands and, in RPC mode, runs every chat and the
-  // probe of a chat's commands. Never an omp installed on the computer.
+  // omp's own command line, built by the app (#2586): it answers omp's commands, runs every chat on the chat host's own
+  // protocol (SDK plan H5.4a) and the check of what a chat answers (H5.6a). Never an omp installed on the computer.
   const chatHostBinary = options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN;
-  // The chats run on the chat host's own protocol (SDK plan H5.4a); the probe of a chat's commands stays on omp's RPC mode
-  // until H5.6 removes it.
-  const rpcChats = chatCommand({ binary: chatHostBinary, wrapper: options.chatWrapper });
   const chats = chatHostCommand({ binary: chatHostBinary, wrapper: options.chatWrapper });
   const ompCmd =
     options.ompBin === undefined ? ompCommand({ binary: chatHostBinary }) : [options.ompBin];
@@ -253,7 +249,7 @@ export async function createCompositionServer(
         unavailable: Object.values(capabilityResult.capabilities).filter(
           (capability) => capability?.state !== "available",
         ).length,
-        partial_timeouts: false,
+        timed_out: false,
         ms: Math.round(performance.now() - capabilityStarted),
         cache: cacheStatus,
       });
@@ -261,7 +257,7 @@ export async function createCompositionServer(
       const capabilityStarted = performance.now();
       const capabilityPromise = probeCapabilitiesPatiently({
         cwd: FolderPath.parse(appDataDir),
-        chatCommand: rpcChats,
+        chatCommand: chats,
         env,
         ...options.capabilityProbeSettings,
         onRetry: (waitedMs) => logger.warn("capabilities.probe_retry", { waited_ms: waitedMs }),
@@ -293,7 +289,7 @@ export async function createCompositionServer(
           unavailable: Object.values(capabilityResult.capabilities).filter(
             (capability) => capability?.state !== "available",
           ).length,
-          partial_timeouts: probeRanOutOfTime(capabilityResult),
+          timed_out: probeTimedOut(capabilityResult),
           ms: Math.round(performance.now() - capabilityStarted),
           cache: cacheStatus,
         });
@@ -317,7 +313,7 @@ export async function createCompositionServer(
   let capabilities = CapabilityMap.parse({});
   let protocolVersion: 1 | 2 = 1;
   if (capabilityResult !== undefined) {
-    if (probeTimedOutEntirely(capabilityResult)) {
+    if (probeTimedOut(capabilityResult)) {
       health = { status: "unhealthy", detail: OMP_PROBLEM.checksTimedOut };
       logger.error("capabilities.probe_failed", {
         message: "the capability probe ran out of time twice",
@@ -332,7 +328,7 @@ export async function createCompositionServer(
     cacheIdentity !== undefined &&
     capabilityResult !== undefined &&
     health.status === "ok" &&
-    !probeRanOutOfTime(capabilityResult) &&
+    !probeTimedOut(capabilityResult) &&
     "defaults" in defaultsResult.loaded
   ) {
     await writeProbeCache(
