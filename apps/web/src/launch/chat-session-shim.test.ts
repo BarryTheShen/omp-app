@@ -9,13 +9,13 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { requestOf, resultOf, rpcEventOf, toolAnswerOf } from "../modules/R0/store/rpc-frames";
+import { requestOf, resultOf, rpcEventOf } from "../modules/R0/store/rpc-frames";
 import { withChatSessionShim } from "./chat-session-shim";
 
 const thread = ThreadId.parse("thread-shim");
 
-function event(payload: ChatSessionEvent, seq = 7): RpcSessionEvent {
-  return rpcEventOf(payload, seq);
+function event(payload: ChatSessionEvent): RpcSessionEvent {
+  return rpcEventOf(payload);
 }
 
 function chatEvent(value: Record<string, unknown>): ChatSessionEvent {
@@ -97,9 +97,9 @@ describe("the cutover shim's events: each session payload as the RPC event omp's
       { type: "ui_open_url", url: "https://x.test" },
     ];
     for (const uiEvent of uiEvents) {
-      expect(event(chatEvent(uiEvent), 12)).toEqual({ kind: "notification", frame: uiEvent });
+      expect(event(chatEvent(uiEvent))).toEqual({ kind: "notification", frame: uiEvent });
     }
-    expect(event(chatEvent({ type: "ui_cancel", requestId: "9" }), 12)).toEqual({
+    expect(event(chatEvent({ type: "ui_cancel", requestId: "9" }))).toEqual({
       kind: "notification",
       frame: { type: "host_dialog_cancel", requestId: "9" },
     });
@@ -121,46 +121,33 @@ describe("the cutover shim's events: each session payload as the RPC event omp's
     });
   });
 
-  test("tool calls and URI reads and writes are the RPC host frames, and their cancels name the call", () => {
-    expect(
-      event(
-        hostRequest("8", "tool.call", {
-          toolCallId: "c1",
-          toolName: "lookup",
-          arguments: { q: 1 },
-        }),
-      ),
-    ).toEqual({
+  test("a tool call or a URI read or write is the host's request, unchanged; its cancel names the call", () => {
+    const call = { toolCallId: "c1", toolName: "lookup", arguments: { q: 1 } };
+    expect(event(hostRequest("8", "tool.call", call))).toEqual({
       kind: "notification",
-      frame: {
-        type: "host_tool_call",
-        id: "8",
-        toolCallId: "c1",
-        toolName: "lookup",
-        arguments: { q: 1 },
-      },
+      frame: { type: "host_call", request: { id: "8", method: "tool.call", params: call } },
     });
     expect(event(hostRequest("9", "uri.read", { url: "app://a" }))).toEqual({
       kind: "notification",
-      frame: { type: "host_uri_request", id: "9", operation: "read", url: "app://a" },
+      frame: {
+        type: "host_call",
+        request: { id: "9", method: "uri.read", params: { url: "app://a" } },
+      },
     });
     expect(event(hostRequest("10", "uri.write", { url: "app://a", content: "x" }))).toEqual({
       kind: "notification",
       frame: {
-        type: "host_uri_request",
-        id: "10",
-        operation: "write",
-        url: "app://a",
-        content: "x",
+        type: "host_call",
+        request: { id: "10", method: "uri.write", params: { url: "app://a", content: "x" } },
       },
     });
-    expect(event(chatEvent({ type: "tool_cancel", requestId: "8" }), 20)).toEqual({
+    expect(event(chatEvent({ type: "tool_cancel", requestId: "8" }))).toEqual({
       kind: "notification",
-      frame: { type: "host_tool_cancel", id: "cancel-20", targetId: "8" },
+      frame: { type: "host_call_cancel", requestId: "8" },
     });
-    expect(event(chatEvent({ type: "uri_cancel", requestId: "9" }), 21)).toEqual({
+    expect(event(chatEvent({ type: "uri_cancel", requestId: "9" }))).toEqual({
       kind: "notification",
-      frame: { type: "host_uri_cancel", id: "cancel-21", targetId: "9" },
+      frame: { type: "host_call_cancel", requestId: "9" },
     });
   });
 
@@ -223,28 +210,6 @@ describe("the cutover shim's sends and answers", () => {
     expect(resultOf("prompt", { resultFollows: false })).toEqual({ agentInvoked: false });
     expect(resultOf("prompt", { resultFollows: true })).toEqual({ agentInvoked: true });
     expect(resultOf("get_tree", { nodes: [] })).toEqual({ nodes: [] });
-  });
-
-  test("a tool's result answers its call, and fails when either the result or the response says so", () => {
-    const content = [{ type: "text", text: "done" }];
-    expect(
-      toolAnswerOf({ type: "host_tool_result", id: "8", result: { content } } as never),
-    ).toEqual({ content });
-    expect(
-      toolAnswerOf({
-        type: "host_tool_result",
-        id: "8",
-        result: { content },
-        isError: true,
-      } as never),
-    ).toEqual({ content, isError: true });
-    expect(
-      toolAnswerOf({
-        type: "host_tool_result",
-        id: "8",
-        result: { content, isError: true, details: 1 },
-      } as never),
-    ).toEqual({ content, details: 1, isError: true });
   });
 });
 
@@ -361,48 +326,32 @@ describe("the cutover client: A0's RPC port served by the chat session port", ()
     expect(connection.capabilityReads()).toBe(1);
   });
 
-  test("the RPC port's dialog methods are refused: the dialogs are answered and replayed on the chat session port", async () => {
+  test("the RPC port's answer methods are refused: omp's requests are answered and replayed on the chat session port", async () => {
     const connection = fakeConnection();
     const rpc = withChatSessionShim(connection.client).port(RpcSessionPort);
     const calls = connection.calls.length;
+    const content = [{ type: "text", text: "half" }];
+    const refused = { appError: { code: "unavailable" } };
     await expect(
       rpc.answerExtensionUi({
         threadId: thread,
         response: { type: "extension_ui_response", id: "5", value: "Deny" },
       } as never),
-    ).rejects.toMatchObject({ appError: { code: "unavailable" } });
-    await expect(rpc.openQuestions({ threadId: thread })).rejects.toMatchObject({
-      appError: { code: "unavailable" },
-    });
-    await expect(rpc.stateFrames({ threadId: thread })).rejects.toMatchObject({
-      appError: { code: "unavailable" },
-    });
-    expect(connection.calls).toHaveLength(calls);
-  });
-
-  test("a tool's progress is the host's host_tool_update request, and its result an answer", async () => {
-    const connection = fakeConnection();
-    const rpc = withChatSessionShim(connection.client).port(RpcSessionPort);
-    const content = [{ type: "text", text: "half" }];
-    await rpc.answerHostTool({
-      threadId: thread,
-      response: { type: "host_tool_update", id: "8", partialResult: { content } },
-    } as never);
-    expect(connection.calls.at(-1)).toEqual({
-      method: "request",
-      args: {
+    ).rejects.toMatchObject(refused);
+    await expect(rpc.openQuestions({ threadId: thread })).rejects.toMatchObject(refused);
+    await expect(rpc.stateFrames({ threadId: thread })).rejects.toMatchObject(refused);
+    await expect(
+      rpc.answerHostTool({
         threadId: thread,
-        method: "host_tool_update",
-        params: { callId: "8", partialResult: { content } },
-      },
-    });
-    await rpc.answerHostTool({
-      threadId: thread,
-      response: { type: "host_tool_result", id: "8", result: { content } },
-    } as never);
-    expect(connection.calls.at(-1)).toEqual({
-      method: "answer",
-      args: { threadId: thread, id: "8", answer: { content } },
-    });
+        response: { type: "host_tool_result", id: "8", result: { content } },
+      } as never),
+    ).rejects.toMatchObject(refused);
+    await expect(
+      rpc.answerHostUri({
+        threadId: thread,
+        response: { type: "host_uri_result", id: "9", content: "x" },
+      } as never),
+    ).rejects.toMatchObject(refused);
+    expect(connection.calls).toHaveLength(calls);
   });
 });

@@ -1,26 +1,22 @@
 /**
- * The chat session port's events, sends and answers in the shapes A0's RPC port had (SDK plan H5.4,
+ * The chat session port's events and sends in the shapes A0's RPC port had (SDK plan H5.4,
  * `reassessment/SDK-CHAT-HOST-PLAN.md`, "H5.4 design"), shared by the cutover's shim (`launch/chat-session-shim.ts`)
  * and R0's store while readers still speak those shapes:
  * - each session payload becomes one RPC event, in the shape omp's RPC session gave it
  *   (`packages/omp-rpc/src/session/rpc-session.ts:692-762`), so no sequence is skipped;
- * - sends become requests by method, with the host's params;
- * - the RPC answers of host tools and URIs become the host's answers.
- * The host's dialogs and UI events are no longer translated (H5.4c): a dialog travels as a `host_dialog` frame holding
- * the host's request, its cancel as `host_dialog_cancel`, and a UI event as itself. The later H5.4 parts move each
- * other reader off it, and H5.4h deletes it.
+ * - sends become requests by method, with the host's params.
+ * The host's requests and UI events are no longer translated: a dialog travels as a `host_dialog` frame holding the
+ * host's request (H5.4c), a tool call or a URI read or write as a `host_call` frame (H5.4d), their cancels as
+ * `host_dialog_cancel` and `host_call_cancel`, and a UI event as itself. The later H5.4 parts move each other reader off
+ * it, and H5.4h deletes it.
  */
-import type {
-  ChatSessionEvent,
-  HostToolResponse,
-  HostUriResponse,
-  RpcSessionEvent,
-  RpcSessionNotification,
-} from "@omp-app/contracts";
+import type { ChatSessionEvent, RpcSessionEvent, RpcSessionNotification } from "@omp-app/contracts";
 import {
   type ChatEvent,
   type HostDialogRequest,
   type HostRequest,
+  type HostToolCall,
+  type HostUriCall,
   isHostDialogRequest,
   type ShellRunResult,
   type UiPresentationEvent,
@@ -35,6 +31,18 @@ export interface HostDialogFrame {
 /** The host gave a dialog up (omp's abort or timeout). */
 export interface HostDialogCancelFrame {
   readonly type: "host_dialog_cancel";
+  readonly requestId: string;
+}
+
+/** A call of one of the app's tools or URI schemes as the store keeps it until it is answered or given up. */
+export interface HostCallFrame {
+  readonly type: "host_call";
+  readonly request: HostToolCall | HostUriCall;
+}
+
+/** The host gave a call up (omp's `tool_cancel` or `uri_cancel`). */
+export interface HostCallCancelFrame {
+  readonly type: "host_call_cancel";
   readonly requestId: string;
 }
 
@@ -81,31 +89,14 @@ function notification(frame: Record<string, unknown>): RpcSessionEvent {
   return { kind: "notification", frame: frame as unknown as RpcSessionNotification };
 }
 
-/** A host request as the frame the store keeps: a dialog as the host sent it, a tool or URI call as omp's RPC frame. */
+/** A host request as the frame the store keeps: a dialog, or a call of one of the app's tools or URI schemes. */
 function requestFrameOf(request: HostRequest): Record<string, unknown> {
   if (isHostDialogRequest(request)) {
     const frame: HostDialogFrame = { type: "host_dialog", request };
     return { ...frame };
   }
-  switch (request.method) {
-    case "tool.call":
-      return { type: "host_tool_call", id: request.id, ...request.params };
-    case "uri.read":
-      return {
-        type: "host_uri_request",
-        id: request.id,
-        operation: "read",
-        url: request.params.url,
-      };
-    case "uri.write":
-      return {
-        type: "host_uri_request",
-        id: request.id,
-        operation: "write",
-        url: request.params.url,
-        content: request.params.content,
-      };
-  }
+  const frame: HostCallFrame = { type: "host_call", request };
+  return { ...frame };
 }
 
 /** The host's UI event types that pass through as themselves. */
@@ -134,7 +125,7 @@ function bashResultOf(result: ShellRunResult): Record<string, unknown> {
 }
 
 /** One host event as the RPC event omp's RPC session made of it. */
-function rpcEventOfChatEvent(event: ChatEvent, seq: number): RpcSessionEvent {
+function rpcEventOfChatEvent(event: ChatEvent): RpcSessionEvent {
   if (event.type === "prompt_result") {
     return {
       kind: "prompt_result",
@@ -161,17 +152,10 @@ function rpcEventOfChatEvent(event: ChatEvent, seq: number): RpcSessionEvent {
       return notification({ ...frame });
     }
     case "tool_cancel":
-      return notification({
-        type: "host_tool_cancel",
-        id: `cancel-${seq}`,
-        targetId: event.requestId,
-      });
-    case "uri_cancel":
-      return notification({
-        type: "host_uri_cancel",
-        id: `cancel-${seq}`,
-        targetId: event.requestId,
-      });
+    case "uri_cancel": {
+      const frame: HostCallCancelFrame = { type: "host_call_cancel", requestId: event.requestId };
+      return notification({ ...frame });
+    }
     case "available_commands":
       return notification({ type: "available_commands_update", commands: event.commands });
   }
@@ -183,10 +167,10 @@ function rpcEventOfChatEvent(event: ChatEvent, seq: number): RpcSessionEvent {
  * One session payload as one RPC event, so the readers' sequences stay contiguous. A payload with no RPC counterpart (a
  * Python run) becomes a frame no reader subscribes to.
  */
-export function rpcEventOf(payload: ChatSessionEvent, seq: number): RpcSessionEvent {
+export function rpcEventOf(payload: ChatSessionEvent): RpcSessionEvent {
   switch (payload.kind) {
     case "event":
-      return rpcEventOfChatEvent(payload.event, seq);
+      return rpcEventOfChatEvent(payload.event);
     case "host_request":
       return notification(requestFrameOf(payload.request));
     case "shell":
@@ -237,22 +221,4 @@ export function resultOf(method: string, result: unknown): unknown {
     return { agentInvoked: answer.resultFollows };
   }
   return result;
-}
-
-/** A host tool's result as the host's answer: its content and details, failed when either side says so. */
-export function toolAnswerOf(
-  response: Extract<HostToolResponse, { type: "host_tool_result" }>,
-): unknown {
-  const { result } = response;
-  return {
-    content: result.content,
-    ...(result.details === undefined ? {} : { details: result.details }),
-    ...((result.isError ?? response.isError) === true ? { isError: true } : {}),
-  };
-}
-
-/** A host URI result as the host's answer: its own fields. */
-export function uriAnswerOf(response: HostUriResponse): unknown {
-  const { type: _type, id: _id, ...answer } = response;
-  return answer;
 }

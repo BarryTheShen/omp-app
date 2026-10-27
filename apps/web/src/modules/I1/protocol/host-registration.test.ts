@@ -2,15 +2,15 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   CapabilityMap,
+  ChatSessionPort,
   McpCommandPromptListResult,
   McpCommandResourceListResult,
   McpCommandServerListResult,
   McpCommandsPort,
-  type OmpCommand,
   type PortClient,
-  RpcSessionPort,
   ThreadId,
 } from "@omp-app/contracts";
+import type { SetHostToolsParams, SetHostUriSchemesParams } from "@omp-app/contracts/chat-host";
 import { describe, expect, test, vi } from "vitest";
 import { createHostToolPort, createHostUriPort } from "./host-registration";
 import { createMcpProtocolAdapter } from "./index";
@@ -43,34 +43,34 @@ function mcpCommands(): PortClient<typeof McpCommandsPort> {
     },
   };
 }
+/** A registration request as the chat session port gets it. */
+type Registration =
+  | { readonly method: "set_host_tools"; readonly params: SetHostToolsParams }
+  | { readonly method: "set_host_uri_schemes"; readonly params: SetHostUriSchemesParams };
+
 function harness(capabilities = availableCapabilities()) {
-  const commands: OmpCommand[] = [];
+  const commands: Registration[] = [];
   const registrationOwners: (string | undefined)[] = [];
   let fail: unknown;
-  const send = vi.fn(
+  const request = vi.fn(
     async ({
-      command,
+      method,
+      params,
       registrationOwner,
-    }: {
-      readonly command: OmpCommand;
-      readonly registrationOwner?: string;
-    }) => {
-      commands.push(command);
+    }: Registration & { readonly threadId: ThreadId; readonly registrationOwner?: string }) => {
+      commands.push({ method, params } as Registration);
       registrationOwners.push(registrationOwner);
       if (fail !== undefined) throw fail;
-      if (command.type === "set_host_tools") {
-        return { toolNames: command.tools.map((tool) => tool.name) };
+      if (method === "set_host_tools") {
+        return { toolNames: (params as SetHostToolsParams).tools.map((tool) => tool.name) };
       }
-      if (command.type === "set_host_uri_schemes") {
-        return { schemes: command.schemes.map((scheme) => scheme.scheme) };
-      }
-      throw new Error("unexpected host registration command");
+      return { schemes: (params as SetHostUriSchemesParams).schemes.map(({ scheme }) => scheme) };
     },
   );
   const mcpCommandPort = mcpCommands();
   const client = {
-    port(port: typeof RpcSessionPort | typeof McpCommandsPort) {
-      if (port === RpcSessionPort) return { send };
+    port(port: typeof ChatSessionPort | typeof McpCommandsPort) {
+      if (port === ChatSessionPort) return { request };
       if (port === McpCommandsPort) return mcpCommandPort;
       throw new Error("unexpected port");
     },
@@ -79,7 +79,7 @@ function harness(capabilities = availableCapabilities()) {
     client,
     commands,
     registrationOwners,
-    send,
+    request,
     setFailure(error: unknown) {
       fail = error;
     },
@@ -104,25 +104,27 @@ describe("I1 AP9 host registration", () => {
 
     expect(host.commands).toHaveLength(2);
     expect(host.commands[0]).toMatchObject({
-      type: "set_host_tools",
-      tools: [
-        {
-          name: "mcp.echo",
-          label: "mcp.echo",
-          description: "Echo text",
-          parameters: { type: "object", properties: { message: { type: "string" } } },
-        },
-        {
-          name: "mcp.read",
-          label: "mcp.read",
-          description: "Read files",
-          parameters: { type: "object" },
-        },
-      ],
+      method: "set_host_tools",
+      params: {
+        tools: [
+          {
+            name: "mcp.echo",
+            label: "mcp.echo",
+            description: "Echo text",
+            parameters: { type: "object", properties: { message: { type: "string" } } },
+          },
+          {
+            name: "mcp.read",
+            label: "mcp.read",
+            description: "Read files",
+            parameters: { type: "object" },
+          },
+        ],
+      },
     });
     expect(host.commands[1]).toMatchObject({
-      type: "set_host_tools",
-      tools: [{ name: "mcp.read", parameters: { type: "object" } }],
+      method: "set_host_tools",
+      params: { tools: [{ name: "mcp.read", parameters: { type: "object" } }] },
     });
     await tools.unregister("mcp.echo");
     expect(host.commands).toHaveLength(2);
@@ -139,15 +141,17 @@ describe("I1 AP9 host registration", () => {
     ).resolves.toEqual({ schemes: ["mcp+resource", "notes"] });
     await uris.unregister("mcp+resource");
     expect(host.commands[0]).toMatchObject({
-      type: "set_host_uri_schemes",
-      schemes: [
-        { scheme: "mcp+resource", description: "MCP resource", writable: true },
-        { scheme: "notes", writable: false },
-      ],
+      method: "set_host_uri_schemes",
+      params: {
+        schemes: [
+          { scheme: "mcp+resource", description: "MCP resource", writable: true },
+          { scheme: "notes", writable: false },
+        ],
+      },
     });
     expect(host.commands[1]).toMatchObject({
-      type: "set_host_uri_schemes",
-      schemes: [{ scheme: "notes", writable: false }],
+      method: "set_host_uri_schemes",
+      params: { schemes: [{ scheme: "notes", writable: false }] },
     });
 
     const writeOnly = await uris

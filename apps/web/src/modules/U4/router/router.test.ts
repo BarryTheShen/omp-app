@@ -251,11 +251,9 @@ describe("ExtensionUiRequestRouterController", () => {
       hostAnswers: answers,
     });
     const request = {
-      type: "host_tool_call" as const,
       id: "host-1",
-      toolCallId: "tool-1",
-      toolName: "workspace.read",
-      arguments: {},
+      method: "tool.call" as const,
+      params: { toolCallId: "tool-1", toolName: "workspace.read", arguments: {} },
     };
     await router.routeHostRequest({ request, receivedSeq: 1 }, { threadId });
     const answer: HostRequestAnswer = {
@@ -268,6 +266,60 @@ describe("ExtensionUiRequestRouterController", () => {
     await expect(router.answerHost(answer)).rejects.toMatchObject({
       appError: { code: "conflict" },
     });
+  });
+
+  test("a URI call takes only a URI answer, and a tool call only a tool answer", async () => {
+    const answers = new FakeHostAnswers();
+    const router = new ExtensionUiRequestRouterController({
+      dialogHost: new FakeDialogHost(),
+      overlay: new FakeOverlay(),
+      hostAnswers: answers,
+    });
+    await router.routeHostRequest(
+      {
+        request: { id: "uri-1", method: "uri.read", params: { url: "app://notes/a" } },
+        receivedSeq: 1,
+      },
+      { threadId },
+    );
+    await router.routeHostRequest(
+      {
+        request: {
+          id: "tool-1",
+          method: "tool.call",
+          params: { toolCallId: "call-1", toolName: "workspace.read", arguments: {} },
+        },
+        receivedSeq: 2,
+      },
+      { threadId },
+    );
+    const toolResult = { content: [{ type: "text" as const, text: "done" }] };
+    await expect(
+      router.answerHost({
+        kind: "tool-result",
+        requestId: "uri-1" as HostCallId,
+        result: toolResult,
+      }),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    await expect(
+      router.answerHost({
+        kind: "uri-result",
+        requestId: "tool-1" as HostCallId,
+        result: { content: "x" },
+      }),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    expect(answers.submitted).toEqual([]);
+    await router.answerHost({
+      kind: "uri-result",
+      requestId: "uri-1" as HostCallId,
+      result: { content: "x" },
+    });
+    await router.answerHost({
+      kind: "tool-result",
+      requestId: "tool-1" as HostCallId,
+      result: toolResult,
+    });
+    expect(answers.submitted.map(({ requestId }) => requestId)).toEqual(["uri-1", "tool-1"]);
   });
 
   test("sync shows pending dialogs one at a time, in received-sequence order", async () => {

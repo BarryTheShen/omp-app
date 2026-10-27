@@ -45,20 +45,11 @@ export function RouterBridge({
     ): Promise<void> => {
       const id = answer.requestId;
       if (answer.kind === "uri-result") {
-        await queueController.answerHostUri(
-          { type: "host_uri_result", id, ...answer.result },
-          options,
-        );
+        await queueController.answerHostUri(id, answer.result, options);
       } else if (answer.kind === "tool-update") {
-        await queueController.answerHostTool(
-          { type: "host_tool_update", id, partialResult: answer.partialResult },
-          options,
-        );
+        await queueController.updateHostTool(id, answer.partialResult, options);
       } else {
-        await queueController.answerHostTool(
-          { type: "host_tool_result", id, result: answer.result, isError: answer.result.isError },
-          options,
-        );
+        await queueController.answerHostTool(id, answer.result, options);
       }
     };
     return {

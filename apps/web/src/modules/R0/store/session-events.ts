@@ -3,6 +3,8 @@ import type {
   ChatEvent,
   HostDialogRequest,
   HostRequest,
+  HostToolCall,
+  HostUriCall,
   UiPresentationEvent,
 } from "@omp-app/contracts/chat-host";
 
@@ -41,6 +43,19 @@ export function dialogEvent(request: HostDialogRequest): ChatSessionEvent {
 /** The chat host gave a dialog up (omp's abort or timeout). */
 export function dialogCancelEvent(requestId: string): ChatSessionEvent {
   return { kind: "event", event: { type: "ui_cancel", requestId } };
+}
+
+/** One of the chat host's calls of the app's tools or URI schemes, as the session port carries it. */
+export function hostCallEvent(request: HostToolCall | HostUriCall): ChatSessionEvent {
+  return { kind: "host_request", request };
+}
+
+/** The chat host gave a call up (omp's abort of a tool call, or of a URI read or write). */
+export function hostCallCancelEvent(
+  kind: "tool_cancel" | "uri_cancel",
+  requestId: string,
+): ChatSessionEvent {
+  return { kind: "event", event: { type: kind, requestId } };
 }
 
 /** One of the chat host's UI events that need no answer. */

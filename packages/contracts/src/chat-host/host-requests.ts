@@ -56,6 +56,18 @@ export function isHostDialogRequest(request: HostRequest): request is HostDialog
   return request.method.startsWith("ui.");
 }
 
+/** The host's calls of the app's tools (`tool.call`) and of its URI schemes (`uri.read`, `uri.write`). */
+export type HostToolCall = Extract<HostRequest, { readonly method: "tool.call" }>;
+export type HostUriCall = Extract<HostRequest, { readonly method: "uri.read" | "uri.write" }>;
+
+export function isHostToolCall(request: HostRequest): request is HostToolCall {
+  return request.method === "tool.call";
+}
+
+export function isHostUriCall(request: HostRequest): request is HostUriCall {
+  return request.method === "uri.read" || request.method === "uri.write";
+}
+
 /** A dialog's answer, in the host's shape for its method. */
 export type HostDialogAnswer<M extends HostDialogMethod = HostDialogMethod> =
   ChatHostHostMethodMap[M]["result"];

@@ -12,6 +12,8 @@ import {
   bashEvent,
   dialogCancelEvent,
   dialogEvent,
+  hostCallCancelEvent,
+  hostCallEvent,
   notificationEvent,
   promptResultEvent,
   uiEvent,
@@ -1306,30 +1308,24 @@ describe("OmpRuntimeStore", () => {
     const store = new OmpRuntimeStore({ threadId });
     const notified: string[] = [];
     store.subscribeNotifications(
-      ["host_dialog", "host_tool_call", "host_uri_request", "ui_open_url", "ui_notify"],
+      ["host_dialog", "host_call", "ui_open_url", "ui_notify"],
       (frame) => notified.push(frameKey(frame)),
     );
-    // What a subscription from the start replays: a dialog that was answered, a host call and a URI request whose
-    // turns ended, a sign-in page, and a notice, which is still shown.
+    // What a subscription from the start replays: a dialog that was answered, a tool call and a URI read whose turns
+    // ended, a sign-in page, and a notice, which is still shown.
+    const toolCall = {
+      id: "host-old",
+      method: "tool.call",
+      params: { toolCallId: "call-1", toolName: "lookup", arguments: {} },
+    } as const;
     const replayed = [
       dialogEvent({
         id: "ui-old",
         method: "ui.select",
         params: { title: "Which database?", options: [] },
       }),
-      notificationEvent({
-        type: "host_tool_call",
-        id: "host-old",
-        toolCallId: "call-1",
-        toolName: "lookup",
-        arguments: {},
-      }),
-      notificationEvent({
-        type: "host_uri_request",
-        id: "uri-old",
-        operation: "read",
-        url: "app://notes/1",
-      }),
+      hostCallEvent(toolCall),
+      hostCallEvent({ id: "uri-old", method: "uri.read", params: { url: "app://notes/1" } }),
       uiEvent({ type: "ui_open_url", url: "https://example.com/sign-in" }),
       uiEvent({ type: "ui_notify", message: "Startup notice" }),
     ];
@@ -1341,7 +1337,7 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot().pending.hostTools).toEqual({});
     expect(store.getSnapshot().pending.hostUris).toEqual({});
     expect(notified).toEqual(["notice: Startup notice"]);
-    // A dialog asked now is live: it opens and reaches the listeners.
+    // A dialog and a tool call asked now are live: they are kept and reach the listeners.
     ingest(
       store,
       dialogEvent({
@@ -1351,8 +1347,34 @@ describe("OmpRuntimeStore", () => {
       }),
       6,
     );
+    ingest(store, hostCallEvent({ ...toolCall, id: "host-live" }), 7);
     expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-live"]);
-    expect(notified).toEqual(["notice: Startup notice", "ui-live"]);
+    expect(store.getSnapshot().pending.hostTools["host-live"]?.request).toEqual({
+      ...toolCall,
+      id: "host-live",
+    });
+    expect(notified).toEqual(["notice: Startup notice", "ui-live", "host_call"]);
+  });
+
+  test("omp's cancel of a tool call or a URI read drops it, and leaves the other calls waiting", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const call = (id: string, toolCallId: string) =>
+      hostCallEvent({
+        id,
+        method: "tool.call",
+        params: { toolCallId, toolName: "lookup", arguments: {} },
+      });
+    ingest(store, call("tool-1", "call-1"), 1);
+    ingest(store, call("tool-2", "call-2"), 2);
+    ingest(
+      store,
+      hostCallEvent({ id: "uri-1", method: "uri.read", params: { url: "app://a" } }),
+      3,
+    );
+    ingest(store, hostCallCancelEvent("tool_cancel", "tool-1"), 4);
+    ingest(store, hostCallCancelEvent("uri_cancel", "uri-1"), 5);
+    expect(Object.keys(store.getSnapshot().pending.hostTools)).toEqual(["tool-2"]);
+    expect(store.getSnapshot().pending.hostUris).toEqual({});
   });
 
   test("a dialog omp is still waiting on is recorded as pending without moving the sequence, once; a host call is not a dialog", () => {

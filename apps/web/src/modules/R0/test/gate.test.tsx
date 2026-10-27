@@ -84,14 +84,6 @@ async function openHarness(scenario: Scenario): Promise<Harness> {
       } as unknown as PortExtensionUiResponse);
       return null;
     },
-    answerHostTool: async ({ response }) => {
-      await session.answerHostTool(response);
-      return null;
-    },
-    answerHostUri: async ({ response }) => {
-      await session.answerHostUri(response);
-      return null;
-    },
   };
   const store = new OmpRuntimeStore({ threadId, transport });
   let seq = 0;

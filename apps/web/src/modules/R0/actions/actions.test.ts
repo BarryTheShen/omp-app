@@ -2,14 +2,13 @@ import type {
   AnswerHostRequestArgs,
   AppError,
   CapabilityMap,
-  HostToolResponse,
-  HostUriResponse,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import type { HostToolUpdateParams } from "@omp-app/contracts/chat-host";
 import { describe, expect, test } from "vitest";
-import { dialogEvent, notificationEvent } from "@/modules/R0/store/session-events";
+import { dialogEvent, hostCallEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "../store/store";
 import { createQueueController, type QueueSnapshot } from "./actions";
 
@@ -27,39 +26,39 @@ const capabilities: CapabilityMap = {
   "omp.host-uris": { state: "available", via: "rpc" },
 };
 
-function notification(store: OmpRuntimeStore, frame: unknown, seq: number): void {
-  store.ingest(notificationEvent(frame), seq);
-}
-
 /** A dialog the host asks: an input named "Name". */
 function askName(store: OmpRuntimeStore, seq: number): void {
   store.ingest(dialogEvent({ id: "ui-1", method: "ui.input", params: { title: "Name" } }), seq);
 }
 
+/** A call of the app's `read` tool the host makes, as the model's call `call-1`. */
+function callRead(store: OmpRuntimeStore, seq: number): void {
+  store.ingest(
+    hostCallEvent({
+      id: "host-1",
+      method: "tool.call",
+      params: { toolCallId: "call-1", toolName: "read", arguments: {} },
+    }),
+    seq,
+  );
+}
+
 function makeStore(
-  answerHandlers: {
-    dialog?: (args: AnswerHostRequestArgs) => Promise<void>;
-    hostTool?: (response: HostToolResponse) => Promise<void>;
-    hostUri?: (response: HostUriResponse) => Promise<void>;
+  handlers: {
+    answer?: (args: AnswerHostRequestArgs) => Promise<void>;
+    update?: (params: HostToolUpdateParams) => Promise<boolean>;
   } = {},
 ): OmpRuntimeStore {
-  return new OmpRuntimeStore({
-    threadId,
-    transport: {
-      answer: async (args: AnswerHostRequestArgs) => {
-        await answerHandlers.dialog?.(args);
-        return null;
-      },
-      answerHostTool: async ({ response }: { readonly response: HostToolResponse }) => {
-        await answerHandlers.hostTool?.(response);
-        return null;
-      },
-      answerHostUri: async ({ response }: { readonly response: HostUriResponse }) => {
-        await answerHandlers.hostUri?.(response);
-        return null;
-      },
-    } as OmpRuntimeTransport,
-  });
+  const transport: OmpRuntimeTransport = {
+    answer: async (args) => {
+      await handlers.answer?.(args);
+      return null;
+    },
+    updateHostTool: async ({ params }) => ({
+      delivered: (await handlers.update?.(params)) ?? true,
+    }),
+  };
+  return new OmpRuntimeStore({ threadId, transport });
 }
 
 describe("R0.5 QueueController", () => {
@@ -199,68 +198,64 @@ describe("R0.5 QueueController", () => {
   });
 
   test("routes dialog, host-tool, and host-URI answers only for pending requests", async () => {
-    const answered: unknown[] = [];
+    const answered: AnswerHostRequestArgs[] = [];
     const store = makeStore({
-      dialog: async (args) => {
+      answer: async (args) => {
         answered.push(args);
-      },
-      hostTool: async (response) => {
-        answered.push(response);
-      },
-      hostUri: async (response) => {
-        answered.push(response);
       },
     });
     askName(store, 1);
-    notification(
-      store,
-      {
-        type: "host_tool_call",
-        id: "host-1",
-        toolCallId: "call-1",
-        toolName: "read",
-        arguments: {},
-      },
-      2,
-    );
-    notification(
-      store,
-      { type: "host_uri_request", id: "uri-1", operation: "read", url: "https://example.test" },
+    callRead(store, 2);
+    store.ingest(
+      hostCallEvent({ id: "uri-1", method: "uri.read", params: { url: "app://notes/a" } }),
       3,
     );
     const send: RpcSessionSend = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
-    const hostResponse = {
-      id: "host-1",
-      type: "host_tool_result",
-      result: { content: [{ type: "text", text: "done" }] },
-    } as HostToolResponse;
-    const uriResponse = {
-      id: "uri-1",
-      type: "host_uri_result",
-      url: "https://example.test",
-      content: "ok",
-    } as unknown as HostUriResponse;
+    const toolResult = { content: [{ type: "text" as const, text: "done" }] };
     await expect(controller.answerDialog("ui-gone", { value: "ok" })).rejects.toMatchObject({
       appError: { code: "not_found" },
     });
+    await expect(controller.answerHostTool("host-gone", toolResult)).rejects.toMatchObject({
+      appError: { code: "not_found" },
+    });
+    await expect(controller.answerHostUri("uri-gone", { content: "ok" })).rejects.toMatchObject({
+      appError: { code: "not_found" },
+    });
     await controller.answerDialog("ui-1", { value: "ok" });
-    await controller.answerHostTool(hostResponse);
-    await controller.answerHostUri(uriResponse);
+    await controller.answerHostTool("host-1", toolResult);
+    await controller.answerHostUri("uri-1", { content: "ok" });
     expect(answered).toEqual([
       { threadId, id: "ui-1", answer: { value: "ok" } },
-      hostResponse,
-      uriResponse,
+      { threadId, id: "host-1", answer: toolResult },
+      { threadId, id: "uri-1", answer: { content: "ok" } },
     ]);
     expect(store.getSnapshot().pending.dialogs).toEqual({});
     expect(store.getSnapshot().pending.hostTools).toEqual({});
     expect(store.getSnapshot().pending.hostUris).toEqual({});
   });
 
+  test("a tool's progress is sent as the host's update, and the call stays open for its result", async () => {
+    const updates: HostToolUpdateParams[] = [];
+    const store = makeStore({
+      update: async (params) => {
+        updates.push(params);
+        return true;
+      },
+    });
+    callRead(store, 1);
+    const send: RpcSessionSend = async () => undefined as never;
+    const controller = createQueueController({ store, send, capabilities });
+    const partialResult = { content: [{ type: "text" as const, text: "half" }] };
+    await expect(controller.updateHostTool("host-1", partialResult)).resolves.toBe(true);
+    expect(updates).toEqual([{ callId: "host-1", partialResult }]);
+    expect(Object.keys(store.getSnapshot().pending.hostTools)).toEqual(["host-1"]);
+  });
+
   test("rejects a second answer while the first answer is in flight", async () => {
     let resolveAnswer!: () => void;
     const store = makeStore({
-      dialog: () =>
+      answer: () =>
         new Promise<void>((resolve) => {
           resolveAnswer = resolve;
         }),
@@ -278,23 +273,13 @@ describe("R0.5 QueueController", () => {
   });
 
   test("maps assistant-ui host-tool results through the typed answer seam", async () => {
-    const answered: HostToolResponse[] = [];
+    const answered: AnswerHostRequestArgs[] = [];
     const store = makeStore({
-      hostTool: async (response) => {
-        answered.push(response);
+      answer: async (args) => {
+        answered.push(args);
       },
     });
-    notification(
-      store,
-      {
-        type: "host_tool_call",
-        id: "host-1",
-        toolCallId: "call-1",
-        toolName: "read",
-        arguments: {},
-      },
-      1,
-    );
+    callRead(store, 1);
     const send: RpcSessionSend = async () => undefined as never;
     const controller = createQueueController({ store, send, capabilities });
     await controller.onAddToolResult({
@@ -304,11 +289,9 @@ describe("R0.5 QueueController", () => {
       result: "done",
       isError: false,
     });
-    expect(answered[0]).toMatchObject({
-      type: "host_tool_result",
-      id: "host-1",
-      result: { content: [{ type: "text", text: "done" }] },
-    });
+    expect(answered).toEqual([
+      { threadId, id: "host-1", answer: { content: [{ type: "text", text: "done" }] } },
+    ]);
   });
 
   test("capability failures are typed and do not send commands", async () => {

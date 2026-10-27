@@ -2,9 +2,9 @@
  * The cutover's shim (SDK plan H5.4a, `reassessment/SDK-CHAT-HOST-PLAN.md`, "H5.4 design"). The browser's readers still
  * speak A0's RPC port, while the server serves the chat session port. This client serves A0's RPC port from
  * `A0.chatSession`, with R0's translation (`modules/R0/store/rpc-frames.ts`): each session payload becomes one RPC event,
- * sends become requests by method, and the RPC answers of host tools and URIs become `answer`. The host's dialogs are
- * answered on the chat session port itself since H5.4c, so the RPC port's dialog methods are refused here. Every other
- * port passes through. The later H5.4 parts move the readers off it, and H5.4h deletes it.
+ * and sends become requests by method. The host's requests are answered on the chat session port itself (dialogs since
+ * H5.4c, tool calls and URI reads and writes since H5.4d), so the RPC port's answer methods are refused here. Every
+ * other port passes through. The later H5.4 parts move the readers off it, and H5.4h deletes it.
  */
 import {
   type AppClient,
@@ -24,22 +24,16 @@ import {
   type RpcSessionEvent,
   RpcSessionPort,
 } from "@omp-app/contracts";
-import {
-  requestOf,
-  resultOf,
-  rpcEventOf,
-  toolAnswerOf,
-  uriAnswerOf,
-} from "../modules/R0/store/rpc-frames";
+import { requestOf, resultOf, rpcEventOf } from "../modules/R0/store/rpc-frames";
 
 type RpcSessionClient = PortClient<typeof RpcSessionPort>;
 type ChatSessionClient = PortClient<typeof ChatSessionPort>;
 
-/** The RPC port's dialog methods: the dialogs are answered and replayed on the chat session port (H5.4c). */
-function dialogsMoved(method: string): AppFailure {
+/** The RPC port's answer methods: the host's requests are answered and replayed on the chat session port. */
+function answeredOnChatSession(method: string): AppFailure {
   return new AppFailure({
     code: "unavailable",
-    message: `omp's questions are answered on the chat session port; ${method} is not served here.`,
+    message: `omp's requests are answered on the chat session port; ${method} is not served here.`,
     retryable: false,
   });
 }
@@ -76,30 +70,20 @@ function rpcSessionClientOver(
     },
     subscribe: (args, options) => chat.subscribe(args, options),
     answerExtensionUi: async () => {
-      throw dialogsMoved("answerExtensionUi");
+      throw answeredOnChatSession("answerExtensionUi");
     },
     openQuestions: async () => {
-      throw dialogsMoved("openQuestions");
+      throw answeredOnChatSession("openQuestions");
     },
     stateFrames: async () => {
-      throw dialogsMoved("stateFrames");
+      throw answeredOnChatSession("stateFrames");
     },
-    answerHostTool: async ({ threadId, response }, options) => {
-      if (response.type === "host_tool_update") {
-        await chat.request(
-          {
-            threadId,
-            method: "host_tool_update",
-            params: { callId: response.id, partialResult: response.partialResult },
-          } as Parameters<ChatSessionClient["request"]>[0],
-          options,
-        );
-        return null;
-      }
-      return chat.answer({ threadId, id: response.id, answer: toolAnswerOf(response) }, options);
+    answerHostTool: async () => {
+      throw answeredOnChatSession("answerHostTool");
     },
-    answerHostUri: ({ threadId, response }, options) =>
-      chat.answer({ threadId, id: response.id, answer: uriAnswerOf(response) }, options),
+    answerHostUri: async () => {
+      throw answeredOnChatSession("answerHostUri");
+    },
     setSubagentSubscription: (args, options) => chat.setSubagentSubscription(args, options),
     setEventFilter: async () => {
       throw new AppFailure({
@@ -152,7 +136,7 @@ export function withChatSessionShim(client: AppClient): AppClient {
       const wrap = (listener: RpcListener): ChatListener => {
         let chatListener = wrapped.get(listener);
         if (chatListener === undefined) {
-          chatListener = (payload, seq) => listener(rpcEventOf(payload, seq), seq);
+          chatListener = (payload, seq) => listener(rpcEventOf(payload), seq);
           wrapped.set(listener, chatListener);
         }
         return chatListener;

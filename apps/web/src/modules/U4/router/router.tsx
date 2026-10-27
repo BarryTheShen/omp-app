@@ -1,8 +1,13 @@
 "use client";
 
-import type { HostCallId, OmpWire, UiRequestId } from "@omp-app/contracts";
+import type { HostCallId, UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import type { HostDialogRequest, UiPresentationEvent } from "@omp-app/contracts/chat-host";
+import type {
+  HostDialogRequest,
+  HostToolCall,
+  HostUriCall,
+  UiPresentationEvent,
+} from "@omp-app/contracts/chat-host";
 import { useState } from "react";
 import { InlineError } from "@/components/blocks";
 import type { OverlayHostApi } from "@/overlay";
@@ -32,8 +37,8 @@ export interface PresentationSink {
 
 export interface RouterPendingSnapshot {
   readonly dialogs: Readonly<Record<string, PendingRequestLike<HostDialogRequest>>>;
-  readonly hostTools: Readonly<Record<string, PendingRequestLike<OmpWire.HostToolCallRequest>>>;
-  readonly hostUris: Readonly<Record<string, PendingRequestLike<OmpWire.HostUriRequest>>>;
+  readonly hostTools: Readonly<Record<string, PendingRequestLike<HostToolCall>>>;
+  readonly hostUris: Readonly<Record<string, PendingRequestLike<HostUriCall>>>;
 }
 
 /** The chat host's UI events the router presents: everything that needs no answer. */
@@ -197,12 +202,12 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
   }
 
   public async routeHostRequest(
-    pending: PendingRequestLike<OmpWire.HostToolCallRequest | OmpWire.HostUriRequest>,
+    pending: PendingRequestLike<HostToolCall | HostUriCall>,
     _context: RouterContext,
   ): Promise<void> {
     const id = pending.request.id as HostCallId;
     if (this.pending.has(id)) return;
-    this.pending.set(id, pending.request.type === "host_tool_call" ? "host-tool" : "host-uri");
+    this.pending.set(id, pending.request.method === "tool.call" ? "host-tool" : "host-uri");
   }
 
   public isPending(id: UiRequestId | HostCallId): boolean {

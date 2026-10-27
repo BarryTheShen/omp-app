@@ -2,6 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import type {
   AppError,
   CapabilityMap,
+  ChatSessionClient,
   ChatSessionEvent,
   FolderPath,
   ModelChoice,
@@ -21,7 +22,7 @@ import {
   type SessionOutputReader,
   type SessionWindowReader,
 } from "@/modules/R0/history/history";
-import { OmpRuntimeStore } from "@/modules/R0/store/store";
+import { OmpRuntimeStore, type OmpRuntimeTransport } from "@/modules/R0/store/store";
 import { releaseThread } from "../release";
 import { pickedModelFor, rememberPickedModel } from "./picked-model";
 
@@ -148,7 +149,7 @@ export class SelectedThreadHistoryController {
   private readonly options: SelectedThreadHistoryOptions;
   private readonly client: AppClient;
   private readonly rpc: RpcSessionClient;
-  private readonly chat: PortClient<typeof ChatSessionPort>;
+  private readonly chat: ChatSessionClient;
   private readonly sessionFiles: PortClient<typeof SessionFileStore>;
   private state: SelectedThreadHistoryState = Object.freeze({
     threadId: undefined,
@@ -201,7 +202,7 @@ export class SelectedThreadHistoryController {
     this.options = options;
     this.client = options.client;
     this.rpc = this.client.port(RpcSessionPortSchema);
-    this.chat = this.client.port(ChatSessionPort);
+    this.chat = this.client.port(ChatSessionPort) as ChatSessionClient;
     this.sessionFiles = this.client.port(SessionFileStore);
   }
 
@@ -771,11 +772,11 @@ export class SelectedThreadHistoryController {
   }
 
   private defaultStore(threadId: ThreadId): OmpRuntimeStore {
-    const transport = {
+    const transport: OmpRuntimeTransport = {
       send: this.rpc.send,
       answer: this.chat.answer,
-      answerHostTool: this.rpc.answerHostTool,
-      answerHostUri: this.rpc.answerHostUri,
+      updateHostTool: ({ threadId: callThreadId, params }, options) =>
+        this.chat.request({ threadId: callThreadId, method: "host_tool_update", params }, options),
     };
     return new OmpRuntimeStore({ threadId, transport });
   }

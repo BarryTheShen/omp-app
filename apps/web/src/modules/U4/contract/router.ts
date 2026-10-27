@@ -8,8 +8,8 @@
  * `PendingDialog`/`PendingHostToolRequest`/`PendingHostUriRequest` already have this
  * exact `{ request, receivedSeq }` shape and satisfy it with no cast.
  */
-import type { HostCallId, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
-import type { HostDialogRequest } from "@omp-app/contracts/chat-host";
+import type { HostCallId, ThreadId, UiRequestId } from "@omp-app/contracts";
+import type { HostDialogRequest, HostToolCall, HostUriCall } from "@omp-app/contracts/chat-host";
 
 export interface PendingRequestLike<Request> {
   readonly request: Request;
@@ -33,9 +33,9 @@ export interface ExtensionUiRequestRouter {
     pending: PendingRequestLike<HostDialogRequest>,
     context: RouterContext,
   ): Promise<void>;
-  /** Answers one host tool/URI request through the typed `HostRequestAnswerAdapter`. */
+  /** Tracks one of the host's calls of the app's tools or URI schemes until it is answered or given up. */
   routeHostRequest(
-    pending: PendingRequestLike<OmpWire.HostToolCallRequest | OmpWire.HostUriRequest>,
+    pending: PendingRequestLike<HostToolCall | HostUriCall>,
     context: RouterContext,
   ): Promise<void>;
   /** True while `id` still names an open, answerable request; false for a stale or already

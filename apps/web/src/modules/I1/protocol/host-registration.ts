@@ -2,11 +2,14 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
-  type OmpWire,
-  type RpcSessionClient,
-  RpcSessionPort,
+  type ChatSessionClient,
+  ChatSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
+import type {
+  HostToolDefinition as ChatHostToolDefinition,
+  HostUriSchemeDefinition as ChatHostUriSchemeDefinition,
+} from "@omp-app/contracts/chat-host";
 import type { McpPortCallOptions } from "../contract";
 import {
   HostToolDefinition,
@@ -37,7 +40,7 @@ export interface HostRegistrationOptions {
 
 /** Owns one AP9 registration set; A0 merges owners for the thread's omp process. */
 export function createHostToolPort(options: HostRegistrationOptions): HostToolPort {
-  const rpc = options.client.port(RpcSessionPort) as RpcSessionClient;
+  const chat = options.client.port(ChatSessionPort) as ChatSessionClient;
   const registrationOwner = crypto.randomUUID();
   const registrations = new Map<string, HostToolDefinitionValue>();
   const runExclusive = createSerialExecutor();
@@ -47,13 +50,13 @@ export function createHostToolPort(options: HostRegistrationOptions): HostToolPo
     callOptions?: McpPortCallOptions,
   ): Promise<HostToolRegistrationResultValue> => {
     requireCapability(options.capabilities, I1_CAPABILITIES.hostTools);
-    const wireTools = tools.map(toWireTool);
     try {
-      const result = await rpc.send(
+      const result = await chat.request(
         {
           threadId: options.threadId,
+          method: "set_host_tools",
+          params: { tools: tools.map(toHostTool) },
           registrationOwner,
-          command: { type: "set_host_tools", tools: wireTools },
         },
         callOptions,
       );
@@ -91,7 +94,7 @@ export function createHostToolPort(options: HostRegistrationOptions): HostToolPo
 
 /** Owns one URI registration set; A0 merges owners for the thread's omp process. */
 export function createHostUriPort(options: HostRegistrationOptions): HostUriPort {
-  const rpc = options.client.port(RpcSessionPort) as RpcSessionClient;
+  const chat = options.client.port(ChatSessionPort) as ChatSessionClient;
   const registrationOwner = crypto.randomUUID();
   const registrations = new Map<string, HostUriDefinitionValue>();
   const runExclusive = createSerialExecutor();
@@ -101,13 +104,13 @@ export function createHostUriPort(options: HostRegistrationOptions): HostUriPort
     callOptions?: McpPortCallOptions,
   ): Promise<HostUriRegistrationResultValue> => {
     requireCapability(options.capabilities, I1_CAPABILITIES.hostUris);
-    const wireSchemes = schemes.map(toWireScheme);
     try {
-      const result = await rpc.send(
+      const result = await chat.request(
         {
           threadId: options.threadId,
+          method: "set_host_uri_schemes",
+          params: { schemes: schemes.map(toHostScheme) },
           registrationOwner,
-          command: { type: "set_host_uri_schemes", schemes: wireSchemes },
         },
         callOptions,
       );
@@ -199,7 +202,8 @@ function cloneTools(tools: readonly HostToolDefinitionValue[]): readonly HostToo
   return cloned.data;
 }
 
-function toWireTool(tool: HostToolDefinitionValue): OmpWire.HostToolDefinition {
+/** A tool as the chat host takes it (omp's host tool definition). */
+function toHostTool(tool: HostToolDefinitionValue): ChatHostToolDefinition {
   return {
     name: tool.name,
     label: tool.name,
@@ -208,7 +212,8 @@ function toWireTool(tool: HostToolDefinitionValue): OmpWire.HostToolDefinition {
   };
 }
 
-function toWireScheme(scheme: HostUriDefinitionValue): OmpWire.HostUriSchemeDefinition {
+/** A URI scheme as the chat host takes it (omp's host URI scheme definition). */
+function toHostScheme(scheme: HostUriDefinitionValue): ChatHostUriSchemeDefinition {
   return {
     scheme: scheme.scheme,
     ...(scheme.description === undefined ? {} : { description: scheme.description }),

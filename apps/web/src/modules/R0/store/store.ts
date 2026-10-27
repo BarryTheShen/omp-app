@@ -3,8 +3,6 @@ import type {
   AppError,
   ChatSessionEvent,
   EntryId,
-  HostToolResponse,
-  HostUriResponse,
   MessageKey,
   OmpEvent,
   OmpMessage,
@@ -13,7 +11,6 @@ import type {
   OmpWire,
   PortCallOptions,
   ProvisionalMessageKey,
-  RpcSessionClient,
   RpcSessionEvent,
   RpcSessionNotification,
   RpcSessionSend,
@@ -32,10 +29,20 @@ import {
   type HostDialogAnswer,
   type HostDialogRequest,
   type HostRequest,
+  type HostToolCall,
+  type HostToolUpdateParams,
+  type HostUriCall,
   isHostDialogRequest,
+  isHostToolCall,
+  isHostUriCall,
+  type ToolCallAnswer,
+  type UriReadAnswer,
+  type UriWriteAnswer,
 } from "@omp-app/contracts/chat-host";
 import { createDraft, type Draft, finishDraft, freeze, original } from "immer";
 import {
+  type HostCallCancelFrame,
+  type HostCallFrame,
   type HostDialogCancelFrame,
   type HostDialogFrame,
   type HostUiEvent,
@@ -192,13 +199,15 @@ export interface PendingDialog {
   readonly receivedSeq: number;
 }
 
+/** A call of one of the app's tools the chat's host waits on (`tool.call`), as the host sent it. */
 export interface PendingHostToolRequest {
-  readonly request: OmpWire.HostToolCallRequest;
+  readonly request: HostToolCall;
   readonly receivedSeq: number;
 }
 
+/** A read or write of one of the app's URI schemes the chat's host waits on (`uri.read`, `uri.write`). */
 export interface PendingHostUriRequest {
-  readonly request: OmpWire.HostUriRequest;
+  readonly request: HostUriCall;
   readonly receivedSeq: number;
 }
 
@@ -287,13 +296,15 @@ export interface RuntimeSnapshot {
 export type RuntimeStoreListener = (snapshot: RuntimeSnapshot) => void;
 /**
  * A notification frame: omp's RPC notifications still translated for their readers, the host's UI events as they come,
- * and the store's own dialog frames (see `rpc-frames.ts`).
+ * and the store's own frames for the host's requests (see `rpc-frames.ts`).
  */
 export type RuntimeNotificationFrame =
   | RpcSessionNotification
   | HostUiEvent
   | HostDialogFrame
-  | HostDialogCancelFrame;
+  | HostDialogCancelFrame
+  | HostCallFrame
+  | HostCallCancelFrame;
 export type RuntimeNotificationListener = (
   frame: RuntimeNotificationFrame,
   seq: number,
@@ -352,10 +363,13 @@ function keepUndelivered<T>(queue: T[], item: T): void {
 /** The A0 methods needed by this store; all other runtime actions belong to later R0 parts. */
 export interface OmpRuntimeTransport {
   readonly send?: RpcSessionSend;
-  /** Answers one of the host's dialogs (`A0.chatSession.answer`). */
+  /** Answers one of the host's requests: a dialog, a tool call, a URI read or write (`A0.chatSession.answer`). */
   readonly answer?: (args: AnswerHostRequestArgs, options?: PortCallOptions) => Promise<null>;
-  readonly answerHostTool?: RpcSessionClient["answerHostTool"];
-  readonly answerHostUri?: RpcSessionClient["answerHostUri"];
+  /** Sends a running tool call's progress (the host's `host_tool_update`); answers whether the call still runs. */
+  readonly updateHostTool?: (
+    args: { readonly threadId: ThreadId; readonly params: HostToolUpdateParams },
+    options?: PortCallOptions,
+  ) => Promise<{ readonly delivered: boolean }>;
 }
 
 export interface OmpRuntimeStoreOptions {
@@ -395,12 +409,7 @@ const EMPTY_PROCESS: ProcessState = Object.freeze({ status: "starting", error: n
  */
 function isAskingFrame(frame: unknown): boolean {
   if (!isRecord(frame)) return false;
-  return (
-    frame.type === "host_dialog" ||
-    frame.type === "ui_open_url" ||
-    frame.type === "host_tool_call" ||
-    frame.type === "host_uri_request"
-  );
+  return frame.type === "host_dialog" || frame.type === "ui_open_url" || frame.type === "host_call";
 }
 
 const EMPTY_SESSION: SessionInfoState = Object.freeze({
@@ -1626,7 +1635,7 @@ export class OmpRuntimeStore {
    * move its readers to the session events.
    */
   public ingest(payload: ChatSessionEvent, seq: number, fromHistory = false): void {
-    this.ingestRpc(rpcEventOf(payload, seq), seq, fromHistory);
+    this.ingestRpc(rpcEventOf(payload), seq, fromHistory);
   }
 
   private ingestRpc(event: RpcSessionEvent, seq: number, fromHistory: boolean): void {
@@ -1942,45 +1951,83 @@ export class OmpRuntimeStore {
     this.commit(next);
   }
 
+  /**
+   * Answers a call of one of the app's tools with omp's tool result. The call stays pending until the transport accepts
+   * the answer; a failed answer is thrown to the caller and shown on the thread's banner.
+   */
   public async answerHostTool(
-    response: HostToolResponse,
+    id: string,
+    answer: ToolCallAnswer,
     options?: PortCallOptions,
   ): Promise<void> {
-    if (!this.transport.answerHostTool) {
-      const error = errorForUnavailable("answerHostTool");
+    await this.answerHostCall(
+      "hostTools",
+      id,
+      answer,
+      "Answering the host tool request failed",
+      options,
+    );
+  }
+
+  /** Answers a read or write of one of the app's URI schemes with omp's URI result. */
+  public async answerHostUri(
+    id: string,
+    answer: UriReadAnswer | UriWriteAnswer,
+    options?: PortCallOptions,
+  ): Promise<void> {
+    await this.answerHostCall(
+      "hostUris",
+      id,
+      answer,
+      "Answering the host URI request failed",
+      options,
+    );
+  }
+
+  /** Sends a running tool call's progress; the call stays pending. Answers whether the call was still running. */
+  public async updateHostTool(
+    id: string,
+    partialResult: HostToolUpdateParams["partialResult"],
+    options?: PortCallOptions,
+  ): Promise<boolean> {
+    if (!this.transport.updateHostTool) {
+      const error = errorForUnavailable("updateHostTool");
       this.fail(error);
       throw new AppFailure(error);
     }
     try {
-      await this.transport.answerHostTool({ threadId: this.snapshot.threadId, response }, options);
-      const next = mutableSnapshot(this.snapshot);
-      const pending = copyPending(next);
-      delete pending.hostTools[response.id];
-      setPending(next, pending);
-      this.commit(next);
+      const { delivered } = await this.transport.updateHostTool(
+        { threadId: this.snapshot.threadId, params: { callId: id, partialResult } },
+        options,
+      );
+      return delivered;
     } catch (error) {
-      const appError = appErrorFromUnknown(error, "Answering the host tool request failed");
-      this.fail(appError);
+      this.fail(appErrorFromUnknown(error, "Sending the host tool's progress failed"));
       throw error;
     }
   }
 
-  public async answerHostUri(response: HostUriResponse, options?: PortCallOptions): Promise<void> {
-    if (!this.transport.answerHostUri) {
-      const error = errorForUnavailable("answerHostUri");
+  private async answerHostCall(
+    kind: "hostTools" | "hostUris",
+    id: string,
+    answer: unknown,
+    failure: string,
+    options?: PortCallOptions,
+  ): Promise<void> {
+    if (!this.transport.answer) {
+      const error = errorForUnavailable("answer");
       this.fail(error);
       throw new AppFailure(error);
     }
     try {
-      await this.transport.answerHostUri({ threadId: this.snapshot.threadId, response }, options);
+      await this.transport.answer({ threadId: this.snapshot.threadId, id, answer }, options);
       const next = mutableSnapshot(this.snapshot);
       const pending = copyPending(next);
-      delete pending.hostUris[response.id];
+      delete pending[kind][id];
       setPending(next, pending);
       this.commit(next);
     } catch (error) {
-      const appError = appErrorFromUnknown(error, "Answering the host URI request failed");
-      this.fail(appError);
+      this.fail(appErrorFromUnknown(error, failure));
       throw error;
     }
   }
@@ -2285,40 +2332,30 @@ export class OmpRuntimeStore {
         setPending(next, pending);
         return;
       }
-      case "host_tool_call": {
-        const id = asString(frame.id);
-        const toolCallId = asString(frame.toolCallId);
-        const toolName = asString(frame.toolName);
-        if (!id || !toolCallId || !toolName || !isRecord(frame.arguments)) return;
-        pending.hostTools[id] = {
-          request: cloneValue(frame) as unknown as OmpWire.HostToolCallRequest,
-          receivedSeq: seq,
-        };
+      case "host_call": {
+        const request = (frame as unknown as HostCallFrame).request;
+        if (!isRecord(request)) return;
+        if (isHostToolCall(request as HostRequest)) {
+          pending.hostTools[request.id] = {
+            request: cloneValue(request) as HostToolCall,
+            receivedSeq: seq,
+          };
+        } else if (isHostUriCall(request as HostRequest)) {
+          pending.hostUris[request.id] = {
+            request: cloneValue(request) as HostUriCall,
+            receivedSeq: seq,
+          };
+        } else return;
         setPending(next, pending);
         return;
       }
-      case "host_uri_request": {
-        const id = asString(frame.id);
-        const operation =
-          frame.operation === "read" || frame.operation === "write" ? frame.operation : undefined;
-        const url = asString(frame.url);
-        if (!id || !operation || !url) return;
-        pending.hostUris[id] = {
-          request: cloneValue(frame) as unknown as OmpWire.HostUriRequest,
-          receivedSeq: seq,
-        };
-        setPending(next, pending);
-        return;
-      }
-      case "host_tool_cancel": {
-        const targetId = asString(frame.targetId);
-        if (targetId) delete pending.hostTools[targetId];
-        setPending(next, pending);
-        return;
-      }
-      case "host_uri_cancel": {
-        const targetId = asString(frame.targetId);
-        if (targetId) delete pending.hostUris[targetId];
+      case "host_call_cancel": {
+        // omp gave a call up (`tool_cancel`, `uri_cancel`): its answer would reach nothing.
+        const requestId = asString(frame.requestId);
+        if (requestId) {
+          delete pending.hostTools[requestId];
+          delete pending.hostUris[requestId];
+        }
         setPending(next, pending);
         return;
       }

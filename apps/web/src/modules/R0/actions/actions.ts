@@ -2,17 +2,24 @@ import type { AddToolResultOptions } from "@assistant-ui/react";
 import type {
   CapabilityKey,
   CapabilityMap,
-  HostCallId,
-  HostToolResponse,
-  HostUriResponse,
   OmpWire,
   PortCallOptions,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import type { HostDialogAnswer } from "@omp-app/contracts/chat-host";
+import type {
+  HostDialogAnswer,
+  HostToolUpdateParams,
+  ToolCallAnswer,
+  UriReadAnswer,
+  UriWriteAnswer,
+} from "@omp-app/contracts/chat-host";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../store/store";
+
+/** Whether the chat answers calls of the app's tools and URI schemes (I1's registrations). */
+const HOST_TOOLS = "omp.host-tools" as CapabilityKey;
+const HOST_URIS = "omp.host-uris" as CapabilityKey;
 
 export type QueueLane = "steering" | "followUp";
 export type QueueDelivery = "steer" | "followUp";
@@ -84,8 +91,20 @@ export interface QueuePort {
   setModes(changes: QueueModeChanges): Promise<void>;
   /** Answers one of the host's dialogs, in the host's shape for its method. */
   answerDialog(id: string, answer: HostDialogAnswer, options?: PortCallOptions): Promise<void>;
-  answerHostTool(response: HostToolResponse, options?: PortCallOptions): Promise<void>;
-  answerHostUri(response: HostUriResponse, options?: PortCallOptions): Promise<void>;
+  /** Answers a call of one of the app's tools with omp's tool result. */
+  answerHostTool(id: string, answer: ToolCallAnswer, options?: PortCallOptions): Promise<void>;
+  /** Sends a running tool call's progress; answers whether the call was still running. */
+  updateHostTool(
+    id: string,
+    partialResult: HostToolUpdateParams["partialResult"],
+    options?: PortCallOptions,
+  ): Promise<boolean>;
+  /** Answers a read or write of one of the app's URI schemes. */
+  answerHostUri(
+    id: string,
+    answer: UriReadAnswer | UriWriteAnswer,
+    options?: PortCallOptions,
+  ): Promise<void>;
   onAddToolResult(options: AddToolResultOptions): Promise<void>;
 }
 
@@ -134,10 +153,10 @@ function safeJson(value: unknown): string {
   }
 }
 
-function resultContent(value: unknown): OmpWire.UserContent[] {
+function resultContent(value: unknown): ToolCallAnswer["content"] {
   if (typeof value === "string") return [{ type: "text", text: value }];
   if (Array.isArray(value)) {
-    const content: OmpWire.UserContent[] = [];
+    const content: ToolCallAnswer["content"] = [];
     for (const part of value) {
       if (!isRecord(part)) continue;
       if (part.type === "text" && typeof part.text === "string") {
@@ -147,12 +166,7 @@ function resultContent(value: unknown): OmpWire.UserContent[] {
         typeof part.data === "string" &&
         typeof part.mimeType === "string"
       ) {
-        content.push({
-          type: "image",
-          data: part.data,
-          mimeType: part.mimeType,
-          ...(typeof part.url === "string" ? { url: part.url } : {}),
-        });
+        content.push({ type: "image", data: part.data, mimeType: part.mimeType });
       }
     }
     if (content.length > 0) return content;
@@ -305,45 +319,55 @@ export class QueueController implements QueuePort {
   }
 
   public async answerHostTool(
-    response: HostToolResponse,
+    id: string,
+    answer: ToolCallAnswer,
     options?: PortCallOptions,
   ): Promise<void> {
-    const capability = "omp.host-tools" as CapabilityKey;
-    this.requireCapability(capability, "Host tool answers are unavailable for this runtime");
-    const id = response.id;
+    this.requireCapability(HOST_TOOLS, "Host tool answers are unavailable for this runtime");
     if (!this.store.getSnapshot().pending.hostTools[id]) {
       throw notFound("The host tool request is no longer pending");
     }
     await this.withAnswerLock(`host-tool:${id}`, () =>
-      this.store.answerHostTool(response, options),
+      this.store.answerHostTool(id, answer, options),
     );
   }
 
-  public async answerHostUri(response: HostUriResponse, options?: PortCallOptions): Promise<void> {
-    const capability = "omp.host-uris" as CapabilityKey;
-    this.requireCapability(capability, "Host URI answers are unavailable for this runtime");
-    const id = response.id;
+  public async updateHostTool(
+    id: string,
+    partialResult: HostToolUpdateParams["partialResult"],
+    options?: PortCallOptions,
+  ): Promise<boolean> {
+    this.requireCapability(HOST_TOOLS, "Host tool answers are unavailable for this runtime");
+    if (!this.store.getSnapshot().pending.hostTools[id]) {
+      throw notFound("The host tool request is no longer pending");
+    }
+    return this.store.updateHostTool(id, partialResult, options);
+  }
+
+  public async answerHostUri(
+    id: string,
+    answer: UriReadAnswer | UriWriteAnswer,
+    options?: PortCallOptions,
+  ): Promise<void> {
+    this.requireCapability(HOST_URIS, "Host URI answers are unavailable for this runtime");
     if (!this.store.getSnapshot().pending.hostUris[id]) {
       throw notFound("The host URI request is no longer pending");
     }
-    await this.withAnswerLock(`host-uri:${id}`, () => this.store.answerHostUri(response, options));
+    await this.withAnswerLock(`host-uri:${id}`, () =>
+      this.store.answerHostUri(id, answer, options),
+    );
   }
 
   public async onAddToolResult(options: AddToolResultOptions): Promise<void> {
     const pending = Object.values(this.store.getSnapshot().pending.hostTools).find(
-      (entry) => entry.request.toolCallId === options.toolCallId,
+      (entry) => entry.request.params.toolCallId === options.toolCallId,
     );
     if (!pending) throw notFound("No pending host tool matches this tool call");
-    const response: HostToolResponse = {
-      type: "host_tool_result",
-      id: pending.request.id as HostCallId,
-      result: {
-        content: resultContent(options.result),
-        ...(options.artifact === undefined ? {} : { details: options.artifact }),
-      },
-      isError: options.isError,
-    };
-    await this.answerHostTool(response);
+    await this.answerHostTool(pending.request.id, {
+      content: resultContent(options.result),
+      ...(options.artifact === undefined ? {} : { details: options.artifact }),
+      ...(options.isError === true ? { isError: true } : {}),
+    });
   }
 
   private threadId(): ThreadId {

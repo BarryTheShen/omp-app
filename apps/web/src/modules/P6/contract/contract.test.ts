@@ -48,6 +48,7 @@ function portFixture(
     },
     answerDialog: async () => undefined,
     answerHostTool: async () => undefined,
+    updateHostTool: async () => true,
     answerHostUri: async () => undefined,
     onAddToolResult: async () => undefined,
   } as unknown as QueuePort;
