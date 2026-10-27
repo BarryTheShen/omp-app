@@ -189,6 +189,12 @@ describe("requests from the server", () => {
       expect(parseChatHostParams(method, {}).ok).toBe(false);
     }
   });
+
+  test("a sign-in names its provider", () => {
+    expect(parseChatHostParams("login", { providerId: "anthropic" }).ok).toBe(true);
+    expect(parseChatHostParams("login", { providerId: "" }).ok).toBe(false);
+    expect(parseChatHostParams("login", {}).ok).toBe(false);
+  });
 });
 
 describe("the host's dialogs", () => {

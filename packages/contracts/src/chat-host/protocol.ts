@@ -252,6 +252,17 @@ export type SessionNameParams = z.infer<typeof SessionNameParams>;
 export const ExportHtmlParams = z.object({ outputPath: z.string().optional() });
 export type ExportHtmlParams = z.infer<typeof ExportHtmlParams>;
 
+export const LoginParams = z.object({ providerId: z.string().min(1) });
+export type LoginParams = z.infer<typeof LoginParams>;
+
+/** One of omp's sign-in providers, and whether a sign-in for it is stored. */
+export interface LoginProvider {
+  readonly id: string;
+  readonly name: string;
+  readonly available: boolean;
+  readonly authenticated: boolean;
+}
+
 /** omp's todo statuses (`TodoStatus`); as with the levels, a status omp adds or drops fails the typecheck here. */
 const TODO_STATUSES: { readonly [Status in TodoStatus]: Status } = {
   pending: "pending",
@@ -510,6 +521,15 @@ export interface ChatHostMethodMap {
     readonly params: EnabledParams;
     readonly result: { readonly enabled: boolean };
   };
+  readonly get_login_providers: {
+    readonly params: EmptyParams;
+    readonly result: { readonly providers: readonly LoginProvider[] };
+  };
+  /** omp's sign-in; runs in the background, so other requests do not wait for the browser. */
+  readonly login: {
+    readonly params: LoginParams;
+    readonly result: { readonly providerId: string };
+  };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -547,6 +567,8 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   fork: EntryParams,
   navigate_tree: EntryParams,
   set_ask_dialog: EnabledParams,
+  get_login_providers: EmptyParams,
+  login: LoginParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */

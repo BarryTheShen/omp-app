@@ -13,6 +13,7 @@
  * built-in slash command (omp's own executor, shared with its ACP host), then `session.prompt`.
  */
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
+import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import {
   clearPluginRootsAndCaches,
@@ -82,8 +83,11 @@ export interface ChatLoopOptions {
   readonly stopInput: () => void;
 }
 
-/** Methods answered as soon as they finish, outside the one-at-a-time order: a long run must not hold up an abort. */
-const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set(["bash", "python"]);
+/**
+ * Methods answered as soon as they finish, outside the one-at-a-time order: a long run must not hold up an abort, and
+ * a sign-in that waits for the browser must not hold up the chat.
+ */
+const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set(["bash", "python", "login"]);
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
 export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
@@ -391,6 +395,55 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     set_ask_dialog: async ({ enabled }) => {
       ui.askDialogEnabled = enabled;
       return { enabled };
+    },
+    get_login_providers: async () => ({
+      providers: getOAuthProviders().map((provider) => ({
+        id: provider.id,
+        name: provider.name,
+        available: provider.available,
+        authenticated:
+          session.modelRegistry.authStorage.keys.source(
+            provider.storeCredentialsAs ?? provider.id,
+          ) !== undefined,
+      })),
+    }),
+    login: async ({ providerId }) => {
+      // omp's RPC sign-in (`rpc-mode.ts:2533-2590`): the page opens without an answer, progress is a notice, and a
+      // pasted code is an input. A secret, or a question before any page, needs omp's terminal.
+      const provider = getOAuthProviders().find((candidate) => candidate.id === providerId);
+      if (!provider) throw new Error(`Unknown OAuth provider: ${providerId}`);
+      let pageOpened = false;
+      await session.modelRegistry.authStorage.oauth.login(providerId, {
+        onAuth: ({ url, launchUrl, instructions }) => {
+          pageOpened = true;
+          emit({
+            type: "ui_open_url",
+            url,
+            ...(launchUrl !== undefined ? { launchUrl } : {}),
+            ...(instructions !== undefined ? { instructions } : {}),
+          });
+        },
+        onProgress: (message) => ui.notify(message, "info"),
+        onPrompt: async (prompt) => {
+          if (prompt.secret) {
+            throw new Error(
+              `Provider '${providerId}' asks for secret input, which the app cannot hide. Sign in from omp's terminal.`,
+            );
+          }
+          if (!pageOpened) {
+            throw new Error(
+              `Provider '${providerId}' asks questions before its sign-in page, which the app does not support. Sign in from omp's terminal.`,
+            );
+          }
+          return (await ui.input(prompt.message, prompt.placeholder, { timeout: 600_000 })) ?? "";
+        },
+      });
+      // The stored sign-in runs the provider's model discovery again instead of reusing the cached list (omp #5780).
+      await session.modelRegistry.refreshProvider(
+        provider.storeCredentialsAs ?? provider.id,
+        "online",
+      );
+      return { providerId };
     },
   };
 

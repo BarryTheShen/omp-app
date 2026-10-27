@@ -150,10 +150,20 @@ export interface UiEditorTextEvent {
   readonly text: string;
 }
 
+/** A sign-in's page to open (omp's `onAuth`); the sign-in goes on without an answer. */
+export interface UiOpenUrlEvent {
+  readonly type: "ui_open_url";
+  readonly url: string;
+  /** A short local link that redirects to `url`, when the sign-in runs one. */
+  readonly launchUrl?: string;
+  readonly instructions?: string;
+}
+
 export type UiEvent =
   | UiCancelEvent
   | UiNotifyEvent
   | UiStatusEvent
   | UiWidgetEvent
   | UiTitleEvent
-  | UiEditorTextEvent;
+  | UiEditorTextEvent
+  | UiOpenUrlEvent;
