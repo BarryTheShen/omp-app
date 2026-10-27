@@ -2,7 +2,7 @@
  * The requests a host sends the server (SDK plan H5.2d, H5.2e): its dialogs, and the calls of the app's tools and URI
  * schemes. The server answers each with one response; the host checks each answer before omp sees it.
  */
-import type { z } from "zod";
+import { z } from "zod";
 import {
   ApproveAnswer,
   type ApproveDialog,
@@ -37,6 +37,30 @@ export interface ChatHostHostMethodMap {
   readonly "uri.write": { readonly params: UriWriteRequest; readonly result: UriWriteAnswer };
 }
 export type ChatHostHostMethod = keyof ChatHostHostMethodMap;
+
+/** A request from the host, with its method's params. */
+export type HostRequest = {
+  readonly [M in ChatHostHostMethod]: {
+    readonly id: string;
+    readonly method: M;
+    readonly params: ChatHostHostMethodMap[M]["params"];
+  };
+}[ChatHostHostMethod];
+
+/** A host request's envelope, as the server's chat session port carries it; the host built its params. */
+export const HostRequestSchema = z.custom<HostRequest>(
+  (value) => {
+    if (typeof value !== "object" || value === null) return false;
+    const { id, method } = value as { id?: unknown; method?: unknown };
+    return (
+      typeof id === "string" &&
+      id.length > 0 &&
+      typeof method === "string" &&
+      isChatHostHostMethod(method)
+    );
+  },
+  { message: "expected a chat host's request" },
+);
 
 /** Checks each answer the server sends before omp sees it. */
 export const HOST_METHOD_ANSWERS: {

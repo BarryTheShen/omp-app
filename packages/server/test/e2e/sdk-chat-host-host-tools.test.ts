@@ -4,7 +4,7 @@
  * and the test answers as the app would. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import type { HostRequest } from "../../src/chat-host/client";
+import type { HostRequest } from "@omp-app/contracts/chat-host";
 import {
   type Chat,
   chatHostChats,

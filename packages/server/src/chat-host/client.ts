@@ -13,23 +13,13 @@ import {
   type ChatEvent,
   type ChatHostErrorCode,
   type ChatHostHello,
-  type ChatHostHostMethod,
-  type ChatHostHostMethodMap,
   type ChatHostMethod,
   type ChatHostMethodMap,
   type ChatHostRequest,
+  type HostRequest,
   isChatHostHostMethod,
   parseHostLine,
 } from "@omp-app/contracts/chat-host";
-
-/** A request from the host, with its method's params. */
-export type HostRequest = {
-  readonly [M in ChatHostHostMethod]: {
-    readonly id: string;
-    readonly method: M;
-    readonly params: ChatHostHostMethodMap[M]["params"];
-  };
-}[ChatHostHostMethod];
 
 /** Answers one of the host's requests; the host checks the answer against the method's own. */
 export type HostRequestHandler = (request: HostRequest) => Promise<unknown>;

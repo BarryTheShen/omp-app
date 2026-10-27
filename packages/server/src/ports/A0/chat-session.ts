@@ -14,6 +14,7 @@
 import { join } from "node:path";
 import {
   type AbortSignalLike,
+  type AnswerHostRequestArgs,
   AppFailure,
   type ChatOpenResult,
   type ChatRequestArgs,
@@ -21,20 +22,29 @@ import {
   ChatSessionPort,
   chatSessionEventStream,
   type FolderPath,
+  isUiStateEvent,
   type ModelChoice,
+  type OpenHostRequests,
   type OpenThreadArgs,
   SessionFilePath,
   type StreamKey,
   type SubscribeArgs,
   ThreadId,
+  type UiState,
+  type UiStateEvent,
 } from "@omp-app/contracts";
 import {
   type ChatEvent,
   type ChatHostMethod,
   type ChatHostMethodMap,
+  HOST_METHOD_ANSWERS,
+  type HostRequest,
+  type HostToolDefinition,
+  type HostUriSchemeDefinition,
   parseChatHostParams,
 } from "@omp-app/contracts/chat-host";
 import { modelUnavailableFailure, savedModelFromOmpText } from "@omp-app/omp-rpc";
+import { z } from "zod";
 import { ChatHostClient, ChatHostRequestError } from "../../chat-host/client";
 import type { OmpProcess, OmpProcessOptions } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
@@ -58,6 +68,76 @@ interface ChatEntry {
   startedAt: number;
   /** Set while the chat's process is being started again; everyone who needs it waits on it. */
   respawning?: Promise<void>;
+  /** The host's requests waiting for the browser's answer: omp reports none of them once answered. */
+  readonly openRequests: Map<string, OpenRequest>;
+  /** The UI state omp sends once (statuses, widgets, the title), by key, with the sequence that set it. */
+  readonly uiState: Map<string, { readonly seq: number; readonly event: UiStateEvent }>;
+  /** The app's tools and URI schemes, per connection and owner; the host gets them merged into one set. */
+  hostTools: Registrations<HostToolDefinition>;
+  hostUriSchemes: Registrations<HostUriSchemeDefinition>;
+  /** Registrations are written one after another. */
+  hostRegistrations: Promise<void>;
+  /** The app turned omp's ask dialog on; a replaced process is told again. */
+  askDialogOptedIn: boolean;
+}
+
+/** One kind of host registration: per connection, then per owner. */
+type Registrations<T> = ReadonlyMap<string, ReadonlyMap<string, readonly T[]>>;
+
+interface OpenRequest {
+  readonly request: HostRequest;
+  /** The sequence of the event that asked it, once published. */
+  seq?: number;
+  readonly resolve: (answer: unknown) => void;
+  readonly reject: (error: Error) => void;
+}
+
+/** The registrations with one owner's set replaced. */
+function withOwner<T>(
+  registrations: Registrations<T>,
+  connectionId: string,
+  owner: string,
+  items: readonly T[],
+): Registrations<T> {
+  const next = new Map(registrations);
+  const owners = new Map(next.get(connectionId) ?? []);
+  owners.set(owner, items);
+  next.set(connectionId, owners);
+  return next;
+}
+
+/** Every owner's items in one set: a later owner's item replaces an earlier one's of the same key. */
+function merged<T>(registrations: Registrations<T>, key: (item: T) => string): T[] {
+  const all = new Map<string, T>();
+  for (const owners of registrations.values()) {
+    for (const items of owners.values()) {
+      for (const item of items) all.set(key(item), item);
+    }
+  }
+  return [...all.values()];
+}
+
+const toolName = (tool: HostToolDefinition): string => tool.name;
+/** The host names schemes in lower case. */
+const schemeName = (scheme: HostUriSchemeDefinition): string => scheme.scheme.toLowerCase();
+
+/** The key a UI state event replaces: a status or a widget by its key, the title alone. */
+function uiStateKey(event: UiStateEvent): string {
+  switch (event.type) {
+    case "ui_status":
+      return `status:${event.statusKey}`;
+    case "ui_widget":
+      return `widget:${event.widgetKey}`;
+    case "ui_title":
+      return "title";
+  }
+}
+
+/** omp clears a status or a widget by sending it with no text or lines. */
+function clearsUiState(event: UiStateEvent): boolean {
+  if (event.type === "ui_status") return !event.statusText;
+  if (event.type === "ui_widget") return !event.widgetLines?.length;
+  return false;
 }
 
 /** The arguments that open a chat with a model the person picked: omp's `--model`, as `provider/modelId`. */
@@ -141,10 +221,13 @@ export class ChatSessionPortRuntime {
   readonly handlers: Readonly<Record<string, PortHandler>> = {
     // The dispatcher parses each method's zod args before invoking this boundary.
     open: (args, call) => this.open(args as OpenThreadArgs, call),
-    request: (args) => this.request(args as ChatRequestArgs),
+    request: (args, call) => this.request(args as ChatRequestArgs, call),
     subscribe: (args) => this.subscribe(args as SubscribeArgs),
     restart: (args) => this.restart(args as { threadId: ThreadId }),
     close: (args, call) => this.close(args as { threadId: ThreadId }, call),
+    answer: (args) => this.answer(args as AnswerHostRequestArgs),
+    openRequests: (args) => this.openRequests(args as { threadId: ThreadId }),
+    uiState: (args) => this.uiState(args as { threadId: ThreadId }),
   };
 
   /** The session file an open chat runs, known before omp writes it (a new chat writes its file after its first reply). */
@@ -196,6 +279,12 @@ export class ChatSessionPortRuntime {
       rekeyed: false,
       methods: [],
       startedAt: Date.now(),
+      openRequests: new Map(),
+      uiState: new Map(),
+      hostTools: new Map(),
+      hostUriSchemes: new Map(),
+      hostRegistrations: Promise.resolve(),
+      askDialogOptedIn: false,
     };
     entry.unsubscribe = this.#listen(entry);
     this.#entries.set(bootstrap.threadId, entry);
@@ -244,8 +333,11 @@ export class ChatSessionPortRuntime {
     return this.#openResult(entry);
   }
 
-  /** A request by a method's name: its params are checked against the method before the host sees them. */
-  async request(args: ChatRequestArgs): Promise<unknown> {
+  /**
+   * A request by a method's name: its params are checked against the method before the host sees them. A host tool or
+   * URI scheme registration is merged with every other owner's; only a viewer of the chat may make one.
+   */
+  async request(args: ChatRequestArgs, call: PortHandlerContext): Promise<unknown> {
     const entry = this.#entry(args.threadId);
     await this.#ensureRunning(entry);
     const method = args.method as ChatHostMethod;
@@ -257,14 +349,80 @@ export class ChatSessionPortRuntime {
         retryable: false,
       });
     }
-    try {
-      return await entry.client.request(
-        method,
-        params.value as ChatHostMethodMap[typeof method]["params"],
-      );
-    } catch (error) {
-      throw requestFailure(method, error);
+    if (method === "set_host_tools" || method === "set_host_uri_schemes") {
+      const owner = args.registrationOwner;
+      if (owner === undefined) {
+        throw new AppFailure({
+          code: "invalid_args",
+          message: "A host registration owner is required.",
+          retryable: false,
+        });
+      }
+      this.#requireViewer(entry, call.connectionId);
+      return method === "set_host_tools"
+        ? this.#registerTools(
+            entry,
+            call.connectionId,
+            owner,
+            (params.value as ChatHostMethodMap["set_host_tools"]["params"]).tools,
+          )
+        : this.#registerUriSchemes(
+            entry,
+            call.connectionId,
+            owner,
+            (params.value as ChatHostMethodMap["set_host_uri_schemes"]["params"]).schemes,
+          );
     }
+    const result = await this.#send(
+      entry,
+      method,
+      params.value as ChatHostMethodMap[typeof method]["params"],
+    );
+    // The opt-in lasts for one process: a replaced one is told again (`#reapply`).
+    if (method === "set_ask_dialog") {
+      entry.askDialogOptedIn = (
+        params.value as ChatHostMethodMap["set_ask_dialog"]["params"]
+      ).enabled;
+    }
+    return result;
+  }
+
+  /** The browser's answer to a host request, checked against the request's method before the host gets it. */
+  answer(args: AnswerHostRequestArgs): null {
+    const entry = this.#entry(args.threadId);
+    const open = entry.openRequests.get(args.id);
+    if (open === undefined) {
+      throw notFound(
+        "Nothing waits for that answer: the request was answered, given up, or its chat restarted.",
+      );
+    }
+    const answer = HOST_METHOD_ANSWERS[open.request.method].safeParse(args.answer);
+    if (!answer.success) {
+      throw new AppFailure({
+        code: "invalid_args",
+        message: `The answer does not fit ${open.request.method}: ${z.prettifyError(answer.error)}`,
+        retryable: false,
+      });
+    }
+    entry.openRequests.delete(args.id);
+    open.resolve(answer.data);
+    return null;
+  }
+
+  /** The host requests still waiting, oldest first: a page that opens the chat again shows them. */
+  openRequests(args: { threadId: ThreadId }): OpenHostRequests {
+    const open: OpenHostRequests = [];
+    for (const { request, seq } of this.#entry(args.threadId).openRequests.values()) {
+      if (seq !== undefined) open.push({ seq, request });
+    }
+    return open.sort((left, right) => left.seq - right.seq);
+  }
+
+  /** The UI state the chat holds (statuses, widgets, the title), oldest first. */
+  uiState(args: { threadId: ThreadId }): UiState {
+    return [...this.#entry(args.threadId).uiState.values()].sort(
+      (left, right) => left.seq - right.seq,
+    );
   }
 
   subscribe(args: SubscribeArgs): { stream: StreamKey } {
@@ -279,21 +437,29 @@ export class ChatSessionPortRuntime {
 
   async close(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {
     const entry = this.#entries.get(args.threadId);
-    if (entry !== undefined) this.#releaseView(entry, call.connectionId);
+    if (entry === undefined) return null;
+    this.#releaseView(entry, call.connectionId);
+    // The connection's last view of the chat takes its tools and URI schemes with it.
+    if (!entry.viewers.has(call.connectionId)) {
+      await this.#releaseRegistrations(entry, call.connectionId);
+    }
     return null;
   }
 
   /**
    * A browser connection closed (a tab closed or reloaded, the network lost): every view it held is released, as if it
-   * had closed each one. A process nobody watches is stopped by the registry after its idle time, unless it is working.
+   * had closed each one, with its tools and URI schemes. A process nobody watches is stopped by the registry after its
+   * idle time, unless it is working.
    */
   async releaseConnection(connectionId: string): Promise<void> {
-    for (const entry of this.#entries.values()) {
+    for (const entry of [...this.#entries.values()]) {
       const count = entry.viewers.get(connectionId) ?? 0;
+      if (count === 0) continue;
       entry.viewers.delete(connectionId);
       for (let view = 0; view < count; view += 1) {
         this.#context.processRegistry.release(entry.bootstrap.threadId);
       }
+      await this.#releaseRegistrations(entry, connectionId);
     }
   }
 
@@ -318,6 +484,7 @@ export class ChatSessionPortRuntime {
     for (let view = 0; view < count; view += 1) {
       this.#context.processRegistry.release(entry.bootstrap.threadId);
     }
+    await this.#releaseRegistrations(entry, connectionId);
   }
 
   /**
@@ -362,11 +529,12 @@ export class ChatSessionPortRuntime {
     this.#receive(entry, { kind: "process", status: "ready", startedAt: entry.startedAt });
   }
 
-  /** The host's events and the process's life, into the chat's stream. */
+  /** The host's events, its requests and the process's life, into the chat's stream. */
   #listen(entry: ChatEntry): () => void {
     const fromHost = entry.client.onEvent((event) =>
       this.#receive(entry, { kind: "event", event }),
     );
+    entry.client.onRequest((request) => this.#hostRequest(entry, request));
     const fromProcess = entry.process.onEvent((event) =>
       this.#receive(entry, {
         kind: "process",
@@ -389,7 +557,49 @@ export class ChatSessionPortRuntime {
       entry.startupEvents.push(payload);
       return;
     }
-    this.#context.replay.publish(entry.stream, payload);
+    this.#publish(entry, payload);
+  }
+
+  /** Publishes on the chat's stream, and keeps the open requests and the UI state in step with what was published. */
+  #publish(entry: ChatEntry, payload: ChatSessionEvent): void {
+    const { seq } = this.#context.replay.publish(entry.stream, payload);
+    if (payload.kind === "host_request") {
+      const open = entry.openRequests.get(payload.request.id);
+      if (open !== undefined) open.seq = seq;
+      return;
+    }
+    if (payload.kind === "process") {
+      // A process that has ended can take no answer.
+      if (payload.status === "exited" || payload.status === "error") this.#closeRequests(entry);
+      return;
+    }
+    const { event } = payload;
+    if (event.type === "ui_cancel" || event.type === "tool_cancel" || event.type === "uri_cancel") {
+      this.#closeRequest(entry, event.requestId);
+    } else if (isUiStateEvent(event)) {
+      if (clearsUiState(event)) entry.uiState.delete(uiStateKey(event));
+      else entry.uiState.set(uiStateKey(event), { seq, event });
+    }
+  }
+
+  /** A host request waits in the open requests until the browser answers it or the host gives it up. */
+  #hostRequest(entry: ChatEntry, request: HostRequest): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      entry.openRequests.set(request.id, { request, resolve, reject });
+      this.#receive(entry, { kind: "host_request", request });
+    });
+  }
+
+  /** The host gave a request up (omp's abort or timeout, or the process ended): an answer would reach nothing. */
+  #closeRequest(entry: ChatEntry, id: string): void {
+    const open = entry.openRequests.get(id);
+    if (open === undefined) return;
+    entry.openRequests.delete(id);
+    open.reject(new Error("The chat no longer waits for this answer."));
+  }
+
+  #closeRequests(entry: ChatEntry): void {
+    for (const id of [...entry.openRequests.keys()]) this.#closeRequest(entry, id);
   }
 
   /**
@@ -462,7 +672,7 @@ export class ChatSessionPortRuntime {
     this.#entries.set(identity.threadId, entry);
     entry.rekeyed = true;
     for (const payload of entry.startupEvents.splice(0)) {
-      this.#context.replay.publish(entry.stream, payload);
+      this.#publish(entry, payload);
     }
   }
 
@@ -559,12 +769,16 @@ export class ChatSessionPortRuntime {
     });
     entry.unsubscribe();
     entry.client.dispose();
+    // The replaced process's questions can never be answered, and its UI state goes with it.
+    this.#closeRequests(entry);
+    entry.uiState.clear();
     entry.bootstrap = { ...entry.bootstrap, args };
     entry.process = process;
     entry.client = new ChatHostClient(process);
     entry.startedAt = Date.now();
     entry.unsubscribe = this.#listen(entry);
     await this.#start(entry);
+    await this.#reapply(entry);
   }
 
   /** Whether the chat's host says it has settled; a chat nothing holds counts as settled. */
@@ -584,6 +798,7 @@ export class ChatSessionPortRuntime {
   #forget(entry: ChatEntry): void {
     entry.unsubscribe();
     entry.client.dispose();
+    this.#closeRequests(entry);
     this.#entries.delete(entry.bootstrap.threadId);
   }
 
@@ -604,6 +819,115 @@ export class ChatSessionPortRuntime {
     if (count === 1) entry.viewers.delete(connectionId);
     else entry.viewers.set(connectionId, count - 1);
     this.#context.processRegistry.release(entry.bootstrap.threadId);
+  }
+
+  /** Host registrations are released with a connection's views, so only a viewer may make one. */
+  #requireViewer(entry: ChatEntry, connectionId: string): void {
+    if ((entry.viewers.get(connectionId) ?? 0) > 0) return;
+    throw notFound(
+      "Open this chat on this connection before registering host tools or URI schemes.",
+    );
+  }
+
+  async #send<M extends ChatHostMethod>(
+    entry: ChatEntry,
+    method: M,
+    params: ChatHostMethodMap[M]["params"],
+  ): Promise<ChatHostMethodMap[M]["result"]> {
+    try {
+      return await entry.client.request(method, params);
+    } catch (error) {
+      throw requestFailure(method, error);
+    }
+  }
+
+  /** One registration after another, so two owners' writes cannot cross. */
+  #serializeRegistrations<T>(entry: ChatEntry, operation: () => Promise<T>): Promise<T> {
+    const current = entry.hostRegistrations.then(operation, operation);
+    entry.hostRegistrations = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    return current;
+  }
+
+  #registerTools(
+    entry: ChatEntry,
+    connectionId: string,
+    owner: string,
+    tools: readonly HostToolDefinition[],
+  ): Promise<{ toolNames: string[] }> {
+    return this.#serializeRegistrations(entry, async () => {
+      const next = withOwner(entry.hostTools, connectionId, owner, tools);
+      const { toolNames } = await this.#send(entry, "set_host_tools", {
+        tools: merged(next, toolName),
+      });
+      entry.hostTools = next;
+      const own = new Set(tools.map(toolName));
+      return { toolNames: toolNames.filter((name) => own.has(name)) };
+    });
+  }
+
+  #registerUriSchemes(
+    entry: ChatEntry,
+    connectionId: string,
+    owner: string,
+    schemes: readonly HostUriSchemeDefinition[],
+  ): Promise<{ schemes: string[] }> {
+    return this.#serializeRegistrations(entry, async () => {
+      const next = withOwner(entry.hostUriSchemes, connectionId, owner, schemes);
+      const result = await this.#send(entry, "set_host_uri_schemes", {
+        schemes: merged(next, schemeName),
+      });
+      entry.hostUriSchemes = next;
+      const own = new Set(schemes.map(schemeName));
+      return { schemes: result.schemes.filter((scheme) => own.has(scheme)) };
+    });
+  }
+
+  /** A connection's tools and URI schemes leave the chat with its last view; a write that fails is logged. */
+  #releaseRegistrations(entry: ChatEntry, connectionId: string): Promise<void> {
+    return this.#serializeRegistrations(entry, async () => {
+      const hadTools = entry.hostTools.has(connectionId);
+      const hadSchemes = entry.hostUriSchemes.has(connectionId);
+      if (!hadTools && !hadSchemes) return;
+      const tools = new Map(entry.hostTools);
+      tools.delete(connectionId);
+      const schemes = new Map(entry.hostUriSchemes);
+      schemes.delete(connectionId);
+      entry.hostTools = tools;
+      entry.hostUriSchemes = schemes;
+      const writes: Promise<unknown>[] = [];
+      if (hadTools)
+        writes.push(this.#send(entry, "set_host_tools", { tools: merged(tools, toolName) }));
+      if (hadSchemes) {
+        writes.push(
+          this.#send(entry, "set_host_uri_schemes", { schemes: merged(schemes, schemeName) }),
+        );
+      }
+      for (const write of await Promise.allSettled(writes)) {
+        if (write.status === "rejected") {
+          this.#context.logger?.warn("chat_session.registrations_release_failed", {
+            message: write.reason instanceof Error ? write.reason.message : String(write.reason),
+          });
+        }
+      }
+    });
+  }
+
+  /** A replaced process is told what the old one was: the app's registrations and the ask-dialog opt-in. */
+  async #reapply(entry: ChatEntry): Promise<void> {
+    await this.#serializeRegistrations(entry, async () => {
+      if (entry.hostTools.size > 0) {
+        await this.#send(entry, "set_host_tools", { tools: merged(entry.hostTools, toolName) });
+      }
+      if (entry.hostUriSchemes.size > 0) {
+        await this.#send(entry, "set_host_uri_schemes", {
+          schemes: merged(entry.hostUriSchemes, schemeName),
+        });
+      }
+    });
+    if (entry.askDialogOptedIn) await this.#send(entry, "set_ask_dialog", { enabled: true });
   }
 
   /** The entry a thread id names; a chat whose process is stopping serves nothing. */

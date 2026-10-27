@@ -4,7 +4,7 @@
  * throwaway agent folder. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import type { HostRequest } from "../../src/chat-host/client";
+import type { HostRequest } from "@omp-app/contracts/chat-host";
 import { chatHostChats, PROGRAMS, realTest } from "./sdk-chat-host-harness";
 
 /** `test-login` opens a page and asks for a code; `test-secret` asks for a secret. */

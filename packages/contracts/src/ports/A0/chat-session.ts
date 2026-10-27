@@ -8,7 +8,11 @@ import {
   type ChatEvent,
   type ChatHostMethod,
   type ChatHostMethodMap,
+  HostRequestSchema,
   isChatHostMethod,
+  type UiStatusEvent,
+  type UiTitleEvent,
+  type UiWidgetEvent,
 } from "../../chat-host/protocol";
 import type { PortCallOptions, PortClient, PortHandlers } from "../../core/envelope";
 import { definePort, type StreamKey, streamKey } from "../../core/envelope";
@@ -30,17 +34,73 @@ export const ChatOpenResult = z.strictObject({
 });
 export type ChatOpenResult = z.infer<typeof ChatOpenResult>;
 
-/** A request by a chat host method's name. The server checks `params` against the method before the host sees them. */
-export const ChatRequestArgs = z.strictObject({
-  threadId: ThreadId,
-  method: z.string().refine(isChatHostMethod, "expected a chat host method"),
-  params: z.unknown(),
-});
+/** The two methods that register the app's tools and URI schemes; each registration names its owner. */
+const REGISTRATION_METHODS: ReadonlySet<string> = new Set([
+  "set_host_tools",
+  "set_host_uri_schemes",
+]);
+
+/**
+ * A request by a chat host method's name. The server checks `params` against the method before the host sees them. A
+ * host tool or URI scheme registration names its owner (`registrationOwner`): the server merges every owner's set.
+ */
+export const ChatRequestArgs = z
+  .strictObject({
+    threadId: ThreadId,
+    method: z.string().refine(isChatHostMethod, "expected a chat host method"),
+    params: z.unknown(),
+    registrationOwner: z.string().min(1).optional(),
+  })
+  .refine(
+    ({ method, registrationOwner }) =>
+      REGISTRATION_METHODS.has(method) === (registrationOwner !== undefined),
+    "registrationOwner must be present only for host tool and URI scheme registrations",
+  );
 export type ChatRequestArgs<M extends ChatHostMethod = ChatHostMethod> = {
   readonly threadId: ThreadId;
   readonly method: M;
   readonly params: ChatHostMethodMap[M]["params"];
+  readonly registrationOwner?: string;
 };
+
+/** The browser's answer to a host request; the server checks it against the request's method first. */
+export const AnswerHostRequestArgs = z.strictObject({
+  threadId: ThreadId,
+  id: z.string().min(1),
+  answer: z.unknown(),
+});
+export type AnswerHostRequestArgs = z.infer<typeof AnswerHostRequestArgs>;
+
+/** The host requests still waiting for an answer, each with the sequence of the event that asked it. */
+export const OpenHostRequests = z.array(
+  z.strictObject({ seq: z.int().min(1), request: HostRequestSchema }),
+);
+export type OpenHostRequests = z.infer<typeof OpenHostRequests>;
+
+/** The UI state omp sends once and does not repeat: a status, a widget, the title. */
+export type UiStateEvent = UiStatusEvent | UiWidgetEvent | UiTitleEvent;
+
+const UI_STATE_TYPES: ReadonlySet<string> = new Set(["ui_status", "ui_widget", "ui_title"]);
+
+/** Whether an event sets UI state that stays until omp replaces or clears it. */
+export function isUiStateEvent(event: ChatEvent): event is UiStateEvent {
+  return UI_STATE_TYPES.has(event.type);
+}
+
+/** The UI state a chat holds, each event with the sequence that set it, oldest first. */
+export const UiState = z.array(
+  z.strictObject({
+    seq: z.int().min(1),
+    event: z.custom<UiStateEvent>(
+      (value) =>
+        typeof value === "object" &&
+        value !== null &&
+        UI_STATE_TYPES.has(String((value as { type?: unknown }).type)),
+      { message: "expected a status, widget or title" },
+    ),
+  }),
+);
+export type UiState = z.infer<typeof UiState>;
 
 const ChatEventPayload = z.strictObject({
   kind: z.literal("event"),
@@ -61,9 +121,16 @@ const ChatProcessPayload = z.strictObject({
   error: AppError.optional(),
 });
 
+/** A request the host waits on: answer it with `answer`. */
+const HostRequestPayload = z.strictObject({
+  kind: z.literal("host_request"),
+  request: HostRequestSchema,
+});
+
 export const ChatSessionEvent = z.discriminatedUnion("kind", [
   ChatEventPayload,
   ChatProcessPayload,
+  HostRequestPayload,
 ]);
 export type ChatSessionEvent = z.infer<typeof ChatSessionEvent>;
 
@@ -75,6 +142,9 @@ export const ChatSessionPort = definePort({
     subscribe: { args: SubscribeArgs, result: SubscribeResult },
     restart: { args: ThreadRef, result: z.null() },
     close: { args: ThreadRef, result: z.null() },
+    answer: { args: AnswerHostRequestArgs, result: z.null() },
+    openRequests: { args: ThreadRef, result: OpenHostRequests },
+    uiState: { args: ThreadRef, result: UiState },
   },
   events: { event: { payload: ChatSessionEvent } },
 });

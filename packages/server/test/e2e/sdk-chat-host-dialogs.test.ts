@@ -4,61 +4,9 @@
  * notice. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import type { HostRequest } from "../../src/chat-host/client";
+import type { HostRequest } from "@omp-app/contracts/chat-host";
+import { DIALOGS_EXTENSION } from "./sdk-chat-host-dialogs-extension";
 import { type Chat, chatHostChats, PROGRAMS, realTest } from "./sdk-chat-host-harness";
-
-/** `/dialogs <kind>` opens one dialog and reports the answer omp got as a notice. */
-const EXTENSION = `
-export default function (pi) {
-  pi.registerCommand("dialogs", {
-    description: "Opens one dialog for the chat host's tests",
-    handler: async (args, ctx) => {
-      const report = (text) => ctx.ui.notify(text, "info");
-      switch (args.trim()) {
-        case "confirm":
-          report("confirmed " + (await ctx.ui.confirm("Run the check?", "It takes a minute")));
-          return;
-        case "select":
-          report("picked " + (await ctx.ui.select("Colour", ["red", { label: "blue", description: "like the sky" }], { initialIndex: 1 })));
-          return;
-        case "input":
-          report("typed " + (await ctx.ui.input("Name", "your name")));
-          return;
-        case "editor":
-          report("edited " + (await ctx.ui.editor("Message", "draft")));
-          return;
-        case "timeout":
-          report("timed out with " + (await ctx.ui.select("Quick", ["a", "b"], { timeout: 300 })));
-          return;
-        case "approve":
-          report("approved " + JSON.stringify(await ctx.ui.approve({
-            full: "Run ls?",
-            compact: "ls",
-            session: "Approve for this session",
-            grants: [{ scope: "folder", label: "Approve Directory: ~/src", alwaysLabel: "Always Approve Directory: ~/src" }],
-          })));
-          return;
-        case "ask":
-          if (!ctx.ui.askDialog) {
-            report("no ask dialog");
-            return;
-          }
-          report("asked " + JSON.stringify(await ctx.ui.askDialog([
-            { id: "colour", question: "Which colour?", options: [{ label: "red" }, { label: "blue" }] },
-          ])));
-          return;
-        case "show":
-          ctx.ui.setStatus("build", "Running");
-          ctx.ui.setWidget("build", ["step 1"]);
-          ctx.ui.setTitle("Build");
-          ctx.ui.setEditorText("draft text");
-          report("shown");
-          return;
-      }
-    },
-  });
-}
-`;
 
 const chats = chatHostChats();
 afterEach(() => chats.stopAll(), 60_000);
@@ -69,7 +17,7 @@ async function chatWithDialogs(
   answer: (request: HostRequest) => unknown,
 ) {
   const chat = await chats.start(command, {
-    agentFiles: { "extensions/dialogs.ts": EXTENSION },
+    agentFiles: { "extensions/dialogs.ts": DIALOGS_EXTENSION },
     nativeDiscovery: true,
   });
   const asked: HostRequest[] = [];
