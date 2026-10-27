@@ -1,7 +1,7 @@
-import type { OmpWire, RpcSessionEvent } from "@omp-app/contracts";
 import {
   type AbortSignalLike,
   AppFailure,
+  type CommandModelUpdate,
   type CommandOutput,
   type CommandOutputEvent,
   type CommandRunArgs,
@@ -12,12 +12,12 @@ import {
   type SessionInfoUpdate,
   ThreadId,
 } from "@omp-app/contracts";
-import type { CommandFuture, RpcSession } from "@omp-app/omp-rpc";
+import type { CommandListing, CommandSession, CommandSessionEvent } from "./command-session";
 import { compactionOutcome } from "./compaction-parser";
 import { registerOmpCommandParsers } from "./parsers";
 
-/** Resolves the already-connected RpcSession backing one thread's omp process. */
-export type SessionResolver = (threadId: ThreadId) => RpcSession | Promise<RpcSession>;
+/** Resolves the command session of one open chat: from the chat host, or from omp's RPC until H5.6. */
+export type SessionResolver = (threadId: ThreadId) => CommandSession | Promise<CommandSession>;
 
 /** The correlated raw frames of one command run, before any per-command parser is applied. */
 export interface CommandParserContext {
@@ -95,40 +95,37 @@ function parserName(name: string): string {
   return normalized;
 }
 
-function commandCatalogHas(
-  catalog: readonly OmpWire.AvailableSlashCommand[],
-  name: string,
-): boolean {
+function commandCatalogHas(catalog: readonly CommandListing[], name: string): boolean {
   return catalog.some((entry) => entry.name === name || (entry.aliases?.includes(name) ?? false));
 }
 
 /** Safe model metadata only: never `headers`, `baseUrl`, `cost` or other provider-identifying data. */
-function toCommandModelUpdate(model: OmpWire.ModelInfo): ConfigInfoUpdate["model"] {
+function toCommandModelUpdate(model: CommandModelUpdate): CommandModelUpdate {
   return {
     id: model.id,
     name: model.name,
     provider: model.provider,
-    api: model.api,
-    reasoning: model.reasoning,
+    ...(model.api === undefined ? {} : { api: model.api }),
+    ...(model.reasoning === undefined ? {} : { reasoning: model.reasoning }),
   };
 }
 
-function toConfigInfoUpdate(frame: OmpWire.ConfigUpdateEvent): ConfigInfoUpdate {
+function toConfigInfoUpdate(
+  event: Extract<CommandSessionEvent, { type: "config_update" }>,
+): ConfigInfoUpdate {
   return {
-    ...(frame.model === undefined ? {} : { model: toCommandModelUpdate(frame.model) }),
-    ...(frame.thinkingLevel === undefined ? {} : { thinkingLevel: frame.thinkingLevel }),
+    ...(event.model === undefined ? {} : { model: toCommandModelUpdate(event.model) }),
+    ...(event.thinkingLevel === undefined ? {} : { thinkingLevel: event.thinkingLevel }),
   };
 }
 
-function toSessionInfoUpdate(frame: OmpWire.SessionInfoUpdateEvent): SessionInfoUpdate {
+function toSessionInfoUpdate(
+  event: Extract<CommandSessionEvent, { type: "session_info_update" }>,
+): SessionInfoUpdate {
   return {
-    sessionId: ThreadId.parse(frame.sessionId),
-    ...(frame.title === undefined ? {} : { title: frame.title }),
+    sessionId: ThreadId.parse(event.sessionId),
+    ...(event.title === undefined ? {} : { title: event.title }),
   };
-}
-
-function toCommandOutput(frame: OmpWire.CommandOutputEvent): CommandOutput {
-  return { text: frame.text };
 }
 
 interface Deferred<T> {
@@ -226,12 +223,11 @@ class ThreadCommandQueue {
 }
 
 /**
- * Runs omp slash commands through A0.3's `RpcSession` prompt lifecycle (AP4). A command is
- * admitted, then settled only once its `prompt_result` arrives (or immediately when
- * `agentInvoked` is false); `command_output`/`session_info_update`/`config_update` frames carry
- * no correlation id, so they are attributed to the one command this gateway allows in flight per
- * thread. Per-command parsers are registered by consumer modules; a command with none registered
- * surfaces its raw correlated frames instead (`runWithParser`).
+ * Runs omp slash commands as prompts on a chat's command session (`command-session.ts`). A command is admitted, then
+ * settled only once its prompt's outcome is in (at once when omp handled it without the model). A command's
+ * `command_output`, `session_info_update` and `config_update` events carry no correlation id, so they are attributed to
+ * the one command this gateway allows in flight per thread. Per-command parsers are registered by consumer modules; a
+ * command with none registered surfaces its raw correlated events instead (`runWithParser`).
  */
 export class OmpCommandGatewayService {
   readonly #resolveSession: SessionResolver;
@@ -343,7 +339,7 @@ export class OmpCommandGatewayService {
       throw cancelled;
     }
 
-    let session: RpcSession;
+    let session: CommandSession;
     try {
       session = await raceAbort(signal, () => Promise.resolve(this.#resolveSession(args.threadId)));
     } catch (cause) {
@@ -359,13 +355,9 @@ export class OmpCommandGatewayService {
     try {
       return await this.#queue.run(args.threadId, signal, async () => {
         await raceAbort(signal, async () => {
-          const catalogFuture = session.send({ type: "get_available_commands" }, { signal });
-          const catalog = await catalogFuture;
+          const catalog = await session.availableCommands(signal);
           // omp lists a colon name whole (`github:review`); any other word is read up to its first colon.
-          if (
-            !commandCatalogHas(catalog.commands, word) &&
-            !commandCatalogHas(catalog.commands, name)
-          ) {
+          if (!commandCatalogHas(catalog, word) && !commandCatalogHas(catalog, name)) {
             throw failure(
               "unavailable",
               `Slash command /${word} is not available in this omp session.`,
@@ -383,7 +375,7 @@ export class OmpCommandGatewayService {
   }
 
   async #sendAndCorrelate(
-    session: RpcSession,
+    session: CommandSession,
     args: CommandRunArgs,
     signal: AbortSignalLike | undefined,
     admittedDeferred: Deferred<{ agentInvoked: boolean }>,
@@ -391,28 +383,19 @@ export class OmpCommandGatewayService {
     const outputs: CommandOutput[] = [];
     const sessionUpdates: SessionInfoUpdate[] = [];
     const configUpdates: ConfigInfoUpdate[] = [];
-    let promptResult: OmpWire.PromptResultEvent | undefined;
     let sawSessionSettled = false;
 
-    const unsubscribe = session.onEvent((event: RpcSessionEvent) => {
+    const unsubscribe = session.onEvent((event) => {
       try {
-        if (event.kind === "notification") {
-          if (event.frame.type === "command_output") {
-            const output = toCommandOutput(event.frame);
-            outputs.push(output);
-            this.#emitOutput({ threadId: args.threadId, output });
-          } else if (event.frame.type === "session_info_update") {
-            sessionUpdates.push(toSessionInfoUpdate(event.frame));
-          } else if (event.frame.type === "config_update") {
-            configUpdates.push(toConfigInfoUpdate(event.frame));
-          }
-          return;
-        }
-        if (event.kind === "prompt_result") {
-          promptResult = event.event;
-          return;
-        }
-        if (event.kind === "session_settled") {
+        if (event.type === "command_output") {
+          const output = { text: event.text };
+          outputs.push(output);
+          this.#emitOutput({ threadId: args.threadId, output });
+        } else if (event.type === "session_info_update") {
+          sessionUpdates.push(toSessionInfoUpdate(event));
+        } else if (event.type === "config_update") {
+          configUpdates.push(toConfigInfoUpdate(event));
+        } else {
           sawSessionSettled = true;
         }
       } catch (cause) {
@@ -420,46 +403,32 @@ export class OmpCommandGatewayService {
       }
     });
 
-    let future: CommandFuture<OmpWire.PromptAck, OmpWire.PromptAck>;
+    let prompt: ReturnType<CommandSession["prompt"]>;
     try {
-      future = session.send({ type: "prompt", message: args.command }, { signal });
+      prompt = session.prompt(args.command, signal);
     } catch (cause) {
       unsubscribe();
       throw toFailure(cause, "send command");
     }
-    // omp answers an admitted prompt (and a local command such as an idle `/fresh`) with
-    // `{ success: true }` and no `data`, so the acknowledgement can be `undefined`: "agentInvoked"
-    // then defaults to true, because the prompt reached the agent unless omp says otherwise.
-    future.admitted.then(
-      (ack: OmpWire.PromptAck | undefined) =>
-        admittedDeferred.resolve({ agentInvoked: ack?.agentInvoked ?? true }),
-      admittedDeferred.reject,
-    );
+    prompt.admitted.then(admittedDeferred.resolve, admittedDeferred.reject);
 
-    let ack: OmpWire.PromptAck | undefined;
+    let outcome: Awaited<typeof prompt>;
     try {
-      ack = await future;
-    } catch (cause) {
+      outcome = await prompt;
+    } finally {
       unsubscribe();
-      throw cause;
     }
-    unsubscribe();
     // `/compact` finishes in the background: omp answers the prompt without a turn, then writes the compaction and
     // prints its result later (builtin-lifecycle.ts:259, :250, :252). That result is watched after the run has settled.
-    if (ack?.agentInvoked === false && commandName(args.command) === "compact") {
+    if (!outcome.agentInvoked && commandName(args.command) === "compact") {
       this.#watchCompaction(session, args.threadId);
     }
 
-    const agentInvoked = ack?.agentInvoked ?? true;
-    const status: CommandRunResult["status"] =
-      promptResult?.status === "aborted" ? "aborted" : "completed";
-    const promptSettled = agentInvoked ? (promptResult?.sessionSettled ?? false) : true;
-
     return {
       command: args.command,
-      status,
-      agentInvoked,
-      promptSettled,
+      status: outcome.status,
+      agentInvoked: outcome.agentInvoked,
+      promptSettled: outcome.promptSettled,
       sessionSettled: sawSessionSettled,
       outputs,
       sessionUpdates,
@@ -482,7 +451,7 @@ export class OmpCommandGatewayService {
    * result goes to the compaction listeners as a typed outcome. Nothing waits on the watch: the run has settled, so the
    * thread's command queue is free.
    */
-  #watchCompaction(session: RpcSession, threadId: CompactionEvent["threadId"]): void {
+  #watchCompaction(session: CommandSession, threadId: CompactionEvent["threadId"]): void {
     let unsubscribe: (() => void) | undefined;
     const timer = setTimeout(() => finish(), COMPACTION_WATCH_MS);
     const finish = (): void => {
@@ -490,9 +459,9 @@ export class OmpCommandGatewayService {
       unsubscribe?.();
       unsubscribe = undefined;
     };
-    unsubscribe = session.onEvent((event: RpcSessionEvent) => {
-      if (event.kind !== "notification" || event.frame.type !== "command_output") return;
-      const outcome = compactionOutcome(event.frame.text);
+    unsubscribe = session.onEvent((event) => {
+      if (event.type !== "command_output") return;
+      const outcome = compactionOutcome(event.text);
       if (outcome === undefined) return;
       finish();
       this.#emitCompaction({ threadId, outcome });

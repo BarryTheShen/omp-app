@@ -9,7 +9,6 @@ import {
   SessionFilePath,
   ThreadId,
 } from "@omp-app/contracts";
-import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
 import {
   type CapabilityProbeResult,
@@ -51,7 +50,7 @@ import { createDraftStore } from "../src/modules/A1/drafts";
 import { createExtensionCatalog } from "../src/modules/A1/extensions";
 import { searchWorkspaceFiles } from "../src/modules/A1/file-search";
 import { FileWatchRegistry } from "../src/modules/A1/fs";
-import { createOmpCommandGateway } from "../src/modules/A1/gateway";
+import { type CommandSession, createOmpCommandGateway } from "../src/modules/A1/gateway";
 import { readWorkspaceState } from "../src/modules/A1/git";
 import { createGithubRefs } from "../src/modules/A1/github-refs";
 import { readHostMetadata } from "../src/modules/A1/host";
@@ -448,8 +447,8 @@ export async function createCompositionServer(
     leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
     views: a0Runtime.views,
   });
-  const resolveSession = async (threadId: ThreadId): Promise<RpcSession> => {
-    const session = a0Runtime.sessionFor(threadId);
+  const resolveSession = async (threadId: ThreadId): Promise<CommandSession> => {
+    const session = a0Runtime.commandSessionFor(threadId);
     if (session === undefined) {
       throw new AppFailure({
         code: "not_found",

@@ -47,12 +47,20 @@ import {
   type HostRequest,
   type HostToolDefinition,
   type HostUriSchemeDefinition,
+  type PromptResultEvent,
   parseChatHostParams,
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
 import { modelUnavailableFailure, savedModelFromOmpText } from "@omp-app/omp-rpc";
 import { z } from "zod";
 import { ChatHostClient, ChatHostRequestError } from "../../chat-host/client";
+import {
+  type CommandPromptFuture,
+  type CommandPromptOutcome,
+  type CommandSession,
+  type CommandSessionEvent,
+  withAdmission,
+} from "../../modules/A1/gateway/command-session";
 import type { OmpProcess, OmpProcessOptions } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./rpc-session";
@@ -93,6 +101,8 @@ interface ChatEntry {
   appliedMessageUpdates?: MessageUpdates;
   /** Arbitrations run one after another. */
   arbitration: Promise<void>;
+  /** What the server itself watches on the chat's stream (the A1 gateway's commands): told every payload published. */
+  readonly payloadListeners: Set<(payload: ChatSessionEvent) => void>;
 }
 
 type SubagentLevel = SetSubagentSubscriptionArgs["level"];
@@ -188,6 +198,30 @@ function unavailable(message: string): AppFailure {
   return new AppFailure({ code: "unavailable", message, retryable: true });
 }
 
+/** A chat event the A1 gateway reads, as plain data; undefined for any other event. */
+function commandEvent(event: ChatEvent): CommandSessionEvent | undefined {
+  switch (event.type) {
+    case "command_output":
+      return { type: "command_output", text: event.text };
+    case "session_info_update":
+      return {
+        type: "session_info_update",
+        sessionId: event.sessionId,
+        ...(event.title === null ? {} : { title: event.title }),
+      };
+    case "config_update":
+      return {
+        type: "config_update",
+        ...(event.model === undefined ? {} : { model: event.model }),
+        ...(event.thinkingLevel === undefined ? {} : { thinkingLevel: event.thinkingLevel }),
+      };
+    case "session_settled":
+      return { type: "session_settled" };
+    default:
+      return undefined;
+  }
+}
+
 /** A chat another tab or window of this app holds open: said in plain words, not in the registry's own text. */
 function chatOpenElsewhere(cause?: unknown): AppFailure {
   return new AppFailure(
@@ -281,6 +315,29 @@ export class ChatSessionPortRuntime {
     return this.#entryOrUndefined(threadId)?.bootstrap.sessionFile;
   }
 
+  /**
+   * The chat as a command session for the A1 gateway; undefined for a chat no host here serves. Its events follow the
+   * chat across a restart and a session switch.
+   */
+  commandSessionFor(threadId: ThreadId): CommandSession | undefined {
+    const entry = this.#entryOrUndefined(threadId);
+    if (entry === undefined || this.#context.processRegistry.isStopping(entry.bootstrap.threadId)) {
+      return undefined;
+    }
+    return {
+      availableCommands: async () => {
+        await this.#ensureRunning(entry);
+        return (await this.#send(entry, "get_available_commands", {})).commands;
+      },
+      prompt: (text, signal) => this.#commandPrompt(entry, text, signal),
+      onEvent: (listener) =>
+        this.#watchPayloads(entry, (payload) => {
+          const event = payload.kind === "event" ? commandEvent(payload.event) : undefined;
+          if (event !== undefined) listener(event);
+        }),
+    };
+  }
+
   async open(args: OpenThreadArgs, call: PortHandlerContext): Promise<ChatOpenResult> {
     const registry = this.#context.processRegistry;
     if (this.#context.health.status !== "ok") {
@@ -333,6 +390,7 @@ export class ChatSessionPortRuntime {
       askDialogOptedIn: false,
       preferences: new Map(),
       arbitration: Promise.resolve(),
+      payloadListeners: new Set(),
     };
     entry.unsubscribe = this.#listen(entry);
     this.#entries.set(bootstrap.threadId, entry);
@@ -757,6 +815,7 @@ export class ChatSessionPortRuntime {
   /** Publishes on the chat's stream, and keeps the open requests and the UI state in step with what was published. */
   #publish(entry: ChatEntry, payload: ChatSessionEvent): void {
     const { seq } = this.#context.replay.publish(entry.stream, payload);
+    for (const listener of [...entry.payloadListeners]) listener(payload);
     if (payload.kind === "host_request") {
       const open = entry.openRequests.get(payload.request.id);
       if (open !== undefined) open.seq = seq;
@@ -1298,6 +1357,78 @@ export class ChatSessionPortRuntime {
       });
       release();
     }
+  }
+
+  #watchPayloads(entry: ChatEntry, listener: (payload: ChatSessionEvent) => void): () => void {
+    entry.payloadListeners.add(listener);
+    return () => entry.payloadListeners.delete(listener);
+  }
+
+  /**
+   * A prompt for the A1 gateway. The host's answer says whether a result follows; the result is the `prompt_result` that
+   * carries this request's own id. A host that ends meanwhile fails the run, and an aborted signal gives up the wait
+   * while omp's run goes on.
+   */
+  #commandPrompt(
+    entry: ChatEntry,
+    text: string,
+    signal: AbortSignalLike | undefined,
+  ): CommandPromptFuture {
+    let requestId: string | undefined;
+    const result = Promise.withResolvers<PromptResultEvent>();
+    void result.promise.catch(() => undefined);
+    const stop = this.#watchPayloads(entry, (payload) => {
+      if (
+        payload.kind === "process" &&
+        (payload.status === "exited" || payload.status === "error")
+      ) {
+        result.reject(
+          new AppFailure({
+            code: "omp_exited",
+            message: "omp stopped before the command finished. Try again.",
+            retryable: true,
+          }),
+        );
+      } else if (
+        payload.kind === "event" &&
+        payload.event.type === "prompt_result" &&
+        payload.event.requestId === requestId
+      ) {
+        result.resolve(payload.event);
+      }
+    });
+    const onAbort = (): void => result.reject(cancelled("The command was cancelled."));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const answered = (async () => {
+      if (signal?.aborted === true) throw cancelled("The command was cancelled.");
+      await this.#ensureRunning(entry);
+      const sent = entry.client.send("prompt", { text });
+      requestId = sent.id;
+      try {
+        return await sent.answer;
+      } catch (error) {
+        throw requestFailure("prompt", error);
+      }
+    })();
+    const admitted = answered.then((answer) => ({ agentInvoked: answer.resultFollows }));
+    const outcome = answered
+      .then(async (answer): Promise<CommandPromptOutcome> => {
+        // A prompt omp handled where it stood (a built-in command, an extension's input hook) has no result to wait for.
+        if (!answer.resultFollows) {
+          return { agentInvoked: false, status: "completed", promptSettled: true };
+        }
+        const settled = await result.promise;
+        return {
+          agentInvoked: settled.agentInvoked,
+          status: settled.status === "aborted" ? "aborted" : "completed",
+          promptSettled: settled.agentInvoked ? settled.sessionSettled : true,
+        };
+      })
+      .finally(() => {
+        stop();
+        signal?.removeEventListener("abort", onAbort);
+      });
+    return withAdmission(outcome, admitted);
   }
 
   /**

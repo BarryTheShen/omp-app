@@ -1,5 +1,5 @@
 import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
-import type { RpcSession } from "@omp-app/omp-rpc";
+import { type CommandSession, rpcCommandSession } from "../../modules/A1/gateway/command-session";
 import type { PortRegistration } from "../../registry/ports";
 import { createAppPortRegistration } from "./app";
 import { type ChatSessionPortRegistration, createChatSessionPortRuntime } from "./chat-session";
@@ -20,8 +20,8 @@ export * from "./rpc-session";
  */
 export interface A0Runtime {
   readonly registrations: readonly PortRegistration[];
-  /** The chat's `RpcSession`, for the modules still on omp's RPC; none on the chat host (`chatHost`). */
-  sessionFor(threadId: ThreadId): RpcSession | undefined;
+  /** The chat's command session for the A1 gateway: from the chat host (`chatHost`), or from omp's RPC. */
+  commandSessionFor(threadId: ThreadId): CommandSession | undefined;
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined;
   /**
    * The views each connection holds on the chats this runtime runs. A delete of a chat counts them; omp's exit takes the
@@ -58,7 +58,7 @@ export function createA0Runtime(context: A0PortContext, options: A0RuntimeOption
         },
         app,
       ],
-      sessionFor: () => undefined,
+      commandSessionFor: (threadId) => chat.runtime.commandSessionFor(threadId),
       sessionFileOf: (threadId) => chat.runtime.sessionFileOf(threadId),
       views: {
         viewsOf: (threadId, connectionId) => chat.runtime.viewsOf(threadId, connectionId),
@@ -80,7 +80,10 @@ export function createA0Runtime(context: A0PortContext, options: A0RuntimeOption
       },
       app,
     ],
-    sessionFor: (threadId) => rpc.runtime.sessionFor(threadId),
+    commandSessionFor: (threadId) => {
+      const session = rpc.runtime.sessionFor(threadId);
+      return session === undefined ? undefined : rpcCommandSession(session);
+    },
     sessionFileOf: (threadId) => rpc.runtime.sessionFileOf(threadId),
     views: {
       viewsOf: (threadId, connectionId) => rpc.runtime.viewsOf(threadId, connectionId),

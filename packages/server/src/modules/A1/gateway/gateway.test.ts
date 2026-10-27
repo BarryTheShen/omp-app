@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { AppFailure, parseFixture, ThreadId } from "@omp-app/contracts";
 import { type RpcDuplex, RpcSession, type RpcSessionTimer } from "@omp-app/omp-rpc";
 import { RECORDED_RATCHET_GATEWAY } from "../../../../../../apps/web/src/modules/D8/fixtures/ratchet";
+import { rpcCommandSession } from "./command-session";
 import {
   type CommandParserContext,
   createOmpCommandGateway,
@@ -99,7 +100,7 @@ async function createHarness(): Promise<Harness> {
   const session = await readySession(duplex, timer);
   const errors: AppFailure[] = [];
   const gateway = new OmpCommandGatewayService({
-    resolveSession: () => session,
+    resolveSession: () => rpcCommandSession(session),
     onError: (error) => errors.push(error),
   });
   return { duplex, timer, session, gateway, errors };
@@ -247,7 +248,9 @@ describe("OmpCommandGatewayService", () => {
     });
     await sessionStart;
     expect(session.protocolVersion).toBe(2);
-    const gateway = new OmpCommandGatewayService({ resolveSession: () => session });
+    const gateway = new OmpCommandGatewayService({
+      resolveSession: () => rpcCommandSession(session),
+    });
     try {
       const future = gateway.run({ threadId, command: rawRequest.message });
       const afterAvailability = await answerAvailability(

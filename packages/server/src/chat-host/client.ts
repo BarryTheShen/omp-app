@@ -86,8 +86,16 @@ export class ChatHostClient {
     method: M,
     params: ChatHostMethodMap[M]["params"],
   ): Promise<ChatHostMethodMap[M]["result"]> {
-    if (this.#closed) return Promise.reject(this.#closed);
+    return this.send(method, params).answer;
+  }
+
+  /** Sends a request and gives its id with the answer: the `prompt_result` that follows a `prompt` carries that id. */
+  send<M extends ChatHostMethod>(
+    method: M,
+    params: ChatHostMethodMap[M]["params"],
+  ): { readonly id: string; readonly answer: Promise<ChatHostMethodMap[M]["result"]> } {
     const id = String(++this.#nextId);
+    if (this.#closed) return { id, answer: Promise.reject(this.#closed) };
     const answer = Promise.withResolvers<ChatHostMethodMap[M]["result"]>();
     this.#pending.set(id, {
       resolve: (result) => answer.resolve(result as ChatHostMethodMap[M]["result"]),
@@ -105,7 +113,7 @@ export class ChatHostClient {
         ),
       );
     });
-    return answer.promise;
+    return { id, answer: answer.promise };
   }
 
   onEvent(listener: ChatEventListener): () => void {

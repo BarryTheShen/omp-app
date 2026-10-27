@@ -1715,7 +1715,7 @@ describe("A0.7 RpcSessionPort handlers", () => {
       },
     });
     // The chat is still open for this tab: its entry and its view are kept, so its next message reaches omp.
-    expect(runtime.sessionFor(authorityThread)).toBeDefined();
+    expect(runtime.commandSessionFor(authorityThread)).toBeDefined();
     expect(runtime.views.viewsOf(authorityThread, "one")).toBe(1);
     expect(ctx.processRegistry.watcherCount(authorityThread)).toBe(1);
   });
@@ -1746,7 +1746,7 @@ describe("A0.7 RpcSessionPort handlers", () => {
     // omp has exited: the views on its chat went with it.
     expect(runtime.views.viewsOf(authorityThread, "one")).toBe(0);
     expect(runtime.views.watcherCount(authorityThread)).toBe(0);
-    expect(runtime.sessionFor(authorityThread)).toBeUndefined();
+    expect(runtime.commandSessionFor(authorityThread)).toBeUndefined();
   });
 
   test("a stop reaches no viewer and no replay: the stream's latest sequence does not move while omp exits", async () => {
@@ -1962,7 +1962,7 @@ describe("A0.7 RpcSessionPort handlers", () => {
     for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
       await Bun.sleep(0);
     }
-    expect(runtime.sessionFor(authorityThread)).toBeUndefined();
+    expect(runtime.commandSessionFor(authorityThread)).toBeUndefined();
 
     // A rename sent while omp stops waits for the stop to end, and writes nothing into the stopping omp.
     const renamed = Promise.resolve(
