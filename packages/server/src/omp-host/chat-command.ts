@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { CHAT_HOST_CHAT_ARG } from "@omp-app/contracts/chat-host/args";
+
 export interface OmpCommandOptions {
   /**
    * The chat host compiled to one program (`scripts/build-chat-host.ts`), on the Bun omp's release is built with. The
@@ -33,6 +37,30 @@ export function ompCommand(options: OmpCommandOptions = {}): readonly string[] {
 export function chatCommand(options: ChatCommandOptions = {}): readonly string[] {
   const command = [...ompCommand(options), "--mode", "rpc-ui"];
   return options.wrapper === undefined ? command : [options.wrapper, ...command];
+}
+
+/**
+ * The program and leading arguments that start one chat on the chat host's own protocol (SDK plan H5.3, behind
+ * `OMP_APP_SDK_HOST=1`): the compiled program, or our entry from source on the Bun that runs the server, then its `chat`
+ * command. The chat's own arguments follow.
+ */
+export function chatHostCommand(options: ChatCommandOptions = {}): readonly string[] {
+  const program =
+    options.binary === undefined ? [process.execPath, chatHostEntry()] : [options.binary];
+  const command = [...program, CHAT_HOST_CHAT_ARG];
+  return options.wrapper === undefined ? command : [options.wrapper, ...command];
+}
+
+/** The chat host's entry (`src/chat-host/main.ts`), as a source checkout has it. */
+function chatHostEntry(): string {
+  const entry = join(import.meta.dir, "..", "chat-host", "main.ts");
+  if (!existsSync(entry)) {
+    // A compiled server holds no sources; the packages give it the compiled chat host instead.
+    throw new Error(
+      "The chat host's entry was not found: a compiled server needs the compiled chat host (`binary`), which the packages install beside the app's command.",
+    );
+  }
+  return entry;
 }
 
 /** omp's command-line entry (`src/cli.ts`) in the pinned package, as a source checkout has it. */

@@ -9,9 +9,12 @@ import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { FolderPath, ThreadId } from "@omp-app/contracts";
-import { CHAT_HOST_CHAT_ARG, type PromptResultEvent } from "@omp-app/contracts/chat-host";
+import {
+  CHAT_HOST_CHAT_ARG,
+  type ChatEvent,
+  type PromptResultEvent,
+} from "@omp-app/contracts/chat-host";
 import { ChatHostClient } from "../../src/chat-host/client";
-import type { ChatEvent } from "../../src/chat-host/events";
 import { type OmpProcess, spawnOmpProcess } from "../../src/process/omp-process";
 
 const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
@@ -61,6 +64,16 @@ export interface ChatOptions {
   readonly config?: string;
 }
 
+/** A chat's folders, prepared with the fake model provider: for chats a test starts its own way (a process registry). */
+export interface ChatFolders {
+  readonly home: string;
+  readonly agentDir: string;
+  /** The chat's workspace, its working folder. */
+  readonly folder: string;
+  /** The environment a chat needs to run in these folders, on the fake model. */
+  readonly env: Readonly<Record<string, string>>;
+}
+
 /** Starts chats for one test file; call `stopAll` in its `afterEach` (with a long timeout: a chat closes its session). */
 export function chatHostChats() {
   const roots: string[] = [];
@@ -92,33 +105,43 @@ export function chatHostChats() {
     }
   };
 
+  const prepare = async (
+    options: Pick<ChatOptions, "agentFiles" | "nativeDiscovery" | "config"> = {},
+  ): Promise<ChatFolders> => {
+    const root = await mkdtemp(join(tmpdir(), "omp-app-sdk-chat-host-"));
+    roots.push(root);
+    const home = join(root, "home");
+    const agentDir = join(root, "agent");
+    const folder = join(root, "workspace");
+    await Promise.all([home, agentDir, folder].map((dir) => mkdir(dir, { recursive: true })));
+    for (const [path, content] of Object.entries(options.agentFiles ?? {})) {
+      const file = join(agentDir, path);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, content);
+    }
+    await startFakeProvider(agentDir, options.nativeDiscovery === true);
+    if (options.config !== undefined)
+      await appendFile(join(agentDir, "config.yml"), options.config);
+    const env = {
+      HOME: home,
+      PI_CODING_AGENT_DIR: agentDir,
+      ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
+    };
+    return { home, agentDir, folder, env };
+  };
+
   return {
+    prepare,
+
     async start(command: readonly string[], options: ChatOptions = {}): Promise<Chat> {
-      const root = await mkdtemp(join(tmpdir(), "omp-app-sdk-chat-host-"));
-      roots.push(root);
-      const home = join(root, "home");
-      const agentDir = join(root, "agent");
-      const folder = join(root, "workspace");
-      await Promise.all([home, agentDir, folder].map((dir) => mkdir(dir, { recursive: true })));
-      for (const [path, content] of Object.entries(options.agentFiles ?? {})) {
-        const file = join(agentDir, path);
-        await mkdir(dirname(file), { recursive: true });
-        await writeFile(file, content);
-      }
-      await startFakeProvider(agentDir, options.nativeDiscovery === true);
-      if (options.config !== undefined)
-        await appendFile(join(agentDir, "config.yml"), options.config);
+      const { home, folder, env } = await prepare(options);
       const chatProcess = spawnOmpProcess({
         threadId: ThreadId.parse("thread-sdk-chat-host"),
         folder: FolderPath.parse(folder),
         homeDir: home,
         chatCommand: [...command, CHAT_HOST_CHAT_ARG],
         args: ["--model", "fake/fake-model", ...(options.args ?? [])],
-        env: {
-          HOME: home,
-          PI_CODING_AGENT_DIR: agentDir,
-          ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
-        },
+        env,
       });
       processes.push(chatProcess);
       const client = new ChatHostClient(chatProcess);

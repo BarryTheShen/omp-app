@@ -2,6 +2,7 @@ import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import type { PortRegistration } from "../../registry/ports";
 import { createAppPortRegistration } from "./app";
+import { type ChatSessionPortRegistration, createChatSessionPortRuntime } from "./chat-session";
 import {
   type A0PortContext,
   createRpcSessionPortRuntime,
@@ -10,6 +11,7 @@ import {
 } from "./rpc-session";
 
 export * from "./app";
+export * from "./chat-session";
 export * from "./rpc-session";
 
 /**
@@ -18,6 +20,7 @@ export * from "./rpc-session";
  */
 export interface A0Runtime {
   readonly registrations: readonly PortRegistration[];
+  /** The chat's `RpcSession`, for the modules still on omp's RPC; none on the chat host (`chatHost`). */
   sessionFor(threadId: ThreadId): RpcSession | undefined;
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined;
   /**
@@ -33,7 +36,39 @@ export interface A0Runtime {
   };
 }
 
-export function createA0Runtime(context: A0PortContext): A0Runtime {
+export interface A0RuntimeOptions {
+  /**
+   * Chats on the chat host's own protocol (SDK plan H5.3, `OMP_APP_SDK_HOST=1`): the chat session port replaces the RPC
+   * one, and the registry's processes must run the chat host's `chat` command.
+   */
+  readonly chatHost?: boolean;
+}
+
+export function createA0Runtime(context: A0PortContext, options: A0RuntimeOptions = {}): A0Runtime {
+  const app = createAppPortRegistration(context);
+  if (options.chatHost === true) {
+    const chat = createChatSessionPortRuntime(context);
+    return {
+      registrations: [
+        {
+          port: chat.port,
+          handlers: chat.runtime.handlers,
+          context: chat.runtime,
+          onConnectionClosed: (connectionId) => chat.runtime.releaseConnection(connectionId),
+        },
+        app,
+      ],
+      sessionFor: () => undefined,
+      sessionFileOf: (threadId) => chat.runtime.sessionFileOf(threadId),
+      views: {
+        viewsOf: (threadId, connectionId) => chat.runtime.viewsOf(threadId, connectionId),
+        watcherCount: (threadId) => chat.runtime.watcherCount(threadId),
+        releaseViews: (threadId, connectionId) => chat.runtime.releaseViews(threadId, connectionId),
+        restoreViews: (threadId, connectionId, count) =>
+          chat.runtime.restoreViews(threadId, connectionId, count),
+      },
+    };
+  }
   const rpc = createRpcSessionPortRuntime(context);
   return {
     registrations: [
@@ -43,7 +78,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
         context: rpc.runtime,
         onConnectionClosed: (connectionId) => rpc.runtime.releaseConnection(connectionId),
       },
-      createAppPortRegistration(context),
+      app,
     ],
     sessionFor: (threadId) => rpc.runtime.sessionFor(threadId),
     sessionFileOf: (threadId) => rpc.runtime.sessionFileOf(threadId),
@@ -61,4 +96,9 @@ export function createA0PortRegistrations(context: A0PortContext): readonly Port
   return createA0Runtime(context).registrations;
 }
 
-export type { A0PortContext, RpcSessionPortRegistration, ThreadBootstrap };
+export type {
+  A0PortContext,
+  ChatSessionPortRegistration,
+  RpcSessionPortRegistration,
+  ThreadBootstrap,
+};

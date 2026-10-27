@@ -9,55 +9,7 @@
  */
 import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
-import type {
-  AvailableCommandsEvent,
-  CommandOutputEvent,
-  ConfigUpdateEvent,
-  EventOptions,
-  LiveEvent,
-  PromptResultEvent,
-  SessionInfoUpdateEvent,
-  SessionSettledEvent,
-  SubagentEvent,
-  ToolCancelEvent,
-  UiEvent,
-  UriCancelEvent,
-} from "@omp-app/contracts/chat-host";
-
-type MessageEventType = "message_start" | "message_update" | "message_end";
-type MessageEvent = Extract<AgentSessionEvent, { readonly type: MessageEventType }>;
-type MessageUpdate = Extract<AgentSessionEvent, { readonly type: "message_update" }>;
-
-/** An event without the field `K`, member by member. */
-type OmitEach<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-
-/** A message's start, update or end with its id. */
-export type StampedMessageEvent = MessageEvent & { readonly messageId: string };
-
-/** A `message_update` in the delta form. */
-export interface DeltaMessageUpdate {
-  readonly type: "message_update";
-  readonly messageId: string;
-  readonly message: { readonly role: MessageUpdate["message"]["role"] };
-  readonly assistantMessageEvent: OmitEach<AssistantMessageEvent, "partial">;
-}
-
-/** Every event the chat host writes: omp's session events, and the app's own. */
-export type ChatEvent =
-  | Exclude<AgentSessionEvent, { readonly type: MessageEventType }>
-  | StampedMessageEvent
-  | DeltaMessageUpdate
-  | PromptResultEvent
-  | AvailableCommandsEvent
-  | CommandOutputEvent
-  | SessionInfoUpdateEvent
-  | ConfigUpdateEvent
-  | UiEvent
-  | ToolCancelEvent
-  | UriCancelEvent
-  | SubagentEvent
-  | SessionSettledEvent
-  | LiveEvent;
+import type { ChatEvent, DeltaMessageUpdate, EventOptions } from "@omp-app/contracts/chat-host";
 
 export class SessionEventStream {
   readonly #emit: (event: ChatEvent) => void;
@@ -120,7 +72,7 @@ export class SessionEventStream {
   }
 }
 
-function withoutPartial(event: AssistantMessageEvent): OmitEach<AssistantMessageEvent, "partial"> {
+function withoutPartial(event: AssistantMessageEvent): DeltaMessageUpdate["assistantMessageEvent"] {
   if (!("partial" in event)) return event;
   const { partial: _partial, ...increment } = event;
   return increment;

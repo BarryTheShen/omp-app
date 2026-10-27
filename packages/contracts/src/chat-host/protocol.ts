@@ -11,18 +11,29 @@
  * omp's shapes: the server and the host type them from omp's SDK, so this file holds only the envelope, the method names
  * and the app's own payloads.
  */
+
 import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
+import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
 import type { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import type { Goal } from "@oh-my-pi/pi-tui/tools/goal";
 import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
-import { HostToolUpdateParams, SetHostToolsParams, SetHostUriSchemesParams } from "./host-tools";
-import { LiveMuteParams, LiveStartParams } from "./live";
+import type { UiEvent } from "./dialogs";
+import {
+  HostToolUpdateParams,
+  SetHostToolsParams,
+  SetHostUriSchemesParams,
+  type ToolCancelEvent,
+  type UriCancelEvent,
+} from "./host-tools";
+import { type LiveEvent, LiveMuteParams, LiveStartParams } from "./live";
 import {
   SteerSubagentParams,
+  type SubagentEvent,
   SubagentIdParams,
   SubagentMessagesParams,
   type SubagentSnapshot,
@@ -847,3 +858,38 @@ export interface ConfigUpdateEvent {
   readonly model?: ChatHostState["model"];
   readonly thinkingLevel?: ChatHostState["thinkingLevel"];
 }
+
+type MessageEventType = "message_start" | "message_update" | "message_end";
+type MessageEvent = Extract<AgentSessionEvent, { readonly type: MessageEventType }>;
+type MessageUpdate = Extract<AgentSessionEvent, { readonly type: "message_update" }>;
+
+/** An event without the field `K`, member by member. */
+type OmitEach<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** A message's start, update or end with its id (`msg-1`, `msg-2`, …, as omp's own protocol hosts give them). */
+export type StampedMessageEvent = MessageEvent & { readonly messageId: string };
+
+/** A `message_update` in the `delta` form: the increment only, without the message so far and the `partial`. */
+export interface DeltaMessageUpdate {
+  readonly type: "message_update";
+  readonly messageId: string;
+  readonly message: { readonly role: MessageUpdate["message"]["role"] };
+  readonly assistantMessageEvent: OmitEach<AssistantMessageEvent, "partial">;
+}
+
+/** Every event the chat host writes: omp's session events, and the app's own. */
+export type ChatEvent =
+  | Exclude<AgentSessionEvent, { readonly type: MessageEventType }>
+  | StampedMessageEvent
+  | DeltaMessageUpdate
+  | PromptResultEvent
+  | AvailableCommandsEvent
+  | CommandOutputEvent
+  | SessionInfoUpdateEvent
+  | ConfigUpdateEvent
+  | UiEvent
+  | ToolCancelEvent
+  | UriCancelEvent
+  | SubagentEvent
+  | SessionSettledEvent
+  | LiveEvent;

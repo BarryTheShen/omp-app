@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
-import { type ChatEvent, SessionEventStream } from "./events";
+import type { ChatEvent } from "@omp-app/contracts/chat-host";
+import { SessionEventStream } from "./events";
 
 /** omp's events, built from the fields the stream reads; the rest of omp's shapes does not matter here. */
 function event(fields: Record<string, unknown>): AgentSessionEvent {

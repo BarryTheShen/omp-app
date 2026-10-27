@@ -10,6 +10,7 @@
  *   back as the response. Without a handler, or for a method the host does not have, the answer is `unknown_method`.
  */
 import {
+  type ChatEvent,
   type ChatHostErrorCode,
   type ChatHostHello,
   type ChatHostHostMethod,
@@ -20,7 +21,6 @@ import {
   isChatHostHostMethod,
   parseHostLine,
 } from "@omp-app/contracts/chat-host";
-import type { ChatEvent } from "./events";
 
 /** A request from the host, with its method's params. */
 export type HostRequest = {

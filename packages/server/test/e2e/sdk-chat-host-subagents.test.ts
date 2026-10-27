@@ -5,7 +5,7 @@
  * (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ChatEvent } from "../../src/chat-host/events";
+import type { ChatEvent } from "@omp-app/contracts/chat-host";
 import { chatHostChats, PROGRAMS, realTest, resultOf } from "./sdk-chat-host-harness";
 
 const chats = chatHostChats();

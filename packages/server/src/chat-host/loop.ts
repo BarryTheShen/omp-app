@@ -46,6 +46,7 @@ import { parseConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import {
   CHAT_HOST_METHODS,
   CHAT_HOST_PROTOCOL_VERSION,
+  type ChatEvent,
   type ChatHostCommand,
   type ChatHostErrorCode,
   type ChatHostHello,
@@ -62,7 +63,7 @@ import {
   type QueuedMessage,
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
-import { type ChatEvent, SessionEventStream } from "./events";
+import { SessionEventStream } from "./events";
 import { GoalController } from "./goal";
 import { pageMessages, selectEntries } from "./history";
 import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
