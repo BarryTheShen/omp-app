@@ -16,7 +16,9 @@ import type {
   EventOptions,
   PromptResultEvent,
   SessionInfoUpdateEvent,
+  ToolCancelEvent,
   UiEvent,
+  UriCancelEvent,
 } from "@omp-app/contracts/chat-host";
 
 type MessageEventType = "message_start" | "message_update" | "message_end";
@@ -47,7 +49,9 @@ export type ChatEvent =
   | CommandOutputEvent
   | SessionInfoUpdateEvent
   | ConfigUpdateEvent
-  | UiEvent;
+  | UiEvent
+  | ToolCancelEvent
+  | UriCancelEvent;
 
 export class SessionEventStream {
   readonly #emit: (event: ChatEvent) => void;

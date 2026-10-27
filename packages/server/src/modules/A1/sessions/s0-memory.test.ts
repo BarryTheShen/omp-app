@@ -92,6 +92,8 @@ describe("SP-S0 bounded nested session readers", () => {
         tempRoot: path.join(fixture.root, "tmp"),
         leaseProbe: async () => "inactive" as const,
       });
+      // RSS is the whole process's: collect what earlier test files in this process left, so the growth is the read's.
+      Bun.gc(true);
       const before = process.memoryUsage().rss;
       const session = await store.readSession(fixture.chat);
       const afterRead = process.memoryUsage().rss;

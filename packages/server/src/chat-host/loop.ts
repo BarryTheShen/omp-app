@@ -59,6 +59,7 @@ import {
 } from "@omp-app/contracts/chat-host";
 import { type ChatEvent, SessionEventStream } from "./events";
 import { pageMessages, selectEntries } from "./history";
+import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
 import { HostMethodError } from "./method-error";
 import type { LineWriter } from "./output";
@@ -84,10 +85,16 @@ export interface ChatLoopOptions {
 }
 
 /**
- * Methods answered as soon as they finish, outside the one-at-a-time order: a long run must not hold up an abort, and
- * a sign-in that waits for the browser must not hold up the chat.
+ * Methods answered as soon as they finish, outside the one-at-a-time order: a long run must not hold up an abort, a
+ * sign-in that waits for the browser must not hold up the chat, and a host tool's progress must reach its call while
+ * other work runs.
  */
-const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set(["bash", "python", "login"]);
+const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
+  "bash",
+  "python",
+  "login",
+  "host_tool_update",
+]);
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
 export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
@@ -121,9 +128,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const results = new PromptResults(session, emit);
   const tracker = new ExtensionMessageTracker();
   const gate = new InputGate();
-  /** Dialogs wait here for the server's answers; tools and extensions get them through omp's UI context. */
+  /** Dialogs, host tool calls and host URI reads wait here for the server's answers. */
   const requests = new HostRequests(writeMessage);
   const ui = new HostUIContext(requests, emit);
+  const hostTools = new HostTools(requests, emit);
+  const hostUris = new HostUriSchemes(requests, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
   const abortBuiltinCommands = (): void => {
@@ -445,6 +454,16 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       );
       return { providerId };
     },
+    set_host_tools: async ({ tools }) => {
+      const definitions = checkHostTools(tools);
+      // The session's own method for host-provided tools; the name is omp's.
+      await session.refreshRpcHostTools(hostTools.tools(definitions));
+      return { toolNames: definitions.map((tool) => tool.name) };
+    },
+    set_host_uri_schemes: async ({ schemes }) => ({ schemes: hostUris.set(schemes) }),
+    host_tool_update: async ({ callId, partialResult }) => ({
+      delivered: hostTools.update(callId, partialResult),
+    }),
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
@@ -662,8 +681,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     }
     serial = serial.then(() => answer(id, () => handler(params.value, sequence)));
   }
-  // Nobody is left to answer: a waiting dialog fails instead of holding its tool or extension forever.
+  // Nobody is left to answer: a waiting dialog or tool call fails instead of holding omp forever, and the app's URI
+  // schemes leave omp's process-wide router.
   requests.closeAll("The app closed the chat");
+  hostUris.clear();
   await serial;
 }
 

@@ -81,35 +81,6 @@ export interface ApproveDialog extends Timed {
   readonly prompt: ExtensionApprovalPrompt;
 }
 
-/** The requests a host sends; the server answers each with one response. */
-export interface ChatHostHostMethodMap {
-  readonly "ui.select": { readonly params: SelectDialog; readonly result: ValueAnswer };
-  readonly "ui.confirm": { readonly params: ConfirmDialog; readonly result: ConfirmAnswer };
-  readonly "ui.input": { readonly params: InputDialog; readonly result: ValueAnswer };
-  readonly "ui.editor": { readonly params: EditorDialog; readonly result: ValueAnswer };
-  /** Sent only after the server turned the ask dialog on (`set_ask_dialog`). */
-  readonly "ui.ask": { readonly params: AskDialog; readonly result: AskAnswer };
-  readonly "ui.approve": { readonly params: ApproveDialog; readonly result: ApproveAnswer };
-}
-export type ChatHostHostMethod = keyof ChatHostHostMethodMap;
-
-/** Checks each answer the server sends before omp sees it. */
-export const HOST_METHOD_ANSWERS: {
-  readonly [M in ChatHostHostMethod]: z.ZodType<ChatHostHostMethodMap[M]["result"]>;
-} = {
-  "ui.select": ValueAnswer,
-  "ui.confirm": ConfirmAnswer,
-  "ui.input": ValueAnswer,
-  "ui.editor": ValueAnswer,
-  "ui.ask": AskAnswer,
-  "ui.approve": ApproveAnswer,
-};
-
-/** Whether a host's request names one of the host's methods; never an object's inherited names. */
-export function isChatHostHostMethod(method: string): method is ChatHostHostMethod {
-  return Object.hasOwn(HOST_METHOD_ANSWERS, method);
-}
-
 // UI events: no answer.
 
 /** omp closed a dialog itself (its signal aborted or its timeout passed): the server closes it too. */

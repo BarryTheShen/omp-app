@@ -397,6 +397,12 @@ function reply(request: Request): Reply {
     const seen = messages.slice(0, -1).some((message) => text(message.content).includes(word));
     return { text: `context ${seen ? "has" : "lacks"} ${word}` };
   }
+  // `call_tool <name> <json arguments>`: one call of any tool the session offers (a host tool, `read` of a host URI),
+  // then the usual "tool said" answer above.
+  const toolProbe = /call_tool\s+(\S+)\s+(\{.*\})/.exec(prompt);
+  if (toolProbe?.[1] !== undefined && toolProbe[2] !== undefined) {
+    return { tool: toolProbe[1], args: JSON.parse(toolProbe[2]) as Record<string, unknown> };
+  }
   if (prompt.includes("retry_failure_probe"))
     return { retryableFailure: "fake provider retry failure" };
   if (prompt.includes("spawn_nested_probe"))

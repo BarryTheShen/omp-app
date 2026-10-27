@@ -18,6 +18,7 @@ import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
+import { HostToolUpdateParams, SetHostToolsParams, SetHostUriSchemesParams } from "./host-tools";
 
 /**
  * omp's session, for the types of its own objects in the protocol (the model, todos, usage, statistics). Type-only:
@@ -27,6 +28,8 @@ type Session = AgentSession;
 
 export { CHAT_HOST_CHAT_ARG } from "./args";
 export * from "./dialogs";
+export * from "./host-requests";
+export * from "./host-tools";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
 
@@ -530,6 +533,21 @@ export interface ChatHostMethodMap {
     readonly params: LoginParams;
     readonly result: { readonly providerId: string };
   };
+  /** Replaces the app's tools in the session; answers the names omp registered. */
+  readonly set_host_tools: {
+    readonly params: SetHostToolsParams;
+    readonly result: { readonly toolNames: readonly string[] };
+  };
+  /** Replaces the app's URI schemes in omp's router; answers the schemes, normalized. */
+  readonly set_host_uri_schemes: {
+    readonly params: SetHostUriSchemesParams;
+    readonly result: { readonly schemes: readonly string[] };
+  };
+  /** A running host tool call's progress; `delivered` is false once the call has ended. */
+  readonly host_tool_update: {
+    readonly params: HostToolUpdateParams;
+    readonly result: { readonly delivered: boolean };
+  };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -569,6 +587,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_ask_dialog: EnabledParams,
   get_login_providers: EmptyParams,
   login: LoginParams,
+  set_host_tools: SetHostToolsParams,
+  set_host_uri_schemes: SetHostUriSchemesParams,
+  host_tool_update: HostToolUpdateParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */

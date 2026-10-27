@@ -231,3 +231,40 @@ describe("the host's dialogs", () => {
     expect(confirm.safeParse({ confirmed: "yes" }).success).toBe(false);
   });
 });
+
+describe("the app's tools and URI schemes", () => {
+  test("a tool carries a JSON Schema object and one of omp's load modes, and answers with omp's parts", () => {
+    const tool = {
+      name: "weather",
+      description: "Says the weather",
+      parameters: { type: "object" },
+    };
+    expect(parseChatHostParams("set_host_tools", { tools: [tool] }).ok).toBe(true);
+    expect(
+      parseChatHostParams("set_host_tools", { tools: [{ ...tool, parameters: ["city"] }] }).ok,
+    ).toBe(false);
+    expect(
+      parseChatHostParams("set_host_tools", { tools: [{ ...tool, loadMode: "always" }] }).ok,
+    ).toBe(false);
+    const call = HOST_METHOD_ANSWERS["tool.call"];
+    expect(
+      call.safeParse({
+        content: [
+          { type: "text", text: "sunny" },
+          { type: "image", data: "AAAA", mimeType: "image/png" },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(call.safeParse({ content: [{ type: "video", url: "clip" }] }).success).toBe(false);
+    expect(call.safeParse({ content: "sunny" }).success).toBe(false);
+  });
+
+  test("progress names its call, and a URI read's content type is one omp knows", () => {
+    expect(
+      parseChatHostParams("host_tool_update", { callId: "", partialResult: { content: [] } }).ok,
+    ).toBe(false);
+    const read = HOST_METHOD_ANSWERS["uri.read"];
+    expect(read.safeParse({ content: "{}", contentType: "application/json" }).success).toBe(true);
+    expect(read.safeParse({ content: "<p>", contentType: "text/html" }).success).toBe(false);
+  });
+});
