@@ -16,17 +16,15 @@ import * as AIError from "@oh-my-pi/pi-ai/error";
 import { stripRawHttpRequestDiagnostics } from "@oh-my-pi/pi-ai/utils/http-inspector";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
 import type { PromptFailure, PromptResultEvent } from "@omp-app/contracts/chat-host";
+import { isSessionSettled, type ScheduledTurnProbe, type SettleSession } from "./settle";
 
 /** A prompt whose result is still owed. */
 export interface PromptTicket {
   readonly requestId: string;
 }
 
-/** What the results read of the session: whether a run streams, and what is still queued. */
-export interface PromptResultsSession {
-  readonly isStreaming: boolean;
-  readonly queuedMessageCount: number;
-}
+/** What the results read of the session: whether a run streams, what is still queued, and whether it settled. */
+export type PromptResultsSession = SettleSession;
 
 interface RunOutcome {
   readonly status: PromptResultEvent["status"];
@@ -45,12 +43,18 @@ interface OpenPrompt {
 export class PromptResults {
   readonly #session: PromptResultsSession;
   readonly #emit: (event: PromptResultEvent) => void;
+  readonly #scheduledTurn: ScheduledTurnProbe | undefined;
   readonly #open = new Map<PromptTicket, OpenPrompt>();
   #agentStarts = 0;
 
-  constructor(session: PromptResultsSession, emit: (event: PromptResultEvent) => void) {
+  constructor(
+    session: PromptResultsSession,
+    emit: (event: PromptResultEvent) => void,
+    scheduledTurn?: ScheduledTurnProbe,
+  ) {
     this.#session = session;
     this.#emit = emit;
+    this.#scheduledTurn = scheduledTurn;
   }
 
   /** Opens a ticket before the prompt starts any work. Close it with exactly one report, or `discard`. */
@@ -126,6 +130,7 @@ export class PromptResults {
 
   #report(ticket: PromptTicket, agentInvoked: boolean, outcome: RunOutcome): void {
     if (!this.#open.delete(ticket)) return;
+    // The next macrotask: after the prompt's own answer, and after queue drains that `sessionSettled` reads.
     setImmediate(() => {
       this.#emit({
         type: "prompt_result",
@@ -133,6 +138,7 @@ export class PromptResults {
         agentInvoked,
         status: outcome.status,
         ...(outcome.error ? { error: outcome.error } : {}),
+        sessionSettled: isSessionSettled(this.#session, this.#scheduledTurn),
       });
     });
   }

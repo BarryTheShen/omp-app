@@ -24,6 +24,10 @@ import {
   parseSkillInvocation,
 } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
 import { reconnectMcpManagerServer } from "@oh-my-pi/pi-coding-agent/mcp/oauth-reauth";
+import {
+  formatPersistenceFailure,
+  formatPersistenceNotice,
+} from "@oh-my-pi/pi-coding-agent/modes/persistence-failure";
 import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
 import {
   type AgentSession,
@@ -70,6 +74,7 @@ import {
   startPrompt,
 } from "./prompt-results";
 import type { ChatSession } from "./session-factory";
+import { isSessionSettled, SettleWatcher } from "./settle";
 import { cancelSubagent, readSubagentTranscript, SubagentRoster, steerSubagent } from "./subagents";
 import { HostRequests, HostUIContext } from "./ui-context";
 
@@ -129,6 +134,13 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
 
   const events = new SessionEventStream(emit);
   const results = new PromptResults(session, emit);
+  const settle = new SettleWatcher(session, emit, log);
+  /** Prompts being admitted and answers outside the command order: drained before the chat ends. */
+  const background = new Set<Promise<unknown>>();
+  const track = (task: Promise<unknown>): void => {
+    background.add(task);
+    void task.finally(() => background.delete(task));
+  };
   const tracker = new ExtensionMessageTracker();
   const gate = new InputGate();
   /** Dialogs, host tool calls and host URI reads wait here for the server's answers. */
@@ -169,6 +181,19 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   };
   writeMessage(hello);
 
+  // omp's persistence surface (`registerRpcPersistenceSurface`): a store failure and a session move, mirrored on
+  // stderr. Kept through the session's dispose, when a failure latched in its close still needs reporting.
+  session.sessionManager.onPersistenceError((error) => {
+    const message = formatPersistenceFailure(error.message);
+    emit({ type: "notice", level: "error", message, source: "session-persistence" });
+    log(message);
+  });
+  session.sessionManager.onPersistenceNotice((notice) => {
+    const message = formatPersistenceNotice(notice);
+    emit({ type: "notice", level: "warning", message, source: "session-persistence" });
+    log(message);
+  });
+
   chat.setToolUIContext(ui, true);
   await initializeExtensions(session, {
     mode: "rpc",
@@ -193,7 +218,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     trackAgentInvokingMessage: (task) => tracker.track(task),
     wrapSessionChange: async (change, { detachesRun }) => {
       const result = await change();
-      if (!result.cancelled && detachesRun) results.abortOpen();
+      if (!result.cancelled) {
+        if (detachesRun) results.abortOpen();
+        // A detached run sends no terminal `agent_end` to settle on.
+        void settle.check();
+      }
       return result;
     },
     uiContext: ui,
@@ -201,6 +230,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   session.subscribe((event) => {
     events.forward(event);
     results.observe(event);
+    settle.observe(event);
   });
   session.subscribeCommandMetadataChanged(() => {
     void emitAvailableCommands().catch((error: unknown) =>
@@ -233,6 +263,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       if (options.endsOpenPrompts) results.abortOpen();
       // The old session's subagents are not this one's (omp clears its registry the same way).
       subagents.clear();
+      // A detached run sends no terminal `agent_end` to settle on.
+      void settle.check();
       await emitAvailableCommands();
     }
     return result;
@@ -685,7 +717,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         respondError(id, "invalid_params", params.error.message);
         continue;
       }
-      void runPrompt(id, params.value, sequence);
+      track(runPrompt(id, params.value, sequence));
       continue;
     }
     const params = parseChatHostParams(method, parsed.value.params);
@@ -696,17 +728,21 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     // The handler table is typed per method; the request's method and its checked params belong together.
     const handler = handlers[method] as (params: unknown, sequence: number) => Promise<unknown>;
     if (BACKGROUND_METHODS.has(method)) {
-      void answer(id, () => handler(params.value, sequence));
+      track(answer(id, () => handler(params.value, sequence)));
       continue;
     }
     serial = serial.then(() => answer(id, () => handler(params.value, sequence)));
   }
-  // Nobody is left to answer: a waiting dialog or tool call fails instead of holding omp forever, and the app's URI
-  // schemes leave omp's process-wide router.
+  // omp's order when its client goes (`rpc-mode.ts:2727-2745`). Nobody is left to answer: waiting dialogs and tool
+  // calls fail instead of holding omp, and the app's schemes leave omp's process-wide router. Then accepted work drains,
+  // built-in work that outlives its prompt stops, and the answers outside the command order drain; the session itself
+  // is disposed by the entry.
   requests.closeAll("The app closed the chat");
   hostUris.clear();
-  subagents.dispose();
   await serial;
+  abortBuiltinCommands();
+  while (background.size > 0) await Promise.allSettled([...background]);
+  subagents.dispose();
 }
 
 type PromptOutcome =
@@ -766,16 +802,6 @@ async function findModel(session: AgentSession, provider: string, modelId: strin
   return find();
 }
 
-/** omp's settle predicate (`rpc-session-settle.ts:43-51`): idle, nothing admitted or queued, no background work left. */
-function isSettled(session: AgentSession): boolean {
-  return (
-    !session.isStreaming &&
-    !session.hasAdmittedSubmission &&
-    session.queuedMessageCount === 0 &&
-    !session.hasPendingAsyncWork()
-  );
-}
-
 /** The chat's state, as omp's session reports it (the fields of omp's own `get_state`, `rpc-mode.ts:2064-2107`). */
 function readState(session: AgentSession): ChatHostState {
   const { model, thinkingLevel, sessionFile, sessionName } = session;
@@ -797,7 +823,7 @@ function readState(session: AgentSession): ChatHostState {
     messageCount: session.messages.length,
     queuedMessageCount: session.queuedMessageCount,
     hasPendingAsyncWork: session.hasPendingAsyncWork(),
-    isSettled: isSettled(session),
+    isSettled: isSessionSettled(session),
     queuedMessages: session.getQueuedMessages(),
     todoPhases: session.getTodoPhases(),
     fastModeEnabled: session.isFastModeEnabled(),

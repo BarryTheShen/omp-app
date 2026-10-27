@@ -668,6 +668,16 @@ export interface PromptResultEvent {
   readonly agentInvoked: boolean;
   readonly status: "completed" | "aborted" | "error";
   readonly error?: PromptFailure;
+  /**
+   * Whether the session was done when the result was written: nothing live, admitted or queued, and no background work
+   * that could wake it. A run that yielded is not always a settled session; `session_settled` follows when it is.
+   */
+  readonly sessionSettled: boolean;
+}
+
+/** A stretch of agent activity is over: the final run yielded and nothing left can wake the session. */
+export interface SessionSettledEvent {
+  readonly type: "session_settled";
 }
 
 /** omp's command list, at start and whenever it changes (skills, extensions and command files reloaded). */

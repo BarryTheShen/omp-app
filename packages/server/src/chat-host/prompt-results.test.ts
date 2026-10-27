@@ -25,7 +25,19 @@ function agentEnd(stopReason: "stop" | "error" | "aborted", fields: Record<strin
   });
 }
 
-function results(state = { isStreaming: false, queuedMessageCount: 0 }) {
+/** A session with nothing running unless the test says so. */
+function results(
+  fields: { isStreaming?: boolean; queuedMessageCount?: number; pendingWork?: boolean } = {},
+) {
+  const state = {
+    isStreaming: fields.isStreaming ?? false,
+    queuedMessageCount: fields.queuedMessageCount ?? 0,
+    hasAdmittedSubmission: false,
+    pendingWork: fields.pendingWork ?? false,
+    hasPendingAsyncWork(): boolean {
+      return this.pendingWork;
+    },
+  };
   const sent: PromptResultEvent[] = [];
   return { results: new PromptResults(state, (result) => sent.push(result)), sent, state };
 }
@@ -55,8 +67,19 @@ describe("prompt results", () => {
           model: "fake-model",
           retryable: false,
         },
+        sessionSettled: true,
       },
     ]);
+  });
+
+  test("a result written while background work can still wake the session says it is not settled", async () => {
+    const { results: open, sent } = results({ pendingWork: true });
+    const ticket = open.begin("8");
+    open.observe(agentStart);
+    open.observe(agentEnd("stop"));
+    open.settle(ticket);
+    await nextTurn();
+    expect(sent).toMatchObject([{ requestId: "8", status: "completed", sessionSettled: false }]);
   });
 
   test("a prompt queued into a live run is reported at the first yield after the queue is empty", async () => {
@@ -144,6 +167,7 @@ describe("starting a prompt", () => {
         agentInvoked: false,
         status: "error",
         error: { message: "the provider went away", retryable: false },
+        sessionSettled: true,
       },
     ]);
   });
