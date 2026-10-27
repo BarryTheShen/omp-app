@@ -19,11 +19,19 @@ const NOT_SENT = "Sending your answer failed. Try again.";
 /** The toast the app shows when a message cannot be routed (the failure issue 1387 removes for a Cancel or Escape). */
 const ROUTING_TOAST = "omp update unavailable";
 
-/** The id of a client call that answers a question omp asked, or undefined for any other frame. */
+/** The id of a client call that answers a question omp asked (the session port's `answer`), or undefined for any other frame. */
 function answerCallId(message: string | Buffer): string | undefined {
   const text = typeof message === "string" ? message : message.toString("utf8");
-  if (!text.includes('"method":"answerExtensionUi"')) return undefined;
-  return /"id":"([^"]+)"/.exec(text)?.[1];
+  let frame: { type?: unknown; id?: unknown; port?: unknown; method?: unknown };
+  try {
+    frame = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (frame.type !== "call" || frame.port !== "A0.chatSession" || frame.method !== "answer") {
+    return undefined;
+  }
+  return typeof frame.id === "string" ? frame.id : undefined;
 }
 
 /** The shell draws with the app's own background: a transparent one means no styles loaded. */

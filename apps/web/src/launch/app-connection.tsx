@@ -1,13 +1,13 @@
-import {
-  type AppClient,
-  type ConnectionState as ClientConnectionState,
-  type ConnectionStateEvent,
-  type CreateAppClientOptions,
-  createAppClient,
+import type {
+  AppClient,
+  ConnectionState as ClientConnectionState,
+  ConnectionStateEvent,
+  CreateAppClientOptions,
 } from "@omp-app/client";
 import { AppFailure, type FolderPath } from "@omp-app/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { createChatSessionAppClient } from "./chat-session-shim";
 import { LogHint } from "./log-hint";
 import {
   type LaunchLocationLike,
@@ -105,7 +105,7 @@ export function AppConnectionProvider({
   location,
   storage,
   history,
-  createClient = createAppClient,
+  createClient = createChatSessionAppClient,
   reload = reloadWindow,
   onLaunchFolder,
 }: AppConnectionProviderProps) {

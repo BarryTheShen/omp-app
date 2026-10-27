@@ -60,15 +60,17 @@ const RequestId = z.string().min(1);
 
 /**
  * Why a request failed. Besides the protocol's own, omp's codes the app tells apart: `session_busy` (work could still
- * write into the transcript), `unknown_since` (an entries cursor the session does not have), `stale_cursor` (a message
- * cursor from before the session changed); and plan mode's: `plan_disabled` (omp's `plan.enabled` is off),
- * `goal_active` (a goal runs), `plan_missing` (no plan at that file), `plan_mode_off` (nothing to approve).
+ * write into the transcript), `agent_busy` (a prompt came while a turn runs and named no delivery: omp's
+ * `AgentBusyError`), `unknown_since` (an entries cursor the session does not have), `stale_cursor` (a message cursor from
+ * before the session changed); and plan mode's: `plan_disabled` (omp's `plan.enabled` is off), `goal_active` (a goal
+ * runs), `plan_missing` (no plan at that file), `plan_mode_off` (nothing to approve).
  */
 export const ChatHostErrorCode = z.enum([
   "unknown_method",
   "invalid_params",
   "failed",
   "session_busy",
+  "agent_busy",
   "unknown_since",
   "stale_cursor",
   "plan_disabled",
@@ -368,6 +370,10 @@ export type NewSessionParams = z.infer<typeof NewSessionParams>;
 export const EntryParams = z.object({ entryId: z.string().min(1) });
 export type EntryParams = z.infer<typeof EntryParams>;
 
+/** A fork's start: an entry to copy the chat up to, or none to copy the whole chat (omp's `fork(entryId?)`). */
+export const ForkParams = z.object({ entryId: z.string().min(1).optional() });
+export type ForkParams = z.infer<typeof ForkParams>;
+
 /** The session's entries and its live leaf (`get_entries`, `get_tree`). */
 type SessionManagerOf = Session["sessionManager"];
 type LeafId = ReturnType<SessionManagerOf["getLeafId"]>;
@@ -571,8 +577,8 @@ export interface ChatHostMethodMap {
     readonly params: EntryParams;
     readonly result: { readonly text: string; readonly cancelled: boolean };
   };
-  /** A copy of the session up to the entry. Refused while the session is busy. */
-  readonly fork: { readonly params: EntryParams; readonly result: { readonly cancelled: boolean } };
+  /** A copy of the session up to the entry, or of the whole session without one. Refused while the session is busy. */
+  readonly fork: { readonly params: ForkParams; readonly result: { readonly cancelled: boolean } };
   /** Rewinds in place. Refused while the session is busy. */
   readonly navigate_tree: { readonly params: EntryParams; readonly result: NavigateTreeResult };
   /** Turns the host's `ui.ask` dialog on or off; off, omp asks with selects and editors. */
@@ -750,7 +756,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_branch_messages: EmptyParams,
   new_session: NewSessionParams,
   branch: EntryParams,
-  fork: EntryParams,
+  fork: ForkParams,
   navigate_tree: EntryParams,
   set_ask_dialog: EnabledParams,
   get_login_providers: EmptyParams,
@@ -833,6 +839,17 @@ export interface SessionSettledEvent {
   readonly type: "session_settled";
 }
 
+/**
+ * An extension's handler failed (omp's `reportRuntimeError`), with the fields omp's RPC sends for it
+ * (18.12.6 `modes/rpc/rpc-mode.ts:1659-1661`): the extension's file, the event it was handling, and the error's message.
+ */
+export interface ExtensionErrorEvent {
+  readonly type: "extension_error";
+  readonly extensionPath: string;
+  readonly event: string;
+  readonly error: string;
+}
+
 /** omp's command list, at start and whenever it changes (skills, extensions and command files reloaded). */
 export interface AvailableCommandsEvent {
   readonly type: "available_commands";
@@ -892,4 +909,5 @@ export type ChatEvent =
   | UriCancelEvent
   | SubagentEvent
   | SessionSettledEvent
+  | ExtensionErrorEvent
   | LiveEvent;

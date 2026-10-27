@@ -105,6 +105,44 @@ describe("the chat session port on the chat host", () => {
     );
 
     programTest(
+      `${program.name}: a prompt that comes while a reply streams, naming no delivery, is refused as omp's busy agent, in plain words`,
+      async () => {
+        const setup = await ports.start(command);
+        const { runtime, folder, files } = setup;
+        const opened = await runtime.open({ folderPath: folder, start: "new" }, call());
+        files.set(opened.threadId, opened.sessionFile);
+        const threadId = opened.threadId;
+        await runtime.request(
+          { threadId, method: "prompt", params: { text: "stream_held" } },
+          call(),
+        );
+        await until(() =>
+          streamOf(setup, threadId).find(
+            (payload) => payload.kind === "event" && payload.event.type === "message_update",
+          ),
+        );
+        const refused = await failureOf(
+          runtime.request({ threadId, method: "prompt", params: { text: "hi" } }, call()),
+        );
+        expect(refused).toMatchObject({ code: "agent_busy", retryable: true });
+        expect(refused.message).not.toContain("Agent is already processing");
+        await runtime.request({ threadId, method: "abort", params: {} }, call());
+        await until(() =>
+          streamOf(setup, threadId).find(
+            (payload) => payload.kind === "event" && payload.event.type === "session_settled",
+          ),
+        );
+        // The refused prompt has no result of its own: only the held reply's.
+        expect(
+          streamOf(setup, threadId).filter(
+            (payload) => payload.kind === "event" && payload.event.type === "prompt_result",
+          ),
+        ).toHaveLength(1);
+      },
+      60_000,
+    );
+
+    programTest(
       `${program.name}: a chat whose process stopped opens again from its file, with its turn`,
       async () => {
         const setup = await ports.start(command);

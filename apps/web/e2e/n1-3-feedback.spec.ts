@@ -134,7 +134,7 @@ realTest(
 
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.click();
-    chat.notify(["Update 1", "Update 2", "Update 3", "Update 4"], "warning", "n13-notice");
+    chat.notify(["Update 1", "Update 2", "Update 3", "Update 4"], "warning");
     const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Update 4")).toBeVisible();
     await realExpect(composer).toBeFocused();
@@ -179,7 +179,7 @@ realTest(
     const page = await realApp.open({ beforeLoad: (target) => chat.route(target) });
     await startChat(page);
     await settleChat(chat);
-    chat.notify(["Build finished", "Tests passed"], "warning", "n13-notice");
+    chat.notify(["Build finished", "Tests passed"], "warning");
     const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Tests passed")).toBeVisible();
     const toneOf = (locator: Locator) =>
@@ -208,7 +208,7 @@ realTest(
     });
     await startChat(dark);
     await settleChat(darkChat);
-    darkChat.notify(["Build finished", "Tests passed"], "warning", "n13-notice");
+    darkChat.notify(["Build finished", "Tests passed"], "warning");
     await realExpect(dark.locator("html")).toHaveClass(/dark/);
     await realExpect(dark.getByTestId("n1-notices").getByText("Tests passed")).toBeVisible();
     await dark.screenshot({
@@ -229,7 +229,7 @@ realTest(
     await settleChat(chat);
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.click();
-    chat.notify(["Only one"], "warning", "n13-notice");
+    chat.notify(["Only one"], "warning");
     const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Only one")).toBeVisible();
 
@@ -252,7 +252,7 @@ realTest(
     await page.setViewportSize({ width: 390, height: 844 });
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.click();
-    chat.notify(["Only one"], "warning", "n13-notice");
+    chat.notify(["Only one"], "warning");
     const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Only one")).toBeVisible();
 

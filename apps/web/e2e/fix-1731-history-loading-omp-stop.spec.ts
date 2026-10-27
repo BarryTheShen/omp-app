@@ -13,7 +13,8 @@ realTest.setTimeout(300_000);
 
 function asksForEntries(message: string | Buffer): boolean {
   const text = typeof message === "string" ? message : message.toString("utf8");
-  return text.includes('"command":{"type":"get_entries"');
+  // The session port's `request`, with omp's method `get_entries` in its arguments.
+  return text.includes('"method":"request"') && text.includes('"method":"get_entries"');
 }
 function errorBanner(page: Page): Locator {
   return page.locator('[data-slot="u1-thread-error"]');

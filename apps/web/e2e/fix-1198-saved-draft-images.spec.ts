@@ -81,9 +81,11 @@ interface HeldAnswer {
 }
 
 function isRestoringCall(frame: Record<string, unknown>): boolean {
-  if (frame.type !== "call" || frame.method !== "send") return false;
-  const args = frame.args as { command?: { type?: unknown } } | undefined;
-  return args?.command?.type === "abort_and_restore_queue";
+  if (frame.type !== "call" || frame.port !== "A0.chatSession" || frame.method !== "request") {
+    return false;
+  }
+  const args = frame.args as { method?: unknown } | undefined;
+  return args?.method === "abort_and_restore_queue";
 }
 
 async function holdRestoreAnswer(target: Page, held: HeldAnswer): Promise<void> {
@@ -121,7 +123,9 @@ async function recordSends(target: Page, sent: string[]): Promise<void> {
     const server = ws.connectToServer();
     ws.onMessage((message) => {
       const frame = JSON.parse(String(message)) as Record<string, unknown>;
-      if (frame.type === "call" && frame.method === "send") sent.push(JSON.stringify(frame.args));
+      if (frame.type === "call" && frame.port === "A0.chatSession" && frame.method === "request") {
+        sent.push(JSON.stringify(frame.args));
+      }
       server.send(message);
     });
     server.onMessage((message) => ws.send(message));
@@ -130,13 +134,14 @@ async function recordSends(target: Page, sent: string[]): Promise<void> {
 
 function isPromptWithImage(args: string, text: string): boolean {
   const parsed = JSON.parse(args) as {
-    command?: { type?: unknown; message?: unknown; images?: unknown };
+    method?: unknown;
+    params?: { text?: unknown; images?: unknown };
   };
   return (
-    parsed.command?.type === "prompt" &&
-    parsed.command.message === text &&
-    Array.isArray(parsed.command.images) &&
-    parsed.command.images.length === 1
+    parsed.method === "prompt" &&
+    parsed.params?.text === text &&
+    Array.isArray(parsed.params.images) &&
+    parsed.params.images.length === 1
   );
 }
 

@@ -19,7 +19,9 @@ async function recordSends(page: Page, sends: Array<Record<string, unknown>>): P
     const server = socket.connectToServer();
     socket.onMessage((message) => {
       const frame = frameOf(message);
-      if (frame?.type === "call" && frame.method === "send") sends.push(frame);
+      if (frame?.type === "call" && frame.port === "A0.chatSession" && frame.method === "request") {
+        sends.push(frame);
+      }
       server.send(message);
     });
     server.onMessage((message) => socket.send(message));
@@ -74,8 +76,8 @@ realTest(
 
     const sent = sends.find((frame) => JSON.stringify(frame).includes(NEW_CHAT_TEXT));
     expect(sent, "the New chat send frame").toBeDefined();
-    const command = argsOf(sent as Record<string, unknown>).command as Record<string, unknown>;
-    expect(command.images ?? []).toEqual([]);
+    const params = argsOf(sent as Record<string, unknown>).params as Record<string, unknown>;
+    expect(params.images ?? []).toEqual([]);
     expect(realApp.problems).toEqual([]);
   },
 );

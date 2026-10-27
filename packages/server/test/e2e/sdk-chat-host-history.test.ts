@@ -172,6 +172,23 @@ describe("the chat host's history and session changes", () => {
     );
 
     programTest(
+      `${program.name}: a fork with no entry copies the whole chat into a new session file, as omp's /fork does`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        await chat.client.request("prompt", { text: "hello" });
+        await chat.next(resultOf("1"));
+        const before = await chat.client.request("get_state", {});
+        expect(await chat.client.request("fork", {})).toEqual({ cancelled: false });
+        const copied = await chat.client.request("get_state", {});
+        expect(copied.sessionFile).not.toBe(before.sessionFile);
+        expect(copied.sessionId).not.toBe(before.sessionId);
+        expect(copied.messageCount).toBe(before.messageCount);
+      },
+      60_000,
+    );
+
+    programTest(
       `${program.name}: a new chat ends the reply still streaming in the old one as aborted`,
       async () => {
         const chat = await chats.start(command);

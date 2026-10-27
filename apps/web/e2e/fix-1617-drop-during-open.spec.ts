@@ -6,7 +6,8 @@ realTest.setTimeout(300_000);
 /** Whether a client frame asks omp for a chat's entries: the request a chat's open makes to load its history. */
 function asksForEntries(message: string | Buffer): boolean {
   const text = typeof message === "string" ? message : message.toString("utf8");
-  return text.includes('"command":{"type":"get_entries"');
+  // The session port's `request`, with omp's method `get_entries` in its arguments.
+  return text.includes('"method":"request"') && text.includes('"method":"get_entries"');
 }
 
 /**

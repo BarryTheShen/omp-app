@@ -127,7 +127,7 @@ export interface RealApp {
   readonly restartServer: () => Promise<string>;
   /** Console errors and uncaught page errors from every page opened so far. A test must end clean. */
   readonly problems: readonly string[];
-  /** The process ids of the omp processes the app's server has running right now. */
+  /** The process ids of the chat processes (each chat's host on omp's SDK) the app's server has running right now. */
   readonly ompProcesses: () => readonly number[];
   /** The app's debug log so far (the same text `omp-app logs` prints). */
   readonly log: () => string;
@@ -637,10 +637,13 @@ export const realTest = test.extend<{
         } catch {
           return []; // ps exits with status 1 when the server has no child processes
         }
-        return listing
-          .split("\n")
-          .filter((line) => line.includes("--mode rpc-ui"))
-          .map((line) => Number.parseInt(line.trim(), 10));
+        return (
+          listing
+            .split("\n")
+            // Each chat's host runs with this argument (`CHAT_HOST_CHAT_ARG`, contracts `chat-host/args.ts`).
+            .filter((line) => line.includes("__omp_app_chat"))
+            .map((line) => Number.parseInt(line.trim(), 10))
+        );
       };
       const logFile = join(root, "logs", "omp-app.log");
       const log = (): string => (existsSync(logFile) ? readFileSync(logFile, "utf8") : "");

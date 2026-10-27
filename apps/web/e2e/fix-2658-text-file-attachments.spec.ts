@@ -123,13 +123,13 @@ realTest(
             webSocket.onMessage((message) => {
               const frame = parseFrame(message);
               // Only the prompt is refused: the file's save and the app's other calls go through.
-              const command = (frame.args as { command?: { type?: unknown } } | undefined)?.command;
+              const method = (frame.args as { method?: unknown } | undefined)?.method;
               if (
                 refuseNextPrompt &&
                 frame.type === "call" &&
-                frame.port === "A0.rpcSession" &&
-                frame.method === "send" &&
-                command?.type === "prompt"
+                frame.port === "A0.chatSession" &&
+                frame.method === "request" &&
+                method === "prompt"
               ) {
                 refuseNextPrompt = false;
                 void webSocket.send(

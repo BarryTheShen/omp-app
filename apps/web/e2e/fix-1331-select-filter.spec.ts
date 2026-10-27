@@ -38,7 +38,7 @@ class SelectQuestion {
   public stream: string | undefined;
   /** When the page last sent a request. */
   public lastCallAt = Date.now();
-  /** The `args` of each answer the page sent: `{ threadId, response }`. */
+  /** The `args` of each answer the page sent: `{ threadId, id, answer }`. */
   public readonly answers: unknown[] = [];
   private readonly sequences = new Map<string, number>();
   private page: { send(message: string): void } | undefined;
@@ -52,17 +52,13 @@ class SelectQuestion {
         if (
           frame?.type === "subscribe" &&
           typeof frame.stream === "string" &&
-          frame.stream.includes("rpcSession/event")
+          frame.stream.includes("chatSession/event")
         ) {
           this.stream = frame.stream;
           if (!this.sequences.has(frame.stream)) this.sequences.set(frame.stream, 0);
         }
         if (frame?.type === "call") this.lastCallAt = Date.now();
-        if (
-          frame?.type === "call" &&
-          frame.method === "answerExtensionUi" &&
-          typeof frame.id === "string"
-        ) {
+        if (frame?.type === "call" && frame.method === "answer" && typeof frame.id === "string") {
           this.answers.push(frame.args);
           socket.send(JSON.stringify({ type: "result", id: frame.id, ok: true, value: null }));
           return;
@@ -111,14 +107,8 @@ realTest(
       .poll(() => Date.now() - question.lastCallAt, { timeout: 60_000 })
       .toBeGreaterThan(2_000);
     question.send({
-      kind: "notification",
-      frame: {
-        type: "extension_ui_request",
-        id: REQUEST_ID,
-        method: "select",
-        title: TITLE,
-        options: OPTIONS,
-      },
+      kind: "host_request",
+      request: { id: REQUEST_ID, method: "ui.select", params: { title: TITLE, options: OPTIONS } },
     });
 
     const dialog = page.getByRole("dialog", { name: TITLE });
@@ -156,9 +146,7 @@ realTest(
     await filter.press("Enter");
     await expect(dialog).toBeHidden({ timeout: 30_000 });
     expect(question.answers).toEqual([
-      expect.objectContaining({
-        response: expect.objectContaining({ id: REQUEST_ID, value: "Cancel" }),
-      }),
+      expect.objectContaining({ id: REQUEST_ID, answer: { value: "Cancel" } }),
     ]);
     expect(realApp.problems).toEqual([]);
   },

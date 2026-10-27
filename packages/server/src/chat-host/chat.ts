@@ -9,8 +9,10 @@
  * 3. the loop runs (`loop.ts`) until the server closes stdin, or an extension shuts the chat down;
  * 4. the session is disposed, the last lines are written, and the process exits 0.
  *
- * A signal (SIGTERM from the server's stop, SIGINT, SIGHUP) runs omp's cleanup, which disposes the session too
- * (`postmortem`, registered below), and exits with omp's codes.
+ * A signal (SIGTERM from the server's stop, SIGINT, SIGHUP) ends the process the way omp's own RPC mode does: omp's
+ * cleanup runs (`postmortem`: each session records its exit, servers and storage close) and the session is not disposed.
+ * Disposing would abort a worker still running, and the app would list it as Cancelled, as if the person had stopped it;
+ * left alone it records no end, and the app lists it as Stopped (#1337, #781).
  */
 import { SessionResolutionError } from "@oh-my-pi/pi-coding-agent/main";
 import { VERSION } from "@oh-my-pi/pi-utils/dirs";
@@ -36,9 +38,6 @@ export async function runChat(args: readonly string[]): Promise<never> {
     process.stderr.write(`${startFailure(error)}\n`);
     return exit(1);
   }
-  const unregister = postmortem.register("chat-host-session", () => chat.session.dispose(), {
-    exitOnly: true,
-  });
 
   let code = 0;
   try {
@@ -54,7 +53,6 @@ export async function runChat(args: readonly string[]): Promise<never> {
     process.stderr.write(`chat host: the chat stopped: ${errorText(error)}\n`);
     code = 1;
   }
-  unregister();
   try {
     await chat.session.dispose();
   } catch (error) {

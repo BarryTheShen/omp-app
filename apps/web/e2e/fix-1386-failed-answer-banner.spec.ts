@@ -18,11 +18,19 @@ const NOT_SENT = "Sending your answer failed. Try again.";
 /** The thread's error banner (U1), which says "The conversation could not continue." for a failure of the chat. */
 const BANNER = '[data-slot="u1-thread-error"]';
 
-/** The id of a client call that answers a question omp asked, or undefined for any other frame. */
+/** The id of a client call that answers a question omp asked (the session port's `answer`), or undefined for any other frame. */
 function answerCallId(message: string | Buffer): string | undefined {
   const text = typeof message === "string" ? message : message.toString("utf8");
-  if (!text.includes('"method":"answerExtensionUi"')) return undefined;
-  return /"id":"([^"]+)"/.exec(text)?.[1];
+  let frame: { type?: unknown; id?: unknown; port?: unknown; method?: unknown };
+  try {
+    frame = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (frame.type !== "call" || frame.port !== "A0.chatSession" || frame.method !== "answer") {
+    return undefined;
+  }
+  return typeof frame.id === "string" ? frame.id : undefined;
 }
 
 /** The shell draws with the app's own background: a transparent one means no styles loaded. */

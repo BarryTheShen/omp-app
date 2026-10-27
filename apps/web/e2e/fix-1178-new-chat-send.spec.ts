@@ -70,7 +70,8 @@ async function holdNewChatOpen(page: Page, hold: HeldOpen): Promise<void> {
       }
       if (
         frame.type === "call" &&
-        frame.method === "send" &&
+        frame.port === "A0.chatSession" &&
+        frame.method === "request" &&
         hold.openCallId !== undefined &&
         !hold.released
       ) {

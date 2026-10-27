@@ -13,14 +13,14 @@ import {
 realTest.setTimeout(300_000);
 
 /**
- * A server frame on the chat's own event stream: an RpcSessionEvent. The other streams (the config store and the rest)
- * carry other payloads, so they do not match.
+ * A server frame on the chat's own event stream: a chat session event (A0's `ChatSessionEvent`). The other streams (the
+ * config store and the rest) carry other payloads, so they do not match.
  */
 const ChatEventFrame = z.object({
   type: z.literal("event"),
   payload: z.object({
-    kind: z.enum(["omp", "prompt_result", "session_settled", "notification", "process"]),
-    frame: z.object({ type: z.string(), payload: z.unknown() }).optional(),
+    kind: z.enum(["event", "host_request", "shell", "process", "moved"]),
+    event: z.object({ type: z.string(), payload: z.unknown() }).optional(),
   }),
 });
 type ChatEventFrame = z.infer<typeof ChatEventFrame>;
@@ -40,10 +40,10 @@ function chatEvent(message: string | Buffer): ChatEventFrame | undefined {
 }
 
 /** omp's notice that a worker completed, on the chat's stream: the frame the Agent Hub must show as Finished. */
-function isWorkerCompleted(event: ChatEventFrame): boolean {
-  const frame = event.payload.frame;
-  if (event.payload.kind !== "notification" || frame?.type !== "subagent_lifecycle") return false;
-  return LifecyclePayload.safeParse(frame.payload).data?.status === "completed";
+function isWorkerCompleted(frame: ChatEventFrame): boolean {
+  const event = frame.payload.event;
+  if (frame.payload.kind !== "event" || event?.type !== "subagent_lifecycle") return false;
+  return LifecyclePayload.safeParse(event.payload).data?.status === "completed";
 }
 
 /** The page's socket: the live sockets a drop closes, and the reconnects refused while the outage lasts. */

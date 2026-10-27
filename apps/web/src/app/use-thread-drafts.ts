@@ -8,6 +8,7 @@ import {
   useMemo,
 } from "react";
 import type { QueueAdapterController } from "@/modules/P6/contract/contract";
+import type { StoppedQueue } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import type { AttachmentManager } from "@/modules/U2/attachments";
 import type { DraftRestoreRequest } from "@/modules/U2/contract";
@@ -52,9 +53,7 @@ interface ThreadDraftsInput {
   readonly threadId: ThreadId;
   readonly attachmentManager: AttachmentManager;
   readonly uploadRestoredImage: ImageUpload;
-  readonly restoreStoppedRef: {
-    current: ((restored: OmpWire.AbortAndRestoreQueueResult) => Promise<void>) | null;
-  };
+  readonly restoreStoppedRef: { current: ((stopped: StoppedQueue) => boolean) | null };
   readonly setCommandStatus: Dispatch<SetStateAction<string | null>>;
   readonly setCommandError: Dispatch<SetStateAction<string | null>>;
   readonly queueAdapter: QueueAdapterController;
@@ -136,9 +135,9 @@ export function useThreadDrafts({
     [attachmentManager, draftController],
   );
 
-  // Stop with queued messages in the chat on screen: the withdrawn images are stored and the draft takes them ahead of
-  // its attachments, and the text goes in ahead of what was typed. An answer that withdrew nothing changes nothing.
-  const restoreStopped = useCallback(
+  // Stop with queued messages, into this box: the withdrawn images are stored and the draft takes them ahead of its
+  // attachments, and the text goes in ahead of what was typed. An answer that withdrew nothing changes nothing.
+  const restoreIntoBox = useCallback(
     async (restored: OmpWire.AbortAndRestoreQueueResult): Promise<void> => {
       if (restoredCount(restored) === 0) return;
       const { refs, lost } = await storeRestoredImages(restored, uploadRestoredImage);
@@ -156,6 +155,17 @@ export function useThreadDrafts({
       }
     },
     [attachmentManager, draftController, uploadRestoredImage, setCommandStatus, setCommandError],
+  );
+  // The box takes a Stop's answer only while it holds the stopped chat's own draft. A New chat's box holds the folder's
+  // draft and another chat's box that chat's: false, and the stopped chat keeps it in its saved draft.
+  const restoreStopped = useCallback(
+    (stopped: StoppedQueue): boolean => {
+      const { scope } = draftController.getSnapshot();
+      if (scope.kind !== "thread" || scope.threadId !== stopped.threadId) return false;
+      void restoreIntoBox(stopped.restored);
+      return true;
+    },
+    [draftController, restoreIntoBox],
   );
   useLayoutEffect(() => {
     restoreStoppedRef.current = restoreStopped;

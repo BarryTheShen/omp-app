@@ -182,12 +182,14 @@ describe("requests from the server", () => {
     expect(parseChatHostParams("get_messages_page", { cursor: "" }).ok).toBe(false);
   });
 
-  test("a fork, a branch and a rewind name the entry they start from", () => {
+  test("a branch and a rewind name the entry they start from; a fork may, and copies the whole chat without one", () => {
     for (const method of ["fork", "branch", "navigate_tree"] as const) {
       expect(parseChatHostParams(method, { entryId: "b8e8c20d" }).ok).toBe(true);
       expect(parseChatHostParams(method, { entryId: "" }).ok).toBe(false);
-      expect(parseChatHostParams(method, {}).ok).toBe(false);
     }
+    expect(parseChatHostParams("branch", {}).ok).toBe(false);
+    expect(parseChatHostParams("navigate_tree", {}).ok).toBe(false);
+    expect(parseChatHostParams("fork", {}).ok).toBe(true);
   });
 
   test("a sign-in names its provider", () => {

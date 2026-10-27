@@ -3,7 +3,6 @@ import {
   type CapabilityMap,
   DraftScope,
   MAX_ATTACHMENT_BYTES,
-  type OmpWire,
   type PortClient,
   type RpcSessionPort,
   type RpcSessionSend,
@@ -129,22 +128,17 @@ export function useThreadRuntime({
     notify: setCommandStatus,
     fail: setCommandError,
   });
-  // Stop hands back what omp withdrew. The chat on screen takes it through its draft; any other chat keeps it in its
-  // saved draft by its thread id, so it waits there whether or not that chat is still on screen.
-  const restoreStoppedRef = useRef<
-    ((restored: OmpWire.AbortAndRestoreQueueResult) => Promise<void>) | null
-  >(null);
+  // Stop hands back what omp withdrew. The box takes it while it holds the stopped chat's own draft; otherwise the
+  // stopped chat keeps it in its saved draft by its thread id. The answer can come after the person has left that chat,
+  // and this callback is the one of the chat the Stop was made in, so the box decides when the answer comes.
+  const restoreStoppedRef = useRef<((stopped: StoppedQueue) => boolean) | null>(null);
   const uploadRestoredImage = useMemo(
     () => imageUploadTo(createAttachmentBlobStore(client.port(AttachmentBlobStore))),
     [client],
   );
   const handleQueueRestored = useCallback(
     (stopped: StoppedQueue) => {
-      const restoreMounted = restoreStoppedRef.current;
-      if (stopped.threadId === threadId && restoreMounted !== null) {
-        void restoreMounted(stopped.restored);
-        return;
-      }
+      if (restoreStoppedRef.current?.(stopped) === true) return;
       void restoreStoppedQueueIntoSavedDraft(
         {
           drafts: createDraftStoreAdapter(client),
@@ -162,7 +156,7 @@ export function useThreadRuntime({
         })
         .catch(reportDraftFailure("Keeping what Stop withdrew in that chat's draft failed"));
     },
-    [client, threadId, uploadRestoredImage],
+    [client, uploadRestoredImage],
   );
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,

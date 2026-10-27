@@ -43,8 +43,8 @@ function holdFirstThreadDraftRead() {
             const frame = parseFrame(message);
             if (
               frame.type === "call" &&
-              frame.port === "A0.rpcSession" &&
-              frame.method === "send"
+              frame.port === "A0.chatSession" &&
+              frame.method === "request"
             ) {
               promptSent = true;
             }

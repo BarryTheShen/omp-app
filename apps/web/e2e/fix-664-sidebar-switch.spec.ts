@@ -28,7 +28,7 @@ const NARROW_ROW_INDEX = 15;
 interface Wire {
   /** How many `listSessions` calls the page has sent. */
   readonly listReads: () => number;
-  /** How many chat opens (`A0.rpcSession.open`) the page has sent. */
+  /** How many chat opens (`A0.chatSession.open`) the page has sent. */
   readonly opensSent: () => number;
   /** How many chat opens have had their response delivered to the page. */
   readonly opensDelivered: () => number;
@@ -80,7 +80,7 @@ async function routeWire(page: Page): Promise<Wire> {
     ws.onMessage((message) => {
       if (typeof message === "string") {
         if (message.includes('"method":"listSessions"')) listReads += 1;
-        if (message.includes('"port":"A0.rpcSession"') && message.includes('"method":"open"')) {
+        if (message.includes('"port":"A0.chatSession"') && message.includes('"method":"open"')) {
           const id = frameId(message);
           if (id !== undefined) {
             openIds.add(id);

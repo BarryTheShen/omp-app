@@ -4,6 +4,7 @@
  * plan. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Chat, chatHostChats, PROGRAMS, realTest } from "./sdk-chat-host-harness";
 
@@ -118,6 +119,49 @@ describe("plan mode on the chat host", () => {
         expect(all.slice(start + 1).some((message) => message.role === "assistant")).toBe(true);
         expect((await chat.client.request("get_state", {})).sessionName).toBe("Fix the login");
         expect(await modes(chat)).toEqual(["plan", "none"]);
+      },
+      120_000,
+    );
+
+    programTest(
+      `${program.name}: a plan whose copy cannot be saved still runs, and omp's warning reaches the app`,
+      async () => {
+        // omp copies an approved plan into `plan.autosaveDir`; a file where that folder should be makes the copy fail.
+        const chat = await chats.start(command, {
+          config: "plan:\n  autosave: true\n  autosaveDir: blocked/plans\n",
+        });
+        await chat.client.hello;
+        await writeFile(join(chat.folder, "blocked"), "not a folder\n");
+        await chat.client.request("set_plan_mode", { enabled: true });
+        // The proposal's own stretch settles first, so the settle awaited below is the approved run's.
+        const proposing = chat.events.length;
+        await promptToEnd(chat, "plan_propose");
+        await chat.nextAfter(proposing, (event) => event.type === "session_settled");
+        const mark = chat.events.length;
+        expect(
+          await chat.client.request("approve_plan", {
+            planFilePath: PLAN_FILE,
+            title: "fix-the-login",
+          }),
+        ).toEqual({ planFilePath: PLAN_FILE });
+        expect(
+          await chat.nextAfter(
+            mark,
+            (event) => event.type === "notice" && event.source === "plan-mode",
+          ),
+        ).toMatchObject({
+          level: "warning",
+          message: expect.stringContaining("Failed to autosave plan:"),
+        });
+        await chat.nextAfter(mark, (event) => event.type === "session_settled");
+        expect(
+          (await messages(chat)).some(
+            (message) =>
+              message.role === "developer" &&
+              message.synthetic === true &&
+              textOf(message.content).includes("# Fix the login"),
+          ),
+        ).toBe(true);
       },
       120_000,
     );

@@ -6,7 +6,7 @@ realTest.setTimeout(300_000);
 /** The id of a client frame that subscribes to a chat's event stream, or undefined for any other frame. */
 function chatSubscribeId(message: string | Buffer): string | undefined {
   const text = typeof message === "string" ? message : message.toString("utf8");
-  if (!text.includes('"type":"subscribe"') || !text.includes('"stream":"A0.rpcSession/event/')) {
+  if (!text.includes('"type":"subscribe"') || !text.includes('"stream":"A0.chatSession/event/')) {
     return undefined;
   }
   return /"id":"([^"]+)"/.exec(text)?.[1];
@@ -15,7 +15,7 @@ function chatSubscribeId(message: string | Buffer): string | undefined {
 /** The id of a client frame that asks for a chat's entries (the history a chat opens with), or undefined. */
 function entriesRequestId(message: string | Buffer): string | undefined {
   const text = typeof message === "string" ? message : message.toString("utf8");
-  if (!text.includes('"command":{"type":"get_entries"')) return undefined;
+  if (!text.includes('"method":"get_entries"')) return undefined;
   return /"id":"([^"]+)"/.exec(text)?.[1];
 }
 

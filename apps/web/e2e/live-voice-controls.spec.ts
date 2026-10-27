@@ -104,12 +104,17 @@ function liveOmp(control: LiveControl) {
         webSocket.onMessage((message) => {
           const frame = frameOf(message);
           if (frame.type === "subscribe" && typeof frame.stream === "string") {
-            if (frame.stream.startsWith("A0.rpcSession/event/")) eventStream = frame.stream;
+            if (frame.stream.startsWith("A0.chatSession/event/")) eventStream = frame.stream;
           }
-          if (frame.type === "call" && frame.port === "A0.rpcSession" && frame.method === "send") {
-            const command = (frame.args as { command?: { type: string; muted?: boolean } }).command;
-            if (command?.type.startsWith("live_")) {
-              control.commands.push(command.type);
+          if (
+            frame.type === "call" &&
+            frame.port === "A0.chatSession" &&
+            frame.method === "request"
+          ) {
+            const args = frame.args as { method?: string; params?: { muted?: boolean } };
+            if (args.method?.startsWith("live_")) {
+              control.commands.push(args.method);
+              const command = { type: args.method, muted: args.params?.muted };
               const answer = control.answerLive ? docsResult(command) : undefined;
               if (answer !== undefined) {
                 webSocket.send(
@@ -124,14 +129,14 @@ function liveOmp(control: LiveControl) {
         server.onMessage((message) => {
           const frame = frameOf(message);
           const payload = frame.payload as
-            | { kind?: string; frame?: { type?: string; error?: string } }
+            | { kind?: string; event?: { type?: string; error?: string } }
             | undefined;
           if (
             frame.type === "event" &&
-            payload?.kind === "notification" &&
-            payload.frame?.type === "live_end"
+            payload?.kind === "event" &&
+            payload.event?.type === "live_end"
           ) {
-            control.liveEnd = { error: payload.frame.error };
+            control.liveEnd = { error: payload.event.error };
           }
           if (
             frame.type === "event" &&
@@ -155,7 +160,7 @@ function liveOmp(control: LiveControl) {
               type: "event",
               stream: eventStream,
               seq,
-              payload: { kind: "notification", frame: notification },
+              payload: { kind: "event", event: notification },
             }),
           );
         };

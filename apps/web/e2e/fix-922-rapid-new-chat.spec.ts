@@ -21,7 +21,7 @@ function countSessionCalls(page: Page, counts: Map<string, number>): void {
     socket.on("framesent", (event) => {
       if (typeof event.payload !== "string") return;
       const frame = JSON.parse(event.payload) as { type?: string; method?: string; port?: string };
-      if (frame.type !== "call" || frame.port !== "A0.rpcSession") return;
+      if (frame.type !== "call" || frame.port !== "A0.chatSession") return;
       counts.set(frame.method ?? "?", (counts.get(frame.method ?? "?") ?? 0) + 1);
     });
   });

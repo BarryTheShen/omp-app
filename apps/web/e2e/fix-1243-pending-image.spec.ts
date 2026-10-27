@@ -97,7 +97,9 @@ async function holdUploadAnswer(target: Page, held: HeldUpload, sent: string[]):
       if (frame.type === "call" && frame.port === "A1.attachmentStore" && frame.method === "put") {
         uploadId = String(frame.id);
       }
-      if (frame.type === "call" && frame.method === "send") sent.push(JSON.stringify(frame.args));
+      if (frame.type === "call" && frame.port === "A0.chatSession" && frame.method === "request") {
+        sent.push(JSON.stringify(frame.args));
+      }
       server.send(message);
     });
     server.onMessage((message) => {
@@ -116,12 +118,12 @@ async function holdUploadAnswer(target: Page, held: HeldUpload, sent: string[]):
   });
 }
 
-/** The prompt sent for `text`, with its images, if the app sent one. */
+/** The prompt sent for `text`, with its images, if the app sent one: the params of the session port's `prompt`. */
 function promptFor(sent: readonly string[], text: string): Record<string, unknown> | undefined {
   for (const args of sent) {
-    const parsed = JSON.parse(args) as { command?: { type?: unknown; message?: unknown } };
-    if (parsed.command?.type === "prompt" && parsed.command.message === text) {
-      return parsed.command as Record<string, unknown>;
+    const parsed = JSON.parse(args) as { method?: unknown; params?: { text?: unknown } };
+    if (parsed.method === "prompt" && parsed.params?.text === text) {
+      return parsed.params as Record<string, unknown>;
     }
   }
   return undefined;

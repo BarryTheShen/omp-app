@@ -57,8 +57,7 @@ function newHeldBranch(): HeldBranch {
 }
 
 function isBranchCommand(args: unknown): boolean {
-  const command = (args as { command?: { type?: unknown } } | null | undefined)?.command;
-  return command?.type === "branch";
+  return (args as { method?: unknown } | null | undefined)?.method === "branch";
 }
 
 async function holdBranchAnswer(page: Page, hold: HeldBranch): Promise<void> {
@@ -72,7 +71,12 @@ async function holdBranchAnswer(page: Page, hold: HeldBranch): Promise<void> {
     };
     ws.onMessage((message) => {
       const frame = JSON.parse(String(message)) as Record<string, unknown>;
-      if (frame.type === "call" && frame.method === "send" && isBranchCommand(frame.args)) {
+      if (
+        frame.type === "call" &&
+        frame.port === "A0.chatSession" &&
+        frame.method === "request" &&
+        isBranchCommand(frame.args)
+      ) {
         hold.branchCallId = String(frame.id);
         hold.sent.resolve();
       }

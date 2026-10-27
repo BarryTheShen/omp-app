@@ -12,6 +12,7 @@
  * A prompt is, in omp's order (`rpc-mode.ts:1764-1878`): an extension's `input` hook, then `/skill:<name>`, then a
  * built-in slash command (omp's own executor, shared with its ACP host), then `session.prompt`.
  */
+import { AgentBusyError } from "@oh-my-pi/pi-agent-core";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
@@ -164,7 +165,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);
   const subagents = new SubagentRoster(chat.subagentEventBus, emit);
-  const plan = new PlanMode(session);
+  const plan = new PlanMode(session, (message) =>
+    emit({ type: "notice", level: "warning", message, source: "plan-mode" }),
+  );
   const live = new LiveVoice(session, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
@@ -221,12 +224,13 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         message: `${action}: ${error.message}`,
         source: "extension",
       }),
+    // As omp's RPC reports it, so the app names the extension that failed.
     reportRuntimeError: (error) =>
       emit({
-        type: "notice",
-        level: "error",
-        message: `${error.extensionPath} (${error.event}): ${error.error}`,
-        source: "extension",
+        type: "extension_error",
+        extensionPath: error.extensionPath,
+        event: error.event,
+        error: error.error,
       }),
     onShutdown: () => {
       shutdownRequested = true;
@@ -690,7 +694,12 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
           return;
         case "failed":
           results.discard(ticket);
-          respondError(id, "failed", outcome.error.message);
+          // omp refuses a prompt that came while a turn runs and named no delivery; the app tells it apart.
+          respondError(
+            id,
+            outcome.error instanceof AgentBusyError ? "agent_busy" : "failed",
+            outcome.error.message,
+          );
           return;
       }
     } catch (error) {

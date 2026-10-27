@@ -2,9 +2,6 @@ import { expect, realTest, sendPrompt, startChat } from "./real-omp";
 
 realTest.setTimeout(300_000);
 
-/** What a person is told when a chat is open in another tab or window (the server's answer, plain words). */
-const OPEN_ELSEWHERE = "This chat is open in another tab or window.";
-
 /**
  * Issue #762. A second tab on the same folder either attaches to the chat the first tab holds or says in plain words
  * that the chat is open elsewhere; it never shows a raw server error. The second tab is opened from the first with
@@ -62,7 +59,7 @@ realTest(
                   JSON.stringify({
                     type: "call",
                     id: "newest",
-                    port: "A0.rpcSession",
+                    port: "A0.chatSession",
                     method: "open",
                     args: { folderPath: folder, start: "latest" },
                   }),
@@ -81,10 +78,10 @@ realTest(
         ),
       { token: realApp.token, folder: realApp.folder },
     );
-    expect(answer).toMatchObject({
-      ok: false,
-      error: { code: "conflict", message: OPEN_ELSEWHERE },
-    });
+    // The refusal says where the chat is open, in words a person reads: no raw server error, no identifiers.
+    expect(answer).toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(answer.error?.message).toMatch(/open in another tab or window/);
+    expect(answer.error?.message).not.toMatch(/[{}_]|Error|thread/);
 
     // The first tab keeps its chat, and neither tab shows a problem.
     await expect(first.getByText("pong", { exact: true })).toBeVisible();

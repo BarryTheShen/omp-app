@@ -177,13 +177,10 @@ export async function createCompositionServer(
   // omp's own command line, built by the app (#2586): it answers omp's commands and, in RPC mode, runs every chat and the
   // probe of a chat's commands. Never an omp installed on the computer.
   const chatHostBinary = options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN;
-  // With OMP_APP_SDK_HOST=1 the chats run on the chat host's own protocol (SDK plan H5.3); the probe of a chat's commands
-  // stays on omp's RPC mode until H5.6 removes it.
-  const sdkHost = env.OMP_APP_SDK_HOST === "1";
+  // The chats run on the chat host's own protocol (SDK plan H5.4a); the probe of a chat's commands stays on omp's RPC mode
+  // until H5.6 removes it.
   const rpcChats = chatCommand({ binary: chatHostBinary, wrapper: options.chatWrapper });
-  const chats = sdkHost
-    ? chatHostCommand({ binary: chatHostBinary, wrapper: options.chatWrapper })
-    : rpcChats;
+  const chats = chatHostCommand({ binary: chatHostBinary, wrapper: options.chatWrapper });
   const ompCmd =
     options.ompBin === undefined ? ompCommand({ binary: chatHostBinary }) : [options.ompBin];
   logger.info("start", {
@@ -200,7 +197,6 @@ export async function createCompositionServer(
     agent_dir: agentDir,
     app_data_dir: appDataDir,
     omp_bin: ompCmd.join(" "),
-    sdk_host: sdkHost,
     log_file: logger.path,
   });
   // The omp release that versions before the chat host downloaded into the app's data folder (about 257 MB) is never run
@@ -437,7 +433,7 @@ export async function createCompositionServer(
           },
         }),
   };
-  const a0Runtime = createA0Runtime(a0Context, { chatHost: sdkHost });
+  const a0Runtime = createA0Runtime(a0Context, { chatHost: true });
   const sessionFileStore = createServerSessionFileStore({
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,

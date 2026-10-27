@@ -1,4 +1,3 @@
-import { createAppClient } from "@omp-app/client";
 import {
   AppFailure,
   AppPort,
@@ -6,6 +5,7 @@ import {
   RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
+import { createChatSessionAppClient } from "../../../launch/chat-session-shim";
 import { APP_TOKEN_STORAGE_KEY, websocketUrl } from "../../../launch/token";
 import { createMcpProtocolAdapter, type McpProtocolAdapter } from "./index";
 
@@ -37,7 +37,7 @@ async function runMcpIntegration(): Promise<void> {
   const token = window.sessionStorage.getItem(APP_TOKEN_STORAGE_KEY);
   if (token === null) throw new Error("The app session token was not available.");
 
-  const client = createAppClient({ url: websocketUrl(window.location), token });
+  const client = createChatSessionAppClient({ url: websocketUrl(window.location), token });
   let rpc: RpcSessionClient | undefined;
   let threadId: ThreadId | undefined;
   let protocol: McpProtocolAdapter | undefined;

@@ -111,14 +111,14 @@ realTest(
             const server = webSocket.connectToServer();
             webSocket.onMessage((message) => {
               const frame = parseFrame(message);
-              // Only a prompt is refused: the app also sends other commands over the same port (state reads, for one).
-              const command = (frame.args as { command?: { type?: unknown } } | undefined)?.command;
+              // Only a prompt is refused: the app also sends other requests over the same port (state reads, for one).
+              const method = (frame.args as { method?: unknown } | undefined)?.method;
               if (
                 failNextPrompt &&
                 frame.type === "call" &&
-                frame.port === "A0.rpcSession" &&
-                frame.method === "send" &&
-                command?.type === "prompt"
+                frame.port === "A0.chatSession" &&
+                frame.method === "request" &&
+                method === "prompt"
               ) {
                 failNextPrompt = false;
                 // The server refuses the prompt before omp takes it: the send fails, and the connection stays open.

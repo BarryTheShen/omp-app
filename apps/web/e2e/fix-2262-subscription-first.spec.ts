@@ -22,7 +22,10 @@ realTest(
           ws.onMessage((message) => {
             const text = String(message);
             if (text.includes('"method":"setSubagentSubscription"')) order.push("subscription");
-            if (text.includes('"command":{"type":"prompt"')) order.push("prompt");
+            // A prompt is the session port's `request` with omp's method `prompt`.
+            if (text.includes('"method":"request"') && text.includes('"method":"prompt"')) {
+              order.push("prompt");
+            }
             server.send(message);
           });
           server.onMessage((message) => ws.send(message));

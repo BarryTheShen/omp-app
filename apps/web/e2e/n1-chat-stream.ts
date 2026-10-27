@@ -69,23 +69,13 @@ export class ChatStream {
     this.toPage.send(JSON.stringify({ type: "event", stream, seq: sequence, payload }));
   }
 
-  /** Sends one extension `notify` notice per message, as a notification event. */
+  /** Sends one extension `notify` notice per message, as the chat host's `ui_notify` event. */
   public notify(
     messages: readonly string[],
     notifyType: "info" | "warning" | "error" = "warning",
-    idPrefix = "e2e-notice",
   ): void {
     for (const message of messages) {
-      this.send({
-        kind: "notification",
-        frame: {
-          type: "extension_ui_request",
-          id: `${idPrefix}-${this.callCount()}-${message}`,
-          method: "notify",
-          message,
-          notifyType,
-        },
-      });
+      this.send({ kind: "event", event: { type: "ui_notify", message, notifyType } });
     }
   }
 }
@@ -113,7 +103,7 @@ function parseFrame(message: string): Record<string, unknown> | undefined {
 function chatSubscription(message: string): string | undefined {
   const frame = parseFrame(message);
   if (frame?.type !== "subscribe" || typeof frame.stream !== "string") return undefined;
-  return frame.stream.includes("rpcSession/event") ? frame.stream : undefined;
+  return frame.stream.includes("chatSession/event") ? frame.stream : undefined;
 }
 
 /** The stream and sequence of an event frame from the server, if this frame is one. */

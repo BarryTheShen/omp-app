@@ -7,6 +7,7 @@ export {
   LaunchStatusScreen,
   useAppConnection,
 } from "./app-connection";
+export { createChatSessionAppClient } from "./chat-session-shim";
 export { ConnectionBanner, SEND_BLOCKED_TEXT } from "./connection-banner";
 export { DEFAULT_LOG_FILE, knownLogFile, rememberLogFile } from "./log-location";
 export { OmpUnavailableScreen, type OmpUnavailableScreenProps } from "./omp-unavailable";

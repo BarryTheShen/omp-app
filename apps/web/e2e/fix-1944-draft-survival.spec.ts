@@ -36,13 +36,13 @@ function holdNextBashSend() {
           const server = webSocket.connectToServer();
           webSocket.onMessage((message) => {
             const frame = parseFrame(message);
-            const command = (frame.args as { command?: { type?: unknown } } | undefined)?.command;
+            const method = (frame.args as { method?: unknown } | undefined)?.method;
             if (
               holdNext &&
               frame.type === "call" &&
-              frame.port === "A0.rpcSession" &&
-              frame.method === "send" &&
-              command?.type === "bash"
+              frame.port === "A0.chatSession" &&
+              frame.method === "request" &&
+              method === "bash"
             ) {
               holdNext = false;
               requestId = frame.id;
@@ -815,13 +815,13 @@ realTest(
             const server = webSocket.connectToServer();
             webSocket.onMessage((message) => {
               const frame = parseFrame(message);
-              const command = (frame.args as { command?: { type?: unknown } } | undefined)?.command;
+              const method = (frame.args as { method?: unknown } | undefined)?.method;
               if (
                 refuseNextPrompt &&
                 frame.type === "call" &&
-                frame.port === "A0.rpcSession" &&
-                frame.method === "send" &&
-                command?.type === "prompt"
+                frame.port === "A0.chatSession" &&
+                frame.method === "request" &&
+                method === "prompt"
               ) {
                 refuseNextPrompt = false;
                 void webSocket.send(

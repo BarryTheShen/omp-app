@@ -38,8 +38,9 @@ export interface A0Runtime {
 
 export interface A0RuntimeOptions {
   /**
-   * Chats on the chat host's own protocol (SDK plan H5.3, `OMP_APP_SDK_HOST=1`): the chat session port replaces the RPC
-   * one, and the registry's processes must run the chat host's `chat` command.
+   * Chats on the chat host's own protocol (SDK plan H5.3), as the app runs them since H5.4a: the chat session port
+   * replaces the RPC one, and the registry's processes must run the chat host's `chat` command. Without it, the RPC
+   * runtime serves, for its own tests until H5.6 deletes it.
    */
   readonly chatHost?: boolean;
 }

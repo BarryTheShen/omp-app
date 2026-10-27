@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   type AbortSignalLike,
   type AnswerHostRequestArgs,
+  type AppError,
   AppFailure,
   type ChatOpenResult,
   type ChatRequestArgs,
@@ -222,6 +223,15 @@ function commandEvent(event: ChatEvent): CommandSessionEvent | undefined {
   }
 }
 
+/** A chat whose process ended before its host's hello: a failed start, in the words omp's RPC port used. */
+function failedStart(): AppError {
+  return {
+    code: "omp_exited",
+    message: "omp stopped while it was starting. Try again.",
+    retryable: true,
+  };
+}
+
 /** A chat another tab or window of this app holds open: said in plain words, not in the registry's own text. */
 function chatOpenElsewhere(cause?: unknown): AppFailure {
   return new AppFailure(
@@ -265,6 +275,14 @@ function requestFailure(method: string, error: unknown): AppFailure {
         retryable: false,
         omp,
       });
+    case "agent_busy":
+      // RPC's words for omp's refusal (`rpc-session.ts` `agentBusyFailure`): plain words, never omp's own text.
+      return new AppFailure({
+        code: "agent_busy",
+        message: "omp is still working on something.",
+        retryable: true,
+        omp,
+      });
     case "session_busy":
     case "stale_cursor":
     case "unknown_since":
@@ -284,6 +302,8 @@ export class ChatSessionPortRuntime {
   readonly #pendingReopens = new Map<string, { closed: boolean }>();
   /** The renames of each chat, one after another: a second rename waits for the first to finish. */
   readonly #renames = new Map<ThreadId, Promise<void>>();
+  /** Chats whose process is starting and whose host has not said hello yet: an exit now is a failed start. */
+  readonly #awaitingHello = new Set<ChatEntry>();
 
   constructor(context: A0PortContext) {
     this.#context = context;
@@ -766,16 +786,17 @@ export class ChatSessionPortRuntime {
 
   /** Starts the chat's process and waits for its host's hello. */
   async #start(entry: ChatEntry): Promise<void> {
-    await entry.process.start();
+    this.#awaitingHello.add(entry);
     let hello: Awaited<ChatHostClient["hello"]>;
     try {
-      hello = await entry.client.hello;
-    } catch {
-      throw new AppFailure({
-        code: "omp_exited",
-        message: "omp stopped while it was starting. Try again.",
-        retryable: true,
-      });
+      await entry.process.start();
+      try {
+        hello = await entry.client.hello;
+      } catch {
+        throw new AppFailure(failedStart());
+      }
+    } finally {
+      this.#awaitingHello.delete(entry);
     }
     entry.methods = hello.methods;
     this.#receive(entry, { kind: "process", status: "ready", startedAt: entry.startedAt });
@@ -787,14 +808,18 @@ export class ChatSessionPortRuntime {
       this.#receive(entry, { kind: "event", event }),
     );
     entry.client.onRequest((request) => this.#hostRequest(entry, request));
-    const fromProcess = entry.process.onEvent((event) =>
+    const fromProcess = entry.process.onEvent((event) => {
+      // A process that ends before its host's hello is a failed start: the chat says so in the start's words, as omp's
+      // RPC port did, not with the exit's code or signal.
+      const error =
+        event.error !== undefined && this.#awaitingHello.has(entry) ? failedStart() : event.error;
       this.#receive(entry, {
         kind: "process",
         status: event.status,
         startedAt: entry.startedAt,
-        ...(event.error === undefined ? {} : { error: event.error }),
-      }),
-    );
+        ...(error === undefined ? {} : { error }),
+      });
+    });
     return () => {
       fromHost();
       fromProcess();

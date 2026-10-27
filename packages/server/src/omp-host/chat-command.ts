@@ -40,9 +40,9 @@ export function chatCommand(options: ChatCommandOptions = {}): readonly string[]
 }
 
 /**
- * The program and leading arguments that start one chat on the chat host's own protocol (SDK plan H5.3, behind
- * `OMP_APP_SDK_HOST=1`): the compiled program, or our entry from source on the Bun that runs the server, then its `chat`
- * command. The chat's own arguments follow.
+ * The program and leading arguments that start one chat on the chat host's own protocol (SDK plan H5.3): the compiled
+ * program, or our entry from source on the Bun that runs the server, then its `chat` command. The chat's own arguments
+ * follow.
  */
 export function chatHostCommand(options: ChatCommandOptions = {}): readonly string[] {
   const program =

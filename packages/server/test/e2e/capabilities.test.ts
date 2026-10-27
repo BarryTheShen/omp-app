@@ -3,7 +3,13 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
-import { AppPort, ConfigStore, FolderPath, RpcSessionPort, WelcomeFrame } from "@omp-app/contracts";
+import {
+  AppPort,
+  ChatSessionPort,
+  ConfigStore,
+  FolderPath,
+  WelcomeFrame,
+} from "@omp-app/contracts";
 import {
   type CompositionServer,
   type CompositionServerOptions,
@@ -256,11 +262,8 @@ describe("composition capability wiring", () => {
       launchFolder: FolderPath.parse(process.cwd()),
       omp: welcome.omp,
     });
-    const folder = await temporaryRoot("capabilities-thread-");
-    const rpc = client.port(RpcSessionPort);
-    const opened = await rpc.open({ folderPath: FolderPath.parse(folder), start: "new" });
-    expect(opened.capabilities).toEqual(welcome.capabilities);
-    await rpc.close({ threadId: opened.threadId });
+    // A chat's open answers with its host's methods; the capabilities the browser uses are the app's, as in the welcome.
+    expect(await app.capabilities({})).toEqual(welcome.capabilities);
     client.dispose();
   }, 30_000);
 
@@ -337,7 +340,7 @@ describe("composition capability wiring", () => {
     const folder = join(root, "workspace");
     await mkdir(folder);
     await expect(
-      client.port(RpcSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
+      client.port(ChatSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
     ).rejects.toMatchObject({ appError: { code: "unavailable" } });
     client.dispose();
   }, 30_000);
@@ -376,7 +379,7 @@ describe("composition open of a chat another omp holds", () => {
     const before = await omp();
     const started = performance.now();
     await expect(
-      client.port(RpcSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
+      client.port(ChatSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
     ).rejects.toMatchObject({
       appError: {
         code: "conflict",

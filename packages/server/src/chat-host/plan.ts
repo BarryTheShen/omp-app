@@ -27,13 +27,16 @@ const DEFAULT_PLAN_FILE = "local://PLAN.md";
 
 export class PlanMode {
   readonly #session: AgentSession;
+  /** Tells the app what omp's terminal shows as a warning. */
+  readonly #warn: (message: string) => void;
   /** The tools before plan mode turned on, for the way back (the terminal's `#planModePreviousToolPresentation`). */
   #toolsBefore: { readonly enabled: string[]; readonly mounted: string[] } | undefined;
   /** Plan mode was on before in this session: omp tells the model it is coming back to a plan (`reentry`). */
   #plannedBefore = false;
 
-  constructor(session: AgentSession) {
+  constructor(session: AgentSession, warn: (message: string) => void) {
     this.#session = session;
+    this.#warn = warn;
   }
 
   status(): PlanModeStatus {
@@ -106,8 +109,12 @@ export class PlanMode {
           title,
           planContent,
         })) ?? undefined;
-    } catch {
-      // omp's terminal only warns when the copy fails, and runs the plan anyway.
+    } catch (error) {
+      // As omp's terminal (`interactive-mode.ts:5990-5999`): a warning, and the plan runs anyway.
+      const detail = (error instanceof Error ? error.message : String(error))
+        .replace(/[\r\n]+/g, " ")
+        .trim();
+      this.#warn(`Failed to autosave plan: ${detail}`);
     }
     const name = humanizePlanTitle(title);
     if (name && !session.sessionManager.getSessionName())

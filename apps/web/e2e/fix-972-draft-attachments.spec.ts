@@ -164,7 +164,7 @@ function watchNewChatAnswers(openedPage: Page, answers: { count: number }): Prom
         if (
           frame !== null &&
           frame.type === "call" &&
-          frame.port === "A0.rpcSession" &&
+          frame.port === "A0.chatSession" &&
           frame.method === "open" &&
           NewChatStart.safeParse(frame.args).success
         ) {

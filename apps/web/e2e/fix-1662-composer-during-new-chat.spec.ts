@@ -43,7 +43,7 @@ class OpenHold {
       const server = ws.connectToServer();
       ws.onMessage((message) => {
         const frame = frameOf(message);
-        if (frame?.type === "call" && frame.port === "A0.rpcSession" && frame.method === "open") {
+        if (frame?.type === "call" && frame.port === "A0.chatSession" && frame.method === "open") {
           const args = (frame.args ?? {}) as OpenArgs;
           for (const rule of this.rules) {
             if (rule.holding && rule.matches(args)) rule.requestIds.add(String(frame.id));

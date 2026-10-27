@@ -6,8 +6,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chatHostChats, PROGRAMS, realTest, resultOf } from "./sdk-chat-host-harness";
 
 const chats = chatHostChats();
-// Stopping a chat waits for its session to close (omp's SIGTERM cleanup), which takes more than Bun's default 5 s on a
-// loaded machine.
+// Stopping a chat waits for omp's SIGTERM cleanup (each session records its exit, servers and storage close), which can
+// take more than Bun's default 5 s on a loaded machine.
 afterEach(() => chats.stopAll(), 60_000);
 
 describe("the chat host on omp's SDK", () => {

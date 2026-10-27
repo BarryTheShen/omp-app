@@ -43,9 +43,9 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
       const text = String(message);
       const frame = JSON.parse(text) as Record<string, unknown>;
       frames.lines.push(`out ${text}`);
-      if (frame.type === "call" && frame.method === "send") {
-        const args = (frame.args ?? {}) as { command?: { type?: string } };
-        if (args.command?.type === "prompt") frames.promptIds.push(String(frame.id));
+      if (frame.type === "call" && frame.method === "request") {
+        const args = (frame.args ?? {}) as { method?: string };
+        if (args.method === "prompt") frames.promptIds.push(String(frame.id));
       }
       server.send(message);
     });
@@ -75,7 +75,7 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
     const id = `external-${randomUUID()}`;
     const response = Promise.withResolvers<Record<string, unknown>>();
     pending.set(id, response.resolve);
-    const request = JSON.stringify({ type: "call", id, port: "A0.rpcSession", method, args });
+    const request = JSON.stringify({ type: "call", id, port: "A0.chatSession", method, args });
     frames.lines.push(`external out ${request}`);
     sendToServer(request);
     return response.promise;
@@ -87,9 +87,10 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
     },
     startTurn: async (threadId: string) => {
       hideBusyEvents = true;
-      const accepted = await call("send", {
+      const accepted = await call("request", {
         threadId,
-        command: { type: "prompt", message: QUESTION_TURN },
+        method: "prompt",
+        params: { text: QUESTION_TURN },
       });
       if (accepted.ok !== true) {
         throw new Error(
@@ -99,7 +100,7 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
       await expect
         .poll(
           async () => {
-            const response = await call("openQuestions", { threadId });
+            const response = await call("openRequests", { threadId });
             const questions = response.value;
             return (
               response.ok === true &&
@@ -135,19 +136,19 @@ function promptTextSentAs(frames: Frames, delivery: "followUp" | "steer"): strin
     (entry) => entry.startsWith("out ") && entry.includes(`"streamingBehavior":"${delivery}"`),
   );
   if (line === undefined) return undefined;
-  const frame = JSON.parse(line.slice(4)) as { args?: { command?: { message?: unknown } } };
-  const message = frame.args?.command?.message;
+  const frame = JSON.parse(line.slice(4)) as { args?: { params?: { text?: unknown } } };
+  const message = frame.args?.params?.text;
   return typeof message === "string" ? message : undefined;
 }
 function streamingBehaviorForText(frames: Frames, text: string): unknown {
   const line = frames.lines.find(
-    (entry) => entry.startsWith("out ") && entry.includes(`"message":"${text}"`),
+    (entry) => entry.startsWith("out ") && entry.includes(`"text":"${text}"`),
   );
   if (line === undefined) return undefined;
   const frame = JSON.parse(line.slice(4)) as {
-    args?: { command?: { streamingBehavior?: unknown } };
+    args?: { params?: { streamingBehavior?: unknown } };
   };
-  return frame.args?.command?.streamingBehavior;
+  return frame.args?.params?.streamingBehavior;
 }
 /** The status bar abbreviates ids; use the full thread id from the page's RPC send instead. */
 function threadIdForPrompt(frames: Frames, text: string): string | undefined {
@@ -157,16 +158,15 @@ function threadIdForPrompt(frames: Frames, text: string): string | undefined {
       type?: unknown;
       port?: unknown;
       method?: unknown;
-      args?: { threadId?: unknown; command?: { type?: unknown; message?: unknown } };
+      args?: { threadId?: unknown; method?: unknown; params?: { text?: unknown } };
     };
     const args = frame.args;
-    const command = args?.command;
     if (
       frame.type === "call" &&
-      frame.port === "A0.rpcSession" &&
-      frame.method === "send" &&
-      command?.type === "prompt" &&
-      command.message === text &&
+      frame.port === "A0.chatSession" &&
+      frame.method === "request" &&
+      args?.method === "prompt" &&
+      args.params?.text === text &&
       typeof args?.threadId === "string"
     )
       return args.threadId;

@@ -38,16 +38,15 @@ export async function holdCatalog(page: Page, hold: HeldCatalog): Promise<void> 
         frame.type === "call" &&
         "id" in frame &&
         typeof frame.id === "string" &&
+        "port" in frame &&
+        frame.port === "A0.chatSession" &&
         "method" in frame &&
-        frame.method === "send" &&
+        frame.method === "request" &&
         "args" in frame &&
         frame.args !== null &&
         typeof frame.args === "object" &&
-        "command" in frame.args &&
-        frame.args.command !== null &&
-        typeof frame.args.command === "object" &&
-        "type" in frame.args.command &&
-        frame.args.command.type === "get_available_commands"
+        "method" in frame.args &&
+        frame.args.method === "get_available_commands"
       ) {
         hold.resultIds.add(frame.id);
       }

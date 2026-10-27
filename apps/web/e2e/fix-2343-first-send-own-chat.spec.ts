@@ -63,7 +63,7 @@ class HoldFirstNewChatOpen {
         if (
           this.armed &&
           frame?.type === "call" &&
-          frame.port === "A0.rpcSession" &&
+          frame.port === "A0.chatSession" &&
           frame.method === "open" &&
           (frame.args as { start?: unknown } | undefined)?.start === "new"
         ) {

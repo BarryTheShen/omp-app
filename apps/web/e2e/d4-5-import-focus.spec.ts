@@ -29,21 +29,23 @@ interface ImportTarget {
 async function routeImport(page: Page, target: ImportTarget, calls: Frame[]): Promise<void> {
   await page.routeWebSocket(/\/ws\?/, (socket) => {
     const server = socket.connectToServer();
+    // The app's capability reads, answered with the server's map plus the import capabilities: a chat's capabilities
+    // come from the same map, so a map of the import capabilities alone would leave the chat unable to send.
+    const capabilityCalls = new Set<unknown>();
+    const withImport = (value: unknown) => ({
+      ...(typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}),
+      ...IMPORT_CAPABILITIES,
+    });
     server.onMessage((message) => {
       const frame = JSON.parse(
         typeof message === "string" ? message : message.toString("utf8"),
       ) as Frame;
       if (frame.type === "welcome") {
-        const capabilities =
-          typeof frame.capabilities === "object" && frame.capabilities !== null
-            ? (frame.capabilities as Record<string, unknown>)
-            : {};
-        socket.send(
-          JSON.stringify({
-            ...frame,
-            capabilities: { ...capabilities, ...IMPORT_CAPABILITIES },
-          }),
-        );
+        socket.send(JSON.stringify({ ...frame, capabilities: withImport(frame.capabilities) }));
+        return;
+      }
+      if (frame.type === "result" && capabilityCalls.delete(frame.id) && frame.ok === true) {
+        socket.send(JSON.stringify({ ...frame, value: withImport(frame.value) }));
         return;
       }
       socket.send(message);
@@ -53,14 +55,8 @@ async function routeImport(page: Page, target: ImportTarget, calls: Frame[]): Pr
         typeof message === "string" ? message : message.toString("utf8"),
       ) as Frame;
       if (frame.type === "call" && frame.port === "A0.app" && frame.method === "capabilities") {
-        socket.send(
-          JSON.stringify({
-            type: "result",
-            id: frame.id,
-            ok: true,
-            value: IMPORT_CAPABILITIES,
-          }),
-        );
+        capabilityCalls.add(frame.id);
+        server.send(message);
         return;
       }
       if (frame.type === "call" && frame.port === "A1.sessionImport" && frame.method === "import") {

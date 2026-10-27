@@ -34,7 +34,7 @@ interface Frame {
   readonly id?: unknown;
   readonly port?: unknown;
   readonly method?: unknown;
-  readonly args?: { readonly command?: { readonly type?: unknown } };
+  readonly args?: { readonly method?: unknown };
 }
 
 /** The frames held from the prompt's send until `release`, in the order they came. */
@@ -74,8 +74,9 @@ async function holdPromptFrames(target: Page, hold: FrameHold): Promise<void> {
       if (frame?.type === "call" && frame.port === DRAFT_PORT) draftCalls.add(String(frame.id));
       if (
         frame?.type === "call" &&
-        frame.method === "send" &&
-        frame.args?.command?.type === "prompt"
+        frame.port === "A0.chatSession" &&
+        frame.method === "request" &&
+        frame.args?.method === "prompt"
       ) {
         hold.holding = true;
       }

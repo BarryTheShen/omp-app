@@ -35,9 +35,9 @@ async function missedMessageEnd(page: Page): Promise<void> {
     let dropped = false;
     ws.onMessage((message) => {
       const frame = JSON.parse(String(message)) as Record<string, unknown>;
-      if (frame.type === "call" && frame.method === "send") {
-        const args = (frame.args ?? {}) as { command?: { type?: string } };
-        if (args.command?.type === "prompt") promptSent = true;
+      if (frame.type === "call" && frame.port === "A0.chatSession" && frame.method === "request") {
+        const args = (frame.args ?? {}) as { method?: string };
+        if (args.method === "prompt") promptSent = true;
       }
       server.send(message);
     });
@@ -46,7 +46,7 @@ async function missedMessageEnd(page: Page): Promise<void> {
       const payload = payloadOf(frame);
       const event = (payload?.event ?? {}) as { type?: unknown; message?: { role?: unknown } };
       const assistantEnd =
-        payload?.kind === "omp" &&
+        payload?.kind === "event" &&
         event.type === "message_end" &&
         event.message?.role === "assistant";
       if (frame.type === "event" && promptSent && !dropped && assistantEnd) {
