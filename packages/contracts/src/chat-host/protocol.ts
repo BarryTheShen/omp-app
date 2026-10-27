@@ -48,7 +48,8 @@ const RequestId = z.string().min(1);
 /**
  * Why a request failed. Besides the protocol's own, omp's codes the app tells apart: `session_busy` (work could still
  * write into the transcript), `unknown_since` (an entries cursor the session does not have), `stale_cursor` (a message
- * cursor from before the session changed).
+ * cursor from before the session changed); and plan mode's: `plan_disabled` (omp's `plan.enabled` is off),
+ * `goal_active` (a goal runs), `plan_missing` (no plan at that file), `plan_mode_off` (nothing to approve).
  */
 export const ChatHostErrorCode = z.enum([
   "unknown_method",
@@ -57,6 +58,10 @@ export const ChatHostErrorCode = z.enum([
   "session_busy",
   "unknown_since",
   "stale_cursor",
+  "plan_disabled",
+  "goal_active",
+  "plan_missing",
+  "plan_mode_off",
 ]);
 export type ChatHostErrorCode = z.infer<typeof ChatHostErrorCode>;
 
@@ -580,6 +585,46 @@ export interface ChatHostMethodMap {
   readonly steer_subagent: { readonly params: SteerSubagentParams; readonly result: EmptyParams };
   /** omp's goal mode: read, create, resume, pause or drop the chat's goal. */
   readonly goal: { readonly params: GoalParams; readonly result: GoalAnswer };
+  readonly get_plan_mode: { readonly params: EmptyParams; readonly result: PlanModeStatus };
+  /** omp's `/plan`, without its switch to the plan model. Refused while work runs or a goal is active. */
+  readonly set_plan_mode: { readonly params: EnabledParams; readonly result: PlanModeStatus };
+  /** A plan file's text: the one plan mode writes unless `planFilePath` names another. */
+  readonly get_plan: { readonly params: GetPlanParams; readonly result: PlanFile };
+  /**
+   * omp's "Approve and keep context": plan mode ends and the run on the plan starts in the same chat. Answered once
+   * omp admitted the run; refused while work runs or when plan mode is off.
+   */
+  readonly approve_plan: { readonly params: ApprovePlanParams; readonly result: ApprovePlanResult };
+}
+
+export const GetPlanParams = z.object({ planFilePath: z.string().min(1).optional() });
+export type GetPlanParams = z.infer<typeof GetPlanParams>;
+
+export const ApprovePlanParams = z.object({
+  /** The plan to run: the `planFilePath` omp's `xd://propose` result reported. */
+  planFilePath: z.string().min(1),
+  /** The plan's title from that result; it names an unnamed chat. */
+  title: z.string().optional(),
+});
+export type ApprovePlanParams = z.infer<typeof ApprovePlanParams>;
+
+export interface PlanModeStatus {
+  readonly enabled: boolean;
+  /** omp's `plan.enabled` setting: false means omp offers no plan mode in this chat. */
+  readonly available: boolean;
+  /** The plan file while plan mode is on, for example `local://PLAN.md`. */
+  readonly planFilePath?: string;
+}
+
+export interface PlanFile {
+  readonly planFilePath: string;
+  readonly content: string;
+}
+
+export interface ApprovePlanResult {
+  readonly planFilePath: string;
+  /** Where omp saved a copy of the plan, when its `plan.autosave` setting is on. */
+  readonly autosavedPath?: string;
 }
 
 /** omp's goal operations, with its own field names (`token_budget`). */
@@ -644,6 +689,10 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   cancel_subagent: SubagentIdParams,
   steer_subagent: SteerSubagentParams,
   goal: GoalParams,
+  get_plan_mode: EmptyParams,
+  set_plan_mode: EnabledParams,
+  get_plan: GetPlanParams,
+  approve_plan: ApprovePlanParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */

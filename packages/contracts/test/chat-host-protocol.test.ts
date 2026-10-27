@@ -301,3 +301,17 @@ describe("goal mode", () => {
     expect(parseChatHostParams("goal", { ...create, token_budget: 2.5 }).ok).toBe(false);
   });
 });
+
+describe("plan mode", () => {
+  test("an approval names its plan file, a plan read may, and a switch says which way", () => {
+    const planFilePath = "local://fix-the-login-plan.md";
+    expect(parseChatHostParams("approve_plan", { planFilePath, title: "fix-the-login" }).ok).toBe(
+      true,
+    );
+    expect(parseChatHostParams("approve_plan", { title: "fix-the-login" }).ok).toBe(false);
+    expect(parseChatHostParams("approve_plan", { planFilePath: "" }).ok).toBe(false);
+    expect(parseChatHostParams("get_plan", {}).ok).toBe(true);
+    expect(parseChatHostParams("get_plan", { planFilePath }).ok).toBe(true);
+    expect(parseChatHostParams("set_plan_mode", {}).ok).toBe(false);
+  });
+});

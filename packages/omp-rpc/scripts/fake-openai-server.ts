@@ -32,6 +32,9 @@ function toolCallsOf(
 /** `long_loop` makes the model run this many bash steps in one turn before it answers. */
 const LOOP_STEPS = 60;
 const LONG_PROVIDER_ERROR = "The fake provider rejected this request. ".repeat(60);
+/** `plan_propose`'s plan: its slug names the file (`local://fix-the-login-plan.md`) and is what it submits. */
+const PLAN_SLUG = "fix-the-login";
+const PLAN_TEXT = "# Fix the login\n\n1. Read the login form.\n2. Fix the password check.\n";
 
 function text(content: unknown): string {
   if (typeof content === "string") return content;
@@ -338,6 +341,42 @@ function reply(request: Request): Reply {
       return { tool: "bash", args: { command: `echo loop-${done}` }, id: `call_loop_${done}` };
     return { text: "loop finished" };
   }
+  // Plan mode (#768): the model writes its plan to `local://<slug>-plan.md`, then submits the slug to `xd://propose`, as
+  // omp's plan prompt asks (`prompts/system/plan-mode-active.md` at 18.12.6). The run on the approved plan starts with
+  // omp's synthetic developer message, not a user message, so it is not this script's.
+  if (
+    lastUser >= 0 &&
+    text(messages[lastUser]?.content).includes("plan_propose") &&
+    (last?.role === "user" || last?.role === "tool")
+  ) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0)
+      return {
+        tool: "write",
+        args: { path: `local://${PLAN_SLUG}-plan.md`, content: PLAN_TEXT },
+        id: "call_plan_write",
+        thinking: "I should write the plan.",
+      };
+    if (done === 1)
+      return {
+        tool: "write",
+        args: { path: "xd://propose", content: PLAN_SLUG },
+        id: "call_plan_propose",
+        thinking: "The plan is ready, so I submit it.",
+      };
+    return { text: "The plan is ready for review." };
+  }
+  // A write outside the plan file while planning: omp's plan-mode guard refuses it, and the reply quotes the refusal.
+  if (
+    lastUser >= 0 &&
+    text(messages[lastUser]?.content).includes("plan_write_outside") &&
+    last?.role === "user"
+  )
+    return {
+      tool: "write",
+      args: { path: "outside-the-plan.txt", content: "not allowed while planning\n" },
+      id: "call_plan_outside",
+    };
   const named = namedBackgroundStart(text(messages[lastUser]?.content));
   if (named !== undefined) {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;

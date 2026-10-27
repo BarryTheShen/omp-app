@@ -68,6 +68,7 @@ import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
 import { HostMethodError } from "./method-error";
 import type { LineWriter } from "./output";
+import { PlanMode } from "./plan";
 import {
   ExtensionMessageTracker,
   PromptResults,
@@ -158,6 +159,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);
   const subagents = new SubagentRoster(chat.subagentEventBus, emit);
+  const plan = new PlanMode(session);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
   const abortBuiltinCommands = (): void => {
@@ -255,6 +257,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // A goal journaled in the session comes back (paused if it was active, as omp's terminal does at start).
   await goal.reconcile();
   await goal.settled();
+  // Plan mode as in omp's terminal: the session reconciles it after a new chat, a switch and a branch; at start a chat
+  // left in plan mode comes back in it, and omp's "Start in Plan Mode" opens a fresh chat in it.
+  session.setSessionSwitchReconciler(() => plan.reconcile());
+  await plan.reconcile();
+  await plan.applyStartupDefault();
   session.subscribeCommandMetadataChanged(() => {
     void emitAvailableCommands().catch((error: unknown) =>
       log(`chat host: the command list could not be read: ${errorMessage(error)}`),
@@ -436,14 +443,18 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       return pageMessages(messages, snapshot, { cursor, limit });
     },
     get_branch_messages: async () => ({ messages: session.getUserMessagesForBranching() }),
-    new_session: async ({ parentSession }, sequence) =>
-      changeSession(
+    new_session: async ({ parentSession }, sequence) => {
+      const result = await changeSession(
         sequence,
         async () => ({
           cancelled: !(await session.newSession(parentSession ? { parentSession } : undefined)),
         }),
         { endsOpenPrompts: true },
-      ),
+      );
+      // omp's "Start in Plan Mode" holds for a new chat the user asked for, as for `/new` in the terminal.
+      if (!result.cancelled) await plan.applyStartupDefault();
+      return result;
+    },
     branch: async ({ entryId }, sequence) =>
       changeSession(
         sequence,
@@ -561,6 +572,14 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       return {};
     },
     goal: async (params) => goal.handle(params),
+    get_plan_mode: async () => plan.status(),
+    set_plan_mode: async ({ enabled }) => {
+      // A goal still being restored or left for the previous session must not decide the answer.
+      await goal.settled();
+      return plan.set(enabled);
+    },
+    get_plan: async ({ planFilePath }) => plan.read(planFilePath),
+    approve_plan: async ({ planFilePath, title }) => plan.approve(planFilePath, title ?? ""),
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
