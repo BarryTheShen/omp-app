@@ -9,7 +9,14 @@
  */
 import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
-import type { EventOptions, PromptResultEvent } from "@omp-app/contracts/chat-host";
+import type {
+  AvailableCommandsEvent,
+  CommandOutputEvent,
+  ConfigUpdateEvent,
+  EventOptions,
+  PromptResultEvent,
+  SessionInfoUpdateEvent,
+} from "@omp-app/contracts/chat-host";
 
 type MessageEventType = "message_start" | "message_update" | "message_end";
 type MessageEvent = Extract<AgentSessionEvent, { readonly type: MessageEventType }>;
@@ -29,12 +36,16 @@ export interface DeltaMessageUpdate {
   readonly assistantMessageEvent: OmitEach<AssistantMessageEvent, "partial">;
 }
 
-/** Every event the chat host writes. */
+/** Every event the chat host writes: omp's session events, and the app's own. */
 export type ChatEvent =
   | Exclude<AgentSessionEvent, { readonly type: MessageEventType }>
   | StampedMessageEvent
   | DeltaMessageUpdate
-  | PromptResultEvent;
+  | PromptResultEvent
+  | AvailableCommandsEvent
+  | CommandOutputEvent
+  | SessionInfoUpdateEvent
+  | ConfigUpdateEvent;
 
 export class SessionEventStream {
   readonly #emit: (event: ChatEvent) => void;

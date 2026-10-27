@@ -120,7 +120,7 @@ export type PromptParams = z.infer<typeof PromptParams>;
 /**
  * The answer to `prompt`, sent once omp admitted the prompt. With `resultFollows`, exactly one `prompt_result` event
  * with this request's id follows; without it, the prompt was handled where it stood (an extension's input hook took it,
- * or it was empty) and nothing follows.
+ * a built-in command answered it, or it was empty) and nothing follows.
  */
 export interface PromptAnswer {
   readonly resultFollows: boolean;
@@ -148,12 +148,97 @@ export interface ChatHostState {
   readonly queuedMessageCount: number;
 }
 
+/** omp's two queues of messages sent while a reply streams. */
+export const QueueName = z.enum(["steering", "followUp"]);
+export type QueueName = z.infer<typeof QueueName>;
+
+export const RemoveQueuedMessageParams = z.object({ message: z.string(), queue: QueueName });
+export type RemoveQueuedMessageParams = z.infer<typeof RemoveQueuedMessageParams>;
+
+export const PromoteQueuedMessageParams = z.object({ message: z.string() });
+export type PromoteQueuedMessageParams = z.infer<typeof PromoteQueuedMessageParams>;
+
+/** A queued message handed back, with its images (omp's `RestoredQueuedMessage`). */
+export interface QueuedMessage {
+  readonly text: string;
+  readonly images?: readonly ChatHostImage[];
+}
+
+/** `remove_queued_message`: the message taken out of its queue, or `removed: false` when it was no longer there. */
+export type RemoveQueuedMessageResult =
+  | { readonly removed: false }
+  | ({ readonly removed: true } & QueuedMessage);
+
+/** `abort_and_restore_queue`: every message that was still queued, for the message box. */
+export interface RestoredQueue {
+  readonly steering: readonly QueuedMessage[];
+  readonly followUp: readonly QueuedMessage[];
+}
+
+/** One entry of omp's command list (`buildAvailableSlashCommands`): the fields the app reads. */
+export interface ChatHostCommand {
+  readonly name: string;
+  readonly aliases?: readonly string[];
+  readonly description?: string;
+  readonly input?: { readonly hint: string };
+  readonly subcommands?: readonly {
+    readonly name: string;
+    readonly description?: string;
+    readonly usage?: string;
+  }[];
+  readonly source: "builtin" | "skill" | "extension" | "custom" | "mcp_prompt" | "file";
+}
+
+/** `bash` (the `!` command, and `!!` with `excludeFromContext`, #839): omp runs it and records it in the chat. */
+export const BashParams = z.object({
+  command: z.string().min(1),
+  excludeFromContext: z.boolean().optional(),
+});
+export type BashParams = z.infer<typeof BashParams>;
+
+/** `python` (the `$` command, and `$$` with `excludeFromContext`): omp runs it in its Python kernel and records it. */
+export const PythonParams = z.object({
+  code: z.string().min(1),
+  excludeFromContext: z.boolean().optional(),
+});
+export type PythonParams = z.infer<typeof PythonParams>;
+
+/** How a `bash` or `python` run ended: the fields of omp's `BashResult` and `PythonResult` the app reads. */
+export interface ShellRunResult {
+  readonly output: string;
+  /** Undefined when the run was cancelled. */
+  readonly exitCode: number | undefined;
+  readonly cancelled: boolean;
+  readonly truncated: boolean;
+  /** The full output's artifact when it was too long to keep in the record. */
+  readonly artifactId?: string;
+}
+
 export interface ChatHostMethodMap {
   readonly prompt: { readonly params: PromptParams; readonly result: PromptAnswer };
   /** Stops the reply; answers once omp's abort finished. */
   readonly abort: { readonly params: EmptyParams; readonly result: EmptyParams };
   readonly get_state: { readonly params: EmptyParams; readonly result: ChatHostState };
   readonly set_event_options: { readonly params: EventOptions; readonly result: EventOptions };
+  readonly remove_queued_message: {
+    readonly params: RemoveQueuedMessageParams;
+    readonly result: RemoveQueuedMessageResult;
+  };
+  readonly promote_queued_message: {
+    readonly params: PromoteQueuedMessageParams;
+    readonly result: { readonly promoted: boolean };
+  };
+  /** Takes every queued message back, then stops the reply, as omp's Escape does. */
+  readonly abort_and_restore_queue: {
+    readonly params: EmptyParams;
+    readonly result: RestoredQueue;
+  };
+  readonly get_available_commands: {
+    readonly params: EmptyParams;
+    readonly result: { readonly commands: readonly ChatHostCommand[] };
+  };
+  readonly bash: { readonly params: BashParams; readonly result: ShellRunResult };
+  readonly python: { readonly params: PythonParams; readonly result: ShellRunResult };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -162,6 +247,12 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   abort: EmptyParams,
   get_state: EmptyParams,
   set_event_options: EventOptions,
+  remove_queued_message: RemoveQueuedMessageParams,
+  promote_queued_message: PromoteQueuedMessageParams,
+  abort_and_restore_queue: EmptyParams,
+  get_available_commands: EmptyParams,
+  bash: BashParams,
+  python: PythonParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */
@@ -206,4 +297,30 @@ export interface PromptResultEvent {
   readonly agentInvoked: boolean;
   readonly status: "completed" | "aborted" | "error";
   readonly error?: PromptFailure;
+}
+
+/** omp's command list, at start and whenever it changes (skills, extensions and command files reloaded). */
+export interface AvailableCommandsEvent {
+  readonly type: "available_commands";
+  readonly commands: readonly ChatHostCommand[];
+}
+
+/** What a built-in slash command printed (`/session info`, `/usage`, …). */
+export interface CommandOutputEvent {
+  readonly type: "command_output";
+  readonly text: string;
+}
+
+/** A built-in command renamed the chat (omp's `notifyTitleChanged`). */
+export interface SessionInfoUpdateEvent {
+  readonly type: "session_info_update";
+  readonly sessionId: string;
+  readonly title: string | null;
+}
+
+/** A built-in command changed the chat's model or thinking level (omp's `notifyConfigChanged`). */
+export interface ConfigUpdateEvent {
+  readonly type: "config_update";
+  readonly model: ChatHostState["model"];
+  readonly thinkingLevel: string | null;
 }

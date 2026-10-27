@@ -108,4 +108,23 @@ describe("requests from the server", () => {
     expect(parseChatHostParams("get_state", undefined).ok).toBe(true);
     expect(parseChatHostParams("set_event_options", { messageUpdates: "partial" }).ok).toBe(false);
   });
+
+  test("a queue edit names one of omp's two queues", () => {
+    expect(
+      parseChatHostParams("remove_queued_message", { message: "hi", queue: "followUp" }).ok,
+    ).toBe(true);
+    expect(parseChatHostParams("remove_queued_message", { message: "hi", queue: "later" }).ok).toBe(
+      false,
+    );
+    expect(parseChatHostParams("remove_queued_message", { message: "hi" }).ok).toBe(false);
+  });
+
+  test("a shell or Python run needs something to run", () => {
+    expect(parseChatHostParams("bash", { command: "ls", excludeFromContext: true }).ok).toBe(true);
+    expect(parseChatHostParams("bash", { command: "" }).ok).toBe(false);
+    expect(parseChatHostParams("python", { code: "" }).ok).toBe(false);
+    expect(parseChatHostParams("python", { code: "print(1)", excludeFromContext: "yes" }).ok).toBe(
+      false,
+    );
+  });
 });

@@ -389,6 +389,14 @@ function reply(request: Request): Reply {
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
+  // `context_has <word>`: whether any earlier message the model was sent holds <word>. A `!!` run (#839) is kept out of the
+  // model's context, so its command and output must not reach it; a plain `!` run does.
+  const contextProbe = /context_has\s+(\S+)/.exec(prompt);
+  if (contextProbe?.[1] !== undefined) {
+    const word = contextProbe[1];
+    const seen = messages.slice(0, -1).some((message) => text(message.content).includes(word));
+    return { text: `context ${seen ? "has" : "lacks"} ${word}` };
+  }
   if (prompt.includes("retry_failure_probe"))
     return { retryableFailure: "fake provider retry failure" };
   if (prompt.includes("spawn_nested_probe"))
