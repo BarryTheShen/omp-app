@@ -14,7 +14,11 @@ import {
 import { CHAT_HOST_CHAT_ARG } from "@omp-app/contracts/chat-host";
 import { ChatSessionPortRuntime } from "../../src/ports/A0/chat-session";
 import type { A0PortContext } from "../../src/ports/A0/rpc-session";
-import { OmpProcessRegistry, spawnOmpProcess } from "../../src/process";
+import {
+  OmpProcessRegistry,
+  type OmpProcessRegistryOptions,
+  spawnOmpProcess,
+} from "../../src/process";
 import type { PortHandlerContext } from "../../src/registry/ports";
 import { EventReplayHub } from "../../src/replay";
 import { type ChatOptions, chatHostChats } from "./sdk-chat-host-harness";
@@ -45,7 +49,12 @@ export function chatSessionPorts() {
   return {
     async start(
       command: readonly string[],
-      options: Pick<ChatOptions, "agentFiles" | "nativeDiscovery" | "config"> = {},
+      options: Pick<ChatOptions, "agentFiles" | "nativeDiscovery" | "config"> & {
+        /** Another omp's lease on a chat, as the server reads it; "none" when unset. */
+        readonly externalOmp?: A0PortContext["externalOmp"];
+        /** The registry's wait for a stop reaches its limit at once, so a delete is refused while its stop goes on. */
+        readonly stopLimitAtOnce?: boolean;
+      } = {},
     ): Promise<PortSetup> {
       const { home, folder, env } = await chats.prepare(options);
       const registry = new OmpProcessRegistry({
@@ -57,6 +66,7 @@ export function chatSessionPorts() {
             args: ["--model", "fake/fake-model", ...(processOptions.args ?? [])],
             env,
           }),
+        ...(options.stopLimitAtOnce === true ? { timer: stopLimitAtOnce() } : {}),
       });
       const replay = new EventReplayHub(4096);
       const files = new Map<ThreadId, SessionFilePath>();
@@ -78,7 +88,7 @@ export function chatSessionPorts() {
             : { threadId, folderPath: FolderPath.parse(folder), sessionFile };
         },
         latestThread: async () => undefined,
-        externalOmp: async () => "none",
+        externalOmp: options.externalOmp ?? (async () => "none"),
       };
       const runtime = new ChatSessionPortRuntime(context);
       runtimes.push(runtime);
@@ -89,6 +99,20 @@ export function chatSessionPorts() {
       await Promise.all(runtimes.splice(0).map((runtime) => runtime.dispose()));
       await chats.stopAll();
     },
+  };
+}
+
+/**
+ * A registry timer whose stop limit (ten seconds) runs out at once; its other timers never fire, so nothing is closed
+ * for being idle.
+ */
+function stopLimitAtOnce(): NonNullable<OmpProcessRegistryOptions["timer"]> {
+  return {
+    setTimeout: (handler, delayMs) => {
+      if (delayMs === 10 * 1000) handler();
+      return 0;
+    },
+    clearTimeout: () => undefined,
   };
 }
 

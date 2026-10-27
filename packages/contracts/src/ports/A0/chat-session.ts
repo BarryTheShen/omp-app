@@ -22,6 +22,7 @@ import { SessionFilePath, ThreadId } from "../../core/ids";
 import {
   OpenThreadArgs,
   ProcessStatus,
+  SessionRenameArgs,
   SetSubagentSubscriptionArgs,
   SetSubagentSubscriptionResult,
   SubscribeArgs,
@@ -190,6 +191,7 @@ export const ChatSessionPort = definePort({
     subscribe: { args: SubscribeArgs, result: SubscribeResult },
     restart: { args: ThreadRef, result: z.null() },
     close: { args: ThreadRef, result: z.null() },
+    rename: { args: SessionRenameArgs, result: z.null() },
     answer: { args: AnswerHostRequestArgs, result: z.null() },
     openRequests: { args: ThreadRef, result: OpenHostRequests },
     uiState: { args: ThreadRef, result: UiState },

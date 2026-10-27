@@ -9,7 +9,7 @@
  * - the registry's busy and settled marks;
  * - restart, and the repair before a request.
  * H5.3b adds the host's requests (dialogs, approvals, tools, URIs) and the host registrations; H5.3c the arbitration,
- * `!` events, rename, session switches and the reopen after a refused delete.
+ * `!` and `$` runs, and session switches; H5.3d rename and the reopen after a refused delete.
  */
 import { join } from "node:path";
 import {
@@ -26,7 +26,9 @@ import {
   type ModelChoice,
   type OpenHostRequests,
   type OpenThreadArgs,
+  RequestId,
   SessionFilePath,
+  type SessionRenameArgs,
   type SetEventOptionsArgs,
   type SetEventOptionsResult,
   type SetSubagentSubscriptionArgs,
@@ -182,6 +184,10 @@ function cancelled(message: string): AppFailure {
   return new AppFailure({ code: "cancelled", message, retryable: false });
 }
 
+function unavailable(message: string): AppFailure {
+  return new AppFailure({ code: "unavailable", message, retryable: true });
+}
+
 /** A chat another tab or window of this app holds open: said in plain words, not in the registry's own text. */
 function chatOpenElsewhere(cause?: unknown): AppFailure {
   return new AppFailure(
@@ -240,12 +246,17 @@ export class ChatSessionPortRuntime {
   readonly #entries = new Map<ThreadId, ChatEntry>();
   /** A chat's earlier ids, after a session switch moved it: each names the id it moved to. */
   readonly #aliases = new Map<ThreadId, ThreadId>();
+  /** The connections a refused delete's chat is opening again for, until that open ends: `closed` once they close. */
+  readonly #pendingReopens = new Map<string, { closed: boolean }>();
+  /** The renames of each chat, one after another: a second rename waits for the first to finish. */
+  readonly #renames = new Map<ThreadId, Promise<void>>();
 
   constructor(context: A0PortContext) {
     this.#context = context;
     context.processRegistry.setIdleHooks({
       isSettled: (threadId) => this.#isSettled(threadId),
-      stopped: (threadId, process) => this.#forgetStopped(threadId, process),
+      stopped: (threadId, process, refusedDelete) =>
+        this.#forgetStopped(threadId, process, refusedDelete),
     });
   }
 
@@ -256,6 +267,7 @@ export class ChatSessionPortRuntime {
     subscribe: (args) => this.subscribe(args as SubscribeArgs),
     restart: (args) => this.restart(args as { threadId: ThreadId }),
     close: (args, call) => this.close(args as { threadId: ThreadId }, call),
+    rename: (args, call) => this.rename(args as SessionRenameArgs, call),
     answer: (args) => this.answer(args as AnswerHostRequestArgs),
     openRequests: (args) => this.openRequests(args as { threadId: ThreadId }),
     uiState: (args) => this.uiState(args as { threadId: ThreadId }),
@@ -374,6 +386,10 @@ export class ChatSessionPortRuntime {
    * URI scheme registration is merged with every other owner's; only a viewer of the chat may make one.
    */
   async request(args: ChatRequestArgs, call: PortHandlerContext): Promise<unknown> {
+    // A chat no host here serves may still be open in another omp: the request is refused with the sentence that says so.
+    if (this.#entryOrUndefined(args.threadId) === undefined) {
+      await this.#refuseWhenHeldElsewhere(args.threadId, call.signal);
+    }
     const entry = this.#entry(args.threadId);
     await this.#ensureRunning(entry);
     const method = args.method as ChatHostMethod;
@@ -464,6 +480,92 @@ export class ChatSessionPortRuntime {
       : { messageUpdates: entry.appliedMessageUpdates };
   }
 
+  /**
+   * Renames a chat. An open chat is renamed by its own host. A chat nobody has open, or whose host is stopping, is
+   * renamed by a short-lived host: opened, checked for another omp's lease, asked to set the name, and stopped again at
+   * once, whatever the outcome.
+   */
+  async rename(args: SessionRenameArgs, call: PortHandlerContext): Promise<null> {
+    await this.#serializeRename(args.threadId, async () => {
+      const entry = this.#entryOrUndefined(args.threadId);
+      // A chat whose host is stopping is renamed as a closed one: the rename waits for that host to exit and writes
+      // nothing into it. The wait is keyed by the entry's own id, since no stop is keyed by a switched chat's old id.
+      if (
+        entry === undefined ||
+        this.#context.processRegistry.isStopping(entry.bootstrap.threadId)
+      ) {
+        await this.#renameClosed(
+          { ...args, threadId: entry?.bootstrap.threadId ?? args.threadId },
+          call,
+        );
+        return;
+      }
+      await this.#ensureRunning(entry);
+      await this.#send(entry, "set_session_name", { name: args.name });
+    });
+    return null;
+  }
+
+  async #renameClosed(args: SessionRenameArgs, call: PortHandlerContext): Promise<void> {
+    const resolved = await this.#context.resolveThread(args.threadId, call.signal);
+    if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
+    // A host this server is still stopping holds the chat's file until it exits.
+    await this.#context.processRegistry.whenGone(args.threadId, "renamed");
+    const opened = await this.open({ threadId: args.threadId }, call);
+    try {
+      // Checked once this host is up and before it writes. omp takes a chat's lease only when it writes, so another omp
+      // that has written the chat shows up here, and a refusal leaves the chat as it was.
+      const hostPid = this.#context.processRegistry.get(args.threadId)?.pid;
+      const other = await this.#context.externalOmp(args.threadId, opened.sessionFile, hostPid);
+      if (other === "running") {
+        throw new AppFailure({
+          code: "conflict",
+          message:
+            "Another omp is using this chat, so it can't be renamed right now. Close that omp, then try again.",
+          retryable: true,
+        });
+      }
+      if (other === "unknown") {
+        throw unavailable(
+          "The app can't tell whether another omp is using this chat, so nothing was renamed.",
+        );
+      }
+      const entry = this.#entry(args.threadId);
+      await this.#send(entry, "set_session_name", { name: args.name });
+      // Another omp can start writing between the check and this write; omp then moves the chat to a copy.
+      const identity = await this.#identity(entry);
+      if (identity.threadId !== args.threadId || identity.sessionFile !== opened.sessionFile) {
+        throw new AppFailure({
+          code: "conflict",
+          message:
+            "Another omp started writing this chat during the rename, so the new title went to a copy. The original keeps its old title, and the copy is listed as its own chat.",
+          retryable: false,
+        });
+      }
+    } finally {
+      await this.close({ threadId: args.threadId }, call);
+      // A stop that fails is logged where it happens. The rename does not fail for its host's stop, and the next open or
+      // delete waits for the host to be gone.
+      await this.#context.processRegistry
+        .stopIfUnwatched(args.threadId, "renamed")
+        .catch(() => undefined);
+    }
+  }
+
+  #serializeRename(threadId: ThreadId, operation: () => Promise<void>): Promise<void> {
+    const previous = this.#renames.get(threadId) ?? Promise.resolve();
+    const current = previous.then(operation);
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#renames.set(threadId, settled);
+    void settled.then(() => {
+      if (this.#renames.get(threadId) === settled) this.#renames.delete(threadId);
+    });
+    return current;
+  }
+
   /** The browser's answer to a host request, checked against the request's method before the host gets it. */
   answer(args: AnswerHostRequestArgs): null {
     const entry = this.#entry(args.threadId);
@@ -534,6 +636,9 @@ export class ChatSessionPortRuntime {
    * registry after its idle time, unless it is working.
    */
   async releaseConnection(connectionId: string): Promise<void> {
+    // A refused delete's chat opening again for this connection gives it no view back.
+    const pending = this.#pendingReopens.get(connectionId);
+    if (pending !== undefined) pending.closed = true;
     const stillWatched: ChatEntry[] = [];
     for (const entry of [...new Set(this.#entries.values())]) {
       const count = entry.viewers.get(connectionId) ?? 0;
@@ -875,11 +980,66 @@ export class ChatSessionPortRuntime {
     return (await entry.client.request("get_state", {})).isSettled;
   }
 
-  /** The registry stopped a chat's process on purpose: its entry can't serve again, so the next open starts fresh. */
-  #forgetStopped(threadId: ThreadId, process: OmpProcess): void {
+  /**
+   * The registry stopped a chat's process on purpose: its entry can't serve again, so the next open starts fresh. A stop
+   * that a refused delete waited on past the limit keeps the views its tabs held: the chat is opened again for them.
+   */
+  #forgetStopped(threadId: ThreadId, process: OmpProcess, refusedDelete: boolean): void {
     const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined || entry.process !== process) return;
+    const kept = refusedDelete ? [...entry.viewers] : [];
     this.#forget(entry);
+    if (kept.length > 0) void this.#reopenAfterStop(entry.bootstrap.threadId, kept);
+  }
+
+  /**
+   * Opens a refused delete's chat again for the tabs that held views on it when its host stopped. The delete did not
+   * remove the chat, so its file is still there. A chat another omp holds stays closed, so no host starts on a file
+   * another omp writes; a tab that closes meanwhile does not get its view back.
+   */
+  async #reopenAfterStop(
+    threadId: ThreadId,
+    kept: readonly (readonly [string, number])[],
+  ): Promise<void> {
+    const signal = new AbortController().signal;
+    const pending = new Map<string, { closed: boolean }>();
+    for (const [connectionId] of kept) {
+      const record = this.#pendingReopens.get(connectionId) ?? { closed: false };
+      this.#pendingReopens.set(connectionId, record);
+      pending.set(connectionId, record);
+    }
+    try {
+      const resolved = await this.#context.resolveThread(threadId, signal);
+      if (resolved === undefined) return;
+      const other = await this.#context.externalOmp(threadId, resolved.sessionFile, undefined);
+      if (other !== "none") return;
+      for (const [connectionId, count] of kept) {
+        // Read through a function: the record changes while an open waits.
+        const closed = (): boolean => pending.get(connectionId)?.closed === true;
+        for (let view = 0; view < count && !closed(); view += 1) {
+          await this.open(
+            { threadId },
+            {
+              connectionId,
+              signal,
+              requestId: RequestId.parse(`reopen-${threadId}`),
+              portContext: undefined,
+            },
+          );
+          if (closed()) await this.releaseViews(threadId, connectionId);
+        }
+      }
+    } catch (error) {
+      this.#context.logger?.warn("chat_session.reopen_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      for (const [connectionId, record] of pending) {
+        if (this.#pendingReopens.get(connectionId) === record) {
+          this.#pendingReopens.delete(connectionId);
+        }
+      }
+    }
   }
 
   #forget(entry: ChatEntry): void {
@@ -1045,6 +1205,23 @@ export class ChatSessionPortRuntime {
       throw notFound(`No open thread ${threadId}`);
     }
     return entry;
+  }
+
+  /**
+   * A request to a chat no host here serves. When another omp holds the chat, it is refused with the sentence that says
+   * so: nothing is sent and no host starts on the file. Otherwise this returns, and `#entry` refuses as before.
+   */
+  async #refuseWhenHeldElsewhere(threadId: ThreadId, signal: AbortSignalLike): Promise<void> {
+    const resolved = await this.#context.resolveThread(threadId, signal);
+    if (resolved === undefined) return;
+    const other = await this.#context.externalOmp(threadId, resolved.sessionFile, undefined);
+    if (other !== "running") return;
+    throw new AppFailure({
+      code: "conflict",
+      message:
+        "Another omp has this chat open, so nothing was sent. Close that omp, then reload this page.",
+      retryable: true,
+    });
   }
 
   #preference(entry: ChatEntry, connectionId: string): Preference {
