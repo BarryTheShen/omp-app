@@ -5,7 +5,7 @@
  * OMP_APP_REAL_OMP=1.
  */
 import { test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { FolderPath, ThreadId } from "@omp-app/contracts";
@@ -52,6 +52,8 @@ export interface ChatOptions {
    * (`disabledProviders` in the `config.yml` it writes), so a chat starts the same on any machine.
    */
   readonly nativeDiscovery?: boolean;
+  /** omp settings as YAML, added to the `config.yml` the fake provider writes (top-level keys it does not set). */
+  readonly config?: string;
 }
 
 /** Starts chats for one test file; call `stopAll` in its `afterEach` (with a long timeout: a chat closes its session). */
@@ -99,6 +101,8 @@ export function chatHostChats() {
         await writeFile(file, content);
       }
       await startFakeProvider(agentDir, options.nativeDiscovery === true);
+      if (options.config !== undefined)
+        await appendFile(join(agentDir, "config.yml"), options.config);
       const chatProcess = spawnOmpProcess({
         threadId: ThreadId.parse("thread-sdk-chat-host"),
         folder: FolderPath.parse(folder),

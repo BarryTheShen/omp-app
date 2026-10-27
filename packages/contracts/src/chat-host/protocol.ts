@@ -11,8 +11,19 @@
  * omp's shapes: the server and the host type them from omp's SDK, so this file holds only the envelope, the method names
  * and the app's own payloads.
  */
+import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
+import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
+import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
+import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
+
+/**
+ * omp's session, for the types of its own objects in the protocol (the model, todos, usage, statistics). Type-only:
+ * nothing of omp runs where this file is imported.
+ */
+type Session = AgentSession;
 
 export { CHAT_HOST_CHAT_ARG } from "./args";
 
@@ -133,20 +144,116 @@ export type EmptyParams = z.infer<typeof EmptyParams>;
 export const EventOptions = z.object({ messageUpdates: z.enum(["full", "delta"]) });
 export type EventOptions = z.infer<typeof EventOptions>;
 
-/** The chat's state, read with `get_state`. */
+/**
+ * The chat's state, read with `get_state`: omp's own fields, as omp's session reports them. A field omp leaves undefined
+ * is absent, as in omp's JSON.
+ */
 export interface ChatHostState {
-  readonly model: { readonly provider: string; readonly id: string; readonly name: string } | null;
-  /** omp's thinking level for the chat, or null when the model does not think. */
-  readonly thinkingLevel: string | null;
+  readonly model?: NonNullable<Session["model"]>;
+  readonly thinkingLevel?: NonNullable<Session["thinkingLevel"]>;
   readonly isStreaming: boolean;
   readonly isCompacting: boolean;
+  readonly steeringMode: Session["steeringMode"];
+  readonly followUpMode: Session["followUpMode"];
+  readonly interruptMode: Session["interruptMode"];
   readonly sessionId: string;
-  /** The session file, or null for a chat that is not saved. */
-  readonly sessionFile: string | null;
-  readonly sessionName: string | null;
+  /** Absent for a chat that is not saved. */
+  readonly sessionFile?: string;
+  readonly sessionName?: string;
+  readonly autoCompactionEnabled: boolean;
   readonly messageCount: number;
   readonly queuedMessageCount: number;
+  /** Background jobs or deliveries can still wake the session. */
+  readonly hasPendingAsyncWork: boolean;
+  /** Idle, nothing queued or admitted, nothing pending (omp's settle predicate). */
+  readonly isSettled: boolean;
+  readonly queuedMessages: ReturnType<Session["getQueuedMessages"]>;
+  readonly todoPhases: ReturnType<Session["getTodoPhases"]>;
+  readonly fastModeEnabled: boolean;
+  readonly fastModeActive: boolean;
+  readonly tokensPerSecond: ReturnType<typeof calculateTokensPerSecond>;
+  readonly slowModeSupported: boolean;
+  readonly slowModeEnabled: boolean;
+  readonly slowModeScope?: NonNullable<ReturnType<Session["getSlowModeScope"]>>;
+  readonly usageLimit?: NonNullable<ReturnType<Session["getUsageLimitState"]>>;
+  readonly systemPrompt: Session["systemPrompt"];
+  /** The session's tools as omp describes them for a session dump. */
+  readonly dumpTools: readonly ChatHostToolDescriptor[];
+  readonly contextUsage?: NonNullable<ReturnType<Session["getContextUsage"]>>;
+  /** null when the chat has no goal. */
+  readonly goal: NonNullable<ReturnType<Session["getGoalModeState"]>> | null;
 }
+
+export interface ChatHostToolDescriptor {
+  readonly name: string;
+  readonly description: string;
+  /** The tool's parameters as the provider sees them (omp's `toolWireSchema`). */
+  readonly parameters: unknown;
+  readonly examples?: unknown;
+}
+
+export const SetModelParams = z.object({ provider: z.string().min(1), modelId: z.string().min(1) });
+export type SetModelParams = z.infer<typeof SetModelParams>;
+
+/**
+ * The thinking levels omp's session takes (`ConfiguredThinkingLevel`: omp's `ThinkingLevel` and `auto`), by name. The
+ * mapped type makes a level omp adds or drops fail the typecheck here.
+ */
+const THINKING_LEVELS: { readonly [Level in `${ConfiguredThinkingLevel}`]: Level } = {
+  inherit: "inherit",
+  off: "off",
+  minimal: "minimal",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+  max: "max",
+  auto: "auto",
+};
+
+export const ThinkingLevelParams = z.object({ level: z.enum(THINKING_LEVELS) });
+export type ThinkingLevelParams = z.infer<typeof ThinkingLevelParams>;
+
+export const EnabledParams = z.object({ enabled: z.boolean() });
+export type EnabledParams = z.infer<typeof EnabledParams>;
+
+/** `compact` and `handoff`: optional instructions for the summary. */
+export const CustomInstructionsParams = z.object({ customInstructions: z.string().optional() });
+export type CustomInstructionsParams = z.infer<typeof CustomInstructionsParams>;
+
+export const SessionNameParams = z.object({ name: z.string() });
+export type SessionNameParams = z.infer<typeof SessionNameParams>;
+
+export const ExportHtmlParams = z.object({ outputPath: z.string().optional() });
+export type ExportHtmlParams = z.infer<typeof ExportHtmlParams>;
+
+/** omp's todo statuses (`TodoStatus`); as with the levels, a status omp adds or drops fails the typecheck here. */
+const TODO_STATUSES: { readonly [Status in TodoStatus]: Status } = {
+  pending: "pending",
+  in_progress: "in_progress",
+  completed: "completed",
+  abandoned: "abandoned",
+  blocked: "blocked",
+};
+
+/** omp's todo list (`TodoPhase`, `TodoItem`), as the user edits it. */
+export const SetTodosParams = z.object({
+  phases: z.array(
+    z.object({
+      name: z.string(),
+      tasks: z.array(
+        z.object({
+          content: z.string(),
+          status: z.enum(TODO_STATUSES),
+          blocker: z.string().optional(),
+          details: z.string().optional(),
+          notes: z.array(z.string()).optional(),
+        }),
+      ),
+    }),
+  ),
+});
+export type SetTodosParams = z.infer<typeof SetTodosParams>;
 
 /** omp's two queues of messages sent while a reply streams. */
 export const QueueName = z.enum(["steering", "followUp"]);
@@ -239,6 +346,64 @@ export interface ChatHostMethodMap {
   };
   readonly bash: { readonly params: BashParams; readonly result: ShellRunResult };
   readonly python: { readonly params: PythonParams; readonly result: ShellRunResult };
+  readonly set_model: {
+    readonly params: SetModelParams;
+    readonly result: NonNullable<Session["model"]>;
+  };
+  /** Waits for omp's background model refresh first. */
+  readonly get_available_models: {
+    readonly params: EmptyParams;
+    readonly result: { readonly models: ReturnType<Session["getAvailableModels"]> };
+  };
+  readonly set_thinking_level: {
+    readonly params: ThinkingLevelParams;
+    readonly result: EmptyParams;
+  };
+  /** null when the model has no levels to cycle. */
+  readonly cycle_thinking_level: {
+    readonly params: EmptyParams;
+    readonly result: {
+      readonly level: NonNullable<ReturnType<Session["cycleThinkingLevel"]>>;
+    } | null;
+  };
+  /** `off` and the live model's own levels (omp's `auto` and `inherit` are not listed, as in omp). */
+  readonly get_available_thinking_levels: {
+    readonly params: EmptyParams;
+    readonly result: { readonly levels: readonly ThinkingLevel[] };
+  };
+  readonly set_fast_mode: {
+    readonly params: EnabledParams;
+    readonly result: { readonly enabled: boolean; readonly active: boolean };
+  };
+  readonly set_slow_mode: {
+    readonly params: EnabledParams;
+    readonly result: { readonly enabled: boolean };
+  };
+  readonly compact: {
+    readonly params: CustomInstructionsParams;
+    readonly result: Awaited<ReturnType<Session["compact"]>>;
+  };
+  readonly set_auto_compaction: { readonly params: EnabledParams; readonly result: EmptyParams };
+  readonly set_session_name: { readonly params: SessionNameParams; readonly result: EmptyParams };
+  readonly get_session_stats: {
+    readonly params: EmptyParams;
+    readonly result: ReturnType<Session["getSessionStats"]>;
+  };
+  readonly export_html: {
+    readonly params: ExportHtmlParams;
+    readonly result: { readonly path: string };
+  };
+  /** null when omp made no handoff. Refused while a reply streams. */
+  readonly handoff: {
+    readonly params: CustomInstructionsParams;
+    readonly result: {
+      readonly savedPath: NonNullable<Awaited<ReturnType<Session["handoff"]>>>["savedPath"];
+    } | null;
+  };
+  readonly set_todos: {
+    readonly params: SetTodosParams;
+    readonly result: { readonly todoPhases: ReturnType<Session["getTodoPhases"]> };
+  };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -253,6 +418,20 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_available_commands: EmptyParams,
   bash: BashParams,
   python: PythonParams,
+  set_model: SetModelParams,
+  get_available_models: EmptyParams,
+  set_thinking_level: ThinkingLevelParams,
+  cycle_thinking_level: EmptyParams,
+  get_available_thinking_levels: EmptyParams,
+  set_fast_mode: EnabledParams,
+  set_slow_mode: EnabledParams,
+  compact: CustomInstructionsParams,
+  set_auto_compaction: EnabledParams,
+  set_session_name: SessionNameParams,
+  get_session_stats: EmptyParams,
+  export_html: ExportHtmlParams,
+  handoff: CustomInstructionsParams,
+  set_todos: SetTodosParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */
@@ -321,6 +500,6 @@ export interface SessionInfoUpdateEvent {
 /** A built-in command changed the chat's model or thinking level (omp's `notifyConfigChanged`). */
 export interface ConfigUpdateEvent {
   readonly type: "config_update";
-  readonly model: ChatHostState["model"];
-  readonly thinkingLevel: string | null;
+  readonly model?: ChatHostState["model"];
+  readonly thinkingLevel?: ChatHostState["thinkingLevel"];
 }

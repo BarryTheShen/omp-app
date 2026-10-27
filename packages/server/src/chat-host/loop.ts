@@ -12,6 +12,8 @@
  * A prompt is, in omp's order (`rpc-mode.ts:1764-1878`): an extension's `input` hook, then `/skill:<name>`, then a
  * built-in slash command (omp's own executor, shared with its ACP host), then `session.prompt`.
  */
+import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
+import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import {
   clearPluginRootsAndCaches,
   resolveActiveProjectRegistryPath,
@@ -30,6 +32,9 @@ import {
 import { executeAcpBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/acp-builtins";
 import { buildAvailableSlashCommands } from "@oh-my-pi/pi-coding-agent/slash-commands/available-commands";
 import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
+import { USER_TODO_EDIT_CUSTOM_TYPE } from "@oh-my-pi/pi-coding-agent/tools/todo";
+import { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
+import { parseConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import {
   CHAT_HOST_METHODS,
   CHAT_HOST_PROTOCOL_VERSION,
@@ -211,6 +216,69 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       shellRun(await session.executeBash(command, undefined, { excludeFromContext })),
     python: async ({ code, excludeFromContext }) =>
       shellRun(await session.executePython(code, undefined, { excludeFromContext })),
+    set_model: async ({ provider, modelId }) => {
+      const model = await findModel(session, provider, modelId);
+      if (!model) throw new Error(`Model not found: ${provider}/${modelId}`);
+      await session.setModel(model);
+      return model;
+    },
+    get_available_models: async () => {
+      await session.modelRegistry.awaitBackgroundRefresh();
+      return { models: session.getAvailableModels() };
+    },
+    set_thinking_level: async ({ level }) => {
+      // omp's own parser turns the name into its level (an `Effort` member, `off`, `inherit` or `auto`).
+      const parsed = parseConfiguredThinkingLevel(level);
+      if (parsed === undefined) throw new Error(`Unknown thinking level: ${level}`);
+      session.setThinkingLevel(parsed);
+      return {};
+    },
+    cycle_thinking_level: async () => {
+      const level = session.cycleThinkingLevel();
+      return level ? { level } : null;
+    },
+    get_available_thinking_levels: async () => ({
+      levels: [ThinkingLevel.Off, ...session.getAvailableThinkingLevels()],
+    }),
+    set_fast_mode: async ({ enabled }) => {
+      if (!session.setFastMode(enabled) && enabled) {
+        throw new Error("Fast mode is unavailable for the current model.");
+      }
+      return { enabled: session.isFastModeEnabled(), active: session.isFastModeActive() };
+    },
+    set_slow_mode: async ({ enabled }) => {
+      if (!session.setSlowMode(enabled) && enabled) {
+        throw new Error("Slow mode is unavailable for the current model.");
+      }
+      return { enabled: session.isSlowModeEnabled() };
+    },
+    compact: async ({ customInstructions }) => session.compact(customInstructions),
+    set_auto_compaction: async ({ enabled }) => {
+      session.setAutoCompactionEnabled(enabled);
+      return {};
+    },
+    set_session_name: async ({ name }) => {
+      const trimmed = name.trim();
+      if (!trimmed || !(await session.setSessionName(trimmed, "user"))) {
+        throw new Error("Session name cannot be empty");
+      }
+      return {};
+    },
+    get_session_stats: async () => session.getSessionStats(),
+    export_html: async ({ outputPath }) => ({ path: await session.exportToHtml(outputPath) }),
+    handoff: async ({ customInstructions }) => {
+      // A handoff tears the session down: a live turn would keep writing into it (omp's `/handoff` guard).
+      if (session.isStreaming) throw new Error("Cannot hand off while a response is in progress");
+      const result = await session.handoff(customInstructions);
+      return result ? { savedPath: result.savedPath } : null;
+    },
+    set_todos: async ({ phases }) => {
+      session.setTodoPhases(phases);
+      const todoPhases = session.getTodoPhases();
+      // Recorded as the user's edit, so a reload and the model see the list the user set.
+      session.sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases: todoPhases });
+      return { todoPhases };
+    },
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
@@ -452,21 +520,79 @@ function shellRun(result: ShellRunResult): ShellRunResult {
 
 function configUpdate(session: AgentSession): ConfigUpdateEvent {
   const { model, thinkingLevel } = readState(session);
-  return { type: "config_update", model, thinkingLevel };
+  return {
+    type: "config_update",
+    ...(model ? { model } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
+  };
 }
 
+/**
+ * The available model with this provider and id. One that is not in the catalog yet waits for omp's background
+ * discovery first (a discovery-backed provider fills in seconds after start), as omp's own lookup does
+ * (`rpc-mode.ts:959-965`).
+ */
+async function findModel(session: AgentSession, provider: string, modelId: string) {
+  const find = () =>
+    session
+      .getAvailableModels()
+      .find((model) => model.provider === provider && model.id === modelId);
+  const model = find();
+  if (model) return model;
+  await session.modelRegistry.awaitBackgroundRefresh();
+  return find();
+}
+
+/** omp's settle predicate (`rpc-session-settle.ts:43-51`): idle, nothing admitted or queued, no background work left. */
+function isSettled(session: AgentSession): boolean {
+  return (
+    !session.isStreaming &&
+    !session.hasAdmittedSubmission &&
+    session.queuedMessageCount === 0 &&
+    !session.hasPendingAsyncWork()
+  );
+}
+
+/** The chat's state, as omp's session reports it (the fields of omp's own `get_state`, `rpc-mode.ts:2064-2107`). */
 function readState(session: AgentSession): ChatHostState {
-  const model = session.model;
+  const { model, thinkingLevel, sessionFile, sessionName } = session;
+  const slowModeScope = session.getSlowModeScope();
+  const usageLimit = session.getUsageLimitState();
+  const contextUsage = session.getContextUsage();
   return {
-    model: model ? { provider: model.provider, id: model.id, name: model.name } : null,
-    thinkingLevel: session.thinkingLevel ?? null,
+    ...(model ? { model } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
     isStreaming: session.isStreaming,
     isCompacting: session.isCompacting,
+    steeringMode: session.steeringMode,
+    followUpMode: session.followUpMode,
+    interruptMode: session.interruptMode,
     sessionId: session.sessionId,
-    sessionFile: session.sessionFile ?? null,
-    sessionName: session.sessionName ?? null,
+    ...(sessionFile ? { sessionFile } : {}),
+    ...(sessionName ? { sessionName } : {}),
+    autoCompactionEnabled: session.autoCompactionEnabled,
     messageCount: session.messages.length,
     queuedMessageCount: session.queuedMessageCount,
+    hasPendingAsyncWork: session.hasPendingAsyncWork(),
+    isSettled: isSettled(session),
+    queuedMessages: session.getQueuedMessages(),
+    todoPhases: session.getTodoPhases(),
+    fastModeEnabled: session.isFastModeEnabled(),
+    fastModeActive: session.isFastModeActive(),
+    tokensPerSecond: calculateTokensPerSecond(session.messages, session.isStreaming),
+    slowModeSupported: session.isSlowModeSupported(),
+    slowModeEnabled: session.isSlowModeEnabled(),
+    ...(slowModeScope ? { slowModeScope } : {}),
+    ...(usageLimit ? { usageLimit } : {}),
+    systemPrompt: session.systemPrompt,
+    dumpTools: session.agent.state.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: toolWireSchema(tool),
+      ...(tool.examples !== undefined ? { examples: tool.examples } : {}),
+    })),
+    ...(contextUsage ? { contextUsage } : {}),
+    goal: session.getGoalModeState() ?? null,
   };
 }
 

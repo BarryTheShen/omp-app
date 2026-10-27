@@ -127,4 +127,48 @@ describe("requests from the server", () => {
       false,
     );
   });
+
+  test("a model change names both the provider and the model", () => {
+    expect(parseChatHostParams("set_model", { provider: "anthropic", modelId: "m" }).ok).toBe(true);
+    expect(parseChatHostParams("set_model", { provider: "anthropic" }).ok).toBe(false);
+    expect(parseChatHostParams("set_model", { provider: "", modelId: "m" }).ok).toBe(false);
+  });
+
+  test("a thinking level is one omp's session takes, auto and inherit included", () => {
+    for (const level of ["off", "max", "auto", "inherit"]) {
+      expect(parseChatHostParams("set_thinking_level", { level }).ok).toBe(true);
+    }
+    expect(parseChatHostParams("set_thinking_level", { level: "turbo" }).ok).toBe(false);
+    expect(parseChatHostParams("set_thinking_level", { level: "High" }).ok).toBe(false);
+  });
+
+  test("a switch takes true or false, never a word", () => {
+    expect(parseChatHostParams("set_auto_compaction", { enabled: false }).ok).toBe(true);
+    expect(parseChatHostParams("set_fast_mode", { enabled: "yes" }).ok).toBe(false);
+    expect(parseChatHostParams("set_slow_mode", {}).ok).toBe(false);
+  });
+
+  test("a todo edit uses omp's statuses and keeps a task's notes", () => {
+    const task = {
+      content: "Fix the check",
+      status: "blocked" as const,
+      blocker: "CI",
+      notes: ["seen twice"],
+    };
+    expect(parseChatHostParams("set_todos", { phases: [{ name: "Plan", tasks: [task] }] })).toEqual(
+      {
+        ok: true,
+        value: { phases: [{ name: "Plan", tasks: [task] }] },
+      },
+    );
+    const done = { ...task, status: "done" };
+    expect(parseChatHostParams("set_todos", { phases: [{ name: "Plan", tasks: [done] }] }).ok).toBe(
+      false,
+    );
+    expect(
+      parseChatHostParams("set_todos", {
+        phases: [{ name: "Plan", tasks: [{ status: "pending" }] }],
+      }).ok,
+    ).toBe(false);
+  });
 });
