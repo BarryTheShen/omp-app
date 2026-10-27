@@ -173,6 +173,10 @@ export const PromptParams = z.object({
 });
 export type PromptParams = z.infer<typeof PromptParams>;
 
+/** `steer` and `follow_up`: a message for one of omp's two queues, as `prompt` takes it. */
+export const QueuedInputParams = PromptParams.omit({ streamingBehavior: true });
+export type QueuedInputParams = z.infer<typeof QueuedInputParams>;
+
 /**
  * The answer to `prompt`, sent once omp admitted the prompt. With `resultFollows`, exactly one `prompt_result` event
  * with this request's id follows; without it, the prompt was handled where it stood (an extension's input hook took it,
@@ -261,6 +265,30 @@ export type ThinkingLevelParams = z.infer<typeof ThinkingLevelParams>;
 
 export const EnabledParams = z.object({ enabled: z.boolean() });
 export type EnabledParams = z.infer<typeof EnabledParams>;
+
+/**
+ * omp's queue modes (how many queued messages one delivery takes) and interrupt modes, by name. The mapped types make a
+ * mode omp adds or drops fail the typecheck here.
+ */
+const STEERING_MODES: { readonly [Mode in Session["steeringMode"]]: Mode } = {
+  all: "all",
+  "one-at-a-time": "one-at-a-time",
+};
+const FOLLOW_UP_MODES: { readonly [Mode in Session["followUpMode"]]: Mode } = {
+  all: "all",
+  "one-at-a-time": "one-at-a-time",
+};
+const INTERRUPT_MODES: { readonly [Mode in Session["interruptMode"]]: Mode } = {
+  immediate: "immediate",
+  wait: "wait",
+};
+
+export const SteeringModeParams = z.object({ mode: z.enum(STEERING_MODES) });
+export type SteeringModeParams = z.infer<typeof SteeringModeParams>;
+export const FollowUpModeParams = z.object({ mode: z.enum(FOLLOW_UP_MODES) });
+export type FollowUpModeParams = z.infer<typeof FollowUpModeParams>;
+export const InterruptModeParams = z.object({ mode: z.enum(INTERRUPT_MODES) });
+export type InterruptModeParams = z.infer<typeof InterruptModeParams>;
 
 /** `compact` and `handoff`: optional instructions for the summary. */
 export const CustomInstructionsParams = z.object({ customInstructions: z.string().optional() });
@@ -612,6 +640,25 @@ export interface ChatHostMethodMap {
     readonly params: LiveMuteParams;
     readonly result: { readonly muted: boolean };
   };
+  /**
+   * A message for omp's steering queue (delivered after the running tool step) or its follow-up queue (delivered when
+   * the run would end), after the extensions' input hooks, as omp's. No prompt result follows; runs outside the
+   * one-at-a-time order, as `prompt` does.
+   */
+  readonly steer: { readonly params: QueuedInputParams; readonly result: EmptyParams };
+  readonly follow_up: { readonly params: QueuedInputParams; readonly result: EmptyParams };
+  /** Stops the running `!` command. */
+  readonly abort_bash: { readonly params: EmptyParams; readonly result: EmptyParams };
+  /** The queue and interrupt modes, for this chat only: omp's settings and later chats stay as they are. */
+  readonly set_steering_mode: { readonly params: SteeringModeParams; readonly result: EmptyParams };
+  readonly set_follow_up_mode: {
+    readonly params: FollowUpModeParams;
+    readonly result: EmptyParams;
+  };
+  readonly set_interrupt_mode: {
+    readonly params: InterruptModeParams;
+    readonly result: EmptyParams;
+  };
 }
 
 export const GetPlanParams = z.object({ planFilePath: z.string().min(1).optional() });
@@ -713,6 +760,12 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   live_start: LiveStartParams,
   live_stop: EmptyParams,
   live_mute: LiveMuteParams,
+  steer: QueuedInputParams,
+  follow_up: QueuedInputParams,
+  abort_bash: EmptyParams,
+  set_steering_mode: SteeringModeParams,
+  set_follow_up_mode: FollowUpModeParams,
+  set_interrupt_mode: InterruptModeParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */

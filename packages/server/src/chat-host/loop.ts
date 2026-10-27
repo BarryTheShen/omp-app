@@ -58,6 +58,7 @@ import {
   type PromptParams,
   parseChatHostParams,
   parseServerLine,
+  type QueuedInputParams,
   type QueuedMessage,
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
@@ -318,7 +319,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   };
 
   const handlers: {
-    readonly [M in Exclude<ChatHostMethod, "prompt">]: (
+    readonly [M in Exclude<ChatHostMethod, "prompt" | "steer" | "follow_up">]: (
       params: ChatHostMethodMap[M]["params"],
       sequence: number,
     ) => Promise<ChatHostMethodMap[M]["result"]>;
@@ -590,13 +591,87 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       return {};
     },
     live_mute: async ({ muted }) => live.setMuted(muted),
+    abort_bash: async () => {
+      session.abortBash();
+      return {};
+    },
+    // For this chat only (`persist: false`), as omp's RPC (#11555): omp's settings and later chats keep theirs.
+    set_steering_mode: async ({ mode }) => {
+      session.setSteeringMode(mode, false);
+      return {};
+    },
+    set_follow_up_mode: async ({ mode }) => {
+      session.setFollowUpMode(mode, false);
+      return {};
+    },
+    set_interrupt_mode: async ({ mode }) => {
+      session.setInterruptMode(mode, false);
+      return {};
+    },
+  };
+
+  /** Whether input read as `sequence` still counts: no abort or session change since, and the chat is not closing. */
+  const stillCurrent = (sequence: number): (() => boolean) => {
+    const sessionId = session.sessionId;
+    return () => gate.isCurrent(sequence) && !shutdownRequested && session.sessionId === sessionId;
+  };
+
+  /**
+   * omp's first steps for every message (`rpc-mode.ts:1772-1784`): the extensions' `input` hooks may take it or change
+   * it, and an empty message goes nowhere.
+   */
+  const readMessage = async (
+    params: QueuedInputParams,
+    isCurrent: () => boolean,
+  ): Promise<
+    | { readonly kind: "cancelled" | "local" }
+    | {
+        readonly kind: "message";
+        readonly text: string;
+        readonly images: QueuedInputParams["images"];
+      }
+  > => {
+    if (!isCurrent()) return { kind: "cancelled" };
+    let { text, images } = params;
+    const runner = session.extensionRunner;
+    if (runner?.hasHandlers("input")) {
+      const input = await runner.emitInput(text, images, "rpc");
+      if (!isCurrent()) return { kind: "cancelled" };
+      if (input.handled) return { kind: "local" };
+      if (input.text !== undefined) text = input.text;
+      if (input.images !== undefined) images = input.images;
+    }
+    if (!isCurrent()) return { kind: "cancelled" };
+    if (!text.trim() && !images?.length) return { kind: "local" };
+    return { kind: "message", text, images };
+  };
+
+  /**
+   * `steer` and `follow_up`, as omp's (`rpc-mode.ts:1768-1792`): in order with prompts through the input gate, past the
+   * extensions' input hooks, then into omp's queue. The answer is `{}` whatever became of the message, and no prompt
+   * result follows.
+   */
+  const runQueuedInput = async (
+    id: string,
+    queue: "steer" | "follow_up",
+    params: QueuedInputParams,
+    sequence: number,
+  ): Promise<void> => {
+    const isCurrent = stillCurrent(sequence);
+    await answer(id, () =>
+      gate.enqueue(async () => {
+        const message = await readMessage(params, isCurrent);
+        if (message.kind !== "message") return {};
+        if (queue === "steer") await session.steer(message.text, message.images);
+        else await session.followUp(message.text, message.images);
+        return {};
+      }),
+    );
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {
     const ticket = results.begin(id);
-    const sessionId = session.sessionId;
-    const isCurrent = (): boolean =>
-      gate.isCurrent(sequence) && !shutdownRequested && session.sessionId === sessionId;
+    const isCurrent = stillCurrent(sequence);
     try {
       const outcome = await gate.enqueue(() => admitPrompt(params, ticket, isCurrent));
       switch (outcome.kind) {
@@ -662,19 +737,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     ticket: PromptTicket,
     isCurrent: () => boolean,
   ): Promise<PromptOutcome> => {
-    if (!isCurrent()) return { kind: "cancelled" };
-    let text = params.text;
-    let images = params.images;
-    const runner = session.extensionRunner;
-    if (runner?.hasHandlers("input")) {
-      const input = await runner.emitInput(text, images, "rpc");
-      if (!isCurrent()) return { kind: "cancelled" };
-      if (input.handled) return { kind: "local" };
-      if (input.text !== undefined) text = input.text;
-      if (input.images !== undefined) images = input.images;
-    }
-    if (!isCurrent()) return { kind: "cancelled" };
-    if (!text.trim() && !images?.length) return { kind: "local" };
+    const message = await readMessage(params, isCurrent);
+    if (message.kind !== "message") return message;
+    let text = message.text;
+    const images = message.images;
 
     const skill = resolveSkillInvocation(session, text);
     if (skill) {
@@ -792,6 +858,15 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         continue;
       }
       track(runPrompt(id, params.value, sequence));
+      continue;
+    }
+    if (method === "steer" || method === "follow_up") {
+      const params = parseChatHostParams(method, parsed.value.params);
+      if (!params.ok) {
+        respondError(id, "invalid_params", params.error.message);
+        continue;
+      }
+      track(runQueuedInput(id, method, params.value, sequence));
       continue;
     }
     const params = parseChatHostParams(method, parsed.value.params);

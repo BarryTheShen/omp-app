@@ -327,3 +327,15 @@ describe("live voice", () => {
     expect(parseChatHostParams("live_mute", { muted: "yes" }).ok).toBe(false);
   });
 });
+
+describe("the queue", () => {
+  test("a steer or a follow-up is a message, and the modes are omp's", () => {
+    expect(parseChatHostParams("steer", { text: "this way" }).ok).toBe(true);
+    expect(parseChatHostParams("follow_up", { text: "then this", images: [] }).ok).toBe(true);
+    expect(parseChatHostParams("steer", {}).ok).toBe(false);
+    expect(parseChatHostParams("set_steering_mode", { mode: "one-at-a-time" }).ok).toBe(true);
+    expect(parseChatHostParams("set_follow_up_mode", { mode: "some" }).ok).toBe(false);
+    expect(parseChatHostParams("set_interrupt_mode", { mode: "wait" }).ok).toBe(true);
+    expect(parseChatHostParams("set_interrupt_mode", { mode: "all" }).ok).toBe(false);
+  });
+});
