@@ -33,10 +33,10 @@ export async function* linesOf(reader: ByteReader): AsyncGenerator<string> {
 }
 
 /**
- * Orders user input. Each prompt and abort gets a number when it is read; an abort invalidates every prompt read before
- * it. Prompts are admitted one at a time in the order read, and the next starts once the previous one was admitted, not
- * when its reply ends. (omp's `RpcUserInputGate`, 18.12.6 `modes/rpc/rpc-mode.ts:522-565`; session changes join in
- * H5.2.)
+ * Orders user input. Each request gets a number when it is read; an abort invalidates every prompt read before it, and
+ * so does a session change once it is made. Prompts are admitted one at a time in the order read, and the next starts
+ * once the previous one was admitted, not when its reply ends. (omp's `RpcUserInputGate`, 18.12.6
+ * `modes/rpc/rpc-mode.ts:522-565`.)
  */
 export class InputGate {
   #tail: Promise<unknown> = Promise.resolve();
@@ -50,7 +50,12 @@ export class InputGate {
     return sequence;
   }
 
-  /** False once an abort read after this input invalidated it. */
+  /** A session change read as `sequence` was made: input read before it does not reach the new session. */
+  commitSessionChange(sequence: number): void {
+    if (sequence > this.#validFrom) this.#validFrom = sequence;
+  }
+
+  /** False once an abort, or a session change made since, read after this input invalidated it. */
   isCurrent(sequence: number): boolean {
     return sequence >= this.#validFrom;
   }

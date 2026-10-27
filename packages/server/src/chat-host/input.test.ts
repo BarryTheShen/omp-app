@@ -44,6 +44,26 @@ describe("the order of user input", () => {
     expect(gate.isCurrent(after)).toBe(true);
   });
 
+  test("a session change, once made, invalidates the prompts read before it", () => {
+    const gate = new InputGate();
+    const before = gate.accept("input");
+    const change = gate.accept("input");
+    const after = gate.accept("input");
+    expect(gate.isCurrent(before)).toBe(true);
+    gate.commitSessionChange(change);
+    expect(gate.isCurrent(before)).toBe(false);
+    expect(gate.isCurrent(after)).toBe(true);
+  });
+
+  test("a change made after a later abort leaves that abort in force", () => {
+    const gate = new InputGate();
+    const change = gate.accept("input");
+    const prompt = gate.accept("input");
+    gate.accept("abort");
+    gate.commitSessionChange(change);
+    expect(gate.isCurrent(prompt)).toBe(false);
+  });
+
   test("prompts are admitted one at a time in the order read, even after one fails", async () => {
     const gate = new InputGate();
     const order: string[] = [];

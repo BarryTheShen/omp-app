@@ -171,4 +171,20 @@ describe("requests from the server", () => {
       }).ok,
     ).toBe(false);
   });
+
+  test("a message page asks for 1 to 256 whole messages, from a cursor that is not empty", () => {
+    expect(parseChatHostParams("get_messages_page", { limit: 256 }).ok).toBe(true);
+    for (const limit of [0, 257, 2.5]) {
+      expect(parseChatHostParams("get_messages_page", { limit }).ok).toBe(false);
+    }
+    expect(parseChatHostParams("get_messages_page", { cursor: "" }).ok).toBe(false);
+  });
+
+  test("a fork, a branch and a rewind name the entry they start from", () => {
+    for (const method of ["fork", "branch", "navigate_tree"] as const) {
+      expect(parseChatHostParams(method, { entryId: "b8e8c20d" }).ok).toBe(true);
+      expect(parseChatHostParams(method, { entryId: "" }).ok).toBe(false);
+      expect(parseChatHostParams(method, {}).ok).toBe(false);
+    }
+  });
 });

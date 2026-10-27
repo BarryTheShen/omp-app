@@ -167,8 +167,10 @@ describe("the chat host's state methods", () => {
         const compacted = await chat.client.request("compact", {});
         expect(compacted.summary.length).toBeGreaterThan(0);
 
+        // The earlier replies already sent updates: wait for the held reply's own, so the handoff meets it.
+        const mark = chat.events.length;
         await chat.client.request("prompt", { text: "stream_held" });
-        await chat.next((event) => event.type === "message_update");
+        await chat.nextAfter(mark, (event) => event.type === "message_update");
         await expect(chat.client.request("handoff", {})).rejects.toMatchObject({
           message: "Cannot hand off while a response is in progress",
         });

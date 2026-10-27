@@ -24,7 +24,10 @@ import {
 } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
 import { reconnectMcpManagerServer } from "@oh-my-pi/pi-coding-agent/mcp/oauth-reauth";
 import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import {
+  type AgentSession,
+  SessionBusyError,
+} from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import {
   SKILL_PROMPT_MESSAGE_TYPE,
   USER_INTERRUPT_LABEL,
@@ -54,7 +57,9 @@ import {
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
 import { type ChatEvent, SessionEventStream } from "./events";
+import { pageMessages, selectEntries } from "./history";
 import { InputGate } from "./input";
+import { HostMethodError } from "./method-error";
 import type { LineWriter } from "./output";
 import {
   ExtensionMessageTracker,
@@ -181,9 +186,43 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   });
   await emitAvailableCommands();
 
+  /**
+   * A session change (`new_session`, `branch`, `fork`), in omp's order (`rpc-mode.ts:1994-2032`). Once made, input read
+   * before it does not reach the new session, and a new chat ends the open prompts (a branch or fork keeps a live run,
+   * which streams to its own end). The command list is sent again for the new session.
+   */
+  const changeSession = async <Result extends { readonly cancelled: boolean }>(
+    sequence: number,
+    change: () => Promise<Result>,
+    options: { readonly endsOpenPrompts: boolean },
+  ): Promise<Result> => {
+    let result: Result;
+    try {
+      result = await change();
+    } catch (error) {
+      // omp's fork refuses when work started while it waited.
+      if (error instanceof SessionBusyError)
+        throw new HostMethodError("session_busy", error.message);
+      throw error;
+    }
+    if (!result.cancelled) {
+      gate.commitSessionChange(sequence);
+      if (options.endsOpenPrompts) results.abortOpen();
+      await emitAvailableCommands();
+    }
+    return result;
+  };
+  /** Refuses while a turn, a user command, a compaction or a retry could still write into the transcript. */
+  const refuseWhileBusy = (action: string): void => {
+    if (session.isBusyForSnapshot) {
+      throw new HostMethodError("session_busy", new SessionBusyError(action).message);
+    }
+  };
+
   const handlers: {
     readonly [M in Exclude<ChatHostMethod, "prompt">]: (
       params: ChatHostMethodMap[M]["params"],
+      sequence: number,
     ) => Promise<ChatHostMethodMap[M]["result"]>;
   } = {
     abort: async () => {
@@ -278,6 +317,70 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       // Recorded as the user's edit, so a reload and the model see the list the user set.
       session.sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases: todoPhases });
       return { todoPhases };
+    },
+    get_entries: async ({ since }) => ({
+      entries: selectEntries(session.sessionManager.getEntries(), since),
+      leafId: session.sessionManager.getLeafId(),
+    }),
+    get_tree: async () => ({
+      tree: session.sessionManager.getTree(),
+      leafId: session.sessionManager.getLeafId(),
+    }),
+    get_messages_page: async ({ cursor, limit }) => {
+      if (session.isStreaming || session.isCompacting) {
+        throw new HostMethodError(
+          "session_busy",
+          "Cannot page messages while the session is changing",
+        );
+      }
+      const messages = session.messages;
+      const snapshot = {
+        sessionId: session.sessionId,
+        leafId: session.sessionManager.getLeafId(),
+        messageCount: messages.length,
+      };
+      return pageMessages(messages, snapshot, { cursor, limit });
+    },
+    get_branch_messages: async () => ({ messages: session.getUserMessagesForBranching() }),
+    new_session: async ({ parentSession }, sequence) =>
+      changeSession(
+        sequence,
+        async () => ({
+          cancelled: !(await session.newSession(parentSession ? { parentSession } : undefined)),
+        }),
+        { endsOpenPrompts: true },
+      ),
+    branch: async ({ entryId }, sequence) =>
+      changeSession(
+        sequence,
+        async () => {
+          const { selectedText, cancelled } = await session.branch(entryId);
+          return { text: selectedText, cancelled };
+        },
+        { endsOpenPrompts: false },
+      ),
+    fork: async ({ entryId }, sequence) => {
+      refuseWhileBusy("fork the session");
+      return changeSession(
+        sequence,
+        // A fork is a snapshot: omp checks again after each of its own waits.
+        async () => ({ cancelled: !(await session.fork(entryId, { requireIdle: true })) }),
+        { endsOpenPrompts: false },
+      );
+    },
+    navigate_tree: async ({ entryId }) => {
+      // omp's rewind (`selector-controller.ts:1393-1442`): the leaf moves in the same session file, the later turns
+      // stay as a branch, and a picked prompt rewinds past itself and comes back for the composer.
+      refuseWhileBusy("rewind the session");
+      const { cancelled, editorText, editorImages } = await session.navigateTree(entryId, {
+        summarize: false,
+      });
+      return {
+        cancelled,
+        ...(editorText !== undefined ? { editorText } : {}),
+        ...(editorImages !== undefined ? { editorImages } : {}),
+        leafId: session.sessionManager.getLeafId(),
+      };
     },
   };
 
@@ -442,7 +545,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     try {
       respond(id, await run());
     } catch (error) {
-      respondError(id, "failed", errorMessage(error));
+      respondError(
+        id,
+        error instanceof HostMethodError ? error.code : "failed",
+        errorMessage(error),
+      );
     }
   };
 
@@ -460,28 +567,31 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       respondError(id, "unknown_method", `Unknown method: ${method}`);
       continue;
     }
+    // Numbered as read: an abort invalidates the prompts read before it, and so does a session change once made.
+    const sequence = gate.accept(
+      method === "abort" || method === "abort_and_restore_queue" ? "abort" : "input",
+    );
     if (method === "prompt") {
       const params = parseChatHostParams("prompt", parsed.value.params);
       if (!params.ok) {
         respondError(id, "invalid_params", params.error.message);
         continue;
       }
-      void runPrompt(id, params.value, gate.accept("input"));
+      void runPrompt(id, params.value, sequence);
       continue;
     }
-    if (method === "abort" || method === "abort_and_restore_queue") gate.accept("abort");
     const params = parseChatHostParams(method, parsed.value.params);
     if (!params.ok) {
       respondError(id, "invalid_params", params.error.message);
       continue;
     }
     // The handler table is typed per method; the request's method and its checked params belong together.
-    const handler = handlers[method] as (params: unknown) => Promise<unknown>;
+    const handler = handlers[method] as (params: unknown, sequence: number) => Promise<unknown>;
     if (BACKGROUND_METHODS.has(method)) {
-      void answer(id, () => handler(params.value));
+      void answer(id, () => handler(params.value, sequence));
       continue;
     }
-    serial = serial.then(() => answer(id, () => handler(params.value)));
+    serial = serial.then(() => answer(id, () => handler(params.value, sequence)));
   }
   await serial;
 }

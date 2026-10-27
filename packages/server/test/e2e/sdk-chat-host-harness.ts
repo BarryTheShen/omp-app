@@ -40,6 +40,11 @@ export interface Chat {
   readonly events: { readonly seq: number; readonly event: ChatEvent }[];
   /** Resolves with the first event that matches, among those already received or the next ones. */
   next(match: (event: ChatEvent) => boolean): Promise<ChatEvent>;
+  /**
+   * As `next`, among the events from index `mark` on: take `events.length` before the request that causes the event, so
+   * an earlier turn's event of the same type cannot answer.
+   */
+  nextAfter(mark: number, match: (event: ChatEvent) => boolean): Promise<ChatEvent>;
 }
 
 export interface ChatOptions {
@@ -138,6 +143,11 @@ export function chatHostChats() {
         events,
         next: (match) => {
           const found = events.find((entry) => match(entry.event));
+          if (found) return Promise.resolve(found.event);
+          return new Promise((resolveEvent) => waiters.push({ match, resolve: resolveEvent }));
+        },
+        nextAfter: (mark, match) => {
+          const found = events.slice(mark).find((entry) => match(entry.event));
           if (found) return Promise.resolve(found.event);
           return new Promise((resolveEvent) => waiters.push({ match, resolve: resolveEvent }));
         },

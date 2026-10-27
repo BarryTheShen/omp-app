@@ -31,7 +31,19 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
 
 const RequestId = z.string().min(1);
 
-export const ChatHostErrorCode = z.enum(["unknown_method", "invalid_params", "failed"]);
+/**
+ * Why a request failed. Besides the protocol's own, omp's codes the app tells apart: `session_busy` (work could still
+ * write into the transcript), `unknown_since` (an entries cursor the session does not have), `stale_cursor` (a message
+ * cursor from before the session changed).
+ */
+export const ChatHostErrorCode = z.enum([
+  "unknown_method",
+  "invalid_params",
+  "failed",
+  "session_busy",
+  "unknown_since",
+  "stale_cursor",
+]);
 export type ChatHostErrorCode = z.infer<typeof ChatHostErrorCode>;
 
 export const ChatHostError = z.object({ code: ChatHostErrorCode, message: z.string() });
@@ -255,6 +267,45 @@ export const SetTodosParams = z.object({
 });
 export type SetTodosParams = z.infer<typeof SetTodosParams>;
 
+/** Entries after the one with this id; all entries without one. */
+export const EntriesParams = z.object({ since: z.string().min(1).optional() });
+export type EntriesParams = z.infer<typeof EntriesParams>;
+
+/** omp's page bounds: at most 256 messages a page, 100 by default; the cursor is the previous page's `nextCursor`. */
+export const MessagesPageParams = z.object({
+  cursor: z.string().min(1).max(2048).optional(),
+  limit: z.int().min(1).max(256).optional(),
+});
+export type MessagesPageParams = z.infer<typeof MessagesPageParams>;
+
+export const NewSessionParams = z.object({ parentSession: z.string().min(1).optional() });
+export type NewSessionParams = z.infer<typeof NewSessionParams>;
+
+/** `branch`, `fork` and `navigate_tree`: the session entry to start from. */
+export const EntryParams = z.object({ entryId: z.string().min(1) });
+export type EntryParams = z.infer<typeof EntryParams>;
+
+/** The session's entries and its live leaf (`get_entries`, `get_tree`). */
+type SessionManagerOf = Session["sessionManager"];
+type LeafId = ReturnType<SessionManagerOf["getLeafId"]>;
+
+export interface MessagesPage {
+  readonly messages: Session["messages"];
+  /** Absent on the last page. */
+  readonly nextCursor?: string;
+  readonly totalMessages: number;
+}
+
+/** A rewind in place, as omp's own (`navigateTree` without a summary). */
+export interface NavigateTreeResult {
+  readonly cancelled: boolean;
+  /** A rewound prompt's text and images, for the composer. */
+  readonly editorText?: string;
+  readonly editorImages?: NonNullable<Awaited<ReturnType<Session["navigateTree"]>>["editorImages"]>;
+  /** The leaf after the move. */
+  readonly leafId: LeafId;
+}
+
 /** omp's two queues of messages sent while a reply streams. */
 export const QueueName = z.enum(["steering", "followUp"]);
 export type QueueName = z.infer<typeof QueueName>;
@@ -404,6 +455,43 @@ export interface ChatHostMethodMap {
     readonly params: SetTodosParams;
     readonly result: { readonly todoPhases: ReturnType<Session["getTodoPhases"]> };
   };
+  readonly get_entries: {
+    readonly params: EntriesParams;
+    readonly result: {
+      readonly entries: ReturnType<SessionManagerOf["getEntries"]>;
+      readonly leafId: LeafId;
+    };
+  };
+  readonly get_tree: {
+    readonly params: EmptyParams;
+    readonly result: {
+      readonly tree: ReturnType<SessionManagerOf["getTree"]>;
+      readonly leafId: LeafId;
+    };
+  };
+  /** Refused while a reply streams or a compaction runs. */
+  readonly get_messages_page: {
+    readonly params: MessagesPageParams;
+    readonly result: MessagesPage;
+  };
+  /** The user prompts a branch can start from. */
+  readonly get_branch_messages: {
+    readonly params: EmptyParams;
+    readonly result: { readonly messages: ReturnType<Session["getUserMessagesForBranching"]> };
+  };
+  readonly new_session: {
+    readonly params: NewSessionParams;
+    readonly result: { readonly cancelled: boolean };
+  };
+  /** A new session file from the entry; `text` is the prompt it starts from. */
+  readonly branch: {
+    readonly params: EntryParams;
+    readonly result: { readonly text: string; readonly cancelled: boolean };
+  };
+  /** A copy of the session up to the entry. Refused while the session is busy. */
+  readonly fork: { readonly params: EntryParams; readonly result: { readonly cancelled: boolean } };
+  /** Rewinds in place. Refused while the session is busy. */
+  readonly navigate_tree: { readonly params: EntryParams; readonly result: NavigateTreeResult };
 }
 export type ChatHostMethod = keyof ChatHostMethodMap;
 
@@ -432,6 +520,14 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   export_html: ExportHtmlParams,
   handoff: CustomInstructionsParams,
   set_todos: SetTodosParams,
+  get_entries: EntriesParams,
+  get_tree: EmptyParams,
+  get_messages_page: MessagesPageParams,
+  get_branch_messages: EmptyParams,
+  new_session: NewSessionParams,
+  branch: EntryParams,
+  fork: EntryParams,
+  navigate_tree: EntryParams,
 };
 
 /** The methods of protocol version 1, in the order `hello` lists them. */
