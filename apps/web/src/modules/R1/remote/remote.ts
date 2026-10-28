@@ -197,7 +197,7 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
    */
   public async rename(remoteId: string, newTitle: string): Promise<void> {
     if (!this.options.rename) {
-      throw unavailable("Rename requires omp's set_session_name RPC", "omp.cmd.set_session_name");
+      throw unavailable("This omp cannot rename chats.", "omp.cmd.set_session_name");
     }
     const threadId = this.parseThreadId(remoteId);
     try {

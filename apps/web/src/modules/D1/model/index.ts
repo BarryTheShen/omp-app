@@ -8,7 +8,7 @@ export type {
 } from "./catalog";
 export {
   createR0LiveModelState,
-  createRpcModelCatalogSource,
+  createModelCatalogSource,
   descriptorKey,
   filterModels,
   ModelCatalogModel,

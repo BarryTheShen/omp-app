@@ -5,7 +5,7 @@ import {
   type ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import type { GetStateResult, ModeRpc } from "../contract";
+import type { GetStateResult, ModeHost } from "../contract";
 import { ModeController } from "./controller";
 import { SLOW_UNSUPPORTED_TEXT } from "./slow";
 
@@ -27,16 +27,16 @@ function stateWith(slow: Partial<GetStateResult>): GetStateResult {
 }
 
 /**
- * A mode RPC whose get_state answers `state()` and whose set_slow_mode answers `setSlow`. Each change sent to omp
+ * A mode host whose get_state answers `state()` and whose set_slow_mode answers `setSlow`. Each change sent to omp
  * is recorded, and so is each read, so a test can say what reached omp.
  */
-function rpcFake(options: {
+function hostFake(options: {
   readonly state?: () => GetStateResult | Promise<GetStateResult>;
   readonly setSlow?: (enabled: boolean) => Promise<{ readonly enabled: boolean }>;
 }) {
   const setCalls: boolean[] = [];
   let reads = 0;
-  const rpc: ModeRpc = {
+  const host: ModeHost = {
     getState: async () => {
       reads += 1;
       return (options.state ?? (() => stateWith({})))();
@@ -47,15 +47,15 @@ function rpcFake(options: {
       return options.setSlow ? options.setSlow(enabled) : { enabled };
     },
   };
-  return { rpc, setCalls, readCount: () => reads };
+  return { host, setCalls, readCount: () => reads };
 }
 
 describe("Slow mode as omp's get_state reports it", () => {
   test("a model without slow mode is unavailable, with the plain reason, and neither choice is set", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () => stateWith({ slowModeSupported: false, slowModeEnabled: false }),
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh();
     expect(controller.getSnapshot().modes.slow).toMatchObject({
       state: "unavailable",
@@ -66,11 +66,11 @@ describe("Slow mode as omp's get_state reports it", () => {
   });
 
   test("a model with slow mode on reads On, with the scope omp reports as saved for every chat", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () =>
         stateWith({ slowModeSupported: true, slowModeEnabled: true, slowModeScope: "global" }),
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh();
     expect(controller.getSnapshot().modes.slow).toMatchObject({
       state: "known",
@@ -83,11 +83,11 @@ describe("Slow mode as omp's get_state reports it", () => {
   });
 
   test("a model with slow mode off reads Off, scoped to this chat when omp says so", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () =>
         stateWith({ slowModeSupported: true, slowModeEnabled: false, slowModeScope: "session" }),
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh();
     expect(controller.getSnapshot().modes.slow).toMatchObject({
       state: "known",
@@ -100,7 +100,7 @@ describe("Slow mode as omp's get_state reports it", () => {
 
   test("omp's usage-limit stage is kept with the slow mode state, as omp reported it", async () => {
     const usageLimit = { stage: "wrap_up" as const, extraUsage: false, resetsAtSec: 1_791_720_000 };
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () =>
         stateWith({
           slowModeSupported: true,
@@ -109,15 +109,15 @@ describe("Slow mode as omp's get_state reports it", () => {
           usageLimit,
         }),
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh();
     expect(controller.getSnapshot().modes.slow?.usageLimit).toEqual(usageLimit);
     controller.dispose();
   });
 
   test("a read that does not say whether slow mode is offered leaves the choice unset", async () => {
-    const { rpc } = rpcFake({ state: () => stateWith({}) });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const { host } = hostFake({ state: () => stateWith({}) });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh();
     expect(controller.getSnapshot().modes.slow).toMatchObject({ state: "fallback" });
     expect(controller.getSnapshot().modes.slow?.requested).toBeUndefined();
@@ -125,12 +125,12 @@ describe("Slow mode as omp's get_state reports it", () => {
   });
 
   test("when get_state cannot be read, slow mode says the app could not reach omp", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: async () => {
         throw new Error("the connection dropped");
       },
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh().catch(() => undefined);
     expect(controller.getSnapshot().modes.slow).toMatchObject({
       state: "unavailable",
@@ -143,7 +143,7 @@ describe("Slow mode as omp's get_state reports it", () => {
 describe("changing Slow mode through set_slow_mode", () => {
   test("turning it on sends set_slow_mode, shows omp's answer, and reads the state again", async () => {
     let on = false;
-    const { rpc, setCalls, readCount } = rpcFake({
+    const { host, setCalls, readCount } = hostFake({
       state: () =>
         stateWith({ slowModeSupported: true, slowModeEnabled: on, slowModeScope: "global" }),
       setSlow: async (enabled) => {
@@ -151,7 +151,7 @@ describe("changing Slow mode through set_slow_mode", () => {
         return { enabled };
       },
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
     expect(result).toMatchObject({ ok: true, command: "set_slow_mode", state: "known" });
     expect(setCalls).toEqual([true]);
@@ -167,11 +167,11 @@ describe("changing Slow mode through set_slow_mode", () => {
 
   test("while omp has the change, the choice shows as made", async () => {
     const answer = Promise.withResolvers<{ readonly enabled: boolean }>();
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () => stateWith({ slowModeSupported: true, slowModeEnabled: false }),
       setSlow: () => answer.promise,
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     const pending = controller.request({ mode: "slow", scope: "session", requested: true });
     expect(controller.getSnapshot().modes.slow).toMatchObject({
       state: "requested",
@@ -185,14 +185,14 @@ describe("changing Slow mode through set_slow_mode", () => {
     const answer = Promise.withResolvers<{ readonly enabled: boolean }>();
     const refresh = Promise.withResolvers<GetStateResult>();
     const refreshStarted = Promise.withResolvers<void>();
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () => {
         refreshStarted.resolve();
         return refresh.promise;
       },
       setSlow: () => answer.promise,
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     const pending = controller.request({ mode: "slow", scope: "session", requested: true });
 
     expect(controller.getSnapshot().modes.slow).toMatchObject({
@@ -221,7 +221,7 @@ describe("changing Slow mode through set_slow_mode", () => {
   });
 
   test("a change omp refuses because the model has no slow mode says so in plain words, and omp's own text is not shown", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () => stateWith({ slowModeSupported: false, slowModeEnabled: false }),
       setSlow: async () => {
         throw new AppFailure({
@@ -231,7 +231,7 @@ describe("changing Slow mode through set_slow_mode", () => {
         });
       },
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
     expect(result).toMatchObject({
       ok: false,
@@ -247,14 +247,14 @@ describe("changing Slow mode through set_slow_mode", () => {
   });
 
   test("a change that fails for another reason keeps the value omp last reported, and says omp did not make it", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () =>
         stateWith({ slowModeSupported: true, slowModeEnabled: false, slowModeScope: "session" }),
       setSlow: async () => {
         throw new Error("the connection dropped");
       },
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     await controller.refresh();
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
     expect(result).toMatchObject({
@@ -270,13 +270,13 @@ describe("changing Slow mode through set_slow_mode", () => {
   });
 
   test("a cancelled change says the change was cancelled", async () => {
-    const { rpc } = rpcFake({
+    const { host } = hostFake({
       state: () => stateWith({ slowModeSupported: true, slowModeEnabled: false }),
       setSlow: async () => {
         throw new AppFailure({ code: "cancelled", message: "aborted", retryable: false });
       },
     });
-    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), host });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
     expect(result).toMatchObject({
       ok: false,
@@ -285,7 +285,7 @@ describe("changing Slow mode through set_slow_mode", () => {
     controller.dispose();
   });
 
-  test("without the mode RPC, slow mode is not available until the app is connected to omp", async () => {
+  test("without the mode host, slow mode is not available until the app is connected to omp", async () => {
     const controller = new ModeController({ threadId, capabilities: capabilities() });
     const message = "Slow mode is not available until the app is connected to omp.";
     expect(controller.getSnapshot().modes.slow).toMatchObject({
@@ -298,13 +298,13 @@ describe("changing Slow mode through set_slow_mode", () => {
   });
 
   test("a host that does not offer set_slow_mode sends no change, and says slow mode is not available in this chat", async () => {
-    const { rpc, setCalls } = rpcFake({});
+    const { host, setCalls } = hostFake({});
     const controller = new ModeController({
       threadId,
       capabilities: capabilities({
         "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
-      rpc,
+      host,
     });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
     expect(result).toMatchObject({

@@ -8,7 +8,7 @@ import {
   type PortCallOptions,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { ExecutionModePort, ModeCommandGateway, ModeRpc } from "../contract";
+import type { ExecutionModePort, ModeCommandGateway, ModeHost } from "../contract";
 import {
   type ExecutionMode,
   FastModeState,
@@ -55,7 +55,7 @@ export interface ModeControllerOptions {
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
   readonly gateway?: ModeCommandGateway;
-  readonly rpc?: ModeRpc;
+  readonly host?: ModeHost;
   readonly session?: ModeSessionSource;
   readonly signal?: PortCallOptions["signal"];
   /** Told when omp refuses a Fast mode change, so the surface can let go of omp's own notice about it. */
@@ -187,13 +187,13 @@ function modeCommandResult(
 
 function initialFastState(
   capabilities: CapabilityMap,
-  rpc: ModeRpc | undefined,
+  host: ModeHost | undefined,
 ): FastModeStateValue {
   const capability: CapabilityKey = "omp.cmd.set_fast_mode";
-  if (!isCapabilityUsable(capabilities, capability) || rpc === undefined) {
+  if (!isCapabilityUsable(capabilities, capability) || host === undefined) {
     const error = unavailableError(
       capability,
-      rpc === undefined
+      host === undefined
         ? "Fast mode is not available until the app is connected to omp."
         : "Fast mode is not available in this chat.",
     );
@@ -249,8 +249,8 @@ function initialModeState(
 }
 
 /** Slow mode before omp has answered: the line says it is being checked, and neither choice is set. */
-function initialSlowState(capabilities: CapabilityMap, rpc: ModeRpc | undefined): ModeState {
-  if (rpc === undefined) {
+function initialSlowState(capabilities: CapabilityMap, host: ModeHost | undefined): ModeState {
+  if (host === undefined) {
     const error = unavailableError(
       SLOW_CAPABILITY,
       "Slow mode is not available until the app is connected to omp.",
@@ -295,14 +295,14 @@ function commandOptions(
 }
 
 /**
- * Browser-side mode controller. It owns no omp state: Fast and Slow mode come from the injected mode RPC port,
+ * Browser-side mode controller. It owns no omp state: Fast and Slow mode come from the injected mode host (the chat host's requests),
  * and the other slash commands go through A1's typed gateway, which returns typed outcomes.
  */
 export class ModeController implements ModeControllerPort {
   private capabilities: CapabilityMap;
   private readonly threadId: ThreadId;
   private readonly gateway: ModeCommandGateway | undefined;
-  private readonly rpc: ModeRpc | undefined;
+  private readonly host: ModeHost | undefined;
   private readonly session: ModeSessionSource | undefined;
   private readonly signal: PortCallOptions["signal"] | undefined;
   private readonly onFastRefused: (() => void) | undefined;
@@ -324,17 +324,17 @@ export class ModeController implements ModeControllerPort {
     this.capabilities = options.capabilities;
     this.threadId = options.threadId;
     this.gateway = options.gateway;
-    this.rpc = options.rpc;
+    this.host = options.host;
     this.session = options.session;
     this.signal = options.signal;
     this.onFastRefused = options.onFastRefused;
-    this.fast = initialFastState(this.capabilities, this.rpc);
+    this.fast = initialFastState(this.capabilities, this.host);
     this.modeStates = Object.fromEntries(
       D73_MODES.filter(
         (mode): mode is Exclude<D73Mode, "fast" | "slow"> => mode !== "fast" && mode !== "slow",
       ).map((mode) => [mode, initialModeState(mode, this.capabilities, this.gateway)]),
     ) as Partial<Record<ExecutionMode, ModeState>>;
-    this.modeStates.slow = initialSlowState(this.capabilities, this.rpc);
+    this.modeStates.slow = initialSlowState(this.capabilities, this.host);
     this.snapshot = this.buildSnapshot();
     this.unsubscribeSession = this.session?.subscribe((projection) => {
       this.applySessionProjection(projection);
@@ -360,7 +360,7 @@ export class ModeController implements ModeControllerPort {
     this.capabilities = capabilities;
     const fastCapability: CapabilityKey = "omp.cmd.set_fast_mode";
     if (!isCapabilityUsable(capabilities, fastCapability) || this.fast.state === "unavailable") {
-      this.fast = initialFastState(capabilities, this.rpc);
+      this.fast = initialFastState(capabilities, this.host);
     }
     for (const mode of COMMAND_MODES) {
       const current = this.modeStates[mode];
@@ -379,13 +379,13 @@ export class ModeController implements ModeControllerPort {
       !isCapabilityUsable(capabilities, SLOW_CAPABILITY) ||
       this.modeStates.slow?.state === "unavailable"
     ) {
-      this.modeStates.slow = initialSlowState(capabilities, this.rpc);
+      this.modeStates.slow = initialSlowState(capabilities, this.host);
     }
     this.commit();
   }
 
   public async refresh(options?: ModeRequestOptions): Promise<ModeSnapshot> {
-    if (this.rpc === undefined) {
+    if (this.host === undefined) {
       this.commit();
       return this.snapshot;
     }
@@ -398,7 +398,7 @@ export class ModeController implements ModeControllerPort {
       throw new AppFailure(error);
     }
     try {
-      const state = await this.rpc.getState(commandOptions(options?.signal ?? this.signal));
+      const state = await this.host.getState(commandOptions(options?.signal ?? this.signal));
       const enabled = state.fastModeEnabled;
       const active = state.fastModeActive;
       if (enabled === undefined || active === undefined) {
@@ -503,10 +503,10 @@ export class ModeController implements ModeControllerPort {
   ): Promise<ModeCommandResult> {
     const command = "set_fast_mode";
     const capability: CapabilityKey = "omp.cmd.set_fast_mode";
-    if (this.rpc === undefined || !isCapabilityUsable(this.capabilities, capability)) {
+    if (this.host === undefined || !isCapabilityUsable(this.capabilities, capability)) {
       const error = unavailableError(
         capability,
-        this.rpc === undefined
+        this.host === undefined
           ? "Fast mode is not available until the app is connected to omp."
           : "Fast mode is not available in this chat.",
       );
@@ -533,7 +533,7 @@ export class ModeController implements ModeControllerPort {
     );
     this.commit();
     try {
-      const result = await this.rpc.setFastMode(
+      const result = await this.host.setFastMode(
         { enabled: requested },
         commandOptions(options?.signal ?? this.signal),
       );
@@ -572,10 +572,10 @@ export class ModeController implements ModeControllerPort {
     options?: ModeRequestOptions,
   ): Promise<ModeCommandResult> {
     const command = "set_slow_mode";
-    if (this.rpc === undefined || !isCapabilityUsable(this.capabilities, SLOW_CAPABILITY)) {
+    if (this.host === undefined || !isCapabilityUsable(this.capabilities, SLOW_CAPABILITY)) {
       const error = unavailableError(
         SLOW_CAPABILITY,
-        this.rpc === undefined
+        this.host === undefined
           ? "Slow mode is not available until the app is connected to omp."
           : "Slow mode is not available in this chat.",
       );
@@ -592,7 +592,7 @@ export class ModeController implements ModeControllerPort {
       );
     }
     // The choice is shown as made until omp answers; the value omp last left stays underneath.
-    const previous = this.modeStates.slow ?? initialSlowState(this.capabilities, this.rpc);
+    const previous = this.modeStates.slow ?? initialSlowState(this.capabilities, this.host);
     // get_state confirms scope; set_slow_mode only confirms the toggle.
     const reportedScope =
       this.reportedSlow?.slowModeSupported === true ? previous.scope : "default";
@@ -609,7 +609,7 @@ export class ModeController implements ModeControllerPort {
     });
     this.commit();
     try {
-      const result = await this.rpc.setSlowMode(
+      const result = await this.host.setSlowMode(
         { enabled: requested },
         commandOptions(options?.signal ?? this.signal),
       );
@@ -845,7 +845,7 @@ export class ModeController implements ModeControllerPort {
       return;
     }
     if (!isCapabilityUsable(this.capabilities, SLOW_CAPABILITY)) {
-      this.modeStates.slow = initialSlowState(this.capabilities, this.rpc);
+      this.modeStates.slow = initialSlowState(this.capabilities, this.host);
       return;
     }
     this.modeStates.slow = slowKnownState(

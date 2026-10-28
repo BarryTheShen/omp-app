@@ -90,7 +90,7 @@ async function chooseValue(
 /**
  * Opens advisor configuration through U4's app-origin DialogHost. omp's configure subcommand is
  * terminal-only at v18.9.1, so this wizard edits the same settings through A1's typed store instead
- * of pretending the RPC command opened a browser editor.
+ * of pretending omp's command opened a browser editor.
  */
 export async function openAdvisorConfiguration(options: {
   readonly dialogs: DialogHost;

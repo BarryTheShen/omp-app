@@ -8,7 +8,7 @@ import {
   ConnectedModeControls,
   createModeCommandGateway,
   createModeController,
-  createModeRpc,
+  createModeHost,
   D7_EXECUTION_MODES_COMMAND,
   type ModeController,
 } from "@/modules/D7/modes";
@@ -108,7 +108,7 @@ export function useExecutionModesSurface({
         threadId,
         capabilities: capabilitiesRef.current,
         gateway: createModeCommandGateway(client),
-        rpc: createModeRpc(client, threadId),
+        host: createModeHost(client, threadId),
         onFastRefused: () => onFastRefusedRef.current?.(),
       }),
     [client, threadId],

@@ -170,7 +170,7 @@ describe("P7 compaction and cache dividers", () => {
 });
 
 describe("P7 compaction panel", () => {
-  test("routes manual and automatic actions through callbacks without owning RPC state", () => {
+  test("routes manual and automatic actions through callbacks without owning omp's state", () => {
     const onCompact = vi.fn();
     const onAutoCompactionChange = vi.fn();
     renderPanel(compactionState(), { onCompact, onAutoCompactionChange });

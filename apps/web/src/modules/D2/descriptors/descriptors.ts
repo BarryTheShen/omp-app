@@ -4,7 +4,7 @@ import type { Descriptor } from "@omp-app/contracts";
  * D2's command-source descriptors: the six D3 inventory rows that D2.1's composer triggers do not cover (D2.1 covers the
  * slash trigger and every D7 row). The five sources omp lists in get_available_commands claim their whole source:
  * `slash.name` is `*`, since no one command name stands for a source, and the ownership table gives each
- * `source:<name>` to D2. The prompt templates are not in omp's command list over RPC (fixtures/captures.ts records two
+ * `source:<name>` to D2. The prompt templates are not in omp's command list (fixtures/captures.ts records two
  * of them and their absence), so their descriptor claims no slash name; a typed prompt reaches omp's template handling
  * through the `prompt` command. No descriptor has a handler, so the command palette does not list these.
  */

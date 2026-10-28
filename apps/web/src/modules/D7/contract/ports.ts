@@ -21,7 +21,7 @@ export interface ModeCommandGateway {
 }
 
 /** The chat host's requests for the modes omp reports and changes; params and results are the host's (`@omp-app/contracts`). */
-export interface ModeRpc {
+export interface ModeHost {
   readonly getState: (options?: PortCallOptions) => Promise<GetStateResult>;
   readonly setFastMode: (
     args: ChatHostMethodMap["set_fast_mode"]["params"],
@@ -51,6 +51,6 @@ export interface ModeContractContext {
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
   readonly gateway?: ModeCommandGateway;
-  readonly rpc?: ModeRpc;
+  readonly host?: ModeHost;
   readonly signal?: AbortSignalLike;
 }

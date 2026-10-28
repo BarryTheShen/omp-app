@@ -58,7 +58,7 @@ realTest(
             if (failNext && id !== undefined) {
               failNext = false;
               failures += 1;
-              // Mirrors the server's AppFailure when its omp RPC transport closes (rpc-session.ts:281-284).
+              // Mirrors the server's AppFailure when the chat host closes before it answers (`packages/server/src/ports/A0/chat-session.ts`).
               socket.send(
                 JSON.stringify({
                   type: "result",
@@ -66,7 +66,7 @@ realTest(
                   ok: false,
                   error: {
                     code: "omp_exited",
-                    message: "The omp RPC transport closed",
+                    message: "omp stopped before it answered. Try again.",
                     retryable: true,
                   },
                 }),

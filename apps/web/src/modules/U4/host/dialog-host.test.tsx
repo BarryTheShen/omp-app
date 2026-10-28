@@ -66,7 +66,7 @@ function Harness({
             message:
               state.failureCode === "not_found"
                 ? "No pending extension UI request"
-                : "The omp RPC transport closed",
+                : "omp stopped before it answered. Try again.",
             retryable: state.failureCode === "omp_exited",
           });
         }

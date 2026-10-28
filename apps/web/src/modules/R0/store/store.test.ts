@@ -1058,7 +1058,7 @@ describe("OmpRuntimeStore", () => {
           if (attempts === 1) {
             throw new AppFailure({
               code: "omp_exited",
-              message: "The omp RPC transport closed",
+              message: "omp stopped before it answered. Try again.",
               retryable: true,
             });
           }
@@ -1077,7 +1077,7 @@ describe("OmpRuntimeStore", () => {
       2,
     );
     await expect(store.answerDialog("ui-failed", { confirmed: true })).rejects.toMatchObject({
-      appError: { code: "omp_exited", message: "The omp RPC transport closed" },
+      appError: { code: "omp_exited", message: "omp stopped before it answered. Try again." },
     });
     expect(store.getSnapshot().error).toBeNull();
     expect(Object.keys(store.getSnapshot().pending.dialogs)).toEqual(["ui-failed"]);

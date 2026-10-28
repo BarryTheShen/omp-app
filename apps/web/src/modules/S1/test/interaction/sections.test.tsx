@@ -252,7 +252,7 @@ const OMP_DESCRIPTION_ROWS: readonly {
     key: "autoResume",
     description: "Automatically resume the most recent session in the current directory",
     source:
-      "modes/settings.ts:38; main.ts:1284-1295,2054-2062; packages/server/src/process/omp-process.ts:15,262 (New chat uses rpc-ui without a session override, so it no longer resumes the last folder session)",
+      "modes/settings.ts:38; main.ts:1284-1295,2054-2062; packages/server/src/chat-host/session-factory.ts (a New chat starts its chat host with no session to resume, so it never resumes the last folder session)",
   },
   {
     key: "startup.quiet",

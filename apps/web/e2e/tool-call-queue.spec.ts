@@ -26,7 +26,7 @@ const BASH = "tool-card-call_queued_bash";
 const WRITE = "tool-card-call_queued_write";
 const REFETCH_MS = 1_500;
 
-/** The frame's `payload` as an RPC session event, or undefined when the frame carries none. */
+/** The frame's `payload` as a chat session event, or undefined when the frame carries none. */
 function payloadOf(frame: Record<string, unknown>): Record<string, unknown> | undefined {
   return typeof frame.payload === "object" && frame.payload !== null
     ? (frame.payload as Record<string, unknown>)

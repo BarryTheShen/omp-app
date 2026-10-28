@@ -2,7 +2,7 @@ import type { ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { OmpRuntimeStore } from "../../R0/store";
 import type { AutonomyPort } from "../contract";
-import { GoalRpcResultSchema, GoalUpdatedEventSchema } from "../contract";
+import { GoalResultSchema, GoalUpdatedEventSchema } from "../contract";
 
 export type GoalRuntimeStore = Pick<
   OmpRuntimeStore,
@@ -29,7 +29,7 @@ export function createAutonomyPort(options: {
     async goal(threadId, args, callOptions) {
       requireCurrentThread(options.store, threadId);
       const result = await options.request({ threadId, method: "goal", params: args }, callOptions);
-      return GoalRpcResultSchema.parse(result);
+      return GoalResultSchema.parse(result);
     },
     subscribeGoal(threadId, listener) {
       if (options.store.getSnapshot().threadId !== threadId) return () => {};

@@ -33,7 +33,7 @@ import {
 } from "@/modules/D2/slash";
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { modeOutcomeText } from "@/modules/D7/modes";
-import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
+import type { GoalArgs, GoalResult } from "@/modules/D8/contract";
 import type { ConversationTransitionPort } from "@/modules/P4/transitions";
 import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import { sessionTitle } from "@/modules/R1/ui";
@@ -285,7 +285,7 @@ export function hotkeysSlashCommand({
 export function goalSlashCommand({
   sendGoal,
 }: {
-  readonly sendGoal: (args: GoalRpcArgs) => Promise<GoalRpcResult>;
+  readonly sendGoal: (args: GoalArgs) => Promise<GoalResult>;
 }): SlashAppCommand {
   return {
     name: "goal",

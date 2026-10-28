@@ -36,7 +36,7 @@ function untilAborted(gate: Promise<void>, signal: AbortSignal | undefined): Pro
  * The server's ports for the controller: the chat session port (opens, requests, the open dialogs, closes) and the
  * capability map, which is the one the last open's answer names (`capabilities` in `open`'s result).
  */
-function createRpc(
+function createFakeSession(
   open: (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) => unknown,
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
   questions: OpenHostRequests = [],
@@ -109,7 +109,7 @@ interface SubscriptionRecord {
 }
 
 function fakeClient(
-  rpc: ChatSessionClient,
+  fakeSession: ChatSessionClient,
   subscriptions: SubscriptionRecord[],
   replayed: readonly ChatSessionEvent[] = [],
   failSubscriptionAt?: number,
@@ -119,7 +119,7 @@ function fakeClient(
   return {
     connectionState: "open",
     instanceId: "instance-1",
-    port: () => rpc,
+    port: () => fakeSession,
     onConnectionState: () => () => {},
     onResync: () => () => {},
     subscribe: async (_port: unknown, _event: unknown, options?: SubscribeOptions) => {
@@ -158,12 +158,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("opens existing, loads the newest page, then pages older history through the thread's loader", async () => {
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       (_args) => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const older = vi
@@ -185,12 +185,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("a model picked for a chat omp could not restore is passed to the open", async () => {
     const opened: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -205,7 +205,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     localStorage.clear();
     rememberPickedModel(threadOne, { provider: "fake", modelId: "fake-model" });
     const opened: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       if (!("model" in args) || args.model === undefined) {
         throw new AppFailure({
@@ -217,7 +217,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -232,8 +232,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("reads the newest window from the thread's session file through the file-store port", async () => {
     const sessionFile = "/workspace/project/thread-one.jsonl";
-    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
-    const rpc = {
+    const base = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = {
       ...base,
       request: async (args: { method: string }) =>
         args.method === "get_state"
@@ -255,8 +255,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
       },
     };
     const client = {
-      ...fakeClient(rpc, []),
-      port: (schema: unknown) => (schema === SessionFileStore ? sessionFiles : rpc),
+      ...fakeClient(fakeSession, []),
+      port: (schema: unknown) => (schema === SessionFileStore ? sessionFiles : fakeSession),
     } as unknown as AppClient;
     const controller = createSelectedThreadHistoryController({ client, folder });
 
@@ -267,12 +267,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("opens new and latest sessions with explicit folder start intents", async () => {
     const opens: unknown[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
     await controller.openNew();
@@ -284,9 +284,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
   });
 
   test("a chat opened as new is marked openedNew, and a chat opened as latest is not", async () => {
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
     await controller.openNew();
@@ -297,7 +297,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("a chat started as new is marked openedNew while its history still loads, and opening another chat clears the mark", async () => {
     const { promise: historyLoad, resolve: finishLoad } = Promise.withResolvers<void>();
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       (args) => ({
         threadId: "threadId" in args ? args.threadId : threadOne,
         sessionFile: null,
@@ -310,7 +310,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       historyLoad,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
     const opening = controller.openStarted(threadOne);
@@ -331,14 +331,14 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("switching threads unsubscribes the old event stream before opening the new one", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc((args) => ({
+    const fakeSession = createFakeSession((args) => ({
       threadId:
         args && (args as { threadId?: ThreadId }).threadId === threadOne ? threadOne : threadTwo,
       sessionFile: null,
       capabilities: {},
     }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -352,12 +352,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("picking the chat that is open and loaded keeps its store, and omp is not asked to open it again", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const first = await controller.openExisting(threadOne);
@@ -373,13 +373,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
     const newChat = Promise.withResolvers<unknown>();
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       if ("start" in args) return newChat.promise;
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -398,13 +398,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
     const latest = Promise.withResolvers<unknown>();
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       if ("start" in args) return latest.promise;
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const opening = controller.openLatest();
@@ -421,13 +421,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
     const pickOpen = Promise.withResolvers<unknown>();
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       if ("start" in args) return { threadId: threadTwo, sessionFile: null, capabilities: {} };
       return pickOpen.promise;
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const picked = controller.pickExisting(threadOne);
@@ -444,11 +444,11 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
     const resyncListeners: ResyncListener[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
-    const client = fakeClient(rpc, subscriptions);
+    const client = fakeClient(fakeSession, subscriptions);
     const controller = createSelectedThreadHistoryController({
       client: {
         ...client,
@@ -475,12 +475,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const resyncListeners: ResyncListener[] = [];
     const reopen = Promise.withResolvers<unknown>();
     let reopening = false;
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       if (reopening) return reopen.promise;
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
-    const client = fakeClient(rpc, subscriptions);
+    const client = fakeClient(fakeSession, subscriptions);
     const controller = createSelectedThreadHistoryController({
       client: {
         ...client,
@@ -519,7 +519,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     let switching = false;
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc((args) => {
+        createFakeSession((args) => {
           opened.push(args);
           return switching
             ? next.promise
@@ -555,7 +555,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc((args) => {
+        createFakeSession((args) => {
           if ("threadId" in args && args.threadId === threadTwo)
             throw new AppFailure({
               code: "internal",
@@ -587,7 +587,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     let hold = false;
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc((args) => {
+        createFakeSession((args) => {
           if (hold) return gate.promise;
           return {
             threadId: "threadId" in args ? args.threadId : threadOne,
@@ -627,7 +627,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     let failing = false;
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc(
+        createFakeSession(
           (args) => ({
             threadId: "threadId" in args ? args.threadId : threadOne,
             sessionFile: null,
@@ -671,12 +671,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("reopening the chat on screen asks omp for it again, as a reconnect does: its store is new", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const first = await controller.openExisting(threadOne);
@@ -688,7 +688,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("after omp moves a chat to its branch in place, switching to the branch and picking the source each open that chat", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const opened: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opened.push(args);
       return {
         threadId: "threadId" in args ? args.threadId : threadOne,
@@ -697,7 +697,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const source = await controller.openExisting(threadOne);
@@ -725,9 +725,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("opening replays the thread's buffered events and treats a get_state answer as ready", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const store = await controller.openExisting(threadOne);
@@ -737,8 +737,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("follows live events when the server's replay window has moved past the start", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
-    const client = fakeClient(rpc, subscriptions);
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const client = fakeClient(fakeSession, subscriptions);
     const attempts: Array<number | undefined> = [];
     const controller = createSelectedThreadHistoryController({
       client: {
@@ -764,9 +764,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("resumes a reconnect from afterSeq without duplicate event application", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const store = await controller.openExisting(threadOne);
@@ -785,8 +785,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const entriesHeld = Promise.withResolvers<void>();
-    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
-    const rpc = {
+    const base = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = {
       ...base,
       request: async (args: { threadId: ThreadId; method: string }) => {
         calls.push({ type: args.method, threadId: args.threadId });
@@ -797,7 +797,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       },
     } as unknown as ChatSessionClient;
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const opening = controller.openExisting(threadOne);
@@ -831,9 +831,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("an event the server replays before it acknowledges the subscription reaches the store, from the chat's first event", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [
+      client: fakeClient(fakeSession, subscriptions, [
         { kind: "process", status: "ready" } as ChatSessionEvent,
       ]),
       folder,
@@ -844,9 +844,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
   });
   test("keeps a startup extension error when the replayed process becomes ready afterward", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [
+      client: fakeClient(fakeSession, subscriptions, [
         {
           kind: "event",
           event: {
@@ -875,7 +875,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("a question omp is still waiting on is shown again when its chat is opened, and one it answered is not", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [
@@ -890,7 +890,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       ],
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [
+      client: fakeClient(fakeSession, subscriptions, [
         {
           kind: "host_request",
           request: { id: "ui-done", method: "ui.confirm", params: { title: "Done?", message: "" } },
@@ -914,9 +914,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("a question the server replays before it acknowledges the subscription is not asked again, and a live one is", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [
+      client: fakeClient(fakeSession, subscriptions, [
         {
           kind: "host_request",
           request: {
@@ -948,7 +948,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("a chat opened again applies only what came after its last turn ended: the turns before are the session file's", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const store = new OmpRuntimeStore({ threadId: threadOne });
     const notified: string[] = [];
     store.subscribeNotifications(["ui_notify"], (frame) => {
@@ -957,7 +957,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const notice = (message: string) =>
       ({ kind: "event", event: { type: "ui_notify", message } }) as ChatSessionEvent;
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [
+      client: fakeClient(fakeSession, subscriptions, [
         notice("Turn one"),
         { kind: "event", event: { type: "session_settled" } } as ChatSessionEvent,
         notice("Turn two"),
@@ -973,8 +973,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("the open chat is saved as soon as it is open, before its history has loaded", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const entriesHeld = Promise.withResolvers<void>();
-    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
-    const rpc = {
+    const base = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = {
       ...base,
       request: async (args: { threadId: ThreadId; method: string }) => {
         if (args.method === "get_entries") await entriesHeld.promise;
@@ -985,7 +985,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     } as unknown as ChatSessionClient;
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
       onThreadIdChange: (threadId) => saved.push(threadId),
     });
@@ -1001,10 +1001,10 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("re-keys in place during a turn without replacing the streaming store", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const switched: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
       onThreadIdChange: (threadId) => {
         if (threadId) switched.push(threadId);
@@ -1057,13 +1057,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("keeps the new id and refetch watch when the re-key subscription fails", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
     );
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [], 2),
+      client: fakeClient(fakeSession, subscriptions, [], 2),
       folder,
       onThreadIdChange: (threadId) => saved.push(threadId),
     });
@@ -1095,9 +1095,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("reports a failed re-key history read and keeps its retry watch", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
-    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const base = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     let failFirstRekeyRead = true;
-    const rpc = {
+    const fakeSession = {
       ...base,
       request: async (
         args: { readonly threadId: ThreadId; readonly method: string },
@@ -1117,7 +1117,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     } as unknown as ChatSessionClient;
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
       onThreadIdChange: (threadId) => saved.push(threadId),
     });
@@ -1152,9 +1152,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const stateReadStarted = Promise.withResolvers<void>();
     const neverReleased = Promise.withResolvers<void>();
-    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const base = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     let holdRekeyStateRead = true;
-    const rpc = {
+    const fakeSession = {
       ...base,
       request: async (
         args: { readonly threadId: ThreadId; readonly method: string },
@@ -1171,7 +1171,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     } as unknown as ChatSessionClient;
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
       onThreadIdChange: (threadId) => saved.push(threadId),
     });
@@ -1212,12 +1212,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("refreshes history and session state after each settled turn", async () => {
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -1233,12 +1233,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
   test("refreshes the open thread after a bash command, without waiting for a turn", async () => {
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -1255,14 +1255,14 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const firstRead = new Promise<void>((resolve) => {
       releaseFirstRead = () => resolve();
     });
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
       [],
       firstRead,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     // The new chat is on screen, and its first history read is still in flight when the command finishes.
@@ -1291,14 +1291,14 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const firstRead = new Promise<void>((resolve) => {
       releaseFirstRead = () => resolve();
     });
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
       [],
       firstRead,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const opening = controller.openNew();
@@ -1343,7 +1343,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
   test("lets go of the chat on the server when it closes or switches away, and a failed release never blocks the next chat", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc((args) => ({
+    const fakeSession = createFakeSession((args) => ({
       threadId: (args as { threadId?: ThreadId }).threadId ?? threadOne,
       sessionFile: null,
       capabilities: {},
@@ -1351,7 +1351,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const released: ThreadId[] = [];
     let failure: AppFailure | undefined;
     let silent = false;
-    (rpc as unknown as { close: (args: { threadId: ThreadId }) => Promise<null> }).close = async ({
+    (fakeSession as unknown as { close: (args: { threadId: ThreadId }) => Promise<null> }).close = async ({
       threadId,
     }) => {
       released.push(threadId);
@@ -1360,7 +1360,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
       return null;
     };
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
 
@@ -1408,7 +1408,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 describe("SelectedThreadHistoryController reopening a saved chat", () => {
   test("a saved chat the server no longer has is replaced by a new chat in its folder", async () => {
     const opens: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       if ("threadId" in args) {
         throw new AppFailure({
@@ -1420,7 +1420,7 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
       return { threadId: threadTwo, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -1433,12 +1433,12 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
 
   test("a saved chat that still exists opens as it did before", async () => {
     const opens: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -1450,12 +1450,12 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
 
   test("any other failure is reported, and no new chat is opened in its place", async () => {
     const opens: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       throw new AppFailure({ code: "permission", message: "denied", retryable: false });
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -1470,7 +1470,7 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
 describe("SelectedThreadHistoryController when omp stops while a chat opens", () => {
   test("omp's exit while the chat's history loads keeps the chat on screen, and the exit reaches the chat's banner", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1483,7 +1483,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
         }),
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
 
@@ -1516,7 +1516,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     const subscriptions: SubscriptionRecord[] = [];
     const saved: ThreadId[] = [];
     const reads = { count: 0 };
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       (args) => ({
         threadId: "threadId" in args ? args.threadId : threadOne,
         sessionFile: null,
@@ -1537,7 +1537,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       },
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
       onThreadIdChange: (threadId) => {
         if (threadId !== undefined) saved.push(threadId);
@@ -1551,7 +1551,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       "omp.ui": { state: "available", via: "omp" },
     };
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       (args) => ({
         threadId: "threadId" in args ? args.threadId : threadOne,
         sessionFile: null,
@@ -1572,7 +1572,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       },
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -1588,9 +1588,9 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     const subscriptions: SubscriptionRecord[] = [];
     let controller: SelectedThreadHistoryController;
     let loads = 0;
-    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
       createLoader: (threadId, session, store) => {
         const loader = new SessionHistoryLoader({
@@ -1663,7 +1663,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
   test("a switch whose new chat cannot subscribe because omp exited ends both views and lets the new chat go", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const closed: ThreadId[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       (args) => ({
         threadId: "threadId" in args ? args.threadId : threadOne,
         sessionFile: null,
@@ -1683,7 +1683,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       retryable: true,
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions, [], 2, exit),
+      client: fakeClient(fakeSession, subscriptions, [], 2, exit),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -1702,7 +1702,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
   test("reloads initial history when omp restarts after stopping during the first history read", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1719,7 +1719,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       },
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
 
@@ -1749,7 +1749,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     const subscriptions: SubscriptionRecord[] = [];
     const heldHistoryRead = Promise.withResolvers<void>();
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1768,7 +1768,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       2,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -1792,7 +1792,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
   test("re-arms history after a second omp exit during the retry", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1809,7 +1809,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       },
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const store = await controller.openExisting(threadOne);
@@ -1856,7 +1856,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
   test("lets the person retry a visible history-load failure", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1880,7 +1880,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       },
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const store = await controller.openExisting(threadOne);
@@ -1920,7 +1920,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     const subscriptions: SubscriptionRecord[] = [];
     const heldHistoryRead = Promise.withResolvers<void>();
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1939,7 +1939,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       2,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
 
@@ -1961,7 +1961,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     const subscriptions: SubscriptionRecord[] = [];
     const heldHistoryRead = Promise.withResolvers<void>();
     let historyReads = 0;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -1980,7 +1980,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       2,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
 
@@ -2019,7 +2019,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
     let refreshFails = false;
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
       [],
@@ -2027,7 +2027,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
       () => (refreshFails ? omExit() : undefined),
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const store = await controller.openExisting(threadOne);
@@ -2068,7 +2068,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
   test("a refresh after a settled turn that fails for another reason still reports it", async () => {
     let refreshFails = false;
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -2083,7 +2083,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
           : undefined,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -2103,7 +2103,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
     let refreshFails = false;
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const subscriptions: SubscriptionRecord[] = [];
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
       [],
@@ -2111,7 +2111,7 @@ describe("SelectedThreadHistoryController when omp stops after a settled turn", 
       () => (refreshFails ? omExit() : undefined),
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
+      client: fakeClient(fakeSession, subscriptions),
       folder,
     });
     const store = await controller.openExisting(threadOne);
@@ -2163,12 +2163,12 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
   const start = { kind: "event", event: { type: "agent_start" } } as ChatSessionEvent;
 
   /** The fake connection, with the chats it lets go of recorded in `released`. */
-  function recordingRpc(
+  function recordingSession(
     open: (args: OpenThreadArgs) => unknown,
     released: ThreadId[],
   ): ChatSessionClient {
     return {
-      ...createRpc(open),
+      ...createFakeSession(open),
       close: async ({ threadId }: { readonly threadId: ThreadId }) => {
         released.push(threadId);
         return null;
@@ -2193,7 +2193,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     const released: ThreadId[] = [];
     const settled: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(recordingRpc(openAs, released), subscriptions),
+      client: fakeClient(recordingSession(openAs, released), subscriptions),
       folder,
       onTurnSettled: (threadId) => settled.push(threadId),
     });
@@ -2214,7 +2214,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     const released: ThreadId[] = [];
     const settled: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(recordingRpc(openAs, released), []),
+      client: fakeClient(recordingSession(openAs, released), []),
       folder,
       onTurnSettled: (threadId) => settled.push(threadId),
     });
@@ -2230,7 +2230,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     const released: ThreadId[] = [];
     const leftRunning: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(recordingRpc(openAs, released), []),
+      client: fakeClient(recordingSession(openAs, released), []),
       folder,
       onLeftRunning: (threadId) => leftRunning.push(threadId),
     });
@@ -2246,7 +2246,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     const released: ThreadId[] = [];
     const leftRunning: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(recordingRpc(openAs, released), []),
+      client: fakeClient(recordingSession(openAs, released), []),
       folder,
       onLeftRunning: (threadId) => leftRunning.push(threadId),
     });
@@ -2263,7 +2263,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     const released: ThreadId[] = [];
     const settled: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(recordingRpc(openAs, released), subscriptions),
+      client: fakeClient(recordingSession(openAs, released), subscriptions),
       folder,
       onTurnSettled: (threadId) => settled.push(threadId),
     });
@@ -2288,7 +2288,7 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     const subscriptions: SubscriptionRecord[] = [];
     const settled: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(recordingRpc(openAs, []), subscriptions),
+      client: fakeClient(recordingSession(openAs, []), subscriptions),
       folder,
       onTurnSettled: (threadId) => settled.push(threadId),
     });
@@ -2305,12 +2305,12 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
 describe("SelectedThreadHistoryController sharing a pending open", () => {
   test("requests for a chat that is still opening share one open, and all get its store", async () => {
     const opens: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2328,7 +2328,7 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
 
   test("a request for another chat in between cancels the open before it, so the last pick is the one shown", async () => {
     const opens: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       return {
         threadId: "threadId" in args ? args.threadId : threadTwo,
@@ -2337,7 +2337,7 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
       };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2358,7 +2358,7 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
 
   test("a New chat asked for in between is not skipped by a later request for the chat before it", async () => {
     const opens: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       opens.push(args);
       return {
         threadId: "threadId" in args ? args.threadId : threadTwo,
@@ -2367,7 +2367,7 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
       };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2389,14 +2389,14 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
 describe("SelectedThreadHistoryController closed while it is opening", () => {
   test("a chat closed while its open is pending is not saved as the open chat", async () => {
     const gate: { finish?: () => void } = {};
-    const rpc = createRpc(() => {
+    const fakeSession = createFakeSession(() => {
       const { promise, resolve } = Promise.withResolvers<unknown>();
       gate.finish = () => resolve({ threadId: threadOne, sessionFile: null, capabilities: {} });
       return promise;
     });
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
       onThreadIdChange: (threadId) => saved.push(threadId),
     });
@@ -2421,7 +2421,7 @@ describe("SelectedThreadHistoryController whenSettled", () => {
     }>();
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc(() => opened.promise),
+        createFakeSession(() => opened.promise),
         [],
       ),
       folder,
@@ -2444,7 +2444,7 @@ describe("SelectedThreadHistoryController whenSettled", () => {
   test("a switch held before its open keeps the wait until the hold is released", async () => {
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} })),
+        createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} })),
         [],
       ),
       folder,
@@ -2466,7 +2466,7 @@ describe("SelectedThreadHistoryController whenSettled", () => {
   test("a New chat's hold outlasts another chat's open, and is let go only by its own release", async () => {
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(
-        createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} })),
+        createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} })),
         [],
       ),
       folder,
@@ -2489,8 +2489,8 @@ describe("SelectedThreadHistoryController whenSettled", () => {
 
   test("waiting for a chat to open ends when the chat is on screen, not when its history has loaded", async () => {
     const entriesHeld = Promise.withResolvers<void>();
-    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
-    const rpc = {
+    const base = createFakeSession(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const fakeSession = {
       ...base,
       request: async (args: { threadId: ThreadId; method: string }) => {
         if (args.method === "get_entries") await entriesHeld.promise;
@@ -2500,7 +2500,7 @@ describe("SelectedThreadHistoryController whenSettled", () => {
       },
     } as unknown as ChatSessionClient;
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
     // A new chat's history loads only once its first prompt arrives, so the open itself can stay pending.
@@ -2513,7 +2513,7 @@ describe("SelectedThreadHistoryController whenSettled", () => {
 describe("SelectedThreadHistoryController after the connection drops while a chat opens", () => {
   test("a chat whose open lost the connection is opened again once the connection is back", async () => {
     let connectionDown = true;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -2528,7 +2528,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
           : undefined,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2545,7 +2545,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
 
   test("a chat the person closes is not opened again when the connection comes back", async () => {
     let connectionDown = true;
-    const rpc = createRpc(
+    const fakeSession = createFakeSession(
       () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       [],
       [],
@@ -2560,7 +2560,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
           : undefined,
     );
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2576,7 +2576,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
 
   test("a pick made while the open is failing is not reopened once the connection is back", async () => {
     const lost = Promise.withResolvers<void>();
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       if ("threadId" in args && args.threadId === threadOne) {
         return lost.promise.then(() => {
           throw new AppFailure({
@@ -2589,7 +2589,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
       return { threadId: threadTwo, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2604,7 +2604,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
 
   test("a chat closed while its open is failing is not opened again", async () => {
     const lost = Promise.withResolvers<void>();
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       if ("threadId" in args && args.threadId === threadOne) {
         return lost.promise.then(() => {
           throw new AppFailure({
@@ -2617,7 +2617,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
       return { threadId: threadTwo, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2632,7 +2632,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
 
   test("a chat closed after its open failed is not opened again when the connection comes back", async () => {
     let connectionDown = true;
-    const rpc = createRpc(() => {
+    const fakeSession = createFakeSession(() => {
       if (connectionDown) {
         throw new AppFailure({
           code: "unavailable",
@@ -2643,7 +2643,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2659,7 +2659,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
 
   test("a chat the person picked after the drop is kept when the connection comes back", async () => {
     let connectionDown = true;
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       const threadId = "threadId" in args ? args.threadId : threadTwo;
       if (threadId === threadOne && connectionDown) {
         throw new AppFailure({
@@ -2671,7 +2671,7 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
       return { threadId, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
 
@@ -2691,13 +2691,13 @@ describe("SelectedThreadHistoryController when a chat is picked while another op
 
   test("a chat picked from the list is shown at the click, before omp answers", async () => {
     const answer = Promise.withResolvers<unknown>();
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       if ("threadId" in args && args.threadId === threadTwo) return answer.promise;
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const shown: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
       onThreadIdChange: (threadId) => shown.push(threadId),
     });
@@ -2722,14 +2722,14 @@ describe("SelectedThreadHistoryController when a chat is picked while another op
 
   test("a newer pick cancels the open before it, and the chat picked last is the one shown", async () => {
     const signals: AbortSignal[] = [];
-    const rpc = createRpc((args, options) => {
+    const fakeSession = createFakeSession((args, options) => {
       const threadId = "threadId" in args ? args.threadId : threadOne;
       if (threadId !== threadTwo) return { threadId, sessionFile: null, capabilities: {} };
       if (options?.signal) signals.push(options.signal);
       return untilAborted(new Promise<void>(() => undefined), options?.signal);
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
     await controller.openExisting(threadOne);
@@ -2752,14 +2752,14 @@ describe("SelectedThreadHistoryController when a chat is picked while another op
   });
 
   test("a picked chat that fails to open leaves the chat on screen as it was, and the failure is thrown", async () => {
-    const rpc = createRpc((args) => {
+    const fakeSession = createFakeSession((args) => {
       if ("threadId" in args && args.threadId === threadTwo) {
         throw new AppFailure({ code: "permission", message: "denied", retryable: false });
       }
       return { threadId: threadOne, sessionFile: null, capabilities: {} };
     });
     const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, []),
+      client: fakeClient(fakeSession, []),
       folder,
     });
     const onScreen = await controller.openExisting(threadOne);

@@ -303,7 +303,7 @@ export class ModelCatalogModel implements ModelCatalogPort {
 }
 
 /** Real browser implementation over the chat session port (SDK plan H5.4f). */
-export function createRpcModelCatalogSource(
+export function createModelCatalogSource(
   client: AppClient,
   threadId: ThreadId,
 ): ModelCatalogSource {

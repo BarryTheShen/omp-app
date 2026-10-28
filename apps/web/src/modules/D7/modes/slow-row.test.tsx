@@ -1,7 +1,7 @@
 import { type CapabilityMap, CapabilityStatus, type ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import type { GetStateResult, ModeRpc } from "../contract";
+import type { GetStateResult, ModeHost } from "../contract";
 import { ModeController } from "./controller";
 import { SLOW_UNSUPPORTED_TEXT } from "./slow";
 import { ConnectedModeControls } from "./view";
@@ -25,19 +25,19 @@ function stateWith(slow: Partial<GetStateResult>): GetStateResult {
   return { sessionId: "session", fastModeEnabled: false, fastModeActive: false, ...slow };
 }
 
-/** A controller whose mode RPC answers get_state with `state()` and set_slow_mode with `setSlow`. */
+/** A controller whose mode host answers get_state with `state()` and set_slow_mode with `setSlow`. */
 function controllerWith(
   state: () => GetStateResult,
   setSlow: (enabled: boolean) => Promise<{ readonly enabled: boolean }> = async (enabled) => ({
     enabled,
   }),
 ): ModeController {
-  const rpc: ModeRpc = {
+  const host: ModeHost = {
     getState: async () => state(),
     setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
     setSlowMode: async ({ enabled }) => setSlow(enabled),
   };
-  return new ModeController({ threadId, capabilities: capabilities(), rpc });
+  return new ModeController({ threadId, capabilities: capabilities(), host });
 }
 
 describe("the Slow mode row as omp reports it", () => {

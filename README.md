@@ -92,11 +92,11 @@ flowchart LR
     D --> S
   end
   R0 <-->|"WebSocket: typed ports"| D
-  P <-->|"today: omp's JSONL RPC over stdio<br/>H5: the app's own protocol"| O["chat host, built by the app from omp's package<br/>(one process per thread; H5: on omp's SDK)"]
+  P <-->|"the app's chat-host protocol<br/>(JSON lines over stdio)"| O["chat host on omp's SDK<br/>(one process per thread, built by the app from omp's package)"]
 ```
 
-- **Direction since 2026-10-26: omp's SDK only** (`reassessment/SDK-CHAT-HOST-PLAN.md`, module H5). Each chat process becomes the app's own chat host, which builds its session with omp's SDK and speaks the app's own protocol to the server. omp's RPC mode leaves the app.
-- **One chat process per open thread, today:** omp's own command line, built by the app from the omp package it pins (`packages/server/scripts/build-chat-host.ts`). The packages ship it compiled (`/usr/lib/omp-app/chat-host`), and `chatCommand()` (`packages/server/src/omp-host/chat-command.ts`) starts it. It still runs omp's RPC mode (`packages/omp-rpc`) until H5 replaces that. The same build answers omp's own commands (version, models, usage, config).
+- **omp's SDK only** (since 2026-10-26; `reassessment/SDK-CHAT-HOST-PLAN.md`, module H5). Each chat process is the app's own chat host (`packages/server/src/chat-host/`), which builds its session with omp's SDK and speaks the app's own protocol (`packages/contracts/src/chat-host/protocol.ts`) to the server. The app does not use omp's RPC mode.
+- **One chat process per open thread:** the app's chat host, built with omp's own build settings from the omp package the app pins (`packages/server/scripts/build-chat-host.ts`). The packages ship it compiled (`/usr/lib/omp-app/chat-host`), and `chatHostCommand()` (`packages/server/src/omp-host/chat-command.ts`) starts it. The same build answers omp's own commands (version, models, usage, config).
 - **The browser never parses omp's output itself.** All events go through one store (R0), and one function turns omp messages into assistant-ui messages. Every other module reads that store.
 - **Server state goes through typed ports** (`packages/contracts/src/ports/`): settings come from omp's own config files, plus app-only data (drafts, plan documents, checkpoints) in the app's data folder.
 - **A feature the app does not offer yet** is gated by a capability with a visible reason, never faked. H5 brings omp's remaining terminal features through the SDK.
@@ -119,10 +119,9 @@ From `AGENTS.md` (approved by the owner):
 
 | Path | What it is |
 |---|---|
-| `packages/contracts` | C0: shared types, ids, ports, descriptors, errors (`AppFailure`), the omp feature inventory, fixture format |
-| `packages/omp-rpc` | A0 today: omp's JSONL frame decoder, `RpcSession`, recorded fixtures (removed by H5.6) |
+| `packages/contracts` | C0: shared types, ids, ports, descriptors, errors (`AppFailure`), the omp feature inventory, the chat host's protocol and omp's types (`src/chat-host/`), the privacy check for fixtures |
 | `packages/client` | A0: the browser's WebSocket client with typed port proxies, reconnect and resume |
-| `packages/server` | A0 server shell and process registry; A1 stores under `src/modules/A1/` |
+| `packages/server` | A0 server shell and process registry; the chat host on omp's SDK under `src/chat-host/`; A1 stores under `src/modules/A1/` |
 | `apps/web` | The web app: U0 shell and tokens, R0 runtime, and one folder per module under `src/modules/` |
 | `modules/<ID>/README.md` | Each module's header: scope, plan, parts table, rules, change log |
 | `research/` | Verified notes on omp, assistant-ui and each module |

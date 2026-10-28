@@ -5,7 +5,7 @@ import { z } from "zod";
 const OptionalText = z.string().optional();
 const UnknownRecord = z.record(z.string(), z.unknown());
 
-/** Goal RPC operations in omp 18.12.6 (`modes/rpc/rpc-goal.ts:21`). */
+/** omp's goal operations (18.12.6 `modes/rpc/rpc-goal.ts:21`), which the chat host's `goal` method keeps. */
 export const GoalOperationSchema = z.enum(["get", "create", "resume", "pause", "drop"]);
 export type GoalOperation = z.infer<typeof GoalOperationSchema>;
 
@@ -46,18 +46,18 @@ export const GoalStateSchema = z.looseObject({
 });
 export type GoalState = z.infer<typeof GoalStateSchema>;
 
-export const GoalRpcArgsSchema = z.looseObject({
+export const GoalArgsSchema = z.looseObject({
   op: GoalOperationSchema,
   objective: z.string().min(1).optional(),
   token_budget: z.number().int().positive().optional(),
 });
-export type GoalRpcArgs = z.infer<typeof GoalRpcArgsSchema>;
+export type GoalArgs = z.infer<typeof GoalArgsSchema>;
 
-export const GoalRpcResultSchema = z.looseObject({
+export const GoalResultSchema = z.looseObject({
   goal: GoalSchema.nullable(),
   state: GoalModeStateSchema.nullable(),
 });
-export type GoalRpcResult = z.infer<typeof GoalRpcResultSchema>;
+export type GoalResult = z.infer<typeof GoalResultSchema>;
 
 export const GoalUpdatedEventSchema = z.looseObject({
   type: z.literal("goal_updated"),
@@ -72,7 +72,7 @@ export const GoalCreateRequestSchema = z.strictObject({
 });
 export type GoalCreateRequest = z.infer<typeof GoalCreateRequestSchema>;
 
-/** AP6 seams for terminal-only autonomy features that released RPC cannot represent exactly. */
+/** AP6 seams for autonomy features omp offers only in its terminal, which the app cannot represent exactly. */
 export const D8_AP6_CAPABILITIES = {
   goalLaunch: "upstream.goal-launch",
   goalUpdate: "upstream.goal-update",
@@ -97,8 +97,8 @@ export interface ContinuationStatus {
 }
 
 /**
- * omp decides this from its own setting, `goal.continuationModes`: a goal continues for an RPC host
- * only when the list includes "rpc". `modes` is that value, or `null` when the app cannot read it.
+ * omp decides this from its own setting, `goal.continuationModes`: a goal continues in a chat the app runs only when
+ * the list includes "rpc" (omp's name for hosts like the app's chat host). `modes` is that value, or `null` when the app cannot read it.
  * A finished or dropped goal has nothing to continue, so it has no status.
  */
 export function continuationStatus(
@@ -124,7 +124,7 @@ export function continuationStatus(
 }
 
 export interface AutonomyPort {
-  goal(threadId: ThreadId, args: GoalRpcArgs, options?: PortCallOptions): Promise<GoalRpcResult>;
+  goal(threadId: ThreadId, args: GoalArgs, options?: PortCallOptions): Promise<GoalResult>;
   /** `null` marks an update omp sent that this app could not read; the caller should read the goal again. */
   subscribeGoal(threadId: ThreadId, listener: (event: GoalUpdatedEvent | null) => void): () => void;
 }
@@ -186,7 +186,7 @@ export function unavailableAutonomy(capability: D8Ap6Capability, message: string
 }
 
 export function goalStateFromResult(
-  result: GoalRpcResult,
+  result: GoalResult,
   source: GoalState["source"] = "request",
   sessionSettled = false,
 ): GoalState {

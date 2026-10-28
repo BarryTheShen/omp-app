@@ -8,12 +8,12 @@ import { ModelHubController, ModelHubPanel, openHubRoles } from "@/modules/D1/hu
 import {
   createConfigRecentModelsPort,
   createR0LiveModelState,
-  createRpcModelCatalogSource,
+  createModelCatalogSource,
   ModelCatalogModel,
   RecentModels,
 } from "@/modules/D1/model";
 import {
-  createRpcThinkingSource,
+  createThinkingSource,
   type LiveThinkingState,
   ThinkingLevelsController,
   ThinkingSelector,
@@ -129,7 +129,7 @@ export function openSessionModelDialog({
   restoreFocus,
 }: SessionModelDialogOptions): void {
   const catalog = new ModelCatalogModel({
-    source: createRpcModelCatalogSource(client, threadId),
+    source: createModelCatalogSource(client, threadId),
     capabilities,
     liveState: createR0LiveModelState({
       getSnapshot: () => ({ model: store.getSnapshot().session.model }),
@@ -138,7 +138,7 @@ export function openSessionModelDialog({
   });
   const recents = new RecentModels(createConfigRecentModelsPort(client));
   const thinking = new ThinkingLevelsController({
-    source: createRpcThinkingSource(client, threadId),
+    source: createThinkingSource(client, threadId),
     capabilities,
     live: liveThinking(store),
   });

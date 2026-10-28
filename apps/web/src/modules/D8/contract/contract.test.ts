@@ -5,7 +5,7 @@ import {
   D8_AP6_CAPABILITIES,
   type Goal,
   GoalCreateRequestSchema,
-  GoalRpcArgsSchema,
+  GoalArgsSchema,
   GoalStateSchema,
   unavailableAutonomy,
   WorkerDispatchRequestSchema,
@@ -25,7 +25,7 @@ const goal: Goal = {
 
 describe("D8 autonomy contracts", () => {
   test("validates released goal operations and preserves state/resource fields", () => {
-    expect(GoalRpcArgsSchema.parse({ op: "get" })).toMatchObject({ op: "get" });
+    expect(GoalArgsSchema.parse({ op: "get" })).toMatchObject({ op: "get" });
     expect(
       GoalCreateRequestSchema.parse({ objective: "  Keep tests green  ", token_budget: 100 }),
     ).toEqual({ objective: "Keep tests green", token_budget: 100 });

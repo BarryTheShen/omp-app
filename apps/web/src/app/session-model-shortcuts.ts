@@ -4,14 +4,14 @@ import { AppFailure } from "@omp-app/contracts";
 import { useEffect, useRef } from "react";
 import { readRoleCycleSettings } from "@/modules/D1/hub";
 import {
+  createModelCatalogSource,
   createR0LiveModelState,
-  createRpcModelCatalogSource,
   cycleRoleModel,
   ModelCatalogModel,
   type RoleCycleDirection,
 } from "@/modules/D1/model";
 import { registerD1ShortcutActions } from "@/modules/D1/shortcuts";
-import { createRpcThinkingSource, ThinkingLevelsController } from "@/modules/D1/thinking";
+import { createThinkingSource, ThinkingLevelsController } from "@/modules/D1/thinking";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { useShortcutRegistry } from "@/shortcuts";
 import type { ShortcutRegistry } from "@/shortcuts/registry";
@@ -49,7 +49,7 @@ async function stepRoleModel(
   lastRole: string | null,
 ): Promise<string | null> {
   const catalog = new ModelCatalogModel({
-    source: createRpcModelCatalogSource(options.client, options.threadId),
+    source: createModelCatalogSource(options.client, options.threadId),
     capabilities: options.capabilities,
     liveState: createR0LiveModelState({
       getSnapshot: () => ({ model: options.store.getSnapshot().session.model }),
@@ -57,7 +57,7 @@ async function stepRoleModel(
     }),
   });
   const thinking = new ThinkingLevelsController({
-    source: createRpcThinkingSource(options.client, options.threadId),
+    source: createThinkingSource(options.client, options.threadId),
     capabilities: options.capabilities,
     live: liveThinking(options.store),
   });
@@ -92,7 +92,7 @@ async function stepRoleModel(
 
 /**
  * Registers D1's model and thinking chords for the open chat, reading the chat as it is when a key is pressed.
- * Each chord changes omp's state through the RPC the header and the dialog already use. The returned function
+ * Each chord changes omp's state through the chat host's requests the header and the dialog already use. The returned function
  * removes the chords.
  */
 export function registerSessionModelShortcuts(
@@ -126,7 +126,7 @@ export function registerSessionModelShortcuts(
     cycleThinking: async () => {
       const options = current();
       const thinking = new ThinkingLevelsController({
-        source: createRpcThinkingSource(options.client, options.threadId),
+        source: createThinkingSource(options.client, options.threadId),
         capabilities: options.capabilities,
         live: liveThinking(options.store),
       });

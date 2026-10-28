@@ -175,7 +175,7 @@ describe("D7 mode controls", () => {
       const controller = new ModeController({
         threadId,
         capabilities: capabilities(),
-        rpc: {
+        host: {
           setSlowMode: async ({ enabled }) => ({ enabled }),
           getState: async () => ({
             fastModeEnabled: enabled,
@@ -232,7 +232,7 @@ describe("D7 mode controls", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: () => new Promise<never>(() => undefined),
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -306,7 +306,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
@@ -345,7 +345,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: () => Promise.withResolvers<never>().promise,
         setFastMode: async () => {

@@ -6,7 +6,7 @@ import { shippedSources } from "./shipped";
  * `node:` name or its bare name (`fs`, `path`, ...). A bare name matches the whole specifier, so `./path` is not one.
  */
 const FORBIDDEN_IMPORT =
-  /(?:from\s+|import\(\s*|import\s+|require\(\s*)["'](?:[^"']*(?:@omp-app\/server|packages\/server|omp-rpc|omp-wire|rpc-wire|child_process|@tauri-apps|electron)[^"']*|node:[^"']*|fs|fs\/promises|path|os|crypto|net|http|https|stream|url|process|buffer|module)["']/;
+  /(?:from\s+|import\(\s*|import\s+|require\(\s*)["'](?:[^"']*(?:@omp-app\/server|packages\/server|child_process|@tauri-apps|electron)[^"']*|node:[^"']*|fs|fs\/promises|path|os|crypto|net|http|https|stream|url|process|buffer|module)["']/;
 
 /** A raw transport: a direct request, a socket or an event stream. P4 reaches omp only through its typed seam. */
 const RAW_TRANSPORT = /\bfetch\s*\(|new WebSocket\s*\(|\bEventSource\b|\bXMLHttpRequest\b/;

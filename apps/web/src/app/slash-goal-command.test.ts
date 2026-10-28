@@ -1,6 +1,6 @@
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
-import type { Goal, GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
+import type { Goal, GoalArgs, GoalResult } from "@/modules/D8/contract";
 import type { PromptIntent } from "@/modules/U2/contract";
 import { goalSlashCommand, runSlashRoute } from "./slash-commands";
 
@@ -24,7 +24,7 @@ describe("#1261 the /goal app command", () => {
 
   test("bare /goal asks omp to read the goal and says what it has", async () => {
     const sendGoal = vi.fn(
-      async (_args: GoalRpcArgs): Promise<GoalRpcResult> => ({
+      async (_args: GoalArgs): Promise<GoalResult> => ({
         goal: null,
         state: null,
       }),
@@ -37,14 +37,14 @@ describe("#1261 the /goal app command", () => {
   });
 
   test("text after /goal sets a goal with that objective", async () => {
-    const sendGoal = async (): Promise<GoalRpcResult> => ({ goal, state: null });
+    const sendGoal = async (): Promise<GoalResult> => ({ goal, state: null });
     await expect(
       goalSlashCommand({ sendGoal }).run({ args: "Ship the release notes" }),
     ).resolves.toEqual({ message: "Goal set: Ship the release notes. Status: Active." });
   });
 
   test("budget is refused before omp is asked, with the reason shown", async () => {
-    const sendGoal = vi.fn(async (): Promise<GoalRpcResult> => ({ goal: null, state: null }));
+    const sendGoal = vi.fn(async (): Promise<GoalResult> => ({ goal: null, state: null }));
     const command = goalSlashCommand({ sendGoal });
     await expect(command.run({ args: "budget 500" })).rejects.toBeInstanceOf(AppFailure);
     await expect(command.run({ args: "budget 500" })).rejects.toMatchObject({
@@ -57,7 +57,7 @@ describe("#1261 the /goal app command", () => {
   });
 
   test("omp's own refusal reaches the person as its message", async () => {
-    const sendGoal = async (): Promise<GoalRpcResult> => {
+    const sendGoal = async (): Promise<GoalResult> => {
       throw new AppFailure({
         code: "conflict",
         message: "Goal mode is disabled.",
@@ -73,7 +73,7 @@ describe("#1261 the /goal app command", () => {
 describe("#1261 a routed /goal passes its typed text to the command", () => {
   test("runSlashRoute hands the arguments over and shows what omp now has", async () => {
     const sendGoal = vi.fn(
-      async (): Promise<GoalRpcResult> => ({
+      async (): Promise<GoalResult> => ({
         goal: { ...goal, status: "paused" },
         state: null,
       }),

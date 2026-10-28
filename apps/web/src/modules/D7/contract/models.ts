@@ -3,7 +3,7 @@ import type { ChatHostState } from "@omp-app/contracts/chat-host";
 import { z } from "zod";
 
 /**
- * D7's browser-visible execution slots. The names mirror the RPC/slash-mode inventory in
+ * D7's browser-visible execution slots. The names mirror the mode inventory in
  * `research/modules/D7.md:15-23`; they are presentation slots, not claims of authoritative omp state.
  */
 export const ExecutionMode = z.enum([

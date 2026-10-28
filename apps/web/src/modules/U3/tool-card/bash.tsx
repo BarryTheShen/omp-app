@@ -851,7 +851,7 @@ function previewOutput(value: string): OutputPreview {
   return { text: value, cut: false, unit: "lines", shown: lines.length, total: lines.length };
 }
 
-/** omp's own word that it shortened the output: `details.meta.truncation`, or the RPC `truncated`. */
+/** omp's own word that it shortened the output: `details.meta.truncation`, or a `!` command's `truncated`. */
 function shortenedNote(result: BashResult): string | undefined {
   if (!result.truncated) return undefined;
   if (result.totalLines > result.outputLines) {

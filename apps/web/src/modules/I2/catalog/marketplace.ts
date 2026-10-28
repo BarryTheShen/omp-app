@@ -215,7 +215,7 @@ function gatewayFailure(error: unknown): AppFailure {
   });
 }
 
-/** Executes only explicit, v18.12.6 RPC marketplace/plugin commands through A1.8. */
+/** Executes only explicit omp marketplace and plugin commands (v18.12.6) through A1.8's command gateway. */
 export function createMarketplacePort(client: AppClient): MarketplacePort {
   const gateway = client.port(OmpCommandGatewayPort);
   return Object.freeze({

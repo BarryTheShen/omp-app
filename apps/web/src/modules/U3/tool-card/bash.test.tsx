@@ -437,7 +437,7 @@ describe("BashCard output in full", () => {
     expect(screen.getByRole("button", { name: "Show all 20 lines" })).toBeTruthy();
   });
 
-  test("an RPC bash result flagged as truncated says omp shortened it", () => {
+  test("a `!` command's result flagged as truncated says omp shortened it", () => {
     const rpc = result({
       output: numbered(20),
       truncated: true,

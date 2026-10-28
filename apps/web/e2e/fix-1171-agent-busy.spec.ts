@@ -13,7 +13,7 @@ import {
 } from "./real-omp";
 
 /**
- * #1171. A test-side RPC request starts an ask_user turn in this session while the page remains idle. The wire hides the
+ * #1171. A test-side request on the app's protocol starts an ask_user turn in this session while the page remains idle. The wire hides the
  * external turn's events, so the page sends a new prompt; omp refuses it as busy and the refusal reaches the page.
  */
 const QUESTION_TURN = "Please ask_user which database to use.";
@@ -28,7 +28,7 @@ interface BusyWire {
   readonly revealTurnEvents: () => void;
 }
 
-/** Makes independent RPC calls to start and observe an ask_user turn while the page stays idle. */
+/** Makes independent calls on the app's protocol to start and observe an ask_user turn while the page stays idle. */
 async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
   const connected = Promise.withResolvers<void>();
   const pending = new Map<string, (frame: Record<string, unknown>) => void>();
@@ -71,7 +71,7 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
 
   const call = async (method: string, args: Record<string, unknown>) => {
     await connected.promise;
-    if (sendToServer === undefined) throw new Error("The RPC socket is not connected.");
+    if (sendToServer === undefined) throw new Error("The app's socket is not connected.");
     const id = `external-${randomUUID()}`;
     const response = Promise.withResolvers<Record<string, unknown>>();
     pending.set(id, response.resolve);
@@ -94,7 +94,7 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
       });
       if (accepted.ok !== true) {
         throw new Error(
-          `The test RPC could not start its busy turn: ${JSON.stringify(accepted.error)}`,
+          `The test's call could not start its busy turn: ${JSON.stringify(accepted.error)}`,
         );
       }
       await expect
@@ -150,7 +150,7 @@ function streamingBehaviorForText(frames: Frames, text: string): unknown {
   };
   return frame.args?.params?.streamingBehavior;
 }
-/** The status bar abbreviates ids; use the full thread id from the page's RPC send instead. */
+/** The status bar abbreviates ids; use the full thread id from the page's own send instead. */
 function threadIdForPrompt(frames: Frames, text: string): string | undefined {
   for (const line of frames.lines) {
     if (!line.startsWith("out ")) continue;
@@ -174,7 +174,7 @@ function threadIdForPrompt(frames: Frames, text: string): string | undefined {
   return undefined;
 }
 
-/** Starts a fake-model turn through an independent RPC call, then checks the idle UI's real busy refusal. */
+/** Starts a fake-model turn through an independent call on the app's protocol, then checks the idle UI's real busy refusal. */
 async function refusedSecondPrompt(
   page: Page,
   composer: Locator,
@@ -238,7 +238,7 @@ realTest(
     });
     const composer = await startChat(page);
     await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
-    if (busyWire === undefined) throw new Error("The external busy RPC wire was not installed.");
+    if (busyWire === undefined) throw new Error("The external busy wire was not installed.");
     await refusedSecondPrompt(page, composer, frames, busyWire);
     // No thread error: the refusal belongs to the prompt that asked, and the chat stays as it was.
     await expect(page.getByText("The conversation could not continue.")).toHaveCount(0);
@@ -286,7 +286,7 @@ realTest("Interrupt and send sends the same text as a steer", async ({ realApp }
   });
   const composer = await startChat(page);
   await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
-  if (busyWire === undefined) throw new Error("The external busy RPC wire was not installed.");
+  if (busyWire === undefined) throw new Error("The external busy wire was not installed.");
   await refusedSecondPrompt(page, composer, frames, busyWire);
 
   busyWire.revealTurnEvents();

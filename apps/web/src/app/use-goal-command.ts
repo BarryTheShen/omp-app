@@ -6,7 +6,7 @@ import {
 } from "@omp-app/contracts";
 import { useCallback, useMemo } from "react";
 import type { SlashAppCommand } from "@/modules/D2/slash";
-import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
+import type { GoalArgs, GoalResult } from "@/modules/D8/contract";
 import { createAutonomyPort, type GoalRuntimeStore } from "@/modules/D8/goal/runtime";
 import { reportClientError } from "./client-errors";
 import { goalSlashCommand } from "./slash-commands";
@@ -74,7 +74,7 @@ export function useGoalCommands({
 }: GoalCommandOptions): GoalCommands {
   const autonomy = useMemo(() => createAutonomyPort({ request, store }), [request, store]);
   const sendGoal = useCallback(
-    async (args: GoalRpcArgs): Promise<GoalRpcResult> => {
+    async (args: GoalArgs): Promise<GoalResult> => {
       if (capabilities["omp.cmd.goal"]?.state !== "available") {
         throw new AppFailure({
           code: "unavailable",

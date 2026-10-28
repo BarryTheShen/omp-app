@@ -294,7 +294,7 @@ function validateCompactionMethods(value: SettingValue): ValidationResult {
 }
 
 /**
- * Where omp v18.12.6 reads each key (its RPC host, so a saved change applies to the open session).
+ * Where omp v18.12.6 reads each key (in the app's chat host, so a saved change applies to the open session).
  * Each reference is a file:line in omp's source, from the audit of the 30 registrations in
  * `session/context-settings.ts` and `export/ttsr-settings.ts`:
  * - workspace.additionalDirectories: session/agent-session.ts:2821 (listener: #syncSettingsWorkspaceDirectories :2836)

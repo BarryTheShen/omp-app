@@ -674,7 +674,7 @@ describe("rich Ask dialog and result card", () => {
   });
 });
 
-/** A dialog whose answers fail as the app's RPC session closes: the answer does not reach omp. */
+/** A dialog whose answers fail as the chat's host closes: the answer does not reach omp. */
 function renderFailedAnswers(request: DialogRequest) {
   const answers: DialogResponse[] = [];
   const state = { fail: true };
@@ -686,7 +686,7 @@ function renderFailedAnswers(request: DialogRequest) {
       if (state.fail)
         throw new AppFailure({
           code: "omp_exited",
-          message: "The omp RPC transport closed",
+          message: "omp stopped before it answered. Try again.",
           retryable: true,
         });
       answers.push(response);

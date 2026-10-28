@@ -43,7 +43,7 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -60,10 +60,10 @@ describe("plain reasons for Fast mode", () => {
         "omp.cmd.set_fast_mode": CapabilityStatus.parse({
           state: "unavailable",
           via: "omp",
-          detail: "Unknown command: set_fast_mode (omp-v18.6.1:docs/rpc.md:141-149)",
+          detail: "the chat host does not answer set_fast_mode",
         }),
       }),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -81,7 +81,7 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -96,7 +96,7 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({ sessionId: "session" }),
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -111,7 +111,7 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => {
           throw new Error("the connection dropped");
@@ -132,7 +132,7 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.get_state": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -152,10 +152,10 @@ describe("plain reasons for Fast mode", () => {
         "omp.cmd.get_state": CapabilityStatus.parse({
           state: "unavailable",
           via: "omp",
-          detail: "Unknown command: get_state (omp-v18.6.1:docs/rpc.md:141-149)",
+          detail: "the chat host does not answer get_state",
         }),
       }),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
@@ -262,7 +262,7 @@ describe("plain reasons for the other modes", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
         setSlowMode: async () => {
@@ -283,7 +283,7 @@ describe("plain reasons for the other modes", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
         setSlowMode: async () => {

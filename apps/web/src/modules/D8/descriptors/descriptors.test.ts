@@ -46,7 +46,7 @@ describe("D8 descriptor coverage", () => {
     expect(requiresOf("D8.ratchetCommand")).toEqual(["host.command-gateway"]);
   });
 
-  test("claims a slash name only where omp's recorded RPC catalog lists it, from the same source", () => {
+  test("claims a slash name only where omp's recorded command list holds it, from the same source", () => {
     const commands: readonly CommandDescriptor[] = D8_COMMAND_DESCRIPTORS;
     const claimed = commands.flatMap((command) =>
       command.slash === undefined ? [] : [command.slash],

@@ -19,7 +19,7 @@ import type {
   ContinuationStatus,
   Goal,
   GoalCreateRequest,
-  GoalRpcArgs,
+  GoalArgs,
   GoalState,
 } from "../contract";
 import {
@@ -280,7 +280,7 @@ export class GoalController {
           capability: GOAL_CAPABILITY,
         });
       }
-      const args: GoalRpcArgs = {
+      const args: GoalArgs = {
         op: "create",
         objective: request.objective,
         ...(request.token_budget === undefined ? {} : { token_budget: request.token_budget }),

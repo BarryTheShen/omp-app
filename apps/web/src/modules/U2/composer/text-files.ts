@@ -3,7 +3,7 @@ import { AppFailure } from "@omp-app/contracts";
 import { isPastedTextName } from "../attachments";
 
 /*
- * omp's prompt carries pictures only (`images` on the RPC `prompt`), so a text file attached in the composer is sent the
+ * omp's prompt carries pictures only (`images` on the chat host's `prompt`), so a text file attached in the composer is sent the
  * way a large paste saved as a file is: saved into the chat's `local` folder, and cited in the message by its `local://`
  * reference, which the agent reads (issue 2658). A pasted-text chip is not such a file: its text goes into the message as
  * omp's wrapped block (`withPastedText`). The reference is in the message text itself, so the sent text, the draft's

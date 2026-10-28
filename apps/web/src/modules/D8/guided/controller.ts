@@ -6,7 +6,7 @@ import type {
   InputDialogRequest,
 } from "../../U4/contract";
 import type { DialogHost, FocusRestoreHandle } from "../../U4/contract/dialog-host";
-import type { AutonomyPort, GoalModeState, GoalRpcArgs } from "../contract";
+import type { AutonomyPort, GoalModeState, GoalArgs } from "../contract";
 import { type GuidedComposerDraft, reviewedGoalText } from "./composer";
 import { type KeptBlock, placeBlock, removeBlock } from "./composer-block";
 import {
@@ -406,7 +406,7 @@ export class GuidedGoalController {
     this.error = null;
     this.notice = null;
     this.setStatus("creating");
-    const args: GoalRpcArgs = {
+    const args: GoalArgs = {
       op: "create",
       objective: reviewed.objective,
       ...(reviewed.tokenBudget === undefined ? {} : { token_budget: reviewed.tokenBudget }),

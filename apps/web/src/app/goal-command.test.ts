@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Goal, GoalRpcResult } from "@/modules/D8/contract";
+import type { Goal, GoalResult } from "@/modules/D8/contract";
 import { describeGoalResult, parseGoalCommand } from "./goal-command";
 
 const goal: Goal = {
@@ -11,7 +11,7 @@ const goal: Goal = {
   createdAt: 1,
   updatedAt: 1,
 };
-const none: GoalRpcResult = { goal: null, state: null };
+const none: GoalResult = { goal: null, state: null };
 
 describe("#1261 /goal reads what follows the name", () => {
   test("nothing, or show, reads the goal", () => {

@@ -31,7 +31,7 @@ import { ModelHubController, ModelHubPanel } from "../hub";
 import {
   createConfigModelSettingsPort,
   createR0LiveModelState,
-  createRpcModelCatalogSource,
+  createModelCatalogSource,
   ModelCatalogModel,
   ModelRoleStore,
   RecentModels,
@@ -39,7 +39,7 @@ import {
 } from "../model";
 import { modelThinkingSection } from "../settings/descriptors";
 import { ModelSettingsSection } from "../settings/model-settings";
-import { createRpcThinkingSource, ThinkingLevelsController } from "../thinking";
+import { createThinkingSource, ThinkingLevelsController } from "../thinking";
 
 const threadId = "d1-gate-thread" as ThreadId;
 const projectRevisionTwo = "d1-project-config-2" as Revision;
@@ -75,7 +75,7 @@ function capabilities() {
   };
 }
 
-function fakeRpcClient(
+function fakeSessionClient(
   calls: ChatRequest[],
   options: { readonly failCatalog?: boolean } = {},
 ): AppClient {
@@ -180,9 +180,9 @@ afterEach(cleanup);
 describe("D1 scope, catalog and thinking acceptance", () => {
   test("runs session selection and thinking discovery through omp's exact RPC result shapes", async () => {
     const calls: ChatRequest[] = [];
-    const client = fakeRpcClient(calls);
+    const client = fakeSessionClient(calls);
     const catalog = new ModelCatalogModel({
-      source: createRpcModelCatalogSource(client, threadId),
+      source: createModelCatalogSource(client, threadId),
       capabilities: capabilities(),
       liveState: createR0LiveModelState({
         getSnapshot: () => D1_R0_SNAPSHOT_FIXTURE.session,
@@ -204,7 +204,7 @@ describe("D1 scope, catalog and thinking acceptance", () => {
     expect(catalog.getSnapshot().current).toEqual(D1_SAVED_DEFAULT_FIXTURE);
 
     const thinking = new ThinkingLevelsController({
-      source: createRpcThinkingSource(client, threadId),
+      source: createThinkingSource(client, threadId),
       capabilities: capabilities(),
       live: {
         getSnapshot: () => ({
@@ -246,9 +246,9 @@ describe("D1 scope, catalog and thinking acceptance", () => {
 
   test("keeps reply scope gated and routes saved-default changes through role settings, not set_model", async () => {
     const calls: ChatRequest[] = [];
-    const client = fakeRpcClient(calls);
+    const client = fakeSessionClient(calls);
     const catalog = new ModelCatalogModel({
-      source: createRpcModelCatalogSource(client, threadId),
+      source: createModelCatalogSource(client, threadId),
       capabilities: capabilities(),
       liveState: createR0LiveModelState({
         getSnapshot: () => D1_R0_SNAPSHOT_FIXTURE.session,
@@ -379,8 +379,8 @@ describe("D1 CC4 and CC10 settings surfaces", () => {
 
     const failedCalls: ChatRequest[] = [];
     const failedCatalog = new ModelCatalogModel({
-      source: createRpcModelCatalogSource(
-        fakeRpcClient(failedCalls, { failCatalog: true }),
+      source: createModelCatalogSource(
+        fakeSessionClient(failedCalls, { failCatalog: true }),
         threadId,
       ),
       capabilities: capabilities(),

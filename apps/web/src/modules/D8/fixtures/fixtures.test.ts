@@ -6,7 +6,7 @@ import {
   AP6_UNAVAILABLE_REASONS,
   continuationStatus,
   D8_AP6_CAPABILITIES,
-  GoalRpcResultSchema,
+  GoalResultSchema,
   GoalSchema,
 } from "../contract";
 import { parseTokenBudget } from "../guided/interview";
@@ -14,8 +14,8 @@ import {
   AP6_UNAVAILABLE_FIXTURES,
   CONTINUATION_MODE_SETTINGS,
   CREATE_REFUSED_ACTIVE_GOAL,
-  GOAL_RPC_AVAILABLE,
-  GOAL_RPC_UNAVAILABLE,
+  GOAL_AVAILABLE,
+  GOAL_UNAVAILABLE,
   GUIDED_ANSWERS_SUCCESS,
   GUIDED_CREATE_REQUEST,
   GUIDED_INTERVIEW_CANCELLED,
@@ -190,7 +190,7 @@ describe("D8 fixtures match the contract schemas", () => {
   });
 
   test("the reply to the create is the goal method's result, carrying the budget the interview sent", () => {
-    const reply = GoalRpcResultSchema.parse(GUIDED_INTERVIEW_SUCCEEDED.createReply);
+    const reply = GoalResultSchema.parse(GUIDED_INTERVIEW_SUCCEEDED.createReply);
     expect(reply.goal?.tokenBudget).toBe(GUIDED_CREATE_REQUEST.token_budget);
     expect(reply.goal?.status).toBe("active");
     expect(reply.state).toBeNull();
@@ -259,7 +259,7 @@ describe("D8 fixtures are scrubbed", () => {
       ],
       guided: [GUIDED_INTERVIEW_SUCCEEDED, GUIDED_INTERVIEW_CANCELLED, GUIDED_INTERVIEW_REFUSED],
       ap6: AP6_UNAVAILABLE_FIXTURES,
-      capabilities: [GOAL_RPC_AVAILABLE, GOAL_RPC_UNAVAILABLE, OMP_WORKER_CAPABILITIES],
+      capabilities: [GOAL_AVAILABLE, GOAL_UNAVAILABLE, OMP_WORKER_CAPABILITIES],
       workers: RECORDED_WORKERS,
       roster: recordedWorkerRoster(),
       reconnectStates: SYNTHETIC_RECONNECT_STATES,

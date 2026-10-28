@@ -250,7 +250,7 @@ export class ThinkingLevelsController implements ThinkingLevelsPort {
   }
 }
 
-export function createRpcThinkingSource(client: AppClient, threadId: ThreadId): ThinkingSource {
+export function createThinkingSource(client: AppClient, threadId: ThreadId): ThinkingSource {
   const session = client.port(ChatSessionPort) as ChatSessionClient;
   return {
     getAvailableLevels: async (options) =>

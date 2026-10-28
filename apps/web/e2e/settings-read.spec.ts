@@ -454,11 +454,11 @@ realTest("Settings preloads Context before its first click", async ({ realApp },
       `Event Timing entries=${eventTimingObserved}/${RUNS}; preload=${contextPreloaded}`,
       `Controls ready upper bound p50=${contextControlsReadyP50.toFixed(1)} ms, worst=${contextControlsReadyWorst.toFixed(1)} ms`,
       `loading-at-click=${loadingBeforeReady}; Settings list calls max=${listCountMax}`,
-      `list end max=${listEndMax.toFixed(1)} ms; individual list RPC max=${listDurationMax.toFixed(1)} ms`,
+      `list end max=${listEndMax.toFixed(1)} ms; individual list call max=${listDurationMax.toFixed(1)} ms`,
       `list end after dialog seen p50=${listEndAfterSeenP50.toFixed(1)} ms; worst=${listEndAfterSeenMax.toFixed(1)} ms`,
     ].join("; "),
   );
-  console.log(`SETTINGS_READ_RPC ${listDetails.join(",")}`);
+  console.log(`SETTINGS_READ_CALLS ${listDetails.join(",")}`);
   expect(
     contextPreloaded,
     "Context section controls are mounted after the Settings open idle tick",

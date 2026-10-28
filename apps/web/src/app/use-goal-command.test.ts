@@ -1,14 +1,14 @@
 import { type CapabilityMap, type ChatSessionRequest, ThreadId } from "@omp-app/contracts";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import type { Goal, GoalRpcResult } from "@/modules/D8/contract";
+import type { Goal, GoalResult } from "@/modules/D8/contract";
 
 /** The chat host's goal request, as the hook sends it. */
-type GoalRpcSender = (args: {
+type GoalSender = (args: {
   readonly threadId: ThreadId;
   readonly method: string;
   readonly params: unknown;
-}) => Promise<GoalRpcResult>;
+}) => Promise<GoalResult>;
 
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import { useGoalCommands } from "./use-goal-command";
@@ -25,13 +25,13 @@ const goal: Goal = {
   updatedAt: 1,
 };
 
-function resultFor(next: Goal | null): GoalRpcResult {
+function resultFor(next: Goal | null): GoalResult {
   return { goal: next, state: null };
 }
 
 /** Renders the goal commands for `chat` while the page shows `threadId`, with the header's two lines as spies. */
 function renderGoals(options: {
-  readonly send: GoalRpcSender;
+  readonly send: GoalSender;
   readonly capabilities?: CapabilityMap;
   readonly chat?: ThreadId;
   readonly startReady?: boolean;
@@ -55,7 +55,7 @@ function renderGoals(options: {
 
 describe("#1261 the goal commands send through the chat on screen", () => {
   test("a palette goal command sends one goal request and reports what omp now has", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor({ ...goal, status: "paused" }));
+    const send = vi.fn<GoalSender>(async () => resultFor({ ...goal, status: "paused" }));
     const { goals, notify, fail } = renderGoals({ send });
 
     goals.runFromPalette("pause");
@@ -71,7 +71,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
   });
 
   test("the typed /goal command runs through the same request and returns its message", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const send = vi.fn<GoalSender>(async () => resultFor(goal));
     const { goals } = renderGoals({ send });
 
     await expect(goals.command.run({ args: "Ship the release notes" })).resolves.toEqual({
@@ -84,7 +84,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
     });
   });
   test("waits for a starting chat's omp to become ready before running the typed goal command", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const send = vi.fn<GoalSender>(async () => resultFor(goal));
     const { goals, store, notify } = renderGoals({ send, startReady: false });
     const running = goals.command.run({ args: "Ship the release notes" });
 
@@ -98,7 +98,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
     expect(notify).toHaveBeenLastCalledWith(null);
   });
   test("a stopped chat refuses the typed goal with a plain message and sends nothing", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const send = vi.fn<GoalSender>(async () => resultFor(goal));
     const { goals, store } = renderGoals({ send });
     store.ingest({ kind: "process", status: "exited" }, 2);
 
@@ -113,7 +113,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
   });
 
   test("a running chat can run the typed goal command immediately", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const send = vi.fn<GoalSender>(async () => resultFor(goal));
     const { goals, store } = renderGoals({ send });
     store.ingest({ kind: "process", status: "running" }, 2);
 
@@ -124,7 +124,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
   });
 
   test("a chat whose omp has no goal command is refused before anything is sent", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const send = vi.fn<GoalSender>(async () => resultFor(goal));
     const { goals, fail } = renderGoals({ send, capabilities: {} });
 
     goals.runFromPalette("");
@@ -136,7 +136,7 @@ describe("#1261 the goal commands send through the chat on screen", () => {
   });
 
   test("a request for a chat that is no longer on screen is refused, not sent to the new one", async () => {
-    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const send = vi.fn<GoalSender>(async () => resultFor(goal));
     const { goals, fail } = renderGoals({ send, chat: ThreadId.parse("thread-goal-old") });
 
     goals.runFromPalette("drop");
@@ -150,8 +150,8 @@ describe("#1261 the goal commands send through the chat on screen", () => {
   });
 
   test("a reply the app cannot read is a plain failure, never a goal", async () => {
-    const send = vi.fn<GoalRpcSender>(
-      async () => ({ unexpected: true }) as unknown as GoalRpcResult,
+    const send = vi.fn<GoalSender>(
+      async () => ({ unexpected: true }) as unknown as GoalResult,
     );
     const { goals, notify, fail } = renderGoals({ send });
 

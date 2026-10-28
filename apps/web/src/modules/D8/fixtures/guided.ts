@@ -1,4 +1,4 @@
-import { GoalCreateRequestSchema, type GoalRpcResult } from "../contract";
+import { GoalCreateRequestSchema, type GoalResult } from "../contract";
 import { buildGoalObjective, EMPTY_GUIDED_ANSWERS, type GuidedAnswers } from "../guided/interview";
 import { CREATE_REFUSED_ACTIVE_GOAL, RECORDED_GOAL_CREATED } from "./goal";
 
@@ -31,7 +31,7 @@ export const GUIDED_CREATE_REQUEST = GoalCreateRequestSchema.parse({
  * goal is the recorded goal (T7) with the budget this interview sent, and `state` is null. The RPC reply is not recorded
  * on main; issue 1671 covers goal create over RPC.
  */
-export const GUIDED_CREATE_REPLY: GoalRpcResult = {
+export const GUIDED_CREATE_REPLY: GoalResult = {
   goal: { ...RECORDED_GOAL_CREATED.value, tokenBudget: 5000 },
   state: null,
 };

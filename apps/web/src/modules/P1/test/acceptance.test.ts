@@ -81,7 +81,7 @@ const WORKER = SubagentId.parse("worker-1");
 const INTERNAL_WORDS =
   /\bdescriptors?\b|\bcapabilit(?:y|ies)\b|\bConfigStore\b|\bRPC\b|\bCAS\b|\b[A-Z]\d{1,2}\b|\b(?:host|omp|upstream|client)\.[a-z]|\b[a-z]+_[a-z_]+\b|\b[a-z]+[A-Z][A-Za-z]*\b|\bOmp\b|\b(?:worker|agent|task|fixture)-[a-z0-9]+(?:-[a-z0-9]+)*\b/;
 const FORBIDDEN_IMPORT =
-  /(?:from\s+|import\(\s*|require\(\s*)["'][^"']*(?:modules\/T5\b|\.\.?\/T5\b|@omp-app\/server|omp-rpc|node:|@tauri-apps|electron)/;
+  /(?:from\s+|import\(\s*|require\(\s*)["'][^"']*(?:modules\/T5\b|\.\.?\/T5\b|@omp-app\/server|node:|@tauri-apps|electron)/;
 
 /** Every P1 row the inventory assigns to P1: the P1 group less T5's task card, the advisor rows and the model advisor section. */
 const P1_OWNED_ROWS: readonly string[] = INVENTORY.filter(

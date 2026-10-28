@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import type { LiveModelState, ModelCatalogSource } from ".";
 import {
   createR0LiveModelState,
-  createRpcModelCatalogSource,
+  createModelCatalogSource,
   filterModels,
   ModelCatalogModel,
   modelKey,
@@ -170,7 +170,7 @@ describe("D1 model source on the chat session port", () => {
     const client = {
       port: () => session,
     } as unknown as AppClient;
-    const source = createRpcModelCatalogSource(client, threadId);
+    const source = createModelCatalogSource(client, threadId);
     await source.getAvailableModels();
     await source.setModel({ provider: "alpha", modelId: "one" });
     expect(calls).toEqual([

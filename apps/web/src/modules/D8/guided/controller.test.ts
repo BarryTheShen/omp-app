@@ -6,8 +6,8 @@ import type {
   AutonomyPort,
   Goal,
   GoalModeState,
-  GoalRpcArgs,
-  GoalRpcResult,
+  GoalArgs,
+  GoalResult,
   GoalStatus,
 } from "../contract";
 import type { GuidedComposerDraft } from "./composer";
@@ -83,7 +83,7 @@ function makeHarness(options: HarnessOptions = {}) {
   const requests: DialogRequest[] = [];
   const confirmations: ConfirmDialogRequest[] = [];
   const optionsSeen: DialogHostOpenOptions[] = [];
-  const goalArgs: GoalRpcArgs[] = [];
+  const goalArgs: GoalArgs[] = [];
   const createOutcomes = [...(options.creates ?? [])];
   const writes: string[] = [];
   const listeners = new Set<() => void>();
@@ -157,7 +157,7 @@ function makeHarness(options: HarnessOptions = {}) {
       const outcome = createOutcomes.shift() ?? "ok";
       if (outcome !== "ok") throw outcome;
       setState(stateOf("active", true));
-      return { goal: state?.goal ?? null, state } as GoalRpcResult;
+      return { goal: state?.goal ?? null, state } as GoalResult;
     },
     subscribeGoal: () => () => undefined,
   };

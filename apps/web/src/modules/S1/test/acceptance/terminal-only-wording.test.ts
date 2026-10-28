@@ -24,9 +24,12 @@ const TERMINAL_ONLY_SOURCES: Readonly<Record<string, string>> = {
     "v18.12.6 main.ts:2025 prepaint composer (startup-composer.ts:114-121) and modes/interactive-mode.ts:438,3624; interactive TUI",
   "terminal.showProgress": "modes/controllers/event-controller.ts",
   "terminal.programStatus": "modes/interactive-mode.ts",
-  "tui.renderMermaid": "sdk.ts:3955 gated by tuiTranscript=false in rpc-ui; terminal only",
-  "tui.renderSvg": "sdk.ts:3956 gated by tuiTranscript=false in rpc-ui; terminal only",
-  "tui.autoGraph": "sdk.ts:3957 gated by tuiTranscript=false in rpc-ui; terminal only",
+  "tui.renderMermaid":
+    "sdk.ts:3955 gated by tuiTranscript=false, which the app's chat host sets; terminal only",
+  "tui.renderSvg":
+    "sdk.ts:3956 gated by tuiTranscript=false, which the app's chat host sets; terminal only",
+  "tui.autoGraph":
+    "sdk.ts:3957 gated by tuiTranscript=false, which the app's chat host sets; terminal only",
   "tui.textSizing": "modes/interactive-mode.ts",
   "tui.codexResetFireworks": "modes/status-line-host.ts",
   "tui.titleState": "modes/interactive-mode.ts",

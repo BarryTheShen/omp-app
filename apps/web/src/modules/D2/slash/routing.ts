@@ -53,7 +53,7 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
  * checked against omp v18.9.1; a form that only prints usage or lists stays text. `/share` is guarded in every form (issue 957,
  * builtin-collaboration.ts:293-296).
  *
- * The app's RPC runs a command's `handle`, the path rpc-mode.ts:1799 takes (acp-builtins.ts:59-69). The guard matches the
+ * The chat host runs a command's `handle`, the path omp's RPC mode takes too (rpc-mode.ts:1799; acp-builtins.ts:59-69). The guard matches the
  * command name and the subcommand word in any letter case, as it does for `/share`.
  * - `session delete` deletes the chat's session file (builtin-session.ts:270-280, `dropSession` at :280).
  * - `usage reset <target>` spends a saved rate-limit reset (builtin-session.ts:411-414; `handleUsageResetCommand` at

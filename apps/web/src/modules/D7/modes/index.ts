@@ -11,7 +11,7 @@ export type {
 export { createModeController, FAST_REFUSAL_NOTICE_SOURCE, ModeController } from "./controller";
 export { D7_EXECUTION_MODES_COMMAND } from "./descriptors";
 export { modeOutcomeRetryable, modeOutcomeText, type TypedModeOutcome } from "./outcomes";
-export { createModeCommandGateway, createModeRpc } from "./runtime";
+export { createModeCommandGateway, createModeHost } from "./runtime";
 export type {
   ConnectedModeControlsProps,
   ModeControlsActions,

@@ -6,14 +6,14 @@ import {
   ThreadId as ThreadIdSchema,
 } from "@omp-app/contracts";
 import { useEffect, useMemo } from "react";
-import type { GetStateResult, ModeRpc } from "../contract";
+import type { GetStateResult, ModeHost } from "../contract";
 import { ConnectedModeControls, ModeController } from "./index";
 
 const threadId: ThreadId = ThreadIdSchema.parse("d7-playground-thread");
 
 /**
  * The typed outcome the server gives each command-gateway change on the fake model: the toggles and the browser
- * window. Slow mode is not among them: the dialog changes it over RPC.
+ * window. Slow mode is not among them: the dialog changes it through the chat host.
  */
 function outcomeFor(request: ModeChangeRequest): ModeChangeResult {
   if (request.mode === "browser") {
@@ -70,7 +70,7 @@ function createController(): ModeController {
     "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
     "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
   };
-  const rpc: ModeRpc = {
+  const host: ModeHost = {
     getState: async () => ({
       sessionId: threadId,
       fastModeEnabled: false,
@@ -95,7 +95,7 @@ function createController(): ModeController {
         return outcomeFor(request);
       },
     },
-    rpc,
+    host,
   });
 }
 

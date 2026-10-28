@@ -5,10 +5,10 @@ import {
   OmpCommandGateway,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { ModeCommandGateway, ModeRpc } from "../contract";
+import type { ModeCommandGateway, ModeHost } from "../contract";
 
 /** The fast- and slow-mode requests on the chat session port. */
-export function createModeRpc(client: AppClient, threadId: ThreadId): ModeRpc {
+export function createModeHost(client: AppClient, threadId: ThreadId): ModeHost {
   const session = client.port(ChatSessionPort) as ChatSessionClient;
   return {
     getState: (options) => session.request({ threadId, method: "get_state", params: {} }, options),

@@ -48,7 +48,7 @@ function gatewayAnswering(
 /** A gateway that answers every change with a reply the app does not recognise, with no words. */
 const silent: ModeCommandGateway = gatewayAnswering(() => unknownReply([]));
 
-const rpc = {
+const host = {
   setSlowMode: async ({ enabled }: { readonly enabled: boolean }) => ({ enabled }),
   getState: async () => ({ sessionId: "session", fastModeEnabled: false, fastModeActive: false }),
   setFastMode: async ({ enabled }: { readonly enabled: boolean }) => ({
@@ -206,18 +206,18 @@ describe("plain words in the status lines", () => {
         "omp.cmd.get_state": CapabilityStatus.parse({
           state: "unavailable",
           via: "omp",
-          detail: "Unknown command: get_state (omp-v18.6.1:docs/rpc.md:141-149)",
+          detail: "the chat host does not answer get_state",
         }),
       }),
       gateway: silent,
-      rpc,
+      host,
     });
     const { container } = render(<ConnectedModeControls controller={controller} />);
     expect(await screen.findByText("The settings could not be loaded")).toBeTruthy();
     const text = controlsOf(container).textContent ?? "";
     expect(text).not.toContain("probe");
-    expect(text).not.toContain("Unknown command");
-    expect(text).not.toContain("docs/rpc");
+    expect(text).not.toContain("does not answer");
+    expect(text).not.toContain("get_state");
     expect(text).toContain("omp cannot report these settings in this chat.");
     controller.dispose();
   });
@@ -271,8 +271,8 @@ describe("plain words in the failure messages", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
-        ...rpc,
+      host: {
+        ...host,
         setFastMode: async () => {
           throw new Error("the connection dropped");
         },
@@ -296,8 +296,8 @@ describe("plain words in the failure messages", () => {
       threadId,
       capabilities: capabilities(),
       gateway: silent,
-      rpc: {
-        ...rpc,
+      host: {
+        ...host,
         getState: async () => {
           throw new Error("the connection dropped");
         },

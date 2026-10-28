@@ -78,7 +78,7 @@ describe("ModeController", () => {
           return appliedFor(request);
         },
       },
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
@@ -109,7 +109,7 @@ describe("ModeController", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: true,
@@ -243,7 +243,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
@@ -272,7 +272,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         getState: async () => ({
           fastModeEnabled: false,
           fastModeActive: false,
@@ -304,7 +304,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: () => Promise.withResolvers<never>().promise,
         setFastMode: async () => {
@@ -325,7 +325,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      rpc: {
+      host: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,

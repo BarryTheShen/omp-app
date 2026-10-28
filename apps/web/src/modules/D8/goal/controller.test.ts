@@ -6,9 +6,9 @@ import type { DialogHostOpenOptions } from "../../U4/contract/dialog-host";
 import type {
   AutonomyPort,
   Goal,
+  GoalArgs,
   GoalModeState,
-  GoalRpcArgs,
-  GoalRpcResult,
+  GoalResult,
   GoalStatus,
   GoalUpdatedEvent,
 } from "../contract";
@@ -49,7 +49,7 @@ function modeState(goal: Goal): GoalModeState {
   };
 }
 
-function resultFor(goal: Goal | null): GoalRpcResult {
+function resultFor(goal: Goal | null): GoalResult {
   return { goal, state: goal ? modeState(goal) : null };
 }
 
@@ -64,7 +64,7 @@ function makeRuntime(goal: Goal | null, sessionSettled: boolean): OmpRuntimeStor
 
 function makeAutonomy(initialGoal: Goal | null) {
   let currentGoal = initialGoal;
-  const calls: GoalRpcArgs[] = [];
+  const calls: GoalArgs[] = [];
   const listeners = new Set<(event: GoalUpdatedEvent | null) => void>();
   const autonomy: AutonomyPort = {
     async goal(_id, args) {
@@ -336,7 +336,7 @@ describe("GoalController", () => {
     controller.dispose();
   });
 
-  test("keeps cached goal details visible while disabling actions when goal RPC is unavailable", async () => {
+  test("keeps cached goal details visible while disabling actions when omp's goal command is unavailable", async () => {
     const goal = makeGoal();
     const capabilities: CapabilityMap = {
       "omp.cmd.goal": { state: "unavailable", via: "omp" },
@@ -414,7 +414,7 @@ describe("GoalController", () => {
     controller.dispose();
   });
 
-  test("shows an RPC failure, then loads the goal when the person tries again", async () => {
+  test("shows a failed goal request, then loads the goal when the person tries again", async () => {
     const goal = makeGoal();
     const fake = makeAutonomy(goal);
     let failures = 1;
@@ -461,7 +461,7 @@ describe("GoalController", () => {
   test("does not apply a goal read that finishes after the selected conversation changed", async () => {
     const goal = makeGoal();
     const fake = makeAutonomy(goal);
-    const read = Promise.withResolvers<GoalRpcResult>();
+    const read = Promise.withResolvers<GoalResult>();
     const runtime = makeSwitchingRuntime(makeRuntime(null, true));
     const controller = new GoalController({
       threadId,
@@ -484,10 +484,10 @@ describe("GoalController", () => {
     controller.dispose();
   });
 
-  test("ignores an RPC result that arrives after the panel was disposed", async () => {
+  test("ignores a goal result that arrives after the panel was disposed", async () => {
     const goal = makeGoal();
     const fake = makeAutonomy(goal);
-    const read = Promise.withResolvers<GoalRpcResult>();
+    const read = Promise.withResolvers<GoalResult>();
     let signal: { readonly aborted: boolean } | undefined;
     const controller = new GoalController({
       threadId,

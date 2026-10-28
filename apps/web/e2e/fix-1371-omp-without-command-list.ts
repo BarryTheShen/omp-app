@@ -1,10 +1,9 @@
 /**
  * A stand-in for a chat whose command list cannot be read: each request for the list gets an error reply, the way omp's
  * own failure does, and the lists the chat pushes on its own (at start and when commands change) are held back. It reads
- * both protocols that pass through it: the chat host's (the app's chats: a `get_available_commands` request and the
- * `available_commands` event) and omp's RPC (the capability probe: the request and the `available_commands_update`
- * frame, omp v18.12.6 `modes/rpc/rpc-mode.ts:1753-1759`). Every other line passes unchanged both ways. The fix-1371 spec
- * runs every chat through it with a shell wrapper, so the list fails inside the real app while the chat is real.
+ * the chat host's protocol: a `get_available_commands` request and the `available_commands` event. Every other line
+ * passes unchanged both ways. The fix-1371 spec runs every chat through it with a shell wrapper, so the list fails inside
+ * the real app while the chat is real.
  *
  * Usage: bun fix-1371-omp-without-command-list.ts <chat command...>
  */
@@ -17,12 +16,11 @@ if (program === undefined) {
 
 const child = spawn(program, args, { stdio: ["pipe", "pipe", "inherit"], env: process.env });
 
-/** Whether a line the chat wrote is a pushed command list: the chat host's event, or omp's RPC frame. */
+/** Whether a line the chat wrote is a pushed command list: the chat host's `available_commands` event. */
 function isCommandListPush(line: string): boolean {
   if (!line.includes('"available_commands')) return false;
   try {
     const frame = JSON.parse(line) as Record<string, unknown>;
-    if (frame.type === "available_commands_update") return true;
     const event = frame.event as { readonly type?: unknown } | undefined;
     return frame.kind === "event" && event?.type === "available_commands";
   } catch {
@@ -60,22 +58,10 @@ function refusalFor(line: string): string | undefined {
     return undefined;
   }
   if (typeof frame !== "object" || frame === null) return undefined;
-  const message = "omp could not list its commands.";
-  // The chat host's request, from the app's chats.
-  if ("kind" in frame && frame.kind === "request" && "method" in frame) {
-    if (frame.method !== "get_available_commands" || !("id" in frame)) return undefined;
-    return `${JSON.stringify({ kind: "response", id: frame.id, ok: false, error: { code: "failed", message } })}\n`;
-  }
-  // omp's RPC request, from the capability probe.
-  if (!("type" in frame) || frame.type !== "get_available_commands") return undefined;
-  const id = "id" in frame && typeof frame.id === "string" ? frame.id : undefined;
-  return `${JSON.stringify({
-    ...(id === undefined ? {} : { id }),
-    type: "response",
-    command: "get_available_commands",
-    success: false,
-    error: message,
-  })}\n`;
+  if (!("kind" in frame) || frame.kind !== "request" || !("method" in frame)) return undefined;
+  if (frame.method !== "get_available_commands" || !("id" in frame)) return undefined;
+  const error = { code: "failed", message: "omp could not list its commands." };
+  return `${JSON.stringify({ kind: "response", id: frame.id, ok: false, error })}\n`;
 }
 
 let pending = "";

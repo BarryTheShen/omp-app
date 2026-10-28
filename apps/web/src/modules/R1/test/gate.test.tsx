@@ -136,7 +136,7 @@ interface SubscriptionRecord {
 }
 
 /** The chat session port and AppPort's capability map, as R1's controller reads them. */
-function createHistoryRpc(
+function createFakeSession(
   open: (args: OpenThreadArgs) => Promise<ChatOpenResult>,
   calls: string[],
 ): ChatSessionClient {
@@ -167,13 +167,13 @@ function createHistoryRpc(
 }
 
 function createHistoryClient(
-  rpc: ChatSessionClient,
+  fakeSession: ChatSessionClient,
   subscriptions: SubscriptionRecord[],
 ): AppClient {
   return {
     connectionState: "open",
     instanceId: "r1-fixture-instance",
-    port: () => rpc,
+    port: () => fakeSession,
     onConnectionState: () => () => {},
     onResync: () => () => {},
     subscribe: async (_port: unknown, _event: unknown, options?: SubscribeOptions) => {
@@ -449,12 +449,12 @@ describe("R1 W3 sidebar to history handoff", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const historyCalls: string[] = [];
     const openedByHistory: OpenThreadArgs[] = [];
-    const rpc = createHistoryRpc(async (args) => {
+    const fakeSession = createFakeSession(async (args) => {
       openedByHistory.push(args);
       return openResult("threadId" in args ? args.threadId : R1_THREAD_IDS.active);
     }, historyCalls);
     const controller = createSelectedThreadHistoryController({
-      client: createHistoryClient(rpc, subscriptions),
+      client: createHistoryClient(fakeSession, subscriptions),
       folder: R1_FIXTURE_FOLDER,
     });
     const openedByRemote: OpenThreadArgs[] = [];

@@ -32,11 +32,11 @@ export const AP6_UNAVAILABLE_FIXTURES: readonly Ap6UnavailableFixture[] = (
  * The released goal command on a connection where omp publishes it. Assumed for the test: no recording on main shows this
  * state. The probe that publishes `omp.cmd.goal` labels its source at `packages/server/src/capabilities/index.ts:116`.
  */
-export const GOAL_RPC_AVAILABLE: CapabilityMap = {
+export const GOAL_AVAILABLE: CapabilityMap = {
   "omp.cmd.goal": CapabilityStatus.parse({ state: "available", via: "omp" }),
 };
 
-/** The released goal command where omp does not publish it. Assumed for the test, like GOAL_RPC_AVAILABLE. */
-export const GOAL_RPC_UNAVAILABLE: CapabilityMap = {
+/** The released goal command where omp does not publish it. Assumed for the test, like GOAL_AVAILABLE. */
+export const GOAL_UNAVAILABLE: CapabilityMap = {
   "omp.cmd.goal": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
 };

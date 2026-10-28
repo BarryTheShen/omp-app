@@ -70,7 +70,7 @@ describe("I5 voice and dictation contracts", () => {
     });
   });
 
-  test("gates live RPC and browser speech capabilities without claiming audio transport", () => {
+  test("gates live voice and browser speech capabilities without claiming audio transport", () => {
     expect(liveCapabilityAvailable({})).toBe(false);
     expect(
       liveCapabilityAvailable({

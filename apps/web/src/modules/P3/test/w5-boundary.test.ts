@@ -80,13 +80,10 @@ describe("W5 boundary: P3 consumes typed ports only", () => {
     expect(FILES.length).toBeGreaterThan(20);
   });
 
-  test("production code imports no omp module, no wire or RPC layer, and no server package", () => {
+  test("production code imports no omp module and no server package", () => {
     const violations = violationsOf(
       (_file, specifier) =>
-        /^@\/modules\/A0(\/|$)/.test(specifier) ||
-        /omp-wire/.test(specifier) ||
-        /omp-rpc/.test(specifier) ||
-        /^@omp-app\/server/.test(specifier),
+        /^@\/modules\/A0(\/|$)/.test(specifier) || /^@omp-app\/server/.test(specifier),
     );
 
     expect(violations).toEqual([]);

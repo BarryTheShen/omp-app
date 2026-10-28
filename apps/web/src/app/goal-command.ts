@@ -1,8 +1,8 @@
-import type { GoalOperation, GoalRpcArgs, GoalRpcResult, GoalStatus } from "@/modules/D8/contract";
+import type { GoalOperation, GoalArgs, GoalResult, GoalStatus } from "@/modules/D8/contract";
 
 /** What a typed `/goal` asks omp for: one goal operation, or a reason the app does not run it. */
 export type GoalCommand =
-  | { readonly kind: "operation"; readonly args: GoalRpcArgs }
+  | { readonly kind: "operation"; readonly args: GoalArgs }
   | { readonly kind: "refused"; readonly reason: string };
 
 const STATUS_WORDS: Record<GoalStatus, string> = {
@@ -43,7 +43,7 @@ export function parseGoalCommand(text: string): GoalCommand {
 }
 
 /** Says what omp now has, in plain words. `result` is what omp answered for `op`. */
-export function describeGoalResult(op: GoalOperation, result: GoalRpcResult): string {
+export function describeGoalResult(op: GoalOperation, result: GoalResult): string {
   const goal = result.goal;
   if (op === "drop") return goal === null ? "Goal dropped." : `Goal dropped: ${goal.objective}.`;
   if (goal === null) return NO_GOAL[op];

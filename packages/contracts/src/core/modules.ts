@@ -82,7 +82,7 @@ export const MODULES: readonly ModuleInfo[] = [
   },
   {
     id: "A0",
-    name: "omp RPC transport and recorded-fixture harness",
+    name: "chat session port, chat host runtime and server shell",
     wave: "W1",
     size: "L",
     needs: ["C0"],

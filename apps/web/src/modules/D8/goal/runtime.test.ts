@@ -3,7 +3,7 @@ import { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { notificationEvent } from "@/modules/R0/store/session-events";
 import { OmpRuntimeStore } from "../../R0/store";
-import type { Goal, GoalModeState, GoalRpcResult, GoalUpdatedEvent } from "../contract";
+import type { Goal, GoalModeState, GoalResult, GoalUpdatedEvent } from "../contract";
 import { createAutonomyPort } from "./runtime";
 
 const threadId = ThreadId.parse("thread-goal-port");
@@ -24,7 +24,7 @@ function modeState(goal: Goal): GoalModeState {
   return { enabled: true, mode: "active", goal };
 }
 
-function resultFor(goal: Goal): GoalRpcResult {
+function resultFor(goal: Goal): GoalResult {
   return { goal, state: modeState(goal) };
 }
 
