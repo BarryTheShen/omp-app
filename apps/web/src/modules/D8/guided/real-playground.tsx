@@ -1,4 +1,4 @@
-import type { AppClient, AppClientSubscription } from "@omp-app/client";
+import { type AppClient, type AppClientSubscription, createAppClient } from "@omp-app/client";
 import {
   AppPort,
   type ChatSessionClient,
@@ -9,7 +9,6 @@ import {
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createChatSessionAppClient } from "../../../launch/chat-session-shim";
 import { readLaunchToken, websocketUrl } from "../../../launch/token";
 import { OverlayHost, useStableOverlayHost } from "../../../overlay";
 import { OmpRuntimeStore } from "../../R0/store";
@@ -93,7 +92,7 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
     const connect = async () => {
       const token = readLaunchToken().token;
       if (!token) throw new Error("The signed-in session is unavailable.");
-      client = createChatSessionAppClient({ url: websocketUrl(window.location), token });
+      client = createAppClient({ url: websocketUrl(window.location), token });
       await waitForClient(client);
       if (!active) return;
 

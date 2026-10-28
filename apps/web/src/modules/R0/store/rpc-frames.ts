@@ -1,14 +1,11 @@
 /**
- * The chat session port's events and sends in the shapes A0's RPC port had (SDK plan H5.4,
- * `reassessment/SDK-CHAT-HOST-PLAN.md`, "H5.4 design"), shared by the cutover's shim (`launch/chat-session-shim.ts`)
- * and R0's store while readers still speak those shapes:
- * - each session payload becomes one RPC event, in the shape omp's RPC session gave it
- *   (`packages/omp-rpc/src/session/rpc-session.ts:692-762`), so no sequence is skipped;
- * - sends become requests by method, with the host's params.
- * The host's requests and UI events are no longer translated: a dialog travels as a `host_dialog` frame holding the
- * host's request (H5.4c), a tool call or a URI read or write as a `host_call` frame (H5.4d), their cancels as
- * `host_dialog_cancel` and `host_call_cancel`, and a UI event as itself. The later H5.4 parts move each other reader off
- * it, and H5.4h deletes it.
+ * The chat session port's events in the shapes A0's RPC port had (SDK plan H5.4, `reassessment/SDK-CHAT-HOST-PLAN.md`,
+ * "H5.4 design"), for R0's store, whose reducers still read those shapes until H5.6 removes omp-wire: each session
+ * payload becomes one RPC event, in the shape omp's RPC session gave it
+ * (`packages/omp-rpc/src/session/rpc-session.ts:692-762`), so no sequence is skipped. The host's requests and UI events
+ * are not translated: a dialog travels as a `host_dialog` frame holding the host's request (H5.4c), a tool call or a URI
+ * read or write as a `host_call` frame (H5.4d), their cancels as `host_dialog_cancel` and `host_call_cancel`, and a UI
+ * event as itself. `commandOf` serves the stand-ins that still play recorded RPC sessions.
  */
 import type { ChatSessionEvent, RpcSessionEvent, RpcSessionNotification } from "@omp-app/contracts";
 import {
@@ -197,26 +194,10 @@ export function rpcEventOf(payload: ChatSessionEvent): RpcSessionEvent {
   }
 }
 
-/** An RPC command as the host's method and params: `prompt`, `steer` and `follow_up` take `text` where omp took `message`. */
-export function requestOf(command: Record<string, unknown>): {
-  readonly method: string;
-  readonly params: Record<string, unknown>;
-} {
-  const { type, ...params } = command;
-  const method = String(type);
-  if (
-    (method === "prompt" || method === "steer" || method === "follow_up") &&
-    "message" in params
-  ) {
-    const { message, ...rest } = params;
-    return { method, params: { ...rest, text: message } };
-  }
-  return { method, params };
-}
-
 /**
- * A host request as the RPC command omp took, the inverse of `requestOf`: for the stand-ins that still play omp's RPC
- * frames (a recorded fixture session) until H5.6 rewrites them on the host's protocol.
+ * A host request as the RPC command omp took (`prompt`, `steer` and `follow_up` carry `message` where the host takes
+ * `text`): for the stand-ins that still play omp's RPC frames (a recorded fixture session) until H5.6 rewrites them on
+ * the host's protocol.
  */
 export function commandOf(method: string, params: unknown): Record<string, unknown> {
   const fields = { ...(params as Record<string, unknown>) };
@@ -225,13 +206,4 @@ export function commandOf(method: string, params: unknown): Record<string, unkno
     return { type: method, ...rest, message: text };
   }
   return { type: method, ...fields };
-}
-
-/** A host's result as the RPC result the readers know: `prompt` answers whether the model runs. */
-export function resultOf(method: string, result: unknown): unknown {
-  if (method === "prompt") {
-    const answer = result as { readonly resultFollows: boolean };
-    return { agentInvoked: answer.resultFollows };
-  }
-  return result;
 }
