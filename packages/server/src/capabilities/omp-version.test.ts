@@ -147,6 +147,21 @@ describe("listUsableModels", () => {
     ]);
   });
 
+  test("a first run that waits out omp's catalog fetch still lists the models, and a first start without one says so (issue 2690)", async () => {
+    // omp fetches its model catalog on its first run and waits up to 10 s for it: behind a name server that does not
+    // answer, its first `models --json` took 10.6 to 10.9 s.
+    const withModel = await fakeOmp(
+      `sleep 10.7; echo '{"models":[{"provider":"fake","kind":"chat","id":"fake-model","selector":"fake/fake-model","name":"Fake Model"}]}'`,
+    );
+    const withNone = await fakeOmp(`sleep 10.7; echo '{"models":[]}'`);
+    const [models, health] = await Promise.all([
+      listUsableModels([withModel.binary], ENV, withModel.cwd),
+      unhealthyAfterFailedChecks([withNone.binary], ENV, withNone.cwd),
+    ]);
+    expect(models).toEqual([{ provider: "fake", modelId: "fake-model", name: "Fake Model" }]);
+    expect(health).toEqual({ status: "unhealthy", detail: OMP_PROBLEM.noModel, code: "no_model" });
+  }, 30_000);
+
   test("a listing omp cannot give is a plain failure, not an empty list", async () => {
     const { binary, cwd } = await fakeOmp("exit 1");
     await expect(listUsableModels([binary], ENV, cwd)).rejects.toMatchObject({

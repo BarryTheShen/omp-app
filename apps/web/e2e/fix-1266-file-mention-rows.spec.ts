@@ -64,9 +64,12 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-1266-file-mention-narrow.png") });
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    // Both sidebars open again: wait until each reports open, then for the fade to end.
+    // The Sessions list opens again and the Panels stay closed, as they started (#2570): wait for each, then the fade.
     await expect(page.locator('[data-shell-sidebar="left"]')).toHaveAttribute("data-open", "true");
-    await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute("data-open", "true");
+    await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute(
+      "data-open",
+      "false",
+    );
     await waitForFiniteAnimations(page);
     await page.evaluate(() => document.documentElement.classList.add("dark"));
     await expect(page.locator("html")).toHaveClass(/dark/);

@@ -6,11 +6,10 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { useMemo, useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { type AttachmentBlobStore, AttachmentManager, type StoredAttachment } from "../attachments";
 import { DraftController, type DraftTimer } from "./drafts";
-import { ScopedDraftStore } from "./test-support";
+import { ScopedDraftStore, useComposerText } from "./test-support";
 import {
   type ComposerSendHold,
   composerDraftForLifecycle,
@@ -92,10 +91,9 @@ function Composer({
   readonly switching?: boolean;
   readonly isRecalledPrompt?: (text: string) => boolean;
 }) {
-  const [text, setText] = useState("");
-  const composer = useMemo(() => ({ setText }), []);
+  const { text, composer } = useComposerText();
   shown.text = text;
-  shown.type = setText;
+  shown.type = composer.setText;
   useComposerDraft({
     chat,
     controller,
@@ -1053,8 +1051,7 @@ describe("useComposerDraft: a picture still loading when the person moves to ano
 
 /** A real text box bound to the composer draft, so the caret can be read. */
 function TextBox({ chat, controller }: { chat: object; controller: DraftController }) {
-  const [text, setText] = useState("");
-  const composer = useMemo(() => ({ setText }), []);
+  const { text, composer } = useComposerText();
   useComposerDraft({
     chat,
     controller,
@@ -1063,7 +1060,7 @@ function TextBox({ chat, controller }: { chat: object; controller: DraftControll
     attachments: noAttachments,
     isRecalledPrompt: notRecalled,
   });
-  return <textarea value={text} onChange={(event) => setText(event.target.value)} />;
+  return <textarea value={text} onChange={(event) => composer.setText(event.target.value)} />;
 }
 
 describe("useComposerDraft: the same chat's draft moving to another scope", () => {
@@ -1105,10 +1102,9 @@ describe("useComposerDraft: a send in flight (#2659)", () => {
     const hold: { current: ComposerSendHold | null } = { current: null };
     const chat = {};
     function Holding() {
-      const [text, setText] = useState("");
-      const composer = useMemo(() => ({ setText }), []);
+      const { text, composer } = useComposerText();
       shown.text = text;
-      shown.type = setText;
+      shown.type = composer.setText;
       hold.current = useComposerDraft({
         chat,
         controller,
@@ -1126,6 +1122,140 @@ describe("useComposerDraft: a send in flight (#2659)", () => {
     };
     return { shown, send };
   }
+
+  test("text typed as the send ends, before the box has drawn it, stays in the box and becomes the draft", async () => {
+    const controller = new DraftController({
+      store: new ScopedDraftStore(),
+      scope: chatScope("chat-t"),
+      timers: noTimers,
+    });
+    await controller.load();
+    const { shown, send } = renderHolding(controller);
+    await waitFor(() => expect(controller.getSnapshot().status).toBe("ready"));
+    act(() => shown.type("first message"));
+    await waitFor(() => expect(controller.getSnapshot().text).toBe("first message"));
+    act(() => send().beginSend());
+    await act(() =>
+      controller.submit(
+        { mode: "prompt", text: "first message", delivery: "new" },
+        async () => undefined,
+      ),
+    );
+
+    // The keystroke and the send's end land in one task: the hook has not rendered the typed text yet.
+    act(() => {
+      shown.type("typed as it ended");
+      send().endSend();
+    });
+    expect(shown.text).toBe("typed as it ended");
+    expect(controller.getSnapshot().text).toBe("typed as it ended");
+  });
+
+  test("text typed while the chat's draft is built again during the send goes to the draft the box shows", async () => {
+    // A New chat's first send: its own store replaces the empty source it opened with, and the chat's draft is built
+    // again while the send is in flight (#2646). The send's end comes from the render that took the Enter.
+    const store = new ScopedDraftStore();
+    const scope = chatScope("chat-r");
+    const first = new DraftController({ store, scope, timers: noTimers });
+    const rebuilt = new DraftController({ store, scope, timers: noTimers });
+    await first.load();
+    await rebuilt.load();
+    const shown: ShownComposer = { text: "", type: () => undefined };
+    const hold: { current: ComposerSendHold | null } = { current: null };
+    function Composer({ chat, controller }: { chat: object; controller: DraftController }) {
+      const { text, composer } = useComposerText();
+      shown.text = text;
+      shown.type = composer.setText;
+      hold.current = useComposerDraft({
+        chat,
+        controller,
+        text,
+        composer,
+        attachments: noAttachments,
+        isRecalledPrompt: notRecalled,
+      });
+      return null;
+    }
+    const firstChat = {};
+    const rebuiltChat = {};
+    const view = render(<Composer chat={firstChat} controller={first} />);
+    act(() => shown.type("first message"));
+    await waitFor(() => expect(first.getSnapshot().text).toBe("first message"));
+    const atEnter = hold.current;
+    if (atEnter === null) throw new Error("the composer did not render");
+    act(() => atEnter.beginSend());
+
+    view.rerender(<Composer chat={rebuiltChat} controller={rebuilt} />);
+    act(() => shown.type("typed during the send"));
+    act(() => atEnter.endSend());
+    expect(shown.text).toBe("typed during the send");
+    expect(rebuilt.getSnapshot().text).toBe("typed during the send");
+    expect(first.getSnapshot().text).not.toBe("typed during the send");
+  });
+
+  test("a draft that becomes ready during a send does not bring the sent text back into the box", async () => {
+    // The New chat's draft moved into its thread just before the send, whose draft has not loaded yet. The send keeps its
+    // text in that draft until admission, which makes the draft ready while the send is in flight.
+    const first = new DraftController({
+      store: new ScopedDraftStore(),
+      scope: chatScope("chat-a"),
+      timers: noTimers,
+    });
+    await first.load();
+    const held = new HeldReadStore();
+    const moved = new DraftController({
+      store: held,
+      scope: chatScope("chat-b"),
+      timers: noTimers,
+    });
+    held.hold();
+    const loading = moved.load();
+    await held.waitUntilReadStarts();
+    const shown: ShownComposer = { text: "", type: () => undefined };
+    const hold: { current: ComposerSendHold | null } = { current: null };
+    const chat = {};
+    function Composer({ controller }: { controller: DraftController }) {
+      const { text, composer } = useComposerText();
+      shown.text = text;
+      shown.type = composer.setText;
+      hold.current = useComposerDraft({
+        chat,
+        controller,
+        text,
+        composer,
+        attachments: noAttachments,
+        isRecalledPrompt: notRecalled,
+      });
+      return null;
+    }
+    const view = render(<Composer controller={first} />);
+    act(() => shown.type("queued follow-up"));
+    view.rerender(<Composer controller={moved} />);
+    const atEnter = hold.current;
+    if (atEnter === null) throw new Error("the composer did not render");
+    act(() => atEnter.beginSend());
+    expect(shown.text).toBe("");
+
+    const admitted = Promise.withResolvers<void>();
+    let sent: Promise<void> = Promise.resolve();
+    act(() => {
+      sent = moved.submit(
+        { mode: "prompt", text: "queued follow-up", delivery: "followUp" },
+        () => admitted.promise,
+      );
+    });
+    expect(moved.getSnapshot().status).toBe("ready");
+    expect(shown.text).toBe("");
+
+    admitted.resolve();
+    held.release();
+    await act(async () => {
+      await sent;
+      await loading;
+    });
+    act(() => atEnter.endSend());
+    await waitFor(() => expect(shown.text).toBe(""));
+  });
 
   test("the box empties at Enter and takes new text, which the draft gets only once the send has settled", async () => {
     const controller = new DraftController({

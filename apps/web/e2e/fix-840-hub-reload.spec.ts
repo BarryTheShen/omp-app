@@ -39,6 +39,8 @@ realTest(
       )
       .toBe(true);
 
+    // The Panels start closed on a first run (#2570): open them to reach the Agents tab.
+    await page.getByRole("button", { name: "Show panels sidebar" }).click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await expect(hub.getByRole("option", { name: /Finished.*NestedProbe/ })).toHaveCount(1, {
@@ -61,6 +63,9 @@ realTest(
         { timeout: 120_000 },
       )
       .toBe(true);
+    // The Panels stay open across the reload (the person's choice is remembered); open them if they are not.
+    const showPanels = page.getByRole("button", { name: /show panels sidebar/i });
+    if ((await showPanels.count()) > 0) await showPanels.first().click();
     await page.getByRole("tab", { name: "Agents" }).click();
     await expect(hub.getByRole("option", { name: /Finished.*NestedProbe/ })).toHaveCount(1, {
       timeout: 120_000,

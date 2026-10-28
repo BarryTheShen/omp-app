@@ -1,4 +1,5 @@
 import { AppFailure, type Draft, type DraftInput, type DraftScope } from "@omp-app/contracts";
+import { useMemo, useRef, useState } from "react";
 import type { DraftStoreAdapter } from "./drafts";
 
 /** The store key the test double keeps a scope's draft under. */
@@ -69,4 +70,30 @@ export class ScopedDraftStore implements DraftStoreAdapter {
     this.saved.delete(key);
     return { cleared: true, revision: null };
   }
+}
+
+/**
+ * The composer's text as assistant-ui keeps it: `setText`, which a keystroke calls too, changes it at once, `getState`
+ * reads it back before React has drawn the change, and `text` is what the last render shows.
+ */
+export function useComposerText(): {
+  readonly text: string;
+  readonly composer: {
+    readonly setText: (text: string) => void;
+    readonly getState: () => { readonly text: string };
+  };
+} {
+  const [text, setText] = useState("");
+  const state = useRef({ text: "" });
+  const composer = useMemo(
+    () => ({
+      setText: (next: string) => {
+        state.current = { text: next };
+        setText(next);
+      },
+      getState: () => state.current,
+    }),
+    [],
+  );
+  return { text, composer };
 }

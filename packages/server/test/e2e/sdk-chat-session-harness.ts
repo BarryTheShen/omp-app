@@ -58,6 +58,8 @@ export function chatSessionPorts() {
       options: Pick<ChatOptions, "agentFiles" | "nativeDiscovery" | "config"> & {
         /** Another omp's lease on a chat, as the server reads it; "none" when unset. */
         readonly externalOmp?: A0PortContext["externalOmp"];
+        /** omp's lease on a chat as the open reads it (`active` when another omp holds it); none when unset. */
+        readonly leaseProbe?: A0PortContext["leaseProbe"];
         /** Read omp's own leases as the app does (`scripts/dev.ts`), for a test that runs another omp on the chats. */
         readonly realLeases?: boolean;
         /** The registry's wait for a stop reaches its limit at once, so a delete is refused while its stop goes on. */
@@ -103,9 +105,11 @@ export function chatSessionPorts() {
             ? (threadId, sessionFile, hostPid) =>
                 findExternalOmp({ sessionId: threadId, sessionFile, ownersDir, ownPid: hostPid })
             : async () => "none"),
-        ...(options.realLeases === true
-          ? { leaseProbe: sessionLeaseProbe({ ownersDir: () => ownersDir }) }
-          : {}),
+        ...(options.leaseProbe !== undefined
+          ? { leaseProbe: options.leaseProbe }
+          : options.realLeases === true
+            ? { leaseProbe: sessionLeaseProbe({ ownersDir: () => ownersDir }) }
+            : {}),
       };
       const runtime = new ChatSessionPortRuntime(context);
       runtimes.push(runtime);

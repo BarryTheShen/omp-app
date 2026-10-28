@@ -119,6 +119,38 @@ describe("rename and the reopen after a refused delete on the chat session port"
     );
 
     programTest(
+      `${program.name}: while another omp holds a closed chat's lease, a rename is refused as a rename, and no host starts`,
+      async () => {
+        let held = false;
+        const setup = await ports.start(command, {
+          leaseProbe: async () => (held ? "active" : "inactive"),
+        });
+        const threadId = await writtenChat(setup);
+        await closed(setup, threadId);
+        held = true;
+
+        // The open refuses the held chat before it starts a host; the rename's refusal says what was not done.
+        await expect(
+          setup.runtime.rename({ threadId, name: "Not while held" }, call()),
+        ).rejects.toMatchObject({
+          appError: {
+            code: "conflict",
+            message:
+              "Another omp is using this chat, so it can't be renamed right now. Close that omp, then try again.",
+            retryable: true,
+          },
+        });
+        expect(setup.registry.has(threadId)).toBe(false);
+
+        held = false;
+        expect(await setup.runtime.rename({ threadId, name: "Renamed later" }, call())).toBeNull();
+        await setup.runtime.open({ threadId }, call());
+        expect(await nameOf(setup, threadId)).toBe("Renamed later");
+      },
+      90_000,
+    );
+
+    programTest(
       `${program.name}: a delete refused past the stop limit opens the chat again for the tab, which answers its next prompt`,
       async () => {
         const setup = await ports.start(command, { stopLimitAtOnce: true });

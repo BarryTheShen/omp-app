@@ -48,6 +48,11 @@ declare global {
   }
 }
 
+/**
+ * Records the fades of the sidebar's chat rows. A new chat's row fades in once, when it appears: as the chat's running row
+ * ("New chat", "Running") when its turn starts before the list holds its file, and the saved row then keeps that element
+ * (both are keyed by the chat's id, issue 2212), or as the saved row itself when the file is listed first.
+ */
 function recordSessionFades(): void {
   const fades: string[] = [];
   window.__sessionFades = fades;
@@ -56,7 +61,7 @@ function recordSessionFades(): void {
     (event) => {
       if (!(event.target instanceof Element)) return;
       if (event.propertyName !== "opacity") return;
-      if (event.target.matches('[data-slot="r1-session-row"]'))
+      if (event.target.matches('[data-slot="r1-session-row"], [data-slot="r1-running-row"]'))
         fades.push((event.target.textContent ?? "").replace(/\s+/g, " ").trim());
     },
     true,
@@ -95,7 +100,13 @@ realTest.describe("a new session row fades in once", () => {
         ).toBeVisible({ timeout: 60_000 });
         const composer = await startChat(page);
         await sendPrompt(composer, "pong");
-        await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+        // The prompt and its answer are both "pong", and the new chat's row is titled with it: the answer has come once
+        // the transcript shows two.
+        await expect(
+          page
+            .getByRole("region", { name: "Conversation transcript" })
+            .getByText("pong", { exact: true }),
+        ).toHaveCount(2, { timeout: 60_000 });
         await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
           timeout: 60_000,
         });
@@ -111,7 +122,9 @@ realTest.describe("a new session row fades in once", () => {
         ).toBeVisible({ timeout: 60_000 });
         await page.waitForTimeout(20_000);
         const fades = await page.evaluate(() => window.__sessionFades ?? []);
-        const newRowFades = fades.filter((label) => label.startsWith("pong"));
+        const newRowFades = fades.filter(
+          (label) => label.startsWith("pong") || label.startsWith("New chat"),
+        );
         const historyFades = fades.filter((label) => label.startsWith("Question 1"));
         expect(historyFades, `history row fades: ${JSON.stringify(historyFades)}`).toEqual([]);
         expect(newRowFades.length, `new session row fades: ${JSON.stringify(fades)}`).toBe(1);

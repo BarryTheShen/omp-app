@@ -350,6 +350,11 @@ export class DraftController {
   private scope: DraftScope;
   private snapshot: DraftSnapshot;
   private readonly listeners = new Set<DraftListener>();
+  /**
+   * Set once `handOff` has moved this scope's draft away. The draft did not empty, it moved: the chat shows it from the
+   * controller that adopted it, so this one tells its listeners nothing more.
+   */
+  private handedOff = false;
   private unsubscribeChanged: (() => void) | undefined;
   private timer: unknown;
   private maxTimer: unknown;
@@ -619,6 +624,9 @@ export class DraftController {
     this.sendInFlight = null;
     this.sendRecorded = false;
     this.buffer?.clearSent(this.scope);
+    // Told of the emptied scope, the composer would empty the box until the chat shows the adopting controller, and an
+    // Enter pressed in between would find nothing to send.
+    this.handedOff = true;
     this.setState({
       text: "",
       attachments: [],
@@ -1277,6 +1285,7 @@ export class DraftController {
     const wasDirty = this.snapshot.dirty;
     this.snapshot = { ...this.snapshot, ...update };
     if (mirror) this.mirrorBuffer(wasDirty);
+    if (this.handedOff) return;
     for (const listener of this.listeners) listener(this.snapshot);
   }
 

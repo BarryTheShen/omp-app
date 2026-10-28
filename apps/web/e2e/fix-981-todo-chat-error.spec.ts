@@ -34,6 +34,8 @@ async function answeredChat(page: Page): Promise<void> {
       .getByRole("region", { name: "Conversation transcript" })
       .getByText("pong", { exact: true }),
   ).toBeVisible({ timeout: 90_000 });
+  // The Panels start closed on a first run (#2570): open them to see the Todo checklist.
+  await page.getByRole("button", { name: "Show panels sidebar" }).click();
   await expect(todoPanel(page).getByText("Nothing here yet")).toBeVisible();
 }
 

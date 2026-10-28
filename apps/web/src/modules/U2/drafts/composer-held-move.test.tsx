@@ -1,9 +1,9 @@
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
-import { ScopedDraftStore } from "./test-support";
+import { ScopedDraftStore, useComposerText } from "./test-support";
 import { type ChatMessagesSource, type UseChatDraftResult, useChatDraft } from "./use-chat-draft";
 import { useComposerDraft } from "./use-composer-draft";
 
@@ -60,6 +60,8 @@ interface Shown {
   type(text: string): void;
   submit: UseChatDraftResult["submit"];
   scope(): unknown;
+  /** Every text the box has shown, when the test records them. */
+  seen?: string[];
 }
 
 /** A new chat's composer, bound the way the app binds it: the chat's draft, and the composer's text. */
@@ -79,13 +81,13 @@ function NewChatComposer({
     messages: NO_MESSAGES,
     loaded,
   });
-  const [text, setText] = useState("");
-  const composer = useMemo(() => ({ setText }), []);
+  const { text, composer } = useComposerText();
   useEffect(() => {
     void draft.controller.load();
   }, [draft.controller]);
   shown.text = text;
-  shown.type = setText;
+  shown.seen?.push(text);
+  shown.type = composer.setText;
   shown.submit = draft.submit;
   shown.scope = () => draft.controller.getSnapshot().scope;
   useComposerDraft({
@@ -137,5 +139,28 @@ describe("a new chat's draft moves while the person types (#1477)", () => {
 
     await waitFor(() => expect(shown.scope()).toEqual({ kind: "folder", folder }));
     await waitFor(() => expect(shown.text).toBe("hello there"));
+  });
+
+  test("the box keeps the typed text while the chat's draft moves: it never shows the scope the draft left", async () => {
+    const store = new GatedClearStore();
+    const shown: Shown = {
+      text: "",
+      type: () => undefined,
+      submit: async () => undefined,
+      scope: () => undefined,
+    };
+    const view = render(<NewChatComposer store={store} loaded={false} shown={shown} />);
+    await waitFor(() => expect(shown.scope()).toEqual({ kind: "thread", threadId }));
+    act(() => shown.type("kept while it moves"));
+
+    // The chat finishes loading: its draft moves to the folder's new-chat draft. The scope it leaves is emptied, and
+    // an Enter pressed while the box showed that would find nothing to send.
+    shown.seen = [];
+    await act(async () => {
+      view.rerender(<NewChatComposer store={store} loaded={true} shown={shown} />);
+    });
+    await waitFor(() => expect(shown.scope()).toEqual({ kind: "folder", folder }));
+    await waitFor(() => expect(shown.text).toBe("kept while it moves"));
+    expect(shown.seen).not.toContain("");
   });
 });

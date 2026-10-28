@@ -31,8 +31,13 @@ export const OMP_PROBLEM = {
 
 export const OMP_VERSION_TIMEOUT_MS = 5_000;
 
-/** `omp models --json` reads the model catalog, which takes longer than `--version`. */
-const OMP_MODELS_TIMEOUT_MS = 10_000;
+/**
+ * `omp models --json` reads the model catalog, which takes longer than `--version`. On its first run omp fetches the
+ * catalog and waits up to 10 s for it (omp 18.12.6: `fetchRevalidatedWellKnownModels` in pi-catalog, with
+ * `DEFAULT_OPENAI_COMPATIBLE_DISCOVERY_TIMEOUT_MS`); behind a name server that does not answer, its first listing took
+ * 10.6 to 10.9 s (issue 2690). The limit leaves room for that wait and a slow start.
+ */
+const OMP_MODELS_TIMEOUT_MS = 20_000;
 
 /** One run of omp: it could not be started, it ran out of time (and was killed), or it exited. */
 type OmpRun =

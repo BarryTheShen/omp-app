@@ -201,19 +201,87 @@ async function echoArrives(page: Page, hold: FrameHold): Promise<void> {
 }
 
 /**
- * The refused send of #2358: a send from a New chat that has not opened yet, refused when the person starts another New
- * chat at once. The notice says where the text went; the text is in the message box of the new chat.
+ * The `open` calls of the chat session port sent while `holding`: their answers wait, and after `fail` each one is answered
+ * with the failure of a chat whose omp could not start, in place of the server's answer (one that arrives later too).
  */
-async function refusedSendInNewChat(page: Page): Promise<Locator> {
+class OpenHold {
+  holding = false;
+  private failing = false;
+  private readonly calls = new Set<string>();
+  private readonly queued: Array<() => void> = [];
+
+  /** Notes an `open` call sent while holding: its answer is held. */
+  call(id: string): void {
+    if (this.holding) this.calls.add(id);
+  }
+
+  /** Takes the answer when it answers a held call: sends the failure now, or once `fail` is called. */
+  answer(id: string, sendFailure: () => void): boolean {
+    if (!this.calls.has(id)) return false;
+    if (this.failing) sendFailure();
+    else this.queued.push(sendFailure);
+    return true;
+  }
+
+  fail(): void {
+    this.holding = false;
+    this.failing = true;
+    for (const send of this.queued.splice(0)) send();
+  }
+}
+
+/** Routes the page's websocket so the answer to a held `open` (a New chat that has not opened yet) waits. */
+async function holdOpens(target: Page, hold: OpenHold): Promise<void> {
+  await target.routeWebSocket(/\/ws/, (ws: WebSocketRoute) => {
+    const server = ws.connectToServer();
+    ws.onMessage((message) => {
+      const frame = parseFrame(message);
+      if (frame?.type === "call" && frame.port === "A0.chatSession" && frame.method === "open") {
+        hold.call(String(frame.id));
+      }
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      const frame = parseFrame(message);
+      const id = String(frame?.id);
+      const failure = JSON.stringify({
+        type: "result",
+        id,
+        ok: false,
+        error: {
+          code: "omp_exited",
+          message: "omp stopped while it was starting. Try again.",
+          retryable: true,
+        },
+      });
+      if (frame?.type === "result" && hold.answer(id, () => ws.send(failure))) return;
+      ws.send(message);
+    });
+  });
+}
+
+/**
+ * The refused send of #2358: a send from a New chat that has not opened yet waits for it, and is not sent when that chat
+ * does not open. The notice says where the text went: in the message box of a new chat, which the next New chat shows.
+ * The New chat's `open` answer is held, as on a busy computer (on a quiet one the chat host opens a chat before a person
+ * can type), then answered with the failure of a chat whose omp could not start.
+ */
+async function refusedSendInNewChat(page: Page, hold: OpenHold): Promise<Locator> {
   const first = await startChat(page);
   await sendPrompt(first, "first chat");
   await expect(
     page.locator('[data-slot="u1-message-row"][data-role="assistant"]').last(),
   ).toContainText("pong", { timeout: 90_000 });
+  hold.holding = true;
   const composer = await startChat(page);
   await sendPrompt(composer, PROMPT);
-  const next = await startChat(page);
+  // The send waits for the chat: the box clears at Enter.
+  await expect(composer).toHaveValue("");
+  hold.fail();
   await expect(page.getByText(NOTICE, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+  // The text is back in the new-chat box, which the box on screen shows, before the person starts the next New chat.
+  await expect(composer).toHaveValue(PROMPT);
+  const next = await startChat(page);
   await expect(page.locator('[data-empty-chat="true"]')).toBeVisible({ timeout: 30_000 });
   await expect(next).toHaveValue(PROMPT);
   return next;
@@ -285,12 +353,15 @@ realTest(
   "a refused send leaves no row, and its text is back in the composer with the notice (light, 1280 px)",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
+    const hold = new OpenHold();
     const page = await realApp.open({
-      beforeLoad: (target) =>
-        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
+      beforeLoad: async (target) => {
+        await target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light"));
+        await holdOpens(target, hold);
+      },
     });
     await page.setViewportSize({ width: 1280, height: 900 });
-    const next = await refusedSendInNewChat(page);
+    const next = await refusedSendInNewChat(page, hold);
     await expect(page.locator(USER_ROW).filter({ hasText: PROMPT })).toHaveCount(0);
     await expect(next).toHaveValue(PROMPT);
     expect(realApp.problems).toEqual([]);
@@ -301,12 +372,15 @@ realTest(
   "a refused send leaves no row, and its text and notice are still there at 390 px",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
+    const hold = new OpenHold();
     const page = await realApp.open({
-      beforeLoad: (target) =>
-        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
+      beforeLoad: async (target) => {
+        await target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light"));
+        await holdOpens(target, hold);
+      },
     });
     await page.setViewportSize({ width: 1280, height: 900 });
-    const next = await refusedSendInNewChat(page);
+    const next = await refusedSendInNewChat(page, hold);
     await narrowTo(page, { width: 390, height: 844 });
     await expect(page.getByText(NOTICE, { exact: false }).first()).toBeVisible();
     await expect(page.locator(USER_ROW).filter({ hasText: PROMPT })).toHaveCount(0);

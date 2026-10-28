@@ -6,7 +6,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type Browser, expect, type Page } from "@playwright/test";
 import { ensurePlaygroundBuilt } from "./playground-build";
-import { realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import { realTest, screenshots, sendPrompt, startChat, waitForFiniteAnimations } from "./real-omp";
 
 const WEB_ROOT = process.cwd();
 const DIST_ROOT = join(WEB_ROOT, "dist");
@@ -90,8 +90,13 @@ realTest(
   "real omp: advisor settings save and reload, and the live surface works in light, dark, and narrow views",
   async ({ realApp, browser }) => {
     const app = await realApp.open();
-    await startChat(app);
-    const thread = await app.evaluate(() => window.localStorage.getItem("omp.app.root.thread"));
+    const composer = await startChat(app);
+    // A new chat is remembered by its thread id once it has answered (an unsent one is kept per tab, #1944).
+    await sendPrompt(composer, "pong");
+    await expect(app.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
+    const readThread = () => app.evaluate(() => window.localStorage.getItem("omp.app.root.thread"));
+    await expect.poll(readThread, { timeout: 60_000 }).toBeTruthy();
+    const thread = await readThread();
     if (!thread) throw new Error("The open chat did not expose a thread id.");
     const page = await openAdvisor(browser, new URL(app.url()).origin, realApp.token, thread);
     await expect(page.getByRole("heading", { name: "Advisor settings" })).toBeVisible();

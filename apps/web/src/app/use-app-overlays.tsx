@@ -13,9 +13,11 @@ import { RunOnExit } from "./thread-chrome";
  * The frame's height from its first frame, not the height its content has reached so far: the settings load after
  * the frame opens, and a frame that grew with them moved its top edge (issue 2584). H is 45 rem (720 px), measured
  * on origin/main at 1280 by 900: every Settings tab loads to that height, the window's 80% cap. The tabs scroll
- * inside it, and the window's 80dvh cap still applies on shorter windows.
+ * inside it, and the window's 80dvh cap still applies on shorter windows. Its one grid row is the frame's whole
+ * height (`minmax(0, 1fr)`), so the panel fills the frame and its body scrolls: with a row as tall as the content, a
+ * window taller than 900 px let the panel grow past the frame, which clipped the last controls out of reach.
  */
-const SETTINGS_FRAME_HEIGHT = "h-[min(45rem,calc(100dvh-4rem))]";
+const SETTINGS_FRAME_HEIGHT = "h-[min(45rem,calc(100dvh-4rem))] grid-rows-[minmax(0,1fr)]";
 /**
  * The settings frame is 60 rem (960 px at the default size) and never wider than 94% of the window,
  * so a phone still shows a margin. It does not scroll: its panel's body does, so the title stays whole.

@@ -91,7 +91,9 @@ async function checkTab(
   expectInside(await boxOf(body), await boxOf(dialog), 2);
   const overflows = await body.evaluate((element) => element.scrollHeight > element.clientHeight);
   if (overflows) {
-    await body.hover();
+    // Near the body's top corner, on the tab's own content: a nested panel (Tools has one) scrolls itself under the
+    // pointer, as it should, and the window's middle can fall on it.
+    await body.hover({ position: { x: 8, y: 8 } });
     await page.mouse.wheel(0, 600);
     await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 

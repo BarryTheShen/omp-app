@@ -46,6 +46,8 @@ realTest(
     await page.setViewportSize({ width: 1280, height: 800 });
     const panels = page.getByRole("complementary", { name: "Panels" });
     const grip = page.getByRole("separator", { name: GRIP });
+    // The Panels start closed on a first run (#2570): open them, so there is a grip to measure.
+    await page.getByRole("button", { name: "Show panels sidebar" }).click();
     await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute("data-open", "true");
     await expect(grip).toBeVisible();
     await settle(page);

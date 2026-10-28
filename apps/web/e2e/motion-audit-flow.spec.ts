@@ -216,17 +216,7 @@ realTest.describe("the audit flow, one long chat", () => {
       "sessionsSidebar",
       "the sessions sidebar shows",
     );
-    const panelsHide = await step("row 4 panels sidebar hides", async () => {
-      await page.getByRole("button", { name: "Hide panels sidebar" }).click();
-      await expect(panelsSidebar).toHaveAttribute("data-open", "false");
-    });
-    expectSidebarSlides(
-      panelsHide,
-      "row 4",
-      "sidebar:right",
-      "panelsSidebar",
-      "the panels sidebar hides",
-    );
+    // The panels sidebar starts closed on a first run (#2570), so it shows first, then hides.
     const panelsShow = await step("row 4 panels sidebar shows", async () => {
       await page.getByRole("button", { name: "Show panels sidebar" }).click();
       await expect(panelsSidebar).toHaveAttribute("data-open", "true");
@@ -237,6 +227,17 @@ realTest.describe("the audit flow, one long chat", () => {
       "sidebar:right",
       "panelsSidebar",
       "the panels sidebar shows",
+    );
+    const panelsHide = await step("row 4 panels sidebar hides", async () => {
+      await page.getByRole("button", { name: "Hide panels sidebar" }).click();
+      await expect(panelsSidebar).toHaveAttribute("data-open", "false");
+    });
+    expectSidebarSlides(
+      panelsHide,
+      "row 4",
+      "sidebar:right",
+      "panelsSidebar",
+      "the panels sidebar hides",
     );
 
     // Row 5: the command palette fades and scales in and out over the base token.

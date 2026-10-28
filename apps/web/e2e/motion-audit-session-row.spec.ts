@@ -10,10 +10,15 @@ import { recordMotion } from "./motion-metrics";
 import { expect, realTest, sendPrompt, startChat } from "./real-omp";
 
 /**
- * Row 8 of the motion audit (#1858): a new chat's session row fades in once. The list is drawn again when the chat is
- * switched and on every catalog update after the reply; the page reports every fade it sees, and the new row must have
- * faded in exactly once.
+ * Row 8 of the motion audit (#1858): a new chat's row fades in once. The list is drawn again when the chat is switched
+ * and on every catalog update after the reply; the page reports every fade it sees, and the new row must have faded in
+ * exactly once: as the chat's running row ("New chat") when the list shows the chat running before omp writes its file,
+ * since the saved row keeps that element (both are keyed by the chat's id, #2212), or as the saved row ("pong").
  */
+const isNewChatFade = (fade: { readonly key: string; readonly label: string }): boolean =>
+  (fade.key === "session:enter" && fade.label.startsWith("pong")) ||
+  (fade.key === "running:enter" && fade.label.startsWith("New chat"));
+
 realTest.describe("session rows of the audit flow", () => {
   realTest.use({ seedEntries: { entries: LONG_CHAT } });
 
@@ -49,9 +54,7 @@ realTest.describe("session rows of the audit flow", () => {
       .poll(
         async () => {
           const audit = await readAudit(page);
-          const pongFades = audit.fades.filter(
-            (fade) => fade.key === "session:enter" && fade.label.startsWith("pong"),
-          ).length;
+          const pongFades = audit.fades.filter(isNewChatFade).length;
           return pongFades >= 2 || audit.listUpdates - updatesAfterReply >= 2;
         },
         { timeout: 60_000, intervals: [250] },
@@ -62,9 +65,7 @@ realTest.describe("session rows of the audit flow", () => {
       audit.listUpdates - updatesAfterReply,
       "the list updated at least twice after the reply",
     ).toBeGreaterThanOrEqual(2);
-    const newRowFades = audit.fades.filter(
-      (fade) => fade.key === "session:enter" && fade.label.startsWith("pong"),
-    );
+    const newRowFades = audit.fades.filter(isNewChatFade);
     console.log(
       `AUDIT session row 8 ${JSON.stringify({
         listUpdates: audit.listUpdates - updatesAfterReply,
@@ -77,6 +78,6 @@ realTest.describe("session rows of the audit flow", () => {
       newRowFades.length,
       "the recorder saw the new chat's row fade in",
     ).toBeGreaterThanOrEqual(1);
-    expect(newRowFades.length, "row 8: the new chat's session row fades in once").toBe(1);
+    expect(newRowFades.length, "row 8: the new chat's row fades in once").toBe(1);
   });
 });

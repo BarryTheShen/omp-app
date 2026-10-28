@@ -240,6 +240,9 @@ test("a long panel scrolls inside the right-hand sidebar, with its title staying
   await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto(`${PLAYGROUND}?panelRows=80`);
   await expectCatalogReady(page);
+  // The Panels start closed on a first run (#2570): open them to measure their body.
+  await page.getByRole("button", { name: "Show panels sidebar" }).click();
+  await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute("data-open", "true");
   const body = page.locator('[data-panel-scroll="body"]');
   const metrics = await body.evaluate((element) => ({
     scrollHeight: element.scrollHeight,

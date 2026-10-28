@@ -23,8 +23,8 @@ async function expectSidebars(
 }
 
 /**
- * A fresh load at a wide width shows both sidebars. Narrowing closes both, as drawers do. Widening again
- * must bring both back without a reload, as a fresh load at that width does.
+ * A fresh load at a wide width shows the Sessions list; the Panels start closed (#2570) until the person opens them.
+ * Narrowing closes both, as drawers do. Widening again must bring both back as the person left them, without a reload.
  */
 for (const scheme of ["light", "dark"] as const) {
   realTest(
@@ -41,6 +41,9 @@ for (const scheme of ["light", "dark"] as const) {
 
       await page.setViewportSize(WIDE);
       await expect(page.locator('[data-shell-layout="wide"]')).toHaveCount(1);
+      await expectSidebars(page, { left: true, right: false });
+      await page.getByRole("button", { name: "Show panels sidebar" }).click();
+      await waitForFiniteAnimations(page);
       await expectSidebars(page, { left: true, right: true });
 
       await page.setViewportSize(PHONE);

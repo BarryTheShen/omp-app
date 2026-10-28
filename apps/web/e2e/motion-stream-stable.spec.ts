@@ -30,6 +30,12 @@ async function establishMessageBaseline(page: Page, composer: Locator): Promise<
   expect(emptyTop?.y).toBeDefined();
   expect(messageTop?.y).toBeDefined();
   expect(Math.abs((emptyTop?.y ?? 0) - (messageTop?.y ?? 0))).toBeGreaterThan(1);
+  // The baseline turn ends before the streamed one is sent, as a person reads the reply first: a plain prompt sent while
+  // omp still runs a turn is refused as busy, since the page has not yet seen the turn start.
+  await expect(page.getByText("pong", { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
+    timeout: 60_000,
+  });
 }
 
 async function streamReply(

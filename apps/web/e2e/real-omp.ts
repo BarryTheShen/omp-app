@@ -248,8 +248,19 @@ export async function startChat(page: Page): Promise<Locator> {
   return composer;
 }
 
+/**
+ * Types the prompt and presses Enter, as a person does. A chat that is still opening keeps the text and says so under the
+ * box ("Opening session… omp is starting"), and a person waits for that line to go before pressing Enter. The empty chat
+ * ("No messages yet.") can already show then.
+ */
 export async function sendPrompt(composer: Locator, text: string): Promise<void> {
   await composer.fill(text);
+  await expect(
+    composer
+      .page()
+      .locator('[data-composer-blocked="true"]')
+      .filter({ hasText: "Opening session" }),
+  ).toHaveCount(0, { timeout: 120_000 });
   await composer.press("Enter");
 }
 

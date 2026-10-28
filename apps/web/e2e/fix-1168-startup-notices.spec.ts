@@ -5,6 +5,7 @@ import {
   expect,
   realTest,
   screenshots,
+  sendPrompt,
   startChat,
   waitForFiniteAnimations,
 } from "./real-omp";
@@ -84,13 +85,13 @@ realTest.use({
 
 /**
  * Issue #1168. omp's start-up notices (three informational ones) collapse into one quiet line; opening it lists them, and
- * a long one is cut with "Show all". A reload does not bring them back as banners, and a warning still shows.
+ * a long one is cut with "Show all", while a warning still shows. A reload of the chat does not bring them back.
  */
 realTest(
-  "omp's start-up notices collapse into one line that lists them, do not return on reload, and a warning still shows",
+  "omp's start-up notices collapse into one line that lists them, a warning still shows, and they do not return on reload",
   async ({ realApp }) => {
     const app = await realApp.open();
-    await startChat(app);
+    const composer = await startChat(app);
 
     const toggle = app.getByRole("button", { name: `${INFO_NOTICES.length} notices from omp` });
     await expect(toggle).toBeVisible({ timeout: 60_000 });
@@ -133,12 +134,16 @@ realTest(
     });
     await app.setViewportSize({ width: 1280, height: 800 });
 
-    // A reload replays the chat's start-up notices. They were shown once, so none comes back; the warning stays until it
-    // is dismissed. The notices replay in order, so by the time the warning shows, they have all been handled.
+    // The chat is saved once it has answered, so a reload reopens it; an unsent chat starts afresh after a reload (#1944),
+    // and a fresh chat's omp sends its own start-up notices.
+    await sendPrompt(composer, "save this chat");
+    const transcript = app.getByRole("region", { name: "Conversation transcript" });
+    await expect(transcript.getByText("pong", { exact: true })).toBeVisible({ timeout: 90_000 });
+    // The reopened chat replays what the server still holds, but applies only what came after its last answered turn
+    // (#786): the start-up notices came before it. The replay is applied before the history loads, so once the answer
+    // shows again, any notice the replay would bring back is already on the page.
     await app.reload();
-    await expect(app.getByTestId("n1-notices").getByText(DISK_WARNING)).toBeVisible({
-      timeout: 60_000,
-    });
+    await expect(transcript.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(app.getByRole("button", { name: /notices? from omp/ })).toHaveCount(0);
     await expect(app.getByText(CACHE_NOTICE)).toHaveCount(0);
     expect(realApp.problems).toEqual([]);

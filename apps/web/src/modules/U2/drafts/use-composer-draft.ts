@@ -3,9 +3,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore }
 import { type AttachmentManager, isCitedTextRef } from "../attachments";
 import type { DraftController } from "./drafts";
 
-/** The composer's text, as the draft binding sets it. */
+/** The composer's text, as the draft binding sets it and reads it back. */
 interface ComposerTextTarget {
   setText(text: string): void;
+  /** The text now, a keystroke React has not drawn yet included. */
+  getState(): { readonly text: string };
 }
 
 /** The current recalled prompt is display-only; pagehide must save the controller's actual draft instead. */
@@ -122,9 +124,12 @@ export function useComposerDraft({
   const restoreAbort = useRef<AbortController | null>(null);
   // The send in flight, from Enter until it has settled (see `beginSend`): the box and the controller stay apart
   // meanwhile. The controller keeps the sent text until admission, and text typed in the box must not join it (issue 2659).
-  const sending = useRef<{ readonly chat: object; readonly release: () => void } | null>(null);
-  const latestText = useRef(text);
-  latestText.current = text;
+  const sending = useRef<{ readonly release: () => void } | null>(null);
+  // The controller the box shows now. A send's end comes from the render that took its Enter, and the chat's draft can be
+  // built again while the send is in flight (a New chat's first send, issue 2646): what the box holds goes to the draft on
+  // screen.
+  const shownController = useRef(controller);
+  shownController.current = controller;
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -223,6 +228,9 @@ export function useComposerDraft({
     if (snapshot.status !== "ready" || hydratedFor.current === controller || isRecalledPrompt(text))
       return;
     hydratedFor.current = controller;
+    // A send in flight keeps the box apart from the draft (see `beginSend`): the draft holds the sent text until admission,
+    // which must not come back into the box, and the send's end gives the box what the draft holds.
+    if (sending.current !== null) return;
     // Read now, not from the render: the text the person typed while the draft loaded is already in the controller.
     const current = controller.getSnapshot();
     agreedText.current = current.text;
@@ -298,12 +306,12 @@ export function useComposerDraft({
 
   const beginSend = useCallback(() => {
     if (sending.current !== null) return;
-    sending.current = { chat, release: hold?.() ?? (() => undefined) };
+    sending.current = { release: hold?.() ?? (() => undefined) };
     composer.setText("");
     // The send carries what the composer holds now, though the list empties for the next message (issue 2681).
     attachments.holdForSend();
     restoreAttachments(controller, []);
-  }, [attachments, chat, composer, controller, hold, restoreAttachments]);
+  }, [attachments, composer, controller, hold, restoreAttachments]);
 
   const endSend = useCallback(() => {
     const held = sending.current;
@@ -311,26 +319,29 @@ export function useComposerDraft({
     sending.current = null;
     // A copy no send took is dropped, so no later send carries it.
     attachments.takeHeldForSend();
-    // A chat the person switched to during the send has its own text: the composer's sync for it is already running.
-    if (held.chat === chat) {
-      const typed = latestText.current;
-      const refs = attachmentsToSave();
-      if (typed !== "" || refs.length > 0) {
-        // What was typed during the send is the draft now. The sent text is gone from the controller (it was admitted)
-        // or kept in its failed sends (it failed).
-        agreedText.current = typed;
-        agreedAttachments.current = refs;
-        controller.setDraft(typed, refs);
-      } else {
-        // Nothing was typed: the box shows what the draft holds, empty after an admitted send, the text after a failed one.
-        const current = controller.getSnapshot();
-        agreedText.current = current.text;
-        composer.setText(current.text);
-        restoreAttachments(controller, current.attachments);
-      }
+    // The composer's text now, not the last render's: a keystroke in the same task as the send's end is not drawn
+    // yet, and the box would be emptied under it (the Enter that follows it then finds nothing to send).
+    const typed = composer.getState().text;
+    const refs = attachmentsToSave();
+    if (typed !== "" || refs.length > 0) {
+      // What was typed during the send is the draft now: the draft the box shows (see `shownController`). The sent text
+      // is gone from the send's controller (it was admitted) or kept in its failed sends (it failed).
+      const target = shownController.current;
+      const current = target.getSnapshot();
+      agreedText.current = typed;
+      agreedAttachments.current = refs;
+      if (typed !== current.text || !sameRefs(refs, current.attachments))
+        target.setDraft(typed, refs);
+    } else {
+      // Nothing was typed: the box shows what the send's draft holds, empty after an admitted send, the text after a
+      // failed one.
+      const current = controller.getSnapshot();
+      agreedText.current = current.text;
+      composer.setText(current.text);
+      restoreAttachments(controller, current.attachments);
     }
     held.release();
-  }, [attachments, attachmentsToSave, chat, composer, controller, restoreAttachments]);
+  }, [attachments, attachmentsToSave, composer, controller, restoreAttachments]);
 
   const citeTextFiles = useCallback(() => {
     if (sending.current === null) return;

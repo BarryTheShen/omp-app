@@ -1,9 +1,8 @@
 import { type AttachmentRef, type DraftScope, ThreadId } from "@omp-app/contracts";
 import { cleanup, render, waitFor } from "@testing-library/react";
-import { useMemo, useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { DraftController, type DraftTimer } from "../../U2/drafts/drafts";
-import { ScopedDraftStore } from "../../U2/drafts/test-support";
+import { ScopedDraftStore, useComposerText } from "../../U2/drafts/test-support";
 import { useComposerDraft } from "../../U2/drafts/use-composer-draft";
 import { composerDraftOf } from "./composer";
 
@@ -47,8 +46,7 @@ function Composer({
   readonly controller: DraftController;
   readonly shown: { text: string };
 }) {
-  const [text, setText] = useState("");
-  const composer = useMemo(() => ({ setText }), []);
+  const { text, composer } = useComposerText();
   shown.text = text;
   useComposerDraft({
     chat,

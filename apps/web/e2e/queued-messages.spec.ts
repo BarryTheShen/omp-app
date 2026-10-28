@@ -183,15 +183,13 @@ realTest(
     const composer = await startChat(page);
     const bash = await startQueuedRun(page, composer);
 
-    await composer.fill("keep first");
-    await composer.press("Control+Enter");
-    await composer.fill("drop this");
-    await composer.press("Control+Enter");
-    await composer.fill("promote me");
-    await composer.press("Control+Enter");
-    await expect(
-      lane(page, "After this turn").getByText("promote me", { exact: true }),
-    ).toBeVisible();
+    // A person sees each message queued before writing the next. (An Enter pressed while the previous message is still
+    // being sent waits for that send and sends the box's text by then: #2755.)
+    for (const text of ["keep first", "drop this", "promote me"]) {
+      await composer.fill(text);
+      await composer.press("Control+Enter");
+      await expect(lane(page, "After this turn").getByText(text, { exact: true })).toBeVisible();
+    }
     await expectOwnLine(page);
 
     // Captured with three queued messages: light at desktop width, then at 390 px.

@@ -245,6 +245,16 @@ function chatOpenElsewhere(cause?: unknown): AppFailure {
   );
 }
 
+/** A rename refused because another omp (a terminal's, say) has the chat: what was not done, and what to do. */
+function renameRefusedForAnotherOmp(): AppFailure {
+  return new AppFailure({
+    code: "conflict",
+    message:
+      "Another omp is using this chat, so it can't be renamed right now. Close that omp, then try again.",
+    retryable: true,
+  });
+}
+
 /**
  * The port's failure for a host's refusal. The host's own code stays in `omp.code`, so a page can tell plan mode's
  * refusals and the busy session apart; a host that ended reads as omp's exit, which a retry can mend.
@@ -592,20 +602,20 @@ export class ChatSessionPortRuntime {
     if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
     // A host this server is still stopping holds the chat's file until it exits.
     await this.#context.processRegistry.whenGone(args.threadId, "renamed");
-    const opened = await this.open({ threadId: args.threadId }, call);
+    // The open refuses a chat another omp holds (omp's lease) before it starts a host here; a rename says what it did not
+    // do, rather than the open's sentence.
+    const opened = await this.open({ threadId: args.threadId }, call).catch((error: unknown) => {
+      if (error instanceof AppFailure && error.appError.conflictReason === "held_elsewhere") {
+        throw renameRefusedForAnotherOmp();
+      }
+      throw error;
+    });
     try {
       // Checked once this host is up and before it writes. omp takes a chat's lease only when it writes, so another omp
       // that has written the chat shows up here, and a refusal leaves the chat as it was.
       const hostPid = this.#context.processRegistry.get(args.threadId)?.pid;
       const other = await this.#context.externalOmp(args.threadId, opened.sessionFile, hostPid);
-      if (other === "running") {
-        throw new AppFailure({
-          code: "conflict",
-          message:
-            "Another omp is using this chat, so it can't be renamed right now. Close that omp, then try again.",
-          retryable: true,
-        });
-      }
+      if (other === "running") throw renameRefusedForAnotherOmp();
       if (other === "unknown") {
         throw unavailable(
           "The app can't tell whether another omp is using this chat, so nothing was renamed.",

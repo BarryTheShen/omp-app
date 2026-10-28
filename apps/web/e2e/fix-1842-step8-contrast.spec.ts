@@ -166,6 +166,12 @@ for (const theme of THEMES) {
       );
       await settleChat(chat);
       await page.setViewportSize({ width: 1280, height: 800 });
+      // The Panels start closed on a first run (#2570): open them, so their tab label is measured too.
+      await page.getByRole("button", { name: "Show panels sidebar" }).click();
+      await expect(page.locator('[data-shell-sidebar="right"]')).toHaveAttribute(
+        "data-open",
+        "true",
+      );
       await waitForFiniteAnimations(page);
       const selectedRow = page
         .locator('[data-slot="r1-session-row"][data-selected="true"]')

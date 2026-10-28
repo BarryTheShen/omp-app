@@ -153,15 +153,14 @@ realTest(
     await waitForFiniteAnimations(page);
     const fades = await fadeCounts(page);
     const inserted = await insertCounts(page);
-    // A row that appears fades in once. A running row is only a placeholder for a chat whose session file is not written
-    // yet: when omp writes that file before the list shows the chat running, no running row appears, and the session row
-    // is the only new row. So the expected fades follow the rows that appeared.
-    expect(inserted.session ?? 0, "the new session row appears once").toBe(1);
-    expect(inserted.running ?? 0, "a running row appears at most once").toBeLessThanOrEqual(1);
+    // A row that appears fades in once. A running row stands for a chat whose session file is not written yet; the saved
+    // row then keeps its element (both are keyed by the chat's id, #2212), so it is not drawn or faded again. When omp
+    // writes the file before the list shows the chat running, no running row appears, and the saved row is the new row.
+    const running = inserted.running ?? 0;
+    expect(running + (inserted.session ?? 0), "the new chat's row appears once").toBe(1);
     expect(fades, "each new row fades in once").toEqual({
       "message:enter": 2,
-      ...(inserted.running === 1 ? { "running:enter": 1 } : {}),
-      "session:enter": 1,
+      ...(running === 1 ? { "running:enter": 1 } : { "session:enter": 1 }),
     });
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "motion-rows-light.png") });

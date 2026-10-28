@@ -17,20 +17,23 @@ const NARROW = { width: 390, height: 844 } as const;
  * tab shows the title once, as the panel's heading, with the progress line under it.
  */
 
-/** The fake model writes the two-item list; the chat shows it once the turn has finished. */
+/** The fake model writes the two-item list; the turn ends once omp has saved it. */
 async function writeTodos(page: Page): Promise<void> {
   const composer = await startChat(page);
   await sendPrompt(composer, "Please make_todos for the release.");
   await expect(page.getByText("Assistant is working…")).toBeHidden({ timeout: 45_000 });
-  await expect(page.getByText("Write the thing").first()).toBeVisible();
 }
 
-/** Shows the right sidebar if it is closed, then opens its Todo checklist tab. */
+/**
+ * Shows the right sidebar if it is closed (it starts closed on a first run, #2570), then opens its Todo checklist tab,
+ * which lists what omp wrote.
+ */
 async function openTodoTab(page: Page): Promise<Locator> {
   const show = page.getByRole("button", { name: /show panels sidebar/i });
   if ((await show.count()) > 0) await show.first().click();
   const sidebar = page.locator('[data-shell-sidebar="right"]');
   await sidebar.getByRole("tab", { name: "Todo checklist" }).click();
+  await expect(sidebar.getByText("Write the thing").first()).toBeVisible();
   return sidebar;
 }
 
