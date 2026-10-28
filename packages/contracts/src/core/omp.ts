@@ -1,14 +1,15 @@
 /**
- * App-facing names over omp's own wire types.
+ * App-facing names for omp: the release the app runs, and omp's own objects (`Omp`, typed from omp's SDK).
  *
- * Every type here is an alias of, or is built from, `../omp-wire/rpc-wire.generated.ts`, which is
- * copied unchanged from omp (see `../omp-wire/PROVENANCE.md`). The command table mirrors the
- * schema's `x-rpc.commands` (`../omp-wire/rpc-wire.schema.json`); a test keeps the two equal.
- * The protocol itself is described in omp's `docs/rpc.md` at the wire tag.
+ * Until H5.6e2 it also keeps omp's RPC command table, built from `../omp-wire/rpc-wire.generated.ts` (copied unchanged
+ * from omp, see `../omp-wire/PROVENANCE.md`) and mirroring the schema's `x-rpc.commands`; the capability keys of omp's
+ * commands are still made from its names.
  */
+import type * as OmpTypes from "../chat-host/omp-types";
 import type * as Wire from "../omp-wire/rpc-wire.generated";
 
-export type * as OmpWire from "../omp-wire/rpc-wire.generated";
+/** omp's own objects, typed from omp's SDK (`../chat-host/omp-types.ts`). */
+export type * as Omp from "../chat-host/omp-types";
 
 /**
  * The omp release the app runs and supports: the `@oh-my-pi/pi-coding-agent` version `packages/server/package.json` pins,
@@ -131,36 +132,8 @@ export type OmpCommandMap = {
   };
 };
 
-export type OmpCommandParams<K extends OmpCommandName> = OmpCommandMap[K]["params"];
-export type OmpCommandResult<K extends OmpCommandName> = OmpCommandMap[K]["result"];
+/** One of omp's session events (`Omp.SessionEvent`). */
+export type OmpEvent = OmpTypes.SessionEvent;
 
-/** A command frame as written to omp's stdin: `{ id?, type, ...params }` (docs/rpc.md, "Command Schema"). */
-export type OmpCommand<K extends OmpCommandName = OmpCommandName> = K extends OmpCommandName
-  ? { id?: string; type: K } & (OmpCommandParams<K> extends undefined
-      ? unknown
-      : OmpCommandParams<K>)
-  : never;
-
-/** A command response; `data` has the shape of `OmpCommandResult<command>` when `success` is true. */
-export type OmpResponse = Wire.RpcResponse;
-
-/** A session event (the schema's `x-rpc.sessionEvent` union). */
-export type OmpEvent = Wire.RpcAgentEvent;
-
-/** An unsolicited stdout frame other than host requests (`x-rpc.notification`). */
-export type OmpNotification = Wire.RpcNotification;
-
-/** A request omp sends to the host for a host-owned tool or URI scheme. */
-export type OmpHostRequest = Wire.RpcHostRequest;
-
-/** Any frame omp writes to stdout once `rpc_chunk` sequences are reassembled (`x-rpc.serverFrame`). */
-export type OmpServerFrame = Wire.RpcServerFrame;
-
-/** Any frame the host writes to omp's stdin: a command or an `x-rpc.inbound` frame. */
-export type OmpInboundFrame = OmpCommand | Wire.RpcInbound;
-
-/** A transcript message, discriminated by `role`. Messages carry no session entry id; see ids.ts. */
-export type OmpMessage = Wire.AgentMessage;
-
-/** Any content block a user, tool result or assistant message can hold. */
-export type OmpContentPart = Wire.UserContent | Wire.AssistantContent;
+/** A transcript message, discriminated by `role` (`Omp.AgentMessage`). Messages carry no session entry id; see ids.ts. */
+export type OmpMessage = OmpTypes.AgentMessage;

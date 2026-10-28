@@ -4,7 +4,7 @@ import type {
   ConfigEntry,
   ConfigListResult,
   JsonValue,
-  OmpWire,
+  Omp,
   Revision,
 } from "@omp-app/contracts";
 import { AppFailure, CapabilityStatus, ConfigStore, ThreadId } from "@omp-app/contracts";
@@ -34,7 +34,7 @@ const CAPABILITIES: CapabilityMap = {
 const WALK = { smol: "fake/a", default: "fake/b", slow: "fake/c" };
 
 /** omp's wire record for one model of the fake provider; every model is available and reasons. */
-function wire(id: string): OmpWire.ModelInfo {
+function wire(id: string): Omp.ModelInfo {
   return {
     provider: "fake",
     id,
@@ -171,8 +171,8 @@ function world(setup: WorldOptions): World {
         listeners.delete(listener);
       };
     },
-    applyHostState: (state: {
-      readonly model?: OmpWire.ModelInfo;
+    applySessionState: (state: {
+      readonly model?: Omp.ModelInfo;
       readonly thinkingLevel?: string;
     }) => {
       if (state.model) session.model = state.model;

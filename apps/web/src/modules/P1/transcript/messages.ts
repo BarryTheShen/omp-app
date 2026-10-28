@@ -4,7 +4,7 @@ import {
   type ThreadMessage,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { convertMessage } from "@/modules/R0/runtime";
 
 const COMPLETE_UNKNOWN: MessageStatus = { type: "complete", reason: "unknown" };
@@ -14,7 +14,7 @@ const COMPLETE_UNKNOWN: MessageStatus = { type: "complete", reason: "unknown" };
  * the same rule to the main transcript (`isHiddenMessage` in R0/runtime/runtime.ts), so a worker's
  * transcript shows the same rows as a chat.
  */
-export function isHiddenTranscriptMessage(message: OmpWire.AgentMessage): boolean {
+export function isHiddenTranscriptMessage(message: Omp.AgentMessage): boolean {
   return (message.role === "custom" || message.role === "hookMessage") && message.display === false;
 }
 
@@ -24,7 +24,7 @@ export function isHiddenTranscriptMessage(message: OmpWire.AgentMessage): boolea
  * are appended.
  */
 export function toThreadMessages(
-  messages: readonly OmpWire.AgentMessage[],
+  messages: readonly Omp.AgentMessage[],
   startIndex: number,
 ): ThreadMessageLike[] {
   const converted: ThreadMessageLike[] = [];

@@ -1,4 +1,4 @@
-import type { ChatSessionRequest, EntryId, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionRequest, EntryId, Omp, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../store/store";
@@ -31,7 +31,7 @@ function storeWithUserEntry(): OmpRuntimeStore {
 
 /** omp's answers to the two requests a branch sends. Any other request, a rename included, throws here. */
 function sendFor(
-  branchResult: OmpWire.BranchResult | AppFailure = { text: "original draft", cancelled: false },
+  branchResult: Omp.BranchResult | AppFailure = { text: "original draft", cancelled: false },
 ): ChatSessionRequest {
   return (async (args: { threadId: ThreadId; method: string; params: unknown }) => {
     calls.push({ type: args.method, payload: args.params, threadId: args.threadId });

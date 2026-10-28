@@ -1,9 +1,9 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store/store";
 import type { PromptHistorySource } from "./history";
 
 /** A prompt's text: the typed string, or the text parts of a block list (images are not prompt text). */
-function promptText(content: OmpWire.MessageContent): string {
+function promptText(content: Omp.MessageContent): string {
   if (typeof content === "string") return content;
   return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n");
 }

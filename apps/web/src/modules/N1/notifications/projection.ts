@@ -1,4 +1,4 @@
-import type { AppError, OmpEvent, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { AppError, Omp, OmpEvent, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { RuntimeSnapshot, TodoReminderState } from "../../R0/store";
 import type { PresentationHandoff } from "../../U4/contract";
@@ -141,12 +141,12 @@ function hashText(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function modelLabel(model: OmpWire.ModelInfo | null | undefined): string | undefined {
+function modelLabel(model: Omp.ModelInfo | null | undefined): string | undefined {
   if (!model) return undefined;
   return cleanText(model.name || model.id || model.provider);
 }
 
-function modelIdentity(model: OmpWire.ModelInfo | null | undefined): string | null {
+function modelIdentity(model: Omp.ModelInfo | null | undefined): string | null {
   return model ? `${model.provider}/${model.id}` : null;
 }
 

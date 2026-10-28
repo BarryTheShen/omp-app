@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { definePort } from "../../core/envelope";
 import { ThreadId } from "../../core/ids";
-import type { OmpWire } from "../../core/omp";
+import type { Omp } from "../../core/omp";
 import { Timestamp } from "./shared";
 
 export const PLAN_DOCUMENT_STATUSES = [
@@ -23,7 +23,7 @@ export const PLAN_MODEL_TIERS = [
   "high",
   "xhigh",
   "max",
-] as const satisfies readonly OmpWire.Effort[];
+] as const satisfies readonly Omp.Effort[];
 export const PlanModelTier = z.enum(PLAN_MODEL_TIERS);
 export type PlanModelTier = z.infer<typeof PlanModelTier>;
 export const PlanDocumentId = z

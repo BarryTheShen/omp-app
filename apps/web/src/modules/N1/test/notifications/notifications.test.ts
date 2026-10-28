@@ -1,4 +1,4 @@
-import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
+import type { ChatSessionEvent, Omp } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
@@ -19,7 +19,7 @@ function publishRuntimeEvent(
   store.ingest({ kind: "event", event } as unknown as ChatSessionEvent, sequence);
 }
 
-function model(id: string, name: string): OmpWire.ModelInfo {
+function model(id: string, name: string): Omp.ModelInfo {
   return {
     id,
     name,

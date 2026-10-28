@@ -4,7 +4,7 @@
  * process's state. The host's requests travel as the store's own frames: a dialog as `host_dialog`, a call of one of the
  * app's tools or URI schemes as `host_call`, and their cancels as `host_dialog_cancel` and `host_call_cancel`.
  */
-import type { ChatSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent, OmpEvent } from "@omp-app/contracts";
 import {
   type ChatEvent,
   type HostDialogRequest,
@@ -67,7 +67,7 @@ export interface StoreBashRun {
 
 /** One session payload as the store reduces it. */
 export type StoreEvent =
-  | { readonly kind: "omp"; readonly event: ChatEvent }
+  | { readonly kind: "omp"; readonly event: OmpEvent }
   | { readonly kind: "notification"; readonly frame: StoreFrame }
   | {
       readonly kind: "prompt_result";
@@ -112,7 +112,15 @@ const OMP_EVENT_TYPES: ReadonlySet<string> = new Set([
   "thinking_level_changed",
   "goal_updated",
   "queue_update",
-]);
+] satisfies OmpEvent["type"][]);
+
+/**
+ * omp's own session event, by its type. The browser never asks the host for `message_update`'s delta form, so the host
+ * sends the full one (H5.3c), and a message event is omp's with the host's `messageId`.
+ */
+function isOmpEvent(event: ChatEvent): event is OmpEvent {
+  return OMP_EVENT_TYPES.has(event.type);
+}
 
 /** The host's UI event types that pass through as themselves. */
 const HOST_UI_EVENT_TYPES: ReadonlySet<string> = new Set([
@@ -161,7 +169,7 @@ function storeEventOfChatEvent(event: ChatEvent): StoreEvent {
     case "uri_cancel":
       return frame({ type: "host_call_cancel", requestId: event.requestId });
   }
-  if (OMP_EVENT_TYPES.has(event.type)) return { kind: "omp", event };
+  if (isOmpEvent(event)) return { kind: "omp", event };
   return frame(event);
 }
 

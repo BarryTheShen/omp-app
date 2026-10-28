@@ -127,7 +127,6 @@ describe("ownerOfPath", () => {
     ["packages/contracts/src/index.ts", "main"],
     ["packages/contracts/src/core/ids.ts", "C0"],
     ["packages/contracts/src/omp-wire/LICENSE", "C0"],
-    ["packages/omp-rpc/src/frame-decoder.ts", "A0"],
     ["packages/client/src/socket.ts", "A0"],
     ["packages/client/src/modules/P6/queue-proxy.ts", "P6"],
     ["packages/server/src/main.ts", "A0"],

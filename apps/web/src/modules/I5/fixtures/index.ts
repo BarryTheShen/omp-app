@@ -1,10 +1,12 @@
-import { ConfigListResult, type OmpWire, type Revision } from "@omp-app/contracts";
+import { ConfigListResult, type Revision } from "@omp-app/contracts";
+import type { LiveEvent } from "@omp-app/contracts/chat-host";
 import { LiveStateSchema, LiveTranscriptSchema } from "../contract";
 
 /**
- * Source: omp v18.8.9 `docs/rpc.md:1396-1399` and `packages/coding-agent/src/modes/rpc/rpc-types.ts:259-287`.
+ * omp's live voice events as the chat host passes them on (`packages/contracts/src/chat-host/live.ts`): a session that
+ * connects, listens, hears a sentence and ends with omp's error. The values are the fixture's own.
  */
-export const LIVE_RPC_FIXTURE: readonly OmpWire.RpcNotification[] = [
+export const LIVE_EVENTS_FIXTURE: readonly LiveEvent[] = [
   { type: "live_phase", phase: "connecting" },
   { type: "live_phase", phase: "listening" },
   { type: "live_levels", input: 0.25, output: 0.1 },

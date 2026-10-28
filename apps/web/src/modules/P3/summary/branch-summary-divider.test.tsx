@@ -1,9 +1,9 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { BranchSummaryDivider } from "./index";
 
-const message: OmpWire.BranchSummaryMessage = {
+const message: Omp.BranchSummaryMessage = {
   role: "branchSummary",
   summary: "## Kept branch\n\n- Keep the original conversation\n\n[unsafe](javascript:alert(1))",
   fromId: "entry-parent-42",
@@ -66,7 +66,7 @@ describe("P3 branch summary divider", () => {
   });
 
   test("renders a safe empty-summary state without exposing the source id", () => {
-    const emptyMessage: OmpWire.BranchSummaryMessage = {
+    const emptyMessage: Omp.BranchSummaryMessage = {
       ...message,
       fromId: "entry-with-sensitive-label",
       summary: "   ",

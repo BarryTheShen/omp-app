@@ -1,12 +1,12 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import type { CacheMissDividerProps } from "./cache-miss-divider";
 import { CacheMissDivider } from "./cache-miss-divider";
 import { cacheMissBetween } from "./models";
 
 /** omp's usage figures, or undefined when the value is not a usage record. */
-function usageOf(value: unknown): OmpWire.Usage | undefined {
-  return typeof value === "object" && value !== null ? (value as OmpWire.Usage) : undefined;
+function usageOf(value: unknown): Omp.Usage | undefined {
+  return typeof value === "object" && value !== null ? (value as Omp.Usage) : undefined;
 }
 
 /**

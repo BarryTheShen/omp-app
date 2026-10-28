@@ -9,7 +9,7 @@ import {
   type ConfigWriteResult,
   FolderPath as FolderPathSchema,
   type JsonValue,
-  type OmpWire,
+  type Omp,
   type Revision,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -341,8 +341,8 @@ describe("D1 scope, catalog and thinking acceptance", () => {
 
 describe("D1 CC4 and CC10 settings surfaces", () => {
   test("shows catalog loading and failure states, and picks a model from the list", async () => {
-    let resolveCatalog: ((models: readonly OmpWire.ModelInfo[]) => void) | undefined;
-    const pendingModels = new Promise<readonly OmpWire.ModelInfo[]>((resolve) => {
+    let resolveCatalog: ((models: readonly Omp.ModelInfo[]) => void) | undefined;
+    const pendingModels = new Promise<readonly Omp.ModelInfo[]>((resolve) => {
       resolveCatalog = resolve;
     });
     const appliedModels: string[] = [];

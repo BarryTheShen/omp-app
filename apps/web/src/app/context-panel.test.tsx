@@ -21,7 +21,7 @@ function fakeStore(overrides: Readonly<Record<string, unknown>> = {}): OmpRuntim
   return {
     getSnapshot: () => ({ session }),
     subscribe: () => () => undefined,
-    applyHostState: () => undefined,
+    applySessionState: () => undefined,
   } as unknown as OmpRuntimeStore;
 }
 

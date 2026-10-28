@@ -1,12 +1,12 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { CompactionSummaryRow, compactionSummaryOfRow } from "./compaction-summary-row";
 
 afterEach(cleanup);
 
-const summary: OmpWire.CompactionSummaryMessage = {
+const summary: Omp.CompactionSummaryMessage = {
   role: "compactionSummary",
   summary: "## Kept context\n\n- Keep the current goal",
   tokensBefore: 120_000,

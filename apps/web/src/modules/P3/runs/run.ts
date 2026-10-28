@@ -1,4 +1,4 @@
-import type { EntryId, OmpWire } from "@omp-app/contracts";
+import type { EntryId, Omp } from "@omp-app/contracts";
 import type { PromptIntent } from "@/modules/R0/runtime";
 import type {
   EditRequest,
@@ -33,7 +33,7 @@ export interface P3EditRun extends EditRunPort, ReloadRunPort {
 }
 
 /** Converts the images a replacement carries to omp's wire type, before any branch is made. */
-function ompImages(images: readonly unknown[]): readonly OmpWire.ImageContent[] {
+function ompImages(images: readonly unknown[]): readonly Omp.ImageContent[] {
   return images.map((image) => {
     if (!isImageContent(image)) {
       throw runFailure(

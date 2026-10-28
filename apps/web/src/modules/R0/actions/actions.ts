@@ -3,7 +3,7 @@ import type {
   CapabilityKey,
   CapabilityMap,
   ChatSessionRequest,
-  OmpWire,
+  Omp,
   PortCallOptions,
   ThreadId,
 } from "@omp-app/contracts";
@@ -23,8 +23,8 @@ const HOST_URIS = "omp.host-uris" as CapabilityKey;
 
 export type QueueLane = "steering" | "followUp";
 export type QueueDelivery = "steer" | "followUp";
-export type QueueMode = OmpWire.QueueMode;
-export type InterruptMode = OmpWire.InterruptMode;
+export type QueueMode = Omp.QueueMode;
+export type InterruptMode = Omp.InterruptMode;
 
 type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
 
@@ -51,7 +51,7 @@ export interface QueueSnapshot {
 export interface QueueSubmitIntent {
   readonly text: string;
   readonly delivery: QueueDelivery;
-  readonly images?: readonly OmpWire.ImageContent[];
+  readonly images?: readonly Omp.ImageContent[];
   readonly signal?: AbortSignalLike;
 }
 
@@ -71,7 +71,7 @@ export interface QueueModeChanges {
 export interface QueueMutationResult {
   readonly changed: boolean;
   /** Returned only when a queued message was removed; the composer can restore these images. */
-  readonly images?: readonly OmpWire.ImageContent[];
+  readonly images?: readonly Omp.ImageContent[];
 }
 
 export type QueueListener = (snapshot: QueueSnapshot) => void;
@@ -255,7 +255,7 @@ export class QueueController implements QueuePort {
       if (!result.removed) return { changed: false };
       return {
         changed: true,
-        ...(result.images ? { images: result.images as OmpWire.ImageContent[] } : {}),
+        ...(result.images ? { images: result.images } : {}),
       };
     } catch (error) {
       throw asFailure(error, "Removing the queued message failed");

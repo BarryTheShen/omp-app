@@ -1,10 +1,10 @@
-import type { EntryId, OmpWire } from "@omp-app/contracts";
+import type { EntryId, Omp } from "@omp-app/contracts";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { TranscriptContentReader } from "@/modules/U1/copy";
 import type { P3EditSource } from "../edit";
 
 /** Whether a value is an image with its bytes: the only attachment omp keeps in a session file. */
-export function isImageContent(value: unknown): value is OmpWire.ImageContent {
+export function isImageContent(value: unknown): value is Omp.ImageContent {
   return (
     typeof value === "object" &&
     value !== null &&

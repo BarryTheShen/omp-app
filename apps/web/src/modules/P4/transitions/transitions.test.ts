@@ -410,6 +410,7 @@ describe("OmpConversationTransitionPort", () => {
     unsettledSource.ingest(
       promptResultEvent({
         type: "prompt_result",
+        requestId: "p1",
         agentInvoked: false,
         status: "aborted",
         sessionSettled: false,

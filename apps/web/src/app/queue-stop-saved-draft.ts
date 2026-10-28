@@ -1,4 +1,4 @@
-import type { AttachmentRef, DraftScope, OmpWire } from "@omp-app/contracts";
+import type { AttachmentRef, DraftScope, Omp } from "@omp-app/contracts";
 import type { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import type { DraftStoreAdapter } from "@/modules/U2/drafts";
 import {
@@ -20,7 +20,7 @@ export function imageUploadTo(
 
 /** Stores each returned image. One that cannot be stored is counted, and the others still come back. */
 export async function storeQueueImages(
-  images: readonly OmpWire.ImageContent[],
+  images: readonly Omp.ImageContent[],
   upload: ImageUpload,
 ): Promise<{ readonly refs: AttachmentRef[]; readonly lost: number }> {
   const refs: AttachmentRef[] = [];
@@ -36,7 +36,7 @@ export async function storeQueueImages(
 }
 /** Stores images withdrawn by Stop through the same durable attachment path as a removed queue item. */
 export function storeRestoredImages(
-  restored: OmpWire.AbortAndRestoreQueueResult,
+  restored: Omp.AbortAndRestoreQueueResult,
   upload: ImageUpload,
 ): Promise<{ readonly refs: AttachmentRef[]; readonly lost: number }> {
   const images = [
@@ -60,7 +60,7 @@ export interface SavedDraftTarget {
  */
 export async function restoreStoppedQueueIntoSavedDraft(
   target: SavedDraftTarget,
-  restored: OmpWire.AbortAndRestoreQueueResult,
+  restored: Omp.AbortAndRestoreQueueResult,
 ): Promise<number> {
   if (restoredCount(restored) === 0) return 0;
   const { refs, lost } = await storeRestoredImages(restored, target.upload);

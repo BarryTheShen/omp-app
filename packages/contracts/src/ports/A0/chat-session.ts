@@ -1,7 +1,6 @@
 /**
  * The app-facing contract for a chat on the chat host (SDK plan H5.3, `reassessment/SDK-CHAT-HOST-PLAN.md`, "H5.3
- * design"): requests by the protocol's method names, and the host's events on the chat's stream. It stands beside the
- * RPC port (`./rpc-session.ts`) until H5.6 removes that one, and shares its thread and stream arguments.
+ * design"): requests by the protocol's method names, and the host's events on the chat's stream.
  */
 import { z } from "zod";
 import {
@@ -16,19 +15,67 @@ import {
   type UiWidgetEvent,
 } from "../../chat-host/protocol";
 import type { PortCallOptions, PortClient, PortHandlers } from "../../core/envelope";
-import { definePort, type StreamKey, streamKey } from "../../core/envelope";
+import { definePort, StreamKey, streamKey } from "../../core/envelope";
 import { AppError } from "../../core/errors";
-import { SessionFilePath, ThreadId } from "../../core/ids";
-import {
-  OpenThreadArgs,
-  ProcessStatus,
-  SessionRenameArgs,
-  SetSubagentSubscriptionArgs,
-  SetSubagentSubscriptionResult,
-  SubscribeArgs,
-  SubscribeResult,
-  ThreadRef,
-} from "./rpc-session";
+import { FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
+
+export const ThreadRef = z.object({ threadId: ThreadId }).strict();
+export type ThreadRef = z.infer<typeof ThreadRef>;
+
+/** A chat model to open a chat with: its provider and model id, as omp names them (`provider/modelId`). */
+export const ModelChoice = z
+  .object({ provider: z.string().min(1), modelId: z.string().min(1) })
+  .strict();
+export type ModelChoice = z.infer<typeof ModelChoice>;
+
+/** Open an existing thread, create a fresh thread, or resume the newest thread in a folder. */
+export const OpenThreadArgs = z.union([
+  z.object({ threadId: ThreadId, model: ModelChoice.optional() }).strict(),
+  z.object({ folderPath: FolderPath, start: z.literal("new") }).strict(),
+  z.object({ folderPath: FolderPath, start: z.literal("latest") }).strict(),
+]);
+export type OpenThreadArgs = z.infer<typeof OpenThreadArgs>;
+
+/**
+ * A chat's new title, as typed. omp trims it and turns control characters into spaces, so the title
+ * the chat then shows can differ; the caller reads the saved title back from the chat's file.
+ */
+export const SessionRenameArgs = z.strictObject({
+  threadId: ThreadId,
+  name: z.string().min(1),
+});
+export type SessionRenameArgs = z.infer<typeof SessionRenameArgs>;
+
+export const SubscribeArgs = z
+  .object({
+    threadId: ThreadId,
+    /** Resume after this event sequence; omit for a fresh stream. */
+    afterSeq: z.int().min(0).optional(),
+  })
+  .strict();
+export type SubscribeArgs = z.infer<typeof SubscribeArgs>;
+
+export const SubscribeResult = z.object({ stream: StreamKey }).strict();
+export type SubscribeResult = z.infer<typeof SubscribeResult>;
+
+const SubagentSubscriptionLevel = z.enum(["off", "progress", "events"]);
+
+export const SetSubagentSubscriptionArgs = z
+  .object({
+    threadId: ThreadId,
+    level: SubagentSubscriptionLevel,
+  })
+  .strict();
+export type SetSubagentSubscriptionArgs = z.infer<typeof SetSubagentSubscriptionArgs>;
+
+export const SetSubagentSubscriptionResult = z
+  .object({ level: SubagentSubscriptionLevel })
+  .strict();
+export type SetSubagentSubscriptionResult = z.infer<typeof SetSubagentSubscriptionResult>;
+
+/** The state of a chat's process, as the server reports it. */
+export const ProcessStatus = z.enum(["starting", "ready", "running", "stopped", "exited", "error"]);
+export type ProcessStatus = z.infer<typeof ProcessStatus>;
 
 const MessageUpdates = z.enum(["full", "delta"]);
 

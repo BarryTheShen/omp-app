@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import type { ChatSessionClient, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { ChatSessionClient, Omp, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type {
   CompactionStateSource,
@@ -20,8 +20,9 @@ import {
 
 const threadId = "p7-thread" as ThreadId;
 
-function rawStats(): OmpWire.SessionStats {
+function rawStats(): Omp.SessionStats {
   return {
+    sessionFile: "/work/p7-thread.jsonl",
     sessionId: threadId,
     userMessages: 1,
     assistantMessages: 1,

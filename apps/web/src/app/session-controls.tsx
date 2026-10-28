@@ -90,7 +90,7 @@ export function readSessionState(
   const asOfSeq = store.getSnapshot().lastSeq;
   return chat
     .request({ threadId, method: "get_state", params: {} })
-    .then((state) => store.applyHostState(state, { asOfSeq }))
+    .then((state) => store.applySessionState(state, { asOfSeq }))
     .catch((error: unknown) => {
       reportClientError({
         kind: "error",

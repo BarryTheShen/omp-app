@@ -1,10 +1,10 @@
-import { AttachmentRef, Draft, DraftScope, type OmpWire } from "@omp-app/contracts";
+import { AttachmentRef, Draft, DraftScope, type Omp } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { DraftStoreAdapter } from "@/modules/U2/drafts";
 import { restoreStoppedQueueIntoSavedDraft, storeQueueImages } from "./queue-stop-saved-draft";
 
 const scope = DraftScope.parse({ kind: "thread", threadId: "thread-saved-draft" });
-const IMAGE: OmpWire.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
+const IMAGE: Omp.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
 
 type SaveArgs = Parameters<DraftStoreAdapter["save"]>[0];
 
@@ -36,7 +36,7 @@ function fakeDrafts(existing: Draft | null) {
   return { saves, drafts };
 }
 
-const restored: OmpWire.AbortAndRestoreQueueResult = {
+const restored: Omp.AbortAndRestoreQueueResult = {
   steering: [{ text: "steer" }],
   followUp: [{ text: "follow", images: [IMAGE] }],
 };

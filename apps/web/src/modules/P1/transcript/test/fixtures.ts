@@ -1,4 +1,4 @@
-import type { AppFailure, OmpWire } from "@omp-app/contracts";
+import type { AppFailure, Omp } from "@omp-app/contracts";
 import { SessionFilePath, SubagentId, ThreadId } from "@omp-app/contracts";
 import {
   type AgentRef,
@@ -33,16 +33,16 @@ export function agentRef(overrides: Record<string, unknown> = {}): AgentRef {
 }
 
 /** A user message in omp's transcript shape (the fields the converter reads). */
-export function userMessage(text: string): OmpWire.AgentMessage {
+export function userMessage(text: string): Omp.AgentMessage {
   return {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: 1_759_600_000_001,
-  } as unknown as OmpWire.AgentMessage;
+  } as unknown as Omp.AgentMessage;
 }
 
 /** An assistant text message in omp's transcript shape. */
-export function assistantMessage(text: string): OmpWire.AgentMessage {
+export function assistantMessage(text: string): Omp.AgentMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
@@ -51,18 +51,18 @@ export function assistantMessage(text: string): OmpWire.AgentMessage {
     model: "fake-model",
     stopReason: "stop",
     timestamp: 1_759_600_000_002,
-  } as unknown as OmpWire.AgentMessage;
+  } as unknown as Omp.AgentMessage;
 }
 
 /** A custom message omp keeps for the model alone (`display: false`). */
-export function hiddenMessage(): OmpWire.AgentMessage {
+export function hiddenMessage(): Omp.AgentMessage {
   return {
     role: "custom",
     customType: "todo-reminder",
     content: [{ type: "text", text: "Remember the todo list." }],
     display: false,
     timestamp: 1_759_600_000_003,
-  } as unknown as OmpWire.AgentMessage;
+  } as unknown as Omp.AgentMessage;
 }
 
 /** One page of `get_subagent_messages`, validated by the contract schema. */
@@ -70,7 +70,7 @@ export function transcriptPage(input: {
   readonly file?: SessionFilePath;
   readonly fromByte: number;
   readonly nextByte: number;
-  readonly messages?: readonly OmpWire.AgentMessage[];
+  readonly messages?: readonly Omp.AgentMessage[];
   readonly reset?: boolean;
 }): SubagentTranscriptPage {
   return SubagentTranscriptPageSchema.parse({

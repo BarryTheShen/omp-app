@@ -1,7 +1,7 @@
 import type {
   CapabilityMap,
   GitState,
-  OmpWire,
+  Omp,
   SessionFile,
   SessionImportResult,
   SessionPinListResult,
@@ -355,7 +355,7 @@ export const R1_HISTORY_ENTRIES: readonly Record<string, unknown>[] = Object.fre
   historyAssistantEntry,
 ]);
 
-export const R1_HISTORY_STATE: OmpWire.SessionState = {
+export const R1_HISTORY_STATE: Omp.SessionState = {
   sessionId: R1_THREAD_IDS.active,
   model: {
     id: "fake-model",
@@ -368,7 +368,7 @@ export const R1_HISTORY_STATE: OmpWire.SessionState = {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128_000,
     maxTokens: 8_192,
-    thinking: { mode: "enabled", efforts: ["low", "medium", "high"], defaultLevel: "medium" },
+    thinking: { mode: "effort", efforts: ["low", "medium", "high"], defaultLevel: "medium" },
   },
   thinkingLevel: "medium",
   isStreaming: false,
@@ -378,8 +378,21 @@ export const R1_HISTORY_STATE: OmpWire.SessionState = {
   tokensPerSecond: 42,
   isSettled: true,
   contextUsage: { tokens: 2_048, contextWindow: 128_000, percent: 1.6 },
-  queuedMessages: { steering: [], followUp: [] },
+  queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
   goal: null,
+  steeringMode: "one-at-a-time",
+  followUpMode: "one-at-a-time",
+  interruptMode: "immediate",
+  messageCount: 0,
+  queuedMessageCount: 0,
+  hasPendingAsyncWork: false,
+  todoPhases: [],
+  fastModeEnabled: false,
+  fastModeActive: false,
+  slowModeSupported: false,
+  slowModeEnabled: false,
+  systemPrompt: [],
+  dumpTools: [],
 };
 
 export const R1_IMPORT_RESULT: SessionImportResult = {

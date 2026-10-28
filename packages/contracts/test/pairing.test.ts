@@ -143,6 +143,7 @@ describe("pairEndedMessages, other cases", () => {
       output: "",
       cancelled: false,
       truncated: false,
+      exitCode: 0,
       timestamp: at,
     };
     const modelChange = { type: "model_change", id: "eModel", parentId: null, timestamp: iso };

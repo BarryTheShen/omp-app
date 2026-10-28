@@ -3,8 +3,8 @@ import {
   AppFailure,
   type ChatSessionClient,
   ChatSessionPort,
+  type Omp,
   type OmpCommandGateway,
-  type OmpWire,
   type PortCallOptions,
   type PortClient,
   type ThreadId,
@@ -35,7 +35,7 @@ export interface CompactionPort {
   readonly compact: (
     request?: { readonly customInstructions?: string },
     options?: Pick<PortCallOptions, "signal">,
-  ) => Promise<OmpWire.CompactionResult>;
+  ) => Promise<Omp.CompactionResult>;
   readonly setAutoCompaction: (
     request: AutoCompactionRequest,
     options?: Pick<PortCallOptions, "signal">,
@@ -97,7 +97,7 @@ export function createContextUsagePort(source: SessionContextSource): ContextUsa
   };
 }
 
-function totalsFromWire(usage: OmpWire.Usage): UsageTotals {
+function totalsFromWire(usage: Omp.Usage): UsageTotals {
   return {
     input: usage.input,
     output: usage.output,
@@ -110,7 +110,7 @@ function totalsFromWire(usage: OmpWire.Usage): UsageTotals {
   };
 }
 
-export function usageTotalsFromWire(usage: OmpWire.Usage): UsageTotals {
+export function usageTotalsFromWire(usage: Omp.Usage): UsageTotals {
   return totalsFromWire(usage);
 }
 
@@ -140,11 +140,10 @@ export function createUsagePort(
     },
     refresh: async (options) => {
       try {
-        // The host answers with omp's own session stats, the shape omp-wire describes until H5.6 retypes it.
-        const stats = (await session.request(
+        const stats = await session.request(
           { threadId, method: "get_session_stats", params: {} },
           options,
-        )) as unknown as OmpWire.SessionStats;
+        );
         const next = UsageSnapshot.parse({
           ...source.getSnapshot(),
           status: "ready",
@@ -193,7 +192,7 @@ export function createCompactionPort(
     getSnapshot: () => source.getSnapshot(),
     subscribe: (listener) => source.subscribe(listener),
     compact: async (request = {}, options) =>
-      (await session.request(
+      session.request(
         {
           threadId,
           method: "compact",
@@ -202,7 +201,7 @@ export function createCompactionPort(
             : {},
         },
         options,
-      )) as unknown as OmpWire.CompactionResult,
+      ),
     setAutoCompaction: async (request, options) => {
       await session.request(
         { threadId, method: "set_auto_compaction", params: { enabled: request.enabled } },

@@ -1,4 +1,4 @@
-import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
+import type { ChatSessionEvent, Omp } from "@omp-app/contracts";
 import type {
   ChatEvent,
   HostDialogRequest,
@@ -122,19 +122,14 @@ export function bashEvent(run: {
   } as unknown as ChatSessionEvent;
 }
 
-/**
- * A chat session event from an omp event typed with A0's omp wire types. Both are views of omp's same JSON; the chat
- * host's types are generated from omp's SDK and are stricter about fields a fixture leaves out, so the tests and
- * playgrounds that build omp events with the wire types feed them to the store through here.
- */
-export function ompEvent(event: OmpWire.RpcAgentEvent): ChatSessionEvent {
-  return { kind: "event", event: event as unknown as ChatEvent };
+/** One of omp's session events as the chat session port carries it. */
+export function ompEvent(event: Omp.SessionEvent): ChatSessionEvent {
+  return { kind: "event", event: event as ChatEvent };
 }
 
-/** omp's RPC prompt result as the chat host sends it: the result names its request `requestId`, where RPC said `id`. */
-export function promptResultEvent(event: OmpWire.PromptResultEvent): ChatSessionEvent {
-  const { id, ...result } = event;
-  return { kind: "event", event: { ...result, requestId: id } as unknown as ChatEvent };
+/** A prompt's result as the chat host sends it. */
+export function promptResultEvent(event: Omp.PromptResultEvent): ChatSessionEvent {
+  return { kind: "event", event };
 }
 
 /** The chat host's report that the session settled. */

@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { PanelActionAvailability, PanelState } from "@/modules/U5/panel/contract";
@@ -15,7 +15,7 @@ import {
 
 afterEach(cleanup);
 
-function usage(input: number, cacheRead: number, cacheWrite: number): OmpWire.Usage {
+function usage(input: number, cacheRead: number, cacheWrite: number): Omp.Usage {
   const total = input + cacheRead + cacheWrite;
   return {
     input,
@@ -84,7 +84,7 @@ function renderPanel(
   return { ...result, onAutoCompactionChange, onCompact };
 }
 
-const summaryMessage: OmpWire.CompactionSummaryMessage = {
+const summaryMessage: Omp.CompactionSummaryMessage = {
   role: "compactionSummary",
   summary: "## Kept context\n\n- Keep the current goal\n\n[unsafe link](javascript:alert(1))",
   tokensBefore: 120_000,
@@ -277,7 +277,7 @@ describe("P7 compaction panel", () => {
 
 describe("P7 automatic compaction and cache warming events", () => {
   test("announces automatic compaction start with plain language", () => {
-    const event: OmpWire.AutoCompactionStartEvent = {
+    const event: Omp.AutoCompactionStartEvent = {
       type: "auto_compaction_start",
       reason: "overflow",
       action: "remote",
@@ -288,7 +288,7 @@ describe("P7 automatic compaction and cache warming events", () => {
   });
 
   test("distinguishes automatic success, skip, cancellation, retry warning, and failure", () => {
-    const success: OmpWire.AutoCompactionEndEvent = {
+    const success: Omp.AutoCompactionEndEvent = {
       type: "auto_compaction_end",
       action: "remote",
       aborted: false,
@@ -299,29 +299,33 @@ describe("P7 automatic compaction and cache warming events", () => {
         tokensBefore: 20_000,
       },
     };
-    const skipped: OmpWire.AutoCompactionEndEvent = {
+    const skipped: Omp.AutoCompactionEndEvent = {
       type: "auto_compaction_end",
       action: "remote",
+      result: undefined,
       aborted: false,
       willRetry: false,
       skipped: true,
     };
-    const aborted: OmpWire.AutoCompactionEndEvent = {
+    const aborted: Omp.AutoCompactionEndEvent = {
       type: "auto_compaction_end",
       action: "remote",
+      result: undefined,
       aborted: true,
       willRetry: false,
     };
-    const warning: OmpWire.AutoCompactionEndEvent = {
+    const warning: Omp.AutoCompactionEndEvent = {
       type: "auto_compaction_end",
       action: "remote",
+      result: undefined,
       aborted: false,
       willRetry: true,
       errorMessage: "The provider did not accept the first request.",
     };
-    const error: OmpWire.AutoCompactionEndEvent = {
+    const error: Omp.AutoCompactionEndEvent = {
       type: "auto_compaction_end",
       action: "remote",
+      result: undefined,
       aborted: false,
       willRetry: false,
       errorMessage: "The provider rejected the request.",
@@ -340,7 +344,7 @@ describe("P7 automatic compaction and cache warming events", () => {
   });
 
   test("renders cache-refresh progress and distinct outcomes", () => {
-    const start: OmpWire.CacheWarmingStartEvent = {
+    const start: Omp.CacheWarmingStartEvent = {
       type: "cache_warming_start",
       phase: "idle",
       provider: "sample-provider",

@@ -1,18 +1,13 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import {
-  composeRestoredDraft,
-  restoredQueueImages,
-  restoredQueueText,
-  stopRestoreNotice,
-} from "./queue-stop-restore";
+import { composeRestoredDraft, restoredQueueImages, restoredQueueText } from "./queue-stop-restore";
 
-const PNG: OmpWire.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
-const JPEG: OmpWire.ImageContent = { type: "image", data: "d29ybGQ=", mimeType: "image/jpeg" };
+const PNG: Omp.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
+const JPEG: Omp.ImageContent = { type: "image", data: "d29ybGQ=", mimeType: "image/jpeg" };
 
 describe("restoredQueueText", () => {
   test("lists the steering messages first, then the follow-ups, oldest first", () => {
-    const restored: OmpWire.AbortAndRestoreQueueResult = {
+    const restored: Omp.AbortAndRestoreQueueResult = {
       steering: [{ text: "steer one" }],
       followUp: [{ text: "follow one" }, { text: "follow two" }],
     };
@@ -33,7 +28,7 @@ describe("composeRestoredDraft", () => {
 
 describe("restoredQueueImages", () => {
   test("turns each restored image into a file of its type, in message order", async () => {
-    const restored: OmpWire.AbortAndRestoreQueueResult = {
+    const restored: Omp.AbortAndRestoreQueueResult = {
       steering: [],
       followUp: [
         { text: "look", images: [PNG] },
@@ -47,27 +42,5 @@ describe("restoredQueueImages", () => {
 
   test("returns no files when no restored message carried an image", () => {
     expect(restoredQueueImages({ steering: [{ text: "a" }], followUp: [] })).toEqual([]);
-  });
-});
-
-describe("stopRestoreNotice", () => {
-  test("says the messages are back in the message box", () => {
-    expect(stopRestoreNotice({ steering: [], followUp: [{ text: "a" }] })).toBe(
-      "Stopped. The queued messages are back in the message box.",
-    );
-  });
-
-  test("says that images were left out when omp dropped them", () => {
-    expect(
-      stopRestoreNotice({ steering: [], followUp: [{ text: "a" }], imagesDropped: true }),
-    ).toBe(
-      "Stopped. The queued messages are back in the message box, but their images were too large to bring back.",
-    );
-  });
-
-  test("says that the newest messages stayed behind when the result was truncated", () => {
-    expect(stopRestoreNotice({ steering: [], followUp: [{ text: "a" }], truncated: true })).toBe(
-      "Stopped. The oldest queued messages are back in the message box. The rest were too large to bring back.",
-    );
   });
 });

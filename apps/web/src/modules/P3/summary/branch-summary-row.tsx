@@ -1,14 +1,12 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { BranchSummaryDivider } from "./branch-summary-divider";
 
 /**
  * The branch summary a transcript row carries. R0 keeps omp's `branchSummary` message in the row's
  * metadata (`ompRole` and `ompBranchSummary`); any other row, or one without its text, gives undefined.
  */
-export function branchSummaryOfRow(
-  message: MessageState,
-): OmpWire.BranchSummaryMessage | undefined {
+export function branchSummaryOfRow(message: MessageState): Omp.BranchSummaryMessage | undefined {
   const { ompRole, ompBranchSummary } = message.metadata.custom;
   if (ompRole !== "branchSummary" || typeof ompBranchSummary !== "object") return undefined;
   if (ompBranchSummary === null) return undefined;
@@ -27,7 +25,7 @@ export function BranchSummaryRow({
   summary,
 }: {
   readonly message: MessageState;
-  readonly summary: OmpWire.BranchSummaryMessage;
+  readonly summary: Omp.BranchSummaryMessage;
 }) {
   return (
     <div

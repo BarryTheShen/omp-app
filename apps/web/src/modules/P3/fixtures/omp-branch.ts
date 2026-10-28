@@ -7,7 +7,7 @@ import {
   type ChatSessionEvent,
   type EntryId,
   EntryId as EntryIdSchema,
-  type OmpWire,
+  type Omp,
   ThreadId as ThreadIdSchema,
 } from "@omp-app/contracts";
 import { z } from "zod";
@@ -57,7 +57,7 @@ const LATER = "2026-10-05T00:00:01.000Z";
  */
 export const PNG_BASE64 = "aW1hZ2UtYnl0ZXM=";
 
-export const PNG_IMAGE: OmpWire.ImageContent = {
+export const PNG_IMAGE: Omp.ImageContent = {
   type: "image",
   data: PNG_BASE64,
   mimeType: "image/png",
@@ -67,11 +67,11 @@ export const PNG_IMAGE: OmpWire.ImageContent = {
 const BranchResultRecord = z.strictObject({ text: z.string(), cancelled: z.boolean() });
 
 /** The recorded accepted `branch` (`p3-branch`). */
-export const BRANCH_ACCEPTED: OmpWire.BranchResult = BranchResultRecord.parse(
+export const BRANCH_ACCEPTED: Omp.BranchResult = BranchResultRecord.parse(
   onlyResult(P3_BRANCH, "branch"),
 );
 /** The recorded hook-cancelled `branch` (`p3-branch-cancelled`). */
-export const BRANCH_CANCELLED: OmpWire.BranchResult = BranchResultRecord.parse(
+export const BRANCH_CANCELLED: Omp.BranchResult = BranchResultRecord.parse(
   onlyResult(P3_BRANCH_CANCELLED, "branch"),
 );
 
@@ -189,7 +189,7 @@ function recordedUserEnvelope(): Record<string, unknown> {
  * v18.8.9), so a missing field is a type error; `usage` carries the `totalTokens` and `cost` that `Usage` requires
  * (`:76-82`; `UsageCost` `:68-74`). `recorded-fixtures.test.ts` checks these values against the recording.
  */
-const STORED_ANSWER: OmpWire.AssistantMessage = {
+const STORED_ANSWER: Omp.AssistantMessage = {
   role: "assistant",
   content: [
     { type: "thinking", thinking: "I should run bash.", thinkingSignature: "reasoning_content" },
@@ -296,6 +296,6 @@ export const BRANCH_SUMMARY_TEXT = RECORDED_BRANCH_SUMMARY.summary;
 export function branchSummaryMessage(
   fromId: EntryIdLike,
   summary: string,
-): OmpWire.BranchSummaryMessage {
+): Omp.BranchSummaryMessage {
   return { role: "branchSummary", summary, fromId: String(fromId), timestamp: Date.parse(LATER) };
 }

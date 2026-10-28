@@ -19,7 +19,7 @@ import {
   type SettingSection,
   type SettingTab,
 } from "./modules";
-import type { OmpWire } from "./omp";
+import type { Omp } from "./omp";
 
 const DESCRIPTOR_ID = new RegExp(`^(?:${MODULE_IDS.join("|")})\\.[a-z][A-Za-z0-9_.-]*$`);
 
@@ -65,11 +65,11 @@ const SLASH_SOURCES = {
   custom: true,
   mcp_prompt: true,
   file: true,
-} as const satisfies Record<OmpWire.SlashCommandSource, true>;
+} as const satisfies Record<Omp.SlashCommandSource, true>;
 
 /** `source` of omp's command catalog (`get_available_commands`). */
 export const SlashCommandSource = z.enum(
-  Object.keys(SLASH_SOURCES) as [OmpWire.SlashCommandSource, ...OmpWire.SlashCommandSource[]],
+  Object.keys(SLASH_SOURCES) as [Omp.SlashCommandSource, ...Omp.SlashCommandSource[]],
 );
 
 export const CommandDescriptor = DescriptorBase.extend({

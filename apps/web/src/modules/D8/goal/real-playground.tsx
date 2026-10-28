@@ -108,7 +108,7 @@ function RealGoalPanel({ folder }: { readonly folder: string }) {
       subscription = await client.subscribe(ChatSessionPort, "event", { scope: threadId });
       subscription.onEvent((event, sequence) => runtime.ingest(event, sequence));
       const state = await chat.request({ threadId, method: "get_state", params: {} });
-      runtime.applyHostState(state);
+      runtime.applySessionState(state);
       const capabilities = await client.port(AppPort).capabilities({});
       if (!active) return;
 

@@ -1,4 +1,4 @@
-import type { AttachmentRef, CapabilityMap, OmpWire } from "@omp-app/contracts";
+import type { AttachmentRef, CapabilityMap, Omp } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import {
@@ -46,7 +46,7 @@ export interface DequeueToEditOptions {
   readonly getDraft: () => DraftRestoreRequest;
   readonly restoreDraft: (
     request: DraftRestoreRequest,
-    images?: readonly OmpWire.ImageContent[],
+    images?: readonly Omp.ImageContent[],
   ) => void | Promise<void>;
   readonly chooseConflict?: (
     conflict: QueueDraftConflict,

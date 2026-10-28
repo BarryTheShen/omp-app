@@ -1,15 +1,15 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { MarkdownContent, summaryWithFileLists } from "@/modules/U1/markdown";
 import { SessionEntryRow } from "@/modules/U1/rows";
 import { compactionMethodLabel, formatTokenCount } from "./models";
 
 export interface CompactionSummaryDividerProps {
-  readonly message: OmpWire.CompactionSummaryMessage;
+  readonly message: Omp.CompactionSummaryMessage;
   readonly warning?: string;
   readonly error?: string;
 }
 
-function tokenDetail(message: OmpWire.CompactionSummaryMessage): string {
+function tokenDetail(message: Omp.CompactionSummaryMessage): string {
   const before = `Before compaction: ${formatTokenCount(message.tokensBefore)} tokens.`;
   return message.tokensAfter === undefined
     ? `${before} The summary below shows what the conversation kept.`

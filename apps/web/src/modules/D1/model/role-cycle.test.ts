@@ -1,4 +1,4 @@
-import { AppFailure, type CapabilityMap, CapabilityStatus, type OmpWire } from "@omp-app/contracts";
+import { AppFailure, type CapabilityMap, CapabilityStatus, type Omp } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { ModelDescriptor, ModelRef } from "../contract";
 import { ModelCatalogModel, toModelDescriptor } from "./catalog";
@@ -8,7 +8,7 @@ import { cycleRoleModel, nextRoleEntry, resolveRoleCycle } from "./role-cycle";
 const ORDER = ["smol", "default", "slow"];
 
 /** omp's wire record for one model, as get_available_models lists it. */
-function wire(id: string, provider = "fake"): OmpWire.ModelInfo {
+function wire(id: string, provider = "fake"): Omp.ModelInfo {
   return {
     provider,
     id,

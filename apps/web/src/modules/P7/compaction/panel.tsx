@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { useId } from "react";
 import { InlineError, Section, SettingRow } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ export interface CompactionPanelProps {
   readonly onAutoCompactionChange: (enabled: boolean) => void;
 }
 
-function CompactionResultSummary({ result }: { readonly result: OmpWire.CompactionResult }) {
+function CompactionResultSummary({ result }: { readonly result: Omp.CompactionResult }) {
   const summary = result.summary.trim();
   return (
     <Section heading="What was kept" headingLevel={3} variant="plain">

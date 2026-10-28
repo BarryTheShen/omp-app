@@ -1,5 +1,5 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { CompactionSummaryDivider } from "./compaction-summary-divider";
 
 /**
@@ -9,7 +9,7 @@ import { CompactionSummaryDivider } from "./compaction-summary-divider";
  */
 export function compactionSummaryOfRow(
   message: MessageState,
-): OmpWire.CompactionSummaryMessage | undefined {
+): Omp.CompactionSummaryMessage | undefined {
   const { ompRole, ompCompactionSummary } = message.metadata.custom;
   if (ompRole !== "compactionSummary" || typeof ompCompactionSummary !== "object") return undefined;
   if (ompCompactionSummary === null) return undefined;
@@ -45,7 +45,7 @@ export function CompactionSummaryRow({
   summary,
 }: {
   readonly message: MessageState;
-  readonly summary: OmpWire.CompactionSummaryMessage;
+  readonly summary: Omp.CompactionSummaryMessage;
 }) {
   const warning = compactionWarningOfRow(message);
   return (

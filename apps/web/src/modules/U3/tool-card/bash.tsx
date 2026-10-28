@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { useContext, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { BackgroundJobView } from "@/modules/R0/store/background-jobs";
@@ -56,7 +56,7 @@ function backgroundChip(
   return BACKGROUND_OUTCOME;
 }
 
-type BashResult = OmpWire.BashResult & {
+type BashResult = Omp.BashResult & {
   readonly stderr?: string;
   readonly wallTimeMs?: number;
   /** Set when omp moved the command to the background: the card names the job and never shows omp's text for the model. */
@@ -230,7 +230,7 @@ const TextPartSchema = z.looseObject({ type: z.literal("text"), text: z.string()
 /** omp's `details.async` for a command moved to the background: the job's number and its state. */
 const BackgroundJobSchema = z.looseObject({ jobId: z.string(), state: z.string() });
 
-/** The RPC `bash` command's result (`packages/coding-agent/src/exec/bash-executor.ts:87-102`). */
+/** The result of a `!` command, the chat host's `bash` answer (omp's `BashResult`, `packages/coding-agent/src/exec/bash-executor.ts:117-135`). */
 const BashCommandResultSchema = z.looseObject({
   output: z.string(),
   exitCode: z.number().optional(),
@@ -285,7 +285,7 @@ function withoutNoticeBlock(text: string, wallTime: boolean): string {
   return notices.every(ompNotice) ? text.slice(0, start) : text;
 }
 
-/** Reads bash output from either the agent's bash tool or the RPC bash command. */
+/** Reads bash output from either the agent's bash tool or a `!` command. */
 export function decodeBashResult(value: unknown): BashResult | undefined {
   const tool = BashToolResultSchema.safeParse(value);
   if (tool.success) return decodeBashToolResult(tool.data);
@@ -301,7 +301,7 @@ export function decodeBashResult(value: unknown): BashResult | undefined {
     totalBytes: result.totalBytes ?? result.output.length,
     outputLines: result.outputLines ?? lines,
     outputBytes: result.outputBytes ?? result.output.length,
-    ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+    exitCode: result.exitCode,
     ...(result.timedOut === true ? { timedOut: true } : {}),
     ...(result.artifactId === undefined ? {} : { artifactId: result.artifactId }),
     ...(result.artifactElidedBytes === undefined
@@ -332,6 +332,7 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
       totalBytes: 0,
       outputLines: 0,
       outputBytes: 0,
+      exitCode: undefined,
       background: { jobId: job.data.jobId, state: job.data.state },
       ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
     };
@@ -361,7 +362,7 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
     totalBytes: truncation?.totalBytes ?? output.length,
     outputLines: truncation?.outputLines ?? lines,
     outputBytes: truncation?.outputBytes ?? output.length,
-    ...(details.exitCode === undefined ? {} : { exitCode: details.exitCode }),
+    exitCode: details.exitCode,
     ...(details.timedOut === true ? { timedOut: true } : {}),
     ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
   };

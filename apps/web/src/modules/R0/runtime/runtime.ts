@@ -14,8 +14,8 @@ import type {
   CapabilityMap,
   ChatSessionRequest,
   MessageKey,
+  Omp,
   OmpMessage,
-  OmpWire,
   PortCallOptions,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
@@ -41,7 +41,7 @@ type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
 export interface PromptIntent {
   readonly mode: PromptMode;
   readonly text: string;
-  readonly images?: readonly OmpWire.ImageContent[];
+  readonly images?: readonly Omp.ImageContent[];
   /** Durable refs stay in the intent for U2 draft recovery; omp's released prompt wire has no ref field. */
   readonly attachmentRefs?: readonly AttachmentRef[];
   readonly delivery: PromptDelivery;
@@ -71,7 +71,7 @@ export interface OmpRuntimeOptions {
 /** What a Stop withdrew, and the chat it was queued in: that chat may no longer be on screen when omp answers. */
 export interface StoppedQueue {
   readonly threadId: RuntimeSnapshot["threadId"];
-  readonly restored: OmpWire.AbortAndRestoreQueueResult;
+  readonly restored: Omp.AbortAndRestoreQueueResult;
 }
 
 /** Numeric token totals for all assistant requests joined into one transcript turn. */
@@ -101,7 +101,7 @@ export interface RuntimeMessageView {
   /** TTFT from the first joined assistant request, when it reports one. */
   readonly ompTurnTtftMs?: number;
   /** The usage of the assistant turn before this one (null when none): a cache miss is measured from it. */
-  readonly previousAssistantUsage?: OmpWire.Usage | null;
+  readonly previousAssistantUsage?: Omp.Usage | null;
   /**
    * A todo reminder follows this message, so the answer after it starts a row of its own: the notice drawn after this
    * row then sits between the two. See `convertExternalMessage`.
@@ -344,7 +344,7 @@ function assistantParts(
         break;
       case "thinking": {
         // omp's `ThinkingContent`. The data is unchecked, so every field may be missing.
-        const block = rawPart as Partial<OmpWire.ThinkingContent>;
+        const block = rawPart as Partial<Omp.ThinkingContent>;
         const thinking = typeof block.thinking === "string" ? block.thinking : undefined;
         parts.push(
           thinking === undefined
@@ -650,7 +650,7 @@ function commandViews(commands: readonly BashCommandState[]): readonly RuntimeMe
           output: command.result?.output ?? "",
           cancelled: command.result?.cancelled ?? false,
           truncated: command.result?.truncated ?? false,
-          ...(command.result?.exitCode === undefined ? {} : { exitCode: command.result.exitCode }),
+          exitCode: command.result?.exitCode,
           timestamp: command.startedAt,
           excludeFromContext: false,
         },
@@ -745,11 +745,9 @@ function drawnRowKeys(snapshot: RuntimeSnapshot): readonly MessageKey[] {
  * The usage of the assistant turn before each assistant message: the figures a cache miss is measured from. An
  * assistant message without a usage record is not a turn to measure from.
  */
-function previousAssistantUsages(
-  snapshot: RuntimeSnapshot,
-): ReadonlyMap<MessageKey, OmpWire.Usage> {
-  const usages = new Map<MessageKey, OmpWire.Usage>();
-  let previous: OmpWire.Usage | undefined;
+function previousAssistantUsages(snapshot: RuntimeSnapshot): ReadonlyMap<MessageKey, Omp.Usage> {
+  const usages = new Map<MessageKey, Omp.Usage>();
+  let previous: Omp.Usage | undefined;
   for (const key of drawnRowKeys(snapshot)) {
     const record = snapshot.messages[key];
     if (!record || isHiddenMessage(record.message) || record.message.role !== "assistant") continue;
@@ -1054,9 +1052,9 @@ function validMode(value: unknown): value is PromptMode {
   return value === "prompt" || value === "bash" || value === "python";
 }
 
-function imagesForAppend(message: AppendMessage): readonly OmpWire.ImageContent[] | undefined {
+function imagesForAppend(message: AppendMessage): readonly Omp.ImageContent[] | undefined {
   if (!Array.isArray(message.content)) return undefined;
-  const images: OmpWire.ImageContent[] = [];
+  const images: Omp.ImageContent[] = [];
   for (const part of message.content) {
     if (!isRecord(part) || part.type !== "image" || typeof part.image !== "string") continue;
     const image = part.image;
@@ -1301,13 +1299,12 @@ export class OmpRuntimeController {
   }): Promise<void> {
     // Read now: omp's answer may come after the person has moved to another chat.
     const threadId = this.store.getSnapshot().threadId;
-    let restored: OmpWire.AbortAndRestoreQueueResult;
+    let restored: Omp.AbortAndRestoreQueueResult;
     try {
-      // The host's restored queue is omp's own: the same messages, with images in omp's form.
-      restored = (await this.send(
+      restored = await this.send(
         { threadId, method: "abort_and_restore_queue", params: {} },
         options,
-      )) as unknown as OmpWire.AbortAndRestoreQueueResult;
+      );
     } catch (error) {
       throw asFailure(error, "Cancelling the omp session failed");
     }

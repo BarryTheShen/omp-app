@@ -11,6 +11,7 @@ const now = () => new Date("2026-10-05T00:00:00.000Z");
 function failedPrompt(httpStatus: number): unknown {
   return promptResultEvent({
     type: "prompt_result",
+    requestId: "p1",
     agentInvoked: true,
     status: "error",
     sessionSettled: true,

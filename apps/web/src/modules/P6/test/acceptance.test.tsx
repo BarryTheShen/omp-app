@@ -1,5 +1,5 @@
 import type { AppendMessage } from "@assistant-ui/react";
-import type { CapabilityMap, ChatSessionRequest, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, Omp, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { createQueueController } from "../../R0/actions/actions";
@@ -88,7 +88,7 @@ function harness(state: P6GetStateFixture = P6_GET_STATE_STREAMING, removeAccept
   };
   const port = createQueueController({ store, send, capabilities });
   const adapter = createQueueAdapter(port);
-  const ingestQueue = (event: OmpWire.QueueUpdateEvent, seq: number): void => {
+  const ingestQueue = (event: Omp.QueueUpdateEvent, seq: number): void => {
     store.ingest(ompEvent(event), seq);
   };
   return { store, port, adapter, commands, ingestQueue };
@@ -163,6 +163,7 @@ describe("P6 CC2/CC6 acceptance gate", () => {
       {
         type: "queue_update",
         steering: [...P6_QUEUE_UPDATE_STREAMING.steering, "steer this"],
+        liveSteered: P6_QUEUE_UPDATE_STREAMING.liveSteered,
         followUp: [...P6_QUEUE_UPDATE_STREAMING.followUp, "follow after yield"],
       },
       1,
@@ -239,6 +240,7 @@ describe("P6 CC2/CC6 acceptance gate", () => {
       {
         type: "queue_update",
         steering: P6_QUEUE_UPDATE_STREAMING.steering,
+        liveSteered: P6_QUEUE_UPDATE_STREAMING.liveSteered,
         followUp: [],
       },
       1,

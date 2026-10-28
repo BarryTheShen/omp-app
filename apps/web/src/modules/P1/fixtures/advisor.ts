@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { FIXTURE_START } from "./common";
 
 /**
@@ -54,7 +54,7 @@ export const ADVISOR_NOTE_AGE_CASES: readonly AdvisorNoteAgeCase[] = [
 ];
 
 /** The custom message omp keeps for a batch of notes, in the wire's own shape. */
-export function advisorBatchMessage(notes: readonly OmpAdvisorNote[]): OmpWire.CustomMessage {
+export function advisorBatchMessage(notes: readonly OmpAdvisorNote[]): Omp.CustomMessage {
   return {
     role: "custom",
     customType: "advisor",

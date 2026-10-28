@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 
 export interface CacheMissSummary {
   readonly reprocessedTokens: number;
@@ -6,8 +6,8 @@ export interface CacheMissSummary {
 
 /** Finds only a warm-to-cold transition that explicitly rebuilds the provider's prompt cache. */
 export function cacheMissBetween(
-  previous: OmpWire.Usage | null,
-  current: OmpWire.Usage,
+  previous: Omp.Usage | null,
+  current: Omp.Usage,
 ): CacheMissSummary | null {
   if (
     previous === null ||

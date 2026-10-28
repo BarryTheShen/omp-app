@@ -1,4 +1,4 @@
-import type { OmpWire, ThreadId } from "@omp-app/contracts";
+import type { Omp, ThreadId } from "@omp-app/contracts";
 import {
   type Dispatch,
   type SetStateAction,
@@ -28,7 +28,7 @@ import {
   composeRestoredDraft,
   restoredCount,
   restoredQueueText,
-  stopRestoreNotice,
+  STOP_RESTORED_NOTICE,
 } from "./queue-stop-restore";
 import type { ImageUpload } from "./queue-stop-saved-draft";
 import { storeQueueImages, storeRestoredImages } from "./queue-stop-saved-draft";
@@ -138,14 +138,14 @@ export function useThreadDrafts({
   // Stop with queued messages, into this box: the withdrawn images are stored and the draft takes them ahead of its
   // attachments, and the text goes in ahead of what was typed. An answer that withdrew nothing changes nothing.
   const restoreIntoBox = useCallback(
-    async (restored: OmpWire.AbortAndRestoreQueueResult): Promise<void> => {
+    async (restored: Omp.AbortAndRestoreQueueResult): Promise<void> => {
       if (restoredCount(restored) === 0) return;
       const { refs, lost } = await storeRestoredImages(restored, uploadRestoredImage);
       draftController.setDraft(
         composeRestoredDraft(restoredQueueText(restored), draftController.getSnapshot().text),
         [...refs, ...attachmentManager.toDraftRefs()],
       );
-      setCommandStatus(stopRestoreNotice(restored));
+      setCommandStatus(STOP_RESTORED_NOTICE);
       if (lost > 0) {
         setCommandError(
           lost === 1
@@ -182,7 +182,7 @@ export function useThreadDrafts({
     [attachmentManager, draftController],
   );
   const restoreQueued = useCallback(
-    async (request: DraftRestoreRequest, images: readonly OmpWire.ImageContent[] = []) => {
+    async (request: DraftRestoreRequest, images: readonly Omp.ImageContent[] = []) => {
       const { refs, lost } = await storeQueueImages(images, uploadRestoredImage);
       const attachmentRefs = [...refs, ...attachmentManager.toDraftRefs()];
       draftController.setDraft(request.text, attachmentRefs);

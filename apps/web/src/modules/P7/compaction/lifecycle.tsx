@@ -1,6 +1,6 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 
-function actionText(action: OmpWire.AutoCompactionAction): string {
+function actionText(action: Omp.AutoCompactionAction): string {
   switch (action) {
     case "context-full":
       return "making room in the conversation";
@@ -17,7 +17,7 @@ function actionText(action: OmpWire.AutoCompactionAction): string {
   }
 }
 
-function reasonText(reason: OmpWire.AutoCompactionReason): string {
+function reasonText(reason: Omp.AutoCompactionReason): string {
   switch (reason) {
     case "threshold":
       return "The conversation reached its compaction threshold.";
@@ -33,7 +33,7 @@ function reasonText(reason: OmpWire.AutoCompactionReason): string {
 export function AutomaticCompactionProgress({
   event,
 }: {
-  readonly event: OmpWire.AutoCompactionStartEvent;
+  readonly event: Omp.AutoCompactionStartEvent;
 }) {
   return (
     <p
@@ -51,7 +51,7 @@ export function AutomaticCompactionProgress({
 export function AutomaticCompactionOutcome({
   event,
 }: {
-  readonly event: OmpWire.AutoCompactionEndEvent;
+  readonly event: Omp.AutoCompactionEndEvent;
 }) {
   if (event.aborted) {
     return (
@@ -110,7 +110,7 @@ export function AutomaticCompactionOutcome({
 export function CacheWarmingNotice({
   event,
 }: {
-  readonly event: OmpWire.CacheWarmingStartEvent | OmpWire.CacheWarmingEndEvent;
+  readonly event: Omp.CacheWarmingStartEvent | Omp.CacheWarmingEndEvent;
 }) {
   if (event.type === "cache_warming_start") {
     return (

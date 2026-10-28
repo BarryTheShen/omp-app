@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import {
   createQueueAdapter,
@@ -63,7 +63,7 @@ function setup(
 ) {
   const { controller, removed, leaveQueue } = queueOf(queued, options.removeResult);
   const restored: string[] = [];
-  const restoredImages: (readonly OmpWire.ImageContent[] | undefined)[] = [];
+  const restoredImages: (readonly Omp.ImageContent[] | undefined)[] = [];
   const notify = vi.fn();
   const fail = vi.fn();
   const registry = new ShortcutRegistry([...P6_SHORTCUT_DESCRIPTORS], {
@@ -141,9 +141,7 @@ describe("Alt+Up brings the last queued message back into the box", () => {
   });
 
   test("passes removed images to the composer restore callback", async () => {
-    const images: OmpWire.ImageContent[] = [
-      { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
-    ];
+    const images: Omp.ImageContent[] = [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }];
     const { press, restored, restoredImages, notify } = setup({ followUp: ["picture"] }, "", {
       removeResult: { changed: true, images },
     });

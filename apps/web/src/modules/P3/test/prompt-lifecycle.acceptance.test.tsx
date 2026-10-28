@@ -1,7 +1,7 @@
 // The completed, aborted and provider-error prompt results and session_settled are recorded (R0's `prompt-stream` and
 // `abort`, P3's `p3-provider-error`); the pending result is written in the host's shape (`PromptResultEvent`,
 // packages/contracts/src/chat-host/protocol.ts).
-import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
+import type { ChatSessionEvent, Omp } from "@omp-app/contracts";
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store";
@@ -21,7 +21,7 @@ import { editAppend, renderRun } from "./run-harness";
 afterEach(cleanup);
 
 function receiveOmp(store: OmpRuntimeStore, event: unknown, seq: number): void {
-  store.ingest(ompEvent(event as OmpWire.RpcAgentEvent), seq);
+  store.ingest(ompEvent(event as Omp.SessionEvent), seq);
 }
 
 describe("acceptance: a prompt's result and the session's settling are separate facts", () => {

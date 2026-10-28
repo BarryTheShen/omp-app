@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import {
   createQueueAdapter,
@@ -29,7 +29,7 @@ function queueController(
   current: QueueSnapshot = snapshot,
   removeResult: {
     changed: boolean;
-    images?: readonly OmpWire.ImageContent[];
+    images?: readonly Omp.ImageContent[];
   } = {
     changed: true,
   },
@@ -143,7 +143,7 @@ describe("P6 composer queue policy", () => {
     expect(restored).toEqual(["queued text"]);
   });
   test("dequeue-to-edit restores returned images alongside queued text", async () => {
-    const image: OmpWire.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
+    const image: Omp.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
     const { controller } = queueController(snapshot, { changed: true, images: [image] });
     const id = controller.getSnapshot().items[0]?.id;
     if (!id) throw new Error("missing queue id");

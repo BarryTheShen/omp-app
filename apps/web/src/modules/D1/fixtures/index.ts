@@ -1,4 +1,4 @@
-import type { ConfigListResult, OmpWire, Revision } from "@omp-app/contracts";
+import type { ConfigListResult, Omp, Revision } from "@omp-app/contracts";
 import { FolderPath as FolderPathSchema } from "@omp-app/contracts";
 import type { SessionInfoState } from "@/modules/R0/store/store";
 import type { ModelRef } from "../contract";
@@ -122,13 +122,11 @@ export const D1_FIXTURE_COVERAGE = [
 }>;
 
 /**
- * Scripted, secret-free examples use omp v18.6.1's actual RPC payloads:
- * `packages/coding-agent/src/modes/rpc/rpc-mode.ts:2092-2110` returns a ModelInfo from
- * `set_model`; `:2121-2124` returns `{ models: ModelInfo[] }` from `get_available_models`;
- * `:2144-2152` returns `{ levels: ThinkingLevel[] }` from `get_available_thinking_levels`.
- * Wire shape: `packages/contracts/src/omp-wire/rpc-wire.generated.ts:316-367,1505-1520`.
+ * Scripted, secret-free examples of the chat host's answers (`packages/server/src/chat-host/loop.ts`):
+ * `get_available_models` gives omp's own models (`session.getAvailableModels()`), `set_model` the model it set, and
+ * `get_available_thinking_levels` `{ levels }`, `off` first. A model's `thinking` is omp's `ThinkingConfig`.
  */
-const reasonerModel: OmpWire.ModelInfo = {
+const reasonerModel: Omp.ModelInfo = {
   id: "reasoner-large",
   name: "Reasoner Large",
   api: "openai-completions",
@@ -139,10 +137,10 @@ const reasonerModel: OmpWire.ModelInfo = {
   cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 128_000,
   maxTokens: 8_192,
-  thinking: { mode: "enabled", efforts: ["low", "medium", "high"], defaultLevel: "medium" },
+  thinking: { mode: "effort", efforts: ["low", "medium", "high"], defaultLevel: "medium" },
 };
 
-const fastModel: OmpWire.ModelInfo = {
+const fastModel: Omp.ModelInfo = {
   id: "fast-chat",
   name: "Fast Chat",
   api: "openai-completions",
@@ -153,16 +151,16 @@ const fastModel: OmpWire.ModelInfo = {
   cost: { input: 0.2, output: 0.4, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 64_000,
   maxTokens: 4_096,
-  thinking: { mode: "enabled", efforts: ["low", "medium"], defaultLevel: "low" },
+  thinking: { mode: "effort", efforts: ["low", "medium"], defaultLevel: "low" },
 };
 
-export const D1_MODEL_CATALOG_RPC_FIXTURE: OmpWire.GetAvailableModelsResult = {
+export const D1_MODEL_CATALOG_RPC_FIXTURE: Omp.GetAvailableModelsResult = {
   models: [reasonerModel, fastModel],
 };
 
-export const D1_SET_MODEL_RPC_FIXTURE: OmpWire.ModelInfo = fastModel;
+export const D1_SET_MODEL_RPC_FIXTURE: Omp.ModelInfo = fastModel;
 
-export const D1_THINKING_LEVELS_RPC_FIXTURE: OmpWire.GetAvailableThinkingLevelsResult = {
+export const D1_THINKING_LEVELS_RPC_FIXTURE: Omp.GetAvailableThinkingLevelsResult = {
   levels: ["off", "low", "medium", "high"],
 };
 

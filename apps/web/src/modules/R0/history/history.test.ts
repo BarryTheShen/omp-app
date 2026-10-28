@@ -2,7 +2,7 @@ import type {
   ChatSessionEvent,
   ChatSessionRequest,
   EntryId,
-  OmpWire,
+  Omp,
   SessionEntryWindow,
   SessionEntryWindowArgs,
   ThreadId,
@@ -696,7 +696,7 @@ describe("SessionHistoryLoader.refetch", () => {
 
   test("a new load cancels the one in flight with a typed AppFailure, and the new one still resolves", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    const firstState = createDeferred<OmpWire.SessionState>();
+    const firstState = createDeferred<Pick<Omp.SessionState, "sessionId">>();
     let stateCallIndex = 0;
     const { send } = makeSend({
       get_state: () => {
@@ -718,7 +718,7 @@ describe("SessionHistoryLoader.refetch", () => {
 
   test("an externally aborted signal rejects with a cancelled AppFailure", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    const pending = createDeferred<OmpWire.SessionState>();
+    const pending = createDeferred<Omp.SessionState>();
     const { send } = makeSend({
       get_state: () => pending.promise,
       get_entries: () => ({ entries: [], leafId: null }),
@@ -817,7 +817,7 @@ describe("SessionHistoryLoader.watchNeedsRefetch", () => {
 
   test("reports a genuine refetch failure but not a superseded one", async () => {
     const store = new OmpRuntimeStore({ threadId });
-    const failing = createDeferred<OmpWire.SessionState>();
+    const failing = createDeferred<Omp.SessionState>();
     const errors: AppFailure[] = [];
     let stateCallIndex = 0;
     const { send } = makeSend({

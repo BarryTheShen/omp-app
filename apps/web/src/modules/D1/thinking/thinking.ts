@@ -5,7 +5,7 @@ import {
   type CapabilityMap,
   type ChatSessionClient,
   ChatSessionPort,
-  type OmpWire,
+  type Omp,
   type PortCallOptions,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -23,14 +23,14 @@ const INITIAL_REVISION = "thinking-initial";
 type ThinkingSource = {
   readonly getAvailableLevels: (
     options?: Pick<PortCallOptions, "signal">,
-  ) => Promise<readonly OmpWire.ThinkingLevel[]>;
+  ) => Promise<readonly Omp.ThinkingLevel[]>;
   readonly setLevel: (
-    level: OmpWire.ThinkingLevel,
+    level: Omp.ThinkingLevel,
     options?: Pick<PortCallOptions, "signal">,
   ) => Promise<void>;
   readonly cycleLevel: (
     options?: Pick<PortCallOptions, "signal">,
-  ) => Promise<OmpWire.ThinkingLevelCycleResult | null>;
+  ) => Promise<Omp.ThinkingLevelCycleResult | null>;
 };
 
 export type LiveThinkingState = {
@@ -75,7 +75,7 @@ function usable(capabilities: CapabilityMap, capability: string): boolean {
 }
 
 function normalizeLevels(
-  levels: readonly OmpWire.ThinkingLevel[],
+  levels: readonly Omp.ThinkingLevel[],
   reasoning: boolean,
 ): ThinkingLevel[] {
   if (!reasoning) return [];
@@ -264,9 +264,6 @@ export function createRpcThinkingSource(client: AppClient, threadId: ThreadId): 
       await session.request({ threadId, method: "set_thinking_level", params: { level } }, options);
     },
     cycleLevel: async (options) =>
-      (await session.request(
-        { threadId, method: "cycle_thinking_level", params: {} },
-        options,
-      )) as OmpWire.ThinkingLevelCycleResult | null,
+      session.request({ threadId, method: "cycle_thinking_level", params: {} }, options),
   };
 }

@@ -2,7 +2,7 @@ import type {
   CapabilityMap,
   ChatSessionRequest,
   EntryId,
-  OmpWire,
+  Omp,
   PortCallOptions,
   SessionFilePath,
   ThreadId,
@@ -122,7 +122,7 @@ function sessionIdFromState(state: { readonly sessionId: string }): ThreadId {
   }
 }
 
-function branchResult(value: unknown): OmpWire.BranchResult {
+function branchResult(value: unknown): Omp.BranchResult {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw invalidIdentity("omp returned an invalid branch result");
   }
@@ -133,7 +133,7 @@ function branchResult(value: unknown): OmpWire.BranchResult {
   return { text: result.text, cancelled: result.cancelled };
 }
 
-function forkResult(value: unknown): OmpWire.CancellationResult {
+function forkResult(value: unknown): Omp.CancellationResult {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw invalidIdentity("omp returned an invalid fork result");
   }
@@ -224,7 +224,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
     const sourceThreadId = this.prepare(request.threadId, BRANCH_CAPABILITY, "Conversation rewind");
     const picks = this.pickCount();
     try {
-      let result: OmpWire.BranchResult;
+      let result: Omp.BranchResult;
       try {
         result = branchResult(
           await this.send(
@@ -268,7 +268,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
     const sourceThreadId = this.prepare(request.threadId, FORK_CAPABILITY, "Conversation fork");
     const picks = this.pickCount();
     try {
-      let result: OmpWire.CancellationResult;
+      let result: Omp.CancellationResult;
       try {
         result = forkResult(
           await this.send(

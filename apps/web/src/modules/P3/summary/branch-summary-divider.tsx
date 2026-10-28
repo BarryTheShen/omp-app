@@ -1,11 +1,11 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { MarkdownContent, summaryWithFileLists } from "@/modules/U1/markdown";
 
 export interface BranchSummaryDividerProps {
-  readonly message: OmpWire.BranchSummaryMessage;
+  readonly message: Omp.BranchSummaryMessage;
 }
 
 /**

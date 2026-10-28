@@ -11,8 +11,8 @@ import {
 import { I5_DESCRIPTORS } from "../../descriptors";
 import {
   CONFIG_STORE_FIXTURE,
+  LIVE_EVENTS_FIXTURE,
   LIVE_FINAL_TRANSCRIPT,
-  LIVE_RPC_FIXTURE,
   LIVE_STATE_FIXTURE,
   OMP_V18_12_6_UI_SETTING_KEYS,
 } from "../../fixtures";
@@ -72,7 +72,7 @@ describe("I5 W5 gate", () => {
     const finals: unknown[] = [];
     adapter.onFinalTranscript((message) => finals.push(message));
     await adapter.start();
-    for (const event of LIVE_RPC_FIXTURE)
+    for (const event of LIVE_EVENTS_FIXTURE)
       for (const listener of listeners) listener({ kind: "event", event });
     expect(adapter.getSnapshot().phase).toBe("error");
     expect(finals).toHaveLength(1);
@@ -131,7 +131,7 @@ describe("I5 W5 gate", () => {
     }
   });
   test("fixture values are scrubbed and secrets are status-only", () => {
-    expect(checkScrubbed(JSON.stringify(LIVE_RPC_FIXTURE))).toEqual([]);
+    expect(checkScrubbed(JSON.stringify(LIVE_EVENTS_FIXTURE))).toEqual([]);
     expect(checkScrubbed(JSON.stringify(LIVE_STATE_FIXTURE))).toEqual([]);
     expect(checkScrubbed(JSON.stringify(CONFIG_STORE_FIXTURE))).toEqual([]);
     expect(CONFIG_STORE_FIXTURE.entries).toContainEqual({

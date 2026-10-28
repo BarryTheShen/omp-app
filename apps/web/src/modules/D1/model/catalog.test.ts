@@ -2,7 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import {
   CapabilityStatus,
   type ChatSessionClient,
-  type OmpWire,
+  type Omp,
   type ThreadId,
 } from "@omp-app/contracts";
 import { afterEach, describe, expect, test } from "vitest";
@@ -21,8 +21,8 @@ const threadId = "d1-model-thread" as ThreadId;
 function rawModel(
   provider: string,
   id: string,
-  options: Partial<Pick<OmpWire.ModelInfo, "name" | "reasoning" | "thinking">> = {},
-): OmpWire.ModelInfo {
+  options: Partial<Pick<Omp.ModelInfo, "name" | "reasoning" | "thinking">> = {},
+): Omp.ModelInfo {
   return {
     provider,
     id,
@@ -109,7 +109,7 @@ describe("D1 model catalog projection", () => {
     model.dispose();
   });
   test("adapts R0 snapshot subscriptions without polling get_state", () => {
-    let state: { readonly model: OmpWire.ModelInfo | null } = {
+    let state: { readonly model: Omp.ModelInfo | null } = {
       model: rawModel("alpha", "one"),
     };
     const listeners = new Set<() => void>();

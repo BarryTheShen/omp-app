@@ -1,12 +1,12 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { CustomMessageRow } from "@/modules/U1/rows";
 import { cacheMissBetween, formatTokenCount } from "./models";
 
 export interface CacheMissDividerProps {
   /** The immediately preceding assistant turn's usage, or null at the start of a session. */
-  readonly previousAssistantUsage: OmpWire.Usage | null;
+  readonly previousAssistantUsage: Omp.Usage | null;
   /** The assistant turn that follows this divider. */
-  readonly currentAssistantUsage: OmpWire.Usage;
+  readonly currentAssistantUsage: Omp.Usage;
 }
 
 export function CacheMissDivider({

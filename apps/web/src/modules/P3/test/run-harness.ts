@@ -5,7 +5,7 @@ import {
   type CapabilityKey,
   type ChatSessionRequest,
   type EntryId,
-  type OmpWire,
+  type Omp,
   type ThreadId,
 } from "@omp-app/contracts";
 import { renderHook } from "@testing-library/react";
@@ -48,7 +48,7 @@ export interface RunOptions {
    * omp's answers to successive `branch` commands: a result, or the failure omp raises. The last answer
    * repeats. Defaults to an accepted branch.
    */
-  readonly branch?: readonly (OmpWire.BranchResult | Error)[];
+  readonly branch?: readonly (Omp.BranchResult | Error)[];
   /** omp's answer to `get_state` after a branch. Defaults to the branched chat. */
   readonly getState?: { readonly sessionId: string } | Error;
   /** Opening the new chat fails with this error. */
@@ -216,7 +216,7 @@ export function renderRun(options: RunOptions = {}): RunHarness {
 export function editAppend(
   sourceId: string | null,
   text: string,
-  images: readonly OmpWire.ImageContent[] = [],
+  images: readonly Omp.ImageContent[] = [],
 ): AppendMessage {
   return {
     role: "user",

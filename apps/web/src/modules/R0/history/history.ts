@@ -2,7 +2,7 @@ import type {
   AppError,
   ChatSessionRequest,
   EntryId,
-  OmpWire,
+  Omp,
   PortCallOptions,
   SessionEntryOutputArgs,
   SessionEntryOutputResult,
@@ -14,7 +14,7 @@ import { AppFailure, SessionFilePath } from "@omp-app/contracts";
 import type { OmpRuntimeStore } from "../store/store";
 
 type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
-type SessionEntriesResult = OmpWire.SessionEntries;
+type SessionEntriesResult = Omp.SessionEntries;
 type OperationKind = "refetch" | "sync";
 interface InFlight {
   readonly controller: AbortController;
@@ -297,7 +297,7 @@ export class SessionHistoryLoader {
       { threadId: this.threadId, method: "get_state", params: {} },
       { signal },
     );
-    this.store.applyHostState(state, { asOfSeq });
+    this.store.applySessionState(state, { asOfSeq });
     const file = SessionFilePath.safeParse(state.sessionFile);
     this.sessionFile = file.success ? file.data : undefined;
   }
@@ -474,7 +474,7 @@ export class SessionHistoryLoader {
     since: EntryId | undefined,
     signal: AbortSignalLike,
   ): Promise<SessionEntriesResult> {
-    const result = await this.send(
+    return this.send(
       {
         threadId: this.threadId,
         method: "get_entries",
@@ -482,8 +482,6 @@ export class SessionHistoryLoader {
       },
       { signal },
     );
-    // The host answers with omp's own entries, the shape omp-wire describes until H5.6 retypes the readers.
-    return result as unknown as SessionEntriesResult;
   }
 
   private latestKnownEntryId(): EntryId | undefined {

@@ -3,7 +3,7 @@ import type {
   SpeechSynthesisAdapter,
   ThreadMessageLike,
 } from "@assistant-ui/react";
-import type { CapabilityKey, CapabilityMap, OmpWire, PortCallOptions } from "@omp-app/contracts";
+import type { CapabilityKey, CapabilityMap, Omp, PortCallOptions } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
 
@@ -59,9 +59,9 @@ export interface VoiceSessionPort {
   getSnapshot(): LiveState;
   getCapabilities(): CapabilityMap;
   subscribe(listener: (state: LiveState) => void): () => void;
-  start(args?: LiveStartArgs, options?: PortCallOptions): Promise<OmpWire.LiveStartResult>;
+  start(args?: LiveStartArgs, options?: PortCallOptions): Promise<Omp.LiveStartResult>;
   stop(options?: PortCallOptions): Promise<void>;
-  mute(args?: LiveMuteArgs, options?: PortCallOptions): Promise<OmpWire.LiveMuteResult>;
+  mute(args?: LiveMuteArgs, options?: PortCallOptions): Promise<Omp.LiveMuteResult>;
   onFinalTranscript(listener: (message: ThreadMessageLike) => void): () => void;
 }
 

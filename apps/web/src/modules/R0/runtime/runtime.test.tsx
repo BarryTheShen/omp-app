@@ -831,6 +831,7 @@ describe("R0.3 assistant-ui runtime", () => {
     store.ingest(
       promptResultEvent({
         type: "prompt_result",
+        requestId: "p1",
         agentInvoked: true,
         status: "completed",
         sessionSettled: false,

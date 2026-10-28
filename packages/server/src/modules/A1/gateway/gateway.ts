@@ -16,7 +16,7 @@ import type { CommandListing, CommandSession, CommandSessionEvent } from "./comm
 import { compactionOutcome } from "./compaction-parser";
 import { registerOmpCommandParsers } from "./parsers";
 
-/** Resolves the command session of one open chat: from the chat host, or from omp's RPC until H5.6. */
+/** Resolves the command session of one open chat, from its chat host. */
 export type SessionResolver = (threadId: ThreadId) => CommandSession | Promise<CommandSession>;
 
 /** The correlated raw frames of one command run, before any per-command parser is applied. */

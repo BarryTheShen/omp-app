@@ -3,7 +3,7 @@ import type {
   CapabilityKey,
   CapabilityMap,
   ChatSessionClient,
-  OmpWire,
+  Omp,
   PortCallOptions,
   ThreadId,
 } from "@omp-app/contracts";
@@ -40,11 +40,11 @@ export interface ModelCatalogSource {
   readonly readSignIns?: () => Promise<ReadonlyMap<string, ProviderSignIn>>;
   readonly getAvailableModels: (
     options?: Pick<PortCallOptions, "signal">,
-  ) => Promise<readonly OmpWire.ModelInfo[]>;
+  ) => Promise<readonly Omp.ModelInfo[]>;
   readonly setModel: (
     model: ModelRef,
     options?: Pick<PortCallOptions, "signal">,
-  ) => Promise<OmpWire.ModelInfo>;
+  ) => Promise<Omp.ModelInfo>;
 }
 
 /** R0.1's live snapshot seam; D1 subscribes to it rather than polling get_state itself. */
@@ -55,7 +55,7 @@ export interface LiveModelState {
   ) => () => void;
 }
 export interface R0ModelStateSnapshot {
-  readonly model: ModelRef | OmpWire.ModelInfo | null | undefined;
+  readonly model: ModelRef | Omp.ModelInfo | null | undefined;
 }
 
 export interface R0ModelStateStore {
@@ -120,14 +120,14 @@ export function modelRefFromDescriptor(model: Pick<ModelDescriptor, "provider" |
   return { provider: model.provider, modelId: model.id };
 }
 
-function safeEfforts(model: OmpWire.ModelInfo): EffortLevel[] {
+function safeEfforts(model: Omp.ModelInfo): EffortLevel[] {
   return (model.thinking?.efforts ?? []).filter(
     (effort): effort is EffortLevel => EffortLevelSchema.safeParse(effort).success,
   );
 }
 
 export function toModelDescriptor(
-  model: OmpWire.ModelInfo,
+  model: Omp.ModelInfo,
   options: ModelCatalogMappingOptions = {},
 ): ModelDescriptor {
   const availability = options.unavailableProviders?.has(model.provider)
@@ -179,7 +179,7 @@ function initialCapabilities(capabilities: CapabilityMap | undefined): ModelCapa
   return ModelCapabilitiesSchema.parse(Object.fromEntries(entries));
 }
 
-function currentFrom(raw: OmpWire.ModelInfo | null | undefined): ModelRef | null {
+function currentFrom(raw: Omp.ModelInfo | null | undefined): ModelRef | null {
   return raw ? { provider: raw.provider, modelId: raw.id } : null;
 }
 
@@ -315,16 +315,16 @@ export function createRpcModelCatalogSource(
         { threadId, method: "get_available_models", params: {} },
         options,
       );
-      return result.models as unknown as readonly OmpWire.ModelInfo[];
+      return result.models as unknown as readonly Omp.ModelInfo[];
     },
     setModel: async (model, options) =>
-      (await session.request(
+      session.request(
         {
           threadId,
           method: "set_model",
           params: { provider: model.provider, modelId: model.modelId },
         },
         options,
-      )) as unknown as OmpWire.ModelInfo,
+      ),
   };
 }

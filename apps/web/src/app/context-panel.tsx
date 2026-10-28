@@ -2,7 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import {
   type ChatSessionClient,
   ChatSessionPort,
-  type OmpWire,
+  type Omp,
   type ThreadId,
 } from "@omp-app/contracts";
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -37,7 +37,7 @@ export function compactionStateOf(store: OmpRuntimeStore): CompactionState {
 /** The compaction source, and the way to record the result of a compaction the panel ran. */
 interface CompactionSource {
   readonly source: CompactionStateSource;
-  readonly recordResult: (result: OmpWire.CompactionResult) => void;
+  readonly recordResult: (result: Omp.CompactionResult) => void;
 }
 
 /**
@@ -46,7 +46,7 @@ interface CompactionSource {
  * `useSyncExternalStore`, which needs the same object back until something changed.
  */
 function compactionSourceFor(store: OmpRuntimeStore): CompactionSource {
-  let lastResult: OmpWire.CompactionResult | null = null;
+  let lastResult: Omp.CompactionResult | null = null;
   let cached: CompactionState | undefined;
   const listeners = new Set<(snapshot: CompactionState) => void>();
   const current = (): CompactionState => {
@@ -95,7 +95,7 @@ async function refreshSession(
   const asOfSeq = store.getSnapshot().lastSeq;
   await chat
     .request({ threadId, method: "get_state", params: {} })
-    .then((state) => store.applyHostState(state, { asOfSeq }));
+    .then((state) => store.applySessionState(state, { asOfSeq }));
 }
 
 /**

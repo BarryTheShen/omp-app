@@ -1,4 +1,4 @@
-import { AppFailure, type OmpWire } from "@omp-app/contracts";
+import { AppFailure, type Omp } from "@omp-app/contracts";
 import { useEffect } from "react";
 import { dequeueToEdit, type QueueAdapterController } from "@/modules/P6";
 import { P6_DEQUEUE_SHORTCUT_ID } from "@/modules/P6/shortcuts/descriptors";
@@ -22,7 +22,7 @@ export interface QueueDequeueShortcutOptions {
   readonly draft: () => DraftRestoreRequest;
   readonly restore: (
     request: DraftRestoreRequest,
-    images?: readonly OmpWire.ImageContent[],
+    images?: readonly Omp.ImageContent[],
   ) => void | Promise<void>;
   /** Says what happened, in plain English. */
   readonly notify: (message: string) => void;

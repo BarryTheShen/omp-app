@@ -91,17 +91,6 @@
         "@types/bun": "^1.4.2",
       },
     },
-    "packages/omp-rpc": {
-      "name": "@omp-app/omp-rpc",
-      "version": "0.0.0",
-      "dependencies": {
-        "@omp-app/contracts": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.4.2",
-        "bun-types": "1.4.2",
-      },
-    },
     "packages/server": {
       "name": "@omp-app/server",
       "version": "0.0.0",
@@ -388,8 +377,6 @@
     "@omp-app/contracts": ["@omp-app/contracts@workspace:packages/contracts"],
 
     "@omp-app/desktop": ["@omp-app/desktop@workspace:apps/desktop"],
-
-    "@omp-app/omp-rpc": ["@omp-app/omp-rpc@workspace:packages/omp-rpc"],
 
     "@omp-app/server": ["@omp-app/server@workspace:packages/server"],
 

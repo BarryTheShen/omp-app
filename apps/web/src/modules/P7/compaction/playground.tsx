@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { useState } from "react";
 import type { PanelState } from "@/modules/U5/panel/contract";
 import type { CompactionState } from "../contract";
@@ -11,7 +11,7 @@ import {
   CompactionSummaryDivider,
 } from "./index";
 
-const keptSummary: OmpWire.CompactionSummaryMessage = {
+const keptSummary: Omp.CompactionSummaryMessage = {
   role: "compactionSummary",
   summary: "## Current work\n\n- Keep the migration plan.\n- Continue from the latest review.",
   tokensBefore: 82_000,
@@ -21,7 +21,7 @@ const keptSummary: OmpWire.CompactionSummaryMessage = {
   shortSummary: "Keep the migration plan and continue from the latest review.",
 };
 
-const previewResult: OmpWire.CompactionResult = {
+const previewResult: Omp.CompactionResult = {
   summary: "## Kept context\n\n- The current goal\n- The latest decision",
   firstKeptEntryId: "entry-kept",
   tokensBefore: 82_000,
@@ -47,7 +47,7 @@ const initialPanel: PanelState = {
   pendingUpdates: 0,
 };
 
-const previousUsage: OmpWire.Usage = {
+const previousUsage: Omp.Usage = {
   input: 2_400,
   output: 160,
   cacheRead: 21_000,
@@ -56,7 +56,7 @@ const previousUsage: OmpWire.Usage = {
   cost: { input: 2_400, output: 160, cacheRead: 21_000, cacheWrite: 0, total: 23_560 },
 };
 
-const currentUsage: OmpWire.Usage = {
+const currentUsage: Omp.Usage = {
   input: 3_200,
   output: 210,
   cacheRead: 0,
@@ -65,21 +65,22 @@ const currentUsage: OmpWire.Usage = {
   cost: { input: 3_200, output: 210, cacheRead: 0, cacheWrite: 21_600, total: 25_010 },
 };
 
-const automaticStart: OmpWire.AutoCompactionStartEvent = {
+const automaticStart: Omp.AutoCompactionStartEvent = {
   type: "auto_compaction_start",
   reason: "threshold",
   action: "remote",
 };
 
-const automaticEnd: OmpWire.AutoCompactionEndEvent = {
+const automaticEnd: Omp.AutoCompactionEndEvent = {
   type: "auto_compaction_end",
   action: "remote",
+  result: undefined,
   aborted: false,
   willRetry: true,
   errorMessage: "The provider did not accept the first request.",
 };
 
-const cacheWarming: OmpWire.CacheWarmingEndEvent = {
+const cacheWarming: Omp.CacheWarmingEndEvent = {
   type: "cache_warming_end",
   phase: "idle",
   provider: "sample-provider",

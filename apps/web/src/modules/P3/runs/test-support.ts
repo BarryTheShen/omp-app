@@ -2,7 +2,7 @@ import type { AppendMessage } from "@assistant-ui/react";
 import {
   type EntryId,
   EntryId as EntryIdSchema,
-  type OmpWire,
+  type Omp,
   type ThreadId,
   ThreadId as ThreadIdSchema,
 } from "@omp-app/contracts";
@@ -11,7 +11,7 @@ import { OmpRuntimeStore } from "@/modules/R0/store";
 export const sourceThread: ThreadId = ThreadIdSchema.parse("source-thread");
 export const userEntry: EntryId = EntryIdSchema.parse("user-entry");
 
-export const pngImage: OmpWire.ImageContent = {
+export const pngImage: Omp.ImageContent = {
   type: "image",
   data: "aW1hZ2UtYnl0ZXM=",
   mimeType: "image/png",
@@ -44,7 +44,7 @@ export function storeWithUserMessage(
 export function editAppend(
   sourceId: string | null,
   text: string,
-  images: readonly OmpWire.ImageContent[] = [],
+  images: readonly Omp.ImageContent[] = [],
 ): AppendMessage {
   return {
     role: "user",

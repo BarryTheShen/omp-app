@@ -59,6 +59,7 @@ describe("storedEntryId", () => {
     store.ingest(
       ompEvent({
         type: "message_end",
+        messageId: "msg-1",
         message: { role: "user", content: [{ type: "text", text: "Explain" }], timestamp: 1 },
       }),
       1,
@@ -79,7 +80,7 @@ describe("storedEntryId", () => {
       content: [{ type: "text" as const, text: "Explain" }],
       timestamp: 1,
     };
-    store.ingest(ompEvent({ type: "message_end", message: streamed }), 1);
+    store.ingest(ompEvent({ type: "message_end", messageId: "msg-1", message: streamed }), 1);
     const [streamedKey] = store.getSnapshot().messageOrder;
     expect(streamedKey).toBeDefined();
     store.pairEndedMessages([

@@ -1,4 +1,4 @@
-import { AppFailure, CapabilityStatus, type OmpWire, type Revision } from "@omp-app/contracts";
+import { AppFailure, CapabilityStatus, type Omp, type Revision } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ProviderSignIn } from "@/modules/D3/contract";
@@ -27,14 +27,14 @@ const CAPABILITIES = {
 const INTERNAL_TERMS =
   /ConfigStore|\bCAS\b|role map|A1\.4|config layer|\bRPC\b|revision|modelRoles|appDataDir/;
 
-type Efforts = NonNullable<OmpWire.ModelInfo["thinking"]>["efforts"];
+type Efforts = NonNullable<Omp.ModelInfo["thinking"]>["efforts"];
 
 function rawModel(
   provider: string,
   id: string,
   name: string,
   options: { readonly reasoning?: boolean; readonly efforts?: readonly string[] } = {},
-): OmpWire.ModelInfo {
+): Omp.ModelInfo {
   return {
     provider,
     id,
@@ -127,7 +127,7 @@ function recentsPort(file: SavedFile, failWith?: string): RecentModelsPort {
 }
 
 interface HarnessOptions {
-  readonly models: readonly OmpWire.ModelInfo[];
+  readonly models: readonly Omp.ModelInfo[];
   readonly signIns?: Readonly<Record<string, ProviderSignIn>>;
   readonly current?: ModelRef | null;
   readonly file?: Partial<ModelSettings>;

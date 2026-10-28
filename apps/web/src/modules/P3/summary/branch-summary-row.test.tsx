@@ -1,12 +1,12 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { BranchSummaryRow, branchSummaryOfRow } from "./branch-summary-row";
 
 afterEach(cleanup);
 
-const summary: OmpWire.BranchSummaryMessage = {
+const summary: Omp.BranchSummaryMessage = {
   role: "branchSummary",
   summary: "## Goal\n\nKeep the parser stable.",
   fromId: "entry-left",

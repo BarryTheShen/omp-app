@@ -1,4 +1,4 @@
-import type { OmpWire, ThreadId } from "@omp-app/contracts";
+import type { Omp, ThreadId } from "@omp-app/contracts";
 import { z } from "zod";
 
 /** The assistant-ui thread-list status; native sessions are currently all `regular`. */
@@ -42,5 +42,5 @@ export interface ThreadHistoryAdapter {
   loadMessagesPage(
     threadId: ThreadId,
     options?: { readonly cursor?: string; readonly limit?: number },
-  ): Promise<OmpWire.MessagesPage>;
+  ): Promise<Omp.MessagesPage>;
 }

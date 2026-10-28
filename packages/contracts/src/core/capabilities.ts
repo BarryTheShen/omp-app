@@ -100,3 +100,8 @@ export type CapabilityStatus = z.infer<typeof CapabilityStatus>;
 /** Status per capability; a key that is absent is unknown, which the UI treats as unavailable. */
 export const CapabilityMap = z.partialRecord(CapabilityKey, CapabilityStatus);
 export type CapabilityMap = z.infer<typeof CapabilityMap>;
+
+/** The capability one of omp's commands needs: `omp.cmd.<command>`. */
+export function ompCommandCapability(command: OmpCommandName): `omp.cmd.${OmpCommandName}` {
+  return `omp.cmd.${command}`;
+}

@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import type { RuntimeSnapshot } from "../../R0/store/store";
 
 /** F5 and C6 are the composer/input groups assigned to U2 in modules/U2/README.md. */
@@ -123,7 +123,7 @@ export interface U2StateFixture {
   };
   readonly inventory: typeof U2_INVENTORY_ROWS;
   /** The scripted get_state result and its exact R0 projection used by the composer. */
-  readonly getState: OmpWire.SessionState;
+  readonly getState: Omp.SessionState;
   readonly snapshot: Pick<RuntimeSnapshot, "process" | "prompt" | "queue" | "session">;
 }
 
@@ -139,7 +139,7 @@ const model = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 128_000,
   maxTokens: 16_384,
-} satisfies OmpWire.ModelInfo;
+} satisfies Omp.ModelInfo;
 
 const sharedSessionState = {
   sessionId: "u2-scripted-session",
@@ -161,7 +161,11 @@ const sharedSessionState = {
   messageCount: 0,
   contextUsage: { tokens: 6_567, contextWindow: 128_000, percent: 5.13 },
   goal: null,
-} satisfies Omit<OmpWire.SessionState, "isStreaming" | "isSettled" | "queuedMessages">;
+  slowModeSupported: false,
+  slowModeEnabled: false,
+  systemPrompt: [],
+  dumpTools: [],
+} satisfies Omit<Omp.SessionState, "isStreaming" | "isSettled" | "queuedMessages">;
 
 function snapshotProjection(input: {
   readonly streaming: boolean;
@@ -231,7 +235,7 @@ export const U2_STATE_FIXTURES = {
       ...sharedSessionState,
       isStreaming: false,
       isSettled: true,
-      queuedMessages: { steering: [], followUp: [] },
+      queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
     },
     snapshot: snapshotProjection({ streaming: false, settled: true, steering: [], followUp: [] }),
   },
@@ -243,7 +247,11 @@ export const U2_STATE_FIXTURES = {
       isStreaming: true,
       isSettled: false,
       queuedMessageCount: 2,
-      queuedMessages: { steering: ["check the failing assertion"], followUp: ["run tests"] },
+      queuedMessages: {
+        steering: ["check the failing assertion"],
+        followUp: ["run tests"],
+        liveSteered: 0,
+      },
     },
     snapshot: snapshotProjection({
       streaming: true,

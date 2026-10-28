@@ -1,10 +1,4 @@
-import type {
-  ChatSessionRequest,
-  EntryId,
-  OmpMessage,
-  OmpWire,
-  ThreadId,
-} from "@omp-app/contracts";
+import type { ChatSessionRequest, EntryId, Omp, OmpMessage, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { PromptIntent } from "../runtime/runtime";
 import type { OmpRuntimeStore, RuntimeMessage, TranscriptEntry } from "../store/store";
@@ -76,7 +70,7 @@ function promptFromUserEntry(message: OmpMessage): PromptIntent {
     });
   }
   const textParts: string[] = [];
-  const images: OmpWire.ImageContent[] = [];
+  const images: Omp.ImageContent[] = [];
   if (typeof message.content === "string") {
     textParts.push(message.content);
   } else if (Array.isArray(message.content)) {

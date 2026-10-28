@@ -81,7 +81,7 @@ export const ModelRef = z.strictObject({
 });
 export type ModelRef = z.infer<typeof ModelRef>;
 
-/** Safe browser model metadata derived from A0.1 `OmpWire.ModelInfo` (rpc-wire.generated.ts:346-367);
+/** Safe browser model metadata derived from omp's model (`Omp.ModelInfo`);
  * headers/baseUrl/cost/compat never cross this boundary. */
 export const ModelDescriptor = z.strictObject({
   provider: z.string().min(1),

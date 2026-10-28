@@ -1,4 +1,4 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { ThinkingSelector } from "./selector";
 import { type LiveThinkingState, ThinkingLevelsController } from "./thinking";
 
@@ -8,9 +8,9 @@ const liveState: LiveThinkingState = {
 };
 
 const source = {
-  getAvailableLevels: async () => ["low", "medium", "high"] as OmpWire.ThinkingLevel[],
-  setLevel: async (_level: OmpWire.ThinkingLevel) => undefined,
-  cycleLevel: async () => ({ level: "high" as OmpWire.Effort }),
+  getAvailableLevels: async () => ["low", "medium", "high"] as Omp.ThinkingLevel[],
+  setLevel: async (_level: Omp.ThinkingLevel) => undefined,
+  cycleLevel: async () => ({ level: "high" as Omp.Effort }),
 };
 
 const controller = new ThinkingLevelsController({

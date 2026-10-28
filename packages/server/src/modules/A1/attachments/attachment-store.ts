@@ -154,10 +154,9 @@ function resolveAppDataRoot(options: AttachmentStoreOptions): string {
 }
 
 /**
- * App-owned content-addressed attachment blobs. U2.3's default is 10 MiB, but the app protocol's
- * v1 physical frame limit is 1,048,576 bytes (`omp-rpc` fixtures and FrameDecoder); base64 plus JSON
- * overhead makes `MAX_ATTACHMENT_BYTES` in C0 a conservative 700 KiB. Blobs are written with A1.2's
- * atomic writer (0600), while metadata keeps safe refs and creation order for bounded eviction.
+ * App-owned content-addressed attachment blobs. U2.3's default is 10 MiB; `MAX_ATTACHMENT_BYTES` in C0 is a
+ * conservative 700 KiB, set when one frame to omp was capped at 1 MiB (base64 plus JSON overhead). Blobs are written
+ * with A1.2's atomic writer (0600), while metadata keeps safe refs and creation order for bounded eviction.
  */
 export class AttachmentStoreService {
   readonly appDataDir: string;

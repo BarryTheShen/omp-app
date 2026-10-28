@@ -1,4 +1,4 @@
-import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
+import type { ChatSessionEvent, Omp } from "@omp-app/contracts";
 
 /**
  * P6's exact inventory boundary. Keep this list explicit so a renamed or newly assigned row breaks
@@ -94,7 +94,7 @@ export const P6_FIXTURE_COVERAGE = [
  * `packages/coding-agent/src/modes/rpc/rpc-mode.ts:704-716`.
  */
 export type P6GetStateFixture = Pick<
-  OmpWire.SessionState,
+  Omp.SessionState,
   | "sessionId"
   | "isStreaming"
   | "isSettled"
@@ -107,7 +107,7 @@ export type P6GetStateFixture = Pick<
 /** A normalized R0 fixture has the same event payload omp emits on its wire. */
 export interface P6QueueFixture {
   readonly getState: P6GetStateFixture;
-  readonly queueUpdates: readonly OmpWire.QueueUpdateEvent[];
+  readonly queueUpdates: readonly Omp.QueueUpdateEvent[];
 }
 
 export const P6_GET_STATE_STREAMING: P6GetStateFixture = {
@@ -124,7 +124,7 @@ export const P6_GET_STATE_STREAMING: P6GetStateFixture = {
   },
 };
 
-export const P6_QUEUE_UPDATE_STREAMING: OmpWire.QueueUpdateEvent = {
+export const P6_QUEUE_UPDATE_STREAMING: Omp.QueueUpdateEvent = {
   type: "queue_update",
   steering: ["steer the running turn"],
   followUp: ["summarize after yield"],
@@ -136,13 +136,15 @@ export const P6_GET_STATE_DUPLICATE_TEXT: P6GetStateFixture = {
   queuedMessages: {
     steering: ["same text", "same text"],
     followUp: ["same text"],
+    liveSteered: 0,
   },
 };
 
-export const P6_QUEUE_UPDATE_DUPLICATE_TEXT: OmpWire.QueueUpdateEvent = {
+export const P6_QUEUE_UPDATE_DUPLICATE_TEXT: Omp.QueueUpdateEvent = {
   type: "queue_update",
   steering: ["same text", "same text"],
   followUp: ["same text"],
+  liveSteered: 0,
 };
 
 export const P6_GET_STATE_AFTER_YIELD: P6GetStateFixture = {
@@ -155,13 +157,15 @@ export const P6_GET_STATE_AFTER_YIELD: P6GetStateFixture = {
   queuedMessages: {
     steering: [],
     followUp: ["wake the next turn"],
+    liveSteered: 0,
   },
 };
 
-export const P6_QUEUE_UPDATE_AFTER_YIELD: OmpWire.QueueUpdateEvent = {
+export const P6_QUEUE_UPDATE_AFTER_YIELD: Omp.QueueUpdateEvent = {
   type: "queue_update",
   steering: [],
   followUp: ["wake the next turn"],
+  liveSteered: 0,
 };
 
 export const P6_GET_STATE_RECONNECTED: P6GetStateFixture = {
@@ -174,20 +178,21 @@ export const P6_GET_STATE_RECONNECTED: P6GetStateFixture = {
   queuedMessages: {
     steering: ["authoritative after reconnect"],
     followUp: [],
+    liveSteered: 0,
   },
 };
 
-export const P6_QUEUE_UPDATE_RECONNECTED: OmpWire.QueueUpdateEvent = {
+export const P6_QUEUE_UPDATE_RECONNECTED: Omp.QueueUpdateEvent = {
   type: "queue_update",
   steering: ["authoritative after reconnect"],
   followUp: [],
+  liveSteered: 0,
 };
 
 /**
  * Scrubbed synthetic queue scenarios consumed by the P6/R0 gate. Duplicate events are intentional:
  * queue_update is a coalesced snapshot, so replaying the same payload must never append another
- * queue item. Evidence for that event shape: `.data/ref/omp-v18.6.1/docs_rpc.md:732-751` and
- * `packages/contracts/src/omp-wire/rpc-wire.generated.ts:895-900`.
+ * queue item. omp emits it from `AgentSession` (`packages/coding-agent/src/session/agent-session.ts:9951`).
  */
 
 /** A queue clear is a new authoritative snapshot, not a local P6 array mutation. */
@@ -195,13 +200,14 @@ export const P6_GET_STATE_CLEARED: P6GetStateFixture = {
   ...P6_GET_STATE_STREAMING,
   isStreaming: false,
   isSettled: true,
-  queuedMessages: { steering: [], followUp: [] },
+  queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
 };
 
-export const P6_QUEUE_UPDATE_CLEARED: OmpWire.QueueUpdateEvent = {
+export const P6_QUEUE_UPDATE_CLEARED: Omp.QueueUpdateEvent = {
   type: "queue_update",
   steering: [],
   followUp: [],
+  liveSteered: 0,
 };
 
 export const P6_QUEUE_FIXTURES = {
@@ -227,12 +233,18 @@ export const P6_QUEUE_FIXTURES = {
   },
 } as const satisfies Readonly<Record<string, P6QueueFixture>>;
 
-/** omp returns booleans for remove/promote; false is an ordinary stale-chip no-op. */
+/**
+ * The host's answers: remove hands back the message it took out, promote says whether it moved one; `false` is an
+ * ordinary stale-chip no-op.
+ */
 export const P6_MUTATION_FIXTURES = {
-  removeAccepted: { removed: true } satisfies OmpWire.RemoveQueuedMessageResult,
-  removeStale: { removed: false } satisfies OmpWire.RemoveQueuedMessageResult,
-  promoteAccepted: { promoted: true } satisfies OmpWire.PromoteQueuedMessageResult,
-  promoteStale: { promoted: false } satisfies OmpWire.PromoteQueuedMessageResult,
+  removeAccepted: {
+    removed: true,
+    text: "summarize after yield",
+  } satisfies Omp.RemoveQueuedMessageResult,
+  removeStale: { removed: false } satisfies Omp.RemoveQueuedMessageResult,
+  promoteAccepted: { promoted: true } satisfies Omp.PromoteQueuedMessageResult,
+  promoteStale: { promoted: false } satisfies Omp.PromoteQueuedMessageResult,
 } as const;
 
 /** Queue admission retains images on the typed intent even though queue_update carries text chips. */

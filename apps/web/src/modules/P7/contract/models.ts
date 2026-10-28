@@ -1,4 +1,4 @@
-import type { CapabilityKey, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { CapabilityKey, Omp, ThreadId } from "@omp-app/contracts";
 import { AppError as AppErrorSchema } from "@omp-app/contracts";
 import { z } from "zod";
 
@@ -93,7 +93,7 @@ export const CompactionState = z.strictObject({
   phase: CompactionPhase,
   method: CompactionMethod.nullable(),
   auto: z.boolean(),
-  result: z.custom<OmpWire.CompactionResult>().nullable(),
+  result: z.custom<Omp.CompactionResult>().nullable(),
   error: AppErrorSchema.nullable(),
   revision: z.string().min(1),
 });
@@ -119,7 +119,7 @@ export type ContextUsageAvailability = z.infer<typeof ContextUsageAvailability>;
 
 export type SessionContextProjection = {
   readonly threadId: ThreadId;
-  readonly contextUsage?: OmpWire.ContextUsage;
+  readonly contextUsage?: Omp.ContextUsage;
   readonly isCompacting?: boolean;
   readonly autoCompactionEnabled?: boolean;
   readonly tokensPerSecond?: number | null;

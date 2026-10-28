@@ -5,11 +5,11 @@ import type {
   ChatSessionRequest,
   EntryId,
   MessageKey,
+  Omp,
   OmpEvent,
   OmpMessage,
   OmpProcessId,
   OmpStreamMessageId,
-  OmpWire,
   PortCallOptions,
   ProvisionalMessageKey,
   ThreadId,
@@ -18,13 +18,11 @@ import type {
 } from "@omp-app/contracts";
 import {
   AppFailure,
-  type BashCommandResult,
   pairEndedMessages as pairEndedOmpMessages,
   persistedMessageKey,
   provisionalMessageKey,
 } from "@omp-app/contracts";
 import {
-  type ChatHostState,
   type HostDialogAnswer,
   type HostDialogRequest,
   type HostRequest,
@@ -47,10 +45,10 @@ import {
   storeEventOf,
 } from "./store-events";
 
-type QueueMode = OmpWire.QueueMode;
-type SessionState = OmpWire.SessionState;
-type TodoItem = OmpWire.TodoItem;
-type TodoPhase = OmpWire.TodoPhase;
+type QueueMode = Omp.QueueMode;
+type SessionState = Omp.SessionState;
+type TodoItem = Omp.TodoItem;
+type TodoPhase = Omp.TodoPhase;
 
 /**
  * A mutable Immer draft is never exposed; `commit` finishes it into a frozen snapshot that shares every unchanged branch with
@@ -65,6 +63,14 @@ type MutableSnapshot = {
  * (`markPromptSent`); the rest come from omp's event stream.
  */
 export type RuntimeMessageStatus = "pending" | "streaming" | "ended" | "persisted";
+
+/** omp's answer to a `!` command, as the store keeps it: the host's `ShellRunResult` without its artifact. */
+export interface BashCommandResult {
+  readonly output: string;
+  readonly exitCode?: number;
+  readonly cancelled: boolean;
+  readonly truncated: boolean;
+}
 
 /**
  * A `!` command in this chat's omp, from its `running` event. An ended command keeps its row, with omp's answer, until the
@@ -117,7 +123,7 @@ interface PendingPrompt {
 /** What a plain prompt shows while it waits for omp's echo: its text and images, as the runtime sends them to omp. */
 interface PendingPromptIntent {
   readonly text: string;
-  readonly images?: readonly OmpWire.ImageContent[] | undefined;
+  readonly images?: readonly Omp.ImageContent[] | undefined;
 }
 
 /**
@@ -164,10 +170,10 @@ export interface ToolCallState {
 export interface PromptResultState {
   readonly type: "prompt_result";
   readonly agentInvoked: boolean;
-  readonly status: OmpWire.PromptStatus;
+  readonly status: Omp.PromptStatus;
   readonly sessionSettled: boolean;
   readonly id?: string;
-  readonly error?: OmpWire.PromptError;
+  readonly error?: Omp.PromptError;
 }
 
 /** Prompt completion and session settlement are deliberately separate signals. */
@@ -186,7 +192,7 @@ export interface QueueState {
   readonly followUp: readonly string[];
   readonly steeringMode: QueueMode;
   readonly followUpMode: QueueMode;
-  readonly interruptMode: OmpWire.InterruptMode;
+  readonly interruptMode: Omp.InterruptMode;
   /** Leading steering messages omp already sent into the reply (omp 18.9 `liveSteered`); 0 before that. */
   readonly liveSteered: number;
 }
@@ -675,7 +681,7 @@ function errorForUnavailable(method: string): AppError {
   };
 }
 
-function isAssistantMessage(message: OmpMessage): message is OmpWire.AssistantMessage {
+function isAssistantMessage(message: OmpMessage): message is Omp.AssistantMessage {
   return message.role === "assistant";
 }
 
@@ -703,10 +709,10 @@ function streamedBlockOf(type: string): { field: string; partType: string } | un
  * repeat the deltas it already holds. The snapshot's text is used only where the store has no delta-built text yet.
  */
 function copyAssistantWithDelta(
-  previous: OmpWire.AssistantMessage | undefined,
-  candidate: OmpWire.AssistantMessage,
-  update: OmpWire.AssistantMessageEvent,
-): OmpWire.AssistantMessage {
+  previous: Omp.AssistantMessage | undefined,
+  candidate: Omp.AssistantMessage,
+  update: Omp.AssistantMessageEvent,
+): Omp.AssistantMessage {
   const event = update as { type: string; contentIndex?: unknown; delta?: unknown };
   const block = streamedBlockOf(event.type);
   const index = event.contentIndex;
@@ -1441,11 +1447,11 @@ function reduceGoalUpdated(next: MutableSnapshot, frame: Record<string, unknown>
   const { goal, state } = frame;
   let updated: SessionState["goal"];
   if (isRecord(state) && isRecord(state.goal)) {
-    updated = cloneValue(state) as unknown as OmpWire.GoalModeState;
+    updated = cloneValue(state) as unknown as Omp.GoalModeState;
   } else if (goal === null) {
     updated = null;
   } else if (isRecord(goal) && next.session.goal) {
-    updated = { ...next.session.goal, goal: cloneValue(goal) as unknown as OmpWire.Goal };
+    updated = { ...next.session.goal, goal: cloneValue(goal) as unknown as Omp.Goal };
   } else {
     return;
   }
@@ -1688,8 +1694,7 @@ export class OmpRuntimeStore {
     next.lastSeq = seq;
     this.commit(next);
     if (event.kind === "omp") {
-      // omp's own event, the shape omp-wire's `OmpEvent` describes until H5.6e retypes the listeners.
-      this.forwardOmpEvent(event.event as unknown as OmpEvent, seq, fromHistory);
+      this.forwardOmpEvent(event.event, seq, fromHistory);
       // omp's RPC session classified a goal update as an omp event while D8 listens for it as a frame, so a goal that
       // changed during a run never reached the goal panel (found in H5.4a). It is handed on as a frame too.
       if (event.event.type === "goal_updated")
@@ -1880,14 +1885,6 @@ export class OmpRuntimeStore {
       revision: previous.revision + 1,
     };
     this.commit(next);
-  }
-
-  /**
-   * Applies the chat host's `get_state` answer. The host answers with omp's session state, field for field; the store
-   * keeps omp's RPC types until H5.6 removes them, and the two differ only in readonly arrays inside the model.
-   */
-  public applyHostState(state: ChatHostState, options?: { readonly asOfSeq?: number }): void {
-    this.applySessionState(state as unknown as Partial<SessionState>, options);
   }
 
   /** Typed action used by U5; the server result remains authoritative. */
@@ -2292,7 +2289,7 @@ export class OmpRuntimeStore {
       sessionSettled: rawEvent.sessionSettled,
       id: asString(rawEvent.requestId),
       error: isRecord(rawEvent.error)
-        ? (cloneValue(rawEvent.error) as unknown as OmpWire.PromptError)
+        ? (cloneValue(rawEvent.error) as unknown as Omp.PromptError)
         : undefined,
     };
     updatePrompt(next, { admitted: true, streaming: false, promptResult: result });
@@ -2560,7 +2557,7 @@ export class OmpRuntimeStore {
     const { key, id } = this.keyForStream(event, seq);
     const previous = pendingMessageForKey(next, key);
     const candidate = cloneValue(event.message) as unknown as OmpMessage;
-    const assistantEvent = event.assistantMessageEvent as OmpWire.AssistantMessageEvent | undefined;
+    const assistantEvent = event.assistantMessageEvent as Omp.AssistantMessageEvent | undefined;
     const message =
       assistantEvent && isAssistantMessage(candidate)
         ? copyAssistantWithDelta(

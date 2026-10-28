@@ -353,6 +353,7 @@ describe("OmpRuntimeStore", () => {
       aborted,
       promptResultEvent({
         type: "prompt_result",
+        requestId: "p1",
         agentInvoked: true,
         status: "aborted",
         sessionSettled: false,
@@ -395,7 +396,7 @@ describe("OmpRuntimeStore", () => {
           agentInvoked: true,
           status: "completed",
           sessionSettled: false,
-          id: `prompt-${index}`,
+          requestId: `prompt-${index}`,
         }),
         index,
       );
@@ -721,7 +722,7 @@ describe("OmpRuntimeStore", () => {
         agentInvoked: true,
         status: "aborted",
         sessionSettled: false,
-        id: "p1",
+        requestId: "p1",
       }),
       2,
     );
@@ -760,7 +761,7 @@ describe("OmpRuntimeStore", () => {
         agentInvoked: true,
         status: "error",
         sessionSettled: true,
-        id: "p1",
+        requestId: "p1",
         error: { message: "400 fake provider failure", retryable: false, httpStatus: 400 },
       }),
       2,
@@ -2247,6 +2248,7 @@ describe("the row of a plain prompt, until omp's echo takes its place", () => {
       store,
       promptResultEvent({
         type: "prompt_result",
+        requestId: "p1",
         agentInvoked: true,
         status: "aborted",
         sessionSettled: false,

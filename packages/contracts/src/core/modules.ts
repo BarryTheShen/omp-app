@@ -404,11 +404,6 @@ export const PATH_OWNERSHIP: readonly PathRule[] = [
   { path: "packages/<name>/src/modules/<ModuleId>/", owner: "<ModuleId>" },
   { path: "apps/<name>/src/modules/<ModuleId>/", owner: "<ModuleId>" },
   {
-    path: "packages/omp-rpc/",
-    owner: "A0",
-    note: "isomorphic RPC core: JSONL/v2 framing, correlation, event normalization, fixture replay; runs in Bun and in browser tests",
-  },
-  {
     path: "packages/client/",
     owner: "A0",
     note: "isomorphic client of the omp-app/1 envelope: WebSocket, reconnect and resume, typed port proxies; used by the web app and by Bun tests",

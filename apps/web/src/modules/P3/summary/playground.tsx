@@ -1,9 +1,9 @@
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BranchSummaryDivider } from "./index";
 
-const branchSummary: OmpWire.BranchSummaryMessage = {
+const branchSummary: Omp.BranchSummaryMessage = {
   role: "branchSummary",
   summary:
     "## Kept branch\n\n- The original conversation remains available.\n- The new conversation starts from the selected message.\n\nThis summary is shown with the same Markdown treatment as the transcript.",
@@ -11,7 +11,7 @@ const branchSummary: OmpWire.BranchSummaryMessage = {
   timestamp: 1_759_600_000_000,
 };
 
-const emptySummary: OmpWire.BranchSummaryMessage = {
+const emptySummary: Omp.BranchSummaryMessage = {
   role: "branchSummary",
   summary: "",
   fromId: "entry-without-summary",

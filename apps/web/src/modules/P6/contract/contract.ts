@@ -3,7 +3,7 @@ import type {
   ExternalThreadQueueAdapter,
   QueueItemState,
 } from "@assistant-ui/react";
-import type { CapabilityKey, CapabilityMap, OmpWire } from "@omp-app/contracts";
+import type { CapabilityKey, CapabilityMap, Omp } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type {
   QueueItemReference,
@@ -93,9 +93,9 @@ function textParts(message: AppendMessage): string {
     .join("");
 }
 
-function imageParts(message: AppendMessage): readonly OmpWire.ImageContent[] | undefined {
+function imageParts(message: AppendMessage): readonly Omp.ImageContent[] | undefined {
   if (typeof message.content === "string") return undefined;
-  const images: OmpWire.ImageContent[] = [];
+  const images: Omp.ImageContent[] = [];
   for (const part of message.content) {
     if (part.type !== "image") continue;
     const data = part.image;

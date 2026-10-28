@@ -73,7 +73,7 @@ describe("R0.5 QueueController", () => {
       steeringMode: "one-at-a-time",
       followUpMode: "all",
       interruptMode: "wait",
-      queuedMessages: { steering: ["s1"], followUp: ["f1", "f2"] },
+      queuedMessages: { steering: ["s1"], followUp: ["f1", "f2"], liveSteered: 0 },
     });
     expect(controller.getSnapshot()).toEqual({
       steering: ["s1"],

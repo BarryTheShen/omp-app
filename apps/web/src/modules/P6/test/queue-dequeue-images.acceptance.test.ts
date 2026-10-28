@@ -1,4 +1,4 @@
-import type { CapabilityMap, ChatSessionRequest, OmpWire, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, Omp, ThreadId } from "@omp-app/contracts";
 import type { RemoveQueuedMessageResult } from "@omp-app/contracts/chat-host";
 import { describe, expect, test } from "vitest";
 import { createQueueController } from "@/modules/R0/actions";
@@ -25,7 +25,7 @@ async function restoreRemovedMessage(result: RemoveQueuedMessageResult) {
     steeringMode: "all",
     followUpMode: "one-at-a-time",
     interruptMode: "wait",
-    queuedMessages: { steering: [], followUp: ["queued item"] },
+    queuedMessages: { steering: [], followUp: ["queued item"], liveSteered: 0 },
   });
   const sent: unknown[] = [];
   const send: ChatSessionRequest = async ({ method, params }) => {
@@ -36,7 +36,7 @@ async function restoreRemovedMessage(result: RemoveQueuedMessageResult) {
   const itemId = queue.getSnapshot().items[0]?.id;
   if (!itemId) throw new Error("queue fixture did not produce an item id");
   let restored:
-    | { readonly text: string; readonly images?: readonly OmpWire.ImageContent[] }
+    | { readonly text: string; readonly images?: readonly Omp.ImageContent[] }
     | undefined;
   const outcome = await dequeueToEdit(queue, itemId, {
     getDraft: () => ({ text: "", attachmentRefs: [] }),
@@ -49,7 +49,7 @@ async function restoreRemovedMessage(result: RemoveQueuedMessageResult) {
 
 describe("P6 acceptance: removed queue content reaches draft restoration", () => {
   test("R0 returns the image bytes and P6 restores them with the queued text", async () => {
-    const image: OmpWire.ImageContent = {
+    const image: Omp.ImageContent = {
       type: "image",
       data: "aGVsbG8=",
       mimeType: "image/png",

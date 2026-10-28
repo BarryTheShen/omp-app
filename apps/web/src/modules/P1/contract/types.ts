@@ -1,4 +1,4 @@
-import type { OmpEvent, OmpWire } from "@omp-app/contracts";
+import type { Omp, OmpEvent } from "@omp-app/contracts";
 import { SessionFilePath, SubagentId, ThreadId, ToolCallId } from "@omp-app/contracts";
 import { z } from "zod";
 
@@ -53,9 +53,9 @@ export const AgentRosterSnapshotSchema = z
   .strict();
 export type AgentRosterSnapshot = z.infer<typeof AgentRosterSnapshotSchema>;
 
-/** The released wire payload, with C0 brands added at the browser boundary. */
+/** omp's payload, with C0 brands added at the browser boundary. */
 export type SubagentLifecyclePayload = Omit<
-  OmpWire.SubagentLifecyclePayload,
+  Omp.SubagentLifecyclePayload,
   "id" | "sessionFile" | "parentToolCallId"
 > & {
   readonly id: SubagentId;
@@ -77,14 +77,16 @@ export const SubagentLifecyclePayloadSchema = z
   })
   .strict();
 
-export type SubagentLifecycleEvent = Omit<OmpWire.SubagentLifecycleEvent, "payload"> & {
+export type SubagentLifecycleEvent = Omit<Omp.SubagentLifecycleEvent, "payload"> & {
   readonly payload: SubagentLifecyclePayload;
 };
 
+/** omp's payload with C0 brands; its `progress` (omp's `AgentProgress`) stays an open record the roster reads field by field. */
 export type SubagentProgressPayload = Omit<
-  OmpWire.SubagentProgressPayload,
-  "sessionFile" | "parentToolCallId"
+  Omp.SubagentProgressPayload,
+  "sessionFile" | "parentToolCallId" | "progress"
 > & {
+  readonly progress: Readonly<Record<string, unknown>>;
   readonly sessionFile?: SessionFilePath;
   readonly parentToolCallId?: ToolCallId;
 };
@@ -103,7 +105,7 @@ export const SubagentProgressPayloadSchema = z
   })
   .strict();
 
-export type SubagentProgressEvent = Omit<OmpWire.SubagentProgressEvent, "payload"> & {
+export type SubagentProgressEvent = Omit<Omp.SubagentProgressEvent, "payload"> & {
   readonly payload: SubagentProgressPayload;
 };
 
@@ -112,7 +114,7 @@ const OmpEventSchema = z.custom<OmpEvent>((value) => {
   return typeof value.type === "string" && value.type.length > 0;
 });
 
-export type SubagentEventPayload = Omit<OmpWire.SubagentEventPayload, "id" | "event"> & {
+export type SubagentEventPayload = Omit<Omp.SubagentEventPayload, "id" | "event"> & {
   readonly id: SubagentId;
   readonly event: OmpEvent;
 };
@@ -121,7 +123,7 @@ export const SubagentEventPayloadSchema = z
   .object({ id: SubagentId, event: OmpEventSchema })
   .strict();
 
-export type SubagentEvent = Omit<OmpWire.SubagentEvent, "payload"> & {
+export type SubagentEvent = Omit<Omp.SubagentSessionEvent, "payload"> & {
   readonly payload: SubagentEventPayload;
 };
 
@@ -137,7 +139,7 @@ export const SubagentTranscriptPageSchema = z
     entries: z.array(OpenRecord),
     /** OmpMessage is open at the wire level; role is the minimum safe discriminator. */
     messages: z.array(
-      z.custom<OmpWire.AgentMessage>((value) => {
+      z.custom<Omp.AgentMessage>((value) => {
         if (value === null || typeof value !== "object" || !("role" in value)) return false;
         return typeof value.role === "string" && value.role.length > 0;
       }),

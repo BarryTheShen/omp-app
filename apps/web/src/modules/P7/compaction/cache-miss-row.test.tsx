@@ -1,12 +1,12 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { OmpWire } from "@omp-app/contracts";
+import type { Omp } from "@omp-app/contracts";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { CacheMissRow, cacheMissOfRow } from "./cache-miss-row";
 
 afterEach(cleanup);
 
-function usage(input: number, cacheRead: number, cacheWrite: number): OmpWire.Usage {
+function usage(input: number, cacheRead: number, cacheWrite: number): Omp.Usage {
   return {
     input,
     output: 5,
