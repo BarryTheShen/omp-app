@@ -2,7 +2,8 @@
 # Unpacks a built package into a temporary folder and checks that the installed command works:
 # it prints its version, serves the web app and its scripts, a second launch finds the first, it
 # writes its debug log (private, without the launch token) and `omp-app logs` and
-# `omp-app debug-report` read it, and stopping it removes its record. The chat host the package
+# `omp-app debug-report` read it, `omp-app tui` finds the chat host (and, with no terminal here, stops
+# there), and stopping it removes its record. The chat host the package
 # holds is omp's own command line at the pinned release with the app's chat program in front: it passes omp's own
 # smoke test, as a chat (`__omp_app_chat`) it stops at omp's model check, as omp does without a model, and the server
 # and `omp-app debug-report` run omp's commands with it. Nothing outside the temporary folder is touched.
@@ -101,6 +102,9 @@ report=$(find "$work/folder" -maxdepth 1 -name 'omp-app-debug-*.log' | head -1)
 [[ -n $report ]] && grep -q 'omp app debug report' "$report" || { echo "FAIL: 'omp-app debug-report' wrote no report" >&2; exit 1; }
 grep -q -F -x "omp: $omp_version at $chat_host" "$report" || { echo "FAIL: the debug report does not name the chat host's omp $omp_version:" >&2; grep '^omp: ' "$report" >&2; exit 1; }
 ! grep -q -F -- "$token" "$report" || { echo "FAIL: the launch token is in the debug report" >&2; exit 1; }
+# omp in the terminal: `omp-app tui` checks the packaged chat host first, then stops, since this run has no terminal.
+tui=$("$app" tui "$work/folder" </dev/null 2>&1) && { echo "FAIL: 'omp-app tui' ran without a terminal" >&2; exit 1; }
+grep -q -F 'and this is not one' <<<"$tui" || { echo "FAIL: 'omp-app tui' did not stop for want of a terminal:" >&2; echo "$tui" >&2; exit 1; }
 
 kill "$pid"
 wait "$pid" 2>/dev/null || true

@@ -25,6 +25,7 @@ import {
   startOrAttach,
   USAGE,
 } from "../src/launcher/launcher";
+import { tuiCommands, tuiEnvironment, tuiSessionName } from "../src/launcher/tui";
 import {
   buildDebugReport,
   createLogger,
@@ -130,6 +131,47 @@ if (args.command === "version") {
 const home = homedir();
 const logDir = stateDirectory(Bun.env, home);
 const chatHost = chatHostBinary();
+
+if (args.command === "tui") {
+  if (chatHost !== undefined && !existsSync(chatHost)) {
+    fail(`the app's chat host is missing (${chatHost}). Reinstall the package.`);
+  }
+  const folder = existingFolder(args.folder ?? process.cwd());
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    fail(
+      "the tui command opens omp in this terminal, and this is not one. Run it in a terminal (over SSH: ssh -t).",
+    );
+  }
+  const tmux = Bun.which("tmux");
+  if (tmux === null) {
+    fail(
+      "the tui command runs omp in tmux, which is not installed. Install it (on Ubuntu: sudo apt install tmux), then run this again.",
+    );
+  }
+  const name = tuiSessionName(folder);
+  const running =
+    Bun.spawnSync([tmux, "has-session", "-t", `=${name}`], { stdout: "ignore", stderr: "ignore" })
+      .exitCode === 0;
+  if (running && args.ompArgs.length > 0) {
+    console.log(
+      `omp is already open on ${folder}, so this goes back to it. The options after -- apply when it starts: quit it (/exit) and run this again to use them.`,
+    );
+  }
+  const commands = tuiCommands({
+    tmux,
+    folder,
+    omp: ompCommand({ binary: chatHost }),
+    ompArgs: args.ompArgs,
+    env: tuiEnvironment(Bun.env, ompSearchPath(home, Bun.env.PATH, existsSync)),
+    insideTmux: (Bun.env.TMUX ?? "") !== "",
+    running,
+  });
+  for (const command of commands) {
+    const code = await Bun.spawn([...command], { stdio: ["inherit", "inherit", "inherit"] }).exited;
+    if (code !== 0) process.exit(code);
+  }
+  process.exit(0);
+}
 
 if (args.command === "logs") {
   const tail = readLogTail(logDir, args.lines ?? 100);

@@ -48,11 +48,12 @@ Priority: optional
 Architecture: amd64
 Installed-Size: $size
 Maintainer: Barry Shen <BarryTheShen@users.noreply.github.com>
-Recommends: xdg-utils
+Recommends: xdg-utils, tmux
 Homepage: https://github.com/BarryTheShen/omp-app
 Description: Browser app for the omp coding agent
  Run omp-app: it starts a local server and opens the app in your browser.
- It runs the omp release it is built for, which it downloads on its first start.
+ It runs the omp release it is built for, which the package holds. omp-app tui
+ opens omp's own terminal app on the same chats, in tmux.
  A user service (omp-app.service) starts the server at login, so chats keep running
  with no window or browser open.
 EOF

@@ -13,17 +13,23 @@ import { stateDirectory } from "../logging";
 export const DEFAULT_PORT = 4317;
 
 export const USAGE = `Usage: omp-app [folder] [options]
+       omp-app tui [folder] [-- omp's options]
        omp-app logs [--lines <n>]
        omp-app debug-report
 
 Starts the omp app and opens it in your browser. The app runs the omp release it is built for,
-which it downloads on its first start.
+which its package holds.
 
   folder         the folder to work in (default: the current folder)
   --port <n>     port to listen on (default: ${DEFAULT_PORT}, or a free port if that one is taken)
   --no-open      do not open the browser
   -v, --version  print the version
   -h, --help     print this help
+
+omp in the terminal, on the same chats:
+  tui            opens omp's own terminal app in the folder, in a tmux session that keeps running
+                 when you leave it (Ctrl+B, then D) or lose the connection; run it again to go back.
+                 omp's own options go after --, for example: omp-app tui -- --resume <chat id>
 
 Problems? The app keeps a log of what it does (never your prompts, files or keys):
   logs           print where the log is and its last lines (--lines sets how many, default 100)
@@ -32,12 +38,14 @@ Problems? The app keeps a log of what it does (never your prompts, files or keys
 `;
 
 export type LauncherArgs = {
-  readonly command: "run" | "help" | "version" | "logs" | "debug-report";
+  readonly command: "run" | "help" | "version" | "tui" | "logs" | "debug-report";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
   /** For `logs`: how many lines to print. */
   readonly lines: number | undefined;
+  /** For `tui`: omp's own options, everything after `--`. */
+  readonly ompArgs: readonly string[];
 };
 
 export type ParsedArgs =
@@ -56,8 +64,16 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
   let port: number | undefined;
   let open = true;
   let lines: number | undefined;
+  let ompArgs: readonly string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? "";
+    if (arg === "--") {
+      if (command !== "tui") {
+        return { ok: false, message: "Only the tui command takes omp's options after --." };
+      }
+      ompArgs = argv.slice(index + 1);
+      break;
+    }
     if (arg === "-h" || arg === "--help") command = "help";
     else if (arg === "-v" || arg === "--version") command = "version";
     else if (arg === "--no-open") open = false;
@@ -83,11 +99,18 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       }
     } else if (arg.startsWith("-")) {
       return { ok: false, message: `Unknown option ${arg}.` };
-    } else if (index === 0 && (arg === "logs" || arg === "debug-report")) command = arg;
-    else if (folder === undefined) folder = arg;
+    } else if (index === 0 && (arg === "tui" || arg === "logs" || arg === "debug-report")) {
+      command = arg;
+    } else if (folder === undefined) folder = arg;
     else return { ok: false, message: "Only one folder can be given." };
   }
-  return { ok: true, args: { command, folder, port, open, lines } };
+  if (command === "tui" && (port !== undefined || !open || lines !== undefined)) {
+    return {
+      ok: false,
+      message: "The tui command takes a folder, then omp's own options after --.",
+    };
+  }
+  return { ok: true, args: { command, folder, port, open, lines, ompArgs } };
 }
 
 const InstanceSchema = z.object({

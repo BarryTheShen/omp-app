@@ -32,14 +32,28 @@ describe("parseLauncherArgs", () => {
   test("defaults to running in the current folder and opening the browser", () => {
     expect(parseLauncherArgs([])).toEqual({
       ok: true,
-      args: { command: "run", folder: undefined, port: undefined, open: true, lines: undefined },
+      args: {
+        command: "run",
+        folder: undefined,
+        port: undefined,
+        open: true,
+        lines: undefined,
+        ompArgs: [],
+      },
     });
   });
 
   test("reads a folder, a port in both spellings, and --no-open", () => {
     expect(parseLauncherArgs(["/work/app", "--port", "4400", "--no-open"])).toEqual({
       ok: true,
-      args: { command: "run", folder: "/work/app", port: 4400, open: false, lines: undefined },
+      args: {
+        command: "run",
+        folder: "/work/app",
+        port: 4400,
+        open: false,
+        lines: undefined,
+        ompArgs: [],
+      },
     });
     expect(parseLauncherArgs(["--port=0"])).toMatchObject({ ok: true, args: { port: 0 } });
   });
@@ -86,6 +100,40 @@ describe("parseLauncherArgs", () => {
       message: '--lines needs a number above 0, not "many".',
     });
     expect(parseLauncherArgs(["logs", "--lines", "0"])).toMatchObject({ ok: false });
+  });
+
+  test("tui takes a folder and hands everything after -- to omp, which no other command takes", () => {
+    expect(parseLauncherArgs(["tui"])).toMatchObject({
+      ok: true,
+      args: { command: "tui", folder: undefined, ompArgs: [] },
+    });
+    // omp's own options, flags and all, are omp's: the app reads none of them.
+    expect(parseLauncherArgs(["tui", "/work/app", "--", "--resume", "abc", "--port", "1"])).toEqual(
+      {
+        ok: true,
+        args: {
+          command: "tui",
+          folder: "/work/app",
+          port: undefined,
+          open: true,
+          lines: undefined,
+          ompArgs: ["--resume", "abc", "--port", "1"],
+        },
+      },
+    );
+    expect(parseLauncherArgs(["/work/app", "--", "--resume"])).toEqual({
+      ok: false,
+      message: "Only the tui command takes omp's options after --.",
+    });
+    expect(parseLauncherArgs(["tui", "--port", "4400"])).toEqual({
+      ok: false,
+      message: "The tui command takes a folder, then omp's own options after --.",
+    });
+    expect(parseLauncherArgs(["tui", "--no-open"])).toMatchObject({ ok: false });
+    // A folder that is really called tui is written ./tui.
+    expect(parseLauncherArgs(["./tui"])).toMatchObject({
+      args: { command: "run", folder: "./tui" },
+    });
   });
 });
 

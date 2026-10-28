@@ -15,8 +15,11 @@ import { CHAT_HOST_CHAT_ARG } from "@omp-app/contracts/chat-host";
 import { ChatSessionPortRuntime } from "../../src/ports/A0/chat-session";
 import type { A0PortContext } from "../../src/ports/A0/context";
 import {
+  findExternalOmp,
   OmpProcessRegistry,
   type OmpProcessRegistryOptions,
+  ompSessionOwnersDir,
+  sessionLeaseProbe,
   spawnOmpProcess,
 } from "../../src/process";
 import type { PortHandlerContext } from "../../src/registry/ports";
@@ -40,6 +43,9 @@ export interface PortSetup {
   readonly folder: FolderPath;
   /** The session files of the chats a test opened, by thread id: what `resolveThread` finds. */
   readonly files: Map<ThreadId, SessionFilePath>;
+  /** The chats' home and environment, for another omp a test starts on the same chats. */
+  readonly home: string;
+  readonly env: Readonly<Record<string, string>>;
 }
 
 /** Starts port runtimes for one test file; call `stopAll` in its `afterEach`. */
@@ -52,11 +58,14 @@ export function chatSessionPorts() {
       options: Pick<ChatOptions, "agentFiles" | "nativeDiscovery" | "config"> & {
         /** Another omp's lease on a chat, as the server reads it; "none" when unset. */
         readonly externalOmp?: A0PortContext["externalOmp"];
+        /** Read omp's own leases as the app does (`scripts/dev.ts`), for a test that runs another omp on the chats. */
+        readonly realLeases?: boolean;
         /** The registry's wait for a stop reaches its limit at once, so a delete is refused while its stop goes on. */
         readonly stopLimitAtOnce?: boolean;
       } = {},
     ): Promise<PortSetup> {
       const { home, folder, env } = await chats.prepare(options);
+      const ownersDir = ompSessionOwnersDir(env, home);
       const registry = new OmpProcessRegistry({
         createProcess: (processOptions) =>
           spawnOmpProcess({
@@ -88,11 +97,19 @@ export function chatSessionPorts() {
             : { threadId, folderPath: FolderPath.parse(folder), sessionFile };
         },
         latestThread: async () => undefined,
-        externalOmp: options.externalOmp ?? (async () => "none"),
+        externalOmp:
+          options.externalOmp ??
+          (options.realLeases === true
+            ? (threadId, sessionFile, hostPid) =>
+                findExternalOmp({ sessionId: threadId, sessionFile, ownersDir, ownPid: hostPid })
+            : async () => "none"),
+        ...(options.realLeases === true
+          ? { leaseProbe: sessionLeaseProbe({ ownersDir: () => ownersDir }) }
+          : {}),
       };
       const runtime = new ChatSessionPortRuntime(context);
       runtimes.push(runtime);
-      return { runtime, replay, registry, folder: FolderPath.parse(folder), files };
+      return { runtime, replay, registry, folder: FolderPath.parse(folder), files, home, env };
     },
 
     async stopAll(): Promise<void> {

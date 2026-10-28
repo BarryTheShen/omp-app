@@ -47,6 +47,18 @@ omp-app-desktop --local                                                 # back t
 
 The window keeps the link in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. Run either command while the window is open to move it to the other server. Only an `https://` link with a token is accepted. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
 
+### omp in the terminal, on the same chats
+
+`omp-app tui [folder]` opens omp's own terminal app in that folder (default: the current one), on the app's chats: it is the chat host the package holds, started as omp's terminal app, so a chat started in either one goes on in the other. It runs in a tmux session for the folder, which keeps running when you leave it (Ctrl+B, then D) or lose an SSH connection, with its turn still going; `omp-app tui` in that folder again goes back to it. It needs tmux (`sudo apt install tmux`, which the package recommends) and a terminal (over SSH: `ssh -t`). omp's own options go after `--`:
+
+```bash
+omp-app tui                                     # omp in this folder: /resume lists its chats, the app's among them
+omp-app tui ~/work/site -- --resume <chat id>   # that chat, in that folder
+omp-app tui -- --continue                       # the folder's newest chat
+```
+
+One of them writes a chat at a time (omp's own rule). While the app has a chat open, and for two minutes after its last tab left it, omp in the terminal writes its turns to a copy, which both then list as a chat of its own. While omp in the terminal has a chat open, the app does not open it and says so. Quit omp (`/exit`) to hand the chat back. If you have never used omp in a terminal, its first start shows omp's own setup steps once (Esc skips a step).
+
 ### When something goes wrong: the debug log
 
 The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records: a header (app, system, Bun and omp versions, folders); the omp and capability checks with their timings; every omp process (start, pid, how long it ran, and its last stderr lines if it dies on its own); every browser connection (opened, closed, turned away); every failed call (which one, and why); uncaught errors and crashes with their stack; errors the page itself reports; and every 30 seconds the server's memory, the number and memory of omp processes, and how long the server was blocked at worst, so a freeze leaves numbers behind.
