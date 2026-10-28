@@ -114,7 +114,11 @@ async function ancestorInstructionLines(cwd: string): Promise<string[]> {
   return lines;
 }
 const fake = Bun.spawn({
-  cmd: ["bun", path.join(import.meta.dir, "fake-openai-server.ts"), agentDir],
+  cmd: [
+    "bun",
+    path.resolve(import.meta.dir, "../../server/test/fake-provider/fake-openai-server.ts"),
+    agentDir,
+  ],
   stdin: "pipe",
   stdout: "pipe",
   stderr: "inherit",

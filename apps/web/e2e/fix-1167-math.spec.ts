@@ -12,7 +12,7 @@ import {
 
 /*
  * Issue #1167: math in an assistant reply is typeset, and a formula that is still being written shows its source.
- * The fake model's `stream_math` reply (packages/omp-rpc/scripts/fake-openai-server.ts) has four inline formulas
+ * The fake model's `stream_math` reply (packages/server/test/fake-provider/fake-openai-server.ts) has four inline formulas
  * (`$...$` and `\(...\)`), two display formulas (`$$...$$` and `\[...\]`), two prices in prose, and a code block.
  * The half-written states are pinned by the unit tests (apps/web/src/modules/U1/markdown/math.test.tsx): how the
  * streamed pieces arrive is not something this spec can control, so it does not assert on them.

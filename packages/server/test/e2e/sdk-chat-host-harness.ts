@@ -17,7 +17,7 @@ import {
 import { ChatHostClient } from "../../src/chat-host/client";
 import { type OmpProcess, spawnOmpProcess } from "../../src/process/omp-process";
 
-const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
+const FAKE_PROVIDER = resolve(import.meta.dir, "../fake-provider/fake-openai-server.ts");
 
 export const realTest = Bun.env.OMP_APP_REAL_OMP === "1" ? test : test.skip;
 

@@ -1,7 +1,7 @@
 import { type CapabilityMap, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { AutonomyPort, GoalModeState } from "../contract";
-import { RPC_CREATE_REFUSED_ACTIVE_GOAL } from "../fixtures";
+import { CREATE_REFUSED_ACTIVE_GOAL } from "../fixtures";
 import type { GuidedComposerDraft } from "../guided/composer";
 import { GuidedGoalController } from "../guided/controller";
 
@@ -46,7 +46,7 @@ describe("the guided interview's create refusal", () => {
       goal: { getSnapshot: () => activeGoal, subscribe: () => () => undefined },
       composer,
     });
-    expect(controller.getSnapshot().createReason).toBe(RPC_CREATE_REFUSED_ACTIVE_GOAL);
+    expect(controller.getSnapshot().createReason).toBe(CREATE_REFUSED_ACTIVE_GOAL);
     controller.dispose();
   });
 });

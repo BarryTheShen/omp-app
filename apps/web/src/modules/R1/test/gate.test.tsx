@@ -1,11 +1,8 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
   ChatOpenResult,
   ChatSessionClient,
   ChatSessionEvent,
-  Fixture,
   FolderPath,
   OpenThreadArgs,
   SessionFile,
@@ -13,14 +10,12 @@ import type {
   SessionRenameArgs,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure, parseFixture, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
-import type { RpcDuplex } from "@omp-app/omp-rpc";
-import { RpcSession } from "@omp-app/omp-rpc";
-import { FixtureSession } from "@omp-app/omp-rpc/fixtures";
+import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { sessionEventOfRpc } from "@/modules/R0/store/session-events";
+import { playRecording, type RecordedSession } from "@/modules/R0/fixtures/recorded-session";
+import { PROMPT_STREAM } from "@/modules/R0/fixtures/recordings";
 import { ShortcutRegistryProvider } from "@/shortcuts";
 import type { DialogHost } from "../../U4/contract/dialog-host";
 import { SessionActionsController } from "../actions";
@@ -37,7 +32,6 @@ import {
   R1_NATIVE_SESSION_FILES,
   R1_OPEN_CAPABILITIES,
   R1_PIN_LIST,
-  R1_REPLAY_SCENARIO,
   R1_THREAD_IDS,
   R1_WORKSPACE_STATE,
 } from "../fixtures";
@@ -207,46 +201,24 @@ function createHistoryClient(
   } as unknown as AppClient;
 }
 
-function loadReplayFixture(): Fixture {
-  const fixturePath = fileURLToPath(
-    import.meta.resolve("@omp-app/omp-rpc/fixtures/prompt-stream.fixture.jsonl"),
-  );
-  const text = readFileSync(fixturePath, "utf8");
-  const parsed = parseFixture(text);
-  if (!parsed.ok) throw new Error(`${R1_REPLAY_SCENARIO}: ${parsed.error.message}`);
-  return parsed.value;
-}
-
+/** Plays the recorded prompt to the open subscriptions, and returns once every payload of it has arrived. */
 async function replayPromptToSubscriptions(
   subscriptions: readonly SubscriptionRecord[],
-): Promise<{ readonly session: RpcSession; readonly close: () => Promise<void> }> {
-  const replay = new FixtureSession({ fixture: loadReplayFixture() });
-  const duplex: RpcDuplex = {
-    writeLine: (line) => replay.writeLine(line),
-    onChunk: (listener) => replay.onChunk((chunk) => listener(Uint8Array.from(chunk))),
-    onClose: (listener) => replay.onClose(listener),
-    close: () => replay.close(),
-  };
-  const session = new RpcSession(duplex);
-  let sequence = 0;
-  session.onEvent((event) => {
-    sequence += 1;
+): Promise<RecordedSession> {
+  const session = playRecording(PROMPT_STREAM);
+  session.onEvent((event, seq) => {
     for (const subscription of subscriptions) {
       if (subscription.unsubscribed) continue;
-      for (const listener of [...subscription.listeners]) {
-        listener(sessionEventOfRpc(event), sequence);
-      }
+      for (const listener of [...subscription.listeners]) listener(event, seq);
     }
   });
-  await session.start();
-  await session.send({ type: "prompt", message: "run_bash" });
-  return {
-    session,
-    close: async () => {
-      await session.close();
-      replay.close();
-    },
-  };
+  await session.request({
+    threadId: R1_THREAD_IDS.active,
+    method: "prompt",
+    params: { text: "run_bash" },
+  });
+  await session.idle();
+  return session;
 }
 
 afterEach(cleanup);
@@ -544,7 +516,7 @@ describe("R1 W3 sidebar to history handoff", () => {
         sessionSettled: true,
       });
     } finally {
-      await replay.close();
+      replay.close();
       await controller.close();
     }
   });

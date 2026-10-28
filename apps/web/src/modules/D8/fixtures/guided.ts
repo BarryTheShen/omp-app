@@ -1,6 +1,6 @@
 import { GoalCreateRequestSchema, type GoalRpcResult } from "../contract";
 import { buildGoalObjective, EMPTY_GUIDED_ANSWERS, type GuidedAnswers } from "../guided/interview";
-import { RECORDED_GOAL_CREATED, RPC_CREATE_REFUSED_ACTIVE_GOAL } from "./goal";
+import { CREATE_REFUSED_ACTIVE_GOAL, RECORDED_GOAL_CREATED } from "./goal";
 
 /** Every required answer and the token budget, as the person types them in the interview's dialogs. */
 export const GUIDED_ANSWERS_SUCCESS: GuidedAnswers = {
@@ -56,5 +56,5 @@ export const GUIDED_INTERVIEW_CANCELLED = {
 export const GUIDED_INTERVIEW_REFUSED = {
   answers: GUIDED_ANSWERS_SUCCESS,
   createRequest: GUIDED_CREATE_REQUEST,
-  createRefusal: RPC_CREATE_REFUSED_ACTIVE_GOAL,
+  createRefusal: CREATE_REFUSED_ACTIVE_GOAL,
 } as const;

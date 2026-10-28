@@ -13,7 +13,7 @@ import {
 /** The note a rewind leaves in the chat the person picked when the view did not switch (no-switch-notice.ts). */
 const NOTE = "The rewind finished. The chat you picked stays open.";
 
-/** A `count_reply <tag>` answer reads `count-<n> <tag>` (packages/omp-rpc/scripts/fake-openai-server.ts). */
+/** A `count_reply <tag>` answer reads `count-<n> <tag>` (packages/server/test/fake-provider/fake-openai-server.ts). */
 function answerTo(page: Page, tag: string) {
   return page.getByText(new RegExp(`^count-\\d+ ${tag}$`));
 }

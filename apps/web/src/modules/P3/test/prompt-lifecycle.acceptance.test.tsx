@@ -1,14 +1,11 @@
-// The completed, aborted and provider-error prompt_result frames plus session_settled are recorded under packages/omp-rpc/fixtures.
-// The pending frame remains the documented shape (rpc-types.ts:241-246 at omp v18.12.6).
+// The completed, aborted and provider-error prompt results and session_settled are recorded (R0's `prompt-stream` and
+// `abort`, P3's `p3-provider-error`); the pending result is written in the host's shape (`PromptResultEvent`,
+// packages/contracts/src/chat-host/protocol.ts).
 import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store";
-import {
-  ompEvent,
-  promptResultEvent,
-  SESSION_SETTLED_EVENT,
-} from "@/modules/R0/store/session-events";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import {
   BRANCHED_CHAT,
   promptAborted,
@@ -23,21 +20,6 @@ import { editAppend, renderRun } from "./run-harness";
 
 afterEach(cleanup);
 
-/** One omp frame as the store receives it, numbered in arrival order. */
-function receive(
-  store: OmpRuntimeStore,
-  kind: "prompt_result" | "session_settled",
-  event: unknown,
-  seq: number,
-): void {
-  store.ingest(
-    kind === "prompt_result"
-      ? promptResultEvent(event as OmpWire.PromptResultEvent)
-      : SESSION_SETTLED_EVENT,
-    seq,
-  );
-}
-
 function receiveOmp(store: OmpRuntimeStore, event: unknown, seq: number): void {
   store.ingest(ompEvent(event as OmpWire.RpcAgentEvent), seq);
 }
@@ -48,21 +30,21 @@ describe("acceptance: a prompt's result and the session's settling are separate 
     receiveOmp(store, { type: "agent_start" }, 1);
     receiveOmp(store, { type: "agent_end" }, 2);
 
-    receive(store, "prompt_result", promptPending("req-1"), 3);
+    store.ingest(promptPending("req-1"), 3);
     expect(store.getSnapshot().prompt).toMatchObject({
       admitted: true,
       sessionSettled: false,
       promptResult: { status: "completed", sessionSettled: false },
     });
 
-    receive(store, "session_settled", SESSION_SETTLED, 4);
+    store.ingest(SESSION_SETTLED, 4);
     expect(store.getSnapshot().prompt).toMatchObject({ sessionSettled: true, streaming: false });
   });
 
   test("the recorded completed turn is admitted, and its result says the session is settled", () => {
     const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
 
-    receive(store, "prompt_result", promptCompleted(), 1);
+    store.ingest(promptCompleted(), 1);
 
     expect(store.getSnapshot().prompt).toMatchObject({
       admitted: true,
@@ -75,7 +57,7 @@ describe("acceptance: a prompt's result and the session's settling are separate 
   test("the recorded aborted turn is an aborted prompt, and it shows no error", () => {
     const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
 
-    receive(store, "prompt_result", promptAborted(), 1);
+    store.ingest(promptAborted(), 1);
 
     expect(store.getSnapshot().prompt.promptResult).toMatchObject({ status: "aborted" });
     expect(store.getSnapshot().error).toBeNull();
@@ -84,7 +66,7 @@ describe("acceptance: a prompt's result and the session's settling are separate 
   test("a prompt_result error is an omp_error carrying the frame's message and retryable flag", () => {
     const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
 
-    receive(store, "prompt_result", promptErrorRecorded(), 1);
+    store.ingest(promptErrorRecorded(), 1);
 
     expect(store.getSnapshot().error).toMatchObject({
       code: "omp_error",
@@ -111,7 +93,7 @@ describe("acceptance: a prompt's result and the session's settling are separate 
     await act(async () => {
       receiveOmp(branchStore, { type: "agent_start" }, 1);
       receiveOmp(branchStore, { type: "agent_end" }, 2);
-      receive(branchStore, "prompt_result", promptPending("req-3"), 3);
+      branchStore.ingest(promptPending("req-3"), 3);
     });
     expect(branchStore.getSnapshot().prompt).toMatchObject({
       sessionSettled: false,
@@ -123,7 +105,7 @@ describe("acceptance: a prompt's result and the session's settling are separate 
       settled: false,
     });
 
-    await act(async () => receive(branchStore, "session_settled", SESSION_SETTLED, 4));
+    await act(async () => branchStore.ingest(SESSION_SETTLED, 4));
     expect(run.runs.status.getSnapshot()).toMatchObject({
       phase: "sent",
       threadId: BRANCHED_CHAT,
@@ -165,8 +147,8 @@ describe("acceptance: a prompt's result and the session's settling are separate 
       originalStore.applySessionState({ isSettled: true });
       receiveOmp(originalStore, { type: "agent_start" }, 1);
       receiveOmp(originalStore, { type: "agent_end" }, 2);
-      receive(originalStore, "prompt_result", promptPending("req-wrong-store"), 3);
-      receive(originalStore, "session_settled", SESSION_SETTLED, 4);
+      originalStore.ingest(promptPending("req-wrong-store"), 3);
+      originalStore.ingest(SESSION_SETTLED, 4);
     });
     expect(run.runs.status.getSnapshot()).toMatchObject({
       phase: "sent",
@@ -207,8 +189,8 @@ describe("acceptance: a prompt's result and the session's settling are separate 
 
     await act(async () => {
       run.runs.status.set({ ...sentState, phase: "sending" });
-      receive(branchStore, "prompt_result", promptPending("req-early"), 1);
-      receive(branchStore, "session_settled", SESSION_SETTLED, 2);
+      branchStore.ingest(promptPending("req-early"), 1);
+      branchStore.ingest(SESSION_SETTLED, 2);
     });
     expect(run.runs.status.getSnapshot().phase).toBe("sending");
 

@@ -1,24 +1,11 @@
-/// <reference types="node" />
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import type {
-  CapabilityMap,
-  ChatSessionRequest,
-  Fixture,
-  OmpCommand,
-  ExtensionUiResponse as PortExtensionUiResponse,
-  ThreadId,
-} from "@omp-app/contracts";
-import { AppFailure, parseFixture } from "@omp-app/contracts";
+import type { CapabilityMap, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OverlayHost, useOverlayHost } from "@/overlay";
-import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
-import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
-import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import { QueueController } from "../../R0/actions/actions";
-import { commandOf, sessionEventOfRpc } from "../../R0/store/session-events";
+import { playRecording, type RecordedSession } from "../../R0/fixtures/recorded-session";
+import { UI_ROUND_TRIP } from "../../R0/fixtures/recordings";
 import { OmpRuntimeStore, type RuntimeSnapshot } from "../../R0/store/store";
 import { renderDialogRequest } from "../dialogs";
 import { DialogHostController } from "../host";
@@ -31,83 +18,31 @@ const capabilities: CapabilityMap = {
 };
 
 /**
- * The replay test waits on events that the fixture and the dialog produce. RTL's 1 s default is shorter than a stall of a
- * loaded worker (issue 2271), so each of its waits allows 5 s. Every wait still ends on its event; nothing is slept.
+ * The replay test waits on events that the recording and the dialog produce. RTL's 1 s default is shorter than a stall of
+ * a loaded worker (issue 2271), so each of its waits allows 5 s. Every wait still ends on its event; nothing is slept.
  */
 const EVENT_WAIT = { timeout: 5000 } as const;
 
 afterEach(cleanup);
 
-function fixture(): Fixture {
-  const text = readFileSync(
-    resolve(process.cwd(), "../../packages/omp-rpc/fixtures/ui-round-trip.fixture.jsonl"),
-    "utf8",
-  );
-  const parsed = parseFixture(text);
-  if (!parsed.ok) throw new Error(parsed.error.message);
-  return parsed.value;
-}
-
-interface FixtureHarness {
-  readonly session: RpcSession;
+interface RecordingHarness {
+  readonly session: RecordedSession;
   readonly store: OmpRuntimeStore;
   readonly queue: QueueController;
   readonly threadId: ThreadId;
-  close(): Promise<void>;
 }
 
-async function openFixtureHarness(): Promise<FixtureHarness> {
-  const replay = new FixtureSession({ fixture: fixture() });
-  const duplex: RpcDuplex = {
-    writeLine: (line) => replay.writeLine(line),
-    onChunk: (listener) => replay.onChunk((chunk) => listener(Uint8Array.from(chunk))),
-    onClose: (listener) => replay.onClose(listener),
-    close: () => replay.close(),
-  };
-  const session = new RpcSession(duplex);
-  let sequence = 0;
-  const store = new OmpRuntimeStore({
-    threadId,
-    transport: {
-      // The fixture is a recorded omp-rpc session until H5.6: the host's answer is omp's RPC response with the same
-      // fields.
-      answer: async ({ id, answer }) => {
-        await session.answerExtensionUi({
-          type: "extension_ui_response",
-          id,
-          ...(answer as object),
-        } as unknown as PortExtensionUiResponse);
-        return null;
-      },
-    },
-  });
-  session.onEvent((event) => {
-    sequence += 1;
-    store.ingest(sessionEventOfRpc(event), sequence);
-  });
-  await session.start();
-  const send = (async (args: { method: string; params: unknown }, options: unknown) =>
-    session.send(
-      commandOf(args.method, args.params) as unknown as OmpCommand,
-      options as never,
-    )) as unknown as ChatSessionRequest;
-  const queue = new QueueController({ store, send, capabilities });
-  await session.send({ type: "set_ask_dialog", enabled: true });
-  const prompt = session.send({ type: "prompt", message: "ask_user" });
-  void prompt.catch(() => undefined);
-  return {
-    session,
-    store,
-    queue,
-    threadId,
-    close: async () => {
-      try {
-        await session.close();
-      } catch (error) {
-        if (!(error instanceof AppFailure) || error.appError.code !== "cancelled") throw error;
-      }
-    },
-  };
+/** R0's store on the recorded ask round trip: the rich ask dialog switched on, then the prompt that asks. */
+async function openRecordingHarness(): Promise<RecordingHarness> {
+  const session = playRecording(UI_ROUND_TRIP);
+  const store = new OmpRuntimeStore({ threadId, transport: { answer: session.answer } });
+  session.onEvent((event, seq) => store.ingest(event, seq));
+  const queue = new QueueController({ store, send: session.request, capabilities });
+  await session.request({ threadId, method: "set_ask_dialog", params: { enabled: true } });
+  void session
+    .request({ threadId, method: "prompt", params: { text: "ask_user" } })
+    .catch(() => undefined);
+  return { session, store, queue, threadId };
 }
 
 function waitForSnapshot(
@@ -154,9 +89,9 @@ function RealU4Harness({ state, queue }: { state: U4HarnessState; queue: QueueCo
   return null;
 }
 
-describe("U4.7 W3/CC7 fixture-backed gate", () => {
+describe("U4.7 W3/CC7 recording-backed gate", () => {
   test("replays ui-round-trip through R0.1/R0.5, router, DialogHost and Ask renderer", async () => {
-    const harness = await openFixtureHarness();
+    const harness = await openRecordingHarness();
     const state: U4HarnessState = { host: undefined, router: undefined };
     render(
       <OverlayHost>
@@ -171,7 +106,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       );
       const pending = Object.values(harness.store.getSnapshot().pending.dialogs)[0];
       if (pending?.request.method !== "ui.ask")
-        throw new Error("fixture did not produce ask request");
+        throw new Error("the recording did not produce its ask request");
       await waitFor(() => {
         expect(state.router).toBeDefined();
         expect(state.host).toBeDefined();
@@ -194,7 +129,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       );
       expect(harness.store.getSnapshot().pending.dialogs).toEqual({});
     } finally {
-      await harness.close();
+      harness.session.close();
     }
   }, 30_000);
 

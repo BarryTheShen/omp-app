@@ -25,7 +25,7 @@ realTest(
     await folderPicker.selectOption(folder);
     const messageInput = await startChat(page);
     // The fake provider answers a prompt containing "run_bash" with a bash tool call
-    // (`echo fixture-tool`) and then "tool said: fixture-tool" (packages/omp-rpc/scripts/fake-openai-server.ts).
+    // (`echo fixture-tool`) and then "tool said: fixture-tool" (packages/server/test/fake-provider/fake-openai-server.ts).
     const promptText = "Please run_bash and tell me what it printed.";
     await sendPrompt(messageInput, promptText);
     const toolCard = page.locator('[data-testid^="tool-card-"]');
@@ -152,7 +152,7 @@ realTest(
     await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
 
     // The fake provider answers a prompt containing "ask_user" with omp's ask tool, which makes omp send its question
-    // to the app as an ask dialog (packages/omp-rpc/scripts/fake-openai-server.ts).
+    // to the app as an ask dialog (packages/server/test/fake-provider/fake-openai-server.ts).
     await sendPrompt(messageInput, "Please ask_user which database to use.");
     const question = page.getByRole("dialog");
     try {

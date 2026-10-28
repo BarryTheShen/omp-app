@@ -1,29 +1,46 @@
 /**
- * Values P3's branch, edit and regenerate tests send to or read from omp. Recorded wire values come from committed files in
- * `packages/omp-rpc/fixtures/`; synthetic source values and deliberate test seams are marked beside them.
+ * Values P3's branch, edit and regenerate tests send to or read from omp. Recorded values come from the session
+ * recordings (P3's `recordings/`, and R0's `prompt-stream` and `abort`); synthetic source values and deliberate test seams
+ * are marked beside them.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
+  type ChatSessionEvent,
   type EntryId,
   EntryId as EntryIdSchema,
   type OmpWire,
   ThreadId as ThreadIdSchema,
 } from "@omp-app/contracts";
 import { z } from "zod";
+import {
+  recordedChatEvents,
+  recordedResults,
+  type SessionRecording,
+} from "@/modules/R0/fixtures/recorded-session";
+import { ABORT, PROMPT_STREAM } from "@/modules/R0/fixtures/recordings";
+import {
+  P3_BRANCH,
+  P3_BRANCH_CANCELLED,
+  P3_BRANCH_MESSAGES,
+  P3_BRANCH_SUMMARY,
+  P3_PROVIDER_ERROR,
+} from "./recordings";
 
 type EntryIdLike = string | EntryId;
 
-const RECORDINGS_DIR = resolve(process.cwd(), "../../packages/omp-rpc/fixtures");
+/** The one result the recording gives `method`. */
+function onlyResult(recording: SessionRecording, method: string): unknown {
+  const [result, ...more] = recordedResults(recording, method);
+  if (result === undefined || more.length > 0)
+    throw new Error(`${recording.header.scenario} does not answer ${method} exactly once`);
+  return result;
+}
 
-/** One row of a recording: a frame omp wrote to stdout, kept as an escaped JSON string in `line`. */
-const RecordingRow = z.object({ dir: z.literal("stdout"), line: z.string() });
-
-/** The stdout frame on `line` (1-based, the file's first line is its header) of a recording, parsed as JSON. */
-export function recordedFrame(recording: string, line: number): unknown {
-  const text = readFileSync(resolve(RECORDINGS_DIR, `${recording}.fixture.jsonl`), "utf8");
-  const row = RecordingRow.parse(JSON.parse(text.split("\n")[line - 1] ?? "null"));
-  return JSON.parse(row.line);
+/** The one chat event of `type` the recording has. */
+function onlyChatEvent(recording: SessionRecording, type: string): ChatSessionEvent {
+  const [event, ...more] = recordedChatEvents(recording, type);
+  if (event === undefined || more.length > 0)
+    throw new Error(`${recording.header.scenario} does not have exactly one ${type}`);
+  return event;
 }
 
 export const SOURCE_CHAT = ThreadIdSchema.parse("fixture-source-chat");
@@ -46,43 +63,35 @@ export const PNG_IMAGE: OmpWire.ImageContent = {
   mimeType: "image/png",
 };
 
-/** The recorded `branch` response from `p3-branch.fixture.jsonl:32`. */
-const BranchResponseRecord = z.object({
-  type: z.literal("response"),
-  command: z.literal("branch"),
-  success: z.literal(true),
-  data: z.object({ text: z.string(), cancelled: z.boolean() }),
-});
-function recordedBranchResult(recording: string, line: number): OmpWire.BranchResult {
-  return BranchResponseRecord.parse(recordedFrame(recording, line)).data;
-}
+/** omp's answer to `branch`: the branched-from prompt's text, and whether an extension's hook cancelled the branch. */
+const BranchResultRecord = z.strictObject({ text: z.string(), cancelled: z.boolean() });
 
-export const BRANCH_ACCEPTED = recordedBranchResult("p3-branch", 32);
-/** The recorded hook-cancelled `branch` response from `p3-branch-cancelled.fixture.jsonl:30`. */
-export const BRANCH_CANCELLED = recordedBranchResult("p3-branch-cancelled", 30);
+/** The recorded accepted `branch` (`p3-branch`). */
+export const BRANCH_ACCEPTED: OmpWire.BranchResult = BranchResultRecord.parse(
+  onlyResult(P3_BRANCH, "branch"),
+);
+/** The recorded hook-cancelled `branch` (`p3-branch-cancelled`). */
+export const BRANCH_CANCELLED: OmpWire.BranchResult = BranchResultRecord.parse(
+  onlyResult(P3_BRANCH_CANCELLED, "branch"),
+);
 
 /**
- * The `get_state` answer the app reads after a branch. Only `sessionId` is read: `SessionState.sessionId` at
- * `packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts:480-481` (v18.8.9). Its key is in the recorded
- * `get_state` answer at `packages/omp-rpc/fixtures/out-of-order.fixture.jsonl:10` (`data.sessionId`). The value is
- * the fixture's own id.
+ * The `get_state` answer the app reads after a branch. Only `sessionId` is read: `ChatHostState.sessionId`, the host's
+ * `get_state` answer (`packages/contracts/src/chat-host/protocol.ts`). The value is the fixture's own id.
  */
 export const STATE_AFTER_BRANCH: { readonly sessionId: string } = { sessionId: BRANCHED_CHAT };
 
 /**
- * The recorded get_branch_messages response is at p3-branch-messages.fixture.jsonl:95. It contains the two text-bearing
- * rows still on the branch after the rewind; the image-only user message is omitted. The separate image-only recording
- * (p3-branch-image.fixture.jsonl:30) records an empty list. This fixture does not cover listing an abandoned row.
+ * The recorded `get_branch_messages` answer (`p3-branch-messages`): the two text-bearing rows still on the branch after
+ * the rewind; the image-only user message is omitted. The image-only recording (`p3-branch-image`) answers an empty
+ * list. This fixture does not cover listing an abandoned row.
  */
-const BranchMessagesResponseRecord = z.object({
-  type: z.literal("response"),
-  command: z.literal("get_branch_messages"),
-  success: z.literal(true),
-  data: z.object({ messages: z.array(z.object({ entryId: z.string(), text: z.string() })) }),
+const BranchMessagesRecord = z.strictObject({
+  messages: z.array(z.strictObject({ entryId: z.string(), text: z.string() })),
 });
-export const BRANCH_MESSAGES = BranchMessagesResponseRecord.parse(
-  recordedFrame("p3-branch-messages", 95),
-).data;
+export const BRANCH_MESSAGES = BranchMessagesRecord.parse(
+  onlyResult(P3_BRANCH_MESSAGES, "get_branch_messages"),
+);
 function recordedBranchMessageId(text: string): EntryId {
   const message = BRANCH_MESSAGES.messages.find((row) => row.text === text);
   if (!message) throw new Error(`p3-branch-messages recording has no ${JSON.stringify(text)} row`);
@@ -93,88 +102,92 @@ export const USER_TEXT_ONLY = recordedBranchMessageId("Earlier question");
 export const USER_WITH_IMAGE = recordedBranchMessageId("Explain");
 
 /**
- * A `prompt_result` frame: `RpcPromptResultFrame` (`rpc-types.ts:232-245` at v18.8.9). Its `status` is `RpcPromptStatus`
- * (`rpc-types.ts:212`: "completed", "aborted" or "error"). The schema is the boundary: a recorded frame that does not
- * match it fails the test.
+ * A `prompt_result` as the session port carries it: the host's `PromptResultEvent`
+ * (`packages/contracts/src/chat-host/protocol.ts`). The schema is the boundary: a recorded result that does not match it
+ * fails the test.
  */
-const PromptResultRecord = z.object({
-  type: z.literal("prompt_result"),
-  id: z.string(),
-  agentInvoked: z.boolean(),
-  status: z.enum(["completed", "aborted", "error"]),
-  sessionSettled: z.boolean(),
-  error: z
-    .object({
-      message: z.string(),
-      provider: z.string(),
-      model: z.string(),
-      retryable: z.boolean(),
-      httpStatus: z.number(),
-    })
-    .optional(),
+const PromptResultRecord = z.strictObject({
+  kind: z.literal("event"),
+  event: z.strictObject({
+    type: z.literal("prompt_result"),
+    requestId: z.string(),
+    agentInvoked: z.boolean(),
+    status: z.enum(["completed", "aborted", "error"]),
+    sessionSettled: z.boolean(),
+    error: z
+      .strictObject({
+        message: z.string(),
+        provider: z.string(),
+        model: z.string(),
+        retryable: z.boolean(),
+        httpStatus: z.number(),
+      })
+      .optional(),
+  }),
 });
 
-/** A `prompt_result` frame; `error` is set only with `status: "error"` (`rpc-types.ts:218-226`). */
-export type PromptResultFrame = z.infer<typeof PromptResultRecord> & {
-  readonly error?: { readonly message: string; readonly retryable: boolean };
-};
-
-/** A recorded `prompt_result`, parsed from its line. */
-export function recordedPromptResult(recording: string, line: number): PromptResultFrame {
-  return PromptResultRecord.parse(recordedFrame(recording, line));
+/** The recording's one prompt result, checked against the host's shape. */
+function recordedPromptResult(recording: SessionRecording): ChatSessionEvent {
+  const event = onlyChatEvent(recording, "prompt_result");
+  PromptResultRecord.parse(event);
+  return event;
 }
 
-/** The completed turn, recorded: `prompt-stream.fixture.jsonl:38` (`status: "completed"`, `sessionSettled: true`). */
-export function promptCompleted(): PromptResultFrame {
-  return recordedPromptResult("prompt-stream", 38);
+/** The completed turn, recorded (`prompt-stream`: `status: "completed"`, `sessionSettled: true`). */
+export function promptCompleted(): ChatSessionEvent {
+  return recordedPromptResult(PROMPT_STREAM);
 }
 
-/** The aborted turn, recorded: `abort.fixture.jsonl:23` (`status: "aborted"`), followed by `SESSION_SETTLED`. */
-export function promptAborted(): PromptResultFrame {
-  return recordedPromptResult("abort", 23);
+/** The aborted turn, recorded (`abort`: `status: "aborted"`), followed by `SESSION_SETTLED`. */
+export function promptAborted(): ChatSessionEvent {
+  return recordedPromptResult(ABORT);
 }
 
 /**
  * A completed turn that leaves background work open (`sessionSettled: false`). No recording has one, so the value is
- * the documented shape: `rpc-types.ts:239-244` says a `session_settled` frame follows when the field is false, and
- * `rpc-prompt-results.ts:156-163` writes it. The id is the fixture's own.
+ * the host's documented shape: `PromptResultEvent.sessionSettled` says that a `session_settled` event follows when it is
+ * false (`packages/contracts/src/chat-host/protocol.ts`). The request id is the fixture's own.
  */
-export function promptPending(id: string): PromptResultFrame {
+export function promptPending(requestId: string): ChatSessionEvent {
   return {
-    type: "prompt_result",
-    id,
-    agentInvoked: true,
-    status: "completed",
-    sessionSettled: false,
+    kind: "event",
+    event: {
+      type: "prompt_result",
+      requestId,
+      agentInvoked: true,
+      status: "completed",
+      sessionSettled: false,
+    },
   };
 }
 
-/** The recorded provider failure from `p3-provider-error.fixture.jsonl:41`. */
-export function promptErrorRecorded(): PromptResultFrame {
-  return recordedPromptResult("p3-provider-error", 41);
+/** The recorded provider failure (`p3-provider-error`). */
+export function promptErrorRecorded(): ChatSessionEvent {
+  return recordedPromptResult(P3_PROVIDER_ERROR);
 }
 
-/** The frame once the session is done with every tracked job: `abort.fixture.jsonl:24`. */
-export const SESSION_SETTLED = z
-  .object({ type: z.literal("session_settled") })
-  .parse(recordedFrame("abort", 24));
+/** The payload once the session is done with every tracked job, recorded after the aborted turn (`abort`). */
+export const SESSION_SETTLED: ChatSessionEvent = onlyChatEvent(ABORT, "session_settled");
 
-/** A recorded message envelope: role, attribution and timestamp of a `message_end` or `message_start` frame. */
-const RecordedMessageFrame = z.object({ message: z.looseObject({ role: z.string() }) });
+/** A recorded message envelope: role, attribution and timestamp of a `message_end` or `message_start` event. */
+const RecordedMessageEvent = z.object({
+  event: z.object({ message: z.looseObject({ role: z.string() }) }),
+});
 
-/** The user envelope, recorded: `prompt-stream.fixture.jsonl:13` (`message_end`, role user, attribution, timestamp). */
+/** The user envelope, recorded: the user's `message_end` in `prompt-stream` (role user, attribution, timestamp). */
 function recordedUserEnvelope(): Record<string, unknown> {
-  const { message } = RecordedMessageFrame.parse(recordedFrame("prompt-stream", 13));
-  if (message.role !== "user")
-    throw new Error("prompt-stream.fixture.jsonl line 13 is not a user message");
-  return message;
+  const user = recordedChatEvents(PROMPT_STREAM, "message_end")
+    .map((event) => RecordedMessageEvent.parse(event).event.message)
+    .find((message) => message.role === "user");
+  if (user === undefined) throw new Error("prompt-stream has no user message_end");
+  return user;
 }
 
 /**
- * The assistant answer as omp stores it: the message `prompt-stream.fixture.jsonl:14` records (a `message_start`, with
- * the thinking block the fake model sent). It is typed as omp's `AssistantMessage` (`rpc-wire.generated.ts:114-133` at
+ * The assistant answer as omp stores it: the message of the assistant's `message_start` in `prompt-stream` (with the
+ * thinking block the fake model sent). It is typed as omp's `AssistantMessage` (`rpc-wire.generated.ts:114-133` at
  * v18.8.9), so a missing field is a type error; `usage` carries the `totalTokens` and `cost` that `Usage` requires
- * (`:76-82`; `UsageCost` `:68-74`). `recorded-fixtures.test.ts` checks these values against line 14.
+ * (`:76-82`; `UsageCost` `:68-74`). `recorded-fixtures.test.ts` checks these values against the recording.
  */
 const STORED_ANSWER: OmpWire.AssistantMessage = {
   role: "assistant",
@@ -233,7 +246,10 @@ export function storedAssistant(id: EntryIdLike, parentId: EntryIdLike) {
   };
 }
 
-/** The recorded `branch_summary` session entry and its ids are read from `p3-branch-summary.fixture.jsonl:34`. */
+/**
+ * The recorded `branch_summary` session entry and its ids: in the entries `p3-branch-summary` reads after its branch (its
+ * last `get_entries` answer).
+ */
 const BranchSummaryEntryRecord = z.object({
   type: z.literal("branch_summary"),
   id: z.string(),
@@ -242,9 +258,9 @@ const BranchSummaryEntryRecord = z.object({
   fromId: z.string(),
   summary: z.string(),
 });
-const EntriesResponseRecord = z.object({ data: z.object({ entries: z.array(z.unknown()) }) });
+const EntriesRecord = z.object({ entries: z.array(z.unknown()) });
 const RECORDED_BRANCH_SUMMARY = BranchSummaryEntryRecord.parse(
-  EntriesResponseRecord.parse(recordedFrame("p3-branch-summary", 34)).data.entries.find(
+  EntriesRecord.parse(recordedResults(P3_BRANCH_SUMMARY, "get_entries").at(-1)).entries.find(
     (entry): entry is { type: string } =>
       typeof entry === "object" &&
       entry !== null &&

@@ -390,5 +390,3 @@ export const R1_IMPORT_RESULT: SessionImportResult = {
   artifactStatus: "preserved",
   artifactWarnings: [],
 };
-
-export const R1_REPLAY_SCENARIO = "prompt-stream" as const;

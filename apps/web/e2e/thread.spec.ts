@@ -1,14 +1,17 @@
 /// <reference types="node" />
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
-const FIXTURE_PATH = join(APP_ROOT, "../../packages/omp-rpc/fixtures/prompt-stream.fixture.jsonl");
+const RECORDING_PATH = join(
+  APP_ROOT,
+  "src/modules/R0/fixtures/recordings/prompt-stream.session.jsonl",
+);
 
 function buildPlaygroundPage(): void {
   execFileSync(
@@ -23,12 +26,7 @@ function buildPlaygroundPage(): void {
     { cwd: APP_ROOT, stdio: "inherit" },
   );
 
-  const lines = readFileSync(FIXTURE_PATH, "utf8").trim().split("\n");
-  const fixture = {
-    header: JSON.parse(lines[0] ?? "{}"),
-    frames: lines.slice(1).map((line) => JSON.parse(line)),
-  };
-  writeFileSync(join(DIST_ROOT, "prompt-stream-fixture.json"), JSON.stringify(fixture));
+  copyFileSync(RECORDING_PATH, join(DIST_ROOT, "prompt-stream.session.jsonl"));
 
   const css = readdirSync(join(DIST_ROOT, "assets")).find((file) => file.endsWith(".css"));
   if (!css)

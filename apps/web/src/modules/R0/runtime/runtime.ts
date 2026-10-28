@@ -18,8 +18,8 @@ import type {
   OmpWire,
   PortCallOptions,
 } from "@omp-app/contracts";
-import type { PromptParams } from "@omp-app/contracts/chat-host";
 import { AppFailure } from "@omp-app/contracts";
+import type { PromptParams } from "@omp-app/contracts/chat-host";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { credentialFailureFromMessage, credentialStatusError } from "@/modules/D3/auth/credential";
 import {

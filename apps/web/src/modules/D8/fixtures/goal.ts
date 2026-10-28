@@ -33,7 +33,7 @@ export const RECORDED_GOAL_DROPPED: RecordedFixture<Goal> = {
 
 /**
  * omp's refusal for the goal tool when a goal is created while the session already has one (T7's recorded tool result,
- * `isError`). Over RPC the same case gets a different text: RPC_CREATE_REFUSED_ACTIVE_GOAL.
+ * `isError`). The app's `goal` method refuses the same case with another text: CREATE_REFUSED_ACTIVE_GOAL.
  */
 export const RECORDED_CREATE_REFUSED: RecordedFixture<string> = {
   name: "goal: a new goal refused because one exists",
@@ -42,17 +42,18 @@ export const RECORDED_CREATE_REFUSED: RecordedFixture<string> = {
 };
 
 /**
- * omp's refusal over RPC when a goal is created while one is active. Not recorded on main: it is the text omp's RPC goal
- * code throws (omp v18.8.9, `rpc-goal.ts:250`; the omp v18.6.1 reference copy does not contain it).
+ * The chat host's refusal of the `goal` method's create while a goal is active
+ * (`packages/server/src/chat-host/goal.ts`, the text omp's RPC goal code threw: omp v18.8.9 `rpc-goal.ts:250`).
  */
-export const RPC_CREATE_REFUSED_ACTIVE_GOAL =
+export const CREATE_REFUSED_ACTIVE_GOAL =
   "A goal is already active. Drop it before creating another.";
 
 /**
- * omp's `goal.continuationModes` setting as the app reads it. With `rpc`, omp continues a goal for an RPC host; without
- * it, it does not (omp v18.6.1 `docs_rpc.md:475-476`). `withoutRpc` is omp's default for the setting (omp v18.8.9
- * `settings.ts:27`, read by the main agent; that file is not in the local copies). `unreadable` stands for the app
- * failing to read the setting.
+ * omp's `goal.continuationModes` setting as the app reads it. The chat host continues a goal when the setting lists `rpc`,
+ * the entry omp's RPC hosts read (`packages/server/src/chat-host/goal.ts`, `CONTINUATION_MODE`); without it, it does
+ * not (omp v18.6.1 `docs_rpc.md:475-476`). `withoutRpc` is omp's default for the setting (omp v18.8.9 `settings.ts:27`,
+ * read by the main agent; that file is not in the local copies). `unreadable` stands for the app failing to read the
+ * setting.
  */
 export const CONTINUATION_MODE_SETTINGS = {
   withRpc: ["rpc"],

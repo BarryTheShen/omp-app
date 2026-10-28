@@ -13,7 +13,7 @@ import {
 
 /**
  * A `count_reply <tag>` answer reads `count-<n> <tag>`: the counter rises across the fake server, so an
- * answer given again is visibly new (packages/omp-rpc/scripts/fake-openai-server.ts). The counter is
+ * answer given again is visibly new (packages/server/test/fake-provider/fake-openai-server.ts). The counter is
  * compared, never matched exactly, because omp may make its own model calls in between.
  */
 function counterOf(text: string | null): number {
@@ -38,15 +38,14 @@ function answerTo(page: Page, tag: string) {
 }
 
 /**
- * A chat that does not know the branch command. The app probes each command by sending it and reading
- * whether the chat answers "Unknown command:"; every chat runs through this stand-in, which answers only
- * `branch` that way and forwards every other line to the chat it starts, so the probe finds branch
- * missing and nothing else changes.
+ * A chat without the branch command. The app reads what a chat answers from the chat host's hello (its `methods`, SDK
+ * plan H5.6a); every chat runs through this stand-in, which leaves `branch` out of the hello, answers a `branch` request
+ * as an unknown method, and passes every other line through, so the app finds branch missing and nothing else changes.
  */
 const OMP_WITHOUT_BRANCH = join(APP_ROOT, ".data", "p3-4-e2e", "omp-without-branch");
 const WRAPPER_SOURCE = [
   "#!/usr/bin/env bun",
-  "// Stand-in chat: answers the branch command as unknown and forwards every other line to the chat it starts.",
+  "// Stand-in chat: a chat host without the branch method; every other line passes through.",
   'import { spawn } from "node:child_process";',
   'import { createInterface } from "node:readline";',
   "const [program, ...args] = process.argv.slice(2);",
@@ -54,23 +53,42 @@ const WRAPPER_SOURCE = [
   "  env: process.env,",
   '  stdio: ["pipe", "pipe", "inherit"],',
   "});",
-  "child.stdout.pipe(process.stdout);",
-  "child.on('exit', (code) => process.exit(code ?? 1));",
+  "let exitCode = null;",
+  "let drained = false;",
+  "child.on('exit', (code) => {",
+  "  exitCode = code ?? 1;",
+  "  if (drained) process.exit(exitCode);",
+  "});",
   "process.on('SIGTERM', () => child.kill('SIGTERM'));",
   "process.on('SIGINT', () => child.kill('SIGINT'));",
-  "const lines = createInterface({ input: process.stdin });",
-  "lines.on('close', () => child.stdin.end());",
-  "lines.on('line', (line) => {",
-  "  let command;",
+  "const parse = (line) => {",
   "  try {",
-  "    command = JSON.parse(line);",
+  "    return JSON.parse(line);",
   "  } catch {",
-  "    child.stdin.write(line + '\\n');",
+  "    return undefined;",
+  "  }",
+  "};",
+  "const fromHost = createInterface({ input: child.stdout });",
+  "fromHost.on('close', () => {",
+  "  drained = true;",
+  "  if (exitCode !== null) process.exit(exitCode);",
+  "});",
+  "fromHost.on('line', (line) => {",
+  "  const value = parse(line);",
+  "  if (value?.kind === 'hello' && Array.isArray(value.methods)) {",
+  "    value.methods = value.methods.filter((method) => method !== 'branch');",
+  "    process.stdout.write(JSON.stringify(value) + '\\n');",
   "    return;",
   "  }",
-  "  if (command !== null && typeof command === 'object' && command.type === 'branch') {",
-  "    const error = { id: command.id, type: 'response', command: 'branch', success: false, error: 'Unknown command: branch' };",
-  "    process.stdout.write(JSON.stringify(error) + '\\n');",
+  "  process.stdout.write(line + '\\n');",
+  "});",
+  "const fromServer = createInterface({ input: process.stdin });",
+  "fromServer.on('close', () => child.stdin.end());",
+  "fromServer.on('line', (line) => {",
+  "  const value = parse(line);",
+  "  if (value?.kind === 'request' && value.method === 'branch') {",
+  "    const error = { code: 'unknown_method', message: 'Unknown method: branch' };",
+  "    process.stdout.write(JSON.stringify({ kind: 'response', id: value.id, ok: false, error }) + '\\n');",
   "    return;",
   "  }",
   "  child.stdin.write(line + '\\n');",

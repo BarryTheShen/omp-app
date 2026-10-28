@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import * as path from "node:path";
 
-const SERVER = path.resolve(import.meta.dir, "../scripts/fake-openai-server.ts");
+const SERVER = path.resolve(import.meta.dir, "fake-openai-server.ts");
 // Scratch files live in the repo's git-ignored `.data` directory, never in /tmp.
-const SCRATCH = path.resolve(import.meta.dir, "../../../.data");
+const SCRATCH = path.resolve(import.meta.dir, "../../../../.data");
 const decoder = new TextDecoder();
 
 interface Turn {

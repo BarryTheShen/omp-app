@@ -1,18 +1,15 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import type {
-  CapabilityMap,
-  ChatSessionRequest,
-  Fixture,
-  OmpCommand,
-  OmpMessage,
-  ThreadId,
-} from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, OmpMessage, ThreadId } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { commandOf, ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { AppShell } from "@/shell";
-import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
-import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
+import {
+  parseRecording,
+  playRecording,
+  type RecordedSession,
+  type SessionRecording,
+} from "../../R0/fixtures/recorded-session";
 import { useOmpRuntime } from "../../R0/runtime";
 import { OmpRuntimeStore } from "../../R0/store";
 import { MarkdownShowcase } from "../markdown";
@@ -86,25 +83,25 @@ function Controls({
 }
 
 function ThreadPlayground() {
-  const [fixture, setFixture] = useState<Fixture | undefined>(undefined);
+  const [recording, setRecording] = useState<SessionRecording | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [mode, setMode] = useState<PlaygroundMode>("empty");
   const store = useMemo(() => new OmpRuntimeStore({ threadId: THREAD_ID }), []);
   const sequenceRef = useRef(0);
-  const sessionRef = useRef<RpcSession | undefined>(undefined);
+  const sessionRef = useRef<RecordedSession | undefined>(undefined);
   useEffect(() => {
     let active = true;
-    void fetch("/prompt-stream-fixture.json")
+    void fetch("/prompt-stream.session.jsonl")
       .then((response) => {
-        if (!response.ok) throw new Error(`Fixture request failed (${response.status})`);
-        return response.json() as Promise<Fixture>;
+        if (!response.ok) throw new Error(`Recording request failed (${response.status})`);
+        return response.text();
       })
-      .then((loaded) => {
-        if (active) setFixture(loaded);
+      .then((text) => {
+        if (active) setRecording(parseRecording(text));
       })
       .catch((error: unknown) => {
-        if (active) setLoadError(error instanceof Error ? error.message : "Fixture load failed");
+        if (active) setLoadError(error instanceof Error ? error.message : "Recording load failed");
       });
     return () => {
       active = false;
@@ -112,29 +109,22 @@ function ThreadPlayground() {
   }, []);
 
   useEffect(() => {
-    if (fixture === undefined) return;
-    const duplex = new FixtureSession({ fixture, realtime: true });
-    const session = new RpcSession(duplex);
-    const unsubscribe = session.onEvent((event) =>
-      store.ingest(sessionEventOfRpc(event), ++sequenceRef.current),
-    );
+    if (recording === undefined) return;
+    const session = playRecording(recording, { realtime: true });
+    const unsubscribe = session.onEvent((event) => store.ingest(event, ++sequenceRef.current));
     sessionRef.current = session;
-    void session.start().catch((error: unknown) => {
-      setLoadError(error instanceof Error ? error.message : "Fixture session failed to start");
-    });
     return () => {
       unsubscribe();
       sessionRef.current = undefined;
-      void session.close();
+      session.close();
     };
-  }, [fixture, store]);
+  }, [recording, store]);
 
-  // The fixture still plays omp's RPC frames until H5.6 rewrites it: the runtime's requests reach it as RPC commands.
-  const send = useCallback<ChatSessionRequest>(async (args, options) => {
+  const send = useCallback<ChatSessionRequest>((args, options) => {
     const session = sessionRef.current;
-    if (session === undefined) throw new Error("Fixture session is not ready");
-    const command = commandOf(args.method, args.params) as unknown as OmpCommand;
-    return (await session.send(command, options)) as never;
+    if (session === undefined)
+      return Promise.reject(new Error("The recorded session is not ready"));
+    return session.request(args, options);
   }, []);
   const { runtime } = useOmpRuntime({ store, send, capabilities: CAPABILITIES });
 
@@ -149,10 +139,13 @@ function ThreadPlayground() {
       ompEvent({ type: "message_end", messageId: "msg-image", message: IMAGE_USER_MESSAGE }),
       ++sequenceRef.current,
     );
-    void session.send({ type: "prompt", message: "run_bash" }).then(
-      () => setMode("settled"),
-      () => setMode("error"),
-    );
+    void session
+      .request({ threadId: THREAD_ID, method: "prompt", params: { text: "run_bash" } })
+      .then(() => session.idle())
+      .then(
+        () => setMode("settled"),
+        () => setMode("error"),
+      );
   }, [mode, store]);
 
   const showError = useCallback(() => {

@@ -4,7 +4,6 @@
 import type { ChatSessionEvent, ThreadId } from "@omp-app/contracts";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import { promptResultEvent } from "@/modules/R0/store/session-events";
 import type { EditRunDecorator, EditRunResult } from "../contract";
 import { BRANCHED_CHAT, promptPending, USER_WITH_IMAGE } from "../fixtures/omp-branch";
 import type { P3RunState, P3SentState } from "../runs/status";
@@ -52,7 +51,7 @@ async function editImageMessage(decorator?: EditRunDecorator): Promise<P3SentSta
       { kind: "event", event: { type: "agent_end" } } as unknown as ChatSessionEvent,
       2,
     );
-    sentStore.ingest(promptResultEvent(promptPending("req-cc9")), 3);
+    sentStore.ingest(promptPending("req-cc9"), 3);
     sentStore.ingest(
       { kind: "event", event: { type: "session_settled" } } as unknown as ChatSessionEvent,
       4,

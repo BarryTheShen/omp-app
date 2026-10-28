@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type {
   ReasoningMessagePartProps,
   TextMessagePartProps,
@@ -11,30 +9,24 @@ import type {
   ChatSessionEvent,
   ChatSessionRequest,
   EntryId,
-  Fixture,
-  OmpCommand,
-  ExtensionUiResponse as PortExtensionUiResponse,
   ThreadId,
   ToolCallId,
 } from "@omp-app/contracts";
-import { parseFixture } from "@omp-app/contracts";
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, test } from "vitest";
-import {
-  commandOf,
-  notificationEvent,
-  ompEvent,
-  sessionEventOfRpc,
-} from "@/modules/R0/store/session-events";
-import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
-import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
-import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
+import { ompEvent } from "@/modules/R0/store/session-events";
 import { QueueController } from "../actions/actions";
 import { createOmpBranchingController } from "../branching/branching";
+import {
+  playRecording,
+  type RecordedSession,
+  type SessionRecording,
+} from "../fixtures/recorded-session";
+import { ABORT, PROMPT_STREAM, UI_ROUND_TRIP } from "../fixtures/recordings";
 import { SessionHistoryLoader } from "../history/history";
 import { createOmpRuntime, useOmpRuntime } from "../runtime/runtime";
-import { OmpRuntimeStore, type OmpRuntimeTransport, type RuntimeSnapshot } from "../store/store";
+import { OmpRuntimeStore, type RuntimeSnapshot } from "../store/store";
 
 const capabilities: CapabilityMap = {
   "omp.cmd.prompt": { state: "available", via: "rpc" },
@@ -48,76 +40,23 @@ const capabilities: CapabilityMap = {
   "omp.ui": { state: "available", via: "rpc" },
 };
 
-type Scenario = "prompt-stream" | "abort" | "ui-round-trip" | "out-of-order";
-
 interface Harness {
-  readonly session: RpcSession;
+  readonly session: RecordedSession;
   readonly store: OmpRuntimeStore;
   readonly controller: ReturnType<typeof createOmpRuntime>;
   readonly send: ChatSessionRequest;
   readonly threadId: ThreadId;
-  readonly feedNotification: (frame: unknown) => void;
-  close(): Promise<void>;
 }
 
-function fixtureFor(scenario: Scenario): Fixture {
-  const text = readFileSync(
-    resolve(process.cwd(), "../../packages/omp-rpc/fixtures", `${scenario}.fixture.jsonl`),
-    "utf8",
-  );
-  const parsed = parseFixture(text);
-  if (!parsed.ok) throw new Error(`${scenario}: ${parsed.error.message}`);
-  return parsed.value;
-}
-
-async function openHarness(scenario: Scenario): Promise<Harness> {
-  const fixtureSession = new FixtureSession({ fixture: fixtureFor(scenario) });
-  const duplex: RpcDuplex = {
-    writeLine: (line) => fixtureSession.writeLine(line),
-    onChunk: (listener) => fixtureSession.onChunk((chunk) => listener(Uint8Array.from(chunk))),
-    onClose: (listener) => fixtureSession.onClose(listener),
-    close: () => fixtureSession.close(),
-  };
-  const session = new RpcSession(duplex);
-  const threadId = `${scenario}-thread` as ThreadId;
-  const transport: OmpRuntimeTransport = {
-    // The fixture is a recorded omp-rpc session until H5.6: the host's answer is omp's RPC response with the same fields.
-    answer: async ({ id, answer }) => {
-      await session.answerExtensionUi({
-        type: "extension_ui_response",
-        id,
-        ...(answer as object),
-      } as unknown as PortExtensionUiResponse);
-      return null;
-    },
-  };
-  const store = new OmpRuntimeStore({ threadId, transport });
-  let seq = 0;
-  const feedNotification = (frame: unknown): void => {
-    seq += 1;
-    store.ingest(notificationEvent(frame), seq);
-  };
-  session.onEvent((event) => {
-    seq += 1;
-    store.ingest(sessionEventOfRpc(event), seq);
-  });
-  await session.start();
-  // The fixtures are recorded omp-rpc sessions until H5.6: the runtime's requests reach them as RPC commands.
-  const send = ((args: { method: string; params: unknown }, options: unknown) =>
-    session.send(
-      commandOf(args.method, args.params) as unknown as OmpCommand,
-      options as never,
-    )) as unknown as ChatSessionRequest;
+/** The runtime on a recorded chat session: its requests and answers play the recording, its payloads feed the store. */
+function openHarness(recording: SessionRecording): Harness {
+  const session = playRecording(recording);
+  const threadId = `${recording.header.scenario}-thread` as ThreadId;
+  const store = new OmpRuntimeStore({ threadId, transport: { answer: session.answer } });
+  session.onEvent((event, seq) => store.ingest(event, seq));
+  const send = session.request;
   const controller = createOmpRuntime({ store, send, capabilities });
-  return {
-    session,
-    store,
-    controller,
-    send,
-    threadId,
-    feedNotification,
-    close: () => session.close(),
-  };
+  return { session, store, controller, send, threadId };
 }
 
 function waitForSnapshot(
@@ -186,9 +125,9 @@ function GateRuntime({
   );
 }
 
-describe("R0 W2 recorded fixture runtime gate", () => {
+describe("R0 W2 recorded session runtime gate", () => {
   test("prompt-stream renders real assistant-ui user/text/reasoning/tool DOM and settles", async () => {
-    const harness = await openHarness("prompt-stream");
+    const harness = openHarness(PROMPT_STREAM);
     const ui = render(<GateRuntime store={harness.store} send={harness.send} />);
     try {
       await harness.controller.submitPrompt({ mode: "prompt", text: "run_bash", delivery: "new" });
@@ -209,12 +148,12 @@ describe("R0 W2 recorded fixture runtime gate", () => {
       expect(screen.getByText(/tool said: fixture-tool/)).toBeTruthy();
     } finally {
       ui.unmount();
-      await harness.close();
+      harness.session.close();
     }
   });
 
-  test("abort fixture mounts the real thread and leaves partial assistant text visible", async () => {
-    const harness = await openHarness("abort");
+  test("abort recording mounts the real thread and leaves partial assistant text visible", async () => {
+    const harness = openHarness(ABORT);
     const ui = render(<GateRuntime store={harness.store} send={harness.send} />);
     let cancelled = false;
     const unsubscribe = harness.store.subscribe((snapshot) => {
@@ -253,43 +192,26 @@ describe("R0 W2 recorded fixture runtime gate", () => {
     } finally {
       ui.unmount();
       unsubscribe();
-      await harness.close();
-    }
-  });
-
-  test("out-of-order fixture resolves concurrent commands without cross-correlating results", async () => {
-    const harness = await openHarness("out-of-order");
-    try {
-      const results = await Promise.all([
-        harness.session.send({ type: "bash", command: "sleep 1 && echo slow" }),
-        harness.session.send({ type: "get_state" }),
-      ]);
-      expect(results[0]).toMatchObject({ output: "slow\n" });
-      expect(results[1]).toMatchObject({ sessionId: expect.any(String) });
-    } finally {
-      await harness.close();
+      harness.session.close();
     }
   });
 
   test("ui-round-trip routes the host's dialog through R0.5 answer actions", async () => {
-    const harness = await openHarness("ui-round-trip");
-    let queue: QueueController | undefined;
-    let answerError: unknown;
-    const offRequest = harness.session.onRequest((request) => {
-      if (request.type !== "extension_ui_request") return;
-      harness.feedNotification(request);
-      if (request.method === "ask" && queue) {
-        void queue
-          .answerDialog(request.id, { answers: [{ id: "db", selectedOptions: ["SQLite"] }] })
-          .catch((error: unknown) => {
-            answerError = error;
-          });
-      }
-    });
-    queue = new QueueController({
+    const harness = openHarness(UI_ROUND_TRIP);
+    const queue = new QueueController({
       store: harness.store,
       send: harness.send,
       capabilities,
+    });
+    let answerError: unknown;
+    // The store has taken the dialog in by now: its listener was added first.
+    const offEvent = harness.session.onEvent((event) => {
+      if (event.kind !== "host_request" || event.request.method !== "ui.ask") return;
+      void queue
+        .answerDialog(event.request.id, { answers: [{ id: "db", selectedOptions: ["SQLite"] }] })
+        .catch((error: unknown) => {
+          answerError = error;
+        });
     });
     try {
       await harness.send({
@@ -306,8 +228,8 @@ describe("R0 W2 recorded fixture runtime gate", () => {
       expect(settled.prompt.promptResult?.status).toBe("completed");
       expect(Object.values(settled.tools).some((tool) => tool.result !== undefined)).toBe(true);
     } finally {
-      offRequest();
-      await harness.close();
+      offEvent();
+      harness.session.close();
     }
   });
 

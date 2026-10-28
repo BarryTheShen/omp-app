@@ -11,7 +11,7 @@ import {
 
 /**
  * A `count_reply <tag>` answer reads `count-<n> <tag>`, so each test waits for its own answer by its tag
- * (packages/omp-rpc/scripts/fake-openai-server.ts).
+ * (packages/server/test/fake-provider/fake-openai-server.ts).
  */
 function answerTo(page: Page, tag: string) {
   return page.getByText(new RegExp(`^count-\\d+ ${tag}$`));

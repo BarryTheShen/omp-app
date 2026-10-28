@@ -3,7 +3,7 @@
 /**
  * The real-omp end-to-end harness: every live test runs the composed app (the server from
  * `packages/server/scripts/dev.ts`, real omp, and the fake model in
- * `packages/omp-rpc/scripts/fake-openai-server.ts`) in a temporary home, so nothing touches `~/.omp`.
+ * `packages/server/test/fake-provider/fake-openai-server.ts`) in a temporary home, so nothing touches `~/.omp`.
  *
  * Run with `OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts` from `apps/web`: the global setup (`global-setup.ts`)
  * builds the app's chat host once per lockfile, the omp every live test runs. The fake model
@@ -28,7 +28,10 @@ export const APP_ROOT = resolve(process.cwd(), "../..");
  */
 export const REAL_OMP = process.env.OMP_APP_CHAT_HOST_BIN ?? "";
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
-const FAKE_PROVIDER = resolve(APP_ROOT, "packages/omp-rpc/scripts/fake-openai-server.ts");
+const FAKE_PROVIDER = resolve(
+  APP_ROOT,
+  "packages/server/test/fake-provider/fake-openai-server.ts",
+);
 const SESSION_PATHS = resolve(APP_ROOT, "packages/server/src/modules/A1/sessions/paths.ts");
 const FILE_WATCH_REGISTRY = resolve(
   APP_ROOT,

@@ -873,7 +873,7 @@ function usageOf(request: Request) {
 /** A held reply streams this many lines before it waits for the spec's release (see holdForRelease). */
 const HELD_AFTER_LINES = 8;
 /** The text of the latest user message, so a keyword in an earlier message cannot hold or steer a later reply. */
-function lastUserText(messages: readonly { role: string; content: unknown }[] | undefined): string {
+function lastUserText(messages: readonly Message[] | undefined): string {
   const user = messages?.filter((message) => message.role === "user").at(-1);
   return user === undefined ? "" : text(user.content);
 }

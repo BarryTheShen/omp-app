@@ -1,4 +1,4 @@
-import type { ChatSessionEvent, OmpWire, RpcSessionEvent } from "@omp-app/contracts";
+import type { ChatSessionEvent, OmpWire } from "@omp-app/contracts";
 import type {
   ChatEvent,
   HostDialogRequest,
@@ -142,39 +142,3 @@ export const SESSION_SETTLED_EVENT: ChatSessionEvent = {
   kind: "event",
   event: { type: "session_settled" },
 };
-
-/**
- * One of A0's RPC session events as the chat host sends it, for the recordings of omp's RPC sessions
- * (`packages/omp-rpc/fixtures`) that tests and playgrounds still play through omp-rpc's session. They go when H5.6 deletes
- * omp-rpc, and recordings of the chat host replace them.
- */
-export function sessionEventOfRpc(event: RpcSessionEvent): ChatSessionEvent {
-  switch (event.kind) {
-    case "omp":
-      return ompEvent(event.event);
-    case "prompt_result":
-      return promptResultEvent(event.event);
-    case "session_settled":
-      return SESSION_SETTLED_EVENT;
-    case "notification":
-      return notificationEvent(event.frame);
-    case "bash":
-      return bashEvent(event);
-    case "process":
-      return event;
-  }
-}
-
-/**
- * A host request as the RPC command omp took (`prompt`, `steer` and `follow_up` carry `message` where the host takes
- * `text`): for the stand-ins that still play omp's RPC frames (a recorded fixture session) until H5.6d rewrites them on
- * the host's protocol.
- */
-export function commandOf(method: string, params: unknown): Record<string, unknown> {
-  const fields = { ...(params as Record<string, unknown>) };
-  if ((method === "prompt" || method === "steer" || method === "follow_up") && "text" in fields) {
-    const { text, ...rest } = fields;
-    return { type: method, ...rest, message: text };
-  }
-  return { type: method, ...fields };
-}

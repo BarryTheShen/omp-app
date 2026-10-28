@@ -259,12 +259,12 @@ x11.XFlush(display)
 x11.XCloseDisplay(display)
 PY
 }
-# The fake model provider of the e2e harness (packages/omp-rpc/scripts/fake-openai-server.ts). It answers for the agent
+# The fake model provider of the e2e harness (packages/server/test/fake-provider/fake-openai-server.ts). It answers for the agent
 # folder, writes omp's models.yml and config.yml there, logs every request to $requests, and stops when its standard
 # input ends, so it gets a pipe that this shell holds open. The harness passes omp `--model fake/fake-model` through
 # the server's ompArgs; the packaged server takes no such argument, so the model is omp's default in config.yml.
 start_provider() {
-  local script="$repo/packages/omp-rpc/scripts/fake-openai-server.ts" n
+  local script="$repo/packages/server/test/fake-provider/fake-openai-server.ts" n
   command -v bun >/dev/null 2>&1 || return 1
   [[ -f $script ]] || return 1
   coproc PROVIDER { cd "$PI_CODING_AGENT_DIR" && exec bun "$script" "$PI_CODING_AGENT_DIR" >"$work/provider.log" 2>&1; }

@@ -24,7 +24,7 @@ const BLOCK_ROWS = [
 const FINAL_ROW = "export const answer = sum([1, 2, 3]);";
 
 /**
- * The block the fake model streams for `stream_long_code` (packages/omp-rpc/scripts/fake-openai-server.ts): over
+ * The block the fake model streams for `stream_long_code` (packages/server/test/fake-provider/fake-openai-server.ts): over
  * the code view's 2,048-character short-block limit, so the block is coloured in the background as it grows.
  */
 const LONG_BLOCK_ROWS = Array.from(

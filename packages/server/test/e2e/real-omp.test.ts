@@ -21,7 +21,7 @@ function isPromptResult(payload: unknown): boolean {
   );
 }
 
-const FAKE_PROVIDER = resolve(import.meta.dir, "../../../omp-rpc/scripts/fake-openai-server.ts");
+const FAKE_PROVIDER = resolve(import.meta.dir, "../fake-provider/fake-openai-server.ts");
 // Runs when asked (OMP_APP_REAL_OMP=1). omp is the app's own build of its command line: the compiled chat host when
 // OMP_APP_CHAT_HOST_BIN names it (the e2e global setup builds it), else the chat host's entry from source.
 const realTest = Bun.env.OMP_APP_REAL_OMP === "1" ? test : test.skip;

@@ -17,7 +17,7 @@ import {
  * answered one question at a time, and the chosen answers reach omp, which the ask card shows. Cancelling the dialog
  * stops the turn, as omp's ask tool does. The fake model answers `ask_user` (one radio question), `checkbox_ask_one`
  * (one checkbox question) and `checkbox_ask_two` (a radio question, then a checkbox question), as
- * packages/omp-rpc/scripts/fake-openai-server.ts defines them. Screenshots are light, dark and at 390 px.
+ * packages/server/test/fake-provider/fake-openai-server.ts defines them. Screenshots are light, dark and at 390 px.
  */
 
 realTest.setTimeout(420_000);
