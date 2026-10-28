@@ -18,8 +18,7 @@ import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures"
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import { QueueController } from "../../R0/actions/actions";
-import { commandOf } from "../../R0/store/rpc-frames";
-import { sessionEventOfRpc } from "../../R0/store/session-events";
+import { commandOf, sessionEventOfRpc } from "../../R0/store/session-events";
 import { OmpRuntimeStore, type RuntimeSnapshot } from "../../R0/store/store";
 import { renderDialogRequest } from "../dialogs";
 import { DialogHostController } from "../host";

@@ -21,8 +21,12 @@ import { parseFixture } from "@omp-app/contracts";
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, test } from "vitest";
-import { commandOf } from "@/modules/R0/store/rpc-frames";
-import { notificationEvent, ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
+import {
+  commandOf,
+  notificationEvent,
+  ompEvent,
+  sessionEventOfRpc,
+} from "@/modules/R0/store/session-events";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";

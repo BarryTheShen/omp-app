@@ -9,8 +9,7 @@ import type {
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { commandOf } from "@/modules/R0/store/rpc-frames";
-import { ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
+import { commandOf, ompEvent, sessionEventOfRpc } from "@/modules/R0/store/session-events";
 import { AppShell } from "@/shell";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";

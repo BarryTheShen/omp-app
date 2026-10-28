@@ -64,7 +64,7 @@ export function uiEvent(uiEventFields: UiPresentationEvent): ChatSessionEvent {
 }
 
 /**
- * One of A0's RPC notification frames as the chat host sends it: the inverse of `rpc-frames.ts`, for fixtures recorded or
+ * One of A0's RPC notification frames as the chat host sends it, for fixtures recorded or
  * written as RPC frames. A dialog is a host request (`ui.<method>`, keeping its id), omp's other UI calls are the host's
  * UI events, a host tool call or URI read or write is a host request, and any other frame is an event of its own type.
  */
@@ -163,4 +163,18 @@ export function sessionEventOfRpc(event: RpcSessionEvent): ChatSessionEvent {
     case "process":
       return event;
   }
+}
+
+/**
+ * A host request as the RPC command omp took (`prompt`, `steer` and `follow_up` carry `message` where the host takes
+ * `text`): for the stand-ins that still play omp's RPC frames (a recorded fixture session) until H5.6d rewrites them on
+ * the host's protocol.
+ */
+export function commandOf(method: string, params: unknown): Record<string, unknown> {
+  const fields = { ...(params as Record<string, unknown>) };
+  if ((method === "prompt" || method === "steer" || method === "follow_up") && "text" in fields) {
+    const { text, ...rest } = fields;
+    return { type: method, ...rest, message: text };
+  }
+  return { type: method, ...fields };
 }

@@ -12,8 +12,6 @@ import type {
   OmpWire,
   PortCallOptions,
   ProvisionalMessageKey,
-  RpcSessionEvent,
-  RpcSessionNotification,
   ThreadId,
   ToolCallId,
   UiStateEvent,
@@ -42,13 +40,12 @@ import {
 } from "@omp-app/contracts/chat-host";
 import { createDraft, type Draft, finishDraft, freeze, original } from "immer";
 import {
-  type HostCallCancelFrame,
   type HostCallFrame,
-  type HostDialogCancelFrame,
   type HostDialogFrame,
-  type HostUiEvent,
-  rpcEventOf,
-} from "./rpc-frames";
+  type StoreEvent,
+  type StoreFrame,
+  storeEventOf,
+} from "./store-events";
 
 type QueueMode = OmpWire.QueueMode;
 type SessionState = OmpWire.SessionState;
@@ -296,16 +293,10 @@ export interface RuntimeSnapshot {
 
 export type RuntimeStoreListener = (snapshot: RuntimeSnapshot) => void;
 /**
- * A notification frame: omp's RPC notifications still translated for their readers, the host's UI events as they come,
- * and the store's own frames for the host's requests (see `rpc-frames.ts`).
+ * A frame the store hands to feature modules by its type: one of the host's events, or the store's own frame for one of
+ * the host's requests (see `store-events.ts`).
  */
-export type RuntimeNotificationFrame =
-  | RpcSessionNotification
-  | HostUiEvent
-  | HostDialogFrame
-  | HostDialogCancelFrame
-  | HostCallFrame
-  | HostCallCancelFrame;
+export type RuntimeNotificationFrame = StoreFrame;
 export type RuntimeNotificationListener = (
   frame: RuntimeNotificationFrame,
   seq: number,
@@ -1633,14 +1624,14 @@ export class OmpRuntimeStore {
    * cannot say whether such a request was answered since, so it is not asked again. The questions a chat's omp still
    * waits on are recorded from the server's record instead (`recordOpenQuestion`).
    *
-   * Inside, the store still reads A0's RPC shapes, translated once here (`rpc-frames.ts`), until the later H5.4 parts
-   * move its readers to the session events.
+   * The payload is sorted once here (`store-events.ts`): omp's events, the frames handed on by type, a prompt's result, the
+   * session's settle, a `!` run and the process's state.
    */
   public ingest(payload: ChatSessionEvent, seq: number, fromHistory = false): void {
-    this.ingestRpc(rpcEventOf(payload), seq, fromHistory);
+    this.ingestEvent(storeEventOf(payload), seq, fromHistory);
   }
 
-  private ingestRpc(event: RpcSessionEvent, seq: number, fromHistory: boolean): void {
+  private ingestEvent(event: StoreEvent, seq: number, fromHistory: boolean): void {
     if (!Number.isSafeInteger(seq) || seq < 1) {
       throw new RangeError("event seq must be a positive safe integer");
     }
@@ -1690,14 +1681,15 @@ export class OmpRuntimeStore {
         break;
       }
       default:
-        // A future RpcSessionEvent kind is intentionally ignored without losing the sequence slot.
+        // A payload the store holds no state for (`other`) keeps its sequence slot.
         break;
     }
     if (setsPromptLifecycle(eventValue)) this.promptEventSeq = seq;
     next.lastSeq = seq;
     this.commit(next);
     if (event.kind === "omp") {
-      this.forwardOmpEvent(event.event, seq, fromHistory);
+      // omp's own event, the shape omp-wire's `OmpEvent` describes until H5.6e retypes the listeners.
+      this.forwardOmpEvent(event.event as unknown as OmpEvent, seq, fromHistory);
       // omp's RPC session classified a goal update as an omp event while D8 listens for it as a frame, so a goal that
       // changed during a run never reached the goal panel (found in H5.4a). It is handed on as a frame too.
       if (event.event.type === "goal_updated")
@@ -2298,7 +2290,7 @@ export class OmpRuntimeStore {
       agentInvoked: rawEvent.agentInvoked,
       status: rawEvent.status,
       sessionSettled: rawEvent.sessionSettled,
-      id: asString(rawEvent.id),
+      id: asString(rawEvent.requestId),
       error: isRecord(rawEvent.error)
         ? (cloneValue(rawEvent.error) as unknown as OmpWire.PromptError)
         : undefined,
@@ -2379,11 +2371,6 @@ export class OmpRuntimeStore {
             heading: EXTENSION_ERROR_HEADING,
             extension: extensionNameOf(frame.extensionPath),
           });
-        }
-        return;
-      case "rpc_frame_error":
-        if (typeof frame.error === "string") {
-          setError(next, { code: "omp_error", message: frame.error, retryable: true });
         }
         return;
       case "goal_updated":
