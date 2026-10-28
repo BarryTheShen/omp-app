@@ -54,6 +54,12 @@ realTest.setTimeout(240_000);
 
 /** The Labels list, its count and the reason, as the open Conversation history panel shows them. */
 async function expectLabels(page: Page): Promise<void> {
+  // The panel reads the chat's entries and labels when it opens: they are there once it shows them.
+  await expect(page.getByRole("region", { name: "Conversation history" })).toHaveAttribute(
+    "data-panel-lifecycle",
+    "populated",
+    { timeout: 60_000 },
+  );
   const labels = page.getByRole("region", { name: "Labels" });
   await expect(labels.getByRole("list", { name: "Labels" })).toBeVisible();
   await expect(labels.getByText("Review checkpoint", { exact: true })).toBeVisible();

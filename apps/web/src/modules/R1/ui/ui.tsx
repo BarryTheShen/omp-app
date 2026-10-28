@@ -44,6 +44,11 @@ export interface SessionCatalogSidebarProps {
   /** Opens a picked chat through the page. It resolves false when the chat did not open, and the page has shown why. */
   readonly onOpenThread?: (threadId: ThreadId) => unknown;
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
+  /**
+   * A New chat click asks for its chat at once, before it waits for the New chat before it: a message sent meanwhile goes
+   * with this one. The returned function ends a click whose chat will not open.
+   */
+  readonly onNewChatRequested?: () => () => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
   /** Waits for the current first-message delivery; false keeps a refused draft from moving to another chat. */
   readonly waitForNewChatSend?: () => Promise<boolean>;
@@ -183,16 +188,21 @@ function capabilityReason(
 const scrollPositions = new WeakMap<SessionCatalogModel, number>();
 
 /**
- * The New chat click that is starting, per catalog. The app rebuilds the sidebar each time a chat is opened, so a click
- * still waiting in the sidebar that started it must find the record its successor reads: a click that a later click or a
- * pick superseded then neither opens nor ends anything.
+ * The New chat click that is starting, per catalog, and the newest New chat click. The app rebuilds the sidebar each time a
+ * chat is opened, so a click still waiting in the sidebar that started it must find the record its successor reads: a click
+ * that a later click or a pick superseded then neither opens nor ends anything.
  */
-const pendingNewChats = new WeakMap<SessionCatalogModel, { current: object | null }>();
+interface PendingNewChat {
+  current: object | null;
+  /** The newest click: a click that a newer one overtook while it waited does not open. */
+  newestClick: object | null;
+}
+const pendingNewChats = new WeakMap<SessionCatalogModel, PendingNewChat>();
 
-function pendingNewChatOf(catalog: SessionCatalogModel): { current: object | null } {
+function pendingNewChatOf(catalog: SessionCatalogModel): PendingNewChat {
   const existing = pendingNewChats.get(catalog);
   if (existing) return existing;
-  const created: { current: object | null } = { current: null };
+  const created: PendingNewChat = { current: null, newestClick: null };
   pendingNewChats.set(catalog, created);
   return created;
 }
@@ -214,6 +224,7 @@ export function SessionCatalogSidebar({
   onOpenThread,
   onNewChat,
   onNewChatStatus,
+  onNewChatRequested,
   waitForNewChatSend,
   onOpenFailed,
   onDeletedOpenThread,
@@ -542,10 +553,17 @@ export function SessionCatalogSidebar({
   };
 
   const createNewChat = async (): Promise<void> => {
-    // Keep the first message with its pending chat instead of superseding its open ticket.
-    if ((await waitForNewChatSend?.()) === false) return;
-    catalog.setActionError(undefined);
+    // The click asks for its chat at once, so a message sent while it waits goes with it (issue 2758).
+    const endRequest = onNewChatRequested?.() ?? (() => undefined);
     const token = {};
+    pendingNewChat.newestClick = token;
+    // Keep the first message with its pending chat instead of superseding its open ticket. A click that a newer click
+    // overtook meanwhile does not open: the newer one would supersede it at once.
+    if ((await waitForNewChatSend?.()) === false || pendingNewChat.newestClick !== token) {
+      endRequest();
+      return;
+    }
+    catalog.setActionError(undefined);
     pendingNewChat.current = token;
     onNewChatStatus?.({ state: "opening" });
     // Reports the end unless a pick already ended this New chat, and reported that itself.

@@ -654,7 +654,13 @@ function ConnectedApp({
     setNewChatThreadId,
     setOpenFailure,
   });
-  const { newChatTicketNow, reportNewChat, openNewChatFromSidebar } = useNewChat({
+  const {
+    newChatTicketNow,
+    openingNewChatTicketNow,
+    requestNewChat,
+    reportNewChat,
+    openNewChatFromSidebar,
+  } = useNewChat({
     controller,
     unsentThread,
     setNewChat,
@@ -703,7 +709,8 @@ function ConnectedApp({
     chat,
     controller,
     reportNewChat,
-    newChatTicketNow,
+    openingNewChatTicketNow,
+    requestNewChat,
     reportOpenFailure,
     capabilities,
     openSettings,

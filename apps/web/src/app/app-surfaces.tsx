@@ -40,7 +40,10 @@ interface AppSurfacesInput {
   readonly chat: ChatSessionClient;
   readonly controller: SelectedThreadHistoryController | null;
   readonly reportNewChat: (status: NewChatStatus) => void;
-  readonly newChatTicketNow: ActiveThreadProps["newChatTicketNow"];
+  /** The New chat that reported opening: a New chat clicked after it waits for its first send. */
+  readonly openingNewChatTicketNow: ActiveThreadProps["newChatTicketNow"];
+  /** A New chat click, before it waits for the New chat before it (issue 2758). */
+  readonly requestNewChat: () => () => void;
   readonly reportOpenFailure: (threadId: ThreadId, error: AppError) => void;
   readonly capabilities: CapabilityMap;
   readonly openSettings: (threadId: ThreadId | null, restoreFocus?: HTMLElement) => void;
@@ -66,7 +69,8 @@ export function useAppSurfaces({
   chat,
   controller,
   reportNewChat,
-  newChatTicketNow,
+  openingNewChatTicketNow,
+  requestNewChat,
   reportOpenFailure,
   capabilities,
   openSettings,
@@ -75,9 +79,9 @@ export function useAppSurfaces({
   onDismissWatchNotice,
 }: AppSurfacesInput) {
   const waitForNewChatSend = useCallback(() => {
-    const ticket = newChatTicketNow();
+    const ticket = openingNewChatTicketNow();
     return ticket === null ? Promise.resolve(true) : ticket.waitForSettled();
-  }, [newChatTicketNow]);
+  }, [openingNewChatTicketNow]);
   // What each sidebar surface id renders. Where it goes: `@/layout` (LAYOUT).
   const sidebarSurfaces: SurfaceMap = {
     folder: {
@@ -123,6 +127,7 @@ export function useAppSurfaces({
             requestRefresh={catalogRefresh.request}
             remote={remote}
             onNewChatStatus={reportNewChat}
+            onNewChatRequested={requestNewChat}
             onOpenFailed={reportOpenFailure}
           />
         ) : null,

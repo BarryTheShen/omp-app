@@ -145,6 +145,11 @@ realTest(
     await sendPrompt(first, "first chat");
     await expect(chatOption(page, "first chat")).toBeVisible({ timeout: 60_000 });
     const second = await startChat(page);
+    // The first chat stays on screen, with its own message box, until the new chat opens; an Enter pressed as the switch
+    // starts is held back and the text stays in the first chat's box. The person types once the new chat is on screen.
+    await expect(transcript(page).getByText("first chat", { exact: true })).toHaveCount(0, {
+      timeout: 60_000,
+    });
     await sendPrompt(second, "second chat");
     await expect(chatOption(page, "second chat")).toBeVisible({ timeout: 60_000 });
 

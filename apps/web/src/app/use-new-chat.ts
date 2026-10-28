@@ -39,7 +39,34 @@ export function useNewChat({
   const newChatHolds = useRef<Array<() => void>>([]);
   // Keep the opened ticket current until its first draft submission and chat-view open settle.
   const newChatTicketRef = useRef<NewChatTicket | null>(null);
-  const newChatTicketNow = useCallback((): NewChatTicket | null => newChatTicketRef.current, []);
+  // The newest New chat clicked that has not reported opening yet: it first waits for the New chat before it to settle
+  // its first message. A send made meanwhile goes with it, not with the chat on screen (issue 2758).
+  const requestedTicketRef = useRef<NewChatTicket | null>(null);
+  /** The New chat a send made now waits for: the newest one clicked, else the one opening or opened. */
+  const newChatTicketNow = useCallback(
+    (): NewChatTicket | null => requestedTicketRef.current ?? newChatTicketRef.current,
+    [],
+  );
+  /** The New chat that reported opening: a New chat clicked after it waits for its first send. */
+  const openingNewChatTicketNow = useCallback(
+    (): NewChatTicket | null => newChatTicketRef.current,
+    [],
+  );
+  /**
+   * The sidebar's New chat click. The click's "opening" report takes over its ticket; the returned function ends a click
+   * whose chat will not open.
+   */
+  const requestNewChat = useCallback((): (() => void) => {
+    // A newer click supersedes an older one that has not reported opening: that one will not open.
+    requestedTicketRef.current?.settle("not-opened");
+    const ticket = openNewChatTicket();
+    requestedTicketRef.current = ticket;
+    return () => {
+      if (requestedTicketRef.current !== ticket) return;
+      requestedTicketRef.current = null;
+      ticket.settle("not-opened");
+    };
+  }, []);
   const reportNewChat = useCallback(
     (status: NewChatStatus): void => {
       setNewChat(status);
@@ -53,7 +80,9 @@ export function useNewChat({
         for (const release of newChatHolds.current.splice(0)) release();
         newChatHolds.current.push(controller?.holdSwitch() ?? (() => undefined));
         newChatTicketRef.current?.settle("not-opened");
-        newChatTicketRef.current = openNewChatTicket();
+        // The click's own ticket, which the sends made since the click already wait for.
+        newChatTicketRef.current = requestedTicketRef.current ?? openNewChatTicket();
+        requestedTicketRef.current = null;
         return;
       }
       if (readTabValue(UNSENT_CHAT_KEY, "") === unsentChatReloadMarker())
@@ -85,7 +114,13 @@ export function useNewChat({
     },
     [openStartedChat, setNewChatThreadId, unsentThread, setNewlyStartedThread],
   );
-  return { newChatTicketNow, reportNewChat, openNewChatFromSidebar };
+  return {
+    newChatTicketNow,
+    openingNewChatTicketNow,
+    requestNewChat,
+    reportNewChat,
+    openNewChatFromSidebar,
+  };
 }
 
 interface StartChatInput {

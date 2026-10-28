@@ -1779,6 +1779,42 @@ describe("SessionCatalogSidebar New chat status", () => {
     await waitFor(() => expect(calls).toEqual(["initialize:new", "initialize:new"]));
   });
 
+  test("a New chat click asks for its chat before it waits, and a click that a newer click overtook does not open (issue 2758)", async () => {
+    const calls: string[] = [];
+    const statuses: unknown[] = [];
+    const ended: number[] = [];
+    let clicks = 0;
+    const firstMessage = Promise.withResolvers<boolean>();
+    renderSidebar({
+      remote: {
+        ...fakeRemote(calls),
+        initialize: async (id: string) => {
+          calls.push(`initialize:${id}`);
+          return { remoteId: "thread-new" };
+        },
+      },
+      onNewChat: async () => {},
+      onNewChatStatus: (status) => statuses.push(status),
+      onNewChatRequested: () => {
+        clicks += 1;
+        const click = clicks;
+        return () => ended.push(click);
+      },
+      waitForNewChatSend: () => firstMessage.promise,
+    });
+    const button = screen.getByRole("button", { name: "New chat" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    // Both clicks asked for their chat while the New chat before them is still sending its first message.
+    expect(clicks).toBe(2);
+    expect(calls).toEqual([]);
+    firstMessage.resolve(true);
+    // Only the newer click starts a chat; the older one ends its request.
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
+    expect(calls).toEqual(["initialize:new"]);
+    expect(ended).toEqual([1]);
+  });
+
   test("a chat picked while a New chat starts ends the New chat's opening, and the New chat does not open over the pick", async () => {
     const statuses: unknown[] = [];
     const opened: string[] = [];

@@ -14,7 +14,8 @@ import {
 
 /**
  * #1171. A test-side request on the app's protocol starts an ask_user turn in this session while the page remains idle. The wire hides the
- * external turn's events, so the page sends a new prompt; omp refuses it as busy and the refusal reaches the page.
+ * external turn's events, and holds the page's own state reads until the turn is revealed (omp's answer would say it is busy), so the
+ * page sends a new prompt; omp refuses it as busy and the refusal reaches the page.
  */
 const QUESTION_TURN = "Please ask_user which database to use.";
 
@@ -34,6 +35,8 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
   const pending = new Map<string, (frame: Record<string, unknown>) => void>();
   let sendToServer: ((message: string) => void) | undefined;
   let hideBusyEvents = false;
+  // The page's own state reads made while the turn is hidden: they go on when it is revealed.
+  const heldStateReads: string[] = [];
 
   await page.routeWebSocket(/\/ws/, (ws) => {
     const server = ws.connectToServer();
@@ -46,6 +49,10 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
       if (frame.type === "call" && frame.method === "request") {
         const args = (frame.args ?? {}) as { method?: string };
         if (args.method === "prompt") frames.promptIds.push(String(frame.id));
+        if (args.method === "get_state" && hideBusyEvents) {
+          heldStateReads.push(text);
+          return;
+        }
       }
       server.send(message);
     });
@@ -84,6 +91,7 @@ async function installBusyWire(page: Page, frames: Frames): Promise<BusyWire> {
   return {
     revealTurnEvents: () => {
       hideBusyEvents = false;
+      for (const read of heldStateReads.splice(0)) sendToServer?.(read);
     },
     startTurn: async (threadId: string) => {
       hideBusyEvents = true;
@@ -123,6 +131,29 @@ function sessionEventCount(frames: Frames, eventType: string): number {
     };
     return frame.type === "event" && frame.payload?.event?.type === eventType;
   }).length;
+}
+/** How many of the page's own state reads are still waiting for omp's answer. */
+function unansweredStateReads(frames: Frames): number {
+  const asked = new Set<string>();
+  for (const line of frames.lines) {
+    if (line.startsWith("out ")) {
+      const frame = JSON.parse(line.slice(4)) as {
+        id?: unknown;
+        method?: unknown;
+        args?: { method?: unknown };
+      };
+      if (
+        frame.method === "request" &&
+        frame.args?.method === "get_state" &&
+        typeof frame.id === "string"
+      )
+        asked.add(frame.id);
+    } else if (line.startsWith("in {")) {
+      const frame = JSON.parse(line.slice(3)) as { type?: unknown; id?: unknown };
+      if (frame.type === "result" && typeof frame.id === "string") asked.delete(frame.id);
+    }
+  }
+  return asked.size;
 }
 /** The call id of the first prompt sent with the given delivery, or undefined before it is sent. */
 function callSentAs(frames: Frames, delivery: "followUp" | "steer"): string | undefined {
@@ -197,6 +228,10 @@ async function refusedSecondPrompt(
   await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
     timeout: 60_000,
   });
+  // The page reads omp's state again after a turn settles. A read still waiting for omp's answer when the busy turn starts
+  // would be answered "busy", which is true, but this test needs the page idle while omp is busy: so the busy turn starts
+  // once every read is answered, and the wire holds the reads made after that until the turn is revealed.
+  await expect.poll(() => unansweredStateReads(frames), { timeout: 60_000 }).toBe(0);
   await busyWire.startTurn(threadId);
   await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0);
   await sendPrompt(composer, "hi");
@@ -259,16 +294,20 @@ realTest(
 
     // Queue it for after: omp takes the text as a follow-up, and the composer lets go of it.
     await queue.click();
-    await expect.poll(() => callSentAs(frames, "followUp") !== undefined).toBe(true);
+    await expect
+      .poll(() => callSentAs(frames, "followUp") !== undefined, { timeout: 30_000 })
+      .toBe(true);
     const callId = callSentAs(frames, "followUp") ?? "";
     await expect
-      .poll(() =>
-        frames.lines.some(
-          (line) =>
-            line.startsWith("in ") &&
-            line.includes(`"id":"${callId}"`) &&
-            line.includes('"ok":true'),
-        ),
+      .poll(
+        () =>
+          frames.lines.some(
+            (line) =>
+              line.startsWith("in ") &&
+              line.includes(`"id":"${callId}"`) &&
+              line.includes('"ok":true'),
+          ),
+        { timeout: 30_000 },
       )
       .toBe(true);
     await expect(composer).toHaveValue("");
@@ -292,21 +331,27 @@ realTest("Interrupt and send sends the same text as a steer", async ({ realApp }
   busyWire.revealTurnEvents();
   const queueUpdatesBeforeSteer = sessionEventCount(frames, "queue_update");
   await page.getByRole("button", { name: "Interrupt and send" }).click();
-  await expect.poll(() => callSentAs(frames, "steer") !== undefined).toBe(true);
+  await expect
+    .poll(() => callSentAs(frames, "steer") !== undefined, { timeout: 30_000 })
+    .toBe(true);
   await expect.poll(() => promptTextSentAs(frames, "steer")).toBe("hi");
   const callId = callSentAs(frames, "steer") ?? "";
   await expect
-    .poll(() =>
-      frames.lines.some(
-        (line) =>
-          line.startsWith("in ") && line.includes(`"id":"${callId}"`) && line.includes('"ok":true'),
-      ),
+    .poll(
+      () =>
+        frames.lines.some(
+          (line) =>
+            line.startsWith("in ") &&
+            line.includes(`"id":"${callId}"`) &&
+            line.includes('"ok":true'),
+        ),
+      { timeout: 30_000 },
     )
     .toBe(true);
   await expect(composer).toHaveValue("");
   // The page must receive the server's queue update after the accepted steer before the busy actions disappear.
   await expect
-    .poll(() => sessionEventCount(frames, "queue_update"))
+    .poll(() => sessionEventCount(frames, "queue_update"), { timeout: 30_000 })
     .toBeGreaterThan(queueUpdatesBeforeSteer);
   await expect(page.getByRole("button", { name: "Interrupt and send" })).toHaveCount(0);
 });

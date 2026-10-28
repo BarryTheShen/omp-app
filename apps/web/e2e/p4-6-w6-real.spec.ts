@@ -99,6 +99,12 @@ async function openHistoryPanel(page: Page): Promise<void> {
     "aria-selected",
     "true",
   );
+  // The panel reads the chat's entries when it opens: its rows and labels are there once it shows them.
+  await expect(page.getByRole("region", { name: "Conversation history" })).toHaveAttribute(
+    "data-panel-lifecycle",
+    "populated",
+    { timeout: 60_000 },
+  );
 }
 async function sessionFiles(agentDir: string): Promise<string[]> {
   try {
