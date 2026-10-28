@@ -36,7 +36,11 @@ type FailedStep = "load" | "save" | "clear";
  */
 const pendingWrites = new Map<string, Promise<void>>();
 
-function trackWrite<T>(scope: DraftScope, write: Promise<T>): Promise<T> {
+/**
+ * Registers a write to a scope's saved draft: a controller that loads the scope while it runs reads after it. Writes made
+ * outside a controller register here too, such as a Stop's withdrawn messages for a chat that is not on screen (issue 2756).
+ */
+export function trackDraftWrite<T>(scope: DraftScope, write: Promise<T>): Promise<T> {
   const key = draftScopeStream(scope);
   // Each write waits for the writes already in flight for its scope, so a load that waits for the scope waits for all of
   // them: a send still being admitted, and a save that started after it. Keeping only the latest would let a later save
@@ -595,7 +599,7 @@ export class DraftController {
     }
     this.clearTimer();
     if (this.snapshot.revision !== null) {
-      const cleared = await trackWrite(
+      const cleared = await trackDraftWrite(
         this.scope,
         this.store.clear({ scope: this.scope, expectedRevision: this.snapshot.revision }),
       ).then(
@@ -723,7 +727,7 @@ export class DraftController {
     if (this.sendRecorded) this.buffer?.writeSent(this.scope, text);
     this.setDraft(text, attachments);
     try {
-      await trackWrite(this.scope, this.admitAndClear(intent, submitPrompt, text));
+      await trackDraftWrite(this.scope, this.admitAndClear(intent, submitPrompt, text));
     } catch (error) {
       // The send failed, so it is no longer pending: the failed send is recorded in its place.
       this.consumeSent(text);
@@ -847,7 +851,7 @@ export class DraftController {
    */
   private async clearServerCopy(expectedRevision: Revision): Promise<void> {
     try {
-      const result = await trackWrite(
+      const result = await trackDraftWrite(
         this.scope,
         this.store.clear({ scope: this.scope, expectedRevision }),
       );
@@ -992,7 +996,7 @@ export class DraftController {
     this.saving = input;
     this.setState({ status: "saving", error: null });
     try {
-      const saved = await trackWrite(
+      const saved = await trackDraftWrite(
         this.scope,
         this.store.save({
           scope: this.scope,

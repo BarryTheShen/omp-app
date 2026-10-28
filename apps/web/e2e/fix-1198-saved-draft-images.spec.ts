@@ -55,7 +55,10 @@ async function startLongRun(page: Page, box: Locator): Promise<Locator> {
 async function queueFollowUp(page: Page, box: Locator, text: string): Promise<void> {
   await box.fill(text);
   await box.press("Control+Enter");
-  await expect(afterThisTurn(page).getByText(text, { exact: true })).toBeVisible();
+  // The lane shows the follow-up once omp has queued it: a round trip to omp, which waits on a loaded machine.
+  await expect(afterThisTurn(page).getByText(text, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(box).toHaveValue("");
 }
 

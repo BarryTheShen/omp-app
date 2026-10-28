@@ -708,7 +708,8 @@ export const realTest = test.extend<{
         await options.beforeLoad?.(page);
         await page.goto(url);
         if (options.expectApp !== false) {
-          await expect(page.locator("[data-app-root='true']")).toBeVisible();
+          // The app's first paint can take that long while other tests' browsers, servers and omps start.
+          await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
         }
         return page;
       };

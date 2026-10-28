@@ -20,9 +20,13 @@ realTest(
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_subagent");
     await expect(page.getByTestId("t5-task-card")).toBeVisible({ timeout: 120_000 });
+    // The rows of the messages the store holds. A reply still awaited is an empty row of assistant-ui's own (an id of its
+    // own, not the store's), which the reply's row replaces when it comes: that is not a re-key.
     await page.evaluate(() => {
       (window as ProbeWindow).__probedElements = [
-        ...Array.from(document.querySelectorAll("[data-message-id]")),
+        ...Array.from(
+          document.querySelectorAll('[data-message-id^="stream:"], [data-message-id^="entry:"]'),
+        ),
         ...Array.from(document.querySelectorAll('[data-testid="t5-task-card"]')),
       ];
     });

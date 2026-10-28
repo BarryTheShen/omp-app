@@ -57,7 +57,10 @@ async function startLongRun(page: Page, composer: Locator): Promise<Locator> {
 async function queueFollowUp(page: Page, composer: Locator, text: string): Promise<void> {
   await composer.fill(text);
   await composer.press("Control+Enter");
-  await expect(afterThisTurn(page).getByText(text, { exact: true })).toBeVisible();
+  // The lane shows the follow-up once omp has queued it: a round trip to omp, which waits on a loaded machine.
+  await expect(afterThisTurn(page).getByText(text, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 /** Two follow-ups queued during the run, then Stop: the shared setup of the restore cases. */

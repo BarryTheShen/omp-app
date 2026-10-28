@@ -1,6 +1,6 @@
 import type { AttachmentRef, DraftScope, Omp } from "@omp-app/contracts";
 import type { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
-import type { DraftStoreAdapter } from "@/modules/U2/drafts";
+import { type DraftStoreAdapter, trackDraftWrite } from "@/modules/U2/drafts";
 import {
   composeRestoredDraft,
   imageFiles,
@@ -56,13 +56,21 @@ export interface SavedDraftTarget {
 /**
  * Writes what a Stop withdrew into a chat's saved draft by its thread id, for a chat that is not on screen when omp
  * answers. The text goes ahead of the saved text and the images ahead of the saved attachments, so opening the chat
- * shows them. An answer that withdrew nothing saves nothing. Returns how many images could not be stored.
+ * shows them. An answer that withdrew nothing saves nothing. Returns how many images could not be stored. The write is
+ * registered for the chat's scope at once, so a chat opened while it runs reads its draft after it (issue 2756).
  */
-export async function restoreStoppedQueueIntoSavedDraft(
+export function restoreStoppedQueueIntoSavedDraft(
   target: SavedDraftTarget,
   restored: Omp.AbortAndRestoreQueueResult,
 ): Promise<number> {
-  if (restoredCount(restored) === 0) return 0;
+  if (restoredCount(restored) === 0) return Promise.resolve(0);
+  return trackDraftWrite(target.scope, writeRestored(target, restored));
+}
+
+async function writeRestored(
+  target: SavedDraftTarget,
+  restored: Omp.AbortAndRestoreQueueResult,
+): Promise<number> {
   const { refs, lost } = await storeRestoredImages(restored, target.upload);
   const saved = (await target.drafts.get({ scope: target.scope })).draft;
   await target.drafts.save({

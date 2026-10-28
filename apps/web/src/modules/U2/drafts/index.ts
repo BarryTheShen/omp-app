@@ -30,7 +30,7 @@ export type {
   DraftTimer,
   HeldDraft,
 } from "./drafts";
-export { createDraftStoreAdapter, DraftController } from "./drafts";
+export { createDraftStoreAdapter, DraftController, trackDraftWrite } from "./drafts";
 export type { ChatMessagesSource, UseChatDraftOptions, UseChatDraftResult } from "./use-chat-draft";
 export { useChatDraft } from "./use-chat-draft";
 export { composerDraftForLifecycle, useComposerDraft } from "./use-composer-draft";

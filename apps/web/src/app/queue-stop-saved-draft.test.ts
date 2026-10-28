@@ -1,6 +1,7 @@
 import { AttachmentRef, Draft, DraftScope, type Omp } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import type { DraftStoreAdapter } from "@/modules/U2/drafts";
+import { DraftController, type DraftStoreAdapter } from "@/modules/U2/drafts";
+import { ScopedDraftStore } from "@/modules/U2/drafts/test-support";
 import { restoreStoppedQueueIntoSavedDraft, storeQueueImages } from "./queue-stop-saved-draft";
 
 const scope = DraftScope.parse({ kind: "thread", threadId: "thread-saved-draft" });
@@ -118,5 +119,28 @@ describe("restoreStoppedQueueIntoSavedDraft", () => {
       { steering: [], followUp: [] },
     );
     expect(saves).toEqual([]);
+  });
+
+  test("a chat opened while the restore is still saving loads the restored text, not the draft before it (#2756)", async () => {
+    const store = new ScopedDraftStore();
+    // The image is still being stored when the person opens the chat, so the restore has not saved yet.
+    const imageStored = Promise.withResolvers<void>();
+    const restoring = restoreStoppedQueueIntoSavedDraft(
+      {
+        drafts: store,
+        scope,
+        upload: async () => {
+          await imageStored.promise;
+          return ref("image-1");
+        },
+      },
+      restored,
+    );
+    const opened = new DraftController({ store, scope });
+    const loading = opened.load();
+    imageStored.resolve();
+    await restoring;
+    expect((await loading).text).toBe("steer\n\nfollow");
+    expect((await loading).attachments).toEqual([ref("image-1")]);
   });
 });
