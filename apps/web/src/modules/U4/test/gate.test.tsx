@@ -13,8 +13,8 @@ import { ExtensionUiRequestRouterController } from "../router";
 
 const threadId = "u4-gate-thread" as ThreadId;
 const capabilities: CapabilityMap = {
-  "omp.ui": { state: "available", via: "rpc" },
-  "omp.cmd.set_ask_dialog": { state: "available", via: "rpc" },
+  "omp.ui": { state: "available", via: "omp" },
+  "omp.cmd.set_ask_dialog": { state: "available", via: "omp" },
 };
 
 /**

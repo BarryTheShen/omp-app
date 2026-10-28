@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { OMP_COMMAND_NAMES } from "@omp-app/contracts";
+import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import { z } from "zod";
 import type { CapabilityProbeRawResult } from "./capabilities";
 import type { OmpDefaultsProbeResult } from "./modules/A1/config/omp-defaults";
 
-/** 3 since the capability check reads the chat host's hello (SDK plan H5.6a): a result the RPC check cached is not read. */
-const CACHE_SCHEMA = 3;
+/**
+ * 4 since the check keys its results by the chat host's methods and keeps no protocol version (SDK plan H5.6e2): a result
+ * cached before is not read.
+ */
+const CACHE_SCHEMA = 4;
 const CACHE_FILE = "omp-probe-cache.json";
 
 export type ProbeCacheIdentity = {
@@ -41,7 +44,6 @@ const CacheFileSchema = z.object({
     environmentHash: z.string(),
   }),
   capabilities: z.object({
-    protocolVersion: z.union([z.literal(1), z.literal(2)]),
     commandResults: z.record(
       z.string(),
       z.object({ available: z.boolean(), reason: z.string().optional() }),
@@ -104,7 +106,7 @@ export async function readProbeCache(
     identity.environmentHash !== expected.environmentHash
   )
     return undefined;
-  for (const command of OMP_COMMAND_NAMES) {
+  for (const command of CHAT_HOST_METHODS) {
     if (parsed.data.capabilities.commandResults[command] === undefined) return undefined;
   }
   return {

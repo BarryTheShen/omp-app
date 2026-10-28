@@ -6,11 +6,14 @@ import {
   type CapabilityStatus,
   D8_AP6_UNAVAILABLE_REASONS,
   FolderPath,
-  OMP_COMMAND_NAMES,
-  type OmpCommandName,
+  ompCommandCapability,
   ThreadId,
 } from "@omp-app/contracts";
-import type { ChatHostHello } from "@omp-app/contracts/chat-host";
+import {
+  CHAT_HOST_METHODS,
+  type ChatHostHello,
+  type ChatHostMethod,
+} from "@omp-app/contracts/chat-host";
 import { ChatHostClient } from "../chat-host/client";
 import { spawnOmpProcess } from "../process";
 
@@ -85,7 +88,7 @@ export interface CapabilityProbeOptions {
 }
 
 export interface CapabilityProbeEvidenceResult {
-  readonly command: OmpCommandName;
+  readonly command: ChatHostMethod;
   readonly status: "available" | "unavailable";
   readonly reason?: string;
   readonly source: string;
@@ -96,18 +99,13 @@ export interface CapabilityProbeCommandResult {
   readonly reason?: string;
 }
 
-/**
- * What the check found, as the probe cache keeps it. `protocolVersion` is 2 for a chat host: its protocol has what omp's
- * RPC protocol 2 added, `message_update` events in the delta form (`set_event_options`).
- */
+/** What the check found, as the probe cache keeps it. */
 export interface CapabilityProbeRawResult {
-  readonly commandResults: Readonly<Record<OmpCommandName, CapabilityProbeCommandResult>>;
-  readonly protocolVersion: 1 | 2;
+  readonly commandResults: Readonly<Record<ChatHostMethod, CapabilityProbeCommandResult>>;
 }
 
 export interface CapabilityProbeResult {
   readonly capabilities: CapabilityMap;
-  readonly protocolVersion: 1 | 2;
   readonly evidence: readonly CapabilityProbeEvidenceResult[];
   readonly raw: CapabilityProbeRawResult;
 }
@@ -118,18 +116,14 @@ export function probeTimedOut(result: CapabilityProbeResult): boolean {
 }
 
 function unavailable(detail: string): CapabilityStatus {
-  return { state: "unavailable", via: "rpc", detail };
+  return { state: "unavailable", via: "omp", detail };
 }
 
-function available(via: "rpc" | "host"): CapabilityStatus {
+function available(via: "omp" | "host"): CapabilityStatus {
   return { state: "available", via };
 }
 
-function commandCapability(command: OmpCommandName): `omp.cmd.${OmpCommandName}` {
-  return `omp.cmd.${command}`;
-}
-
-function notAnswered(command: OmpCommandName): string {
+function notAnswered(command: ChatHostMethod): string {
   return `the chat host does not answer ${command}`;
 }
 
@@ -218,14 +212,14 @@ export function capabilityProbeResultFromRaw(
   const timedOut = Object.values(raw.commandResults).some(
     (result) => result.reason === PROBE_TIMEOUT_REASON,
   );
-  for (const command of OMP_COMMAND_NAMES) {
+  for (const command of CHAT_HOST_METHODS) {
     const result = raw.commandResults[command];
     const answered = !timedOut && result?.available === true;
     const reason = timedOut ? PROBE_TIMEOUT_REASON : (result?.reason ?? notAnswered(command));
     addCapability(
       capabilities,
-      commandCapability(command),
-      answered ? available("rpc") : unavailable(reason),
+      ompCommandCapability(command),
+      answered ? available("omp") : unavailable(reason),
     );
     evidence.push({
       command,
@@ -234,22 +228,13 @@ export function capabilityProbeResultFromRaw(
       source: HELLO_SOURCE,
     });
   }
-  addCapability(
-    capabilities,
-    "omp.protocol.v2",
-    timedOut
-      ? unavailable(PROBE_TIMEOUT_REASON)
-      : raw.protocolVersion === 2
-        ? available("rpc")
-        : unavailable("this omp sends no message deltas"),
-  );
   // The chat host hands omp's dialogs and UI events to the app as its `ui.*` requests and `ui_*` events.
   addCapability(
     capabilities,
     "omp.ui",
-    timedOut ? unavailable(PROBE_TIMEOUT_REASON) : available("rpc"),
+    timedOut ? unavailable(PROBE_TIMEOUT_REASON) : available("omp"),
   );
-  const features: ReadonlyArray<readonly [CapabilityKey, OmpCommandName]> = [
+  const features: ReadonlyArray<readonly [CapabilityKey, ChatHostMethod]> = [
     ["omp.host-tools", "set_host_tools"],
     ["omp.host-uris", "set_host_uri_schemes"],
     ["omp.subagent-events", "set_subagent_subscription"],
@@ -263,7 +248,7 @@ export function capabilityProbeResultFromRaw(
       timedOut
         ? unavailable(PROBE_TIMEOUT_REASON)
         : result?.available === true
-          ? available("rpc")
+          ? available("omp")
           : unavailable(result?.reason ?? notAnswered(command)),
     );
   }
@@ -285,7 +270,6 @@ export function capabilityProbeResultFromRaw(
   addUnavailableUpstreamCapabilities(capabilities);
   return {
     capabilities: CapabilityMap.parse(capabilities),
-    protocolVersion: raw.protocolVersion,
     evidence,
     raw,
   };
@@ -318,33 +302,32 @@ function isolatedProbeEnvironment(
 
 function timedOutProbeResult(hostCapabilities: readonly CapabilityKey[]): CapabilityProbeResult {
   const commandResults = Object.fromEntries(
-    OMP_COMMAND_NAMES.map((command) => [
+    CHAT_HOST_METHODS.map((command) => [
       command,
       { available: false, reason: PROBE_TIMEOUT_REASON },
     ]),
-  ) as Record<OmpCommandName, CapabilityProbeCommandResult>;
-  return capabilityProbeResultFromRaw({ commandResults, protocolVersion: 1 }, { hostCapabilities });
+  ) as Record<ChatHostMethod, CapabilityProbeCommandResult>;
+  return capabilityProbeResultFromRaw({ commandResults }, { hostCapabilities });
 }
 
-/** What a chat host's hello says about each of omp's commands: answered when the host lists its method. */
+/** What a chat host's hello says about each of its methods: answered when the hello lists it. */
 function commandResultsOf(
   hello: ChatHostHello,
-): Record<OmpCommandName, CapabilityProbeCommandResult> {
+): Record<ChatHostMethod, CapabilityProbeCommandResult> {
   const methods = new Set(hello.methods);
   return Object.fromEntries(
-    OMP_COMMAND_NAMES.map((command) => [
+    CHAT_HOST_METHODS.map((command) => [
       command,
       methods.has(command)
         ? { available: true }
         : { available: false, reason: notAnswered(command) },
     ]),
-  ) as Record<OmpCommandName, CapabilityProbeCommandResult>;
+  ) as Record<ChatHostMethod, CapabilityProbeCommandResult>;
 }
 
 /**
  * Starts one isolated chat host, the program the chats run, reads the methods its hello lists, then always stops it.
- * omp's RPC-only commands (`negotiate_protocol`, `set_event_filter`, `open_session`, …) are no methods of the chat
- * host, so they read as unavailable. The result is safe to publish in both the welcome frame and AppPort.
+ * A method the hello leaves out reads as unavailable. The result is safe to publish in both the welcome frame and AppPort.
  */
 export async function probeCapabilities(
   options: CapabilityProbeOptions,
@@ -391,7 +374,7 @@ export async function probeCapabilities(
       Math.min(DEFAULT_GH_TIMEOUT_MS, remainingMs()),
     );
     return capabilityProbeResultFromRaw(
-      { commandResults: commandResultsOf(hello), protocolVersion: 2 },
+      { commandResults: commandResultsOf(hello) },
       { hostCapabilities, githubAvailable: ghAvailable },
     );
   } finally {

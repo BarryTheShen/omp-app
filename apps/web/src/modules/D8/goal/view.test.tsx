@@ -35,7 +35,7 @@ function makeSnapshot(patch: Partial<GoalPanelSnapshot> = {}): GoalPanelSnapshot
                 goal,
               }
             : null,
-          source: "rpc",
+          source: "request",
           sessionSettled: true,
         }
       : patch.goalState;
@@ -181,7 +181,7 @@ describe("GoalPanelView", () => {
     const empty = makeSnapshot({
       lifecycle: "populated",
       goal: null,
-      goalState: { goal: null, state: null, source: "rpc", sessionSettled: true },
+      goalState: { goal: null, state: null, source: "request", sessionSettled: true },
     });
     renderGoal(empty);
     expect(screen.getByText("No goal is active")).toBeTruthy();

@@ -11,8 +11,8 @@ import {
 } from "./modes";
 
 const promptCapabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
   "upstream.python-mode": {
     state: "unavailable",
     via: "upstream",

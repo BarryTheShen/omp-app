@@ -16,8 +16,8 @@ const threadId = "d7-mode-thread" as ThreadId;
 function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   return {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
-    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
     ...overrides,
   };
 }

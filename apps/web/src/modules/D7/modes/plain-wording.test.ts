@@ -14,9 +14,9 @@ const threadId = "d7-wording-thread" as ThreadId;
 function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   return {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
-    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
     ...overrides,
   };
 }
@@ -41,7 +41,7 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities({
-        "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
+        "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
       rpc: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
@@ -59,7 +59,7 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.set_fast_mode": CapabilityStatus.parse({
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "Unknown command: set_fast_mode (omp-v18.6.1:docs/rpc.md:141-149)",
         }),
       }),
@@ -79,7 +79,7 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities({
-        "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
+        "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
       rpc: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
@@ -130,7 +130,7 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities({
-        "omp.cmd.get_state": CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
+        "omp.cmd.get_state": CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
       }),
       rpc: {
         setSlowMode: async ({ enabled }) => ({ enabled }),
@@ -151,7 +151,7 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.get_state": CapabilityStatus.parse({
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "Unknown command: get_state (omp-v18.6.1:docs/rpc.md:141-149)",
         }),
       }),

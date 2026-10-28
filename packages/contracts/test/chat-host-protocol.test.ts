@@ -81,13 +81,7 @@ describe("requests from the server", () => {
 
   test("only the protocol's own methods are methods, never an object's inherited names", () => {
     expect(isChatHostMethod("prompt")).toBe(true);
-    for (const name of [
-      "toString",
-      "constructor",
-      "__proto__",
-      "hasOwnProperty",
-      "negotiate_protocol",
-    ]) {
+    for (const name of ["toString", "constructor", "__proto__", "hasOwnProperty", "not_a_method"]) {
       expect(isChatHostMethod(name)).toBe(false);
     }
   });

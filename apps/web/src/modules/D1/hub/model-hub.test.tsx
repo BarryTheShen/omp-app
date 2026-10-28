@@ -19,7 +19,7 @@ import { ModelHubPanel } from "./model-hub-panel";
 afterEach(() => cleanup());
 
 const CAPABILITIES = {
-  "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "omp" }),
   "host.config": CapabilityStatus.parse({ state: "available", via: "host" }),
 };
 
@@ -445,7 +445,7 @@ describe("ModelHubController", () => {
     const h = await harness({
       models: [rawModel("anthropic", "claude-a", "Claude A")],
       capabilities: {
-        "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+        "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "omp" }),
       } as typeof CAPABILITIES,
     });
     expect(h.hub.getSnapshot().roles.changes).toEqual({

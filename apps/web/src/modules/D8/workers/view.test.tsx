@@ -131,7 +131,7 @@ describe("WorkersPanelView", () => {
 
     const onStopEnabled = vi.fn();
     renderView(
-      snapshotOf([worker], { [P1CapabilityKeys.cancel]: { state: "available", via: "rpc" } }),
+      snapshotOf([worker], { [P1CapabilityKeys.cancel]: { state: "available", via: "omp" } }),
       {
         onStop: onStopEnabled,
       },
@@ -179,7 +179,7 @@ describe("WorkersPanelView reports only what omp sends", () => {
       model: buildWorkersModel({
         snapshot: rosterOf([queued, running]),
         now: NOW,
-        capabilities: { [P1CapabilityKeys.cancel]: { state: "available", via: "rpc" } },
+        capabilities: { [P1CapabilityKeys.cancel]: { state: "available", via: "omp" } },
         stopping: new Set(["tan-1"]),
       }),
       loading: false,

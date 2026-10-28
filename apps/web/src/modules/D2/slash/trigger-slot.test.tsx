@@ -48,7 +48,7 @@ function providerWith(capabilities: CapabilityMap): SlashCommandProvider {
 }
 
 const available: CapabilityMap = {
-  "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+  "omp.cmd.get_available_commands": { state: "available", via: "omp" },
 };
 
 /**

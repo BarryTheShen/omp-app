@@ -29,8 +29,8 @@ function queueOf(
   const port = {
     getSnapshot: () => snapshot,
     getCapabilities: () => ({
-      [P6_QUEUE_CAPABILITIES.remove]: { state: "available" as const, via: "rpc" as const },
-      [P6_QUEUE_CAPABILITIES.followUp]: { state: "available" as const, via: "rpc" as const },
+      [P6_QUEUE_CAPABILITIES.remove]: { state: "available" as const, via: "omp" as const },
+      [P6_QUEUE_CAPABILITIES.followUp]: { state: "available" as const, via: "omp" as const },
     }),
     subscribe: () => () => undefined,
     remove: async ({ message }: { message: string }) => {

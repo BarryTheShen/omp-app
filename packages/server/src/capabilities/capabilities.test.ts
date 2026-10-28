@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { D8_AP6_UNAVAILABLE_REASONS, FolderPath, OMP_COMMAND_NAMES } from "@omp-app/contracts";
+import { D8_AP6_UNAVAILABLE_REASONS, FolderPath } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import {
   type CapabilityProbeResult,
@@ -92,16 +92,15 @@ describe("probeCapabilities", () => {
     const { result } = await runProbe({ FAKE_MISSING: "get_tree" });
     expect(result.capabilities["omp.cmd.get_tree"]).toEqual({
       state: "unavailable",
-      via: "rpc",
+      via: "omp",
       detail: "the chat host does not answer get_tree",
     });
-    expect(result.capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.protocol.v2"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.ui"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.host-tools"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.host-uris"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.subagent-events"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.live-voice"]).toEqual({ state: "available", via: "rpc" });
+    expect(result.capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "omp" });
+    expect(result.capabilities["omp.ui"]).toEqual({ state: "available", via: "omp" });
+    expect(result.capabilities["omp.host-tools"]).toEqual({ state: "available", via: "omp" });
+    expect(result.capabilities["omp.host-uris"]).toEqual({ state: "available", via: "omp" });
+    expect(result.capabilities["omp.subagent-events"]).toEqual({ state: "available", via: "omp" });
+    expect(result.capabilities["omp.live-voice"]).toEqual({ state: "available", via: "omp" });
     expect(result.capabilities["upstream.mcp-reconnect"]).toEqual({
       state: "unavailable",
       via: "upstream",
@@ -135,24 +134,16 @@ describe("probeCapabilities", () => {
       reason: "the chat host does not answer get_tree",
       source: HELLO_SOURCE,
     });
-    expect(result.evidence).toHaveLength(OMP_COMMAND_NAMES.length);
-    expect(result.protocolVersion).toBe(2);
+    expect(result.evidence).toHaveLength(CHAT_HOST_METHODS.length);
     expect(probeTimedOut(result)).toBe(false);
   });
 
-  test("omp's RPC-only commands read as unavailable, and every command the chat host answers as available", async () => {
+  test("every method the chat host's hello lists reads as available", async () => {
     const { result } = await runProbe();
-    const hostMethods = new Set<string>(CHAT_HOST_METHODS);
-    for (const command of OMP_COMMAND_NAMES) {
+    for (const command of CHAT_HOST_METHODS) {
       expect({ command, state: result.capabilities[`omp.cmd.${command}`]?.state }).toEqual({
         command,
-        state: hostMethods.has(command) ? "available" : "unavailable",
-      });
-    }
-    for (const command of ["negotiate_protocol", "set_event_filter", "open_session"] as const) {
-      expect(result.capabilities[`omp.cmd.${command}`]).toMatchObject({
-        state: "unavailable",
-        detail: `the chat host does not answer ${command}`,
+        state: "available",
       });
     }
   });
@@ -164,8 +155,8 @@ describe("probeCapabilities", () => {
       detail: "the chat host does not answer set_host_tools",
     });
     expect(result.capabilities["omp.live-voice"]).toMatchObject({ state: "unavailable" });
-    expect(result.capabilities["omp.host-uris"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["omp.subagent-events"]).toEqual({ state: "available", via: "rpc" });
+    expect(result.capabilities["omp.host-uris"]).toEqual({ state: "available", via: "omp" });
+    expect(result.capabilities["omp.subagent-events"]).toEqual({ state: "available", via: "omp" });
   });
 
   test("a chat host that ends before its hello fails the check", async () => {
@@ -211,7 +202,7 @@ describe("probeCapabilities", () => {
     });
     expect(retries).toHaveLength(1);
     expect(probeTimedOut(result)).toBe(false);
-    expect(result.capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "rpc" });
+    expect(result.capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "omp" });
   });
 
   test("a hello that never comes stays timed out, after one retry", async () => {

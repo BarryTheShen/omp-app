@@ -7,13 +7,11 @@
     ".": "./src/index.ts",
     "./ids": "./src/core/ids.ts",
     "./chat-host": "./src/chat-host/protocol.ts",
-    "./chat-host/args": "./src/chat-host/args.ts",
-    "./omp-wire/schema.json": "./src/omp-wire/rpc-wire.schema.json"
+    "./chat-host/args": "./src/chat-host/args.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "test": "bun test",
-    "sync-omp-wire": "bun scripts/sync-omp-wire.ts",
     "build-inventory": "bun scripts/build-inventory.ts"
   },
   "dependencies": {

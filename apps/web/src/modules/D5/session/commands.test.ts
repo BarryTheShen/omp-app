@@ -27,8 +27,8 @@ const session: SessionInfoSnapshot = {
   },
 };
 const AVAILABLE_CAPABILITIES: CapabilityMap = {
-  "omp.cmd.get_state": { state: "available", via: "rpc" },
-  "omp.cmd.set_session_name": { state: "available", via: "rpc" },
+  "omp.cmd.get_state": { state: "available", via: "omp" },
+  "omp.cmd.set_session_name": { state: "available", via: "omp" },
   "host.session-pins": { state: "available", via: "host" },
   "host.command-gateway": { state: "available", via: "host" },
 };
@@ -163,12 +163,12 @@ describe("SessionCommandController", () => {
       capabilities: capabilitySource({
         "omp.cmd.get_state": {
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "Session info is unavailable.",
         },
         "omp.cmd.set_session_name": {
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "Rename requires a newer omp.",
         },
         "host.command-gateway": {

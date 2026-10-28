@@ -1548,7 +1548,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
   test("keeps the app's capabilities when the opened chat's history fails after a kept switch", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const capabilities: CapabilityMap = {
-      "omp.protocol.v2": { state: "available", via: "rpc" },
+      "omp.ui": { state: "available", via: "omp" },
     };
     let historyReads = 0;
     const rpc = createRpc(

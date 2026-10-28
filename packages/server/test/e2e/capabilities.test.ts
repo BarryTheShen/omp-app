@@ -290,17 +290,13 @@ describe("composition capability wiring", () => {
     ).toBeUndefined();
   }, 30_000);
 
-  test("publishes what the chats answer: the chat host's methods, and omp's RPC-only commands as unavailable", async () => {
+  test("publishes what the chats answer: the chat host's methods", async () => {
     const root = await temporaryRoot("capabilities-hello-");
     const server = await startServer(await fakeOmp(root), {}, root);
     const client = clientFor(server);
     expect(await client.port(AppPort).health({})).toEqual({ status: "ok" });
     const capabilities = await client.port(AppPort).capabilities({});
-    expect(capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "rpc" });
-    expect(capabilities["omp.cmd.negotiate_protocol"]).toMatchObject({
-      state: "unavailable",
-      detail: "the chat host does not answer negotiate_protocol",
-    });
+    expect(capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "omp" });
     client.dispose();
   }, 30_000);
   test("reports unhealthy and rejects open when omp is missing", async () => {

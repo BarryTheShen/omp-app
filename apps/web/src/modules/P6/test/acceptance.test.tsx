@@ -48,13 +48,13 @@ const EXPECTED_FIXTURE_LABELS = {
 afterEach(cleanup);
 
 const capabilities = {
-  [P6_QUEUE_CAPABILITIES.steer]: { state: "available", via: "rpc" },
-  [P6_QUEUE_CAPABILITIES.followUp]: { state: "available", via: "rpc" },
-  [P6_QUEUE_CAPABILITIES.remove]: { state: "available", via: "rpc" },
-  [P6_QUEUE_CAPABILITIES.promote]: { state: "available", via: "rpc" },
-  [P6_QUEUE_CAPABILITIES.steeringMode]: { state: "available", via: "rpc" },
-  [P6_QUEUE_CAPABILITIES.followUpMode]: { state: "available", via: "rpc" },
-  [P6_QUEUE_CAPABILITIES.interruptMode]: { state: "available", via: "rpc" },
+  [P6_QUEUE_CAPABILITIES.steer]: { state: "available", via: "omp" },
+  [P6_QUEUE_CAPABILITIES.followUp]: { state: "available", via: "omp" },
+  [P6_QUEUE_CAPABILITIES.remove]: { state: "available", via: "omp" },
+  [P6_QUEUE_CAPABILITIES.promote]: { state: "available", via: "omp" },
+  [P6_QUEUE_CAPABILITIES.steeringMode]: { state: "available", via: "omp" },
+  [P6_QUEUE_CAPABILITIES.followUpMode]: { state: "available", via: "omp" },
+  [P6_QUEUE_CAPABILITIES.interruptMode]: { state: "available", via: "omp" },
 } as const satisfies CapabilityMap;
 
 function appendMessage(text: string): AppendMessage {

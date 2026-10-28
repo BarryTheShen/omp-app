@@ -8,7 +8,7 @@ import { renderDialogRequest } from "../dialogs";
 import { DialogHostController } from "../host";
 import { ApprovalPortController } from "./approval";
 
-const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "rpc" } };
+const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "omp" } };
 const threadId = "u4-4-playground" as ThreadId;
 
 function ApprovalPlayground() {

@@ -16,7 +16,7 @@ import {
 export const D7_ALL_CAPABILITIES: CapabilityMap = Object.fromEntries(
   D7_CAPABILITIES.filter((key) => key !== D7_AP6_CAPABILITY).map((key) => [
     key,
-    { state: "available", via: "rpc" },
+    { state: "available", via: "omp" },
   ]),
 );
 
@@ -29,7 +29,7 @@ const known = (mode: ModeStateValue["mode"], active = true): ModeStateValue =>
     mode,
     state: "known",
     scope: "session",
-    source: "omp-rpc",
+    source: "omp-session",
     active,
     enabled: active,
   });
@@ -39,7 +39,7 @@ export const D7_PRECEDENCE_STATES: readonly ModeStateValue[] = [
     mode: "fast",
     state: "fallback",
     scope: "session",
-    source: "omp-rpc",
+    source: "omp-session",
     enabled: true,
     active: false,
   }),
@@ -71,7 +71,7 @@ export const D7_FIXTURE_MODE_SNAPSHOT: ModeSnapshotValue = ModeSnapshot.parse({
     active: false,
     state: "fallback",
     scope: "session",
-    source: "omp-rpc",
+    source: "omp-session",
     reason: "The provider kept the standard tier.",
   }),
   precedence: resolveModePrecedence(D7_PRECEDENCE_STATES),

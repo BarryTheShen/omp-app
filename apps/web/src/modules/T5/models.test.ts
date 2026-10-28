@@ -228,7 +228,7 @@ describe("T5 vibe and yield models", () => {
 
   test("keeps cards visible while gating only live capabilities", () => {
     const capabilities: CapabilityMap = {
-      [T5CapabilityKeys.subagentEvents]: { state: "available", via: "rpc" },
+      [T5CapabilityKeys.subagentEvents]: { state: "available", via: "omp" },
       [T5CapabilityKeys.commandGateway]: { state: "unavailable", via: "host" },
     };
     expect(hasT5Capability(capabilities, T5CapabilityKeys.subagentEvents)).toBe(true);

@@ -1,26 +1,24 @@
 /**
  * Capability keys and their status.
  *
- * Rule: a capability is `available` only when the running omp reports it (its `ready` frame,
- * command responses, `get_available_commands`) or a side-effect-free probe confirms it. A version
- * string alone never turns a feature on; features gate on capabilities, not on versions.
+ * Rule: a capability is `available` only when the running omp reports it (the chat host's `hello` lists its methods)
+ * or a side-effect-free probe confirms it. A version string alone never turns a feature on; features gate on
+ * capabilities, not on versions.
  */
 import { z } from "zod";
-import { OMP_COMMAND_NAMES, type OmpCommandName } from "./omp";
+import { CHAT_HOST_METHOD_NAMES, type ChatHostMethodName } from "../chat-host/method-names";
 
-/** omp features that are not a single command. */
+/** omp features that are not a single method. */
 export const OMP_FEATURE_CAPABILITIES = [
-  /** `negotiate_protocol` to 2 succeeded: lossless `rpc_chunk` framing. */
-  "omp.protocol.v2",
-  /** The process runs in `rpc-ui` mode and forwards extension/tool UI requests. */
+  /** omp's extension and tool dialogs reach the app (the chat host's `ui.*` requests). */
   "omp.ui",
-  /** `set_host_tools` plus the `host_tool_*` frames. */
+  /** `set_host_tools` plus the chat host's `tool.call` requests. */
   "omp.host-tools",
-  /** `set_host_uri_schemes` plus the `host_uri_*` frames. */
+  /** `set_host_uri_schemes` plus the chat host's `uri.*` requests. */
   "omp.host-uris",
-  /** `subagent_lifecycle` / `subagent_progress` / `subagent_event` frames. */
+  /** `subagent_lifecycle` / `subagent_progress` / `subagent_event` events. */
   "omp.subagent-events",
-  /** `live_*` commands and frames. */
+  /** `live_*` methods and events. */
   "omp.live-voice",
 ] as const;
 export type OmpFeatureCapability = (typeof OMP_FEATURE_CAPABILITIES)[number];
@@ -29,21 +27,21 @@ export type OmpFeatureCapability = (typeof OMP_FEATURE_CAPABILITIES)[number];
 const FEATURE_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)*$/;
 
 /**
- * - `omp.cmd.<command>`: one omp RPC command.
+ * - `omp.cmd.<method>`: one of the chat host's methods (`chat-host/method-names.ts`).
  * - `omp.*` features above.
  * - `host.<feature>`: closed on the server (A1, AP3/AP4).
  * - `client.<feature>`: browser-only behavior (AP5).
- * - `upstream.<feature>`: needs new omp RPC (AP6); `unavailable` until omp ships it.
+ * - `upstream.<feature>`: needs something omp has not shipped (AP6); `unavailable` until it does.
  */
 export type CapabilityKey =
-  | `omp.cmd.${OmpCommandName}`
+  | `omp.cmd.${ChatHostMethodName}`
   | OmpFeatureCapability
   | `host.${string}`
   | `client.${string}`
   | `upstream.${string}`;
 
 export const CapabilityKey: z.ZodType<CapabilityKey> = z.union([
-  z.templateLiteral(["omp.cmd.", z.enum(OMP_COMMAND_NAMES)]),
+  z.templateLiteral(["omp.cmd.", z.enum(CHAT_HOST_METHOD_NAMES)]),
   z.enum(OMP_FEATURE_CAPABILITIES),
   z.templateLiteral(["host.", z.string().regex(FEATURE_NAME)]),
   z.templateLiteral(["client.", z.string().regex(FEATURE_NAME)]),
@@ -85,8 +83,8 @@ export const D8_AP6_UNAVAILABLE_REASONS = {
 export const CapabilityState = z.enum(["available", "fallback", "unavailable"]);
 export type CapabilityState = z.infer<typeof CapabilityState>;
 
-/** Who provides the capability: omp's RPC, the app server, the browser, or (not yet) omp upstream. */
-export const CapabilityVia = z.enum(["rpc", "host", "client", "upstream"]);
+/** Who provides the capability: omp (through the chat host), the app server, the browser, or (not yet) omp upstream. */
+export const CapabilityVia = z.enum(["omp", "host", "client", "upstream"]);
 export type CapabilityVia = z.infer<typeof CapabilityVia>;
 
 export const CapabilityStatus = z.object({
@@ -101,7 +99,7 @@ export type CapabilityStatus = z.infer<typeof CapabilityStatus>;
 export const CapabilityMap = z.partialRecord(CapabilityKey, CapabilityStatus);
 export type CapabilityMap = z.infer<typeof CapabilityMap>;
 
-/** The capability one of omp's commands needs: `omp.cmd.<command>`. */
-export function ompCommandCapability(command: OmpCommandName): `omp.cmd.${OmpCommandName}` {
-  return `omp.cmd.${command}`;
+/** The capability one of the chat host's methods needs: `omp.cmd.<method>`. */
+export function ompCommandCapability(method: ChatHostMethodName): `omp.cmd.${ChatHostMethodName}` {
+  return `omp.cmd.${method}`;
 }

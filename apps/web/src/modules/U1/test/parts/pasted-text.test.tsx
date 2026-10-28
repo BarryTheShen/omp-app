@@ -16,7 +16,7 @@ import { ThreadShell } from "../../thread";
 
 const threadId = "pasted-text-test" as ThreadId;
 const assistantCapabilities = {
-  "omp.cmd.prompt": { state: "available" as const, via: "rpc" as const },
+  "omp.cmd.prompt": { state: "available" as const, via: "omp" as const },
 };
 /** omp's wrapper for a pasted text (omp v18.9.1 `input-controller.ts:216-218`): each tag on a line of its own. */
 const block = (text: string) => `<attachment>\n${text}\n</attachment>`;

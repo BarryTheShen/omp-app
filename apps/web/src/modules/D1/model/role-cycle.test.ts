@@ -149,8 +149,8 @@ function harness(options: {
   const calls: string[] = [];
   let current = options.start;
   const capabilities: CapabilityMap = {
-    "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "omp" }),
   };
   const catalog = new ModelCatalogModel({
     source: {

@@ -19,8 +19,8 @@ export const U1_ACCEPTANCE_F6_IDS: readonly string[] = INVENTORY.filter(
 ).map((item) => item.id);
 
 export const U1_ACCEPTANCE_CAPABILITIES: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
 };
 
 const THREAD_ID = "u1-acceptance" as ThreadId;

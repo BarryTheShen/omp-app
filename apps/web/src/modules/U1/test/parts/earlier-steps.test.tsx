@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 const threadId = "u1-earlier-steps-test" as ThreadId;
-const capabilities = { "omp.cmd.prompt": { state: "available" as const, via: "rpc" as const } };
+const capabilities = { "omp.cmd.prompt": { state: "available" as const, via: "omp" as const } };
 const send: ChatSessionRequest = async () => undefined as never;
 
 function stepLabel(index: number): string {

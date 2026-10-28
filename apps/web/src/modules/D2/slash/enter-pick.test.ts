@@ -26,7 +26,7 @@ import { fakeSlashClient } from "./test-support";
 
 const threadId = ThreadId.parse("thread-enter-pick");
 const available: CapabilityMap = {
-  "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+  "omp.cmd.get_available_commands": { state: "available", via: "omp" },
 };
 const GOLDEN_PATH = resolve(process.cwd(), "src/modules/D2/slash/enter-pick.golden.json");
 

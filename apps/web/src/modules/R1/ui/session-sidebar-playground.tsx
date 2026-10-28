@@ -28,7 +28,7 @@ const PINNED_ID = "session-pinned" as ThreadId;
 const LONG_TITLE_ID = "session-long-title" as ThreadId;
 
 const capabilities = {
-  "omp.cmd.set_session_name": { state: "available", via: "rpc" },
+  "omp.cmd.set_session_name": { state: "available", via: "omp" },
 } satisfies CapabilityMap;
 
 const git: GitState = {

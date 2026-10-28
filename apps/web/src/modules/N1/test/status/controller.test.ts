@@ -29,7 +29,7 @@ const READY: CapabilityMap = {
   "host.metadata": { state: "available", via: "host" },
   "host.git-state": { state: "available", via: "host" },
   "host.github-refs": { state: "available", via: "host" },
-  "omp.subagent-events": { state: "available", via: "rpc" },
+  "omp.subagent-events": { state: "available", via: "omp" },
 };
 
 const HOST: HostMetadata = { hostname: "devbox", displayPath: "~/code/app" };
@@ -546,7 +546,7 @@ describe("StatusBarController", () => {
     expect(chipText(controller, "N2.subagents")).toBe("1 running");
     controller.setCapabilities({
       ...READY,
-      "omp.subagent-events": { state: "unavailable", via: "rpc" },
+      "omp.subagent-events": { state: "unavailable", via: "omp" },
     });
     expect(chipText(controller, "N2.subagents")).toBeNull();
     controller.stop();

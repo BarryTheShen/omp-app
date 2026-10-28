@@ -5,7 +5,7 @@ describe("the Tools tab's extension control center", () => {
   test("is offered only when the host serves the extension catalog", () => {
     expect(extensionCenterAvailable({})).toBe(false);
     expect(
-      extensionCenterAvailable({ "host.extension-catalog": { state: "available", via: "rpc" } }),
+      extensionCenterAvailable({ "host.extension-catalog": { state: "available", via: "omp" } }),
     ).toBe(true);
   });
 });

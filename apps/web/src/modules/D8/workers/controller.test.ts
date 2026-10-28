@@ -7,7 +7,7 @@ import { createWorkersController, type WorkersController, type WorkersRoster } f
 const threadId = ThreadId.parse("thread-controller");
 const NOW = 2_000_000;
 const STOP_AVAILABLE: CapabilityMap = {
-  [P1CapabilityKeys.cancel]: { state: "available", via: "rpc" },
+  [P1CapabilityKeys.cancel]: { state: "available", via: "omp" },
 };
 
 function runningAgent(id: string): RosterAgent {

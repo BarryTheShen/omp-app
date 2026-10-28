@@ -17,7 +17,7 @@ import type { GoalRuntimeStore } from "./runtime";
 
 const threadId = ThreadId.parse("thread-goal");
 const availableCapabilities: CapabilityMap = {
-  "omp.cmd.goal": { state: "available", via: "rpc" },
+  "omp.cmd.goal": { state: "available", via: "omp" },
 };
 
 const otherThreadId = ThreadId.parse("thread-other");
@@ -339,7 +339,7 @@ describe("GoalController", () => {
   test("keeps cached goal details visible while disabling actions when goal RPC is unavailable", async () => {
     const goal = makeGoal();
     const capabilities: CapabilityMap = {
-      "omp.cmd.goal": { state: "unavailable", via: "rpc" },
+      "omp.cmd.goal": { state: "unavailable", via: "omp" },
     };
     const { controller, fakeAutonomy } = makeController({ goal, capabilities });
     controller.start();

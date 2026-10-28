@@ -5,7 +5,7 @@ import { P1CapabilityKeys } from "@/modules/P1/contract";
  * Capability maps for gating. A key that is absent is unknown and counts as unavailable. A fallback counts as
  * usable: the app's shared gate and P1's client (client.ts, `requiredCapability`) agree on that (issue 1675).
  */
-const RPC_AVAILABLE: CapabilityStatus = { state: "available", via: "rpc" };
+const RPC_AVAILABLE: CapabilityStatus = { state: "available", via: "omp" };
 const HOST_AVAILABLE: CapabilityStatus = { state: "available", via: "host" };
 
 /**
@@ -67,7 +67,7 @@ export const P1_CAPABILITY_CASES: readonly CapabilityCase[] = [
     map: mapWith({
       "omp.cmd.get_subagent_messages": {
         state: "fallback",
-        via: "rpc",
+        via: "omp",
         detail: "Transcripts are read from the saved session file.",
       },
     }),

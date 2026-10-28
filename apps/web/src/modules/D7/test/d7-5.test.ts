@@ -144,7 +144,13 @@ describe("D7.5 fixture and AP gate", () => {
       capability: D7_AP6_CAPABILITY,
       reason: "The app cannot read this setting from omp yet.",
     });
-    const knownBrowser = modeState("browser", "session", "omp-rpc", "known", D7_ALL_CAPABILITIES);
+    const knownBrowser = modeState(
+      "browser",
+      "session",
+      "omp-session",
+      "known",
+      D7_ALL_CAPABILITIES,
+    );
     expect(knownBrowser.state).toBe("known");
     expect(knownBrowser.reason).toBeUndefined();
     expect(ToolAvailability.parse({ tool: "bash", state: "unknown" }).state).toBe("unknown");

@@ -202,7 +202,7 @@ function initialFastState(
       active: false,
       state: "unavailable",
       scope: "session",
-      source: "omp-rpc",
+      source: "omp-session",
       capability,
       reason: error.message,
       error,
@@ -213,7 +213,7 @@ function initialFastState(
     active: false,
     state: "requested",
     scope: "session",
-    source: "omp-rpc",
+    source: "omp-session",
     capability,
   });
 }
@@ -255,17 +255,17 @@ function initialSlowState(capabilities: CapabilityMap, rpc: ModeRpc | undefined)
       SLOW_CAPABILITY,
       "Slow mode is not available until the app is connected to omp.",
     );
-    return stateWithError("slow", "session", "omp-rpc", error);
+    return stateWithError("slow", "session", "omp-session", error);
   }
   if (!isCapabilityUsable(capabilities, SLOW_CAPABILITY)) {
     const error = unavailableError(SLOW_CAPABILITY, "Slow mode is not available in this chat.");
-    return stateWithError("slow", "session", "omp-rpc", error);
+    return stateWithError("slow", "session", "omp-session", error);
   }
   return ModeState.parse({
     mode: "slow",
     state: "requested",
     scope: "session",
-    source: "omp-rpc",
+    source: "omp-session",
     capability: SLOW_CAPABILITY,
   });
 }
@@ -280,7 +280,7 @@ function slowKnownState(
     mode: "slow",
     state: "known",
     scope,
-    source: "omp-rpc",
+    source: "omp-session",
     capability: SLOW_CAPABILITY,
     requested: enabled,
     enabled,
@@ -579,7 +579,7 @@ export class ModeController implements ModeControllerPort {
           ? "Slow mode is not available until the app is connected to omp."
           : "Slow mode is not available in this chat.",
       );
-      this.modeStates.slow = stateWithError("slow", "session", "omp-rpc", error);
+      this.modeStates.slow = stateWithError("slow", "session", "omp-session", error);
       this.commit();
       return modeCommandResult(
         { mode: "slow", requested },
@@ -602,7 +602,7 @@ export class ModeController implements ModeControllerPort {
       mode: "slow",
       state: "requested",
       scope: reportedScope,
-      source: "omp-rpc",
+      source: "omp-session",
       capability: SLOW_CAPABILITY,
       requested,
       ...(reportedUsageLimit ? { usageLimit: reportedUsageLimit } : {}),
@@ -827,7 +827,7 @@ export class ModeController implements ModeControllerPort {
         mode: "slow",
         state: "fallback",
         scope: "session",
-        source: "omp-rpc",
+        source: "omp-session",
         capability: SLOW_CAPABILITY,
         reason: "omp has not reported Slow mode yet.",
       });
@@ -839,7 +839,7 @@ export class ModeController implements ModeControllerPort {
         mode: "slow",
         state: "unavailable",
         scope: "session",
-        source: "omp-rpc",
+        source: "omp-session",
         reason: SLOW_UNSUPPORTED_TEXT,
       });
       return;
@@ -860,7 +860,7 @@ export class ModeController implements ModeControllerPort {
     this.slowSupported = null;
     this.reportedSlow = null;
     const error = unavailableError("omp.cmd.get_state", message);
-    this.modeStates.slow = stateWithError("slow", "session", "omp-rpc", error);
+    this.modeStates.slow = stateWithError("slow", "session", "omp-session", error);
   }
 
   /**
@@ -887,7 +887,7 @@ export class ModeController implements ModeControllerPort {
       active,
       state,
       scope: "session",
-      source: "omp-rpc",
+      source: "omp-session",
       capability: "omp.cmd.set_fast_mode",
       ...(requested === undefined ? {} : { requested }),
       ...(reason ? { reason } : {}),

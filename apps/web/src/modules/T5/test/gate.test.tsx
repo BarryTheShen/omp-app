@@ -123,7 +123,7 @@ describe("T5 public descriptors and W4/CC8 coverage", () => {
     expect(isDescriptorAvailable(gated, {})).toBe(false);
     expect(
       isDescriptorAvailable(gated, {
-        "omp.subagent-events": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+        "omp.subagent-events": CapabilityStatus.parse({ state: "available", via: "omp" }),
       }),
     ).toBe(true);
     expect(capabilityStatus({}, "upstream.t5")).toEqual(UPSTREAM_UNAVAILABLE);

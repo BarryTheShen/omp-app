@@ -8,13 +8,13 @@ import { OmpRuntimeStore, type OmpRuntimeTransport } from "@/modules/R0/store";
 
 const threadId = "queue-notice-chat" as ThreadId;
 const capabilities: CapabilityMap = {
-  "omp.cmd.steer": { state: "available", via: "rpc" },
-  "omp.cmd.follow_up": { state: "available", via: "rpc" },
-  "omp.cmd.remove_queued_message": { state: "available", via: "rpc" },
-  "omp.cmd.promote_queued_message": { state: "available", via: "rpc" },
-  "omp.cmd.set_steering_mode": { state: "available", via: "rpc" },
-  "omp.cmd.set_follow_up_mode": { state: "available", via: "rpc" },
-  "omp.cmd.set_interrupt_mode": { state: "available", via: "rpc" },
+  "omp.cmd.steer": { state: "available", via: "omp" },
+  "omp.cmd.follow_up": { state: "available", via: "omp" },
+  "omp.cmd.remove_queued_message": { state: "available", via: "omp" },
+  "omp.cmd.promote_queued_message": { state: "available", via: "omp" },
+  "omp.cmd.set_steering_mode": { state: "available", via: "omp" },
+  "omp.cmd.set_follow_up_mode": { state: "available", via: "omp" },
+  "omp.cmd.set_interrupt_mode": { state: "available", via: "omp" },
 };
 
 /** A queue whose requests go through the same wrapper the app uses, with a finished notice shown. */

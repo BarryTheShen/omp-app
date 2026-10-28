@@ -17,13 +17,13 @@ describe("loopGate", () => {
 
   test("is unavailable when the loop capability is present but not available", () => {
     const withdrawn: CapabilityMap = {
-      "upstream.loop": { state: "unavailable", via: "rpc", detail: "not in this omp" },
+      "upstream.loop": { state: "unavailable", via: "omp", detail: "not in this omp" },
     };
     expect(loopGate(withdrawn).state).toBe("unavailable");
   });
 
   test("is available only when the loop capability is available", () => {
-    const published: CapabilityMap = { "upstream.loop": { state: "available", via: "rpc" } };
+    const published: CapabilityMap = { "upstream.loop": { state: "available", via: "omp" } };
     expect(loopGate(published)).toEqual({ state: "available" });
   });
 });

@@ -50,7 +50,7 @@ const freshResult: CommandRunResult = {
   configUpdates: [],
 };
 const AVAILABLE_CAPABILITIES: CapabilityMap = {
-  "omp.cmd.new_session": { state: "available", via: "rpc" },
+  "omp.cmd.new_session": { state: "available", via: "omp" },
   "host.command-gateway": { state: "available", via: "host" },
 };
 
@@ -121,7 +121,7 @@ describe("SessionLifecycleController", () => {
       capabilities: capabilitySource({
         "omp.cmd.new_session": {
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "This omp connection cannot start a new session.",
         },
       }),

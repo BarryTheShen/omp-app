@@ -20,8 +20,8 @@ const INTERNAL_WORDS =
 function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   return {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
-    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
     ...overrides,
   };
 }
@@ -205,7 +205,7 @@ describe("plain words in the status lines", () => {
         }),
         "omp.cmd.get_state": CapabilityStatus.parse({
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "Unknown command: get_state (omp-v18.6.1:docs/rpc.md:141-149)",
         }),
       }),

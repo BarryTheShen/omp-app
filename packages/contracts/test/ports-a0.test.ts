@@ -51,7 +51,7 @@ describe("AppPort", () => {
         instanceId: "instance-1",
         serverVersion: "0.1.0",
         launchFolder: "/workspace",
-        omp: { version: "18.6.1", protocolVersion: 2 },
+        omp: { version: "18.6.1" },
       }).success,
     ).toBe(true);
     expect(

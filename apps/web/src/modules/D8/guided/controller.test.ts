@@ -15,7 +15,7 @@ import { GuidedGoalController, type GuidedGoalSource } from "./controller";
 
 const threadId = ThreadId.parse("thread-guided");
 const availableCapabilities: CapabilityMap = {
-  "omp.cmd.goal": { state: "available", via: "rpc" },
+  "omp.cmd.goal": { state: "available", via: "omp" },
 };
 
 /** The six required answers, in the order the interview asks them. */

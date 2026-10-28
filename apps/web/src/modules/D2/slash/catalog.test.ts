@@ -5,7 +5,7 @@ import { fakeSlashClient, REAL_COMMAND_LIST } from "./test-support";
 
 const threadId = ThreadId.parse("thread-d23-catalog");
 const available: CapabilityMap = {
-  "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+  "omp.cmd.get_available_commands": { state: "available", via: "omp" },
 };
 
 describe("D2.3 slash command catalog", () => {

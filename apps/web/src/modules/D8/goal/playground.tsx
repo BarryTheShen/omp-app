@@ -30,7 +30,7 @@ function GoalPlayground() {
   const goalState: GoalState = {
     goal,
     state: { enabled: true, mode: "active", goal },
-    source: "rpc",
+    source: "request",
     sessionSettled: true,
   };
   const canPause = goal.status === "active" || goal.status === "budget-limited";

@@ -9,7 +9,7 @@ import realHandoff from "./fixtures/real-handoff.json";
 const threadId = ThreadId.parse("thread-d54-controller");
 const readyProcess: ProcessState = { status: "ready", error: null };
 const readyCapabilities: CapabilityMap = {
-  "omp.cmd.handoff": { state: "available", via: "rpc" },
+  "omp.cmd.handoff": { state: "available", via: "omp" },
   "host.command-gateway": { state: "available", via: "host" },
 };
 function runOf(agentInvoked: boolean): CommandRunResult {
@@ -131,7 +131,7 @@ describe("RecoveryController availability", () => {
   test("uses the capability's own detail as the reason when the connection gives one", () => {
     const h = harness();
     h.setCapabilities({
-      "omp.cmd.handoff": { state: "unavailable", via: "rpc", detail: "This omp has no handoff." },
+      "omp.cmd.handoff": { state: "unavailable", via: "omp", detail: "This omp has no handoff." },
     });
 
     expect(h.controller.getAvailability("handoff")).toMatchObject({

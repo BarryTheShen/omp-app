@@ -23,7 +23,7 @@ const CAPABILITIES: CapabilityMap = {
   "host.metadata": { state: "available", via: "host" },
   "host.git-state": { state: "available", via: "host" },
   "host.github-refs": { state: "available", via: "host" },
-  "omp.subagent-events": { state: "available", via: "rpc" },
+  "omp.subagent-events": { state: "available", via: "omp" },
 };
 
 const HOST: HostMetadata = { hostname: "devbox", displayPath: "~/code/app" };

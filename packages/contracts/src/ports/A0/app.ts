@@ -4,7 +4,6 @@ import { CapabilityMap } from "../../core/capabilities";
 import type { PortClient, PortHandlers } from "../../core/envelope";
 import { definePort } from "../../core/envelope";
 import { FolderPath } from "../../core/ids";
-import { OMP_PROTOCOL_VERSIONS } from "../../core/omp";
 
 export const AppServerInfo = z
   .object({
@@ -13,12 +12,8 @@ export const AppServerInfo = z
     serverVersion: z.string().min(1),
     /** Folder from which the app server was launched; the browser uses it as its initial workspace. */
     launchFolder: FolderPath,
-    omp: z
-      .object({
-        version: z.string().min(1),
-        protocolVersion: z.union(OMP_PROTOCOL_VERSIONS.map((version) => z.literal(version))),
-      })
-      .nullable(),
+    /** The omp release the server runs; null without omp. */
+    omp: z.object({ version: z.string().min(1) }).nullable(),
     /** Where the app writes its debug log; absent when the app runs without one. */
     logFile: z.string().min(1).optional(),
   })

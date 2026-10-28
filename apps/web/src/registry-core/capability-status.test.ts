@@ -9,7 +9,7 @@ describe("capabilityStatus", () => {
 
   test("the server's report wins, including for an upstream key omp has started to ship", () => {
     const capabilities: CapabilityMap = {
-      "upstream.session-archive": { state: "available", via: "rpc" },
+      "upstream.session-archive": { state: "available", via: "omp" },
       "host.drafts": { state: "fallback", via: "host", detail: "read-only" },
     };
     expect(capabilityStatus(capabilities, "upstream.session-archive")?.state).toBe("available");

@@ -24,7 +24,7 @@ const commandShortcutDescriptors = [
 const CLEAR_REASON = "Clearing the conversation only works in the omp terminal for now.";
 
 function capabilityProvider(key: CapabilityKey): CapabilityStatus["via"] {
-  if (key.startsWith("omp.")) return "rpc";
+  if (key.startsWith("omp.")) return "omp";
   if (key.startsWith("host.")) return "host";
   if (key.startsWith("client.")) return "client";
   return "upstream";

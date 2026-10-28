@@ -26,8 +26,8 @@ function fixture(next: QueueSnapshot = snapshot) {
   const port = {
     getSnapshot: () => current,
     getCapabilities: () => ({
-      [P6_QUEUE_CAPABILITIES.remove]: { state: "available" as const, via: "rpc" as const },
-      [P6_QUEUE_CAPABILITIES.promote]: { state: "available" as const, via: "rpc" as const },
+      [P6_QUEUE_CAPABILITIES.remove]: { state: "available" as const, via: "omp" as const },
+      [P6_QUEUE_CAPABILITIES.promote]: { state: "available" as const, via: "omp" as const },
     }),
     subscribe: (listener: (value: QueueSnapshot) => void) => {
       listeners.add(listener);

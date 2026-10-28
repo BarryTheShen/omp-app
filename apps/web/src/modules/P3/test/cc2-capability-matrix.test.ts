@@ -100,15 +100,15 @@ const PROVED = CC2_MATRIX.flatMap((row) =>
 );
 
 const BRANCH_AVAILABLE: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
-  "omp.cmd.branch": { state: "available", via: "rpc" },
-  "omp.cmd.get_branch_messages": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
+  "omp.cmd.branch": { state: "available", via: "omp" },
+  "omp.cmd.get_branch_messages": { state: "available", via: "omp" },
 };
 
 const BRANCH_UNAVAILABLE: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
 };
 
 describe("CC2: the ExternalStore capability matrix for P3", () => {

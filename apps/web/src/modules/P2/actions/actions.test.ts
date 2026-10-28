@@ -161,7 +161,7 @@ describe("plan action authority", () => {
     let upstreamCalls = 0;
     const controller = createPlanActionController({
       plan: fakePlan(),
-      upstreamCapability: { state: "available", via: "rpc" },
+      upstreamCapability: { state: "available", via: "omp" },
       upstream: {
         approve: async () => {
           upstreamCalls += 1;

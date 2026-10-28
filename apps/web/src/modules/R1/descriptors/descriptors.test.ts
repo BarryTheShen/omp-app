@@ -38,15 +38,10 @@ describe("R1 descriptor coverage", () => {
     expect(byId.get("R1.sessionRename")?.requires).toEqual(["omp.cmd.set_session_name"]);
   });
 
-  test("Open session is offered on the chat host, which answers no open_session: it needs the saved session files", () => {
+  test("Open session needs the saved session files", () => {
     const openSession = R1_DESCRIPTORS.find((descriptor) => descriptor.id === "R1.openSession");
     if (!openSession) throw new Error("R1.openSession is missing");
     const chatHost: CapabilityMap = {
-      "omp.cmd.open_session": {
-        state: "unavailable",
-        via: "rpc",
-        detail: "the chat host does not answer open_session",
-      },
       "host.session-files": { state: "available", via: "host" },
     };
     expect(isDescriptorAvailable(openSession, chatHost)).toBe(true);

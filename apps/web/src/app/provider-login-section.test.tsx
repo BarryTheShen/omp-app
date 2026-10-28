@@ -14,7 +14,7 @@ afterEach(() => cleanup());
 
 const threadId = ThreadId.parse("01a11a8a-ea99-72dd-a84a-017f5d3766ef");
 const available = {
-  "omp.cmd.get_login_providers": { state: "available" as const, via: "rpc" as const },
+  "omp.cmd.get_login_providers": { state: "available" as const, via: "omp" as const },
 };
 // Building the sign-in port reads `client.port`; no sign-in call is made in these tests.
 const fakeClient = { port: () => ({}) } as unknown as AppClient;

@@ -57,13 +57,12 @@ const baseUsage = {
 type AssistantMessageContent = Extract<OmpMessage, { role: "assistant" }>["content"];
 
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort_and_prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
-  "omp.cmd.get_state": { state: "available", via: "rpc" },
-  "omp.cmd.get_entries": { state: "available", via: "rpc" },
-  "omp.cmd.get_tree": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
+  "omp.cmd.get_state": { state: "available", via: "omp" },
+  "omp.cmd.get_entries": { state: "available", via: "omp" },
+  "omp.cmd.get_tree": { state: "available", via: "omp" },
 };
 
 function assistantMessage(content: AssistantMessageContent): OmpMessage {
@@ -606,7 +605,7 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     const bashCapabilities: CapabilityMap = {
       ...capabilities,
-      "omp.cmd.bash": { state: "available", via: "rpc" },
+      "omp.cmd.bash": { state: "available", via: "omp" },
     };
     const send: ChatSessionRequest = async () => undefined as never;
     const controller = createOmpRuntime({ store, send, capabilities: bashCapabilities });
@@ -688,7 +687,7 @@ describe("R0.3 assistant-ui runtime", () => {
       send,
       capabilities: {
         ...capabilities,
-        "omp.cmd.abort_and_restore_queue": { state: "available", via: "rpc" },
+        "omp.cmd.abort_and_restore_queue": { state: "available", via: "omp" },
       },
       onQueueRestored: (restored) => handedBack.push(restored),
     });
@@ -710,7 +709,7 @@ describe("R0.3 assistant-ui runtime", () => {
       send,
       capabilities: {
         ...capabilities,
-        "omp.cmd.abort_and_restore_queue": { state: "available", via: "rpc" },
+        "omp.cmd.abort_and_restore_queue": { state: "available", via: "omp" },
       },
       onQueueRestored: (restored) => handedBack.push(restored),
     });
@@ -726,7 +725,7 @@ describe("R0.3 assistant-ui runtime", () => {
     const onReload = async () => undefined;
     const branchable = {
       ...capabilities,
-      "omp.cmd.branch": { state: "available" as const, via: "rpc" as const },
+      "omp.cmd.branch": { state: "available" as const, via: "omp" as const },
     };
 
     const offered = createOmpRuntime({
@@ -797,7 +796,7 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     const bashCapabilities: CapabilityMap = {
       ...capabilities,
-      "omp.cmd.abort_bash": { state: "available", via: "rpc" },
+      "omp.cmd.abort_bash": { state: "available", via: "omp" },
     };
     const commands: unknown[] = [];
     let finish!: (value: unknown) => void;

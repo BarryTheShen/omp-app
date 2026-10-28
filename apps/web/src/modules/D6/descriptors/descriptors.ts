@@ -1,10 +1,9 @@
-import {
-  type CapabilityKey,
-  type CommandDescriptor,
-  type Descriptor,
-  type DialogDescriptor,
-  ompCommandCapability,
-  type PanelDescriptor,
+import type {
+  CapabilityKey,
+  CommandDescriptor,
+  Descriptor,
+  DialogDescriptor,
+  PanelDescriptor,
 } from "@omp-app/contracts";
 
 /** Capabilities used by D6's gateway-backed diagnostics and local fallback surfaces. */
@@ -15,11 +14,11 @@ export const D6_CAPABILITIES = {
 
 const GATEWAY = D6_CAPABILITIES.commandGateway;
 const FALLBACK = D6_CAPABILITIES.fallback;
-export const D6_BTW_CAPABILITIES: CapabilityKey[] = [
-  ompCommandCapability("btw"),
-  ompCommandCapability("btw_cancel"),
-  ompCommandCapability("get_btw_history"),
-];
+/**
+ * The chat host has no side questions (`btw`) yet (SDK plan, H5.2g1), and no server publishes this key, so the command
+ * and the panel stay unavailable, as they were under omp's RPC.
+ */
+export const D6_BTW_CAPABILITIES: CapabilityKey[] = ["host.side-questions"];
 
 /** C1 rows not already owned by D6.3's palette commands. */
 export const D6_COMMAND_DESCRIPTORS = [

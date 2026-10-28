@@ -302,10 +302,10 @@ export const R1_WORKSPACE_STATE: WorkspaceState = {
 };
 
 export const R1_OPEN_CAPABILITIES: CapabilityMap = {
-  "omp.cmd.get_state": { state: "available", via: "rpc" },
-  "omp.cmd.get_entries": { state: "available", via: "rpc" },
-  "omp.cmd.get_tree": { state: "available", via: "rpc" },
-  "omp.cmd.set_session_name": { state: "available", via: "rpc" },
+  "omp.cmd.get_state": { state: "available", via: "omp" },
+  "omp.cmd.get_entries": { state: "available", via: "omp" },
+  "omp.cmd.get_tree": { state: "available", via: "omp" },
+  "omp.cmd.set_session_name": { state: "available", via: "omp" },
   "host.session-files": { state: "available", via: "host" },
   "host.session-pins": { state: "available", via: "host" },
   "host.command-gateway": { state: "available", via: "host" },

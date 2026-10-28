@@ -63,7 +63,7 @@ type ChatRequest = {
 };
 
 function capabilities() {
-  const available = (via: "rpc" | "host" = "rpc") =>
+  const available = (via: "omp" | "host" = "omp") =>
     CapabilityStatus.parse({ state: "available", via });
   return {
     "omp.cmd.get_available_models": available(),

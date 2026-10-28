@@ -6,7 +6,7 @@ import type { GuidedComposerDraft } from "../guided/composer";
 import { GuidedGoalController } from "../guided/controller";
 
 const threadId = ThreadId.parse("thread-d8-refusal");
-const available: CapabilityMap = { "omp.cmd.goal": { state: "available", via: "rpc" } };
+const available: CapabilityMap = { "omp.cmd.goal": { state: "available", via: "omp" } };
 
 const activeGoal: GoalModeState = {
   enabled: true,

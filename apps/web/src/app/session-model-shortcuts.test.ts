@@ -20,14 +20,14 @@ import {
 const THREAD = ThreadId.parse("0199a2f0-7a4b-7d1f-9a6c-111111111111");
 
 const CAPABILITIES: CapabilityMap = {
-  "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "omp" }),
+  "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "omp" }),
   "omp.cmd.get_available_thinking_levels": CapabilityStatus.parse({
     state: "available",
-    via: "rpc",
+    via: "omp",
   }),
-  "omp.cmd.set_thinking_level": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  "omp.cmd.cycle_thinking_level": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.set_thinking_level": CapabilityStatus.parse({ state: "available", via: "omp" }),
+  "omp.cmd.cycle_thinking_level": CapabilityStatus.parse({ state: "available", via: "omp" }),
 };
 
 /** The three role models of the walk: the Fast role (smol), the Default role and the Thinking role (slow). */

@@ -33,7 +33,7 @@ export interface A0PortContext {
     readonly instanceId: string;
     readonly serverVersion: string;
     readonly launchFolder: FolderPath;
-    readonly omp: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
+    readonly omp: { readonly version: string } | null;
     /** Where the debug log is written; absent without one. */
     readonly logFile?: string;
   };

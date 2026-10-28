@@ -32,7 +32,7 @@ describe("D8 autonomy contracts", () => {
     const state = GoalStateSchema.parse({
       goal,
       state: { enabled: true, mode: "active", goal },
-      source: "rpc",
+      source: "request",
       sessionSettled: false,
       futureState: { retained: true },
     });

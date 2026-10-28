@@ -11,6 +11,7 @@ import {
   RuleStore,
   SessionPinStore,
 } from "@omp-app/contracts";
+import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
 import { FileWatchRegistry } from "../../src/modules/A1/fs";
 
@@ -18,7 +19,8 @@ const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
 
-// The same fake omp the capabilities test uses: it answers the start-up checks, so the health starts "ok".
+// As the capabilities test's fake: omp's command line for the start-up checks, so the health starts "ok", and with
+// `__omp_app_chat` a chat host that says hello.
 const FAKE_OMP = `#!/usr/bin/env bun
 if (Bun.argv.includes("--version")) {
   process.stdout.write("omp 18.6.1\\n");
@@ -28,20 +30,16 @@ if (Bun.argv.slice(-3).join(" ") === "config list --json") {
   process.stdout.write(JSON.stringify({ model: { type: "string", value: "fake-default" } }));
   process.exit(0);
 }
-console.log(JSON.stringify({ type: "ready", protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }));
-let pending = "";
-function respond(command) {
-  if (command.type === "negotiate_protocol") {
-    console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: true, data: { protocolVersion: 2 } }));
-    return;
-  }
-  console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: true, data: {} }));
-}
-for await (const chunk of Bun.stdin.stream()) {
-  pending += new TextDecoder().decode(chunk);
-  const lines = pending.split("\\n");
-  pending = lines.pop() ?? "";
-  for (const line of lines) if (line.trim()) respond(JSON.parse(line));
+if (!Bun.argv.includes("__omp_app_chat")) process.exit(2);
+console.log(JSON.stringify({
+  kind: "hello",
+  protocol: 1,
+  ompVersion: "18.6.1",
+  methods: ${JSON.stringify(CHAT_HOST_METHODS)},
+  session: { id: "thread-file-watch", file: process.cwd() + "/session.jsonl", cwd: process.cwd() },
+}));
+for await (const _chunk of Bun.stdin.stream()) {
+  // A chat host reads requests until it is stopped; the check sends none.
 }
 `;
 

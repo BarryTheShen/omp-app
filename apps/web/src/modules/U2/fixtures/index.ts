@@ -109,8 +109,6 @@ export interface U2StateFixture {
   readonly omp: {
     readonly version: "18.6.1";
     readonly commit: "2a2c6dcbbb558c0f8145f67f28b3370984f2bf60";
-    readonly protocolVersion: 2;
-    readonly mode: "rpc-ui";
   };
   readonly provider: { readonly kind: "fake-openai" };
   readonly placeholders: readonly ["<WORKSPACE>"];
@@ -212,8 +210,6 @@ const commonMetadata = {
   omp: {
     version: "18.6.1",
     commit: "2a2c6dcbbb558c0f8145f67f28b3370984f2bf60",
-    protocolVersion: 2,
-    mode: "rpc-ui",
   },
   provider: { kind: "fake-openai" },
   placeholders: ["<WORKSPACE>"],

@@ -45,7 +45,7 @@ describe("goalSourceOf", () => {
         },
         confirm: async () => false,
       },
-      capabilities: () => ({ "omp.cmd.goal": { state: "available", via: "rpc" } }),
+      capabilities: () => ({ "omp.cmd.goal": { state: "available", via: "omp" } }),
       goal: goalSourceOf(store),
       composer: { read: () => "", write: async () => undefined },
     });

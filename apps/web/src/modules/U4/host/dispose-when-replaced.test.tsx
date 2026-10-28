@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 const threadA = "thread-strict-a" as ThreadId;
 const threadB = "thread-strict-b" as ThreadId;
-const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "rpc" } };
+const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "omp" } };
 
 interface Hosts {
   current: DialogHostController | undefined;

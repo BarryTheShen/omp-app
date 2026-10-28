@@ -41,7 +41,7 @@ export type GoalModeState = z.infer<typeof GoalModeStateSchema>;
 export const GoalStateSchema = z.looseObject({
   goal: GoalSchema.nullable(),
   state: GoalModeStateSchema.nullable(),
-  source: z.enum(["rpc", "event", "reconciled"]),
+  source: z.enum(["request", "event", "reconciled"]),
   sessionSettled: z.boolean(),
 });
 export type GoalState = z.infer<typeof GoalStateSchema>;
@@ -187,7 +187,7 @@ export function unavailableAutonomy(capability: D8Ap6Capability, message: string
 
 export function goalStateFromResult(
   result: GoalRpcResult,
-  source: GoalState["source"] = "rpc",
+  source: GoalState["source"] = "request",
   sessionSettled = false,
 ): GoalState {
   return GoalStateSchema.parse({

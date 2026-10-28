@@ -290,7 +290,7 @@ function commandClient(session: SubagentSession, withheld?: CapabilityKey): Suba
     Object.fromEntries(
       Object.values(P1CapabilityKeys)
         .filter((key) => key !== withheld)
-        .map((key) => [key, { state: "available", via: key.startsWith("host.") ? "host" : "rpc" }]),
+        .map((key) => [key, { state: "available", via: key.startsWith("host.") ? "host" : "omp" }]),
     ),
   );
   return createSubagentClient({

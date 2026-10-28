@@ -9,7 +9,7 @@ import type { TodoSnapshot, TodoStore } from "../contract";
 import { TodoEditorController } from "./editor";
 
 const threadId = ThreadId.parse("u5-editor-playground");
-const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "rpc" } };
+const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "omp" } };
 
 function createStore(): TodoStore {
   let snapshot: TodoSnapshot = {

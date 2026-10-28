@@ -90,11 +90,11 @@ function modelWithRunning(
 
 /** Omp's rename command is available, so the Rename menu item is enabled. */
 const RENAME_AVAILABLE: CapabilityMap = {
-  "omp.cmd.set_session_name": { state: "available", via: "rpc" },
+  "omp.cmd.set_session_name": { state: "available", via: "omp" },
 };
 
 const DELETE_AVAILABLE: CapabilityMap = {
-  "host.session-files": { state: "available", via: "rpc" },
+  "host.session-files": { state: "available", via: "omp" },
 };
 
 function fakeRemote(calls: string[]): ComponentProps<typeof SessionCatalogSidebar>["remote"] {
@@ -736,7 +736,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={(_session, title) => {
@@ -774,7 +774,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={() => true}
@@ -810,7 +810,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={() => true}
@@ -847,7 +847,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={() => true}
@@ -892,7 +892,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={() => true}
@@ -924,7 +924,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={() => true}
@@ -961,7 +961,7 @@ describe("SessionCatalogSidebar", () => {
         });
       },
     };
-    const registry = { "host.session-files": { state: "available", via: "rpc" } } as const;
+    const registry = { "host.session-files": { state: "available", via: "omp" } } as const;
     const sidebar = (
       <SessionCatalogSidebar
         catalog={catalog}
@@ -1013,7 +1013,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={catalog}
           confirmDelete={() => true}
@@ -1059,7 +1059,7 @@ describe("SessionCatalogSidebar", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={() => true}
@@ -1143,7 +1143,7 @@ describe("SessionCatalogSidebar", () => {
     return render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={catalog}
           confirmDelete={() => true}
@@ -1903,7 +1903,7 @@ describe("SessionCatalogSidebar chords", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={(_session, title) => {
@@ -1928,7 +1928,7 @@ describe("SessionCatalogSidebar chords", () => {
     render(
       withRegistry(
         createRegistry([]),
-        { "host.session-files": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "omp" } },
         <SessionCatalogSidebar
           catalog={modelWithSessions()}
           confirmDelete={(_session, title) => {

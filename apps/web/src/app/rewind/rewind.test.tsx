@@ -84,9 +84,9 @@ const TREE: readonly TreeNode[] = [
 ];
 
 const AVAILABLE: CapabilityMap = {
-  "omp.cmd.get_tree": { state: "available", via: "rpc" },
-  "omp.cmd.branch": { state: "available", via: "rpc" },
-  "omp.cmd.fork": { state: "available", via: "rpc" },
+  "omp.cmd.get_tree": { state: "available", via: "omp" },
+  "omp.cmd.branch": { state: "available", via: "omp" },
+  "omp.cmd.fork": { state: "available", via: "omp" },
 };
 
 /** A fake omp: the tree, branch and fork requests, and the new session's identity. */
@@ -215,7 +215,7 @@ describe("rewind availability and tree lookup", () => {
     expect(rewindAvailable(AVAILABLE)).toBe(true);
     expect(
       rewindAvailable({
-        "omp.cmd.get_tree": AVAILABLE["omp.cmd.get_tree"] ?? { state: "unavailable", via: "rpc" },
+        "omp.cmd.get_tree": AVAILABLE["omp.cmd.get_tree"] ?? { state: "unavailable", via: "omp" },
       }),
     ).toBe(false);
   });
@@ -357,7 +357,7 @@ describe("rewind panel", () => {
   test("without omp's tree or branch command there is no tab, palette command or chord", () => {
     const { registry } = renderRewind({
       capabilities: {
-        "omp.cmd.get_tree": AVAILABLE["omp.cmd.get_tree"] ?? { state: "unavailable", via: "rpc" },
+        "omp.cmd.get_tree": AVAILABLE["omp.cmd.get_tree"] ?? { state: "unavailable", via: "omp" },
       },
     });
     expect(registry().commandFor(REWIND_COMMAND)).toBeUndefined();

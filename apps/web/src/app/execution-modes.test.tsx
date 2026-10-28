@@ -30,9 +30,9 @@ const CHAT_B = "chat-b" as ThreadId;
 
 const AVAILABLE: CapabilityMap = {
   "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
-  "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "omp" }),
+  "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
+  "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
 };
 
 /** A client whose command gateway completes every command and whose session answers get_state. */
@@ -212,7 +212,7 @@ describe("the execution-modes control in the composer toolbar", () => {
         ...AVAILABLE,
         "omp.cmd.set_slow_mode": CapabilityStatus.parse({
           state: "unavailable",
-          via: "rpc",
+          via: "omp",
           detail: "The command service is offline.",
         }),
       },

@@ -19,8 +19,8 @@ import {
 
 const available: CapabilityMap = {
   "host.command-gateway": { state: "available", via: "host" },
-  "omp.cmd.set_fast_mode": { state: "available", via: "rpc" },
-  "omp.cmd.get_state": { state: "available", via: "rpc" },
+  "omp.cmd.set_fast_mode": { state: "available", via: "omp" },
+  "omp.cmd.get_state": { state: "available", via: "omp" },
 };
 
 describe("D7 mode contracts", () => {
@@ -51,7 +51,7 @@ describe("D7 mode contracts", () => {
       active: false,
       state: "fallback",
       scope: "session",
-      source: "omp-rpc",
+      source: "omp-session",
       capability: "omp.cmd.set_fast_mode",
       reason: "The provider does not expose a fast tier.",
     });
@@ -83,7 +83,10 @@ describe("D7 precedence and capability gates", () => {
         enabled: false,
         active: false,
       }),
-      modeState("fast", "session", "omp-rpc", "known", available, { enabled: true, active: true }),
+      modeState("fast", "session", "omp-session", "known", available, {
+        enabled: true,
+        active: true,
+      }),
       modeState("fast", "command", "omp-command", "requested", available, { requested: true }),
     ];
     const records = resolveModePrecedence(states);
@@ -137,7 +140,7 @@ describe("D7 precedence and capability gates", () => {
         active: false,
         state: "known",
         scope: "session",
-        source: "omp-rpc",
+        source: "omp-session",
       },
       precedence: resolveModePrecedence([mode]),
       tools: [tool],

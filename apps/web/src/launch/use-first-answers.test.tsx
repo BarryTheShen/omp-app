@@ -10,7 +10,7 @@ const serverInfo = {
   serverVersion: "test",
   launchFolder: "/workspace" as never,
   logFile: "/workspace/log.txt",
-  omp: { version: "18.9.1", protocolVersion: 2 },
+  omp: { version: "18.9.1" },
 } satisfies AppServerInfo;
 const health: AppHealth = { status: "ok" };
 function fakeClient(methods: {

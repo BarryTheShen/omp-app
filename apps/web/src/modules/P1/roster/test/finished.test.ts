@@ -252,18 +252,18 @@ function sessionReporting(
 }
 
 describe("a chat's finished workers, read through its live omp", () => {
-  const available = { "host.session-files": { state: "available", via: "rpc" } } as const;
+  const available = { "host.session-files": { state: "available", via: "omp" } } as const;
   const fallback = {
     "host.session-files": CapabilityStatus.parse({
       state: "fallback",
-      via: "rpc",
+      via: "omp",
       detail: "Saved session files are available.",
     }),
   };
   const unavailable = {
     "host.session-files": CapabilityStatus.parse({
       state: "unavailable",
-      via: "rpc",
+      via: "omp",
       detail: "Session files cannot be read.",
     }),
   };

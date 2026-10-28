@@ -22,8 +22,8 @@ import { shippedSources } from "./shipped";
 
 /** Both transitions are available. `transitions.ts` gates on these two keys. */
 const AVAILABLE: CapabilityMap = {
-  "omp.cmd.branch": { state: "available", via: "rpc" },
-  "omp.cmd.fork": { state: "available", via: "rpc" },
+  "omp.cmd.branch": { state: "available", via: "omp" },
+  "omp.cmd.fork": { state: "available", via: "omp" },
 };
 
 function transitionsOn(omp: RecordedOmp, isBusy?: () => boolean) {

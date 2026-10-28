@@ -12,8 +12,8 @@ import { createOmpRuntime } from "./runtime";
 
 const threadId = ThreadId.parse("thread-stop-restore");
 const restoring: CapabilityMap = {
-  "omp.cmd.abort": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  "omp.cmd.abort_and_restore_queue": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.abort": CapabilityStatus.parse({ state: "available", via: "omp" }),
+  "omp.cmd.abort_and_restore_queue": CapabilityStatus.parse({ state: "available", via: "omp" }),
 };
 
 function queuedStore(): OmpRuntimeStore {
@@ -38,7 +38,7 @@ describe("Stop with queued input on the plain-abort paths", () => {
     const controller = createOmpRuntime({
       store: queuedStore(),
       send,
-      capabilities: { "omp.cmd.abort": CapabilityStatus.parse({ state: "available", via: "rpc" }) },
+      capabilities: { "omp.cmd.abort": CapabilityStatus.parse({ state: "available", via: "omp" }) },
       onQueueRestored: (stopped) => handedBack.push(stopped),
     });
     await controller.cancel();

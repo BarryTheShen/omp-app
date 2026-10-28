@@ -13,8 +13,8 @@ import { ModeIndicator } from "./mode-indicator";
 import { modeForText, parseComposerMode, submitModeInput } from "./modes";
 
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
   "upstream.python-mode": {
     state: "unavailable",
     via: "upstream",

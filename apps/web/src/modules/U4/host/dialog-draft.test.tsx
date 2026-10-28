@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 const threadA = "thread-a" as ThreadId;
 const threadB = "thread-b" as ThreadId;
-const ompUi: CapabilityMap = { "omp.ui": { state: "available", via: "rpc" } };
+const ompUi: CapabilityMap = { "omp.ui": { state: "available", via: "omp" } };
 const appOptions: DialogHostOpenOptions = { threadId: threadA, origin: "app" };
 
 function editor(id: string, title: string, prefill?: string): DialogRequest {

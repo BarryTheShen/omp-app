@@ -17,9 +17,9 @@ const controller = new ThinkingLevelsController({
   source,
   live: liveState,
   capabilities: {
-    "omp.cmd.get_available_thinking_levels": { state: "available", via: "rpc" },
-    "omp.cmd.set_thinking_level": { state: "available", via: "rpc" },
-    "omp.cmd.cycle_thinking_level": { state: "available", via: "rpc" },
+    "omp.cmd.get_available_thinking_levels": { state: "available", via: "omp" },
+    "omp.cmd.set_thinking_level": { state: "available", via: "omp" },
+    "omp.cmd.cycle_thinking_level": { state: "available", via: "omp" },
   },
 });
 

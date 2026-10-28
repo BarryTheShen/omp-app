@@ -9,10 +9,10 @@ afterEach(cleanup);
 const capabilities = {
   "omp.cmd.get_available_thinking_levels": CapabilityStatus.parse({
     state: "available",
-    via: "rpc",
+    via: "omp",
   }),
-  "omp.cmd.set_thinking_level": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  "omp.cmd.cycle_thinking_level": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.set_thinking_level": CapabilityStatus.parse({ state: "available", via: "omp" }),
+  "omp.cmd.cycle_thinking_level": CapabilityStatus.parse({ state: "available", via: "omp" }),
 };
 
 const source = {

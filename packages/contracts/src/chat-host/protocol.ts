@@ -31,6 +31,7 @@ import {
   type UriCancelEvent,
 } from "./host-tools";
 import { type LiveEvent, LiveMuteParams, LiveStartParams } from "./live";
+import { CHAT_HOST_METHOD_NAMES, type ChatHostMethodName } from "./method-names";
 import {
   SteerSubagentParams,
   type SubagentEvent,
@@ -785,8 +786,14 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_interrupt_mode: InterruptModeParams,
 };
 
-/** The methods of protocol version 1, in the order `hello` lists them. */
-export const CHAT_HOST_METHODS = Object.keys(PARAMS) as readonly ChatHostMethod[];
+/** The methods of protocol version 1, in the order `hello` lists them (`method-names.ts`, checked against the map). */
+export const CHAT_HOST_METHODS: readonly ChatHostMethod[] = CHAT_HOST_METHOD_NAMES;
+
+/** Fails to compile when `method-names.ts` misses a method of `ChatHostMethodMap`. */
+type NoMethodMissing<Missing extends never> = Missing;
+export type ChatHostMethodNamesComplete = NoMethodMissing<
+  Exclude<ChatHostMethod, ChatHostMethodName>
+>;
 
 export function isChatHostMethod(method: string): method is ChatHostMethod {
   return Object.hasOwn(PARAMS, method);

@@ -56,7 +56,7 @@ describe("I4.5 descriptor and AP6 acceptance", () => {
     });
     expect(I4_FIXTURES.available.capabilities[COLLABORATION_CAPABILITY]).toMatchObject({
       state: "available",
-      via: "rpc",
+      via: "omp",
     });
   });
 

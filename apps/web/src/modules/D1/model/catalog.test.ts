@@ -40,8 +40,8 @@ function rawModel(
 
 function capabilities() {
   return {
-    "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "omp" }),
   };
 }
 

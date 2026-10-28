@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { OMP_COMMAND_NAMES } from "@omp-app/contracts";
+import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import type { CapabilityProbeRawResult } from "./capabilities";
 import { capabilityProbeResultFromRaw } from "./capabilities";
 import { createConfigStoreWithOmpDefaults } from "./modules/A1/config/omp-defaults";
@@ -18,9 +18,8 @@ async function temporaryRoot(): Promise<string> {
 
 function rawResult(): CapabilityProbeRawResult {
   return {
-    protocolVersion: 2,
     commandResults: Object.fromEntries(
-      OMP_COMMAND_NAMES.map((command) => [command, { available: true }]),
+      CHAT_HOST_METHODS.map((command) => [command, { available: true }]),
     ) as CapabilityProbeRawResult["commandResults"],
   };
 }

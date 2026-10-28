@@ -44,7 +44,7 @@ function allCapabilities(except?: string): CapabilityMap {
   const capabilities: CapabilityMap = {};
   for (const key of AGENT_CAPABILITIES) {
     if (key === except) continue;
-    capabilities[key] = { state: "available", via: "rpc" };
+    capabilities[key] = { state: "available", via: "omp" };
   }
   return capabilities;
 }

@@ -12,8 +12,8 @@ import { afterEach, describe, expect, test } from "vitest";
 import { ModeIndicator } from "./mode-indicator";
 
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
   "upstream.python-mode": {
     state: "unavailable",
     via: "upstream",

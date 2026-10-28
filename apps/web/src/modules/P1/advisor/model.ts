@@ -254,7 +254,7 @@ export function advisorConfigView(state: AdvisorConfigState): AdvisorConfigViewM
 
 function provenanceLabel(origin: ProvenanceOrigin): string {
   switch (origin) {
-    case "omp-rpc":
+    case "omp-session":
       return "Reported by omp";
     case "omp-config":
       return "Read from omp settings";

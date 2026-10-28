@@ -48,10 +48,10 @@ afterEach(() => cleanup());
 
 const pythonUnavailableReason = "Python mode is not available in this version of omp.";
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
-  "omp.cmd.abort_bash": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
+  "omp.cmd.abort_bash": { state: "available", via: "omp" },
   "upstream.python-mode": {
     state: "unavailable",
     via: "upstream",

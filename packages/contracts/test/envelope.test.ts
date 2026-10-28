@@ -33,9 +33,9 @@ const serverFrames: ServerFrame[] = [
     protocol: APP_PROTOCOL,
     instanceId: "server-1",
     serverVersion: "0.0.0",
-    omp: { version: "18.6.1", protocolVersion: 2 },
+    omp: { version: "18.6.1" },
     capabilities: {
-      "omp.protocol.v2": { state: "available", via: "rpc" },
+      "omp.ui": { state: "available", via: "omp" },
       "upstream.plan-mode": { state: "unavailable", via: "upstream", detail: "needs new RPC" },
     },
   },
@@ -109,13 +109,10 @@ describe("app wire frames", () => {
       { type: "result", id, ok: false, error: { code: "oops", message: "", retryable: false } },
     ],
     ["other app protocol", { ...serverFrames[1], protocol: "omp-app/2" }],
-    [
-      "unknown omp protocol",
-      { ...serverFrames[1], omp: { version: "18.6.1", protocolVersion: 3 } },
-    ],
+    ["omp without its release", { ...serverFrames[1], omp: {} }],
     [
       "bad capability key",
-      { ...serverFrames[1], capabilities: { "omp.cmd.nope": { state: "available", via: "rpc" } } },
+      { ...serverFrames[1], capabilities: { "omp.cmd.nope": { state: "available", via: "omp" } } },
     ],
   ];
 

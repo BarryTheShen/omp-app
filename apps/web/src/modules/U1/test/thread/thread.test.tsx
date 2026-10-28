@@ -47,8 +47,8 @@ afterEach(() => {
 
 const threadId = "u1-thread-test" as ThreadId;
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
 };
 const usage = {
   input: 1,

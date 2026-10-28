@@ -6,7 +6,6 @@ import {
   CapabilityMap,
   EntryId,
   FolderPath,
-  OMP_COMMAND_NAMES,
   OmpProcessId,
   OmpStreamMessageId,
   overridesFollowPrecedence,
@@ -20,6 +19,7 @@ import {
   sourcedSchema,
   ThreadId,
 } from "../src";
+import { CHAT_HOST_METHODS } from "../src/chat-host/protocol";
 
 describe("ids", () => {
   test("brands accept non-empty strings only", () => {
@@ -92,8 +92,8 @@ describe("capabilities", () => {
     }
   });
 
-  test("every omp command has a capability key", () => {
-    for (const name of OMP_COMMAND_NAMES) {
+  test("every chat host method has a capability key", () => {
+    for (const name of CHAT_HOST_METHODS) {
       expect(CapabilityKey.safeParse(`omp.cmd.${name}`).success).toBe(true);
     }
   });

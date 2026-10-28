@@ -14,7 +14,7 @@ function availableCapabilities(): CapabilityMap {
   return Object.fromEntries(
     Object.values(P1CapabilityKeys).map((key) => [
       key,
-      { state: "available", via: key.startsWith("host.") ? "host" : "rpc" },
+      { state: "available", via: key.startsWith("host.") ? "host" : "omp" },
     ]),
   ) as CapabilityMap;
 }
@@ -122,7 +122,7 @@ describe("P1 subagent client commands", () => {
     const capabilities = availableCapabilities();
     capabilities[P1CapabilityKeys.steer] = {
       state: "unavailable",
-      via: "rpc",
+      via: "omp",
       detail: "not released",
     };
     const { client } = fakeClient({ capabilities, sent });
@@ -138,7 +138,7 @@ describe("P1 subagent client commands", () => {
     const capabilities = availableCapabilities();
     capabilities[P1CapabilityKeys.transcript] = {
       state: "fallback",
-      via: "rpc",
+      via: "omp",
       detail: "Transcripts are read from the saved session file.",
     };
     const { client } = fakeClient({ capabilities, sent });
@@ -153,7 +153,7 @@ describe("P1 subagent client commands", () => {
     const capabilities = availableCapabilities();
     capabilities[P1CapabilityKeys.transcript] = {
       state: "unavailable",
-      via: "rpc",
+      via: "omp",
       detail: "not released",
     };
     const { client } = fakeClient({ capabilities, sent });
@@ -242,7 +242,7 @@ describe("P1 subscription arbitration and R0 notification handoff", () => {
         },
       },
     };
-    // omp's RPC progress frame, as the chat host sends it.
+    // omp's progress event, as the chat host sends it.
     const progress = notificationEvent({
       type: "subagent_progress",
       payload: {

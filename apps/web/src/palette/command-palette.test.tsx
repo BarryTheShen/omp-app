@@ -44,7 +44,7 @@ const CLEAR = commandById("D5.clear");
 const MODEL = commandById("D1.model");
 
 function capabilityVia(key: CapabilityKey): CapabilityStatus["via"] {
-  if (key.startsWith("omp.")) return "rpc";
+  if (key.startsWith("omp.")) return "omp";
   if (key.startsWith("host.")) return "host";
   if (key.startsWith("client.")) return "client";
   return "upstream";

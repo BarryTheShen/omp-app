@@ -46,7 +46,7 @@ function unavailableReason(key: CapabilityKey, capabilities: CapabilityMap): str
   switch (status?.via) {
     case "upstream":
       return "This command needs a newer version of omp.";
-    case "rpc":
+    case "omp":
       return "The connected omp process does not support this command.";
     case "host":
       return "The app host does not provide this command.";

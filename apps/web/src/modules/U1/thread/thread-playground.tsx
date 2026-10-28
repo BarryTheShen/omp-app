@@ -18,10 +18,10 @@ import { ThreadShell } from "./thread";
 
 const THREAD_ID = "u1-playground" as ThreadId;
 const CAPABILITIES: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
-  "omp.cmd.abort_bash": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
+  "omp.cmd.abort_bash": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
 };
 
 const IMAGE_DATA =

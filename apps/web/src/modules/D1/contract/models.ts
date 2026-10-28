@@ -1,4 +1,4 @@
-import type { CapabilityKey, OmpCommandMap } from "@omp-app/contracts";
+import type { CapabilityKey } from "@omp-app/contracts";
 import {
   AppError as AppErrorSchema,
   CapabilityStatus as CapabilityStatusSchema,
@@ -46,7 +46,6 @@ export const ModelErrorCode = z.enum([
   "unavailable",
   "loading",
   "conflict",
-  "rpc",
   "config",
 ]);
 export type ModelErrorCode = z.infer<typeof ModelErrorCode>;
@@ -114,13 +113,6 @@ export const D1_CAPABILITIES = [
   "host.command-gateway",
   MODEL_SCOPE_AP6_CAPABILITY,
 ] as const satisfies readonly CapabilityKey[];
-export type D1ModelRpcCommand =
-  | "get_available_models"
-  | "set_model"
-  | "get_available_thinking_levels"
-  | "set_thinking_level"
-  | "cycle_thinking_level";
-export type D1ModelRpcResults = Pick<OmpCommandMap, D1ModelRpcCommand>;
 export const ModelCapability = z.enum(D1_CAPABILITIES);
 export type ModelCapability = z.infer<typeof ModelCapability>;
 export const ModelCapabilities = z.partialRecord(ModelCapability, CapabilityStatusSchema);

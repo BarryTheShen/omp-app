@@ -1,94 +1,11 @@
 /**
- * The recorded-fixture format.
+ * The privacy check for committed fixtures and recordings.
  *
- * Fixtures are recorded only from scripted scenarios in throwaway workspaces against a fake
- * OpenAI-compatible provider, never from real sessions (PLAN.md, "Open questions", recorded-session
- * policy). One file per scenario, `<scenario>.fixture.jsonl`: line 1 is the header, every later
- * line is one frame exactly as it crossed omp's stdio. Keys, tokens and auth headers are replaced
- * by `<REDACTED:<kind>>` markers, e-mail addresses by `<EMAIL>`, and absolute paths by the path
- * placeholders below before a fixture is written; `serializeFixture` and `parseFixture` refuse
- * text that still fails `checkScrubbed`.
+ * Fixtures are recorded only from scripted scenarios in throwaway workspaces against a fake OpenAI-compatible provider,
+ * never from real sessions (PLAN.md, "Open questions", recorded-session policy). Before one is committed, keys, tokens
+ * and auth headers are replaced by `<REDACTED:<kind>>` markers, e-mail addresses by `<EMAIL>`, and absolute paths by
+ * placeholders (`<WORKSPACE>`, `<HOME>`, `<TMP>`, `<WORKSPACE_BUCKET>`); `checkScrubbed` reports text that still holds one.
  */
-import { z } from "zod";
-import { CapabilityMap } from "./capabilities";
-import { type ParseResult, parseJson } from "./errors";
-import { INVENTORY_IDS, InventoryId } from "./inventory";
-import { OMP_PROTOCOL_VERSIONS, OMP_RPC_MODES } from "./omp";
-
-export const FIXTURE_FORMAT = "omp-app.fixture";
-export const FIXTURE_FORMAT_VERSION = 1;
-export const FIXTURE_FILE_SUFFIX = ".fixture.jsonl";
-
-/**
- * Stand-ins the header must declare when the frames use them: the scenario's workspace, the home
- * folder and the temp folder for absolute paths, `<WORKSPACE_BUCKET>` for omp's session-bucket name
- * derived from the workspace path (session-paths.ts), and `<EMAIL>` for an e-mail address.
- */
-export const FIXTURE_PLACEHOLDERS = [
-  "<WORKSPACE>",
-  "<HOME>",
-  "<TMP>",
-  "<WORKSPACE_BUCKET>",
-  "<EMAIL>",
-] as const;
-export type FixturePlaceholder = (typeof FIXTURE_PLACEHOLDERS)[number];
-
-/** Values the recorder replaced with a `<REDACTED:<kind>>` marker, by kind. */
-export const REDACTION_KINDS = ["key", "token", "authHeader"] as const;
-export type RedactionKind = (typeof REDACTION_KINDS)[number];
-
-const Count = z.int().min(0);
-
-export const FixtureHeader = z.strictObject({
-  format: z.literal(FIXTURE_FORMAT),
-  formatVersion: z.literal(FIXTURE_FORMAT_VERSION),
-  /** Kebab-case; also the file name before `.fixture.jsonl`. */
-  scenario: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  description: z.string().min(1),
-  recordedAt: z.iso.datetime({ offset: true }),
-  source: z.literal("scripted"),
-  omp: z.strictObject({
-    version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
-    commit: z.string().regex(/^[0-9a-f]{40}$/),
-    /** The protocol in force after negotiation. */
-    protocolVersion: z.union(OMP_PROTOCOL_VERSIONS.map((version) => z.literal(version))),
-    mode: z.enum(OMP_RPC_MODES),
-    /** omp's command-line arguments, with paths already replaced by placeholders. */
-    args: z.array(z.string()),
-  }),
-  provider: z.strictObject({ kind: z.literal("fake-openai") }),
-  /** The capabilities the app derived while recording. */
-  capabilities: CapabilityMap,
-  /** Every placeholder the frames use. */
-  placeholders: z.array(z.enum(FIXTURE_PLACEHOLDERS)),
-  /** How many keys, tokens and auth headers were redacted, and how many e-mail addresses and paths became placeholders. */
-  redactions: z.strictObject({
-    key: Count,
-    token: Count,
-    authHeader: Count,
-    email: Count,
-    path: Count,
-  }),
-  tags: z.array(z.string().min(1)),
-  /** Inventory rows the scenario exercises. */
-  inventory: z.array(InventoryId.refine((id) => INVENTORY_IDS.has(id), "unknown inventory id")),
-});
-export type FixtureHeader = z.infer<typeof FixtureHeader>;
-
-export const FixtureFrame = z.strictObject({
-  /** Milliseconds since the recording started; never decreases from one frame to the next. */
-  t: z.int().min(0),
-  /** `stdout`: omp wrote it; `stdin`: the host wrote it. */
-  dir: z.enum(["stdout", "stdin"]),
-  /** The raw line without its newline (it need not be valid JSON: malformed input is a scenario). */
-  line: z.string().refine((line) => !line.includes("\n"), "a frame line holds no newline"),
-});
-export type FixtureFrame = z.infer<typeof FixtureFrame>;
-
-export interface Fixture {
-  header: FixtureHeader;
-  frames: FixtureFrame[];
-}
 
 export type ScrubRule = "path" | "key" | "token" | "email";
 
@@ -191,60 +108,4 @@ export function checkScrubbed(text: string): ScrubProblem[] {
     }
   }
   return problems;
-}
-
-function fixtureProblems(fixture: Fixture, text: string): string[] {
-  const problems = checkScrubbed(text).map(
-    (problem) => `line ${problem.line}, column ${problem.column}: ${problem.rule} not scrubbed`,
-  );
-  const declared = new Set<string>(fixture.header.placeholders);
-  for (const placeholder of FIXTURE_PLACEHOLDERS) {
-    if (!declared.has(placeholder) && text.includes(placeholder)) {
-      problems.push(`placeholder ${placeholder} is used but not declared in the header`);
-    }
-  }
-  for (const [index, frame] of fixture.frames.entries()) {
-    const previous = fixture.frames[index - 1];
-    if (previous !== undefined && frame.t < previous.t) {
-      problems.push(`frame ${index + 1}: t goes backwards (${frame.t} < ${previous.t})`);
-    }
-  }
-  return problems;
-}
-
-/** Returns the fixture as JSONL text; throws when it breaks the format or is not scrubbed. */
-export function serializeFixture(fixture: Fixture): string {
-  const header = FixtureHeader.parse(fixture.header);
-  const frames = fixture.frames.map((frame) => FixtureFrame.parse(frame));
-  const text = [header, ...frames].map((line) => `${JSON.stringify(line)}\n`).join("");
-  const problems = fixtureProblems({ header, frames }, text);
-  if (problems.length > 0) throw new Error(`Fixture ${header.scenario}: ${problems.join("; ")}`);
-  return text;
-}
-
-/** Parses fixture JSONL text; rejects a bad header or frame, and text that is not scrubbed. */
-export function parseFixture(text: string): ParseResult<Fixture> {
-  const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
-  const [headerLine, ...frameLines] = lines;
-  const header = parseJson(FixtureHeader, headerLine ?? "");
-  if (!header.ok)
-    return { ok: false, error: { ...header.error, message: `header: ${header.error.message}` } };
-  const frames: FixtureFrame[] = [];
-  for (const [index, frameLine] of frameLines.entries()) {
-    const frame = parseJson(FixtureFrame, frameLine);
-    if (!frame.ok) {
-      const message = `line ${index + 2}: ${frame.error.message}`;
-      return { ok: false, error: { ...frame.error, message } };
-    }
-    frames.push(frame.value);
-  }
-  const fixture = { header: header.value, frames };
-  const problems = fixtureProblems(fixture, text);
-  if (problems.length > 0) {
-    return {
-      ok: false,
-      error: { code: "invalid_args", message: problems.join("; "), retryable: false },
-    };
-  }
-  return { ok: true, value: fixture };
 }

@@ -8,7 +8,7 @@ import { createQueueAdapter } from "../contract";
 
 const threadId = "p6-queue-image-restoration" as ThreadId;
 const capabilities: CapabilityMap = {
-  "omp.cmd.remove_queued_message": { state: "available", via: "rpc" },
+  "omp.cmd.remove_queued_message": { state: "available", via: "omp" },
 };
 
 function storeWithQueuedMessage(): OmpRuntimeStore {

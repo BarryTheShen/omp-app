@@ -132,8 +132,8 @@ export function recordedWorkerRoster(): AgentRosterStoreSnapshot {
  * recording on main shows them.
  */
 export const OMP_WORKER_CAPABILITIES: CapabilityMap = {
-  [P1CapabilityKeys.roster]: CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  [P1CapabilityKeys.transcript]: CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  [P1CapabilityKeys.cancel]: CapabilityStatus.parse({ state: "available", via: "rpc" }),
-  [P1CapabilityKeys.events]: CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  [P1CapabilityKeys.roster]: CapabilityStatus.parse({ state: "available", via: "omp" }),
+  [P1CapabilityKeys.transcript]: CapabilityStatus.parse({ state: "available", via: "omp" }),
+  [P1CapabilityKeys.cancel]: CapabilityStatus.parse({ state: "available", via: "omp" }),
+  [P1CapabilityKeys.events]: CapabilityStatus.parse({ state: "available", via: "omp" }),
 };

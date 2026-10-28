@@ -64,7 +64,7 @@ class FakeOmp {
 }
 
 const available: CapabilityMap = {
-  [I5_LIVE_CAPABILITY]: { state: "available" as const, via: "rpc" as const },
+  [I5_LIVE_CAPABILITY]: { state: "available" as const, via: "omp" as const },
 };
 
 function sessionFixture(omp: FakeOmp, capabilities: CapabilityMap = available) {

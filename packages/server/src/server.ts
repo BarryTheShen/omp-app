@@ -28,7 +28,7 @@ export interface AppServerOptions {
   readonly remote?: RemoteOrigin;
   readonly instanceId?: string;
   readonly serverVersion?: string;
-  readonly omp?: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
+  readonly omp?: { readonly version: string } | null;
   readonly capabilities?: CapabilityMapType;
   readonly replayLimit?: number;
   readonly replay?: EventReplayHub;

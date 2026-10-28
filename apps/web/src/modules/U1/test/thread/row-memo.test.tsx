@@ -51,7 +51,7 @@ afterEach(() => {
 
 const threadId = "u1-row-memo" as ThreadId;
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
 };
 const send: ChatSessionRequest = async () => undefined as never;
 const usage = {

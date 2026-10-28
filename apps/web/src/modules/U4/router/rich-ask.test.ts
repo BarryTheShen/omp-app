@@ -7,15 +7,15 @@ const threadId = ThreadId.parse("thread-rich-ask");
 describe("rich ask questions", () => {
   test("are offered only when omp has both the dialog capability and the opt-in command", () => {
     const both: CapabilityMap = {
-      "omp.ui": { state: "available", via: "rpc" },
-      "omp.cmd.set_ask_dialog": { state: "available", via: "rpc" },
+      "omp.ui": { state: "available", via: "omp" },
+      "omp.cmd.set_ask_dialog": { state: "available", via: "omp" },
     };
     expect(richAskOffered(both)).toBe(true);
-    expect(richAskOffered({ "omp.ui": { state: "available", via: "rpc" } })).toBe(false);
+    expect(richAskOffered({ "omp.ui": { state: "available", via: "omp" } })).toBe(false);
     expect(
       richAskOffered({
         ...both,
-        "omp.cmd.set_ask_dialog": { state: "unavailable", via: "rpc" },
+        "omp.cmd.set_ask_dialog": { state: "unavailable", via: "omp" },
       }),
     ).toBe(false);
   });

@@ -7,7 +7,7 @@ import { completedRun, fakeSlashClient, REAL_COMMAND_LIST } from "./test-support
 
 const threadId = ThreadId.parse("thread-d23-provider");
 const available: CapabilityMap = {
-  "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+  "omp.cmd.get_available_commands": { state: "available", via: "omp" },
 };
 const newChat: SlashAppCommand = {
   name: "new",

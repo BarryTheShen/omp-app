@@ -22,9 +22,9 @@ function createFixturePort(): QueuePort {
   return {
     getSnapshot: () => snapshot,
     getCapabilities: () => ({
-      [P6_QUEUE_CAPABILITIES.steeringMode]: { state: "available", via: "rpc" },
-      [P6_QUEUE_CAPABILITIES.followUpMode]: { state: "available", via: "rpc" },
-      [P6_QUEUE_CAPABILITIES.interruptMode]: { state: "available", via: "rpc" },
+      [P6_QUEUE_CAPABILITIES.steeringMode]: { state: "available", via: "omp" },
+      [P6_QUEUE_CAPABILITIES.followUpMode]: { state: "available", via: "omp" },
+      [P6_QUEUE_CAPABILITIES.interruptMode]: { state: "available", via: "omp" },
     }),
     subscribe: (listener: (value: QueueSnapshot) => void) => {
       listeners.add(listener);

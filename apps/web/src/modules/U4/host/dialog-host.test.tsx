@@ -12,7 +12,7 @@ afterEach(cleanup);
 const threadA = "thread-a" as ThreadId;
 const threadB = "thread-b" as ThreadId;
 const ompUiCapabilities: CapabilityMap = {
-  "omp.ui": { state: "available", via: "rpc" },
+  "omp.ui": { state: "available", via: "omp" },
 };
 
 function request(

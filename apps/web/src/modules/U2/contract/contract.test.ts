@@ -88,8 +88,8 @@ describe("U2.1 composer contracts", () => {
     expect(modeCapability("bash")).toBe("omp.cmd.bash");
     expect(modeCapability("python")).toBe("upstream.python-mode");
     const capabilities: CapabilityMap = {
-      "omp.cmd.prompt": { state: "available", via: "rpc" },
-      "omp.cmd.bash": { state: "available", via: "rpc" },
+      "omp.cmd.prompt": { state: "available", via: "omp" },
+      "omp.cmd.bash": { state: "available", via: "omp" },
       "upstream.python-mode": { state: "unavailable", via: "upstream" },
     };
     expect(isModeAvailable("prompt", capabilities)).toBe(true);

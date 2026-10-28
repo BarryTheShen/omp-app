@@ -31,7 +31,7 @@ class FakeClient {
   }
 }
 
-const capabilities = { [I5_LIVE_CAPABILITY]: { state: "available" as const, via: "rpc" as const } };
+const capabilities = { [I5_LIVE_CAPABILITY]: { state: "available" as const, via: "omp" as const } };
 
 function adapterFixture(fake = new FakeClient(), capabilityMap = capabilities) {
   const client = {

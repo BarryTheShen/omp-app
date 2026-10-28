@@ -20,7 +20,7 @@ const threadB = ThreadId.parse("thread-b");
 
 function allCapabilities(): CapabilityMap {
   const capabilities: CapabilityMap = {};
-  for (const key of AGENT_CAPABILITIES) capabilities[key] = { state: "available", via: "rpc" };
+  for (const key of AGENT_CAPABILITIES) capabilities[key] = { state: "available", via: "omp" };
   return capabilities;
 }
 
@@ -200,7 +200,7 @@ describe("ThreadAgents", () => {
       threadId: threadA,
       store: new OmpRuntimeStore({ threadId: threadA }),
       session,
-      capabilities: { ...CAPABILITIES, "host.session-files": { state: "available", via: "rpc" } },
+      capabilities: { ...CAPABILITIES, "host.session-files": { state: "available", via: "omp" } },
       files,
     });
     await agents.start();
@@ -242,7 +242,7 @@ describe("ThreadAgents", () => {
     } as unknown as SubagentSession;
     const capabilities: CapabilityMap = {
       ...CAPABILITIES,
-      "host.session-files": { state: "available", via: "rpc" },
+      "host.session-files": { state: "available", via: "omp" },
     };
     const agents = createThreadAgents({
       threadId: threadA,

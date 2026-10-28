@@ -26,7 +26,6 @@ import {
 import {
   I2_CATALOG_FIXTURE,
   I2_CONFIG_LIST_FIXTURE,
-  I2_FIXTURE_HEADER,
   I2_GATEWAY_FIXTURE,
   I2_INVENTORY_ROWS,
 } from "../../fixtures";
@@ -152,7 +151,6 @@ describe("I2 descriptors and CC12 gate", () => {
     expect(sorted(descriptorRows)).toEqual(sorted(EXPECTED_I2_ROWS));
     expect(new Set(descriptorRows).size).toBe(descriptorRows.length);
     expect(sorted(I2_INVENTORY_ROWS)).toEqual(sorted(EXPECTED_I2_ROWS));
-    expect(sorted(I2_FIXTURE_HEADER.inventory)).toEqual(sorted(EXPECTED_I2_ROWS));
     expect(I2_DESCRIPTORS).toHaveLength(24);
     expect(validateRegistry(I2_DESCRIPTORS)).toEqual([]);
   });

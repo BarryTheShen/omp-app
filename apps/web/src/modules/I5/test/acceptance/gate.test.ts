@@ -66,7 +66,7 @@ describe("I5 W5 gate", () => {
     const adapter = createLiveVoiceAdapter({
       client,
       threadId: "i5-fixture" as never,
-      capabilities: { [I5_LIVE_CAPABILITY]: { state: "available" as const, via: "rpc" as const } },
+      capabilities: { [I5_LIVE_CAPABILITY]: { state: "available" as const, via: "omp" as const } },
       sessionIdFactory: () => "live-fixture",
     });
     const finals: unknown[] = [];

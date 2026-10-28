@@ -90,8 +90,8 @@ function fixtureRoster(): AgentRosterStoreSnapshot {
 
 /** The playground's capabilities: omp can read and cancel workers, and no tan or vibe start is published. */
 const CAPABILITIES: CapabilityMap = {
-  [P1CapabilityKeys.transcript]: { state: "available", via: "rpc" },
-  [P1CapabilityKeys.cancel]: { state: "available", via: "rpc" },
+  [P1CapabilityKeys.transcript]: { state: "available", via: "omp" },
+  [P1CapabilityKeys.cancel]: { state: "available", via: "omp" },
 };
 
 function fixtureSnapshot(): WorkersPanelSnapshot {

@@ -7,7 +7,7 @@ import type { DialogRequest } from "../contract";
 import { DialogHostController } from "../host";
 import { renderDialogRequest } from "./renderer";
 
-const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "rpc" } };
+const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "omp" } };
 const threadId = "approval-title" as ThreadId;
 
 // The text omp sends as an approval's select title: the header rows, then the arguments as JSON.

@@ -69,7 +69,7 @@ describe("CC8: the workers panel shows what omp reports and nothing more", () =>
   test("stop is offered only for a running worker, and only when omp can cancel", () => {
     const noCancel: CapabilityMap = {
       ...OMP_WORKER_CAPABILITIES,
-      [P1CapabilityKeys.cancel]: CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
+      [P1CapabilityKeys.cancel]: CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
     };
     expect(rowFor("ScoutOne").stop.state).toBe("available");
     expect(rowFor("ScoutTwo").stop.state).toBe("available");
@@ -93,7 +93,7 @@ describe("CC8: the workers panel shows what omp reports and nothing more", () =>
   test("a missing transcript capability names the capability", () => {
     const noTranscripts: CapabilityMap = {
       ...OMP_WORKER_CAPABILITIES,
-      [P1CapabilityKeys.transcript]: CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
+      [P1CapabilityKeys.transcript]: CapabilityStatus.parse({ state: "unavailable", via: "omp" }),
     };
     expect(rowFor("ScoutOne", noTranscripts).transcript).toMatchObject({
       state: "unavailable",

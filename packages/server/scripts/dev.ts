@@ -242,7 +242,6 @@ export async function createCompositionServer(
       const githubAvailable = await probeGithubRefs({ env });
       capabilityResult = capabilityProbeResultFromRaw(cacheHit.raw, { githubAvailable });
       logger.info("capabilities.probe", {
-        protocol: capabilityResult.protocolVersion,
         available: Object.values(capabilityResult.capabilities).filter(
           (capability) => capability?.state === "available",
         ).length,
@@ -282,7 +281,6 @@ export async function createCompositionServer(
       });
       if (capabilityResult !== undefined) {
         logger.info("capabilities.probe", {
-          protocol: capabilityResult.protocolVersion,
           available: Object.values(capabilityResult.capabilities).filter(
             (capability) => capability?.state === "available",
           ).length,
@@ -311,7 +309,6 @@ export async function createCompositionServer(
     cache: cacheStatus,
   });
   let capabilities = CapabilityMap.parse({});
-  let protocolVersion: 1 | 2 = 1;
   if (capabilityResult !== undefined) {
     if (probeTimedOut(capabilityResult)) {
       health = { status: "unhealthy", detail: OMP_PROBLEM.checksTimedOut };
@@ -321,7 +318,6 @@ export async function createCompositionServer(
       });
     } else {
       capabilities = capabilityResult.capabilities;
-      protocolVersion = capabilityResult.protocolVersion;
     }
   }
   if (
@@ -344,10 +340,7 @@ export async function createCompositionServer(
     );
   }
   const instanceId = crypto.randomUUID();
-  const omp =
-    health.status === "ok" && probe.version !== null
-      ? { version: probe.version, protocolVersion }
-      : null;
+  const omp = health.status === "ok" && probe.version !== null ? { version: probe.version } : null;
   const processRegistry = new OmpProcessRegistry({
     ...(options.idleCloseMs === undefined ? {} : { idleCloseMs: options.idleCloseMs }),
     createProcess: (processOptions) =>

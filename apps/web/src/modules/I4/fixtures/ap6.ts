@@ -29,7 +29,7 @@ export const I4_AP6_UNAVAILABLE_FIXTURE = {
 /** Synthetic AP6 capability fixture: the proposed typed contract is available, unlike v18.8.9. */
 export const I4_AP6_AVAILABLE_FIXTURE = {
   capabilities: {
-    [COLLABORATION_CAPABILITY]: { state: "available", via: "rpc" },
+    [COLLABORATION_CAPABILITY]: { state: "available", via: "omp" },
   } as const satisfies CapabilityMap,
   proposedContract: "collab_start/collab_join/collab_leave/collab_stop/collab_status",
 } as const;

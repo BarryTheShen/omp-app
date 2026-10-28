@@ -24,8 +24,8 @@ import { ScrollFollowControls, useThreadScrollController } from "./index";
 
 const THREAD_ID = "u1-8-scroll-playground" as ThreadId;
 const CAPABILITIES: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
 };
 const USAGE = {
   input: 2,

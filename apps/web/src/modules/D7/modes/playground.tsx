@@ -66,9 +66,9 @@ function createController(): ModeController {
   let answered = 0;
   const capabilities = {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
-    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
   };
   const rpc: ModeRpc = {
     getState: async () => ({

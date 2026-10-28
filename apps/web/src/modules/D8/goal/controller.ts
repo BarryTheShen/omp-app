@@ -234,7 +234,7 @@ export class GoalController {
       if (this.disposed) return;
       this.requireCurrentThread();
       if (eventVersion === this.goalEventVersion) {
-        this.goalState = goalStateFromResult(result, "rpc", this.sessionSettled);
+        this.goalState = goalStateFromResult(result, "request", this.sessionSettled);
       }
       this.error = null;
       this.notice = null;
@@ -291,7 +291,7 @@ export class GoalController {
       if (this.disposed) return;
       this.requireCurrentThread();
       if (eventVersion === this.goalEventVersion) {
-        this.goalState = goalStateFromResult(result, "rpc", this.sessionSettled);
+        this.goalState = goalStateFromResult(result, "request", this.sessionSettled);
       }
       this.error = null;
       this.notice = null;
@@ -362,11 +362,11 @@ export class GoalController {
           const droppedGoal: Goal = { ...goal, status: "dropped" };
           this.goalState = goalStateFromResult(
             { goal: droppedGoal, state: null },
-            "rpc",
+            "request",
             this.sessionSettled,
           );
         } else {
-          this.goalState = goalStateFromResult(result, "rpc", this.sessionSettled);
+          this.goalState = goalStateFromResult(result, "request", this.sessionSettled);
         }
       }
       this.error = null;
@@ -407,7 +407,7 @@ export class GoalController {
       if (this.disposed) return;
       this.requireCurrentThread();
       if (eventVersion === this.goalEventVersion) {
-        this.goalState = goalStateFromResult(result, "rpc", this.sessionSettled);
+        this.goalState = goalStateFromResult(result, "request", this.sessionSettled);
       }
       this.error = null;
       this.notice = null;

@@ -15,9 +15,9 @@ const SLOW_BASE = "Use the provider's slower, lower-cost option when it has one.
 function capabilities(): CapabilityMap {
   return {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
-    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
+    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "omp" }),
   };
 }
 

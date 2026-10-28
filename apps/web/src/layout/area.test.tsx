@@ -99,7 +99,7 @@ describe("LayoutArea", () => {
     const layout = layoutWith({ statusBar: ["context", "mode"] });
     expect(areaSurfaces("statusBar", surfaces, {}, layout)).toEqual([]);
     const capabilities: CapabilityMap = {
-      "omp.cmd.get_session_stats": { state: "available", via: "rpc" },
+      "omp.cmd.get_session_stats": { state: "available", via: "omp" },
     };
     expect(areaSurfaces("statusBar", surfaces, capabilities, layout).map(([id]) => id)).toEqual([
       "context",
@@ -109,7 +109,7 @@ describe("LayoutArea", () => {
   test("a surface whose capability is on its fallback path is shown, as the registry shows it", () => {
     const layout = layoutWith({ statusBar: ["context"] });
     const capabilities: CapabilityMap = {
-      "omp.cmd.get_session_stats": { state: "fallback", via: "rpc", detail: "Totals only" },
+      "omp.cmd.get_session_stats": { state: "fallback", via: "omp", detail: "Totals only" },
     };
     expect(areaSurfaces("statusBar", surfaces, capabilities, layout).map(([id]) => id)).toEqual([
       "context",
@@ -118,7 +118,7 @@ describe("LayoutArea", () => {
 
   test("the status bar stays one line: segments take the room left, context keeps its width", () => {
     const capabilities: CapabilityMap = {
-      "omp.cmd.get_session_stats": { state: "available", via: "rpc" },
+      "omp.cmd.get_session_stats": { state: "available", via: "omp" },
     };
     const { container } = render(
       <LayoutArea

@@ -17,7 +17,6 @@ import { type CapabilityKey, CapabilityMap } from "./capabilities";
 import { AppError, type ParseResult, parseJson } from "./errors";
 import { RequestId } from "./ids";
 import { MODULE_IDS, type ModuleId } from "./modules";
-import { OMP_PROTOCOL_VERSIONS } from "./omp";
 
 export const APP_PROTOCOL = "omp-app/1";
 
@@ -113,13 +112,8 @@ export const WelcomeFrame = z.object({
   /** Changes whenever the server process restarts; stream seqs restart with it. */
   instanceId: z.string().min(1),
   serverVersion: z.string(),
-  /** The omp the server runs and the RPC protocol it negotiates with it; null without omp. */
-  omp: z
-    .object({
-      version: z.string(),
-      protocolVersion: z.union(OMP_PROTOCOL_VERSIONS.map((version) => z.literal(version))),
-    })
-    .nullable(),
+  /** The omp release the server runs; null without omp. */
+  omp: z.object({ version: z.string() }).nullable(),
   capabilities: CapabilityMap,
 });
 

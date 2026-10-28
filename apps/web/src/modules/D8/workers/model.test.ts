@@ -50,8 +50,8 @@ function snapshotOf(
 }
 
 const ALL_P1_AVAILABLE: CapabilityMap = {
-  [P1CapabilityKeys.transcript]: { state: "available", via: "rpc" },
-  [P1CapabilityKeys.cancel]: { state: "available", via: "rpc" },
+  [P1CapabilityKeys.transcript]: { state: "available", via: "omp" },
+  [P1CapabilityKeys.cancel]: { state: "available", via: "omp" },
 };
 
 function rowFor(rows: readonly WorkerRowModel[], key: string): WorkerRowModel {

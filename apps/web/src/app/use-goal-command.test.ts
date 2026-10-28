@@ -14,7 +14,7 @@ import { OmpRuntimeStore } from "@/modules/R0/store";
 import { useGoalCommands } from "./use-goal-command";
 
 const threadId = ThreadId.parse("thread-goal-hook");
-const available: CapabilityMap = { "omp.cmd.goal": { state: "available", via: "rpc" } };
+const available: CapabilityMap = { "omp.cmd.goal": { state: "available", via: "omp" } };
 const goal: Goal = {
   id: "goal-hook",
   objective: "Ship the release notes",

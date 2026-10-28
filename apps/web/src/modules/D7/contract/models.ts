@@ -28,7 +28,7 @@ export type ModeStateKind = z.infer<typeof ModeStateKind>;
 export const ModeScope = z.enum(["default", "settings", "session", "command"]);
 export type ModeScope = z.infer<typeof ModeScope>;
 
-export const ModeSource = z.enum(["omp-rpc", "omp-command", "config", "client", "upstream"]);
+export const ModeSource = z.enum(["omp-session", "omp-command", "config", "client", "upstream"]);
 export type ModeSource = z.infer<typeof ModeSource>;
 
 /** omp's usage-limit stage for the active model's account, as get_state reports it. Reset times are epoch seconds. */

@@ -1,10 +1,4 @@
-import {
-  CommandRunResult,
-  ConfigListResult,
-  ExtensionCatalogResult,
-  FixtureHeader,
-  type FixtureHeader as FixtureHeaderValue,
-} from "@omp-app/contracts";
+import { CommandRunResult, ConfigListResult, ExtensionCatalogResult } from "@omp-app/contracts";
 
 /**
  * Synthetic, scrubbed inputs for I2's typed seams. Catalog metadata follows A1.13's safe DTO;
@@ -128,26 +122,3 @@ export const I2_INVENTORY_ROWS = [
   "S1.plugin-settings-panel",
   "S3.interaction-skills",
 ] as const;
-
-/** One scrubbed recorded-fixture header exercises the complete I2 inventory claim. */
-export const I2_FIXTURE_HEADER: FixtureHeaderValue = FixtureHeader.parse({
-  format: "omp-app.fixture",
-  formatVersion: 1,
-  scenario: "i2-extension-surfaces",
-  description: "Synthetic I2 catalog, gateway and settings boundary inputs.",
-  recordedAt: "2026-10-18T00:00:00.000Z",
-  source: "scripted",
-  omp: {
-    version: "18.9.1",
-    commit: "a4d6f0adc63dda4ccdf4d25c26422219820f865b",
-    protocolVersion: 2,
-    mode: "rpc-ui",
-    args: ["--mode", "rpc-ui", "--cwd", "<WORKSPACE>"],
-  },
-  provider: { kind: "fake-openai" },
-  capabilities: {},
-  placeholders: ["<HOME>", "<WORKSPACE>"],
-  redactions: { key: 0, token: 2, authHeader: 0, email: 0, path: 1 },
-  tags: ["catalog", "gateway", "config", "scrubbed"],
-  inventory: [...I2_INVENTORY_ROWS],
-});

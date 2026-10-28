@@ -29,15 +29,15 @@ import { createOmpRuntime, useOmpRuntime } from "../runtime/runtime";
 import { OmpRuntimeStore, type RuntimeSnapshot } from "../store/store";
 
 const capabilities: CapabilityMap = {
-  "omp.cmd.prompt": { state: "available", via: "rpc" },
-  "omp.cmd.bash": { state: "available", via: "rpc" },
-  "omp.cmd.abort": { state: "available", via: "rpc" },
-  "omp.cmd.abort_bash": { state: "available", via: "rpc" },
-  "omp.cmd.get_state": { state: "available", via: "rpc" },
-  "omp.cmd.get_entries": { state: "available", via: "rpc" },
-  "omp.cmd.get_tree": { state: "available", via: "rpc" },
-  "omp.cmd.set_ask_dialog": { state: "available", via: "rpc" },
-  "omp.ui": { state: "available", via: "rpc" },
+  "omp.cmd.prompt": { state: "available", via: "omp" },
+  "omp.cmd.bash": { state: "available", via: "omp" },
+  "omp.cmd.abort": { state: "available", via: "omp" },
+  "omp.cmd.abort_bash": { state: "available", via: "omp" },
+  "omp.cmd.get_state": { state: "available", via: "omp" },
+  "omp.cmd.get_entries": { state: "available", via: "omp" },
+  "omp.cmd.get_tree": { state: "available", via: "omp" },
+  "omp.cmd.set_ask_dialog": { state: "available", via: "omp" },
+  "omp.ui": { state: "available", via: "omp" },
 };
 
 interface Harness {

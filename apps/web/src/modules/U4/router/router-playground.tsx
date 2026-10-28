@@ -8,7 +8,7 @@ import { renderDialogRequest } from "../dialogs";
 import { DialogHostController } from "../host";
 import { ExtensionUiRequestRouterController } from "./router";
 
-const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "rpc" } };
+const capabilities: CapabilityMap = { "omp.ui": { state: "available", via: "omp" } };
 const threadId = "u4-5-playground" as ThreadId;
 
 const noHostAnswers: HostRequestAnswerAdapter = {

@@ -14,16 +14,16 @@ import { createQueueController, type QueueSnapshot } from "./actions";
 
 const threadId = "r0-5-thread" as ThreadId;
 const capabilities: CapabilityMap = {
-  "omp.cmd.steer": { state: "available", via: "rpc" },
-  "omp.cmd.follow_up": { state: "available", via: "rpc" },
-  "omp.cmd.remove_queued_message": { state: "available", via: "rpc" },
-  "omp.cmd.promote_queued_message": { state: "available", via: "rpc" },
-  "omp.cmd.set_steering_mode": { state: "available", via: "rpc" },
-  "omp.cmd.set_follow_up_mode": { state: "available", via: "rpc" },
-  "omp.cmd.set_interrupt_mode": { state: "available", via: "rpc" },
-  "omp.ui": { state: "available", via: "rpc" },
-  "omp.host-tools": { state: "available", via: "rpc" },
-  "omp.host-uris": { state: "available", via: "rpc" },
+  "omp.cmd.steer": { state: "available", via: "omp" },
+  "omp.cmd.follow_up": { state: "available", via: "omp" },
+  "omp.cmd.remove_queued_message": { state: "available", via: "omp" },
+  "omp.cmd.promote_queued_message": { state: "available", via: "omp" },
+  "omp.cmd.set_steering_mode": { state: "available", via: "omp" },
+  "omp.cmd.set_follow_up_mode": { state: "available", via: "omp" },
+  "omp.cmd.set_interrupt_mode": { state: "available", via: "omp" },
+  "omp.ui": { state: "available", via: "omp" },
+  "omp.host-tools": { state: "available", via: "omp" },
+  "omp.host-uris": { state: "available", via: "omp" },
 };
 
 /** A dialog the host asks: an input named "Name". */

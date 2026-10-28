@@ -8,8 +8,8 @@ const threadId = ThreadId.parse("d3-thread");
 
 function capabilities(overrides: Partial<CapabilityMap> = {}): CapabilityMap {
   return {
-    [AUTH_CAPABILITIES.getLoginProviders]: { state: "available", via: "rpc" },
-    [AUTH_CAPABILITIES.login]: { state: "available", via: "rpc" },
+    [AUTH_CAPABILITIES.getLoginProviders]: { state: "available", via: "omp" },
+    [AUTH_CAPABILITIES.login]: { state: "available", via: "omp" },
     ...overrides,
   };
 }
@@ -59,7 +59,7 @@ describe("D3 authentication adapter", () => {
       client,
       threadId,
       capabilities: capabilities({
-        [AUTH_CAPABILITIES.getLoginProviders]: { state: "unavailable", via: "rpc" },
+        [AUTH_CAPABILITIES.getLoginProviders]: { state: "unavailable", via: "omp" },
       }),
     });
 

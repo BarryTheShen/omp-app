@@ -22,14 +22,14 @@ describe("the live playground cancellation gate", () => {
     const fallback: CapabilityMap = {
       [P1CapabilityKeys.cancel]: CapabilityStatus.parse({
         state: "fallback",
-        via: "rpc",
+        via: "omp",
         detail: "Cancellation is supplied by the host.",
       }),
     };
     const unavailable: CapabilityMap = {
       [P1CapabilityKeys.cancel]: CapabilityStatus.parse({
         state: "unavailable",
-        via: "rpc",
+        via: "omp",
         detail: "Cancellation is unavailable.",
       }),
     };

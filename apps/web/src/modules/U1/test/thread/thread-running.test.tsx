@@ -40,7 +40,7 @@ afterEach(() => {
 
 const threadId = "u1-thread-running" as ThreadId;
 // Module scope: the runtime's options keep their identity, so the chat is not rebuilt between renders.
-const capabilities: CapabilityMap = { "omp.cmd.prompt": { state: "available", via: "rpc" } };
+const capabilities: CapabilityMap = { "omp.cmd.prompt": { state: "available", via: "omp" } };
 const send: ChatSessionRequest = async () => undefined as never;
 const usage = {
   input: 1,

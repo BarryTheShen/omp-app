@@ -6,8 +6,8 @@ import { AUTH_CAPABILITIES } from "../contract";
 import { ProviderLoginPanel } from "./login";
 
 const capabilities: CapabilityMap = {
-  [AUTH_CAPABILITIES.getLoginProviders]: { state: "available", via: "rpc" },
-  [AUTH_CAPABILITIES.login]: { state: "available", via: "rpc" },
+  [AUTH_CAPABILITIES.getLoginProviders]: { state: "available", via: "omp" },
+  [AUTH_CAPABILITIES.login]: { state: "available", via: "omp" },
 };
 
 const auth: AuthPort = {

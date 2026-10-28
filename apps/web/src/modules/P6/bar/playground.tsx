@@ -24,8 +24,8 @@ function createFixturePort(): QueuePort {
   return {
     getSnapshot: () => snapshot,
     getCapabilities: () => ({
-      [P6_QUEUE_CAPABILITIES.remove]: { state: "available", via: "rpc" },
-      [P6_QUEUE_CAPABILITIES.promote]: { state: "available", via: "rpc" },
+      [P6_QUEUE_CAPABILITIES.remove]: { state: "available", via: "omp" },
+      [P6_QUEUE_CAPABILITIES.promote]: { state: "available", via: "omp" },
     }),
     subscribe: (listener: (next: QueueSnapshot) => void) => {
       listeners.add(listener);

@@ -53,8 +53,8 @@ export type SettingSource = z.infer<typeof SettingSource>;
 
 /** Who produced a value the app shows. */
 export const PROVENANCE_ORIGINS = [
-  /** A response or event of the running omp process. */
-  "omp-rpc",
+  /** A response or event of the running omp session, through its chat host. */
+  "omp-session",
   /** Read from an omp session file by the server (A1). */
   "omp-session-file",
   /** Read from omp's settings files by the server (A1). */
@@ -63,7 +63,7 @@ export const PROVENANCE_ORIGINS = [
   "app-store",
   /** Replayed from a recorded fixture. */
   "fixture",
-  /** Computed by the app server where omp's RPC cannot reach (AP3, AP4, AP6 fallbacks). */
+  /** Computed by the app server where omp's session cannot reach (AP3, AP4, AP6 fallbacks). */
   "host-fallback",
   /** Browser-only state (AP5). */
   "client",

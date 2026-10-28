@@ -14,8 +14,8 @@ const provider: LoginProvider = {
   authenticated: false,
 };
 const capabilities: CapabilityMap = {
-  [AUTH_CAPABILITIES.getLoginProviders]: { state: "available", via: "rpc" },
-  [AUTH_CAPABILITIES.login]: { state: "available", via: "rpc" },
+  [AUTH_CAPABILITIES.getLoginProviders]: { state: "available", via: "omp" },
+  [AUTH_CAPABILITIES.login]: { state: "available", via: "omp" },
 };
 
 function auth(overrides: Partial<AuthPort> = {}): AuthPort {
@@ -48,7 +48,7 @@ describe("ProviderLoginPanel", () => {
       <ProviderLoginPanel
         auth={auth({
           capabilities: () => ({
-            [AUTH_CAPABILITIES.getLoginProviders]: { state: "unavailable", via: "rpc" },
+            [AUTH_CAPABILITIES.getLoginProviders]: { state: "unavailable", via: "omp" },
           }),
           getLoginProviders: async () => [],
         })}

@@ -44,7 +44,7 @@ beforeEach(() => {
 
 const threadId = "u1-parts-test" as ThreadId;
 const assistantCapabilities = {
-  "omp.cmd.prompt": { state: "available" as const, via: "rpc" as const },
+  "omp.cmd.prompt": { state: "available" as const, via: "omp" as const },
 };
 const assistantMessage = (
   role: "user" | "assistant" | "developer",

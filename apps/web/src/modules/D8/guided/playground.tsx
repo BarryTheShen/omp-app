@@ -11,7 +11,7 @@ import { useGuidedGoal } from "./hook";
 import { GuidedGoalView } from "./view";
 
 const playgroundCapabilities: CapabilityMap = {
-  "omp.cmd.goal": { state: "available", via: "rpc" },
+  "omp.cmd.goal": { state: "available", via: "omp" },
 };
 
 /** A stand-in for omp in the visual playground only: every create succeeds at once. */

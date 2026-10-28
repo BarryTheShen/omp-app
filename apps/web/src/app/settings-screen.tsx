@@ -166,7 +166,7 @@ function unavailableReason(
   switch (capabilities[missing]?.via) {
     case "upstream":
       return "This setting needs a newer version of omp.";
-    case "rpc":
+    case "omp":
       return "This setting is not supported by the connected omp process.";
     case "host":
       return "This setting is not available from the app host.";

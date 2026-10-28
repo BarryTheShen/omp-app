@@ -10,7 +10,7 @@ import {
 } from ".";
 
 const available = (capability: string) => ({
-  [capability]: { state: "available" as const, via: "rpc" as const },
+  [capability]: { state: "available" as const, via: "omp" as const },
 });
 
 function portFixture(

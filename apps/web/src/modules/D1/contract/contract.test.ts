@@ -67,7 +67,7 @@ describe("D1 model scope semantics", () => {
 
   test("session and default scopes use their typed capability gates", () => {
     const capabilities = {
-      "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+      "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "omp" }),
       "host.config": CapabilityStatus.parse({ state: "available", via: "host" }),
     };
     expect(modelScopeAvailability("session", capabilities)).toMatchObject({
@@ -114,7 +114,7 @@ describe("D1 model and thinking DTOs", () => {
       models: [],
       current: null,
       capabilities: {
-        "omp.cmd.get_available_models": { state: "available", via: "rpc" },
+        "omp.cmd.get_available_models": { state: "available", via: "omp" },
       },
       error: null,
     });

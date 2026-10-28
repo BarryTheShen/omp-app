@@ -74,7 +74,7 @@ describe("I5 voice and dictation contracts", () => {
     expect(liveCapabilityAvailable({})).toBe(false);
     expect(
       liveCapabilityAvailable({
-        [I5_LIVE_CAPABILITY]: { state: "available", via: "rpc" } as const,
+        [I5_LIVE_CAPABILITY]: { state: "available", via: "omp" } as const,
       }),
     ).toBe(true);
     expect(I5_BROWSER_SPEECH_CAPABILITIES.recognition).toBe("client.speech-recognition");

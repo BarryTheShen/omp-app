@@ -62,7 +62,7 @@ export function useLiveVoiceSurfaces(options: LiveVoiceSurfacesOptions): {
       capabilities:
         liveState === undefined
           ? {}
-          : { [I5_LIVE_CAPABILITY]: { state: liveState, via: "rpc" as const } },
+          : { [I5_LIVE_CAPABILITY]: { state: liveState, via: "omp" as const } },
       admitTurn: (turn) => admitRef.current(turn),
     });
     setSession(created);

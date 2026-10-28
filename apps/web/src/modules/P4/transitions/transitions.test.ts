@@ -13,8 +13,8 @@ const targetThread = "target-thread" as ThreadId;
 const sourceEntry = "source-entry" as EntryId;
 
 const capabilities: CapabilityMap = {
-  "omp.cmd.branch": { state: "available", via: "rpc" },
-  "omp.cmd.fork": { state: "available", via: "rpc" },
+  "omp.cmd.branch": { state: "available", via: "omp" },
+  "omp.cmd.fork": { state: "available", via: "omp" },
 };
 
 function entry(id: EntryId, parentId: EntryId | null, text: string): Record<string, unknown> {

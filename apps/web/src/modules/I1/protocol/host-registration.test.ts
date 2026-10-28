@@ -19,8 +19,8 @@ const threadId = ThreadId.parse("thread-1");
 
 function availableCapabilities() {
   return CapabilityMap.parse({
-    "omp.host-tools": { state: "available", via: "rpc" },
-    "omp.host-uris": { state: "available", via: "rpc" },
+    "omp.host-tools": { state: "available", via: "omp" },
+    "omp.host-uris": { state: "available", via: "omp" },
   });
 }
 
@@ -188,7 +188,7 @@ describe("I1 AP9 host registration", () => {
       .catch((error: unknown) => error);
     if (!(failure instanceof AppFailure)) throw new Error("Expected a typed registration failure.");
     const hostUriUnavailable = harness(
-      CapabilityMap.parse({ "omp.host-tools": { state: "available", via: "rpc" } }),
+      CapabilityMap.parse({ "omp.host-tools": { state: "available", via: "omp" } }),
     );
     const uriFailure = await hostUriUnavailable
       .uriPort()
