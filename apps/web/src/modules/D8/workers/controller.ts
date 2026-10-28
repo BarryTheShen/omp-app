@@ -73,6 +73,11 @@ export function createWorkersController(options: WorkersControllerOptions): Work
     cached = undefined;
     for (const listener of listeners) listener();
   };
+  // A call that fails after the panel closed was cancelled by the close itself (the app's connection ends with it):
+  // nobody is left to tell, so it is not a failure to report.
+  const report = (failure: unknown): void => {
+    if (!disposed) debugLog(failure);
+  };
 
   const build = (): WorkersPanelSnapshot => ({
     model: buildWorkersModel({
@@ -95,7 +100,7 @@ export function createWorkersController(options: WorkersControllerOptions): Work
       })
       .catch((failure: unknown) => {
         loaded = true;
-        debugLog(failure);
+        report(failure);
         error = READ_FAILED_MESSAGE;
         notify();
       });
@@ -111,7 +116,7 @@ export function createWorkersController(options: WorkersControllerOptions): Work
     try {
       await roster.refresh();
     } catch (failure: unknown) {
-      debugLog(failure);
+      report(failure);
     }
   };
 
@@ -164,7 +169,7 @@ export function createWorkersController(options: WorkersControllerOptions): Work
         if (appError?.code === "conflict" || appError?.code === "not_found") {
           await settleRefusal(id);
         } else {
-          debugLog(failure);
+          report(failure);
           error = appError === undefined ? STOP_FAILED_MESSAGE : cancelFailureMessage(appError);
         }
       } finally {

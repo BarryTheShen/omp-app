@@ -69,7 +69,9 @@ async function stopWithTwoQueued(page: Page, composer: Locator): Promise<void> {
   await queueFollowUp(page, composer, FIRST);
   await queueFollowUp(page, composer, SECOND);
   await stop.click();
-  await expect(composer).toHaveValue(BOTH);
+  // The queue comes back with omp's answer to the Stop: a round trip, which waits on a loaded machine (the follow-ups'
+  // own round trips above get 30 s for the same reason).
+  await expect(composer).toHaveValue(BOTH, { timeout: 30_000 });
 }
 
 realTest(

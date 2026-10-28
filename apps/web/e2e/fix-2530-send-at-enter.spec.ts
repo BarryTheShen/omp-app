@@ -13,8 +13,11 @@ import {
 
 declare global {
   interface Window {
-    /** On the page's clock: when the Enter key went down, and the frame that first shows the prompt's row. */
-    sendProbe?: { enterAt?: number; rowAt?: number };
+    /**
+     * On the page's clock: when the Enter key went down and the frame that first shows the prompt's row; and how many
+     * animation frames the page drew from Enter until that frame.
+     */
+    sendProbe?: { enterAt?: number; rowAt?: number; frames?: number; rowFrames?: number };
     /** The row element the prompt showed at Enter, kept so the echo can be checked to take the same element. */
     pendingRowNode?: Element;
   }
@@ -32,7 +35,10 @@ const USER_ROW = '[data-slot="u1-message-row"][data-role="user"]';
 const PENDING_KEY = 'data-store-key*="pending-prompt"';
 const DRAFT_PORT = "A1.draftStore";
 const NOTICE = "It's in the message box of a new chat";
-const SHOWN_WITHIN_MS = 150;
+// The row shows at Enter: in the first frame the page draws after it, or the next. Counted in frames, not milliseconds,
+// because a frame takes longer on a loaded machine: on the test machine under load the row was in the first frame in each of 30
+// runs, from 37 to 173 ms after Enter. A row that waited for omp's echo, which the test holds, never shows.
+const SHOWN_WITHIN_FRAMES = 2;
 
 interface Frame {
   readonly type?: unknown;
@@ -111,7 +117,15 @@ async function watchSend(page: Page, text: string): Promise<void> {
     document.addEventListener(
       "keydown",
       (event) => {
-        if (event.key === "Enter" && probe.enterAt === undefined) probe.enterAt = performance.now();
+        if (event.key !== "Enter" || probe.enterAt !== undefined) return;
+        probe.enterAt = performance.now();
+        probe.frames = 0;
+        const count = (): void => {
+          if (probe.rowAt !== undefined) return;
+          probe.frames = (probe.frames ?? 0) + 1;
+          requestAnimationFrame(count);
+        };
+        requestAnimationFrame(count);
       },
       true,
     );
@@ -122,18 +136,25 @@ async function watchSend(page: Page, text: string): Promise<void> {
     new MutationObserver(() => {
       if (probe.rowAt !== undefined || !rowOnScreen()) return;
       requestAnimationFrame(() => {
+        probe.rowFrames ??= probe.frames;
         probe.rowAt ??= performance.now();
       });
     }).observe(document.body, { childList: true, subtree: true });
   }, text);
 }
 
-/** Enter to the prompt's row on screen, in milliseconds on the page's clock. Fails when the row never shows. */
-async function enterToRow(page: Page): Promise<number> {
+/**
+ * Enter to the prompt's row on screen: the animation frames the page drew, and the milliseconds on its clock. Fails when
+ * the row never shows.
+ */
+async function enterToRow(page: Page): Promise<{ readonly frames: number; readonly ms: number }> {
   await page.waitForFunction(() => window.sendProbe?.rowAt !== undefined, undefined, {
     timeout: 5_000,
   });
-  return page.evaluate(() => (window.sendProbe?.rowAt ?? 0) - (window.sendProbe?.enterAt ?? 0));
+  return page.evaluate(() => ({
+    frames: window.sendProbe?.rowFrames ?? Number.POSITIVE_INFINITY,
+    ms: (window.sendProbe?.rowAt ?? 0) - (window.sendProbe?.enterAt ?? 0),
+  }));
 }
 
 /** The composer's background is the design token's, so the app's styles have loaded before a screenshot. */
@@ -164,9 +185,11 @@ async function sendWhileEchoHeld(
   await watchSend(page, PROMPT);
   await composer.fill(PROMPT);
   await composer.press("Enter");
-  expect(await enterToRow(page), "Enter to the row on screen, in milliseconds").toBeLessThanOrEqual(
-    SHOWN_WITHIN_MS,
-  );
+  const shown = await enterToRow(page);
+  expect(
+    shown.frames,
+    `animation frames from Enter to the row on screen (${shown.ms.toFixed(0)} ms)`,
+  ).toBeLessThanOrEqual(SHOWN_WITHIN_FRAMES);
   await expect.poll(() => hold.holding).toBe(true);
   const row = page.locator(USER_ROW).filter({ hasText: PROMPT });
   await expect(row).toHaveCount(1);

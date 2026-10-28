@@ -33,7 +33,18 @@ realTest(
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 });
     await startChat(page);
     const composer = await startChat(page);
-    await sendPrompt(composer, "Please ask_user which database to use.");
+    const prompt = "Please ask_user which database to use.";
+    await sendPrompt(composer, prompt);
+    // Throttled, the second chat can start opening just as Enter is pressed: the box then keeps the text under "Opening
+    // session…" and sends nothing. Once that line has gone, a box that still holds the text with Send enabled was not
+    // sent (a send waiting for omp keeps Send disabled), and the person presses Enter again.
+    const opening = page
+      .locator('[data-composer-blocked="true"]')
+      .filter({ hasText: "Opening session" });
+    await expect(opening).toHaveCount(0, { timeout: 120_000 });
+    const send = page.getByRole("button", { name: "Send message" });
+    if ((await composer.inputValue()) === prompt && (await send.isEnabled()))
+      await composer.press("Enter");
     const question = page.getByRole("dialog");
     // Throttled, the send waits for the chat's draft to save through the server before omp gets it: 120 s, not 45 s.
     await expect(question).toBeVisible({ timeout: 120_000 });

@@ -238,6 +238,41 @@ describe("createWorkersController", () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
+  test("a stop that fails after the panel closed is not reported: the close cancelled it", async () => {
+    const fake = fakeRoster(snapshotWith([runningAgent("h-1")]));
+    const answer = Promise.withResolvers<void>();
+    const debugLog = vi.fn();
+    const controller = controllerWith(
+      fake,
+      vi.fn(() => answer.promise),
+      STOP_AVAILABLE,
+      debugLog,
+    );
+    const stopping = controller.stop("h-1");
+    // The panel closes while the stop is in flight; closing the app's connection then fails the call.
+    controller.dispose();
+    answer.reject(
+      new AppFailure({ code: "unavailable", message: "Client disposed", retryable: false }),
+    );
+    await stopping;
+    expect(debugLog).not.toHaveBeenCalled();
+  });
+
+  test("a roster read that fails after the panel closed is not reported", async () => {
+    const fake = fakeRoster(snapshotWith([]));
+    const read = Promise.withResolvers<void>();
+    fake.start.mockImplementationOnce(() => read.promise);
+    const debugLog = vi.fn();
+    const controller = controllerWith(fake, vi.fn(), {}, debugLog);
+    controller.start();
+    controller.dispose();
+    read.reject(
+      new AppFailure({ code: "unavailable", message: "Client disposed", retryable: false }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(debugLog).not.toHaveBeenCalled();
+  });
+
   test("reads the roster again on retry after a failed read, and shows a plain sentence until then", async () => {
     const fake = fakeRoster(snapshotWith([]));
     fake.start.mockRejectedValueOnce(new Error("The app connection dropped"));
