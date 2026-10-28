@@ -236,7 +236,10 @@ export function onHostEvent(
   };
 }
 
-/** Clicks "New chat" and waits for the composer; a new chat starts a real omp process. */
+/**
+ * Clicks "New chat" and waits for the composer; a new chat starts a real omp process. Its composer shows once that omp
+ * has started ("Starting a new chat…" until then): seconds on a quiet machine, over 30 s while many omps start at once.
+ */
 export async function startChat(page: Page): Promise<Locator> {
   await page
     .locator('[aria-label="Sessions"]')
@@ -244,7 +247,7 @@ export async function startChat(page: Page): Promise<Locator> {
     .first()
     .click();
   const composer = page.getByRole("textbox", { name: "Message input" });
-  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer).toBeVisible({ timeout: 120_000 });
   return composer;
 }
 
@@ -787,7 +790,9 @@ export const realTest = test.extend<{
       await stopChild(server?.process);
       if (provider?.stdin) provider.stdin.end();
       await stopChild(provider);
-      await rm(root, { recursive: true, force: true });
+      // A chat's omp can still be writing its last lines as the server stops: a file that appears during the removal
+      // makes it fail with ENOTEMPTY, which `rm` retries.
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   },
 });

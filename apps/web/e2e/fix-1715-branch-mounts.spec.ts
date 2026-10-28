@@ -121,8 +121,9 @@ realTest("a running turn disables earlier-message editing", async ({ realApp }, 
       .first();
     await expect(newChat).toBeVisible({ timeout: 60_000 });
     await newChat.click();
+    // As `startChat`: the composer shows once the new chat's omp has started.
     const composer = page.getByRole("textbox", { name: "Message input" });
-    await expect(composer).toBeVisible({ timeout: 30_000 });
+    await expect(composer).toBeVisible({ timeout: 120_000 });
     await sendPrompt(composer, "count_reply first");
     await expect(answerTo(page, "first")).toBeVisible({ timeout: 60_000 });
     await expect(stop).toHaveCount(0, { timeout: 60_000 });

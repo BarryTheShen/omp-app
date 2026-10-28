@@ -720,3 +720,46 @@ describe("#2245: an empty list is not an answer while a held Enter waits for its
     expect(chosen).not.toHaveBeenCalled();
   });
 });
+
+describe("#2757: a slot holds an Enter only for its own list", () => {
+  /** Lets the scope's queued settles and the list observers run. */
+  function settled(): Promise<void> {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 20);
+    return promise;
+  }
+
+  /** An outer slot's list loading out of sight, as the @ file list's warm-up does: it shows no list and passes no answer. */
+  function OuterWarmUp({ loading }: { readonly loading: boolean }) {
+    useTriggerListLoading(loading);
+    return null;
+  }
+
+  /** The slots as the composer nests them: the outer slot's scope holds the inner slot's open `/` list. */
+  function Slots({ loading, chosen }: { readonly loading: boolean; readonly chosen: () => void }) {
+    return (
+      <TriggerKeyScope>
+        <OuterWarmUp loading={loading} />
+        <TriggerKeyScope>
+          <textarea aria-label="Message input" />
+          <div role="listbox">
+            <button type="button" role="option" aria-selected="true" onClick={chosen}>
+              /clear
+            </button>
+          </div>
+        </TriggerKeyScope>
+      </TriggerKeyScope>
+    );
+  }
+
+  test("an Enter on the inner slot's answered list chooses its row while the outer slot's list loads out of sight", async () => {
+    const chosen = vi.fn();
+    const { rerender } = render(<Slots loading chosen={chosen} />);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    expect(chosen).toHaveBeenCalledTimes(1);
+    // The outer load answers later: it had no Enter to settle, so the row is not chosen again.
+    rerender(<Slots loading={false} chosen={chosen} />);
+    await settled();
+    expect(chosen).toHaveBeenCalledTimes(1);
+  });
+});

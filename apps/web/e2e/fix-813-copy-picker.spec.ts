@@ -41,7 +41,10 @@ async function expectStylesLoaded(page: Page): Promise<void> {
   expect(background).not.toBe("rgba(0, 0, 0, 0)");
 }
 
-/** Sends a message with a fenced code block and waits for the reply, so the message is saved. */
+/**
+ * Sends a message with a fenced code block and waits for the reply and for the message to be saved: Copy offers saved
+ * messages only, and a saved message shows its actions (Edit), as a person sees.
+ */
 async function sendCodeMessage(page: Page): Promise<Locator> {
   const composer = await startChat(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
@@ -49,6 +52,9 @@ async function sendCodeMessage(page: Page): Promise<Locator> {
   });
   await sendPrompt(composer, MESSAGE);
   await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
   return composer;
 }
 

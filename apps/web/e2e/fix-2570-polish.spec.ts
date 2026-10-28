@@ -155,8 +155,10 @@ realTest(
       basename(realApp.folder),
     );
     await expect(segment(page, "N2.git").locator("[data-segment-value]")).toHaveText(BRANCH);
+    // The model segment shows once the chat's omp has started and named its model.
     await expect(segment(page, "N2.model").locator("[data-segment-value]")).toContainText(
       "Fake Model",
+      { timeout: 60_000 },
     );
     await expect(page.getByRole("region", { name: "Context status" })).toContainText(
       /Context \d+%/,
@@ -216,6 +218,7 @@ realTest(
     await startChat(page);
     await expect(segment(page, "N2.model").locator("[data-segment-value]")).toContainText(
       "Fake Model",
+      { timeout: 60_000 },
     );
     await expect(segment(page, "N2.git").locator("[data-segment-value]")).toHaveText(BRANCH);
     await expectWholeValues(page);
@@ -272,7 +275,7 @@ realTest(
       "data-open",
       "false",
     );
-    await expect(segment(page, "N2.model")).toBeVisible();
+    await expect(segment(page, "N2.model")).toBeVisible({ timeout: 60_000 });
     await expect(segment(page, "N2.git")).toBeHidden();
     await expectWholeValues(page);
     await expectStyled(page, "light");
@@ -300,7 +303,7 @@ realTest(
     await page.setViewportSize({ width: 1280, height: 900 });
     await startChat(page);
     await waitForFiniteAnimations(page);
-    await expect(segment(page, "N2.model")).toBeVisible();
+    await expect(segment(page, "N2.model")).toBeVisible({ timeout: 60_000 });
 
     await startProbe(page, "status");
     for (const viewport of [

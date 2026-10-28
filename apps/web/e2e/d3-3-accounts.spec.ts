@@ -74,7 +74,10 @@ realTest("lists, pins, and logs out a provider account in real omp", async ({ re
   playgroundUrl.search = "";
   playgroundUrl.hash = "";
   await page.goto(playgroundUrl.toString());
-  await expect(page.getByRole("heading", { name: "Provider accounts" })).toBeVisible();
+  // The page opens a new chat before it shows the panel, and that starts an omp.
+  await expect(page.getByRole("heading", { name: "Provider accounts" })).toBeVisible({
+    timeout: 60_000,
+  });
   const panel = page.getByRole("region", { name: "Provider accounts" });
   mkdirSync(screenshots, { recursive: true });
   await expect(page.getByText(maskedAccountLabel)).toBeVisible();
@@ -97,7 +100,8 @@ realTest("lists, pins, and logs out a provider account in real omp", async ({ re
     );
   });
   await page.reload();
-  await expect(page.getByText(maskedAccountLabel)).toBeVisible();
+  // The reload opens another new chat, with an omp of its own.
+  await expect(page.getByText(maskedAccountLabel)).toBeVisible({ timeout: 60_000 });
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(panel).toHaveCSS("background-color", /^(rgb|oklch)/);
   await waitForFiniteAnimations(page);

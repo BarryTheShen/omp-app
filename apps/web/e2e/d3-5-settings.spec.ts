@@ -45,8 +45,9 @@ realTest("shows source-aware provider settings in real omp", async ({ realApp })
   playgroundUrl.hash = "";
   await page.goto(playgroundUrl.toString());
 
+  // Every load of this page opens a new chat before it shows the panel, and that starts an omp.
   const panel = page.getByTestId("provider-settings-panel");
-  await expect(panel).toBeVisible({ timeout: 15_000 });
+  await expect(panel).toBeVisible({ timeout: 60_000 });
   await expect(panel.getByRole("heading", { name: "Provider settings" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Fireworks" })).toBeVisible();
   await expect(page.getByText("Fireworks tier")).toBeVisible();
@@ -55,7 +56,9 @@ realTest("shows source-aware provider settings in real omp", async ({ realApp })
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Applied")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Fireworks tier" })).toHaveValue("priority");
+  await expect(page.getByRole("combobox", { name: "Fireworks tier" })).toHaveValue("priority", {
+    timeout: 60_000,
+  });
   mkdirSync(screenshots, { recursive: true });
   await page.screenshot({ path: join(screenshots, "d3-5-settings-light.png"), fullPage: true });
 
@@ -68,7 +71,7 @@ realTest("shows source-aware provider settings in real omp", async ({ realApp })
   });
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(page.getByText("Fireworks tier")).toBeVisible();
+  await expect(page.getByText("Fireworks tier")).toBeVisible({ timeout: 60_000 });
   await expect(panel).toHaveCSS("background-color", /^(rgb|oklch)/);
   await page.screenshot({ path: join(screenshots, "d3-5-settings-dark.png"), fullPage: true });
 

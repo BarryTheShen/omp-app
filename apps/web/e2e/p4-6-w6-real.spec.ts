@@ -163,7 +163,10 @@ realTest(
     });
     await expect(original).toHaveCount(1);
     await original.click();
-    await expect(transcript.getByText("first W6 message", { exact: true })).toBeVisible();
+    // Opening the chat starts its omp, as at the other opens in this case.
+    await expect(transcript.getByText("first W6 message", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(transcript.getByText("second W6 message", { exact: true })).toBeVisible();
     await expect(transcript.getByText("third W6 message", { exact: true })).toBeVisible();
     await openHistoryPanel(page);

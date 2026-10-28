@@ -54,12 +54,17 @@ interface Composer {
   readonly page: { readonly scrollWidth: number; readonly clientWidth: number };
 }
 
-/** Sends the long run and waits until the composer offers Stop; then queues a steer and a follow-up. */
+/**
+ * Sends the long run and waits until its reply streams; then queues a steer and a follow-up. A steer sent before the reply
+ * has started goes into omp's first request, and the model answers it at once, so a steer waits in the queue only while
+ * the reply streams.
+ */
 async function queueSteerAndFollowUp(page: Page, composer: Locator): Promise<void> {
   await sendPrompt(composer, LONG_RUN);
   await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible({
     timeout: 120_000,
   });
+  await expect(page.getByText(/Steady line 0:/).first()).toBeVisible({ timeout: 120_000 });
   await composer.fill(STEER);
   await composer.press("Enter");
   const queue = page.getByRole("complementary", { name: "Queued messages" });

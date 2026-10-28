@@ -64,10 +64,14 @@ const IME_KEYS: Readonly<Record<string, true>> = {
   ArrowDown: true,
 };
 
-/** The options of a scope's own list that match `selector`: a nested composer slot's list is that slot's to choose. */
-function ownOption(scope: HTMLElement, selector: string): HTMLElement | null {
-  for (const option of scope.querySelectorAll<HTMLElement>(selector)) {
-    if (option.closest("[data-trigger-scope]") === scope) return option;
+/**
+ * The first element of `scope`'s own that matches `selector`. The composer's slots nest, so a scope also holds the lists
+ * of the slots inside it: a nested slot's list and its rows are that slot's to choose, hold an Enter for and settle it
+ * by (issue 2757).
+ */
+function ownElement(scope: HTMLElement, selector: string): HTMLElement | null {
+  for (const element of scope.querySelectorAll<HTMLElement>(selector)) {
+    if (element.closest("[data-trigger-scope]") === scope) return element;
   }
   return null;
 }
@@ -88,9 +92,9 @@ function highlightedOption(
   if (pointed !== null && pointed.closest("[data-trigger-scope]") !== scope) return null;
   if (!answered) return pointed;
   return (
-    ownOption(scope, '[role="option"][aria-selected="true"]') ??
+    ownElement(scope, '[role="option"][aria-selected="true"]') ??
     pointed ??
-    ownOption(scope, '[role="option"]')
+    ownElement(scope, '[role="option"]')
   );
 }
 
@@ -129,7 +133,7 @@ function settleKeptEnter(
   answer: (() => KeptEnterAnswer) | undefined,
   choose: (option: HTMLElement) => void,
 ): boolean {
-  const listbox = scope.querySelector('[role="listbox"]');
+  const listbox = ownElement(scope, '[role="listbox"]');
   if (listbox === null) return false;
   const first = listbox.querySelector<HTMLElement>('[role="option"]');
   if (first === null) {
@@ -149,7 +153,7 @@ const LIST_SHOW_MS = 1000;
  */
 function waitForOptions(scope: HTMLElement, onShown: () => void, onGaveUp: () => void): () => void {
   const observer = new MutationObserver(() => {
-    if (scope.querySelector('[role="option"]') === null) return;
+    if (ownElement(scope, '[role="option"]') === null) return;
     stop();
     onShown();
   });
@@ -168,10 +172,10 @@ function waitForOptions(scope: HTMLElement, onShown: () => void, onGaveUp: () =>
 /**
  * The element that wraps the composer and the trigger lists rendered inside it. Every composer slot uses this
  * scope, so the key handling is written once. On Enter or Tab it chooses the option the composer's textarea
- * points at (`aria-activedescendant`), so the textarea must share a trigger root with the list. An Enter
- * pressed while a list in the scope is still loading is kept until the list answers (see `settleKeptEnter`);
- * Escape cancels it. Shift+Enter and Shift+Tab are left to the composer. A highlighted row that `isCurrentRow`
- * rejects is not chosen either.
+ * points at (`aria-activedescendant`), so the textarea must share a trigger root with the list. An Enter pressed
+ * while the scope's own list is open and still loading is kept until that list answers (see `settleKeptEnter`), and
+ * Escape cancels it; the list of a slot nested inside the scope is that slot's (issue 2757). Shift+Enter and Shift+Tab
+ * are left to the composer. A highlighted row that `isCurrentRow` rejects is not chosen either.
  */
 export function TriggerKeyScope({
   className,
@@ -293,7 +297,7 @@ export function TriggerKeyScope({
     if (event.key !== "Enter" && event.key !== "Tab") return;
     if (event.shiftKey) return;
     if (!(event.target instanceof HTMLTextAreaElement)) return;
-    const listOpen = event.currentTarget.querySelector('[role="listbox"]') !== null;
+    const listOpen = ownElement(event.currentTarget, '[role="listbox"]') !== null;
     if (
       event.key === "Enter" &&
       pending.current > 0 &&

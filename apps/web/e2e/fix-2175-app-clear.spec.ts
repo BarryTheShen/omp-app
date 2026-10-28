@@ -123,12 +123,11 @@ realTest(
       timeout: 120_000,
     });
     await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible();
-    const rows = await sessionRows(page).count();
-
     await typeClear(page, composer);
     await expect(page.getByText(WAIT)).toBeVisible();
     await expect(page.getByText(NOTE)).toHaveCount(0);
-    expect(await sessionRows(page).count()).toBe(rows);
+    // The open chat's own row can reach the list at any moment after its first message; a second would be a new chat.
+    expect(await sessionRows(page).count()).toBeLessThanOrEqual(1);
     await expect(page.getByText("Here is the long streamed block:")).toBeVisible();
 
     await writeFile(join(realApp.agentDir, "release-held-reply"), "");
@@ -150,13 +149,11 @@ realTest(
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 120_000 });
     await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
-    const rows = await sessionRows(page).count();
-
     await composer.fill("/clear now");
     await composer.press("Enter");
     await expect(page.getByText(WORDS)).toBeVisible();
     await expect(composer).toHaveValue("/clear now");
-    expect(await sessionRows(page).count()).toBe(rows);
+    expect(await sessionRows(page).count()).toBeLessThanOrEqual(1);
     await expect(page.getByText(NOTE)).toHaveCount(0);
     expect(realApp.problems).toEqual([]);
   },

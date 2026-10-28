@@ -163,8 +163,9 @@ async function openChat(page: Page): Promise<Locator> {
       .fill("new chat", ACTION_OPTIONS);
     await palette.getByRole("option", { name: /New chat/ }).click(ACTION_OPTIONS);
   }
+  // As `startChat`: a new chat's composer shows once its omp has started, over 30 s while many omps start at once.
   const composer = page.getByRole("textbox", { name: "Message input" });
-  await expect(composer).toBeVisible({ timeout: 15_000 });
+  await expect(composer).toBeVisible({ timeout: 120_000 });
   return composer;
 }
 

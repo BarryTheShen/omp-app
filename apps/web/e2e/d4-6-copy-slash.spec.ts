@@ -36,6 +36,10 @@ realTest(
     const composer = await startChat(page);
     await sendPrompt(composer, "Hello for the copy check");
     await expect(page.getByText(ANSWER, { exact: true }).first()).toBeVisible({ timeout: 90_000 });
+    // Copy offers saved messages only; a saved message shows its actions (Edit), as a person sees.
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
 
     await sendPrompt(composer, "/copy");
     await expect(picker(page)).toBeVisible({ timeout: 30_000 });

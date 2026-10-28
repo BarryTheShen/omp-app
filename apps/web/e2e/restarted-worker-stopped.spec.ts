@@ -18,7 +18,7 @@ import {
 
 const TRANSCRIPT = '[data-slot="p1-agent-transcript"]';
 const COULD_NOT_READ = "The transcript could not be read";
-/** The steerable worker's task text: it is in the transcript, written by omp before the restart. */
+/** The steerable worker's task text: it is in the transcript omp writes as the worker works, read after the restart. */
 const TASK_TEXT = "nested_steer_child";
 
 realTest.setTimeout(420_000);
@@ -37,6 +37,13 @@ realTest(
     await expect(hub.getByRole("option", { name: /Running.*SteerProbe/ })).toHaveCount(1, {
       timeout: 120_000,
     });
+    // omp writes the worker's transcript as it works, and the reopened chat reads that file: the restart comes once the
+    // running worker's transcript shows its task.
+    await hub.getByRole("option", { name: /Running.*SteerProbe/ }).click();
+    await hub.getByRole("button", { name: "Open transcript" }).click();
+    await expect(
+      page.getByRole("region", { name: /^Transcript of SteerProbe/ }).locator(TRANSCRIPT),
+    ).toContainText(TASK_TEXT, { timeout: 60_000 });
 
     // The first page is ended before the restart, so it does not keep retrying its socket against the new server.
     await page.close();
