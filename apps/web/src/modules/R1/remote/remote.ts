@@ -2,8 +2,8 @@ import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import type {
   AppError,
   CapabilityKey,
+  ChatOpenResult,
   OpenThreadArgs,
-  OpenThreadResult,
   SessionRenameArgs,
   ThreadId,
 } from "@omp-app/contracts";
@@ -27,7 +27,7 @@ export interface RemoteThreadCatalogSource {
 
 export interface RemoteThreadListOptions {
   readonly catalog: RemoteThreadCatalogSource;
-  readonly open: (args: OpenThreadArgs) => Promise<OpenThreadResult>;
+  readonly open: (args: OpenThreadArgs) => Promise<ChatOpenResult>;
   /**
    * Lets go of the hold `open` takes on a chat. The adapter's open only creates the chat or starts
    * its omp: the selected-chat controller opens it again to view it, and that one hold is what
@@ -85,7 +85,7 @@ function isNewThreadId(threadId: string): boolean {
   return threadId === "new" || threadId.startsWith("new:") || threadId.startsWith("local:");
 }
 
-function initialized(result: OpenThreadResult | LoadedThread): RemoteThreadInitializeResponse {
+function initialized(result: ChatOpenResult | LoadedThread): RemoteThreadInitializeResponse {
   return {
     remoteId: result.threadId,
     ...("sessionFile" in result && result.sessionFile ? { externalId: result.sessionFile } : {}),
@@ -261,7 +261,7 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
    * Starts a New chat for a caller that adopts it (`adopt`): the open keeps the hold it takes, so the caller holds the chat
    * once and opens it no more. A New chat no caller adopts is let go when the next open finishes.
    */
-  public startNew(): Promise<OpenThreadResult> {
+  public startNew(): Promise<ChatOpenResult> {
     return this.open("new", undefined, true);
   }
 
@@ -290,17 +290,17 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
    * A pick whose `after` settles false opens nothing on omp: it ends cancelled, and counts as a later pick too. A New chat
    * opened for its caller (`forAdoption`, see `startNew`) keeps its hold until `adopt` takes it.
    */
-  private open(threadId: string, after: undefined, forAdoption: true): Promise<OpenThreadResult>;
+  private open(threadId: string, after: undefined, forAdoption: true): Promise<ChatOpenResult>;
   private open(
     threadId: string,
     after?: Promise<boolean>,
     forAdoption?: boolean,
-  ): Promise<OpenThreadResult | LoadedThread>;
+  ): Promise<ChatOpenResult | LoadedThread>;
   private async open(
     threadId: string,
     after?: Promise<boolean>,
     forAdoption = false,
-  ): Promise<OpenThreadResult | LoadedThread> {
+  ): Promise<ChatOpenResult | LoadedThread> {
     const request = ++this.requests;
     try {
       let args: OpenThreadArgs;

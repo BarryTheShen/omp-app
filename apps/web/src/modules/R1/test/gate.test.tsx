@@ -2,13 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
+  ChatOpenResult,
+  ChatSessionClient,
   ChatSessionEvent,
   Fixture,
   FolderPath,
   OpenThreadArgs,
-  OpenThreadResult,
-  RpcSessionClient,
-  RpcSessionSend,
   SessionFile,
   SessionFileChanged,
   SessionRenameArgs,
@@ -130,14 +129,10 @@ function fixtureSessionFor(threadId: ThreadId): SessionFile | undefined {
   return R1_NATIVE_SESSION_FILES.find((session) => session.id === threadId);
 }
 
-function openResult(threadId: ThreadId): OpenThreadResult {
+function openResult(threadId: ThreadId): ChatOpenResult {
   const session = fixtureSessionFor(threadId) ?? fixtureSessionFor(R1_THREAD_IDS.active);
   if (!session) throw new Error("active R1 fixture session is missing");
-  return {
-    threadId,
-    sessionFile: session.sessionFile,
-    capabilities: R1_OPEN_CAPABILITIES,
-  };
+  return { threadId, sessionFile: session.sessionFile, methods: [] };
 }
 
 interface SubscriptionRecord {
@@ -146,40 +141,39 @@ interface SubscriptionRecord {
   unsubscribed: boolean;
 }
 
+/** The chat session port and AppPort's capability map, as R1's controller reads them. */
 function createHistoryRpc(
-  open: (args: OpenThreadArgs) => Promise<OpenThreadResult>,
+  open: (args: OpenThreadArgs) => Promise<ChatOpenResult>,
   calls: string[],
-): RpcSessionClient {
-  const send: RpcSessionSend = async ({ threadId, command }) => {
-    calls.push(command.type);
-    switch (command.type) {
+): ChatSessionClient {
+  const request = async ({ threadId, method }: { threadId: ThreadId; method: string }) => {
+    calls.push(method);
+    switch (method) {
       case "get_state":
-        return { ...R1_HISTORY_STATE, sessionId: threadId } as never;
+        return { ...R1_HISTORY_STATE, sessionId: threadId };
       case "get_entries":
-        return { entries: R1_HISTORY_ENTRIES, leafId: "entry-assistant-1" } as never;
+        return { entries: R1_HISTORY_ENTRIES, leafId: "entry-assistant-1" };
       default:
-        return undefined as never;
+        return {};
     }
   };
 
   return {
     open,
-    send,
-    subscribe: async () => ({ stream: "A0.rpcSession/event/thread" }) as never,
+    request,
+    capabilities: async () => R1_OPEN_CAPABILITIES,
+    subscribe: async () => ({ stream: "A0.chatSession/event/thread" }) as never,
     answer: async () => null,
     openRequests: async () => [],
     uiState: async () => [],
-    answerHostTool: async () => null,
-    answerHostUri: async () => null,
     setSubagentSubscription: async () => ({ level: "off" }),
-    setEventFilter: async () => ({ events: null }),
     restart: async () => null,
     close: async () => null,
-  } as unknown as RpcSessionClient;
+  } as unknown as ChatSessionClient;
 }
 
 function createHistoryClient(
-  rpc: RpcSessionClient,
+  rpc: ChatSessionClient,
   subscriptions: SubscriptionRecord[],
 ): AppClient {
   return {

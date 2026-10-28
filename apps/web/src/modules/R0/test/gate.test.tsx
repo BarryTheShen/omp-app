@@ -14,7 +14,6 @@ import type {
   Fixture,
   OmpCommand,
   ExtensionUiResponse as PortExtensionUiResponse,
-  RpcSessionSend,
   ThreadId,
   ToolCallId,
 } from "@omp-app/contracts";
@@ -312,11 +311,11 @@ describe("R0 W2 recorded fixture runtime gate", () => {
     const store = new OmpRuntimeStore({ threadId: "gap-thread" as ThreadId });
     store.ingest({ kind: "process", status: "ready" } as ChatSessionEvent, 5);
     expect(store.getSnapshot().needsRefetch).toBe(true);
-    const send: RpcSessionSend = async ({ command }) => {
-      if (command.type === "get_state") return { sessionId: "gap-thread" } as never;
-      if (command.type === "get_entries") return { entries: [], leafId: null } as never;
-      return undefined as never;
-    };
+    const send = (async ({ method }: { method: string }) => {
+      if (method === "get_state") return { sessionId: "gap-thread" };
+      if (method === "get_entries") return { entries: [], leafId: null };
+      return {};
+    }) as unknown as ChatSessionRequest;
     const loader = new SessionHistoryLoader({
       send,
       threadId: store.getSnapshot().threadId,

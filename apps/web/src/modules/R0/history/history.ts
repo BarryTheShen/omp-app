@@ -1,9 +1,9 @@
 import type {
   AppError,
+  ChatSessionRequest,
   EntryId,
   OmpWire,
   PortCallOptions,
-  RpcSessionSend,
   SessionEntryOutputArgs,
   SessionEntryOutputResult,
   SessionEntryWindow,
@@ -14,7 +14,6 @@ import { AppFailure, SessionFilePath } from "@omp-app/contracts";
 import type { OmpRuntimeStore } from "../store/store";
 
 type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
-type SessionState = OmpWire.SessionState;
 type SessionEntriesResult = OmpWire.SessionEntries;
 type OperationKind = "refetch" | "sync";
 interface InFlight {
@@ -52,7 +51,8 @@ export type SessionOutputReader = (
 ) => Promise<SessionEntryOutputResult>;
 
 export interface SessionHistoryLoaderOptions {
-  readonly send: RpcSessionSend;
+  /** The chat session port's requests. */
+  readonly send: ChatSessionRequest;
   readonly readWindow: SessionWindowReader;
   /** Reads one entry in full; a loader without it cannot load full tool outputs. */
   readonly readOutput?: SessionOutputReader;
@@ -125,7 +125,7 @@ export function isUnknownSinceError(error: unknown): boolean {
  * `AppFailure`. Older pages run beside them, one at a time.
  */
 export class SessionHistoryLoader {
-  private readonly send: RpcSessionSend;
+  private readonly send: ChatSessionRequest;
   private readonly windows: SessionWindowReader;
   private readonly outputs: SessionOutputReader | undefined;
   private readonly threadId: ThreadId;
@@ -293,11 +293,11 @@ export class SessionHistoryLoader {
   private async applyState(signal: AbortSignalLike): Promise<void> {
     // The answer describes omp as of this request: the store keeps any run event that arrives after it.
     const asOfSeq = this.store.getSnapshot().lastSeq;
-    const state = (await this.send(
-      { threadId: this.threadId, command: { type: "get_state" } },
+    const state = await this.send(
+      { threadId: this.threadId, method: "get_state", params: {} },
       { signal },
-    )) as SessionState;
-    this.store.applySessionState(state, { asOfSeq });
+    );
+    this.store.applyHostState(state, { asOfSeq });
     const file = SessionFilePath.safeParse(state.sessionFile);
     this.sessionFile = file.success ? file.data : undefined;
   }
@@ -475,10 +475,15 @@ export class SessionHistoryLoader {
     signal: AbortSignalLike,
   ): Promise<SessionEntriesResult> {
     const result = await this.send(
-      { threadId: this.threadId, command: { type: "get_entries", since } },
+      {
+        threadId: this.threadId,
+        method: "get_entries",
+        params: since === undefined ? {} : { since },
+      },
       { signal },
     );
-    return result as SessionEntriesResult;
+    // The host answers with omp's own entries, the shape omp-wire describes until H5.6 retypes the readers.
+    return result as unknown as SessionEntriesResult;
   }
 
   private latestKnownEntryId(): EntryId | undefined {

@@ -3,7 +3,6 @@ import {
   ChatSessionPort,
   FolderPath,
   type PortClient,
-  RpcSessionPort,
   SessionFileStore,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -53,7 +52,6 @@ export function useAppChatState({ client, launchFolder }: AppChatStateInput) {
   const [newChatThreadId, setNewChatThreadId] = useState<ThreadId | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
-  const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const chat = useMemo(() => client.port(ChatSessionPort) as ChatSessionClient, [client]);
   // One catalog per folder for the life of the connection: going back to a folder shows its last
   // list at once, and a new connection starts clean.
@@ -102,7 +100,6 @@ export function useAppChatState({ client, launchFolder }: AppChatStateInput) {
     recentFolders,
     setRecentFolders,
     sessionFiles,
-    rpc,
     chat,
     catalogCache,
     catalog,

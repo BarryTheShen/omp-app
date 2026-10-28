@@ -17,7 +17,6 @@ import {
   type FolderPath,
   OmpCommandGateway,
   type PortClient,
-  type RpcSessionClient,
   type SessionFile,
   SessionFileStore,
   type ThreadId,
@@ -136,14 +135,14 @@ function windowBytesFromUrl(): number | undefined {
 function smallWindowLoader(
   client: AppClient,
   threadId: ThreadId,
-  session: RpcSessionClient,
+  session: ChatSessionClient,
   store: OmpRuntimeStore,
   byteBudget: number,
 ): SessionHistoryLoader {
   const files = client.port(SessionFileStore);
   return new SessionHistoryLoader({
     threadId,
-    send: session.send,
+    send: session.request,
     store,
     readWindow: (args, options) => files.readEntryWindow({ ...args, byteBudget }, options),
     readOutput: (args, options) => files.readEntryOutput(args, options),

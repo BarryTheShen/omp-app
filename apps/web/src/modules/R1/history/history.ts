@@ -8,15 +8,9 @@ import type {
   ModelChoice,
   OpenThreadArgs,
   PortClient,
-  RpcSessionClient,
   ThreadId,
 } from "@omp-app/contracts";
-import {
-  AppFailure,
-  ChatSessionPort,
-  RpcSessionPort as RpcSessionPortSchema,
-  SessionFileStore,
-} from "@omp-app/contracts";
+import { AppFailure, AppPort, ChatSessionPort, SessionFileStore } from "@omp-app/contracts";
 import {
   SessionHistoryLoader,
   type SessionOutputReader,
@@ -57,10 +51,10 @@ export interface SelectedThreadHistoryOptions {
   readonly folder: FolderPath;
   readonly onThreadIdChange?: (threadId: ThreadId | undefined) => void;
   readonly onPerfMark?: (name: HistoryPerfMark) => void;
-  readonly createStore?: (threadId: ThreadId, session: RpcSessionClient) => OmpRuntimeStore;
+  readonly createStore?: (threadId: ThreadId, session: ChatSessionClient) => OmpRuntimeStore;
   readonly createLoader?: (
     threadId: ThreadId,
-    session: RpcSessionClient,
+    session: ChatSessionClient,
     store: OmpRuntimeStore,
   ) => SessionHistoryLoader;
   /** Called when a chat whose turn was still running after it was left has ended that turn: its row may be new now. */
@@ -148,8 +142,9 @@ function eventsAfterLastTurnEnd(events: readonly ReplayedEvent[]): readonly Repl
 export class SelectedThreadHistoryController {
   private readonly options: SelectedThreadHistoryOptions;
   private readonly client: AppClient;
-  private readonly rpc: RpcSessionClient;
   private readonly chat: ChatSessionClient;
+  /** The app's capability map, read once per connection: it is the same for every chat (see `readCapabilities`). */
+  private capabilityRead: Promise<CapabilityMap> | undefined;
   private readonly sessionFiles: PortClient<typeof SessionFileStore>;
   private state: SelectedThreadHistoryState = Object.freeze({
     threadId: undefined,
@@ -201,7 +196,6 @@ export class SelectedThreadHistoryController {
   public constructor(options: SelectedThreadHistoryOptions) {
     this.options = options;
     this.client = options.client;
-    this.rpc = this.client.port(RpcSessionPortSchema);
     this.chat = this.client.port(ChatSessionPort) as ChatSessionClient;
     this.sessionFiles = this.client.port(SessionFileStore);
   }
@@ -213,6 +207,18 @@ export class SelectedThreadHistoryController {
   public subscribe(listener: (state: SelectedThreadHistoryState) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** The app's capability map: read once, and again after a failed read. */
+  private readCapabilities(): Promise<CapabilityMap> {
+    this.capabilityRead ??= this.client
+      .port(AppPort)
+      .capabilities({})
+      .catch((error: unknown) => {
+        this.capabilityRead = undefined;
+        throw error;
+      });
+    return this.capabilityRead;
   }
 
   /**
@@ -526,7 +532,7 @@ export class SelectedThreadHistoryController {
 
   /** Best effort: see `releaseThread`. */
   private release(threadId: ThreadId): Promise<void> {
-    return releaseThread(this.rpc.close, threadId);
+    return releaseThread(this.chat.close, threadId);
   }
 
   private open(
@@ -583,7 +589,7 @@ export class SelectedThreadHistoryController {
       await this.closeNow();
       this.commit({ isLoading: true, isSwitching: false, error: null });
     } else if (requested !== undefined && requested !== previous.threadId) {
-      clickStore = this.options.createStore?.(requested, this.rpc) ?? this.defaultStore(requested);
+      clickStore = this.options.createStore?.(requested, this.chat) ?? this.defaultStore(requested);
       this.commit({
         threadId: requested,
         store: clickStore,
@@ -611,9 +617,10 @@ export class SelectedThreadHistoryController {
     // Set once omp opened the chat: from then on a failure ends both views.
     let openedId: ThreadId | undefined;
     try {
-      const result = await this.rpc.open(args, signal === undefined ? undefined : { signal });
+      const result = await this.chat.open(args, signal === undefined ? undefined : { signal });
+      const capabilities = await this.readCapabilities();
       answered = true;
-      openedCapabilities = result.capabilities;
+      openedCapabilities = capabilities;
       this.options.onPerfMark?.("rpc_open_returned");
       if (keepShown) {
         await this.closeNow(true, previous);
@@ -628,10 +635,10 @@ export class SelectedThreadHistoryController {
       const store =
         clickStore !== undefined && threadId === requested
           ? clickStore
-          : (this.options.createStore?.(threadId, this.rpc) ?? this.defaultStore(threadId));
+          : (this.options.createStore?.(threadId, this.chat) ?? this.defaultStore(threadId));
       const shownNow = store === clickStore;
       const loader =
-        this.options.createLoader?.(threadId, this.rpc, store) ??
+        this.options.createLoader?.(threadId, this.chat, store) ??
         this.defaultLoader(threadId, store);
       this.loader = loader;
       openedStore = store;
@@ -640,7 +647,7 @@ export class SelectedThreadHistoryController {
         this.commit({
           threadId,
           store,
-          capabilities: result.capabilities,
+          capabilities,
           isLoading: true,
           error: null,
           openedNew,
@@ -672,7 +679,7 @@ export class SelectedThreadHistoryController {
       this.commit({
         threadId,
         store,
-        capabilities: result.capabilities,
+        capabilities,
         isLoading: false,
         isSwitching: false,
         error: null,
@@ -788,7 +795,7 @@ export class SelectedThreadHistoryController {
       this.sessionFiles.readEntryOutput(args, options);
     return new SessionHistoryLoader({
       threadId,
-      send: this.rpc.send,
+      send: this.chat.request,
       store,
       readWindow,
       readOutput,
@@ -1006,7 +1013,8 @@ export class SelectedThreadHistoryController {
     this.loader = undefined;
     this.stopRefetchWatch = undefined;
     const loader =
-      this.options.createLoader?.(threadId, this.rpc, store) ?? this.defaultLoader(threadId, store);
+      this.options.createLoader?.(threadId, this.chat, store) ??
+      this.defaultLoader(threadId, store);
     this.loader = loader;
     // omp may move the same session to a persisted file while a prompt is streaming. Keep the
     // existing store/runtime and only move the event subscription and future history requests.

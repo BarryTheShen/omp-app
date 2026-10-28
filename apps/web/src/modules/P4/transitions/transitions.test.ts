@@ -1,10 +1,4 @@
-import type {
-  CapabilityMap,
-  ChatSessionRequest,
-  EntryId,
-  RpcSessionSend,
-  ThreadId,
-} from "@omp-app/contracts";
+import type { CapabilityMap, ChatSessionRequest, EntryId, ThreadId } from "@omp-app/contracts";
 import { AppFailure, persistedMessageKey, SessionFilePath } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { createOmpBranchingController } from "@/modules/R0/branching/branching";
@@ -81,14 +75,6 @@ function rpc(
   }) as unknown as ChatSessionRequest;
 }
 
-/** R0's history loader sends omp's RPC commands until H5.4g; it reads through the same fake. */
-function historySendOver(send: ChatSessionRequest): RpcSessionSend {
-  return (async ({ threadId, command }: { threadId: ThreadId; command: { type: string } }) => {
-    const { type, ...params } = command;
-    return send({ threadId, method: type, params } as never);
-  }) as unknown as RpcSessionSend;
-}
-
 function branchController(
   switched: ThreadId[],
   onSwitch: (threadId: ThreadId) => Promise<void> = async () => {},
@@ -119,7 +105,7 @@ function activeHistoryController(
       activeStore = new OmpRuntimeStore({ threadId });
       onStore?.(activeStore);
       activeLoader = new SessionHistoryLoader({
-        send: historySendOver(send),
+        send,
         threadId,
         store: activeStore,
         readWindow: async () => ({

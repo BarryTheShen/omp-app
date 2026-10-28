@@ -1,8 +1,8 @@
 import type {
   ChatSessionEvent,
+  ChatSessionRequest,
   EntryId,
   OmpWire,
-  RpcSessionSend,
   SessionEntryWindow,
   SessionEntryWindowArgs,
   ThreadId,
@@ -127,19 +127,20 @@ interface SendCall {
   readonly args: unknown;
 }
 
-type CommandHandler = (command: Record<string, unknown>, signal?: AbortSignal) => unknown;
+/** Answers one request from its params. */
+type CommandHandler = (params: Record<string, unknown>, signal?: AbortSignal) => unknown;
 
 function makeSend(
   handlers: Partial<Record<string, CommandHandler>>,
   calls: SendCall[] = [],
-): { send: RpcSessionSend; calls: SendCall[] } {
+): { send: ChatSessionRequest; calls: SendCall[] } {
   const send = (async (
-    args: { command: Record<string, unknown> & { type: string } },
+    args: { method: string; params: Record<string, unknown> },
     options?: { signal?: AbortSignal },
   ) => {
-    calls.push({ type: args.command.type, args });
-    const handler = handlers[args.command.type];
-    if (!handler) throw new Error(`no handler for ${args.command.type}`);
+    calls.push({ type: args.method, args });
+    const handler = handlers[args.method];
+    if (!handler) throw new Error(`no handler for ${args.method}`);
     const signal = options?.signal;
     if (signal?.aborted) {
       throw new AppFailure({
@@ -148,7 +149,7 @@ function makeSend(
         retryable: false,
       });
     }
-    const resultPromise = Promise.resolve().then(() => handler(args.command, signal));
+    const resultPromise = Promise.resolve().then(() => handler(args.params, signal));
     if (!signal) return resultPromise;
     const raced = Promise.withResolvers<unknown>();
     const onAbort = (): void => {
@@ -168,7 +169,7 @@ function makeSend(
       },
     );
     return raced.promise;
-  }) as unknown as RpcSessionSend;
+  }) as unknown as ChatSessionRequest;
   return { send, calls };
 }
 
@@ -609,7 +610,7 @@ describe("SessionHistoryLoader.refetch", () => {
     calls.length = 0;
     await loader.refetch();
     const secondEntriesCall = calls.find((call) => call.type === "get_entries");
-    expect(secondEntriesCall?.args).toMatchObject({ command: { since: "b" } });
+    expect(secondEntriesCall?.args).toMatchObject({ params: { since: "b" } });
     expect(store.getSnapshot().transcript.order).toEqual(["a", "b"]);
     // History messages show once, in branch order, however often the history is refetched.
     expect(store.getSnapshot().messageOrder).toEqual([

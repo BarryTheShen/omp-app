@@ -88,13 +88,15 @@ function lastListedEntry(snapshot: TreeSnapshot): EntryId | undefined {
 }
 
 function r1Controller(omp: RecordedOmp, sourceStore: OmpRuntimeStore) {
+  // The chat session port and AppPort's capability map, as R1's controller reads them.
   const rpc = {
     open: async (args: { readonly threadId: ThreadId }) => ({
       threadId: args.threadId,
       sessionFile: null,
-      capabilities: AVAILABLE,
+      methods: [],
     }),
-    send: omp.send,
+    capabilities: async () => AVAILABLE,
+    request: omp.send,
     close: async () => null,
     openRequests: async () => [],
     uiState: async () => [],

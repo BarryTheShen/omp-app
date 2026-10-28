@@ -1,9 +1,9 @@
 import {
   type AppError,
   AppFailure,
+  type ChatSessionClient,
   type FolderPath,
   type PortClient,
-  type RpcSessionPort,
   type SessionFileStore,
   ThreadId,
 } from "@omp-app/contracts";
@@ -57,7 +57,7 @@ const EMPTY_HISTORY: SelectedThreadHistoryState = {
 interface ChatHistoryInput {
   readonly client: NonNullable<AppConnectionSnapshot["client"]>;
   readonly folder: FolderPath | null;
-  readonly rpc: PortClient<typeof RpcSessionPort>;
+  readonly chat: ChatSessionClient;
   readonly sessionFiles: PortClient<typeof SessionFileStore>;
   readonly catalogCache: CatalogCache;
   readonly catalog: SessionCatalogModel | null;
@@ -76,7 +76,7 @@ interface ChatHistoryInput {
 export function useChatHistory({
   client,
   folder,
-  rpc,
+  chat,
   sessionFiles,
   catalogCache,
   catalog,
@@ -163,9 +163,9 @@ export function useChatHistory({
       catalog
         ? createNativeRemoteThreadListAdapter({
             catalog,
-            open: rpc.open,
-            close: rpc.close,
-            rename: rpc.rename,
+            open: chat.open,
+            close: chat.close,
+            rename: chat.rename,
             deleteThread: async (threadId) => {
               await deleteChatFile({ threadId, catalog, sessionFiles });
               const storage = localDraftStorage();
@@ -180,7 +180,7 @@ export function useChatHistory({
             loadedThreadId: () => controller?.getSnapshot().threadId,
           })
         : null,
-    [catalog, controller, rpc.open, rpc.close, rpc.rename, sessionFiles],
+    [catalog, controller, chat.open, chat.close, chat.rename, sessionFiles],
   );
   useEffect(() => {
     let active = true;

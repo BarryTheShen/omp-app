@@ -1,6 +1,6 @@
 import type {
+  ChatOpenResult,
   OpenThreadArgs,
-  OpenThreadResult,
   SessionRenameArgs,
   ThreadId,
 } from "@omp-app/contracts";
@@ -54,11 +54,11 @@ function catalogSource(sessions: readonly SessionMetadata[]): RemoteThreadCatalo
   };
 }
 
-function openResult(threadId: ThreadId): OpenThreadResult {
+function openResult(threadId: ThreadId): ChatOpenResult {
   return {
     threadId,
     sessionFile: `/workspace/project/.omp/${threadId}.jsonl` as SessionMetadata["sessionFile"],
-    capabilities: {},
+    methods: [],
   };
 }
 
@@ -118,7 +118,7 @@ describe("NativeRemoteThreadListAdapter", () => {
 
   test("a pick of the chat already loaded is an open while a New chat is still opening, so the pick is the newest", async () => {
     const opened: OpenThreadArgs[] = [];
-    const newChat = Promise.withResolvers<OpenThreadResult>();
+    const newChat = Promise.withResolvers<ChatOpenResult>();
     const adapter = createNativeRemoteThreadListAdapter({
       catalog: catalogSource([metadata(threadOne, "One", "2026-10-05T00:00:00.000Z")]),
       open: (args: OpenThreadArgs) => {
@@ -285,7 +285,7 @@ describe("NativeRemoteThreadListAdapter", () => {
   });
 
   test("a new chat that finishes opening after the chat picked after it is let go", async () => {
-    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const newChatOpen = Promise.withResolvers<ChatOpenResult>();
     const released: ThreadId[] = [];
     const selected: ThreadId[] = [];
     const adapter = createNativeRemoteThreadListAdapter({
@@ -351,7 +351,7 @@ describe("NativeRemoteThreadListAdapter", () => {
   });
 
   test("a New chat clicked during a pick's page open keeps its place, even if the pick finishes first", async () => {
-    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const newChatOpen = Promise.withResolvers<ChatOpenResult>();
     const page = Promise.withResolvers<boolean>();
     const selected: ThreadId[] = [];
     const adapter = createNativeRemoteThreadListAdapter({
@@ -375,7 +375,7 @@ describe("NativeRemoteThreadListAdapter", () => {
 
   test("a pick of the chat already loaded sends nothing once the page answers, though an open was in flight", async () => {
     const opened: OpenThreadArgs[] = [];
-    const earlierOpen = Promise.withResolvers<OpenThreadResult>();
+    const earlierOpen = Promise.withResolvers<ChatOpenResult>();
     const page = Promise.withResolvers<boolean>();
     const adapter = createNativeRemoteThreadListAdapter({
       catalog: catalogSource([]),
@@ -412,7 +412,7 @@ describe("NativeRemoteThreadListAdapter", () => {
   });
 
   test("a failed later pick also lets an earlier one go, and a failed pick selects nothing", async () => {
-    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const newChatOpen = Promise.withResolvers<ChatOpenResult>();
     const failure = new AppFailure({ code: "permission", message: "denied", retryable: false });
     const adapter = createNativeRemoteThreadListAdapter({
       catalog: catalogSource([]),
@@ -431,7 +431,7 @@ describe("NativeRemoteThreadListAdapter", () => {
 
   test("a New chat clicked after a pick opens its own chat, and the earlier New chat still opening is let go", async () => {
     const threadThree = ThreadIdSchema.parse("thread-three");
-    const firstNewChat = Promise.withResolvers<OpenThreadResult>();
+    const firstNewChat = Promise.withResolvers<ChatOpenResult>();
     const released: ThreadId[] = [];
     const selected: ThreadId[] = [];
     let newChats = 0;
@@ -463,7 +463,7 @@ describe("NativeRemoteThreadListAdapter", () => {
   });
 
   test("a chat picked again after a later pick opens again, and the earlier open of it is let go", async () => {
-    const firstOpen = Promise.withResolvers<OpenThreadResult>();
+    const firstOpen = Promise.withResolvers<ChatOpenResult>();
     const selected: ThreadId[] = [];
     let picksOfOne = 0;
     const adapter = createNativeRemoteThreadListAdapter({
@@ -491,7 +491,7 @@ describe("NativeRemoteThreadListAdapter", () => {
   });
 
   test("a second click on a New chat that is still opening shares its one open", async () => {
-    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const newChatOpen = Promise.withResolvers<ChatOpenResult>();
     let opened = 0;
     const adapter = createNativeRemoteThreadListAdapter({
       catalog: catalogSource([]),
@@ -574,7 +574,7 @@ describe("NativeRemoteThreadListAdapter", () => {
   });
 
   test("a New chat started for its caller that finishes after a later pick is let go, and is not adopted", async () => {
-    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const newChatOpen = Promise.withResolvers<ChatOpenResult>();
     const closed: ThreadId[] = [];
     const adapter = createNativeRemoteThreadListAdapter({
       catalog: catalogSource([]),

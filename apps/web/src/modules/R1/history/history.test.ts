@@ -1,11 +1,11 @@
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
   CapabilityMap,
+  ChatSessionClient,
   ChatSessionEvent,
   FolderPath,
   OpenHostRequests,
   OpenThreadArgs,
-  RpcSessionClient,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, SessionFileStore, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
@@ -32,6 +32,10 @@ function untilAborted(gate: Promise<void>, signal: AbortSignal | undefined): Pro
   });
 }
 
+/**
+ * The server's ports for the controller: the chat session port (opens, requests, the open dialogs, closes) and the
+ * capability map, which is the one the last open's answer names (`capabilities` in `open`'s result).
+ */
 function createRpc(
   open: (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) => unknown,
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
@@ -41,18 +45,19 @@ function createRpc(
   holdHistoryRead?: Promise<void>,
   holdHistoryReadAt = 1,
   closed: ThreadId[] = [],
-): RpcSessionClient {
+): ChatSessionClient {
   let historyReads = 0;
   let stateReads = 0;
-  const send = async (
+  let capabilities: CapabilityMap = {};
+  const request = async (
     args: {
       threadId: ThreadId;
-      command: { type: string };
+      method: string;
     },
     options?: { readonly signal?: AbortSignal },
   ): Promise<unknown> => {
-    calls.push({ type: args.command.type, threadId: args.threadId });
-    switch (args.command.type) {
+    calls.push({ type: args.method, threadId: args.threadId });
+    switch (args.method) {
       case "get_state":
         stateReads += 1;
         // The first state read can be held: a request made meanwhile then runs while the chat is still loading.
@@ -69,28 +74,30 @@ function createRpc(
         return { entries: [], leafId: null };
       }
       default:
-        return undefined;
+        return {};
     }
   };
   return {
-    open: async (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) =>
-      open(args, options),
-    send: send as RpcSessionClient["send"],
-    subscribe: async () => ({ stream: "A0.rpcSession/event/thread" as never }),
+    open: async (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) => {
+      const result = (await open(args, options)) as { readonly capabilities?: CapabilityMap };
+      if (result?.capabilities !== undefined) capabilities = result.capabilities;
+      return result;
+    },
+    request: request as ChatSessionClient["request"],
+    // AppPort's: the app's capability map.
+    capabilities: async () => capabilities,
+    subscribe: async () => ({ stream: "A0.chatSession/event/thread" as never }),
     // The chat session port's own: the open dialogs and the UI state a reopened chat shows, and the answers.
     answer: async () => null,
     openRequests: async () => questions,
     uiState: async () => [],
-    answerHostTool: async () => null,
-    answerHostUri: async () => null,
     setSubagentSubscription: async () => ({ level: "off" }),
-    setEventFilter: async () => ({ events: null }),
     restart: async () => null,
     close: async (args: { readonly threadId: ThreadId }) => {
       closed.push(args.threadId);
       return null;
     },
-  } as unknown as RpcSessionClient;
+  } as unknown as ChatSessionClient;
 }
 
 interface SubscriptionRecord {
@@ -102,7 +109,7 @@ interface SubscriptionRecord {
 }
 
 function fakeClient(
-  rpc: RpcSessionClient,
+  rpc: ChatSessionClient,
   subscriptions: SubscriptionRecord[],
   replayed: readonly ChatSessionEvent[] = [],
   failSubscriptionAt?: number,
@@ -228,11 +235,11 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const rpc = {
       ...base,
-      send: async (args: { command: { type: string } }) =>
-        args.command.type === "get_state"
+      request: async (args: { method: string }) =>
+        args.method === "get_state"
           ? { sessionId: "s1", sessionFile }
           : { entries: [], leafId: null },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const windowArgs: unknown[] = [];
     const sessionFiles = {
       readEntryWindow: async (args: unknown) => {
@@ -781,14 +788,14 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const rpc = {
       ...base,
-      send: async (args: { threadId: ThreadId; command: { type: string } }) => {
-        calls.push({ type: args.command.type, threadId: args.threadId });
-        if (args.command.type === "get_entries") await entriesHeld.promise;
-        return args.command.type === "get_state"
+      request: async (args: { threadId: ThreadId; method: string }) => {
+        calls.push({ type: args.method, threadId: args.threadId });
+        if (args.method === "get_entries") await entriesHeld.promise;
+        return args.method === "get_state"
           ? { sessionId: args.threadId }
           : { entries: [], leafId: null };
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions),
       folder,
@@ -969,13 +976,13 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const rpc = {
       ...base,
-      send: async (args: { threadId: ThreadId; command: { type: string } }) => {
-        if (args.command.type === "get_entries") await entriesHeld.promise;
-        return args.command.type === "get_state"
+      request: async (args: { threadId: ThreadId; method: string }) => {
+        if (args.method === "get_entries") await entriesHeld.promise;
+        return args.method === "get_state"
           ? { sessionId: args.threadId }
           : { entries: [], leafId: null };
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions),
@@ -1092,16 +1099,12 @@ describe("SelectedThreadHistoryController open and paging", () => {
     let failFirstRekeyRead = true;
     const rpc = {
       ...base,
-      send: async (
-        args: { readonly threadId: ThreadId; readonly command: { readonly type: string } },
+      request: async (
+        args: { readonly threadId: ThreadId; readonly method: string },
         options?: { readonly signal?: AbortSignal },
       ) => {
-        calls.push({ type: args.command.type, threadId: args.threadId });
-        if (
-          failFirstRekeyRead &&
-          args.threadId === threadTwo &&
-          args.command.type === "get_entries"
-        ) {
+        calls.push({ type: args.method, threadId: args.threadId });
+        if (failFirstRekeyRead && args.threadId === threadTwo && args.method === "get_entries") {
           failFirstRekeyRead = false;
           throw new AppFailure({
             code: "unavailable",
@@ -1109,9 +1112,9 @@ describe("SelectedThreadHistoryController open and paging", () => {
             retryable: true,
           });
         }
-        return base.send(args as never, options);
+        return base.request(args as never, options);
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions),
@@ -1153,23 +1156,19 @@ describe("SelectedThreadHistoryController open and paging", () => {
     let holdRekeyStateRead = true;
     const rpc = {
       ...base,
-      send: async (
-        args: { readonly threadId: ThreadId; readonly command: { readonly type: string } },
+      request: async (
+        args: { readonly threadId: ThreadId; readonly method: string },
         options?: { readonly signal?: AbortSignal },
       ) => {
-        calls.push({ type: args.command.type, threadId: args.threadId });
-        if (
-          holdRekeyStateRead &&
-          args.threadId === threadTwo &&
-          args.command.type === "get_state"
-        ) {
+        calls.push({ type: args.method, threadId: args.threadId });
+        if (holdRekeyStateRead && args.threadId === threadTwo && args.method === "get_state") {
           holdRekeyStateRead = false;
           stateReadStarted.resolve();
           await untilAborted(neverReleased.promise, options?.signal);
         }
-        return base.send(args as never, options);
+        return base.request(args as never, options);
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const saved: Array<ThreadId | undefined> = [];
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions),
@@ -1546,12 +1545,9 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     });
     return { controller, subscriptions, saved, reads };
   }
-  test("keeps the opened chat's capabilities when its history fails after a kept switch", async () => {
+  test("keeps the app's capabilities when the opened chat's history fails after a kept switch", async () => {
     const subscriptions: SubscriptionRecord[] = [];
-    const previousCapabilities: CapabilityMap = {
-      "omp.protocol.v2": { state: "fallback", via: "client" },
-    };
-    const openedCapabilities: CapabilityMap = {
+    const capabilities: CapabilityMap = {
       "omp.protocol.v2": { state: "available", via: "rpc" },
     };
     let historyReads = 0;
@@ -1559,10 +1555,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       (args) => ({
         threadId: "threadId" in args ? args.threadId : threadOne,
         sessionFile: null,
-        capabilities:
-          "threadId" in args && args.threadId === threadTwo
-            ? openedCapabilities
-            : previousCapabilities,
+        capabilities,
       }),
       [],
       [],
@@ -1586,7 +1579,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     await controller.openExisting(threadTwo);
     expect(controller.getSnapshot()).toMatchObject({
       threadId: threadTwo,
-      capabilities: openedCapabilities,
+      capabilities,
       error: { code: "omp_exited" },
     });
   });
@@ -1601,7 +1594,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       folder,
       createLoader: (threadId, session, store) => {
         const loader = new SessionHistoryLoader({
-          send: session.send,
+          send: session.request,
           readWindow: async () => {
             throw new Error("not used for an in-memory session");
           },
@@ -2173,14 +2166,14 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
   function recordingRpc(
     open: (args: OpenThreadArgs) => unknown,
     released: ThreadId[],
-  ): RpcSessionClient {
+  ): ChatSessionClient {
     return {
       ...createRpc(open),
       close: async ({ threadId }: { readonly threadId: ThreadId }) => {
         released.push(threadId);
         return null;
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
   }
 
   function openAs(args: OpenThreadArgs): unknown {
@@ -2499,13 +2492,13 @@ describe("SelectedThreadHistoryController whenSettled", () => {
     const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const rpc = {
       ...base,
-      send: async (args: { threadId: ThreadId; command: { type: string } }) => {
-        if (args.command.type === "get_entries") await entriesHeld.promise;
-        return args.command.type === "get_state"
+      request: async (args: { threadId: ThreadId; method: string }) => {
+        if (args.method === "get_entries") await entriesHeld.promise;
+        return args.method === "get_state"
           ? { sessionId: args.threadId }
           : { entries: [], leafId: null };
       },
-    } as unknown as RpcSessionClient;
+    } as unknown as ChatSessionClient;
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, []),
       folder,

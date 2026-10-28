@@ -286,7 +286,7 @@ describe("SessionCatalogSidebar", () => {
           threadId,
           sessionFile:
             `/workspace/project/.omp/${threadId}.jsonl` as SessionMetadata["sessionFile"],
-          capabilities: {},
+          methods: [],
         };
       },
       onThreadIdChange: (threadId) => {

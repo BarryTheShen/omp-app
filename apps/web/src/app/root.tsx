@@ -588,7 +588,6 @@ function ConnectedApp({
     recentFolders,
     setRecentFolders,
     sessionFiles,
-    rpc,
     chat,
     catalogCache,
     catalog,
@@ -597,7 +596,7 @@ function ConnectedApp({
   const { controller, reportOpenFailure, remote, history, displayedHistory } = useChatHistory({
     client,
     folder,
-    rpc,
+    chat,
     sessionFiles,
     catalogCache,
     catalog,
