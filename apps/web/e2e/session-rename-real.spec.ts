@@ -1,9 +1,7 @@
-import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { realTest, screenshots } from "./real-omp";
+import { hostRequest, realTest, screenshots } from "./real-omp";
 
 /**
  * Issues 831, 832 and 833 on the real app (real server, real omp, the fake model) with 12 old chats
@@ -47,31 +45,6 @@ async function expectStylesLoaded(page: Page): Promise<void> {
     .locator('aside[aria-label="Session list"]')
     .evaluate((element: HTMLElement) => getComputedStyle(element).backgroundColor);
   expect(background).not.toBe("rgba(0, 0, 0, 0)");
-}
-
-/**
- * Sends one RPC command to an omp the test started and resolves with whether omp answered success.
- * The app speaks the same newline-delimited JSON protocol.
- */
-function sendCommand(child: ChildProcess, command: Record<string, unknown>): Promise<boolean> {
-  const id = `e2e-${Math.random().toString(36).slice(2, 10)}`;
-  const { promise, resolve, reject } = Promise.withResolvers<boolean>();
-  const stdout = child.stdout;
-  if (!stdout || !child.stdin) return Promise.reject(new Error("The omp has no stdio"));
-  const reader = createInterface({ input: stdout });
-  const timer = setTimeout(() => {
-    reader.close();
-    reject(new Error(`omp did not answer ${String(command.type)}`));
-  }, 60_000);
-  reader.on("line", (line) => {
-    const frame: unknown = JSON.parse(line);
-    if (typeof frame !== "object" || frame === null || Reflect.get(frame, "id") !== id) return;
-    clearTimeout(timer);
-    reader.close();
-    resolve(Reflect.get(frame, "success") === true);
-  });
-  child.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
-  return promise;
 }
 
 realTest(
@@ -152,12 +125,7 @@ realTest(
 
     // Another omp takes the chat's lease by writing to it, as an interactive omp does.
     const holder = realApp.startOmp(["--resume", SEEDED_FIVE]);
-    expect(await sendCommand(holder, { type: "negotiate_protocol", protocolVersion: 2 })).toBe(
-      true,
-    );
-    expect(
-      await sendCommand(holder, { type: "set_session_name", name: "Written by the other omp" }),
-    ).toBe(true);
+    await hostRequest(holder, "set_session_name", { name: "Written by the other omp" });
 
     const box = await startRenameFromRow(page, "Seeded chat 5");
     await box.fill("Refused rename");

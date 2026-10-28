@@ -1,9 +1,14 @@
-import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { realTest, screenshots, sendPrompt, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  hostRequest,
+  realTest,
+  screenshots,
+  sendPrompt,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 /**
  * Issue 2515 on the real app (real server, real omp, the fake model). A chat another omp holds, such as a terminal's, is
@@ -53,31 +58,6 @@ async function expectDrawerReopenedWithRefusal(page: Page): Promise<void> {
   await expect(rowFor(page, HELD)).toBeFocused({ timeout: 5_000 });
 }
 
-/**
- * Sends one RPC command to an omp the test started and resolves with whether omp answered success.
- * The app speaks the same newline-delimited JSON protocol.
- */
-function sendCommand(child: ChildProcess, command: Record<string, unknown>): Promise<boolean> {
-  const id = `e2e-${Math.random().toString(36).slice(2, 10)}`;
-  const { promise, resolve, reject } = Promise.withResolvers<boolean>();
-  const stdout = child.stdout;
-  if (!stdout || !child.stdin) return Promise.reject(new Error("The omp has no stdio"));
-  const reader = createInterface({ input: stdout });
-  const timer = setTimeout(() => {
-    reader.close();
-    reject(new Error(`omp did not answer ${String(command.type)}`));
-  }, 60_000);
-  reader.on("line", (line) => {
-    const frame: unknown = JSON.parse(line);
-    if (typeof frame !== "object" || frame === null || Reflect.get(frame, "id") !== id) return;
-    clearTimeout(timer);
-    reader.close();
-    resolve(Reflect.get(frame, "success") === true);
-  });
-  child.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
-  return promise;
-}
-
 realTest(
   "a chat another omp holds is refused on its row at once when clicked, the chat on screen stays, the narrow drawer reopens with the row focused, and the same click opens it once that omp has exited",
   async ({ realApp }, testInfo) => {
@@ -86,10 +66,7 @@ realTest(
 
     // Another omp, as a terminal runs one, takes the chat's lease by writing to it.
     const terminal = realApp.startOmp(["--resume", SEEDED_FIVE]);
-    expect(await sendCommand(terminal, { type: "negotiate_protocol", protocolVersion: 2 })).toBe(
-      true,
-    );
-    expect(await sendCommand(terminal, { type: "set_session_name", name: HELD })).toBe(true);
+    await hostRequest(terminal, "set_session_name", { name: HELD });
 
     // A chat on screen (desktop): the refusal shows on the row, and the chat on screen stays.
     const busy = await realApp.open();

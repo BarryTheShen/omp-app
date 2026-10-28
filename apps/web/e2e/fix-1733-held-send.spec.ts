@@ -1,9 +1,13 @@
-import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { realTest, screenshots, sendPrompt, waitForFiniteAnimations } from "./real-omp";
+import {
+  hostRequest,
+  realTest,
+  screenshots,
+  sendPrompt,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 /**
  * Issue 1733 on the real app (real server, real omp, the fake model), as issue 2515 now answers it. Another omp holds a
@@ -44,41 +48,13 @@ async function deleteFromRow(page: Page, title: string): Promise<void> {
   );
 }
 
-/**
- * Sends one RPC command to an omp the test started and resolves with whether omp answered success.
- * The app speaks the same newline-delimited JSON protocol.
- */
-function sendCommand(child: ChildProcess, command: Record<string, unknown>): Promise<boolean> {
-  const id = `e2e-${Math.random().toString(36).slice(2, 10)}`;
-  const { promise, resolve, reject } = Promise.withResolvers<boolean>();
-  const stdout = child.stdout;
-  if (!stdout || !child.stdin) return Promise.reject(new Error("The omp has no stdio"));
-  const reader = createInterface({ input: stdout });
-  const timer = setTimeout(() => {
-    reader.close();
-    reject(new Error(`omp did not answer ${String(command.type)}`));
-  }, 60_000);
-  reader.on("line", (line) => {
-    const frame: unknown = JSON.parse(line);
-    if (typeof frame !== "object" || frame === null || Reflect.get(frame, "id") !== id) return;
-    clearTimeout(timer);
-    reader.close();
-    resolve(Reflect.get(frame, "success") === true);
-  });
-  child.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
-  return promise;
-}
-
 realTest(
   "a tab's click on a chat another omp holds is refused on its row, its delete is refused too, and once that omp has gone the chat opens and answers",
   async ({ realApp }) => {
     await mkdir(screenshots, { recursive: true });
     // Another omp takes the chat's lease by writing to it, as an interactive omp does, before the tab opens the chat.
     const holder = realApp.startOmp(["--resume", SEEDED_FIVE]);
-    expect(await sendCommand(holder, { type: "negotiate_protocol", protocolVersion: 2 })).toBe(
-      true,
-    );
-    expect(await sendCommand(holder, { type: "set_session_name", name: HELD })).toBe(true);
+    await hostRequest(holder, "set_session_name", { name: HELD });
     const page = await realApp.open();
     await page.setViewportSize({ width: 1280, height: 900 });
     const composer = page.getByRole("textbox", { name: "Message input" });

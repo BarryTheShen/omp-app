@@ -1,9 +1,16 @@
 import type { ChildProcess } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createInterface } from "node:readline";
 import type { Locator, Page } from "@playwright/test";
-import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  expect,
+  hostRequest,
+  onHostEvent,
+  realTest,
+  screenshots,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 const MARKETPLACE = "local-toggle-market";
 const PLUGIN_ID = `hello-plugin@${MARKETPLACE}`;
@@ -45,66 +52,34 @@ async function openToolsTab(page: Page): Promise<void> {
   await expect(page.getByTestId("extension-control-center")).toBeVisible();
 }
 
-interface RpcPromptResponse {
-  readonly type: "response";
-  readonly id: string;
-  readonly success: boolean;
-}
-
-function rpcPromptClient(child: ChildProcess): {
-  readonly ready: Promise<void>;
+/**
+ * Runs omp's commands on a chat host the test started (`realApp.startOmp`): each command is the host's `prompt`, and its
+ * words come back as the host's `command_output` events.
+ */
+function hostCommandClient(child: ChildProcess): {
   readonly run: (message: string, expectedOutput: string) => Promise<string>;
 } {
-  if (child.stdin === null || child.stdout === null)
-    throw new Error("The real omp process has no JSONL streams.");
-  const lines = createInterface({ input: child.stdout });
-  const responses = new Map<string, (response: RpcPromptResponse) => void>();
   const outputWaiters: Array<{ readonly text: string; readonly resolve: (text: string) => void }> =
     [];
   const outputs: string[] = [];
-  const ready = Promise.withResolvers<void>();
-  let sequence = 0;
-  lines.on("line", (line) => {
-    let frame: Record<string, unknown>;
-    try {
-      frame = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      return;
-    }
-    if (frame.type === "ready") ready.resolve();
-    if (
-      frame.type === "response" &&
-      typeof frame.id === "string" &&
-      typeof frame.success === "boolean"
-    ) {
-      responses.get(frame.id)?.(frame as unknown as RpcPromptResponse);
-      responses.delete(frame.id);
-    }
-    if (frame.type === "command_output" && typeof frame.text === "string") {
-      outputs.push(frame.text);
-      for (const waiter of [...outputWaiters]) {
-        if (!frame.text.includes(waiter.text)) continue;
-        outputWaiters.splice(outputWaiters.indexOf(waiter), 1);
-        waiter.resolve(frame.text);
-      }
+  onHostEvent(child, (event) => {
+    if (event.type !== "command_output" || typeof event.text !== "string") return;
+    const text = event.text;
+    outputs.push(text);
+    for (const waiter of [...outputWaiters]) {
+      if (!text.includes(waiter.text)) continue;
+      outputWaiters.splice(outputWaiters.indexOf(waiter), 1);
+      waiter.resolve(text);
     }
   });
   return {
-    ready: ready.promise,
     async run(message, expectedOutput) {
-      await ready.promise;
       const output = outputs.find((text) => text.includes(expectedOutput));
       if (output !== undefined) return output;
-      const responseId = `marketplace-test-${sequence++}`;
       const outputPromise = new Promise<string>((resolve) => {
         outputWaiters.push({ text: expectedOutput, resolve });
       });
-      const responsePromise = new Promise<RpcPromptResponse>((resolve) => {
-        responses.set(responseId, resolve);
-      });
-      child.stdin?.write(`${JSON.stringify({ type: "prompt", id: responseId, message })}\n`);
-      const response = await responsePromise;
-      expect(response.success).toBe(true);
+      await hostRequest(child, "prompt", { text: message });
       return outputPromise;
     },
   };
@@ -297,8 +272,7 @@ realTest(
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     const marketplacePath = await seedLocalMarketplace(realApp.folder);
-    const promptClient = rpcPromptClient(realApp.startOmp([]));
-    await promptClient.ready;
+    const promptClient = hostCommandClient(realApp.startOmp([]));
     const before = await promptClient.run(
       "/marketplace installed",
       "No marketplace plugins installed",

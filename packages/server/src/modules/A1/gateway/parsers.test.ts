@@ -1,60 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { AppFailure, parseFixture } from "@omp-app/contracts";
+import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
 import type { CommandParserContext } from "./gateway";
 import { parseDumpReply, parseShareReply } from "./parsers";
 
-// Real omp 18.6.1 replies, recorded through the A1 gateway by .data/record-793.ts (see the fixture's
-// header for the scrubbing). `/share` uploaded to a local https stub; its link is scrubbed.
-const recording = parseFixture(
-  readFileSync(join(import.meta.dir, "fixtures", "share-dump.fixture.jsonl"), "utf8"),
-);
-if (!recording.ok) throw new Error(`share-dump fixture is invalid: ${recording.error.message}`);
-const frames = recording.value.frames;
-
-/** The frame fields these tests read; every other field of an omp frame is left alone. */
-const RecordedFrame = z.looseObject({
-  type: z.string(),
-  command: z.unknown().optional(),
-  data: z.unknown().optional(),
+// Real omp 18.6.1 replies, recorded through the A1 gateway by .data/record-793.ts (the fixture's description says how
+// they were kept). `/share` uploaded to a local https stub; its link is scrubbed.
+const RecordedReplies = z.object({
+  replies: z.array(
+    z.object({ command: z.string(), agentInvoked: z.boolean(), outputs: z.array(z.string()) }),
+  ),
 });
+const { replies } = RecordedReplies.parse(
+  JSON.parse(readFileSync(join(import.meta.dir, "fixtures", "share-dump.replies.json"), "utf8")),
+);
 
-/** A command's prompt acknowledgement: omp says whether it ran the text as a command or sent it to the model. */
-const PromptAcknowledgement = z.looseObject({ agentInvoked: z.boolean() });
-
-/**
- * The reply to the `occurrence`th prompt of `command` in the recording: the command_output frames
- * written after that prompt line, up to its acknowledgement. A local command's acknowledgement comes
- * after its output; the recording ends there, so no prompt_result is required.
- */
+/** The recorded reply to the `occurrence`th prompt of `command`: omp's command_output texts and its acknowledgement. */
 function recordedReply(command: string, occurrence = 1): CommandParserContext {
-  let matches = 0;
-  let collecting = false;
-  const outputs: { text: string }[] = [];
-  for (const frame of frames) {
-    const payload = RecordedFrame.parse(JSON.parse(frame.line));
-    if (frame.dir === "stdin" && payload.type === "prompt" && payload.message === command) {
-      matches += 1;
-      collecting = matches === occurrence;
-      continue;
-    }
-    if (!collecting) continue;
-    if (payload.type === "command_output" && typeof payload.text === "string") {
-      outputs.push({ text: payload.text });
-    }
-    if (payload.type === "response" && payload.command === "prompt") {
-      return {
-        command,
-        agentInvoked: PromptAcknowledgement.parse(payload.data).agentInvoked,
-        outputs,
-        sessionUpdates: [],
-        configUpdates: [],
-      };
-    }
-  }
-  throw new Error(`the recording has no reply to ${command} (occurrence ${occurrence})`);
+  const reply = replies.filter((candidate) => candidate.command === command)[occurrence - 1];
+  if (reply === undefined)
+    throw new Error(`the recording has no reply to ${command} (occurrence ${occurrence})`);
+  return {
+    command,
+    agentInvoked: reply.agentInvoked,
+    outputs: reply.outputs.map((text) => ({ text })),
+    sessionUpdates: [],
+    configUpdates: [],
+  };
 }
 
 /** A context for one command whose only output is `text`, as the gateway hands it to a parser. */

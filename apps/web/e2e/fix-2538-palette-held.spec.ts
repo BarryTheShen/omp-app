@@ -1,9 +1,7 @@
-import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import { hostRequest, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
 /**
  * Issue 2538 on the real app (real server, real omp, the fake model). A chat another omp holds, picked from the command
@@ -19,31 +17,6 @@ const SEEDED_FIVE = "01a00000-0000-7000-8000-000000000004";
 const LINE =
   "This chat is open in another omp, for example in a terminal. Close it there, then open it here.";
 const NARROW = { width: 390, height: 844 };
-
-/**
- * Sends one RPC command to an omp the test started and resolves with whether omp answered success.
- * The app speaks the same newline-delimited JSON protocol.
- */
-function sendCommand(child: ChildProcess, command: Record<string, unknown>): Promise<boolean> {
-  const id = `e2e-${Math.random().toString(36).slice(2, 10)}`;
-  const { promise, resolve, reject } = Promise.withResolvers<boolean>();
-  const stdout = child.stdout;
-  if (!stdout || !child.stdin) return Promise.reject(new Error("The omp has no stdio"));
-  const reader = createInterface({ input: stdout });
-  const timer = setTimeout(() => {
-    reader.close();
-    reject(new Error(`omp did not answer ${String(command.type)}`));
-  }, 60_000);
-  reader.on("line", (line) => {
-    const frame: unknown = JSON.parse(line);
-    if (typeof frame !== "object" || frame === null || Reflect.get(frame, "id") !== id) return;
-    clearTimeout(timer);
-    reader.close();
-    resolve(Reflect.get(frame, "success") === true);
-  });
-  child.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
-  return promise;
-}
 
 /** The "Open session" dialog, opened from the command palette the way a person opens it. */
 async function openSessionDialog(page: Page): Promise<Locator> {
@@ -79,10 +52,7 @@ realTest(
 
     // Another omp, as a terminal runs one, takes the chat's lease by writing to it.
     const terminal = realApp.startOmp(["--resume", SEEDED_FIVE]);
-    expect(await sendCommand(terminal, { type: "negotiate_protocol", protocolVersion: 2 })).toBe(
-      true,
-    );
-    expect(await sendCommand(terminal, { type: "set_session_name", name: HELD })).toBe(true);
+    await hostRequest(terminal, "set_session_name", { name: HELD });
 
     // Desktop, light: a chat on screen, so the palette offers Open session.
     const page = await realApp.open();

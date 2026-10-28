@@ -17,6 +17,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { CHAT_HOST_CHAT_ARG } from "@omp-app/contracts/chat-host/args";
 import { type BrowserContext, expect, type Locator, type Page, test } from "@playwright/test";
 
 export const APP_ROOT = resolve(process.cwd(), "../..");
@@ -28,10 +29,7 @@ export const APP_ROOT = resolve(process.cwd(), "../..");
  */
 export const REAL_OMP = process.env.OMP_APP_CHAT_HOST_BIN ?? "";
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
-const FAKE_PROVIDER = resolve(
-  APP_ROOT,
-  "packages/server/test/fake-provider/fake-openai-server.ts",
-);
+const FAKE_PROVIDER = resolve(APP_ROOT, "packages/server/test/fake-provider/fake-openai-server.ts");
 const SESSION_PATHS = resolve(APP_ROOT, "packages/server/src/modules/A1/sessions/paths.ts");
 const FILE_WATCH_REGISTRY = resolve(
   APP_ROOT,
@@ -139,11 +137,103 @@ export interface RealApp {
   /** For a test that breaks the page on purpose: problems matching this are expected; any other still fails the test. */
   readonly allowProblem: (pattern: RegExp) => void;
   /**
-   * Starts another omp (omp's own binary in `--mode rpc-ui`) in this run's folder, home and agent folder,
-   * with the app's environment, for a test that needs a chat held by an omp the app did not start.
-   * Stopped when the test ends.
+   * Starts another omp in this run's folder, home and agent folder, with the app's environment, for a test that needs a
+   * chat held by an omp the app did not start: a second chat host (the app's chat program, its `CHAT_HOST_CHAT_ARG`
+   * command), which speaks the app's own protocol (`packages/contracts/src/chat-host/protocol.ts`) on its stdin and
+   * stdout and holds a chat the way omp does. Stopped when the test ends.
    */
   readonly startOmp: (args: readonly string[]) => ChildProcess;
+}
+
+/** What a test reads from a chat host it started: whether it said hello, and its other lines. */
+interface HostLines {
+  readonly hello: Promise<void>;
+  readonly listeners: Set<(line: Readonly<Record<string, unknown>>) => void>;
+}
+
+const HOST_ANSWER_MS = 60_000;
+const hostLines = new WeakMap<ChildProcess, HostLines>();
+
+/** Reads a chat host's stdout from its start, so neither its hello nor an early event is missed. */
+function readHostLines(child: ChildProcess): void {
+  const stdout = child.stdout;
+  if (stdout === null) throw new Error("The chat host has no stdout.");
+  const hello = Promise.withResolvers<void>();
+  const listeners = new Set<(line: Readonly<Record<string, unknown>>) => void>();
+  createInterface({ input: stdout }).on("line", (text) => {
+    let line: unknown;
+    try {
+      line = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (typeof line !== "object" || line === null) return;
+    const record = line as Readonly<Record<string, unknown>>;
+    if (record.kind === "hello") hello.resolve();
+    for (const listener of [...listeners]) listener(record);
+  });
+  hostLines.set(child, { hello: hello.promise, listeners });
+}
+
+function linesOf(child: ChildProcess): HostLines {
+  const lines = hostLines.get(child);
+  if (lines === undefined) throw new Error("This process was not started with realApp.startOmp.");
+  return lines;
+}
+
+/**
+ * Sends one request to a chat host the test started (`realApp.startOmp`) once it has said hello, and resolves with its
+ * result; a refused request rejects with the host's error.
+ */
+export async function hostRequest(
+  child: ChildProcess,
+  method: string,
+  params: Readonly<Record<string, unknown>> = {},
+): Promise<unknown> {
+  const lines = linesOf(child);
+  const stdin = child.stdin;
+  if (stdin === null) throw new Error("The chat host has no stdin.");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`The chat host did not answer ${method}.`)),
+      HOST_ANSWER_MS,
+    );
+  });
+  const id = `e2e-${crypto.randomUUID()}`;
+  let listener: ((line: Readonly<Record<string, unknown>>) => void) | undefined;
+  const answered = new Promise<unknown>((resolve, reject) => {
+    listener = (line) => {
+      if (line.kind !== "response" || line.id !== id) return;
+      if (line.ok === true) resolve(line.result);
+      else reject(new Error(`The chat host refused ${method}: ${JSON.stringify(line.error)}`));
+    };
+    lines.listeners.add(listener);
+  });
+  try {
+    await Promise.race([lines.hello, timedOut]);
+    stdin.write(`${JSON.stringify({ kind: "request", id, method, params })}\n`);
+    return await Promise.race([answered, timedOut]);
+  } finally {
+    clearTimeout(timer);
+    if (listener !== undefined) lines.listeners.delete(listener);
+  }
+}
+
+/** Calls `listener` with each event a chat host the test started (`realApp.startOmp`) sends; returns the unsubscribe. */
+export function onHostEvent(
+  child: ChildProcess,
+  listener: (event: Readonly<Record<string, unknown>>) => void,
+): () => void {
+  const lines = linesOf(child);
+  const onLine = (line: Readonly<Record<string, unknown>>): void => {
+    if (line.kind !== "event" || typeof line.event !== "object" || line.event === null) return;
+    listener(line.event as Readonly<Record<string, unknown>>);
+  };
+  lines.listeners.add(onLine);
+  return () => {
+    lines.listeners.delete(onLine);
+  };
 }
 
 /** Clicks "New chat" and waits for the composer; a new chat starts a real omp process. */
@@ -666,11 +756,12 @@ export const realTest = test.extend<{
         agentDir,
         allowProblem: (pattern) => void allowed.push(pattern),
         startOmp: (args) => {
-          const child = spawn(ompBinary ?? REAL_OMP, ["--mode", "rpc-ui", ...args], {
+          const child = spawn(REAL_OMP, [CHAT_HOST_CHAT_ARG, ...args], {
             cwd: folder,
             env,
             stdio: ["pipe", "pipe", "pipe"],
           });
+          readHostLines(child);
           extraOmp.push(child);
           return child;
         },

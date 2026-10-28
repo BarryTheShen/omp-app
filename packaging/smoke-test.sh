@@ -37,9 +37,10 @@ grep -q -x 'ExecStart=/usr/bin/omp-app --no-open %h' "$unit" || { echo "FAIL: th
 dpkg-deb -I "$package" postinst | grep -q 'systemctl --global enable omp-app.service' || { echo "FAIL: postinst does not enable the user service" >&2; exit 1; }
 dpkg-deb -I "$package" prerm | grep -q 'systemctl --global disable omp-app.service' || { echo "FAIL: prerm does not disable the user service" >&2; exit 1; }
 
-# The chat host every chat runs: omp's own command line, compiled from the pinned package into this one. It answers
-# omp's commands as omp does, and in RPC mode it reaches omp's own model check; this run has no model and no key, so it
-# stops there, with the sentence the server reads (src/ports/A0/startup-reason.ts).
+# The chat host every chat runs: omp's own command line, compiled from the pinned package into this one, with the app's
+# chat program in front of it (its `__omp_app_chat` command, packages/contracts/src/chat-host/args.ts). It answers omp's
+# commands as omp does, and a chat reaches omp's own model check; this run has no model and no key, so it stops there,
+# with the sentence the server reads (src/ports/A0/startup-reason.ts).
 chat_host="$work/root/usr/lib/omp-app/chat-host"
 [[ -x $chat_host ]] || { echo "FAIL: the package has no chat host at /usr/lib/omp-app/chat-host" >&2; exit 1; }
 version_line=$("$chat_host" --version 2>&1 | head -n 1)
@@ -51,7 +52,7 @@ smoke=$(cd "$work/folder" && timeout 180 "$chat_host" --smoke-test 2>&1 | tail -
 grep -q -x 'smoke-test: ok' <<<"$smoke" || { echo "FAIL: the chat host's own smoke test (omp --smoke-test) failed:" >&2; echo "$smoke" >&2; exit 1; }
 status=0
 (cd "$work/folder" && env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u OPENROUTER_API_KEY \
-  timeout 60 "$chat_host" --mode rpc-ui </dev/null >"$work/chat-host.out" 2>"$work/chat-host.err") || status=$?
+  timeout 60 "$chat_host" __omp_app_chat </dev/null >"$work/chat-host.out" 2>"$work/chat-host.err") || status=$?
 [[ $status == 1 ]] && grep -q -E 'No default model selected|No models available|No model selected' "$work/chat-host.err" || {
   echo "FAIL: the chat host did not start and stop at omp's model check (exit $status)" >&2
   tail -n 5 "$work/chat-host.err" >&2
