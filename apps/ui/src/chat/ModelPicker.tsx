@@ -84,7 +84,8 @@ export function ModelPicker({
             type="button"
             variant="ghost"
             size="sm"
-            className="max-w-56 gap-1 text-t2 hover:text-t1"
+            // The chip gives way first on a narrow box, so Send stays in it.
+            className="max-w-56 min-w-0 shrink gap-1 text-t2 hover:text-t1"
             aria-label={`Model: ${model?.name ?? "none"}`}
             disabled={disabled}
           />

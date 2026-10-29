@@ -15,6 +15,7 @@ import {
 } from "@omp-app/contracts";
 import {
   type ChatHostCommand,
+  type ChatHostImage,
   type ChatHostMethod,
   type ChatHostMethodMap,
   type HostDialogAnswer,
@@ -49,6 +50,11 @@ export class ChatController {
   #loadingOlder = false;
   #draft: ChatDraft | null;
   #disposed = false;
+  /**
+   * Where the transcript's branch ends after an edit rewound the chat: an entry, or null for the chat's very start.
+   * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
+   */
+  #leaf: string | null | undefined = undefined;
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
@@ -119,12 +125,32 @@ export class ChatController {
   }
 
   /** Sends a message: a new prompt, or while omp works, a steer (`followUp` queues it behind the turn). */
-  async send(text: string, mode: "auto" | "followUp" = "auto"): Promise<void> {
+  async send(
+    text: string,
+    mode: "auto" | "followUp" = "auto",
+    images: readonly ChatHostImage[] = [],
+  ): Promise<void> {
     const working = this.store.getSnapshot().working;
     await this.#request("prompt", {
       text,
+      ...(images.length > 0 ? { images: [...images] } : {}),
       ...(working ? { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } : {}),
     });
+  }
+
+  /**
+   * Edit: rewinds the chat to just before one of your messages, as omp's tree does, and returns the message's text and
+   * images for the box; the transcript shows the chat up to that point. Sending starts a new branch there; the old one
+   * stays in the session.
+   */
+  async rewind(
+    entryId: string,
+  ): Promise<{ readonly text: string; readonly images: readonly ChatHostImage[] } | null> {
+    const result = await this.#request("navigate_tree", { entryId });
+    if (result.cancelled) return null;
+    this.#leaf = result.leafId;
+    await this.#reloadWindow();
+    return { text: result.editorText ?? "", images: result.editorImages ?? [] };
   }
 
   /** Stops the reply as omp's Escape does: every queued message comes back, in order, for the message box. */
@@ -253,6 +279,8 @@ export class ChatController {
       return;
     }
     if (payload.kind !== "event") return;
+    // A new turn is written on from the branch's end, which makes it the file's last entry again.
+    if (payload.event.type === "agent_start") this.#leaf = undefined;
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") this.#refreshWindow();
     if (payload.event.type === "model_changed") void this.#refreshState();
@@ -271,8 +299,13 @@ export class ChatController {
   async #reloadWindow(): Promise<void> {
     const sessionFile = this.#sessionFile;
     if (sessionFile === null) return;
+    if (this.#leaf === null) {
+      this.store.setWindow([], false);
+      return;
+    }
     const window = await this.client.port(SessionFileStore).readEntryWindow({
       sessionFile,
+      ...(this.#leaf === undefined ? {} : { leafId: this.#leaf as EntryId }),
       byteBudget: FIRST_WINDOW_BYTES,
     });
     if (this.#disposed) return;

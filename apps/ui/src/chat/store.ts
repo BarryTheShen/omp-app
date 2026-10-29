@@ -237,6 +237,12 @@ export class ChatStore {
     this.#publish();
   }
 
+  /** A notice from the page itself, such as an edit omp refused. */
+  addNotice(text: string, level: ChatNotice["level"]): void {
+    this.#notify(text, level);
+    this.#publish();
+  }
+
   /** A run this browser is about to send, so its box can say whether omp keeps it out of context. */
   expectShell(input: string, excludeFromContext: boolean): void {
     if (excludeFromContext) this.#excluded.add(input);

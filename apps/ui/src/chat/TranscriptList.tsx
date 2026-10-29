@@ -11,6 +11,7 @@ import {
 } from "../vendor/collab-web/components/transcript/Transcript";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import { FailureRow } from "./FailureRow";
+import { MessageActions, userText } from "./MessageActions";
 import { buildRows, type TranscriptRow, toolResults } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
@@ -79,7 +80,7 @@ export function TranscriptList({
                 key={item.key}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
-                className="tl-item absolute top-0 left-0 w-full"
+                className="tl-item group/msg absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <RowView row={row} results={results} active={activeTools} actions={actions} />
@@ -137,12 +138,17 @@ function Welcome({ folder }: { readonly folder: string }): ReactNode {
   );
 }
 
-/** What rows offer: a failed request's Retry and Switch model, stopping a `!` command, dismissing a notice. */
+/**
+ * What rows offer: a failed request's Retry and Switch model, stopping a `!` command, dismissing a notice, and Edit on
+ * your messages (only while omp is idle).
+ */
 export interface RowActions {
   readonly onRetry: () => Promise<void>;
   readonly onSwitchModel: () => void;
   readonly onStopShell: () => Promise<void>;
   readonly onDismissNotice: (id: number) => void;
+  readonly onEdit: (entryId: string) => void;
+  readonly canEdit: boolean;
 }
 
 function RowView({
@@ -157,8 +163,20 @@ function RowView({
   readonly actions: RowActions;
 }): ReactNode {
   switch (row.kind) {
-    case "entry":
-      return <EntryRow entry={row.entry} results={results} active={active} />;
+    case "entry": {
+      const text = userText(row.entry);
+      // A message read from the stream has no id of omp's until the file is read back after the turn.
+      const editable = actions.canEdit && !row.entry.id.startsWith("live-");
+      const { id } = row.entry;
+      return (
+        <>
+          <EntryRow entry={row.entry} results={results} active={active} />
+          {text !== null && (
+            <MessageActions text={text} onEdit={editable ? () => actions.onEdit(id) : null} />
+          )}
+        </>
+      );
+    }
     case "failure":
       return (
         <Row kind="assistant" gutter="">

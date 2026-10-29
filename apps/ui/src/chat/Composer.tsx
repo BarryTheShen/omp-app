@@ -1,7 +1,10 @@
-import { ArrowUp, Brain, Square } from "lucide-react";
+import type { ChatHostImage } from "@omp-app/contracts/chat-host";
+import { ArrowUp, Brain, Square, X } from "lucide-react";
 import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { type Attachment, readImages } from "./attachments";
+import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import type { ChatController } from "./controller";
 import { ModelPicker } from "./ModelPicker";
@@ -18,11 +21,20 @@ const errorText = (error: unknown): string =>
 const withRestored = (restored: readonly string[], current: string): string =>
   [...restored, current].filter((part) => part.trim() !== "").join("\n\n");
 
+/** An image omp gave back (an edited message's), as the box holds it. */
+const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
+  id: crypto.randomUUID(),
+  name: `image ${index + 1}`,
+  bytes: Math.floor((image.data.length * 3) / 4),
+  image,
+});
+
 /**
  * The message box: Enter sends; while omp works, Enter steers and Ctrl+Enter queues a follow-up; Shift+Enter or
  * Alt+Enter adds a line; Esc stops omp and brings queued messages back into the box. `/` at the start lists omp's
- * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context). The
- * text is kept as it is typed (`drafts.ts`), and only the text that was sent leaves the box.
+ * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context).
+ * Images pasted or dropped go with the next message. The text is kept as it is typed (`drafts.ts`), and only the text
+ * that was sent leaves the box.
  */
 export const Composer = memo(function Composer({
   controller,
@@ -34,6 +46,7 @@ export const Composer = memo(function Composer({
   activity,
   modelPickerOpen,
   onModelPickerOpenChange,
+  restore,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -44,6 +57,8 @@ export const Composer = memo(function Composer({
   readonly activity: ChatActivity | null;
   readonly modelPickerOpen: boolean;
   readonly onModelPickerOpenChange: (open: boolean) => void;
+  /** A message Edit brought back: its text goes in front of what the box holds, its images join the box's. */
+  readonly restore: ComposerRestore | null;
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -51,9 +66,26 @@ export const Composer = memo(function Composer({
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
+  const attachmentsRef = useRef(attachments);
+  const [dragging, setDragging] = useState(false);
   const draft = controller.draft;
   const menu = useComposerMenu(controller, text, caret);
   const shell = shellRun(text);
+
+  const attach = (next: readonly Attachment[]): void => {
+    attachmentsRef.current = next;
+    setAttachments(next);
+  };
+
+  /** Reads pasted or dropped files; what is not an image omp reads, or is too big, is named in the status. */
+  const addFiles = (files: readonly File[]): void => {
+    const already = attachmentsRef.current.reduce((sum, attachment) => sum + attachment.bytes, 0);
+    void readImages(files, already).then(({ added, refused }) => {
+      if (added.length > 0) attach([...attachmentsRef.current, ...added]);
+      setError(refused.length > 0 ? refused.join(" ") : null);
+    });
+  };
 
   const update = (next: string): void => {
     textRef.current = next;
@@ -75,19 +107,40 @@ export const Composer = memo(function Composer({
     };
   }, [draft]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: an edited message is put in once, when Edit brings it
+  useEffect(() => {
+    if (restore === null) return;
+    update(withRestored([restore.text], textRef.current));
+    if (restore.images.length > 0)
+      attach([...attachmentsRef.current, ...restore.images.map(asAttachment)]);
+    boxRef.current?.focus();
+  }, [restore]);
+
   const send = (mode: "auto" | "followUp"): void => {
     const sent = textRef.current;
     const value = sent.trim();
-    if (value.length === 0 || disabled || sending) return;
+    const images = attachmentsRef.current;
+    if ((value.length === 0 && images.length === 0) || disabled || sending) return;
     const run = shellRun(value);
     if (run !== null && run.input === "") return;
     setSending(true);
     setError(null);
-    (run === null ? controller.send(value, mode) : controller.runShell(run))
+    (run === null
+      ? controller.send(
+          value,
+          mode,
+          images.map((attachment) => attachment.image),
+        )
+      : controller.runShell(run)
+    )
       .then(() => {
-        // Only what was sent leaves the box; anything typed since stays.
+        // Only what was sent leaves the box; anything typed or attached since stays.
         const now = textRef.current;
         update(now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now);
+        if (run === null) {
+          const gone = new Set(images.map((attachment) => attachment.id));
+          attach(attachmentsRef.current.filter((attachment) => !gone.has(attachment.id)));
+        }
       })
       .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`))
       .finally(() => setSending(false));
@@ -158,10 +211,25 @@ export const Composer = memo(function Composer({
         {activity !== null && <WorkingRow activity={activity} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
         <form
-          className="relative rounded-xl border border-l2 bg-card focus-within:border-l4"
+          className={`relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
           onSubmit={(event) => {
             event.preventDefault();
             send("auto");
+          }}
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+              setDragging(false);
+          }}
+          onDrop={(event) => {
+            if (event.dataTransfer.files.length === 0) return;
+            event.preventDefault();
+            setDragging(false);
+            addFiles([...event.dataTransfer.files]);
           }}
         >
           {menu.menu !== null && (
@@ -172,6 +240,35 @@ export const Composer = memo(function Composer({
               empty={menu.menu.empty}
               onPick={take}
             />
+          )}
+          {attachments.length > 0 && (
+            <ul aria-label="Attached images" className="flex flex-wrap gap-2 px-3 pt-3">
+              {attachments.map((attachment) => (
+                <li
+                  key={attachment.id}
+                  className="flex items-center gap-1.5 rounded-md border border-l2 bg-raise p-1"
+                >
+                  <img
+                    src={`data:${attachment.image.mimeType};base64,${attachment.image.data}`}
+                    alt=""
+                    className="size-7 rounded-sm object-cover"
+                  />
+                  <span className="max-w-40 truncate text-xs text-t2">{attachment.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-t3 hover:text-t1"
+                    aria-label={`Remove ${attachment.name}`}
+                    onClick={() =>
+                      attach(attachmentsRef.current.filter((kept) => kept.id !== attachment.id))
+                    }
+                  >
+                    <X />
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
           <textarea
             ref={boxRef}
@@ -187,10 +284,17 @@ export const Composer = memo(function Composer({
             }}
             onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}
+            onPaste={(event) => {
+              const files = [...event.clipboardData.files];
+              // A copied picture comes as a file; text copied from a page goes in as text, as before.
+              if (files.length === 0 || event.clipboardData.getData("text/plain") !== "") return;
+              event.preventDefault();
+              addFiles(files);
+            }}
           />
           <div className="flex items-center gap-1 px-2 pb-2">
             {shell !== null && (
-              <span className="shrink-0 rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1">
+              <span className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1">
                 {shell.method}
                 {shell.excludeFromContext ? " · not in context" : ""}
               </span>
@@ -242,7 +346,11 @@ export const Composer = memo(function Composer({
                       type="submit"
                       size="icon-sm"
                       aria-label="Send"
-                      disabled={disabled || sending || text.trim().length === 0}
+                      disabled={
+                        disabled ||
+                        sending ||
+                        (text.trim().length === 0 && attachments.length === 0)
+                      }
                     />
                   }
                 >

@@ -28,7 +28,7 @@ export function ShellBlock({
   return (
     <figure
       aria-label={`${run.method === "bash" ? "Shell" : "Python"} run: ${run.input}`}
-      className="overflow-hidden rounded-lg border border-l2 bg-(--code-bg) font-mono text-xs"
+      className="w-full overflow-hidden rounded-lg border border-l2 bg-(--code-bg) font-mono text-xs"
     >
       <figcaption className="flex items-center gap-2 border-b border-l2 px-3 py-1.5">
         <span className="text-t3">{run.method === "bash" ? "$" : ">>>"}</span>
@@ -82,7 +82,7 @@ export function NoticeRow({
   return (
     <div
       role={notice.level === "error" ? "alert" : "status"}
-      className="flex items-start gap-2 rounded-lg border border-l2 bg-raise px-3 py-2"
+      className="flex w-full items-start gap-2 rounded-lg border border-l2 bg-raise px-3 py-2"
     >
       <pre
         className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${NOTICE_TEXT[notice.level]}`}

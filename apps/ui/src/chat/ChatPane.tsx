@@ -1,13 +1,23 @@
+import type { ChatHostImage } from "@omp-app/contracts/chat-host";
 import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Composer } from "./Composer";
 import type { ChatController } from "./controller";
 import { HostRequests } from "./HostRequests";
 import { type RowActions, TranscriptList } from "./TranscriptList";
 
+/** What Edit brings back to the message box: the message's text and images; `key` tells one edit from the next. */
+export interface ComposerRestore {
+  readonly key: number;
+  readonly text: string;
+  readonly images: readonly ChatHostImage[];
+}
+
 export function ChatPane({ controller }: { readonly controller: ChatController }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const loadOlder = useCallback(() => void controller.loadOlder(), [controller]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [restore, setRestore] = useState<ComposerRestore | null>(null);
+  const canEdit = !snapshot.working && snapshot.phase === "live";
   const actions = useMemo<RowActions>(
     () => ({
       // omp's own `/retry`: the last failed turn, again.
@@ -15,8 +25,22 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
       onSwitchModel: () => setModelPickerOpen(true),
       onStopShell: () => controller.stopShell(),
       onDismissNotice: (id) => controller.store.dismissNotice(id),
+      onEdit: (entryId) => {
+        controller
+          .rewind(entryId)
+          .then((back) => {
+            if (back !== null) setRestore({ key: Date.now(), ...back });
+          })
+          .catch((failure: unknown) =>
+            controller.store.addNotice(
+              `Could not edit that message: ${failure instanceof Error ? failure.message : String(failure)}`,
+              "error",
+            ),
+          );
+      },
+      canEdit,
     }),
-    [controller],
+    [controller, canEdit],
   );
   const welcome = useMemo(
     () => (controller.isNew ? { folder: controller.folder } : null),
@@ -41,6 +65,7 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
         activity={snapshot.activity}
         modelPickerOpen={modelPickerOpen}
         onModelPickerOpenChange={setModelPickerOpen}
+        restore={restore}
       />
     </div>
   );

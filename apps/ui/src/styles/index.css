@@ -171,6 +171,20 @@
   border-radius: var(--r-card);
 }
 
+/* Copy and Edit under your message (`MessageActions`): in the reader column, at the bubble's right edge. */
+.tl-item > .tr-row--actions {
+  padding-block: 0;
+  margin-top: -8px;
+}
+
+/* collab-web's bodies are columns of blocks aligned left; these two buttons sit side by side at the right. */
+.tl-item > .tr-row--actions .tr-body {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
 /* A failed request shows as one failure row under the reply (`FailureRow`); collab-web's error chip would repeat it. */
 .tl-item .tr-stop:has(.tr-chip--err) {
   display: none;

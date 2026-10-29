@@ -53,7 +53,9 @@ export function ComposerMenu({
             )}
             <span className="shrink-0 font-mono text-[0.8125rem] text-t1">{item.label}</span>
             {item.detail !== undefined && (
-              <span className="min-w-0 truncate text-xs text-t3">{item.detail}</span>
+              <span className="min-w-0 truncate text-xs text-t3 group-data-selected/command-item:text-t2">
+                {item.detail}
+              </span>
             )}
           </CommandItem>
         ))}
