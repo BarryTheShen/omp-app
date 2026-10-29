@@ -2,11 +2,22 @@ import type { AppClient } from "@omp-app/client";
 import { AppPort, type FolderPath } from "@omp-app/contracts";
 import { cn } from "cn";
 import { ChevronLeft } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import { ConnectionBanner } from "./ConnectionBanner";
 import type { ChatTarget } from "./chat/controller";
 import { connect, readToken } from "./connection";
+import { KEYS } from "./keys/table";
+import { Palette } from "./palette/Palette";
+import { Shortcuts } from "./palette/Shortcuts";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
@@ -92,10 +103,16 @@ function Shell({
   const [showChat, setShowChat] = useState(false);
   const workspace = useRef<WorkspaceHandle>(null);
   const phone = usePhone();
-  const openChat = (target: ChatTarget, where: "here" | "split"): void => {
+  const [palette, setPalette] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
+  const openChat = useCallback((target: ChatTarget, where: "here" | "split"): void => {
     workspace.current?.open(target, where);
     setShowChat(true);
-  };
+  }, []);
+  const showShortcuts = useCallback(() => setShortcuts(true), []);
+  const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
+  useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
+  useHotkeys(KEYS.shortcuts.hotkey, () => setShortcuts((open) => !open), anywhere);
   return (
     <div
       className="grid h-full grid-cols-[244px_minmax(0,1fr)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)] max-sm:grid-cols-1"
@@ -130,6 +147,16 @@ function Shell({
         )}
         <Workspace ref={workspace} client={client} folder={folder} phone={phone} onView={setView} />
       </main>
+      <Palette
+        open={palette}
+        onOpenChange={setPalette}
+        list={list}
+        workspace={workspace}
+        folder={folder}
+        onOpenChat={openChat}
+        onShortcuts={showShortcuts}
+      />
+      <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
     </div>
   );
 }

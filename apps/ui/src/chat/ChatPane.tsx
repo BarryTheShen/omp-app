@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
-import { Composer } from "./Composer";
+import { Composer, type ComposerHandle } from "./Composer";
 import type { ChatController } from "./controller";
 import { HostRequests } from "./HostRequests";
 import { userText } from "./MessageActions";
@@ -25,7 +25,14 @@ export interface ComposerRestore {
  * One chat: its transcript, what omp waits on, and the message box. Ctrl+O opens or folds every tool card and Ctrl+T
  * shows or hides every thinking block, anywhere in the pane.
  */
-export function ChatPane({ controller }: { readonly controller: ChatController }): ReactNode {
+export function ChatPane({
+  controller,
+  onComposer,
+}: {
+  readonly controller: ChatController;
+  /** The message box's handle, for the palette; null once it is gone. */
+  readonly onComposer?: (handle: ComposerHandle | null) => void;
+}): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const loadOlder = useCallback(() => void controller.loadOlder(), [controller]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -105,6 +112,7 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
         restore={restore}
         history={history}
         approval={approval}
+        onHandle={onComposer}
       />
     </div>
   );

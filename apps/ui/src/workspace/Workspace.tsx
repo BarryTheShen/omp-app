@@ -20,7 +20,9 @@ import {
   useState,
 } from "react";
 import { type Options, useHotkeys } from "react-hotkeys-hook";
+import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
+import { KEYS } from "../keys/table";
 import {
   ChatPanel,
   type ChatPanelParams,
@@ -48,13 +50,37 @@ const COMPONENTS = { chat: ChatPanel };
 /** How much one resize key widens, narrows, heightens or shortens the focused pane. */
 const RESIZE_STEP_PX = 48;
 
-/** What the sidebar asks of the workspace. */
+/** The workspace's commands the palette offers (kitty's keys run them too). */
+export type WorkspaceCommand =
+  | "splitRight"
+  | "splitDown"
+  | "zoom"
+  | "closePane"
+  | "swapPane"
+  | "equalize"
+  | "newTab"
+  | "nextTab"
+  | "previousTab"
+  | "closeTab"
+  | "renameTab"
+  | "moveTabRight"
+  | "moveTabLeft";
+
+/** The focused pane's chat and its message box, for the palette. */
+export interface FocusedChat {
+  readonly controller: ChatController;
+  readonly composer: ComposerHandle | undefined;
+}
+
+/** What the sidebar and the palette ask of the workspace. */
 export interface WorkspaceHandle {
   /**
    * Opens a chat. Where it is already open, that pane gets the focus; otherwise it opens in the focused pane, or with
    * `split` in a new pane to the right of it.
    */
   readonly open: (target: ChatTarget, where: "here" | "split") => void;
+  readonly command: (id: WorkspaceCommand) => void;
+  readonly focused: () => FocusedChat | null;
 }
 
 /** What the workspace shows, for the sidebar: the focused pane's chat, the chats open in panes, and those waiting. */
@@ -106,6 +132,7 @@ export function Workspace({
   const apis = useRef(new Map<string, DockviewApi>());
   const focus = useMemo(() => new PaneFocus(), []);
   const controllers = useMemo(() => new Map<string, ChatController>(), []);
+  const composers = useMemo(() => new Map<string, ComposerHandle>(), []);
   /** Whether the phone layout zoomed the focused pane, so leaving the phone layout can undo it. */
   const phoneZoomed = useRef(false);
   /** Tabs made with Ctrl+Shift+T, which open with a new chat. */
@@ -226,6 +253,54 @@ export function Workspace({
     if (api !== undefined) action(api);
   }, []);
 
+  /** The workspace's commands: kitty's keys run them, and the palette offers them. */
+  const commands = useMemo<Record<WorkspaceCommand, () => void>>(
+    () => ({
+      splitRight: () => withActive((api) => addChat(api, { kind: "new", folder }, "right")),
+      splitDown: () => withActive((api) => addChat(api, { kind: "new", folder }, "below")),
+      zoom: () =>
+        withActive((api) => {
+          const panel = api.activePanel;
+          if (panel === undefined) return;
+          if (api.hasMaximizedGroup()) api.exitMaximizedGroup();
+          else api.maximizeGroup(panel);
+          focusPane(api);
+        }),
+      closePane: () => withActive((api) => api.activePanel?.api.close()),
+      // Swap with the next pane, and equalize, rebuild the layout with the same panes (their chats stay open).
+      swapPane: () =>
+        withActive((api) => {
+          const group = api.activeGroup;
+          const swapped = group === undefined ? null : swappedWithNext(api.toJSON(), group.id);
+          if (swapped === null) return;
+          api.fromJSON(swapped, { reuseExistingPanels: true });
+          focusPane(api);
+        }),
+      equalize: () =>
+        withActive((api) => {
+          api.fromJSON(equalized(api.toJSON()), { reuseExistingPanels: true });
+          focusPane(api);
+        }),
+      newTab: () =>
+        setTabs((state) => {
+          const next = addTab(state);
+          freshTabs.current.add(next.active);
+          return next;
+        }),
+      nextTab: () => setTabs((state) => stepTab(state, 1)),
+      previousTab: () => setTabs((state) => stepTab(state, -1)),
+      closeTab: () => {
+        const id = tabsRef.current.active;
+        apis.current.delete(id);
+        setTabs((state) => closeTab(state, id));
+      },
+      renameTab: () => setRenaming(tabsRef.current.active),
+      moveTabRight: () => setTabs((state) => moveTab(state, 1)),
+      moveTabLeft: () => setTabs((state) => moveTab(state, -1)),
+    }),
+    [addChat, focusPane, folder, withActive],
+  );
+
   useImperativeHandle(
     ref,
     () => ({
@@ -260,8 +335,26 @@ export function Workspace({
           report();
         });
       },
+      command: (id) => commands[id](),
+      focused: () => {
+        const id = apis.current.get(tabsRef.current.active)?.activePanel?.id;
+        const controller = id === undefined ? undefined : controllers.get(id);
+        return controller === undefined || id === undefined
+          ? null
+          : { controller, composer: composers.get(id) };
+      },
     }),
-    [addChat, focusPane, folder, report, withActive, zoomForPhone],
+    [
+      addChat,
+      commands,
+      composers,
+      controllers,
+      focusPane,
+      folder,
+      report,
+      withActive,
+      zoomForPhone,
+    ],
   );
 
   // A tab coming to the front gets the caret in its focused pane; on a phone, its focused pane fills the screen.
@@ -276,32 +369,23 @@ export function Workspace({
     report();
   }, [tabs.active, phone, focusPane, report, syncHeaders, zoomForPhone]);
 
-  // kitty's keys for windows and tabs. They work from the message box too.
+  // kitty's keys for windows and tabs (`keys/table.ts`). They work from the message box too.
   const keys: Options = { enableOnFormTags: true, preventDefault: true, enabled: !phone };
+  useHotkeys(KEYS.splitRight.hotkey, commands.splitRight, keys);
+  useHotkeys(KEYS.splitDown.hotkey, commands.splitDown, keys);
+  useHotkeys(KEYS.zoom.hotkey, commands.zoom, keys);
+  useHotkeys(KEYS.closePane.hotkey, commands.closePane, keys);
+  useHotkeys(KEYS.swapPane.hotkey, commands.swapPane, keys);
+  useHotkeys(KEYS.equalize.hotkey, commands.equalize, keys);
+  useHotkeys(KEYS.newTab.hotkey, commands.newTab, keys);
+  useHotkeys(KEYS.nextTab.hotkey, commands.nextTab, keys);
+  useHotkeys(KEYS.previousTab.hotkey, commands.previousTab, keys);
+  useHotkeys(KEYS.closeTab.hotkey, commands.closeTab, keys);
+  useHotkeys(KEYS.renameTab.hotkey, commands.renameTab, keys);
+  useHotkeys(KEYS.moveTabRight.hotkey, commands.moveTabRight, keys);
+  useHotkeys(KEYS.moveTabLeft.hotkey, commands.moveTabLeft, keys);
   useHotkeys(
-    "ctrl+shift+o",
-    () => withActive((api) => addChat(api, { kind: "new", folder }, "right")),
-    keys,
-  );
-  useHotkeys(
-    "ctrl+shift+e",
-    () => withActive((api) => addChat(api, { kind: "new", folder }, "below")),
-    keys,
-  );
-  useHotkeys(
-    "ctrl+shift+enter",
-    () =>
-      withActive((api) => {
-        const panel = api.activePanel;
-        if (panel === undefined) return;
-        if (api.hasMaximizedGroup()) api.exitMaximizedGroup();
-        else api.maximizeGroup(panel);
-        focusPane(api);
-      }),
-    keys,
-  );
-  useHotkeys(
-    "meta+ctrl+left, meta+ctrl+right, meta+ctrl+up, meta+ctrl+down",
+    KEYS.focusPane.hotkey,
     (_event, handler) =>
       withActive((api) => {
         const group = api.activeGroup;
@@ -318,7 +402,7 @@ export function Workspace({
     keys,
   );
   useHotkeys(
-    "meta+ctrl+bracketleft, meta+ctrl+bracketright",
+    KEYS.cyclePane.hotkey,
     (_event, handler) =>
       withActive((api) => {
         if (handler.keys?.[0] === "bracketright") api.activateNext();
@@ -327,31 +411,8 @@ export function Workspace({
       }),
     keys,
   );
-  useHotkeys("ctrl+shift+w", () => withActive((api) => api.activePanel?.api.close()), keys);
-  // Swap with the next pane, and equalize, rebuild the layout with the same panes (their chats stay open).
   useHotkeys(
-    "ctrl+shift+f8",
-    () =>
-      withActive((api) => {
-        const group = api.activeGroup;
-        const swapped = group === undefined ? null : swappedWithNext(api.toJSON(), group.id);
-        if (swapped === null) return;
-        api.fromJSON(swapped, { reuseExistingPanels: true });
-        focusPane(api);
-      }),
-    keys,
-  );
-  useHotkeys(
-    "meta+ctrl+equal",
-    () =>
-      withActive((api) => {
-        api.fromJSON(equalized(api.toJSON()), { reuseExistingPanels: true });
-        focusPane(api);
-      }),
-    keys,
-  );
-  useHotkeys(
-    "meta+ctrl+shift+left, meta+ctrl+shift+right, meta+ctrl+shift+up, meta+ctrl+shift+down",
+    KEYS.resizePane.hotkey,
     (_event, handler) =>
       withActive((api) => {
         const group = api.activeGroup;
@@ -365,34 +426,10 @@ export function Workspace({
       }),
     keys,
   );
-  useHotkeys(
-    "ctrl+shift+t",
-    () =>
-      setTabs((state) => {
-        const next = addTab(state);
-        freshTabs.current.add(next.active);
-        return next;
-      }),
-    keys,
-  );
-  useHotkeys("ctrl+tab, ctrl+shift+right", () => setTabs((state) => stepTab(state, 1)), keys);
-  useHotkeys("ctrl+shift+tab, ctrl+shift+left", () => setTabs((state) => stepTab(state, -1)), keys);
-  useHotkeys(
-    "ctrl+shift+q",
-    () => {
-      const id = tabsRef.current.active;
-      apis.current.delete(id);
-      setTabs((state) => closeTab(state, id));
-    },
-    keys,
-  );
-  useHotkeys("ctrl+shift+alt+t", () => setRenaming(tabsRef.current.active), keys);
-  useHotkeys("ctrl+shift+period", () => setTabs((state) => moveTab(state, 1)), keys);
-  useHotkeys("ctrl+shift+comma", () => setTabs((state) => moveTab(state, -1)), keys);
 
   const host = useMemo<PaneHost>(
-    () => ({ client, focus, controllers, onPaneChanged: report }),
-    [client, focus, controllers, report],
+    () => ({ client, focus, controllers, composers, onPaneChanged: report }),
+    [client, focus, controllers, composers, report],
   );
   const labels = new Map(
     tabs.tabs.flatMap((tab) => {

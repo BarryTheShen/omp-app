@@ -17,6 +17,12 @@ import { WorkingRow } from "./WorkingRow";
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/** What the palette can do with a pane's message box. */
+export interface ComposerHandle {
+  /** Puts text at the caret (over a selection), then the caret after it. */
+  readonly insert: (text: string) => void;
+}
+
 /** Text that came back from omp's queue, put in front of what the box holds. */
 const withRestored = (restored: readonly string[], current: string): string =>
   [...restored, current].filter((part) => part.trim() !== "").join("\n\n");
@@ -49,6 +55,7 @@ export const Composer = memo(function Composer({
   restore,
   history,
   approval,
+  onHandle,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -65,6 +72,8 @@ export const Composer = memo(function Composer({
   readonly history: readonly string[];
   /** The approval omp waits on, if any: Ctrl+Enter approves it once and Esc denies it. */
   readonly approval: string | null;
+  /** Receives the box's handle, and null once the box is gone. */
+  readonly onHandle?: ((handle: ComposerHandle | null) => void) | undefined;
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -80,6 +89,25 @@ export const Composer = memo(function Composer({
   const shell = shellRun(text);
   /** Where Up and Down are in the history, and what the box held before; null while not going through it. */
   const browsing = useRef<{ readonly index: number; readonly kept: string } | null>(null);
+  const insertRef = useRef<(inserted: string) => void>(() => undefined);
+  insertRef.current = (inserted) => {
+    const value = textRef.current;
+    const box = boxRef.current;
+    const start = box?.selectionStart ?? value.length;
+    const end = box?.selectionEnd ?? start;
+    update(value.slice(0, start) + inserted + value.slice(end));
+    const after = start + inserted.length;
+    setCaret(after);
+    requestAnimationFrame(() => {
+      boxRef.current?.focus();
+      boxRef.current?.setSelectionRange(after, after);
+    });
+  };
+  useEffect(() => {
+    if (onHandle === undefined) return;
+    onHandle({ insert: (inserted) => insertRef.current(inserted) });
+    return () => onHandle(null);
+  }, [onHandle]);
 
   const attach = (next: readonly Attachment[]): void => {
     attachmentsRef.current = next;

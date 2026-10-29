@@ -5,12 +5,14 @@ import {
   createContext,
   type ReactNode,
   use,
+  useCallback,
   useEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { ChatPane } from "../chat/ChatPane";
+import type { ComposerHandle } from "../chat/Composer";
 import { ChatController, type ChatTarget } from "../chat/controller";
 import { userText } from "../chat/MessageActions";
 
@@ -75,6 +77,8 @@ export interface PaneHost {
   readonly focus: PaneFocus;
   /** The open chats' controllers by pane, for the workspace's view of what waits for you. */
   readonly controllers: Map<string, ChatController>;
+  /** The panes' message boxes, for the palette's files and commands. */
+  readonly composers: Map<string, ComposerHandle>;
   /** Tells the workspace a pane's chat, title or state changed. */
   readonly onPaneChanged: () => void;
 }
@@ -87,7 +91,14 @@ const TITLE_CHARACTERS = 60;
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>): ReactNode {
   const host = use(PaneHostContext);
   if (host === null) throw new Error("ChatPanel needs the workspace around it.");
-  const { client, focus, controllers, onPaneChanged } = host;
+  const { client, focus, controllers, composers, onPaneChanged } = host;
+  const onComposer = useCallback(
+    (handle: ComposerHandle | null) => {
+      if (handle === null) composers.delete(api.id);
+      else composers.set(api.id, handle);
+    },
+    [composers, api.id],
+  );
   /** The controller and the chat it was made for: until a new chat's controller is made, the old one is not drawn. */
   const [opened, setOpened] = useState<{
     readonly chat: string;
@@ -128,6 +139,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
           params={params}
           api={api}
           onPaneChanged={onPaneChanged}
+          onComposer={onComposer}
         />
       )}
     </div>
@@ -139,11 +151,13 @@ function PaneChat({
   params,
   api,
   onPaneChanged,
+  onComposer,
 }: {
   readonly controller: ChatController;
   readonly params: ChatPanelParams;
   readonly api: IDockviewPanelProps<ChatPanelParams>["api"];
   readonly onPaneChanged: () => void;
+  readonly onComposer: (handle: ComposerHandle | null) => void;
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const first = snapshot.entries
@@ -168,5 +182,5 @@ function PaneChat({
     onPaneChanged();
   }, [api, params, saved, threadId, sessionFile, onPaneChanged]);
 
-  return <ChatPane key={params.chat} controller={controller} />;
+  return <ChatPane key={params.chat} controller={controller} onComposer={onComposer} />;
 }
