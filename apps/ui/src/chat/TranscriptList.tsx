@@ -1,6 +1,8 @@
 import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ArrowDown } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import {
   AssistantBody,
@@ -59,9 +61,9 @@ export function TranscriptList({
   }, [firstIndex, hasOlder, onNearTop]);
 
   return (
-    <div className="tl-frame">
+    <div className="relative min-h-0 flex-1">
       <section ref={scrollRef} className="tr-root tl-scroll" aria-label="Transcript">
-        <div className="tl-canvas" style={{ height: virtualizer.getTotalSize() }}>
+        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {items.map((item) => {
             const row = rows[item.index];
             if (row === undefined) return null;
@@ -70,7 +72,7 @@ export function TranscriptList({
                 key={item.key}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
-                className="tl-item"
+                className="tl-item absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <RowView row={row} results={results} active={activeTools} />
@@ -80,13 +82,15 @@ export function TranscriptList({
         </div>
       </section>
       {!empty && !virtualizer.isAtEnd() && (
-        <button
-          type="button"
-          className="tl-latest"
+        <Button
+          variant="secondary"
+          size="sm"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border-l2 px-3 shadow-md"
           onClick={() => virtualizer.scrollToEnd({ behavior: "smooth" })}
         >
+          <ArrowDown />
           Jump to latest
-        </button>
+        </Button>
       )}
     </div>
   );

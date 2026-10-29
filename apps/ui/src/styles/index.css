@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./themes.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * shadcn's roles, taken from the theme's Tern tokens. They are set on :root so they resolve there once. shadcn's
+ * "accent" role (hover and selected surfaces) is `--accent-surface` here, because `--accent` is Tern's accent colour.
+ */
+:root {
+  --background: var(--panel);
+  --foreground: var(--t1);
+  --card-foreground: var(--t1);
+  --popover: var(--pop-bg);
+  --popover-foreground: var(--t1);
+  --primary: var(--accent-fill);
+  --primary-foreground: #fff;
+  --secondary: var(--raise);
+  --secondary-foreground: var(--t1);
+  --muted: var(--l1);
+  --muted-foreground: var(--t3);
+  --accent-surface: var(--l1);
+  --accent-surface-foreground: var(--t1);
+  --destructive: var(--bad);
+  --border: var(--l2);
+  --input: var(--l3);
+  --ring: var(--accent);
+  --radius-md: var(--r-chip);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent-surface);
+  --color-accent-foreground: var(--accent-surface-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Tern's own names, for this app's components: text-t2, bg-page, border-l2, text-accent-ink … */
+  --color-t1: var(--t1);
+  --color-t2: var(--t2);
+  --color-t3: var(--t3);
+  --color-t4: var(--t4);
+  --color-l1: var(--l1);
+  --color-l2: var(--l2);
+  --color-l3: var(--l3);
+  --color-l4: var(--l4);
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-raise: var(--raise);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-live: var(--live);
+
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+
+  --radius-sm: 4px;
+  --radius-md: var(--r-chip);
+  --radius-lg: var(--r-ctl);
+  --radius-xl: var(--r-card);
+  --radius-2xl: var(--r-panel);
+
+  /* Tern's UI text is 13 px. */
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.4;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-page font-sans text-sm text-foreground antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion has to win over every component's own timing */
+      animation-duration: 0s !important;
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion has to win over every component's own timing */
+      transition-duration: 0s !important;
+    }
+  }
+}
+
+/*
+ * collab-web (src/vendor/collab-web) reads its own variable names; here they take the theme's Tern tokens, inside the
+ * transcript only. It draws its accent and status colours as text, so they get the text accent and the status inks.
+ * collab-web's CSS is not in a cascade layer, so everything that changes it below is unlayered too.
+ */
+.tr-root {
+  --fg: var(--t1);
+  --fg-muted: var(--t2);
+  --fg-faint: var(--t3);
+  --accent: var(--accent-ink);
+  --accent-muted: color-mix(in srgb, var(--accent-ink) 14%, transparent);
+  --ok: var(--ok-ink);
+  --warn: var(--warn-ink);
+  --err: var(--bad-ink);
+  --border-strong: var(--l3);
+  --bg-raised: var(--card);
+  --bg-inset: var(--code-bg);
+  --font-ui: var(--sans);
+  --font-mono: var(--mono);
+  --radius-sm: var(--r-chip);
+  --radius: var(--r-ctl);
+  --radius-lg: var(--r-card);
+  --shadow-card: none;
+  --ease-out: var(--out);
+}
+
+/* Tern's "Reader" transcript: one 720 px column, no gutter labels, the user's turns as right-aligned bubbles. */
+.tr-root.tl-scroll {
+  padding-block: 0;
+  padding-inline: 16px;
+}
+
+/* A grid at every width: collab-web turns rows into flex columns under 640 px, where the bubbles would not align. */
+.tl-item > .tr-row {
+  display: grid;
+  max-width: 720px;
+  margin-inline: auto;
+  grid-template-columns: minmax(0, 1fr);
+  padding-block: 10px;
+}
+
+.tl-item .tr-gutter {
+  display: none;
+}
+
+.tl-item .tr-row--user .tr-body {
+  justify-self: end;
+  max-width: min(85%, 600px);
+  padding: 8px 14px;
+  background: var(--raise);
+  border: 0;
+  border-radius: var(--r-card);
+}
+
+/* Tailwind's reset removes list markers; markdown lists keep theirs. */
+.tr-md ul {
+  list-style: disc;
+}
+
+.tr-md ol {
+  list-style: decimal;
+}
+
+/* The 11 px floor for functional text: collab-web draws some badges and titles at 10 px, and marker rows at 11 px. */
+.tr-root :is(.tv-badge, .tv-agent-link, .tv-out-title, .tv-expand, .tv-cell-title, .tv-todo-phase) {
+  font-size: 11px;
+}
+
+.tr-root .tr-marker {
+  font-size: 12px;
+}

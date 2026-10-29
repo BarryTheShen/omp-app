@@ -1,0 +1,112 @@
+/*
+ * The themes: Tern's kit tokens, under Tern's names (https://docs.stencil.so/tern/styles/variables, the "Light / dark
+ * default" columns). `data-theme` on <html> picks one; Tern dark is the default. A new look is one more block that sets
+ * the same names. Where this differs from Tern, on purpose:
+ * - popovers are opaque in both themes (Tern's light popover is translucent glass, which needs a backdrop blur this
+ *   app avoids);
+ * - the mono face is Geist Mono (Tern uses Berkeley Mono, a paid font);
+ * - `--ok-ink`, `--warn-ink` and `--bad-ink` are the status colours for text, chosen to read at 4.5:1 on every surface
+ *   and on their own 14% tint (status badges): darker than Tern's in the light theme, a lighter red in the dark one.
+ */
+
+:root {
+  --r-chip: 6px;
+  --r-ctl: 8px;
+  --r-card: 12px;
+  --r-panel: 16px;
+  --sans: "Geist Variable", -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root,
+[data-theme="tern-dark"] {
+  color-scheme: dark;
+
+  /* text */
+  --t1: #ededed;
+  --t2: #a1a1a1;
+  --t3: #8a8a92;
+  --t4: #55555c;
+  --ink: #ededed;
+
+  /* lines: white at 7, 10, 15 and 24% */
+  --l1: rgb(255 255 255 / 7%);
+  --l2: rgb(255 255 255 / 10%);
+  --l3: rgb(255 255 255 / 15%);
+  --l4: rgb(255 255 255 / 24%);
+
+  /* accent and status */
+  --accent: #5a8cff;
+  --accent-ink: #9dbcff;
+  --accent-fill: #2a5fe0;
+  --ok: #3ecf8e;
+  --warn: #f5a524;
+  --bad: #ff6166;
+  --live: #a86af4;
+  --ok-ink: #3ecf8e;
+  --warn-ink: #f5a524;
+  --bad-ink: #ff7377;
+  --ok-fill: #137348;
+  --bad-fill: #b52c35;
+  --live-fill: #6d37b5;
+  --ink-pen: #ff7040;
+  --ink-pen-fill: #a9391b;
+
+  /* surfaces */
+  --page: #08080a;
+  --panel: #0f0f12;
+  --card: #161619;
+  --raise: #1d1d21;
+  --code-bg: #0c0c0d;
+  --tbl-head: #111113;
+  --chip-bg: rgb(255 255 255 / 7%);
+  --pop-bg: #232327;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+[data-theme="tern-light"] {
+  color-scheme: light;
+
+  /* text */
+  --t1: #1b1c20;
+  --t2: #55575f;
+  --t3: #6a6c74;
+  --t4: #b3b5bb;
+  --ink: #1b1c20;
+
+  /* lines: ink at 6, 9, 14 and 22% */
+  --l1: rgb(27 28 32 / 6%);
+  --l2: rgb(27 28 32 / 9%);
+  --l3: rgb(27 28 32 / 14%);
+  --l4: rgb(27 28 32 / 22%);
+
+  /* accent and status */
+  --accent: #3d6fff;
+  --accent-ink: #2448c4;
+  --accent-fill: #2f63f0;
+  --ok: #2fae74;
+  --warn: #d98a0b;
+  --bad: #e5484d;
+  --live: #a86af4;
+  --ok-ink: #126840;
+  --warn-ink: #7f5300;
+  --bad-ink: #b02a32;
+  --ok-fill: #167a4d;
+  --bad-fill: #bf3038;
+  --live-fill: #7540bd;
+  --ink-pen: #e8552d;
+  --ink-pen-fill: #b43f1e;
+
+  /* surfaces */
+  --page: #efefec;
+  --panel: #fbfbfa;
+  --card: #ffffff;
+  --raise: #f4f4f2;
+  --code-bg: #f8f8f6;
+  --tbl-head: #fafaf9;
+  --chip-bg: rgb(27 28 32 / 5.5%);
+  --pop-bg: #ffffff;
+  --dim: rgb(244 244 241 / 50%);
+}

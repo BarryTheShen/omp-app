@@ -11,7 +11,7 @@
   "css": { "parser": { "tailwindDirectives": true } },
   "overrides": [
     {
-      "includes": ["apps/web/public/favicon.svg"],
+      "includes": ["apps/web/public/favicon.svg", "apps/ui/public/favicon.svg"],
       "linter": { "rules": { "a11y": { "noSvgWithoutTitle": "off" } } }
     }
   ]

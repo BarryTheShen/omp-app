@@ -12,7 +12,7 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
   );
   const stop = useCallback(() => controller.stop(), [controller]);
   return (
-    <div className="chat-pane">
+    <div className="flex min-h-0 flex-1 flex-col">
       <TranscriptList snapshot={snapshot} onNearTop={loadOlder} />
       <Composer
         working={snapshot.working}

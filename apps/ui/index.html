@@ -1,10 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="tern-dark" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>omp</title>
+    <script>
+      // The kept theme before the first paint; src/theme/theme.ts keeps it current afterwards (same key and rule).
+      (() => {
+        let choice = null;
+        try {
+          choice = localStorage.getItem("omp-app.ui.theme");
+        } catch {}
+        const theme =
+          choice === "tern-light" || choice === "tern-dark"
+            ? choice
+            : choice === "system" && matchMedia("(prefers-color-scheme: light)").matches
+              ? "tern-light"
+              : "tern-dark";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.toggle("dark", theme === "tern-dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
