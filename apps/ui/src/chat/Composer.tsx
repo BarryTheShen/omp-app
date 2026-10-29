@@ -3,6 +3,7 @@ import { ArrowUp, Brain, Square, X } from "lucide-react";
 import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AgentsPill } from "../agents/AgentsPill";
 import { type Attachment, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
@@ -57,6 +58,9 @@ export const Composer = memo(function Composer({
   history,
   approval,
   onHandle,
+  agentsRunning,
+  agentsTotal,
+  onOpenAgents,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -77,6 +81,10 @@ export const Composer = memo(function Composer({
   readonly approval: string | null;
   /** Receives the box's handle, and null once the box is gone. */
   readonly onHandle?: ((handle: ComposerHandle | null) => void) | undefined;
+  /** The chat's subagents: how many run, of how many; a pill above the box opens the Agent Hub. */
+  readonly agentsRunning: number;
+  readonly agentsTotal: number;
+  readonly onOpenAgents: () => void;
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -344,6 +352,7 @@ export const Composer = memo(function Composer({
       <div className="mx-auto max-w-[720px]">
         {activity !== null && <WorkingRow activity={activity} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
+        <AgentsPill running={agentsRunning} total={agentsTotal} onOpen={onOpenAgents} />
         <form
           className={`relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
           onSubmit={(event) => {

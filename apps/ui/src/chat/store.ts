@@ -1,6 +1,11 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ChatSessionEvent, ProcessStatus } from "@omp-app/contracts";
-import type { ChatEvent, ChatHostState, HostDialogRequest } from "@omp-app/contracts/chat-host";
+import type {
+  ChatEvent,
+  ChatHostState,
+  HostDialogRequest,
+  SubagentSnapshot,
+} from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
 
 /** The chat's model, as the message box names it. */
@@ -64,6 +69,8 @@ export interface ChatSnapshot {
   readonly requests: readonly HostDialogRequest[];
   readonly shell: ChatShellRun | null;
   readonly notices: readonly ChatNotice[];
+  /** The chat's subagents as omp's roster keeps them, in the order they were started. */
+  readonly agents: readonly SubagentSnapshot[];
 }
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
@@ -84,7 +91,24 @@ const EMPTY: ChatSnapshot = {
   requests: [],
   shell: null,
   notices: [],
+  agents: [],
 };
+
+/** A transcript to draw that is not a live chat (a subagent's, in the Agent Hub): its entries, and whether it runs. */
+export function transcriptOnly(entries: readonly SessionEntry[], working: boolean): ChatSnapshot {
+  return { ...EMPTY, entries, working, phase: "live" };
+}
+
+/** omp's subagent lifecycle statuses, as its roster names them. */
+const LIFECYCLE_STATUS = {
+  started: "running",
+  completed: "completed",
+  failed: "failed",
+  aborted: "aborted",
+} as const satisfies Record<
+  Extract<ChatEvent, { type: "subagent_lifecycle" }>["payload"]["status"],
+  SubagentSnapshot["status"]
+>;
 
 type MessageUpdate = Extract<ChatEvent, { type: "message_update" }>;
 type StreamDelta = Extract<MessageUpdate, { messageId: string }>["assistantMessageEvent"];
@@ -150,6 +174,8 @@ export class ChatStore {
   /** Commands and code this browser sent with `!!` or `$$`, until omp starts them. */
   readonly #excluded = new Set<string>();
   #notices: readonly ChatNotice[] = [];
+  #agents: ReadonlyMap<string, SubagentSnapshot> = new Map();
+  #agentList: readonly SubagentSnapshot[] = [];
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -208,6 +234,22 @@ export class ChatStore {
   setThinkingLevel(level: string | null): void {
     this.#thinkingLevel = level;
     this.#publish();
+  }
+
+  /** omp's roster as `get_subagents` read it; the lifecycle and progress events keep it current from then on. */
+  setAgents(agents: readonly SubagentSnapshot[]): void {
+    this.#agents = new Map(agents.map((agent) => [agent.id, agent]));
+    this.#listAgents();
+    this.#publish();
+  }
+
+  #putAgent(agent: SubagentSnapshot): void {
+    this.#agents = new Map(this.#agents).set(agent.id, agent);
+    this.#listAgents();
+  }
+
+  #listAgents(): void {
+    this.#agentList = [...this.#agents.values()].sort((a, b) => a.index - b.index);
   }
 
   /**
@@ -396,6 +438,48 @@ export class ChatStore {
       case "ui_notify":
         this.#notify(event.message, event.notifyType ?? "info");
         return false;
+      case "subagent_lifecycle": {
+        const { payload } = event;
+        const known = this.#agents.get(payload.id);
+        this.#putAgent({
+          ...known,
+          id: payload.id,
+          index: payload.index,
+          agent: payload.agent,
+          agentSource: payload.agentSource,
+          ...(payload.description === undefined ? {} : { description: payload.description }),
+          ...(payload.sessionFile === undefined ? {} : { sessionFile: payload.sessionFile }),
+          ...(payload.parentToolCallId === undefined
+            ? {}
+            : { parentToolCallId: payload.parentToolCallId }),
+          status: LIFECYCLE_STATUS[payload.status],
+          lastUpdate: Date.now(),
+        });
+        return true;
+      }
+      case "subagent_progress": {
+        const { payload } = event;
+        const { progress } = payload;
+        const known = this.#agents.get(progress.id);
+        this.#putAgent({
+          ...known,
+          id: progress.id,
+          index: payload.index,
+          agent: payload.agent,
+          agentSource: payload.agentSource,
+          task: payload.task,
+          ...(payload.assignment === undefined ? {} : { assignment: payload.assignment }),
+          ...(progress.description === undefined ? {} : { description: progress.description }),
+          ...(payload.sessionFile === undefined ? {} : { sessionFile: payload.sessionFile }),
+          ...(payload.parentToolCallId === undefined
+            ? {}
+            : { parentToolCallId: payload.parentToolCallId }),
+          status: progress.status,
+          progress,
+          lastUpdate: Date.now(),
+        });
+        return true;
+      }
       default:
         return false;
     }
@@ -528,6 +612,7 @@ export class ChatStore {
       requests: this.#requests,
       shell: this.#shell,
       notices: this.#notices,
+      agents: this.#agentList,
     };
     for (const listener of this.#listeners) listener();
   }

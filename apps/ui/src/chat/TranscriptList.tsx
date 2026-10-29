@@ -10,6 +10,7 @@ import {
   Row,
 } from "../vendor/collab-web/components/transcript/Transcript";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
+import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { FailureRow } from "./FailureRow";
 import { MessageActions, userText } from "./MessageActions";
 import { buildRows, type TranscriptRow, toolResults } from "./rows";
@@ -29,12 +30,18 @@ export function TranscriptList({
   onNearTop,
   actions,
   welcome,
+  host,
+  label = "Transcript",
 }: {
   readonly snapshot: ChatSnapshot;
   readonly onNearTop: () => void;
   readonly actions: RowActions;
   /** A new chat's greeting while it is empty; null for a saved chat, which shows its entries as they load. */
   readonly welcome: { readonly folder: string } | null;
+  /** What the tool cards may open (a task card's subagents, in the Agent Hub). */
+  readonly host?: ToolRenderHost;
+  /** The list's name for a screen reader. */
+  readonly label?: string;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { entries, stream, streamDone, activeTools, working, hasOlder, shell, notices } = snapshot;
@@ -71,7 +78,7 @@ export function TranscriptList({
 
   return (
     <div className="relative min-h-0 flex-1">
-      <section ref={scrollRef} className="tr-root tl-scroll" aria-label="Transcript">
+      <section ref={scrollRef} className="tr-root tl-scroll" aria-label={label}>
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {items.map((item) => {
             const row = rows[item.index];
@@ -84,7 +91,13 @@ export function TranscriptList({
                 className="tl-item group/msg absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >
-                <RowView row={row} results={results} active={activeTools} actions={actions} />
+                <RowView
+                  row={row}
+                  results={results}
+                  active={activeTools}
+                  actions={actions}
+                  host={host}
+                />
               </div>
             );
           })}
@@ -157,11 +170,13 @@ function RowView({
   results,
   active,
   actions,
+  host,
 }: {
   readonly row: TranscriptRow;
   readonly results: ReadonlyMap<string, ToolResultMessage>;
   readonly active: ReadonlyMap<string, ActiveTool>;
   readonly actions: RowActions;
+  readonly host: ToolRenderHost | undefined;
 }): ReactNode {
   switch (row.kind) {
     case "entry": {
@@ -171,7 +186,7 @@ function RowView({
       const { id } = row.entry;
       return (
         <>
-          <EntryRow entry={row.entry} results={results} active={active} />
+          <EntryRow entry={row.entry} results={results} active={active} host={host} />
           {text !== null && (
             <MessageActions text={text} onEdit={editable ? () => actions.onEdit(id) : null} />
           )}
@@ -197,6 +212,7 @@ function RowView({
             results={results}
             active={active}
             pending={row.pending}
+            host={host}
           />
         </Row>
       );
@@ -212,6 +228,7 @@ function RowView({
               args={tool.args}
               running
               partialResult={tool.partialResult}
+              host={host}
             />
           ))}
         </Row>

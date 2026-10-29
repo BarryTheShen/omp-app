@@ -21,6 +21,7 @@ import {
   type HostDialogAnswer,
   isHostDialogRequest,
   type QueueName,
+  type SubagentTranscript,
 } from "@omp-app/contracts/chat-host";
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, toChatModel } from "./store";
@@ -161,6 +162,22 @@ export class ChatController {
     if (this.#disposed) return;
     this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
     this.store.setPhase("live");
+    this.#followAgents(opened.threadId).catch((failure: unknown) => {
+      if (this.#disposed) return;
+      this.store.addNotice(
+        `This chat's subagents are not shown: ${failure instanceof Error ? failure.message : String(failure)}`,
+        "warning",
+      );
+    });
+  }
+
+  /** omp's roster of this chat's subagents, kept current by its lifecycle and progress events. */
+  async #followAgents(threadId: ThreadId): Promise<void> {
+    await this.client
+      .port(ChatSessionPort)
+      .setSubagentSubscription({ threadId, level: "progress" });
+    const { subagents } = await this.#request("get_subagents", {});
+    if (!this.#disposed) this.store.setAgents(subagents);
   }
 
   /** Sends a message: a new prompt, or while omp works, a steer (`followUp` queues it behind the turn). */
@@ -264,6 +281,21 @@ export class ChatController {
   /** Stops the running `!` command; omp records it as cancelled. */
   async stopShell(): Promise<void> {
     await this.#request("abort_bash", {});
+  }
+
+  /** A subagent's transcript: its file's whole lines from `fromByte` on, for the Agent Hub. */
+  subagentTranscript(subagentId: string, fromByte: number): Promise<SubagentTranscript> {
+    return this.#request("get_subagent_messages", { subagentId, fromByte });
+  }
+
+  /** omp's hard kill of a running subagent; false when it was no longer running. */
+  async cancelSubagent(subagentId: string): Promise<boolean> {
+    return (await this.#request("cancel_subagent", { subagentId })).cancelled;
+  }
+
+  /** Sends a message to a running subagent; resolves once omp has taken it. */
+  async steerSubagent(subagentId: string, message: string): Promise<void> {
+    await this.#request("steer_subagent", { subagentId, message });
   }
 
   /** Reads the next older window of the session file into the transcript. */

@@ -266,6 +266,85 @@ describe("ChatStore", () => {
     ]);
   });
 
+  test("omp's roster and its subagent events make one row per agent, in spawn order, with the latest progress", () => {
+    const store = new ChatStore();
+    const progress = (id: string, status: string, tokens: number) => ({
+      index: 0,
+      id,
+      agent: "task",
+      agentSource: "bundled",
+      status,
+      task: "t",
+      recentTools: [],
+      recentOutput: [],
+      toolCount: 1,
+      requests: 1,
+      tokens,
+      cost: 0,
+      durationMs: 10,
+    });
+    store.setAgents([
+      {
+        id: "Second",
+        index: 1,
+        agent: "task",
+        agentSource: "bundled",
+        status: "running",
+        lastUpdate: 1,
+      },
+    ] as never);
+    store.apply(
+      event({
+        type: "subagent_lifecycle",
+        payload: {
+          id: "First",
+          index: 0,
+          agent: "task",
+          agentSource: "bundled",
+          status: "started",
+        },
+      }),
+    );
+    store.apply(
+      event({
+        type: "subagent_progress",
+        payload: {
+          index: 0,
+          agent: "task",
+          agentSource: "bundled",
+          task: "t",
+          sessionFile: "/s/First.jsonl",
+          progress: progress("First", "running", 15),
+        },
+      }),
+    );
+    // Progress waits for the frame, as streaming does.
+    vi.advanceTimersToNextFrame();
+    expect(store.getSnapshot().agents.map((agent) => `${agent.id} ${agent.status}`)).toEqual([
+      "First running",
+      "Second running",
+    ]);
+    expect(store.getSnapshot().agents[0]?.progress?.tokens).toBe(15);
+
+    store.apply(
+      event({
+        type: "subagent_lifecycle",
+        payload: {
+          id: "First",
+          index: 0,
+          agent: "task",
+          agentSource: "bundled",
+          status: "aborted",
+        },
+      }),
+    );
+    vi.advanceTimersToNextFrame();
+    const [first] = store.getSnapshot().agents;
+    // The end keeps what the run reported last, and the file it wrote.
+    expect(first).toMatchObject({ status: "aborted", sessionFile: "/s/First.jsonl" });
+    expect(first?.progress?.tokens).toBe(15);
+  });
+
   test("the working row keeps its object while its line is unchanged, so streaming frames do not redraw it", () => {
     const store = new ChatStore();
     store.apply(event({ type: "agent_start" }));

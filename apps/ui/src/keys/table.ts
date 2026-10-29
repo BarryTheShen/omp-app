@@ -133,6 +133,12 @@ export const KEYS = {
     group: "Transcript",
     label: "Show or hide thinking",
   },
+  agentHub: {
+    hotkey: "alt+a",
+    scope: "pane",
+    group: "Transcript",
+    label: "Open or close the Agent Hub",
+  },
 
   send: {
     hotkey: "enter",

@@ -119,10 +119,11 @@
 
 /*
  * collab-web (src/vendor/collab-web) reads its own variable names; here they take the theme's Tern tokens, inside the
- * transcript only. It draws its accent and status colours as text, so they get the text accent and the status inks.
- * collab-web's CSS is not in a cascade layer, so everything that changes it below is unlayered too.
+ * transcript and the Agent Hub only. It draws its accent and status colours as text, so they get the text accent and
+ * the status inks. collab-web's CSS is not in a cascade layer, so everything that changes it below is unlayered too.
  */
-.tr-root {
+.tr-root,
+.ag-drawer {
   --fg: var(--t1);
   --fg-muted: var(--t2);
   --fg-faint: var(--t3);
@@ -141,6 +142,13 @@
   --radius-lg: var(--r-card);
   --shadow-card: none;
   --ease-out: var(--out);
+  /* The Agent Hub's rows, buttons, context gauge and drawer (`components/agents/agents.css`). */
+  --hover: var(--l1);
+  --selected: var(--l2);
+  --bg-overlay: var(--l1);
+  --ring-soft: color-mix(in srgb, var(--accent-ink) 25%, transparent);
+  --accent-gradient: var(--accent-fill);
+  --shadow-overlay: 0 12px 32px -12px rgb(0 0 0 / 40%);
 }
 
 /* Tern's "Reader" transcript: one 720 px column, no gutter labels, the user's turns as right-aligned bubbles. */
@@ -200,8 +208,25 @@
 }
 
 /* The 11 px floor for functional text: collab-web draws some badges and titles at 10 px, and marker rows at 11 px. */
-.tr-root :is(.tv-badge, .tv-agent-link, .tv-out-title, .tv-expand, .tv-cell-title, .tv-todo-phase) {
+.tr-root :is(.tv-badge, .tv-agent-link, .tv-out-title, .tv-expand, .tv-cell-title, .tv-todo-phase),
+.ag-drawer :is(.ag-chip, .ag-heading-count) {
   font-size: 11px;
+}
+
+/* A row's tokens, cost and time read on the selected row's background too. */
+.ag-drawer .ag-row-meta {
+  color: var(--fg-muted);
+}
+
+/* In the Hub the list sits in the drawer, not in collab-web's rail: an inset keeps a chosen row's corners whole. */
+.ag-drawer .ag-panel {
+  padding-inline: 8px;
+}
+
+/* A narrow Hub keeps the chosen agent's name whole and puts its chips on the next line. */
+.ag-drawer .ag-drawer-title {
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .tr-root .tr-marker {
