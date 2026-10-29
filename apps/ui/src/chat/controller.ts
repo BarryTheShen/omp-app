@@ -18,13 +18,15 @@ import {
   type ChatHostImage,
   type ChatHostMethod,
   type ChatHostMethodMap,
+  type GoalParams,
   type HostDialogAnswer,
   isHostDialogRequest,
+  type PlanFile,
   type QueueName,
   type SubagentTranscript,
 } from "@omp-app/contracts/chat-host";
 import { ChatDraft } from "./drafts";
-import { type ChatModel, ChatStore, toChatModel } from "./store";
+import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
 import { cachedWindow, keepWindow } from "./windowCache";
 
@@ -162,13 +164,42 @@ export class ChatController {
     if (this.#disposed) return;
     this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
     this.store.setPhase("live");
-    this.#followAgents(opened.threadId).catch((failure: unknown) => {
+    const unshown = (what: string) => (failure: unknown) => {
       if (this.#disposed) return;
       this.store.addNotice(
-        `This chat's subagents are not shown: ${failure instanceof Error ? failure.message : String(failure)}`,
+        `${what}: ${failure instanceof Error ? failure.message : String(failure)}`,
         "warning",
       );
-    });
+    };
+    this.#followAgents(opened.threadId).catch(unshown("This chat's subagents are not shown"));
+    this.#readModes().catch(unshown("Plan mode and the goal are not shown"));
+  }
+
+  /** omp's plan mode and the chat's goal, as they are when the chat opens. */
+  async #readModes(): Promise<void> {
+    const switches = this.#planSwitches;
+    const [plan, goal] = await Promise.all([
+      this.#request("get_plan_mode", {}),
+      this.#request("goal", { op: "get" }),
+    ]);
+    if (this.#disposed) return;
+    if (switches === this.#planSwitches) this.store.setPlanMode(plan);
+    this.store.setGoal(goal.goal);
+  }
+
+  /** Plan mode switches so far: an answer about plan mode counts only while no later switch is on its way. */
+  #planSwitches = 0;
+  /**
+   * The latest plan mode switch until omp answers it. omp answers switches in order but starts a prompt as soon as it
+   * reads one, so a message waits for this: it runs in the mode the chip shows.
+   */
+  #planSwitch: Promise<unknown> = Promise.resolve();
+
+  /** Reads omp's plan mode again; a switch made while the read was on its way decides instead. */
+  async #readPlanMode(): Promise<void> {
+    const switches = this.#planSwitches;
+    const status = await this.#request("get_plan_mode", {});
+    if (!this.#disposed && switches === this.#planSwitches) this.store.setPlanMode(status);
   }
 
   /** omp's roster of this chat's subagents, kept current by its lifecycle and progress events. */
@@ -186,6 +217,7 @@ export class ChatController {
     mode: "auto" | "followUp" = "auto",
     images: readonly ChatHostImage[] = [],
   ): Promise<void> {
+    await this.#planSwitch;
     const working = this.store.getSnapshot().working;
     await this.#request("prompt", {
       text,
@@ -298,6 +330,55 @@ export class ChatController {
     await this.#request("steer_subagent", { subagentId, message });
   }
 
+  /**
+   * Turns omp's plan mode on or off. The chip shows it at once: omp can take seconds to answer the first switch after a
+   * chat opens. omp's answer to the latest switch decides; a refusal (work running, a goal active) shows omp's state
+   * again, and the caller shows omp's sentence.
+   */
+  async setPlanMode(enabled: boolean): Promise<void> {
+    const switches = ++this.#planSwitches;
+    const shown = this.store.getSnapshot().planMode;
+    if (shown !== null) this.store.setPlanMode({ ...shown, enabled });
+    try {
+      const request = this.#request("set_plan_mode", { enabled });
+      this.#planSwitch = request.catch(() => undefined);
+      const status = await request;
+      if (!this.#disposed && switches === this.#planSwitches) this.store.setPlanMode(status);
+    } catch (failure) {
+      if (switches === this.#planSwitches) this.#readPlanMode().catch(() => undefined);
+      throw failure;
+    }
+  }
+
+  /** A plan file's text, for the review. */
+  readPlan(planFilePath: string): Promise<PlanFile> {
+    return this.#request("get_plan", { planFilePath });
+  }
+
+  /** omp's "Approve and keep context": plan mode ends, and the run on the plan starts in this chat. */
+  async approvePlan(proposal: PlanProposal): Promise<void> {
+    await this.#request("approve_plan", {
+      planFilePath: proposal.planFilePath,
+      title: proposal.title,
+    });
+    this.store.clearProposal();
+    await this.#readPlanMode();
+  }
+
+  /** omp's goal mode: create (with its objective, and a token budget if given), pause, resume or drop the chat's goal. */
+  async goal(
+    op: Exclude<GoalParams["op"], "get">,
+    objective?: string,
+    tokenBudget?: number,
+  ): Promise<void> {
+    const answer = await this.#request("goal", {
+      op,
+      ...(objective === undefined ? {} : { objective }),
+      ...(tokenBudget === undefined ? {} : { token_budget: tokenBudget }),
+    });
+    this.store.setGoal(answer.goal);
+  }
+
   /** Reads the next older window of the session file into the transcript. */
   async loadOlder(): Promise<void> {
     const sessionFile = this.#sessionFile;
@@ -357,6 +438,8 @@ export class ChatController {
     if (payload.event.type === "model_changed") void this.#refreshState();
     // omp cleared finished todos on its own; the list it kept comes with the state.
     if (payload.event.type === "todo_auto_clear") this.#refreshState().catch(() => undefined);
+    // Plan mode can change outside this pane (another tab, omp's own commands): read it again when omp settles.
+    if (payload.event.type === "session_settled") this.#readPlanMode().catch(() => undefined);
     if (payload.event.type === "available_commands")
       this.#commands = Promise.resolve(payload.event.commands);
   }

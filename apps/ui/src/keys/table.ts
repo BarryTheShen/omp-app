@@ -139,6 +139,12 @@ export const KEYS = {
     group: "Transcript",
     label: "Open or close the Agent Hub",
   },
+  planMode: {
+    hotkey: "alt+shift+p",
+    scope: "pane",
+    group: "Message box",
+    label: "Plan mode on or off",
+  },
 
   send: {
     hotkey: "enter",

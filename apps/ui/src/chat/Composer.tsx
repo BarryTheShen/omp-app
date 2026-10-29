@@ -1,9 +1,16 @@
-import type { ChatHostImage, ChatHostState } from "@omp-app/contracts/chat-host";
+import type {
+  ChatHostImage,
+  ChatHostState,
+  GoalAnswer,
+  PlanModeStatus,
+} from "@omp-app/contracts/chat-host";
 import { ArrowUp, Brain, Square, X } from "lucide-react";
 import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentsPill } from "../agents/AgentsPill";
+import { GoalChip } from "../goal/GoalChip";
+import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
 import { type Attachment, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
@@ -63,6 +70,8 @@ export const Composer = memo(function Composer({
   agentsTotal,
   onOpenAgents,
   todos,
+  planMode,
+  goal,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -89,6 +98,9 @@ export const Composer = memo(function Composer({
   readonly onOpenAgents: () => void;
   /** omp's todo list for the chat, phase by phase; a pill above the box shows it. */
   readonly todos: ChatHostState["todoPhases"];
+  /** omp's plan mode (a chip turns it on and off) and the chat's goal (a chip shows it). */
+  readonly planMode: PlanModeStatus | null;
+  readonly goal: GoalAnswer["goal"];
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -475,6 +487,13 @@ export const Composer = memo(function Composer({
                 onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
               />
             )}
+            <PlanChip
+              controller={controller}
+              status={planMode}
+              disabled={disabled}
+              onError={(failure) => setError(`Plan mode: ${errorText(failure)}`)}
+            />
+            <GoalChip controller={controller} goal={goal} />
             <span
               className={`min-w-0 flex-1 truncate px-1 text-right text-xs ${error === null ? "text-t3" : "text-bad-ink"}`}
               role="status"

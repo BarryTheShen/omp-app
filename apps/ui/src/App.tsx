@@ -13,9 +13,10 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import { ConnectionBanner } from "./ConnectionBanner";
-import type { ChatTarget } from "./chat/controller";
+import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
+import { GoalDialog } from "./goal/GoalDialog";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
@@ -106,6 +107,8 @@ function Shell({
   const phone = usePhone();
   const [palette, setPalette] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  /** The chat the goal dialog sets a goal for, while it is open. */
+  const [goalFor, setGoalFor] = useState<ChatController | null>(null);
   const openChat = useCallback((target: ChatTarget, where: "here" | "split"): void => {
     workspace.current?.open(target, where);
     setShowChat(true);
@@ -158,8 +161,10 @@ function Shell({
         folder={folder}
         onOpenChat={openChat}
         onShortcuts={showShortcuts}
+        onSetGoal={setGoalFor}
       />
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
+      <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />
     </div>
   );
 }

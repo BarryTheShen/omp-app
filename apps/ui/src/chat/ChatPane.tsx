@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AgentHub } from "../agents/AgentHub";
+import { PlanReview } from "../plan/PlanReview";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -115,6 +116,27 @@ export function ChatPane({
       else closeAgents();
       return;
     }
+    // omp's plan mode, on or off; a refusal (work running, a goal active) is said in the transcript.
+    if (
+      event.altKey &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.code === "KeyP"
+    ) {
+      event.preventDefault();
+      const planMode = snapshot.planMode;
+      if (planMode === null || !planMode.available) return;
+      controller
+        .setPlanMode(!planMode.enabled)
+        .catch((failure: unknown) =>
+          controller.store.addNotice(
+            `Plan mode: ${failure instanceof Error ? failure.message : String(failure)}`,
+            "error",
+          ),
+        );
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
     const which = event.code === "KeyO" ? "tools" : event.code === "KeyT" ? "thinking" : null;
     if (which === null) return;
@@ -156,6 +178,8 @@ export function ChatPane({
         agentsTotal={snapshot.agents.length}
         onOpenAgents={openAgents}
         todos={snapshot.todos}
+        planMode={snapshot.planMode}
+        goal={snapshot.goal}
       />
       {hub !== null && (
         <AgentHub
@@ -165,6 +189,10 @@ export function ChatPane({
           onSelect={(id) => setHub({ selected: id })}
           onClose={closeAgents}
         />
+      )}
+      {/* omp proposed a plan: it waits for a decision while plan mode is on (a replayed, decided one never shows). */}
+      {snapshot.proposal !== null && snapshot.planMode?.enabled === true && (
+        <PlanReview controller={controller} proposal={snapshot.proposal} />
       )}
     </div>
   );

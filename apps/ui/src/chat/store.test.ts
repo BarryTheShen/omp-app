@@ -380,6 +380,57 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().todos).toHaveLength(1);
   });
 
+  test("omp's answer to a write of xd://propose waits for review under the model's name; a failed write or another file does not", () => {
+    const store = new ChatStore();
+    const write = (id: string, path: string, details: unknown, isError = false) => {
+      store.apply(
+        event({
+          type: "tool_execution_start",
+          toolCallId: id,
+          toolName: "write",
+          args: { path, content: "fix-the-login" },
+        }),
+      );
+      store.apply(
+        event({
+          type: "tool_execution_end",
+          toolCallId: id,
+          toolName: "write",
+          isError,
+          result: { content: [], details },
+        }),
+      );
+    };
+    const proposed = {
+      xdev: { tool: "propose", inner: { planFilePath: "local://fix-the-login-plan.md" } },
+    };
+    write("plain", "notes.md", {});
+    write("refused", "xd://propose", proposed, true);
+    expect(store.getSnapshot().proposal).toBeNull();
+
+    write("proposal", "xd://propose", proposed);
+    expect(store.getSnapshot().proposal).toEqual({
+      planFilePath: "local://fix-the-login-plan.md",
+      title: "fix-the-login",
+    });
+    store.clearProposal();
+    expect(store.getSnapshot().proposal).toBeNull();
+
+    const goal = {
+      id: "g",
+      objective: "Ship",
+      status: "paused",
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    store.apply(event({ type: "goal_updated", goal }));
+    expect(store.getSnapshot().goal?.status).toBe("paused");
+    store.apply(event({ type: "goal_updated", goal: null }));
+    expect(store.getSnapshot().goal).toBeNull();
+  });
+
   test("the working row keeps its object while its line is unchanged, so streaming frames do not redraw it", () => {
     const store = new ChatStore();
     store.apply(event({ type: "agent_start" }));

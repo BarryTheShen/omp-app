@@ -3,7 +3,9 @@ import type { ChatSessionEvent, ProcessStatus } from "@omp-app/contracts";
 import type {
   ChatEvent,
   ChatHostState,
+  GoalAnswer,
   HostDialogRequest,
+  PlanModeStatus,
   SubagentSnapshot,
 } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
@@ -73,6 +75,12 @@ export interface ChatSnapshot {
   readonly agents: readonly SubagentSnapshot[];
   /** omp's todo list, phase by phase; empty while the chat has none. */
   readonly todos: ChatHostState["todoPhases"];
+  /** omp's plan mode for the chat; null until it is read. */
+  readonly planMode: PlanModeStatus | null;
+  /** A plan omp proposed for review, while plan mode is on and nothing was decided about it. */
+  readonly proposal: PlanProposal | null;
+  /** The chat's goal (goal mode); null without one. */
+  readonly goal: GoalAnswer["goal"];
 }
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
@@ -95,11 +103,36 @@ const EMPTY: ChatSnapshot = {
   notices: [],
   agents: [],
   todos: [],
+  planMode: null,
+  proposal: null,
+  goal: null,
 };
 
 /** A transcript to draw that is not a live chat (a subagent's, in the Agent Hub): its entries, and whether it runs. */
 export function transcriptOnly(entries: readonly SessionEntry[], working: boolean): ChatSnapshot {
   return { ...EMPTY, entries, working, phase: "live" };
+}
+
+/** A plan omp proposed: its file and its name (the model's slug, as `approve_plan` takes it). */
+export interface PlanProposal {
+  readonly planFilePath: string;
+  readonly title: string;
+}
+
+/** The plan in omp's answer to a `write` of `xd://propose`, if this is one; its name is what the model wrote. */
+function proposalOf(result: unknown, args: unknown): PlanProposal | null {
+  const xdev = (result as { readonly details?: { readonly xdev?: unknown } } | undefined)?.details
+    ?.xdev as
+    | { readonly tool?: unknown; readonly inner?: { readonly planFilePath?: unknown } }
+    | undefined;
+  const planFilePath = xdev?.inner?.planFilePath;
+  if (xdev?.tool !== "propose" || typeof planFilePath !== "string") return null;
+  const written = (args as { readonly content?: unknown } | undefined)?.content;
+  const title =
+    typeof written === "string" && written.trim() !== ""
+      ? written.trim()
+      : planFilePath.replace(/^local:\/\//, "").replace(/(-plan)?\.md$/, "");
+  return { planFilePath, title };
 }
 
 /** omp's subagent lifecycle statuses, as its roster names them. */
@@ -180,6 +213,9 @@ export class ChatStore {
   #agents: ReadonlyMap<string, SubagentSnapshot> = new Map();
   #agentList: readonly SubagentSnapshot[] = [];
   #todos: ChatHostState["todoPhases"] = [];
+  #planMode: PlanModeStatus | null = null;
+  #proposal: PlanProposal | null = null;
+  #goal: GoalAnswer["goal"] = null;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -241,6 +277,22 @@ export class ChatStore {
 
   setThinkingLevel(level: string | null): void {
     this.#thinkingLevel = level;
+    this.#publish();
+  }
+
+  setPlanMode(status: PlanModeStatus): void {
+    this.#planMode = status;
+    this.#publish();
+  }
+
+  /** The proposal was approved, or the person keeps planning: the review goes. */
+  clearProposal(): void {
+    this.#proposal = null;
+    this.#publish();
+  }
+
+  setGoal(goal: GoalAnswer["goal"]): void {
+    this.#goal = goal;
     this.#publish();
   }
 
@@ -403,15 +455,22 @@ export class ChatStore {
         return true;
       }
       case "tool_execution_end": {
+        const started = this.#activeTools.get(event.toolCallId);
         const next = new Map(this.#activeTools);
         next.delete(event.toolCallId);
         this.#activeTools = next;
+        if (event.isError === true) return false;
         // omp's todo tool answers every change with the whole list.
-        if (event.toolName === "todo" && event.isError !== true) {
+        if (event.toolName === "todo") {
           const phases = (
             event.result as { readonly details?: { readonly phases?: unknown } } | undefined
           )?.details?.phases;
           if (Array.isArray(phases)) this.#todos = phases as ChatHostState["todoPhases"];
+        }
+        // In plan mode the model submits its plan by writing the plan's name to `xd://propose`; omp's answer names the file.
+        if (event.toolName === "write") {
+          const proposed = proposalOf(event.result, started?.args);
+          if (proposed !== null) this.#proposal = proposed;
         }
         return false;
       }
@@ -449,6 +508,9 @@ export class ChatStore {
         return false;
       case "command_output":
         this.#notify(event.text, "output");
+        return false;
+      case "goal_updated":
+        this.#goal = event.goal;
         return false;
       case "ui_notify":
         this.#notify(event.message, event.notifyType ?? "info");
@@ -629,6 +691,9 @@ export class ChatStore {
       notices: this.#notices,
       agents: this.#agentList,
       todos: this.#todos,
+      planMode: this.#planMode,
+      proposal: this.#proposal,
+      goal: this.#goal,
     };
     for (const listener of this.#listeners) listener();
   }

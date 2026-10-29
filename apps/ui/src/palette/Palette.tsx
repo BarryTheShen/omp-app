@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { ChatTarget } from "../chat/controller";
+import type { ChatController, ChatTarget } from "../chat/controller";
 import type { ChatModel } from "../chat/store";
 import { mentionText } from "../chat/triggers";
 import { KEYS, keycap } from "../keys/table";
@@ -55,6 +55,46 @@ const THEMES: readonly (readonly [ThemeChoice, string])[] = [
 
 const FILE_PAUSE_MS = 120;
 
+/** The focused chat's modes: plan mode on or off (where omp offers it), and a goal when the chat has none going. */
+function chatModes(
+  controller: ChatController | null,
+  close: (then: () => void) => void,
+  onSetGoal: (controller: ChatController) => void,
+): readonly Item[] {
+  if (controller === null) return [];
+  const { planMode, goal } = controller.store.getSnapshot();
+  const items: Item[] = [];
+  if (planMode?.available === true) {
+    const enabled = planMode.enabled;
+    items.push({
+      key: "chat:plan",
+      group: "Commands",
+      label: enabled ? "Turn plan mode off" : "Turn plan mode on",
+      keys: keycap(KEYS.planMode),
+      run: () =>
+        close(() => {
+          controller
+            .setPlanMode(!enabled)
+            .catch((failure: unknown) =>
+              controller.store.addNotice(
+                `Plan mode: ${failure instanceof Error ? failure.message : String(failure)}`,
+                "error",
+              ),
+            );
+        }),
+    });
+  }
+  if (goal === null || goal.status === "dropped" || goal.status === "complete") {
+    items.push({
+      key: "chat:goal",
+      group: "Commands",
+      label: "Set a goal for this chat…",
+      run: () => close(() => onSetGoal(controller)),
+    });
+  }
+  return items;
+}
+
 /**
  * The palette (Ctrl+K), as Tern's: the app's commands and omp's, the folder's files, the chats and the models, each a
  * scope, with "All" by default. A file or one of omp's commands goes into the focused chat's message box.
@@ -67,6 +107,7 @@ export function Palette({
   folder,
   onOpenChat,
   onShortcuts,
+  onSetGoal,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -75,6 +116,8 @@ export function Palette({
   readonly folder: string;
   readonly onOpenChat: (target: ChatTarget, where: "here" | "split") => void;
   readonly onShortcuts: () => void;
+  /** Opens the goal dialog for a chat. */
+  readonly onSetGoal: (controller: ChatController) => void;
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
@@ -156,6 +199,7 @@ export function Palette({
         keys: keycap(KEYS.shortcuts),
         run: () => close(onShortcuts),
       },
+      ...chatModes(controller, close, onSetGoal),
       ...commands.map((command) => ({
         key: `omp:${command.name}`,
         group: "Commands" as const,
