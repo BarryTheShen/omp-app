@@ -1,0 +1,115 @@
+import type { SerializedDockview } from "dockview-react";
+
+/** One workspace tab, as kitty's: its own layout of chat panes, saved as dockview writes it. */
+export interface WorkspaceTab {
+  readonly id: string;
+  /** A name given with Rename; null shows the focused chat's title. */
+  readonly title: string | null;
+  /** The panes and their chats; null until the tab's first layout is saved. */
+  readonly layout: SerializedDockview | null;
+}
+
+export interface WorkspaceTabs {
+  readonly tabs: readonly WorkspaceTab[];
+  readonly active: string;
+}
+
+/** Where the tabs are kept in this browser. */
+export const TABS_KEY = "omp-app.ui.workspace";
+
+const newTab = (): WorkspaceTab => ({ id: crypto.randomUUID(), title: null, layout: null });
+
+export function initialTabs(): WorkspaceTabs {
+  const tab = newTab();
+  return { tabs: [tab], active: tab.id };
+}
+
+/** The tabs as kept, or one empty tab when nothing usable is kept. */
+export function loadTabs(raw: string | null): WorkspaceTabs {
+  if (raw === null) return initialTabs();
+  try {
+    const kept = JSON.parse(raw) as Partial<WorkspaceTabs>;
+    const tabs = Array.isArray(kept.tabs)
+      ? kept.tabs.filter(
+          (tab): tab is WorkspaceTab =>
+            typeof tab === "object" &&
+            tab !== null &&
+            typeof tab.id === "string" &&
+            (tab.title === null || typeof tab.title === "string") &&
+            (tab.layout === null || (typeof tab.layout === "object" && tab.layout !== undefined)),
+        )
+      : [];
+    const first = tabs[0];
+    if (first === undefined) return initialTabs();
+    const active = tabs.some((tab) => tab.id === kept.active) ? (kept.active as string) : first.id;
+    return { tabs, active };
+  } catch {
+    return initialTabs();
+  }
+}
+
+const indexOf = (state: WorkspaceTabs, id: string): number =>
+  state.tabs.findIndex((tab) => tab.id === id);
+
+/** A new tab right after the active one, made active (kitty's new tab). */
+export function addTab(state: WorkspaceTabs): WorkspaceTabs {
+  const tab = newTab();
+  const tabs = [...state.tabs];
+  tabs.splice(indexOf(state, state.active) + 1, 0, tab);
+  return { tabs, active: tab.id };
+}
+
+/** Closes a tab; its right neighbour becomes active (else its left one). The last tab is replaced by an empty one. */
+export function closeTab(state: WorkspaceTabs, id: string): WorkspaceTabs {
+  const index = indexOf(state, id);
+  if (index < 0) return state;
+  const tabs = state.tabs.filter((tab) => tab.id !== id);
+  if (tabs.length === 0) return initialTabs();
+  if (state.active !== id) return { tabs, active: state.active };
+  const next = tabs[Math.min(index, tabs.length - 1)] as WorkspaceTab;
+  return { tabs, active: next.id };
+}
+
+/** The next or the previous tab, wrapping around. */
+export function stepTab(state: WorkspaceTabs, step: 1 | -1): WorkspaceTabs {
+  const count = state.tabs.length;
+  const index = (indexOf(state, state.active) + step + count) % count;
+  return { ...state, active: (state.tabs[index] as WorkspaceTab).id };
+}
+
+/** Moves the active tab one place left or right; at an end it stays. */
+export function moveTab(state: WorkspaceTabs, step: 1 | -1): WorkspaceTabs {
+  const from = indexOf(state, state.active);
+  const to = from + step;
+  if (from < 0 || to < 0 || to >= state.tabs.length) return state;
+  const tabs = [...state.tabs];
+  const [tab] = tabs.splice(from, 1);
+  tabs.splice(to, 0, tab as WorkspaceTab);
+  return { ...state, tabs };
+}
+
+export function activateTab(state: WorkspaceTabs, id: string): WorkspaceTabs {
+  return indexOf(state, id) < 0 ? state : { ...state, active: id };
+}
+
+/** Names a tab; an empty name goes back to the focused chat's title. */
+export function renameTab(state: WorkspaceTabs, id: string, title: string): WorkspaceTabs {
+  const name = title.trim();
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) =>
+      tab.id === id ? { ...tab, title: name === "" ? null : name } : tab,
+    ),
+  };
+}
+
+export function saveLayout(
+  state: WorkspaceTabs,
+  id: string,
+  layout: SerializedDockview,
+): WorkspaceTabs {
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, layout } : tab)),
+  };
+}

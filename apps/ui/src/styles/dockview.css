@@ -1,0 +1,84 @@
+/*
+ * dockview's theme for the workspace, on the app's tokens (themes.css), so it follows Tern dark and light. dockview keeps
+ * its defaults in each theme class, so this class sets every variable its themes set.
+ */
+.dockview-theme-omp {
+  color-scheme: inherit;
+  --dv-paneview-active-outline-color: var(--accent);
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 30px;
+  --dv-drag-over-background-color: color-mix(in oklab, var(--accent) 16%, transparent);
+  --dv-drag-over-border-color: var(--accent);
+  --dv-edge-dock-indicator-color: var(--accent);
+  --dv-tabs-container-scrollbar-color: var(--l3);
+  --dv-icon-hover-background-color: var(--l2);
+  --dv-floating-box-shadow: 0 8px 32px rgb(0 0 0 / 40%), 0 2px 8px rgb(0 0 0 / 25%);
+  --dv-floating-border: 1px solid var(--l2);
+  --dv-overlay-z-index: 999;
+  --dv-tab-font-size: inherit;
+  --dv-border-radius: 0px;
+  --dv-tab-margin: 0;
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--l3);
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0.3s;
+  --dv-spacing-padding: 0px;
+  --dv-tab-border-radius: 0px;
+  --dv-sash-border-radius: 0px;
+  --dv-dropdown-border-radius: var(--r-ctl);
+  --dv-tab-close-icon-size: inherit;
+  --dv-floating-group-border: none;
+  --dv-drag-over-border: none;
+  --dv-floating-group-dragging-opacity: 0.5;
+  --dv-floating-titlebar-height: 22px;
+  --dv-floating-titlebar-background-color: var(--dv-tabs-and-actions-container-background-color);
+  --dv-floating-titlebar-border-bottom: var(--dv-floating-border);
+  --dv-tab-group-color-grey: var(--t3);
+  --dv-tab-group-color-blue: var(--accent);
+  --dv-tab-group-color-red: var(--bad);
+  --dv-tab-group-color-yellow: var(--warn);
+  --dv-tab-group-color-green: var(--ok);
+  --dv-tab-group-color-pink: var(--bad);
+  --dv-tab-group-color-purple: var(--accent);
+  --dv-tab-group-color-cyan: var(--live);
+  --dv-tab-group-color-orange: var(--warn);
+  --dv-tab-group-chip-padding: 4px 8px;
+  --dv-tab-group-chip-border-radius: 6px;
+  --dv-tab-group-chip-font-size: 11px;
+  --dv-tab-group-line-height: 2px;
+  --dv-tab-group-line-opacity: 0.6;
+
+  --dv-group-view-background-color: var(--panel);
+  --dv-tabs-and-actions-container-background-color: var(--page);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--panel);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--panel);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-tab-divider-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--t1);
+  --dv-activegroup-hiddenpanel-tab-color: var(--t3);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--t2);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--t3);
+  --dv-separator-border: var(--l2);
+  --dv-paneview-header-border-color: var(--l2);
+}
+
+/* A pane's title bar, shown between several panes: the title inset like the transcript, a line under it. */
+.dockview-theme-omp .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--l2);
+}
+
+/* dockview zeroes a full-width single tab's padding with a five-class rule; this one comes later and is as specific. */
+.dockview-theme-omp .dv-tabs-container .dv-tab,
+.dockview-theme-omp
+  .dv-tabs-and-actions-container.dv-single-tab.dv-full-width-single-tab
+  .dv-tabs-container
+  .dv-tab {
+  padding-inline: 12px 6px;
+}
+
+/* Unfocused panes dim, as kitty dims its inactive windows (`inactive_text_alpha`). */
+.dockview-theme-omp .dv-groupview.dv-inactive-group > .dv-content-container {
+  opacity: 0.7;
+  transition: opacity 120ms var(--out);
+}

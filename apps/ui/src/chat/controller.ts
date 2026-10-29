@@ -86,6 +86,11 @@ export class ChatController {
     return this.#threadId;
   }
 
+  /** The chat's session file once omp named it; a new chat's is named when it opens, and written with omp's first reply. */
+  get sessionFile(): SessionFilePath | null {
+    return this.#sessionFile;
+  }
+
   /** A chat started here from nothing (New chat), as against a saved one opened again. */
   get isNew(): boolean {
     return this.target.kind === "new";
