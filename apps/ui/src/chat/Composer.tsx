@@ -2,10 +2,13 @@ import { ArrowUp, Brain, Square } from "lucide-react";
 import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ComposerMenu } from "./ComposerMenu";
 import type { ChatController } from "./controller";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
 import type { ChatActivity, ChatModel, ChatQueue } from "./store";
+import { shellRun } from "./triggers";
+import { useComposerMenu } from "./useComposerMenu";
 import { WorkingRow } from "./WorkingRow";
 
 const errorText = (error: unknown): string =>
@@ -17,8 +20,9 @@ const withRestored = (restored: readonly string[], current: string): string =>
 
 /**
  * The message box: Enter sends; while omp works, Enter steers and Ctrl+Enter queues a follow-up; Shift+Enter or
- * Alt+Enter adds a line; Esc stops omp and brings queued messages back into the box. The text is kept as it is typed
- * (`drafts.ts`), and only the text that was sent leaves the box.
+ * Alt+Enter adds a line; Esc stops omp and brings queued messages back into the box. `/` at the start lists omp's
+ * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context). The
+ * text is kept as it is typed (`drafts.ts`), and only the text that was sent leaves the box.
  */
 export const Composer = memo(function Composer({
   controller,
@@ -43,10 +47,13 @@ export const Composer = memo(function Composer({
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
+  const [caret, setCaret] = useState(0);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const draft = controller.draft;
+  const menu = useComposerMenu(controller, text, caret);
+  const shell = shellRun(text);
 
   const update = (next: string): void => {
     textRef.current = next;
@@ -72,10 +79,11 @@ export const Composer = memo(function Composer({
     const sent = textRef.current;
     const value = sent.trim();
     if (value.length === 0 || disabled || sending) return;
+    const run = shellRun(value);
+    if (run !== null && run.input === "") return;
     setSending(true);
     setError(null);
-    controller
-      .send(value, mode)
+    (run === null ? controller.send(value, mode) : controller.runShell(run))
       .then(() => {
         // Only what was sent leaves the box; anything typed since stays.
         const now = textRef.current;
@@ -105,8 +113,35 @@ export const Composer = memo(function Composer({
       .catch((failure: unknown) => setError(`Could not take it back: ${errorText(failure)}`));
   };
 
+  /** Puts the menu's row into the text, and the caret after it. */
+  const take = (index: number): void => {
+    const next = menu.pick(index);
+    if (next === null) return;
+    update(next.text);
+    setCaret(next.caret);
+    requestAnimationFrame(() => boxRef.current?.setSelectionRange(next.caret, next.caret));
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.nativeEvent.isComposing) return;
+    if (menu.menu !== null) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        menu.move(event.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+      const takes = (event.key === "Enter" || event.key === "Tab") && !event.shiftKey;
+      if (takes && menu.menu.items.length > 0) {
+        event.preventDefault();
+        take(menu.menu.active);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        menu.dismiss();
+        return;
+      }
+    }
     if (event.key === "Escape" && working) {
       event.preventDefault();
       stop();
@@ -123,12 +158,21 @@ export const Composer = memo(function Composer({
         {activity !== null && <WorkingRow activity={activity} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
         <form
-          className="rounded-xl border border-l2 bg-card focus-within:border-l4"
+          className="relative rounded-xl border border-l2 bg-card focus-within:border-l4"
           onSubmit={(event) => {
             event.preventDefault();
             send("auto");
           }}
         >
+          {menu.menu !== null && (
+            <ComposerMenu
+              label={menu.menu.label}
+              items={menu.menu.items}
+              active={menu.menu.active}
+              empty={menu.menu.empty}
+              onPick={take}
+            />
+          )}
           <textarea
             ref={boxRef}
             className="block max-h-[12lh] min-h-[2lh] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[0.875rem] leading-normal text-t1 outline-none [field-sizing:content] placeholder:text-t3"
@@ -139,10 +183,18 @@ export const Composer = memo(function Composer({
             onChange={(event) => {
               setError(null);
               update(event.target.value);
+              setCaret(event.target.selectionStart);
             }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}
           />
           <div className="flex items-center gap-1 px-2 pb-2">
+            {shell !== null && (
+              <span className="shrink-0 rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1">
+                {shell.method}
+                {shell.excludeFromContext ? " · not in context" : ""}
+              </span>
+            )}
             <ModelPicker
               controller={controller}
               model={model}

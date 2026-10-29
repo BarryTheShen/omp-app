@@ -1,0 +1,94 @@
+import { X } from "lucide-react";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import type { ShellRunView } from "./rows";
+import type { ChatNotice } from "./store";
+
+// Terminal colour and cursor codes; the box shows the text without them.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the escape character is the point
+const ANSI = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+
+/** A `!` or `$` run as Tern's run box: the command, what it printed, and how it ended; a running command has Stop. */
+export function ShellBlock({
+  run,
+  onStop,
+}: {
+  readonly run: ShellRunView;
+  readonly onStop: () => Promise<void>;
+}): ReactNode {
+  const output = run.output.replace(ANSI, "").trimEnd();
+  const ending = run.running
+    ? "running…"
+    : run.cancelled
+      ? "cancelled"
+      : run.exitCode === undefined
+        ? "ended"
+        : `exit ${run.exitCode}`;
+  const failed = !run.running && !run.cancelled && run.exitCode !== undefined && run.exitCode !== 0;
+  return (
+    <figure
+      aria-label={`${run.method === "bash" ? "Shell" : "Python"} run: ${run.input}`}
+      className="overflow-hidden rounded-lg border border-l2 bg-(--code-bg) font-mono text-xs"
+    >
+      <figcaption className="flex items-center gap-2 border-b border-l2 px-3 py-1.5">
+        <span className="text-t3">{run.method === "bash" ? "$" : ">>>"}</span>
+        <span className="min-w-0 flex-1 truncate text-t1">{run.input}</span>
+        {run.excludeFromContext && <span className="shrink-0 text-t3">not in context</span>}
+      </figcaption>
+      {output !== "" && (
+        <pre className="max-h-72 overflow-auto px-3 py-2 whitespace-pre-wrap break-words text-t2">
+          {output}
+        </pre>
+      )}
+      <div
+        className={`flex items-center gap-2 px-3 py-1 ${failed ? "text-bad-ink" : "text-t3"} ${
+          output === "" ? "" : "border-t border-l2"
+        }`}
+      >
+        <span>{ending}</span>
+        {run.truncated && <span>· output cut short</span>}
+        {/* omp can stop a running `!` command; a `$` run has no stop in omp's host. */}
+        {run.running && run.method === "bash" && (
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label="Stop the command"
+            className="ml-auto h-5 px-1.5 font-sans text-t2"
+            onClick={() => void onStop()}
+          >
+            Stop
+          </Button>
+        )}
+      </div>
+    </figure>
+  );
+}
+
+/** What a built-in command printed, kept until it is dismissed. */
+export function NoticeRow({
+  notice,
+  onDismiss,
+}: {
+  readonly notice: ChatNotice;
+  readonly onDismiss: (id: number) => void;
+}): ReactNode {
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2 rounded-lg border border-l2 bg-raise px-3 py-2"
+    >
+      <pre className="min-w-0 flex-1 font-mono text-xs whitespace-pre-wrap break-words text-t2">
+        {notice.text}
+      </pre>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Dismiss"
+        className="text-t3"
+        onClick={() => onDismiss(notice.id)}
+      >
+        <X />
+      </Button>
+    </div>
+  );
+}

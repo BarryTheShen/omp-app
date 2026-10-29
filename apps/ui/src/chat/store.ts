@@ -22,6 +22,21 @@ export interface ChatActivity {
   readonly label: string;
 }
 
+/** A `!` or `$` run while omp runs it; once it ends, the transcript holds it with omp's result. */
+export interface ChatShellRun {
+  readonly method: "bash" | "python";
+  readonly input: string;
+  readonly startedAt: number;
+  /** `!!` or `$$`: omp keeps the run out of the model's context (known for the runs this browser started). */
+  readonly excludeFromContext: boolean;
+}
+
+/** What one of omp's built-in commands printed (`/session`, `/usage`, …): shown in this browser only, as omp's TUI does. */
+export interface ChatNotice {
+  readonly id: number;
+  readonly text: string;
+}
+
 /** What a chat pane draws: the props of collab-web's transcript, plus the chat's own state. */
 export interface ChatSnapshot {
   readonly entries: readonly SessionEntry[];
@@ -43,6 +58,8 @@ export interface ChatSnapshot {
   readonly activity: ChatActivity | null;
   /** The dialogs omp waits on (approvals, questions), oldest first. */
   readonly requests: readonly HostDialogRequest[];
+  readonly shell: ChatShellRun | null;
+  readonly notices: readonly ChatNotice[];
 }
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
@@ -61,6 +78,8 @@ const EMPTY: ChatSnapshot = {
   queue: NO_QUEUE,
   activity: null,
   requests: [],
+  shell: null,
+  notices: [],
 };
 
 type MessageUpdate = Extract<ChatEvent, { type: "message_update" }>;
@@ -123,6 +142,10 @@ export class ChatStore {
   #compacting = false;
   #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
   #requests: readonly HostDialogRequest[] = [];
+  #shell: ChatShellRun | null = null;
+  /** Commands and code this browser sent with `!!` or `$$`, until omp starts them. */
+  readonly #excluded = new Set<string>();
+  #notices: readonly ChatNotice[] = [];
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -205,6 +228,16 @@ export class ChatStore {
     this.#publish();
   }
 
+  dismissNotice(id: number): void {
+    this.#notices = this.#notices.filter((notice) => notice.id !== id);
+    this.#publish();
+  }
+
+  /** A run this browser is about to send, so its box can say whether omp keeps it out of context. */
+  expectShell(input: string, excludeFromContext: boolean): void {
+    if (excludeFromContext) this.#excluded.add(input);
+  }
+
   apply(payload: ChatSessionEvent): void {
     switch (payload.kind) {
       case "event":
@@ -226,6 +259,28 @@ export class ChatStore {
           this.#retry = null;
           // A process that has ended waits on nothing.
           this.#requests = [];
+        }
+        break;
+      case "shell":
+        if (payload.status === "running") {
+          this.#shell = {
+            method: payload.method,
+            input: payload.input,
+            startedAt: payload.startedAt,
+            excludeFromContext: this.#excluded.delete(payload.input),
+          };
+        } else {
+          const excluded =
+            this.#shell?.startedAt === payload.startedAt
+              ? this.#shell.excludeFromContext
+              : this.#excluded.delete(payload.input);
+          this.#shell = null;
+          // omp's result is the run as omp records it; a new chat's file is not written until omp's first reply.
+          if (payload.result !== undefined)
+            this.#appendShellRun(payload.method, payload.input, payload.startedAt, {
+              ...payload.result,
+              excludeFromContext: excluded,
+            });
         }
         break;
       default:
@@ -325,6 +380,12 @@ export class ChatStore {
         // omp closed the dialog itself (its signal aborted or its timeout passed).
         this.#requests = this.#requests.filter((open) => open.id !== event.requestId);
         return false;
+      case "command_output":
+        this.#notices = [
+          ...this.#notices,
+          { id: (this.#notices.at(-1)?.id ?? 0) + 1, text: event.text },
+        ];
+        return false;
       default:
         return false;
     }
@@ -344,6 +405,56 @@ export class ChatStore {
       if (this.#keys.has(key)) return;
       this.#keys.add(key);
     }
+    this.#entries = [...this.#entries, entry];
+  }
+
+  /**
+   * Adds an ended run as omp records it (its `bashExecution` or `pythonExecution` message), unless the transcript read
+   * it from the file already: a run replayed from earlier in the server's run.
+   */
+  #appendShellRun(
+    method: "bash" | "python",
+    input: string,
+    startedAt: number,
+    result: {
+      readonly output: string;
+      readonly exitCode: number | undefined;
+      readonly cancelled: boolean;
+      readonly truncated: boolean;
+      readonly excludeFromContext: boolean;
+    },
+  ): void {
+    const role = method === "bash" ? "bashExecution" : "pythonExecution";
+    const saved = this.#entries.some((entry) => {
+      if (entry.type !== "message") return false;
+      const message = entry.message as unknown as Record<string, unknown>;
+      return (
+        message.role === role &&
+        (method === "bash" ? message.command : message.code) === input &&
+        message.output === result.output &&
+        typeof message.timestamp === "number" &&
+        message.timestamp >= startedAt
+      );
+    });
+    if (saved) return;
+    const now = Date.now();
+    const message = {
+      role,
+      ...(method === "bash" ? { command: input } : { code: input }),
+      output: result.output,
+      exitCode: result.exitCode,
+      cancelled: result.cancelled,
+      truncated: result.truncated,
+      excludeFromContext: result.excludeFromContext,
+      timestamp: now,
+    };
+    const entry = {
+      type: "message",
+      id: `live-shell-${startedAt}`,
+      parentId: this.#entries.at(-1)?.id ?? null,
+      timestamp: new Date(now).toISOString(),
+      message,
+    } as unknown as SessionEntry;
     this.#entries = [...this.#entries, entry];
   }
 
@@ -401,6 +512,8 @@ export class ChatStore {
       queue: this.#queue,
       activity,
       requests: this.#requests,
+      shell: this.#shell,
+      notices: this.#notices,
     };
     for (const listener of this.#listeners) listener();
   }

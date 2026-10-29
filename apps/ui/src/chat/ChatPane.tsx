@@ -2,17 +2,19 @@ import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } 
 import { Composer } from "./Composer";
 import type { ChatController } from "./controller";
 import { HostRequests } from "./HostRequests";
-import { type FailureActions, TranscriptList } from "./TranscriptList";
+import { type RowActions, TranscriptList } from "./TranscriptList";
 
 export function ChatPane({ controller }: { readonly controller: ChatController }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const loadOlder = useCallback(() => void controller.loadOlder(), [controller]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const actions = useMemo<FailureActions>(
+  const actions = useMemo<RowActions>(
     () => ({
       // omp's own `/retry`: the last failed turn, again.
       onRetry: () => controller.send("/retry"),
       onSwitchModel: () => setModelPickerOpen(true),
+      onStopShell: () => controller.stopShell(),
+      onDismissNotice: (id) => controller.store.dismissNotice(id),
     }),
     [controller],
   );

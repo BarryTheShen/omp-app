@@ -34,7 +34,7 @@ export function FailureRow({
     >
       <span className="text-xs font-medium text-bad-ink">The request failed</span>
       <p
-        className={`text-[0.8125rem] whitespace-pre-wrap break-words text-t1 ${long && !whole ? "line-clamp-4" : ""}`}
+        className={`max-w-[75ch] text-[0.8125rem] whitespace-pre-wrap break-words text-t1 ${long && !whole ? "line-clamp-4" : ""}`}
       >
         {error}
       </p>

@@ -1,6 +1,18 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
-import type { ChatSnapshot } from "./store";
+import type { ChatNotice, ChatSnapshot } from "./store";
+
+/** A `!` (bash) or `$` (Python) run: the command, what it printed and how it ended; `running` while omp runs it. */
+export interface ShellRunView {
+  readonly method: "bash" | "python";
+  readonly input: string;
+  readonly output: string;
+  readonly exitCode: number | undefined;
+  readonly cancelled: boolean;
+  readonly truncated: boolean;
+  readonly excludeFromContext: boolean;
+  readonly running: boolean;
+}
 
 /**
  * One item of the transcript list: an entry collab-web draws, a failed request, the reply being written, running tools,
@@ -27,7 +39,27 @@ export type TranscriptRow =
       readonly tools: readonly ActiveTool[];
       readonly first: boolean;
     }
-  | { readonly kind: "working"; readonly key: string };
+  | { readonly kind: "working"; readonly key: string }
+  | { readonly kind: "shell"; readonly key: string; readonly run: ShellRunView }
+  | { readonly kind: "notice"; readonly key: string; readonly notice: ChatNotice };
+
+/** A `!` or `$` run omp saved in the session (its `bashExecution` and `pythonExecution` messages). */
+function savedShellRun(entry: SessionEntry): ShellRunView | null {
+  if (entry.type !== "message") return null;
+  const message = entry.message as unknown as Record<string, unknown> & { readonly role: string };
+  if (message.role !== "bashExecution" && message.role !== "pythonExecution") return null;
+  const input = message.role === "bashExecution" ? message.command : message.code;
+  return {
+    method: message.role === "bashExecution" ? "bash" : "python",
+    input: typeof input === "string" ? input : "",
+    output: typeof message.output === "string" ? message.output : "",
+    exitCode: typeof message.exitCode === "number" ? message.exitCode : undefined,
+    cancelled: message.cancelled === true,
+    truncated: message.truncated === true,
+    excludeFromContext: message.excludeFromContext === true,
+    running: false,
+  };
+}
 
 /** A reply that ended in an error, with what omp said about it. */
 function failure(entry: SessionEntry): { readonly error: string; readonly empty: boolean } | null {
@@ -84,7 +116,10 @@ export function toolResults(
 }
 
 export function buildRows(
-  snapshot: Pick<ChatSnapshot, "entries" | "stream" | "streamDone" | "activeTools" | "working">,
+  snapshot: Pick<
+    ChatSnapshot,
+    "entries" | "stream" | "streamDone" | "activeTools" | "working" | "shell" | "notices"
+  >,
 ): readonly TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   const seen = new Map<string, number>();
@@ -101,6 +136,11 @@ export function buildRows(
     const role = entry.type === "message" ? entry.message.role : null;
     if (role === "user" || (role === "assistant" && failed === null)) lastFailure = null;
     const base = entryKey(entry);
+    const run = savedShellRun(entry);
+    if (run !== null) {
+      rows.push({ kind: "shell", key: base, run });
+      continue;
+    }
     if (drawn(entry)) {
       const count = seen.get(base) ?? 0;
       seen.set(base, count + 1);
@@ -138,5 +178,23 @@ export function buildRows(
   if (snapshot.working && stream === null && snapshot.activeTools.size === 0) {
     rows.push({ kind: "working", key: "live:working" });
   }
+  if (snapshot.shell !== null) {
+    rows.push({
+      kind: "shell",
+      key: "live:shell",
+      run: {
+        method: snapshot.shell.method,
+        input: snapshot.shell.input,
+        output: "",
+        exitCode: undefined,
+        cancelled: false,
+        truncated: false,
+        excludeFromContext: snapshot.shell.excludeFromContext,
+        running: true,
+      },
+    });
+  }
+  for (const notice of snapshot.notices)
+    rows.push({ kind: "notice", key: `notice:${notice.id}`, notice });
   return rows;
 }

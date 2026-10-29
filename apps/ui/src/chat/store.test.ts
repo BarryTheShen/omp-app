@@ -274,6 +274,64 @@ describe("ChatStore", () => {
     vi.runAllTimers();
     expect(store.getSnapshot().activity).toBe(writing);
   });
+
+  test("a `!` run shows running, then ends with omp's result, also before the chat's file exists", () => {
+    const store = new ChatStore();
+    const shell = (status: "running" | "ended", result?: Record<string, unknown>) =>
+      ({
+        kind: "shell",
+        method: "bash",
+        input: "echo hi",
+        status,
+        startedAt: T,
+        ...(result === undefined ? {} : { result }),
+      }) as unknown as ChatSessionEvent;
+    store.expectShell("echo hi", true);
+    store.apply(shell("running"));
+    expect(store.getSnapshot().shell).toMatchObject({ input: "echo hi", excludeFromContext: true });
+
+    store.apply(
+      shell("ended", { output: "hi\n", exitCode: 0, cancelled: false, truncated: false }),
+    );
+    const { shell: running, entries } = store.getSnapshot();
+    expect(running).toBeNull();
+    expect(entries.map((entry) => entry.type === "message" && entry.message)).toEqual([
+      expect.objectContaining({
+        role: "bashExecution",
+        command: "echo hi",
+        output: "hi\n",
+        exitCode: 0,
+        excludeFromContext: true,
+      }),
+    ]);
+  });
+
+  test("an ended run the file already holds is not added again (a replay of the server's earlier events)", () => {
+    const store = new ChatStore();
+    store.setWindow(
+      [
+        fileEntry("b1", {
+          role: "bashExecution",
+          command: "ls",
+          output: "a.ts\n",
+          exitCode: 0,
+          cancelled: false,
+          truncated: false,
+          timestamp: T + 900,
+        }),
+      ],
+      false,
+    );
+    store.apply({
+      kind: "shell",
+      method: "bash",
+      input: "ls",
+      status: "ended",
+      startedAt: T,
+      result: { output: "a.ts\n", exitCode: 0, cancelled: false, truncated: false },
+    } as unknown as ChatSessionEvent);
+    expect(store.getSnapshot().entries.map((entry) => entry.id)).toEqual(["b1"]);
+  });
 });
 
 describe("applyDelta", () => {

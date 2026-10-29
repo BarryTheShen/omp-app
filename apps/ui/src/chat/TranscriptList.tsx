@@ -12,6 +12,7 @@ import {
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import { FailureRow } from "./FailureRow";
 import { buildRows, type TranscriptRow, toolResults } from "./rows";
+import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
 
 /** A first guess at a row's height; every row is measured once drawn. */
@@ -29,13 +30,13 @@ export function TranscriptList({
 }: {
   readonly snapshot: ChatSnapshot;
   readonly onNearTop: () => void;
-  readonly actions: FailureActions;
+  readonly actions: RowActions;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { entries, stream, streamDone, activeTools, working, hasOlder } = snapshot;
+  const { entries, stream, streamDone, activeTools, working, hasOlder, shell, notices } = snapshot;
   const rows = useMemo(
-    () => buildRows({ entries, stream, streamDone, activeTools, working }),
-    [entries, stream, streamDone, activeTools, working],
+    () => buildRows({ entries, stream, streamDone, activeTools, working, shell, notices }),
+    [entries, stream, streamDone, activeTools, working, shell, notices],
   );
   const results = useMemo(() => toolResults(entries), [entries]);
   const virtualizer = useVirtualizer({
@@ -99,10 +100,12 @@ export function TranscriptList({
   );
 }
 
-/** What a failed request offers: try the last turn again, or pick another model for it. */
-export interface FailureActions {
+/** What rows offer: a failed request's Retry and Switch model, stopping a `!` command, dismissing a notice. */
+export interface RowActions {
   readonly onRetry: () => Promise<void>;
   readonly onSwitchModel: () => void;
+  readonly onStopShell: () => Promise<void>;
+  readonly onDismissNotice: (id: number) => void;
 }
 
 function RowView({
@@ -114,7 +117,7 @@ function RowView({
   readonly row: TranscriptRow;
   readonly results: ReadonlyMap<string, ToolResultMessage>;
   readonly active: ReadonlyMap<string, ActiveTool>;
-  readonly actions: FailureActions;
+  readonly actions: RowActions;
 }): ReactNode {
   switch (row.kind) {
     case "entry":
@@ -161,6 +164,18 @@ function RowView({
       return (
         <Row kind="assistant" gutter="agent">
           <div className="tr-shimmer">thinking…</div>
+        </Row>
+      );
+    case "shell":
+      return (
+        <Row kind="assistant" gutter="">
+          <ShellBlock run={row.run} onStop={actions.onStopShell} />
+        </Row>
+      );
+    case "notice":
+      return (
+        <Row kind="assistant" gutter="">
+          <NoticeRow notice={row.notice} onDismiss={actions.onDismissNotice} />
         </Row>
       );
   }

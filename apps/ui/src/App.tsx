@@ -60,7 +60,7 @@ export function App(): ReactNode {
       setController(null);
       return;
     }
-    const next = new ChatController(connection.client, target);
+    const next = new ChatController(connection.client, target, connection.folder);
     setController(next);
     void next.open();
     return () => {

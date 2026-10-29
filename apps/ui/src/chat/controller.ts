@@ -1,16 +1,20 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  AppFailure,
   type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
   type EntryId,
+  type FileSearchCandidate,
+  FileSearchPort,
   type FolderPath,
   type SessionFilePath,
   SessionFileStore,
   type ThreadId,
 } from "@omp-app/contracts";
 import {
+  type ChatHostCommand,
   type ChatHostMethod,
   type ChatHostMethodMap,
   type HostDialogAnswer,
@@ -19,6 +23,7 @@ import {
 } from "@omp-app/contracts/chat-host";
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, toChatModel } from "./store";
+import type { ShellRun } from "./triggers";
 
 /** The first window read from a session file: enough for the newest screens, small enough to parse at once. */
 const FIRST_WINDOW_BYTES = 512 * 1024;
@@ -46,19 +51,23 @@ export class ChatController {
   #disposed = false;
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
+  #commands: Promise<readonly ChatHostCommand[]> | null = null;
   readonly #stopResync: () => void;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
+  /** The folder the chat works in: `@` mentions search it. */
+  private readonly folder: FolderPath;
 
-  constructor(client: AppClient, target: ChatTarget) {
+  constructor(client: AppClient, target: ChatTarget, folder: FolderPath) {
     this.client = client;
     this.target = target;
+    this.folder = folder;
     this.#threadId = target.kind === "existing" ? target.threadId : null;
     this.#sessionFile = target.kind === "existing" ? target.sessionFile : null;
     this.#draft = target.kind === "existing" ? new ChatDraft(client, target.threadId) : null;
     // A gap in the event stream: the file holds what was missed.
     this.#stopResync = client.onResync((event) => {
-      if (event.stream === this.#subscription?.stream) void this.#reloadWindow();
+      if (event.stream === this.#subscription?.stream) this.#refreshWindow();
     });
   }
 
@@ -153,6 +162,40 @@ export class ChatController {
     this.store.removeRequest(id);
   }
 
+  /** omp's `/` commands for this chat, read once and then kept current by omp's `available_commands`. */
+  commands(): Promise<readonly ChatHostCommand[]> {
+    if (this.#commands === null) {
+      const read = this.#request("get_available_commands", {}).then((result) => result.commands);
+      // A failed read is tried again next time.
+      read.catch(() => {
+        if (this.#commands === read) this.#commands = null;
+      });
+      this.#commands = read;
+    }
+    return this.#commands;
+  }
+
+  /** Files and folders of the chat's folder that match an `@` mention. */
+  async searchFiles(query: string): Promise<readonly FileSearchCandidate[]> {
+    const found = await this.client
+      .port(FileSearchPort)
+      .search({ folder: this.folder, query, limit: 30 });
+    return found.results;
+  }
+
+  /** A `!` or `$` run: omp runs it and records it in the chat; its start and end, with omp's result, come as events. */
+  async runShell(run: ShellRun): Promise<void> {
+    this.store.expectShell(run.input, run.excludeFromContext);
+    const excluded = run.excludeFromContext ? { excludeFromContext: true } : {};
+    if (run.method === "bash") await this.#request("bash", { command: run.input, ...excluded });
+    else await this.#request("python", { code: run.input, ...excluded });
+  }
+
+  /** Stops the running `!` command; omp records it as cancelled. */
+  async stopShell(): Promise<void> {
+    await this.#request("abort_bash", {});
+  }
+
   /** Reads the next older window of the session file into the transcript. */
   async loadOlder(): Promise<void> {
     const sessionFile = this.#sessionFile;
@@ -206,8 +249,18 @@ export class ChatController {
     }
     if (payload.kind !== "event") return;
     // A finished turn is read back from the file, so every entry shows with omp's own id.
-    if (payload.event.type === "agent_end") void this.#reloadWindow();
+    if (payload.event.type === "agent_end") this.#refreshWindow();
     if (payload.event.type === "model_changed") void this.#refreshState();
+    if (payload.event.type === "available_commands")
+      this.#commands = Promise.resolve(payload.event.commands);
+  }
+
+  /** Reads the newest window again after omp wrote to the file; a new chat's file waits for omp's first reply. */
+  #refreshWindow(): void {
+    this.#reloadWindow().catch((error: unknown) => {
+      if (error instanceof AppFailure && error.appError.code === "not_found") return;
+      throw error;
+    });
   }
 
   async #reloadWindow(): Promise<void> {

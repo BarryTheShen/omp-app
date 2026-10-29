@@ -20,6 +20,8 @@ const idle = {
   streamDone: false,
   activeTools: new Map<string, ActiveTool>(),
   working: false,
+  shell: null,
+  notices: [],
 };
 
 describe("buildRows", () => {
@@ -132,5 +134,40 @@ describe("buildRows", () => {
     expect(rows.map((row) => (row.kind === "failure" ? `failure ${row.error}` : row.kind))).toEqual(
       ["entry", "failure The request failed."],
     );
+  });
+
+  test("a saved `!` run is a run box with its command, output and exit; a run in progress follows the rest", () => {
+    const rows = buildRows({
+      ...idle,
+      shell: { method: "python", input: "print(2)", startedAt: T, excludeFromContext: false },
+      notices: [{ id: 1, text: "Session: 12 messages" }],
+      entries: [
+        message("b", {
+          role: "bashExecution",
+          command: "ls",
+          output: "a.ts\n",
+          exitCode: 0,
+          cancelled: false,
+          truncated: false,
+          excludeFromContext: true,
+          timestamp: T,
+        }),
+      ],
+    });
+    expect(rows.map((row) => row.kind)).toEqual(["shell", "shell", "notice"]);
+    const [saved, live] = rows;
+    expect(saved?.kind === "shell" ? saved.run : null).toMatchObject({
+      method: "bash",
+      input: "ls",
+      output: "a.ts\n",
+      exitCode: 0,
+      excludeFromContext: true,
+      running: false,
+    });
+    expect(live?.kind === "shell" ? live.run : null).toMatchObject({
+      method: "python",
+      input: "print(2)",
+      running: true,
+    });
   });
 });
