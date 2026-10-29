@@ -14,6 +14,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import { ConnectionBanner } from "./ConnectionBanner";
 import type { ChatTarget } from "./chat/controller";
+import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
@@ -125,6 +126,7 @@ function Shell({
         view={view}
         hidden={phone && showChat}
         onOpen={openChat}
+        onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
       />
       <main
         className={cn(

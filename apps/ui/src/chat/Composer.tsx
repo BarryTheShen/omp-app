@@ -152,11 +152,19 @@ export const Composer = memo(function Composer({
     boxRef.current?.focus();
   }, [restore]);
 
+  /** Enter pressed before the chat was ready: it is sent once the chat is (a new chat takes typing at once). */
+  const [waitingToSend, setWaitingToSend] = useState<"auto" | "followUp" | null>(null);
+
   const send = (mode: "auto" | "followUp"): void => {
     const sent = textRef.current;
     const value = sent.trim();
     const images = attachmentsRef.current;
-    if ((value.length === 0 && images.length === 0) || disabled || sending) return;
+    if ((value.length === 0 && images.length === 0) || sending) return;
+    if (disabled) {
+      setWaitingToSend(mode);
+      return;
+    }
+    setWaitingToSend(null);
     const run = shellRun(value);
     if (run !== null && run.input === "") return;
     setSending(true);
@@ -181,6 +189,11 @@ export const Composer = memo(function Composer({
       .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`))
       .finally(() => setSending(false));
   };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sends once, when the chat becomes ready
+  useEffect(() => {
+    if (!disabled && waitingToSend !== null) send(waitingToSend);
+  }, [disabled]);
 
   const stop = (): void => {
     controller
@@ -436,10 +449,10 @@ export const Composer = memo(function Composer({
               />
             )}
             <span
-              className="min-w-0 flex-1 truncate px-1 text-right text-xs text-bad-ink"
+              className={`min-w-0 flex-1 truncate px-1 text-right text-xs ${error === null ? "text-t3" : "text-bad-ink"}`}
               role="status"
             >
-              {error}
+              {error ?? (waitingToSend !== null && disabled ? "Sends once the chat is open" : null)}
             </span>
             {working ? (
               <Tooltip>

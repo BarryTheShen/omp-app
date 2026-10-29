@@ -25,9 +25,10 @@ import {
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
+import { cachedWindow, keepWindow } from "./windowCache";
 
 /** The first window read from a session file: enough for the newest screens, small enough to parse at once. */
-const FIRST_WINDOW_BYTES = 512 * 1024;
+export const FIRST_WINDOW_BYTES = 512 * 1024;
 const OLDER_WINDOW_BYTES = 1024 * 1024;
 
 export type ChatTarget =
@@ -55,6 +56,8 @@ export class ChatController {
    * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
    */
   #leaf: string | null | undefined = undefined;
+  /** Whether the file's window has been read: what this browser kept is shown only until then. */
+  #windowRead = false;
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
@@ -97,7 +100,15 @@ export class ChatController {
   }
 
   async open(): Promise<void> {
-    if (this.#sessionFile !== null) await this.#reloadWindow();
+    if (this.#sessionFile !== null) {
+      // A chat opened before shows what this browser kept of it at once; the file's window replaces it when it comes.
+      const fromFile = this.#reloadWindow();
+      const threadId = this.#threadId;
+      const kept = threadId === null ? undefined : await cachedWindow(threadId);
+      if (kept !== undefined && !this.#windowRead && !this.#disposed)
+        this.store.setWindow(kept.entries, kept.hasOlder);
+      await fromFile;
+    }
     const chat = this.client.port(ChatSessionPort);
     const opened = await chat.open(
       this.target.kind === "existing"
@@ -314,7 +325,12 @@ export class ChatController {
       byteBudget: FIRST_WINDOW_BYTES,
     });
     if (this.#disposed) return;
-    this.store.setWindow(window.entries as unknown as SessionEntry[], window.hasOlder);
+    const entries = window.entries as unknown as SessionEntry[];
+    this.store.setWindow(entries, window.hasOlder);
+    this.#windowRead = true;
+    // The branch the file ends on is what opening the chat shows next time (not a branch an edit went back to).
+    if (this.#leaf === undefined && this.#threadId !== null)
+      keepWindow(this.#threadId, { entries, hasOlder: window.hasOlder });
   }
 
   async dispose(): Promise<void> {

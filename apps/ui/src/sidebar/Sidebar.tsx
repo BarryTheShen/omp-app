@@ -1,12 +1,15 @@
 import type { FolderPath, SessionFile, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
 import { Pin, PinOff, Search, SquarePen } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatTarget } from "../chat/controller";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import type { WorkspaceView } from "../workspace/Workspace";
 import type { ChatList } from "./useChatList";
+
+/** How long the pointer rests on a chat before it is read ahead. */
+const PREFETCH_REST_MS = 120;
 
 type ChatState = "waiting" | "running" | null;
 
@@ -24,6 +27,7 @@ export function Sidebar({
   view,
   hidden,
   onOpen,
+  onPrefetch,
 }: {
   readonly folder: FolderPath;
   readonly list: ChatList;
@@ -31,6 +35,8 @@ export function Sidebar({
   /** On a phone while a chat is shown. */
   readonly hidden: boolean;
   readonly onOpen: (target: ChatTarget, where: "here" | "split") => void;
+  /** The pointer rests on a chat: read it ahead, so opening it shows it at once. */
+  readonly onPrefetch: (session: SessionFile) => void;
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
@@ -58,6 +64,7 @@ export function Sidebar({
       onOpen={(where) =>
         onOpen({ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }, where)
       }
+      onPrefetch={() => onPrefetch(session)}
       onPin={() => {
         setPinError(null);
         list
@@ -133,6 +140,7 @@ function ChatRow({
   focused,
   pinned,
   onOpen,
+  onPrefetch,
   onPin,
 }: {
   readonly title: string;
@@ -141,15 +149,24 @@ function ChatRow({
   readonly focused: boolean;
   readonly pinned: boolean;
   readonly onOpen: (where: "here" | "split") => void;
+  readonly onPrefetch: () => void;
   readonly onPin: () => void;
 }): ReactNode {
+  // A pointer passing over the list reads nothing; one that rests on a row a moment reads that chat ahead.
+  const resting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const said = [
     title,
     state === "waiting" ? "waiting for you" : state === "running" ? "running" : null,
     open ? "open in a pane" : null,
   ].filter((part) => part !== null);
   return (
-    <li className="group/row flex items-center rounded-md hover:bg-l1 has-[[aria-current=true]]:bg-l2">
+    <li
+      className="group/row flex items-center rounded-md hover:bg-l1 has-[[aria-current=true]]:bg-l2"
+      onPointerEnter={() => {
+        resting.current = setTimeout(onPrefetch, PREFETCH_REST_MS);
+      }}
+      onPointerLeave={() => clearTimeout(resting.current)}
+    >
       <button
         type="button"
         className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-[current=true]:text-t1 max-sm:h-11"
