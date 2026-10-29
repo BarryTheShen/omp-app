@@ -20,20 +20,18 @@ export function AgentsPill({
 }): ReactNode {
   if (total === 0) return null;
   return (
-    <div className="flex px-1 pb-2">
-      <button
-        type="button"
-        className="flex h-6 items-center gap-1.5 rounded-full border border-l2 px-2.5 text-xs text-t2 outline-none hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring"
-        aria-keyshortcuts="Alt+A"
-        onClick={onOpen}
-      >
-        {running > 0 ? (
-          <span className="size-1.5 shrink-0 rounded-full bg-live" aria-hidden />
-        ) : (
-          <Bot className="size-3.5" aria-hidden />
-        )}
-        {agentsSaid(running, total)}
-      </button>
-    </div>
+    <button
+      type="button"
+      className="flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-l2 px-2.5 text-xs text-t2 outline-none hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring"
+      aria-keyshortcuts="Alt+A"
+      onClick={onOpen}
+    >
+      {running > 0 ? (
+        <span className="size-1.5 shrink-0 rounded-full bg-live" aria-hidden />
+      ) : (
+        <Bot className="size-3.5" aria-hidden />
+      )}
+      {agentsSaid(running, total)}
+    </button>
   );
 }

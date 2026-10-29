@@ -155,6 +155,7 @@ export function ChatPane({
         agentsRunning={agentsRunning}
         agentsTotal={snapshot.agents.length}
         onOpenAgents={openAgents}
+        todos={snapshot.todos}
       />
       {hub !== null && (
         <AgentHub

@@ -1,9 +1,10 @@
-import type { ChatHostImage } from "@omp-app/contracts/chat-host";
+import type { ChatHostImage, ChatHostState } from "@omp-app/contracts/chat-host";
 import { ArrowUp, Brain, Square, X } from "lucide-react";
 import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentsPill } from "../agents/AgentsPill";
+import { TodoPill } from "../todos/TodoPill";
 import { type Attachment, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
@@ -61,6 +62,7 @@ export const Composer = memo(function Composer({
   agentsRunning,
   agentsTotal,
   onOpenAgents,
+  todos,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -85,6 +87,8 @@ export const Composer = memo(function Composer({
   readonly agentsRunning: number;
   readonly agentsTotal: number;
   readonly onOpenAgents: () => void;
+  /** omp's todo list for the chat, phase by phase; a pill above the box shows it. */
+  readonly todos: ChatHostState["todoPhases"];
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -352,7 +356,12 @@ export const Composer = memo(function Composer({
       <div className="mx-auto max-w-[720px]">
         {activity !== null && <WorkingRow activity={activity} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
-        <AgentsPill running={agentsRunning} total={agentsTotal} onOpen={onOpenAgents} />
+        {(agentsTotal > 0 || todos.some((phase) => phase.tasks.length > 0)) && (
+          <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">
+            <TodoPill phases={todos} />
+            <AgentsPill running={agentsRunning} total={agentsTotal} onOpen={onOpenAgents} />
+          </div>
+        )}
         <form
           className={`relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
           onSubmit={(event) => {

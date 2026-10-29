@@ -355,6 +355,8 @@ export class ChatController {
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") this.#refreshWindow();
     if (payload.event.type === "model_changed") void this.#refreshState();
+    // omp cleared finished todos on its own; the list it kept comes with the state.
+    if (payload.event.type === "todo_auto_clear") this.#refreshState().catch(() => undefined);
     if (payload.event.type === "available_commands")
       this.#commands = Promise.resolve(payload.event.commands);
   }

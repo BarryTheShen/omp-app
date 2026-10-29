@@ -71,6 +71,8 @@ export interface ChatSnapshot {
   readonly notices: readonly ChatNotice[];
   /** The chat's subagents as omp's roster keeps them, in the order they were started. */
   readonly agents: readonly SubagentSnapshot[];
+  /** omp's todo list, phase by phase; empty while the chat has none. */
+  readonly todos: ChatHostState["todoPhases"];
 }
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
@@ -92,6 +94,7 @@ const EMPTY: ChatSnapshot = {
   shell: null,
   notices: [],
   agents: [],
+  todos: [],
 };
 
 /** A transcript to draw that is not a live chat (a subagent's, in the Agent Hub): its entries, and whether it runs. */
@@ -176,6 +179,7 @@ export class ChatStore {
   #notices: readonly ChatNotice[] = [];
   #agents: ReadonlyMap<string, SubagentSnapshot> = new Map();
   #agentList: readonly SubagentSnapshot[] = [];
+  #todos: ChatHostState["todoPhases"] = [];
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -218,11 +222,15 @@ export class ChatStore {
     this.#publish();
   }
 
-  /** The chat's state as `get_state` read it: its model, thinking level and queue. */
-  setState(state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages">): void {
+  /** The chat's state as `get_state` read it: its model, thinking level, queue and (when given) todo list. */
+  setState(
+    state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages"> &
+      Partial<Pick<ChatHostState, "todoPhases">>,
+  ): void {
     this.#model = state.model === undefined ? null : toChatModel(state.model);
     this.#thinkingLevel = state.thinkingLevel ?? null;
     this.#queue = takeBackable(state.queuedMessages);
+    if (state.todoPhases !== undefined) this.#todos = state.todoPhases;
     this.#publish();
   }
 
@@ -398,6 +406,13 @@ export class ChatStore {
         const next = new Map(this.#activeTools);
         next.delete(event.toolCallId);
         this.#activeTools = next;
+        // omp's todo tool answers every change with the whole list.
+        if (event.toolName === "todo" && event.isError !== true) {
+          const phases = (
+            event.result as { readonly details?: { readonly phases?: unknown } } | undefined
+          )?.details?.phases;
+          if (Array.isArray(phases)) this.#todos = phases as ChatHostState["todoPhases"];
+        }
         return false;
       }
       case "agent_start":
@@ -613,6 +628,7 @@ export class ChatStore {
       shell: this.#shell,
       notices: this.#notices,
       agents: this.#agentList,
+      todos: this.#todos,
     };
     for (const listener of this.#listeners) listener();
   }

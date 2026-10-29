@@ -345,6 +345,41 @@ describe("ChatStore", () => {
     expect(first?.progress?.tokens).toBe(15);
   });
 
+  test("the todo list is the state's at first, then what each todo result says; a failed todo call leaves it", () => {
+    const store = new ChatStore();
+    const board = (status: string) => [
+      {
+        name: "Plan",
+        tasks: [
+          { content: "Write the thing", status },
+          { content: "Test the thing", status: "pending" },
+        ],
+      },
+    ];
+    store.setState({
+      queuedMessages: { steering: [], followUp: [] },
+      todoPhases: board("pending"),
+    } as never);
+    expect(store.getSnapshot().todos[0]?.tasks[0]?.status).toBe("pending");
+
+    const end = (toolName: string, phases: unknown, isError = false) =>
+      event({
+        type: "tool_execution_end",
+        toolCallId: `call-${toolName}-${String(isError)}`,
+        toolName,
+        isError,
+        result: { content: [], details: { phases } },
+      });
+    store.apply(end("todo", board("completed")));
+    expect(store.getSnapshot().todos[0]?.tasks[0]?.status).toBe("completed");
+    store.apply(end("todo", board("abandoned"), true));
+    store.apply(end("bash", board("abandoned")));
+    expect(store.getSnapshot().todos[0]?.tasks[0]?.status).toBe("completed");
+    // A state read without a todo list leaves the one shown.
+    store.setState({ queuedMessages: { steering: [], followUp: [] } } as never);
+    expect(store.getSnapshot().todos).toHaveLength(1);
+  });
+
   test("the working row keeps its object while its line is unchanged, so streaming frames do not redraw it", () => {
     const store = new ChatStore();
     store.apply(event({ type: "agent_start" }));
