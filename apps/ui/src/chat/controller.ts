@@ -1,6 +1,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
+  type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
   type EntryId,
@@ -9,7 +10,9 @@ import {
   SessionFileStore,
   type ThreadId,
 } from "@omp-app/contracts";
-import { ChatStore } from "./store";
+import type { ChatHostMethod, ChatHostMethodMap, QueueName } from "@omp-app/contracts/chat-host";
+import { ChatDraft } from "./drafts";
+import { type ChatModel, ChatStore, toChatModel } from "./store";
 
 /** The first window read from a session file: enough for the newest screens, small enough to parse at once. */
 const FIRST_WINDOW_BYTES = 512 * 1024;
@@ -33,6 +36,7 @@ export class ChatController {
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;
   #loadingOlder = false;
+  #draft: ChatDraft | null;
   #disposed = false;
   readonly #stopResync: () => void;
   private readonly client: AppClient;
@@ -43,10 +47,16 @@ export class ChatController {
     this.target = target;
     this.#threadId = target.kind === "existing" ? target.threadId : null;
     this.#sessionFile = target.kind === "existing" ? target.sessionFile : null;
+    this.#draft = target.kind === "existing" ? new ChatDraft(client, target.threadId) : null;
     // A gap in the event stream: the file holds what was missed.
     this.#stopResync = client.onResync((event) => {
       if (event.stream === this.#subscription?.stream) void this.#reloadWindow();
     });
+  }
+
+  /** The chat's unsent text; null until a new chat has its id. */
+  get draft(): ChatDraft | null {
+    return this.#draft;
   }
 
   get threadId(): ThreadId | null {
@@ -63,6 +73,7 @@ export class ChatController {
     );
     if (this.#disposed) return;
     this.#threadId = opened.threadId;
+    this.#draft ??= new ChatDraft(this.client, opened.threadId);
     this.#sessionFile = opened.sessionFile;
     this.#subscription = await this.client.subscribe(ChatSessionPort, "event", {
       scope: opened.threadId,
@@ -74,28 +85,49 @@ export class ChatController {
       return;
     }
     await chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" });
+    await this.#refreshState();
     this.store.setPhase("live");
   }
 
   /** Sends a message: a new prompt, or while omp works, a steer (`followUp` queues it behind the turn). */
   async send(text: string, mode: "auto" | "followUp" = "auto"): Promise<void> {
-    const threadId = this.#threadId;
-    if (threadId === null) throw new Error("The chat is not open yet.");
     const working = this.store.getSnapshot().working;
-    await this.client.port(ChatSessionPort).request({
-      threadId,
-      method: "prompt",
-      params: {
-        text,
-        ...(working ? { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } : {}),
-      },
+    await this.#request("prompt", {
+      text,
+      ...(working ? { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } : {}),
     });
   }
 
-  async stop(): Promise<void> {
-    const threadId = this.#threadId;
-    if (threadId === null) return;
-    await this.client.port(ChatSessionPort).request({ threadId, method: "abort", params: {} });
+  /** Stops the reply as omp's Escape does: every queued message comes back, in order, for the message box. */
+  async stop(): Promise<readonly string[]> {
+    if (this.#threadId === null) return [];
+    const restored = await this.#request("abort_and_restore_queue", {});
+    return [...restored.steering, ...restored.followUp].map((message) => message.text);
+  }
+
+  /** Takes a queued message back out of its queue; null when omp already delivered it. */
+  async takeQueued(message: string, queue: QueueName): Promise<string | null> {
+    const result = await this.#request("remove_queued_message", { message, queue });
+    return result.removed ? result.text : null;
+  }
+
+  async models(): Promise<readonly ChatModel[]> {
+    const { models } = await this.#request("get_available_models", {});
+    return models.map(toChatModel);
+  }
+
+  async setModel(model: ChatModel): Promise<void> {
+    const chosen = await this.#request("set_model", {
+      provider: model.provider,
+      modelId: model.id,
+    });
+    this.store.setModel(toChatModel(chosen));
+  }
+
+  /** The next thinking level omp offers for the model. */
+  async cycleThinking(): Promise<void> {
+    const result = await this.#request("cycle_thinking_level", {});
+    if (result !== null) this.store.setThinkingLevel(result.level);
   }
 
   /** Reads the next older window of the session file into the transcript. */
@@ -122,14 +154,32 @@ export class ChatController {
     }
   }
 
+  #request<M extends ChatHostMethod>(
+    method: M,
+    params: ChatHostMethodMap[M]["params"],
+  ): Promise<ChatHostMethodMap[M]["result"]> {
+    const threadId = this.#threadId;
+    if (threadId === null) return Promise.reject(new Error("The chat is not open yet."));
+    // The port's generic client types `request` as unknown; `ChatSessionClient` types it by method.
+    const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
+    return chat.request({ threadId, method, params });
+  }
+
+  async #refreshState(): Promise<void> {
+    const state = await this.#request("get_state", {});
+    if (!this.#disposed) this.store.setState(state);
+  }
+
   #onEvent(payload: ChatSessionEvent): void {
     if (payload.kind === "moved") {
       this.#threadId = payload.threadId;
       this.#sessionFile = payload.sessionFile;
     }
     this.store.apply(payload);
+    if (payload.kind !== "event") return;
     // A finished turn is read back from the file, so every entry shows with omp's own id.
-    if (payload.kind === "event" && payload.event.type === "agent_end") void this.#reloadWindow();
+    if (payload.event.type === "agent_end") void this.#reloadWindow();
+    if (payload.event.type === "model_changed") void this.#refreshState();
   }
 
   async #reloadWindow(): Promise<void> {
@@ -146,6 +196,7 @@ export class ChatController {
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#stopResync();
+    this.#draft?.dispose();
     this.store.dispose();
     await this.#subscription?.unsubscribe();
   }

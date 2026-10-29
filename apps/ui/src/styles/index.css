@@ -67,6 +67,9 @@
   --color-warn: var(--warn);
   --color-bad: var(--bad);
   --color-live: var(--live);
+  --color-ok-ink: var(--ok-ink);
+  --color-warn-ink: var(--warn-ink);
+  --color-bad-ink: var(--bad-ink);
 
   --font-sans: var(--sans);
   --font-mono: var(--mono);
@@ -95,6 +98,11 @@
 
   body {
     @apply bg-page font-sans text-sm text-foreground antialiased;
+  }
+
+  /* Tailwind's reset draws placeholders at half the text colour, which is too faint on some fills. */
+  ::placeholder {
+    color: var(--t3);
   }
 
   @media (prefers-reduced-motion: reduce) {

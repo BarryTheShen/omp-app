@@ -155,6 +155,125 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().entries.map((entry) => entry.id)).toEqual(["e1", "e2", "e3"]);
     expect(store.getSnapshot().hasOlder).toBe(false);
   });
+
+  test("the queue shows only messages that can still be taken back: steers already sent into the reply drop out", () => {
+    const store = new ChatStore();
+    store.apply(
+      event({
+        type: "queue_update",
+        steering: ["already sent", "check the tests too"],
+        followUp: ["then write the docs"],
+        liveSteered: 1,
+      }),
+    );
+    expect(store.getSnapshot().queue).toEqual({
+      steering: ["check the tests too"],
+      followUp: ["then write the docs"],
+    });
+    store.apply(event({ type: "queue_update", steering: [], followUp: [], liveSteered: 0 }));
+    expect(store.getSnapshot().queue).toEqual({ steering: [], followUp: [] });
+  });
+
+  test("the thinking level shows the level chosen, not the one `auto` resolved to", () => {
+    const store = new ChatStore();
+    store.apply(event({ type: "thinking_level_changed", thinkingLevel: "high" }));
+    expect(store.getSnapshot().thinkingLevel).toBe("high");
+    store.apply(
+      event({ type: "thinking_level_changed", thinkingLevel: "medium", configured: "auto" }),
+    );
+    expect(store.getSnapshot().thinkingLevel).toBe("auto");
+  });
+
+  test("the working row names the most specific step: compaction, a retry, a tool's intent, thinking, writing", () => {
+    const store = new ChatStore();
+    const label = () => store.getSnapshot().activity?.label;
+    expect(store.getSnapshot().activity).toBeNull();
+    store.apply(event({ type: "agent_start" }));
+    expect(label()).toBe("Working");
+    const since = store.getSnapshot().activity?.since;
+
+    store.apply(event({ type: "message_start", messageId: "m", message: assistant([]) }));
+    store.apply(
+      event({
+        type: "message_update",
+        messageId: "m",
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "thinking_start", contentIndex: 0 },
+      }),
+    );
+    vi.runAllTimers();
+    expect(label()).toBe("Thinking");
+
+    store.apply(
+      event({
+        type: "tool_execution_start",
+        toolCallId: "c1",
+        toolName: "read",
+        args: {},
+        intent: "Reading the parser",
+      }),
+    );
+    expect(label()).toBe("Reading the parser");
+    store.apply(
+      event({ type: "tool_execution_start", toolCallId: "c2", toolName: "bash", args: {} }),
+    );
+    expect(label()).toBe("Running bash");
+
+    store.apply(
+      event({
+        type: "auto_retry_start",
+        attempt: 2,
+        maxAttempts: 3,
+        delayMs: 50,
+        errorMessage: "x",
+      }),
+    );
+    expect(label()).toBe("Retrying, attempt 2 of 3");
+    store.apply(
+      event({ type: "auto_compaction_start", reason: "threshold", action: "context-full" }),
+    );
+    expect(label()).toBe("Compacting the chat");
+    // The time counts from the start of the turn, whatever the step.
+    expect(store.getSnapshot().activity?.since).toBe(since);
+
+    store.apply(
+      event({
+        type: "auto_compaction_end",
+        action: "context-full",
+        aborted: false,
+        willRetry: false,
+      }),
+    );
+    store.apply(event({ type: "agent_end", messages: [] }));
+    expect(store.getSnapshot().activity).toBeNull();
+  });
+
+  test("the working row keeps its object while its line is unchanged, so streaming frames do not redraw it", () => {
+    const store = new ChatStore();
+    store.apply(event({ type: "agent_start" }));
+    store.apply(event({ type: "message_start", messageId: "m", message: assistant([]) }));
+    store.apply(
+      event({
+        type: "message_update",
+        messageId: "m",
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "text_start", contentIndex: 0 },
+      }),
+    );
+    vi.runAllTimers();
+    const writing = store.getSnapshot().activity;
+    expect(writing?.label).toBe("Writing");
+    store.apply(
+      event({
+        type: "message_update",
+        messageId: "m",
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "more" },
+      }),
+    );
+    vi.runAllTimers();
+    expect(store.getSnapshot().activity).toBe(writing);
+  });
 });
 
 describe("applyDelta", () => {

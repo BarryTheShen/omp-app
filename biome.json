@@ -13,6 +13,12 @@
     {
       "includes": ["apps/web/public/favicon.svg", "apps/ui/public/favicon.svg"],
       "linter": { "rules": { "a11y": { "noSvgWithoutTitle": "off" } } }
+    },
+    {
+      "includes": ["apps/ui/src/components/ui/input-group.tsx"],
+      "linter": {
+        "rules": { "a11y": { "useSemanticElements": "off", "useKeyWithClickEvents": "off" } }
+      }
     }
   ]
 }

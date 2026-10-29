@@ -6,7 +6,8 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   test: {
-    environment: "jsdom",
+    // The unit tests cover stores, rows and themes, none of which needs a DOM.
+    environment: "node",
     // Vitest hands every stylesheet over empty; the contrast test reads the theme file's text.
     css: { include: [/themes\.css/] },
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],

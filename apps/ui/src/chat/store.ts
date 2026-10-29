@@ -1,7 +1,26 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ChatSessionEvent, ProcessStatus } from "@omp-app/contracts";
-import type { ChatEvent } from "@omp-app/contracts/chat-host";
+import type { ChatEvent, ChatHostState } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
+
+/** The chat's model, as the message box names it. */
+export interface ChatModel {
+  readonly provider: string;
+  readonly id: string;
+  readonly name: string;
+}
+
+/** Messages waiting in omp's two queues that can still be taken back (not yet sent into the reply). */
+export interface ChatQueue {
+  readonly steering: readonly string[];
+  readonly followUp: readonly string[];
+}
+
+/** What omp is doing, for the working row above the message box. */
+export interface ChatActivity {
+  readonly since: number;
+  readonly label: string;
+}
 
 /** What a chat pane draws: the props of collab-web's transcript, plus the chat's own state. */
 export interface ChatSnapshot {
@@ -16,7 +35,15 @@ export interface ChatSnapshot {
   readonly process: ProcessStatus | null;
   /** Whether the session file holds entries older than the first one shown. */
   readonly hasOlder: boolean;
+  readonly model: ChatModel | null;
+  /** omp's thinking level for the chat; null when the model has none. */
+  readonly thinkingLevel: string | null;
+  readonly queue: ChatQueue;
+  /** Null while omp is idle. */
+  readonly activity: ChatActivity | null;
 }
+
+const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
 
 const EMPTY: ChatSnapshot = {
   entries: [],
@@ -27,6 +54,10 @@ const EMPTY: ChatSnapshot = {
   phase: "connecting",
   process: null,
   hasOlder: false,
+  model: null,
+  thinkingLevel: null,
+  queue: NO_QUEUE,
+  activity: null,
 };
 
 type MessageUpdate = Extract<ChatEvent, { type: "message_update" }>;
@@ -49,6 +80,20 @@ function scheduleFrame(callback: () => void): () => void {
   return () => clearTimeout(timer);
 }
 
+/** The queue as omp reports it, without the steering messages already sent into the reply. */
+function takeBackable(queue: {
+  readonly steering: readonly string[];
+  readonly followUp: readonly string[];
+  readonly liveSteered: number;
+}): ChatQueue {
+  if (queue.steering.length === 0 && queue.followUp.length === 0) return NO_QUEUE;
+  return { steering: queue.steering.slice(queue.liveSteered), followUp: queue.followUp };
+}
+
+export function toChatModel(model: NonNullable<ChatHostState["model"]>): ChatModel {
+  return { provider: model.provider, id: model.id, name: model.name };
+}
+
 /**
  * One chat's live state, read by React through `subscribe` and `getSnapshot` (`useSyncExternalStore`). Events apply at
  * once; streaming updates (`message_update`, `tool_execution_update`) publish at most once per animation frame, and
@@ -68,6 +113,12 @@ export class ChatStore {
   #working = false;
   #phase: ConnectionPhase = "connecting";
   #process: ProcessStatus | null = null;
+  #model: ChatModel | null = null;
+  #thinkingLevel: string | null = null;
+  #queue: ChatQueue = NO_QUEUE;
+  #workingSince = 0;
+  #compacting = false;
+  #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -110,6 +161,24 @@ export class ChatStore {
     this.#publish();
   }
 
+  /** The chat's state as `get_state` read it: its model, thinking level and queue. */
+  setState(state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages">): void {
+    this.#model = state.model === undefined ? null : toChatModel(state.model);
+    this.#thinkingLevel = state.thinkingLevel ?? null;
+    this.#queue = takeBackable(state.queuedMessages);
+    this.#publish();
+  }
+
+  setModel(model: ChatModel): void {
+    this.#model = model;
+    this.#publish();
+  }
+
+  setThinkingLevel(level: string | null): void {
+    this.#thinkingLevel = level;
+    this.#publish();
+  }
+
   apply(payload: ChatSessionEvent): void {
     switch (payload.kind) {
       case "event":
@@ -127,6 +196,8 @@ export class ChatStore {
         ) {
           this.#working = false;
           this.#activeTools = new Map();
+          this.#compacting = false;
+          this.#retry = null;
         }
         break;
       default:
@@ -196,10 +267,31 @@ export class ChatStore {
       }
       case "agent_start":
         this.#working = true;
+        this.#workingSince = Date.now();
         return false;
       case "agent_end":
         this.#working = false;
         this.#activeTools = new Map();
+        this.#retry = null;
+        return false;
+      case "thinking_level_changed":
+        this.#thinkingLevel = event.configured ?? event.thinkingLevel ?? null;
+        return false;
+      case "queue_update":
+        this.#queue = takeBackable(event);
+        return false;
+      case "auto_compaction_start":
+        this.#compacting = true;
+        if (!this.#working) this.#workingSince = Date.now();
+        return false;
+      case "auto_compaction_end":
+        this.#compacting = false;
+        return false;
+      case "auto_retry_start":
+        this.#retry = { attempt: event.attempt, maxAttempts: event.maxAttempts };
+        return false;
+      case "auto_retry_end":
+        this.#retry = null;
         return false;
       default:
         return false;
@@ -223,6 +315,20 @@ export class ChatStore {
     this.#entries = [...this.#entries, entry];
   }
 
+  /** The working row's line: the step omp is on, most specific first. */
+  #activityLabel(): string {
+    if (this.#compacting) return "Compacting the chat";
+    if (this.#retry !== null)
+      return `Retrying, attempt ${this.#retry.attempt} of ${this.#retry.maxAttempts}`;
+    let tool: ActiveTool | undefined;
+    for (const candidate of this.#activeTools.values()) tool = candidate;
+    if (tool !== undefined) return tool.intent ?? `Running ${tool.toolName}`;
+    const last = this.#stream?.content.at(-1);
+    if (last?.type === "thinking") return "Thinking";
+    if (last?.type === "text") return "Writing";
+    return "Working";
+  }
+
   #publishSoon(): void {
     if (this.#cancelFrame !== null) return;
     this.#cancelFrame = scheduleFrame(() => {
@@ -240,6 +346,15 @@ export class ChatStore {
   }
 
   #commit(): void {
+    const previous = this.#snapshot.activity;
+    let activity: ChatActivity | null = null;
+    if (this.#working || this.#compacting) {
+      const label = this.#activityLabel();
+      activity =
+        previous?.since === this.#workingSince && previous.label === label
+          ? previous
+          : { since: this.#workingSince, label };
+    }
     this.#snapshot = {
       entries: this.#entries,
       stream: this.#stream,
@@ -249,6 +364,10 @@ export class ChatStore {
       phase: this.#phase,
       process: this.#process,
       hasOlder: this.#hasOlder,
+      model: this.#model,
+      thinkingLevel: this.#thinkingLevel,
+      queue: this.#queue,
+      activity,
     };
     for (const listener of this.#listeners) listener();
   }
