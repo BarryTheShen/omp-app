@@ -1,7 +1,8 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FoldContext } from "../../lib/fold";
 import type { ActiveTool, ConnectionPhase } from "../../lib/types";
 import { fmtTokens } from "../../lib/format";
 import type { ToolRenderHost } from "../../tool-render";
@@ -65,10 +66,15 @@ export function Row({
 }
 
 function ThinkingBlock({ text, redacted }: { text: string; redacted?: boolean }): ReactNode {
-	const [open, setOpen] = useState(false);
+	// omp-app: a pane's Ctrl+T shows or hides every thinking block; one drawn later starts as the last request said.
+	const fold = useContext(FoldContext).thinking;
+	const [open, setOpen] = useState(fold.epoch > 0 && fold.open);
+	useEffect(() => {
+		if (fold.epoch > 0) setOpen(fold.open);
+	}, [fold.epoch, fold.open]);
 	return (
 		<div className="tr-think">
-			<button type="button" className="tr-think-head" onClick={() => setOpen(v => !v)}>
+			<button type="button" className="tr-think-head" aria-expanded={open} onClick={() => setOpen(v => !v)}>
 				<ChevronRight size={11} className={`tr-chev${open ? " tr-chev--open" : ""}`} />
 				thinking{redacted ? " · redacted" : ""}
 			</button>

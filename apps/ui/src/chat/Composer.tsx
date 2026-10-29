@@ -47,6 +47,8 @@ export const Composer = memo(function Composer({
   modelPickerOpen,
   onModelPickerOpenChange,
   restore,
+  history,
+  approval,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -59,6 +61,10 @@ export const Composer = memo(function Composer({
   readonly onModelPickerOpenChange: (open: boolean) => void;
   /** A message Edit brought back: its text goes in front of what the box holds, its images join the box's. */
   readonly restore: ComposerRestore | null;
+  /** What was sent in this chat, oldest first, for Up and Down. */
+  readonly history: readonly string[];
+  /** The approval omp waits on, if any: Ctrl+Enter approves it once and Esc denies it. */
+  readonly approval: string | null;
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -72,6 +78,8 @@ export const Composer = memo(function Composer({
   const draft = controller.draft;
   const menu = useComposerMenu(controller, text, caret);
   const shell = shellRun(text);
+  /** Where Up and Down are in the history, and what the box held before; null while not going through it. */
+  const browsing = useRef<{ readonly index: number; readonly kept: string } | null>(null);
 
   const attach = (next: readonly Attachment[]): void => {
     attachmentsRef.current = next;
@@ -175,6 +183,38 @@ export const Composer = memo(function Composer({
     requestAnimationFrame(() => boxRef.current?.setSelectionRange(next.caret, next.caret));
   };
 
+  /** Up on the first line goes back through what was sent, Down on the last line forward, back to what was typed. */
+  const browse = (step: 1 | -1, box: HTMLTextAreaElement): boolean => {
+    const value = textRef.current;
+    if (box.selectionStart !== box.selectionEnd) return false;
+    const before = value.slice(0, box.selectionStart);
+    if (step < 0 ? before.includes("\n") : value.slice(box.selectionStart).includes("\n"))
+      return false;
+    const at = browsing.current;
+    if (at === null && (step > 0 || history.length === 0)) return false;
+    const kept = at?.kept ?? value;
+    const index = (at?.index ?? history.length) + step;
+    if (index < 0) return true;
+    if (index >= history.length) {
+      browsing.current = null;
+      update(kept);
+    } else {
+      browsing.current = { index, kept };
+      update(history[index] as string);
+    }
+    requestAnimationFrame(() => {
+      const end = textRef.current.length;
+      boxRef.current?.setSelectionRange(end, end);
+    });
+    return true;
+  };
+
+  const answerApproval = (id: string, answer: "once" | "deny"): void => {
+    controller
+      .answer(id, answer)
+      .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`));
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.nativeEvent.isComposing) return;
     if (menu.menu !== null) {
@@ -195,14 +235,64 @@ export const Composer = memo(function Composer({
         return;
       }
     }
+    const modified = event.ctrlKey || event.metaKey;
+    // An approval waits: Ctrl+Enter approves it once, Esc denies it.
+    if (approval !== null && event.key === "Enter" && modified && !event.shiftKey) {
+      event.preventDefault();
+      answerApproval(approval, "once");
+      return;
+    }
+    if (approval !== null && event.key === "Escape") {
+      event.preventDefault();
+      answerApproval(approval, "deny");
+      return;
+    }
     if (event.key === "Escape" && working) {
       event.preventDefault();
       stop();
       return;
     }
+    if (event.key === "Tab" && event.shiftKey && !modified && !event.altKey) {
+      event.preventDefault();
+      controller
+        .cycleThinking()
+        .catch((failure: unknown) => setError(`Could not change it: ${errorText(failure)}`));
+      return;
+    }
+    if (event.altKey && !modified && !event.shiftKey) {
+      if (event.code === "KeyP") {
+        event.preventDefault();
+        onModelPickerOpenChange(true);
+        return;
+      }
+      if (event.code === "KeyR" && !working) {
+        event.preventDefault();
+        // omp's own `/retry`: the last failed turn, again.
+        controller
+          .send("/retry")
+          .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        const last = queue.followUp.at(-1);
+        if (last !== undefined) takeBack(last, "followUp");
+        else {
+          const steer = queue.steering.at(-1);
+          if (steer !== undefined) takeBack(steer, "steering");
+        }
+        return;
+      }
+    }
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !modified && !event.altKey) {
+      if (!event.shiftKey && browse(event.key === "ArrowUp" ? -1 : 1, event.currentTarget)) {
+        event.preventDefault();
+        return;
+      }
+    }
     if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    send(event.ctrlKey || event.metaKey ? "followUp" : "auto");
+    send(modified ? "followUp" : "auto");
   };
 
   return (
@@ -279,6 +369,8 @@ export const Composer = memo(function Composer({
             rows={2}
             onChange={(event) => {
               setError(null);
+              // Typing makes what is in the box the text, wherever Up and Down had got to.
+              browsing.current = null;
               update(event.target.value);
               setCaret(event.target.selectionStart);
             }}

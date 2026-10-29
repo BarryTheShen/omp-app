@@ -210,7 +210,17 @@ function Approval({
           </Button>
         ))}
       </fieldset>
+      <p className="text-xs text-t3">
+        From the message box: <Keycap>Ctrl</Keycap> <Keycap>Enter</Keycap>{" "}
+        {grants.length > 0 ? "approves once" : "approves"}, <Keycap>Esc</Keycap> denies.
+      </p>
     </>
+  );
+}
+
+function Keycap({ children }: { readonly children: ReactNode }): ReactNode {
+  return (
+    <kbd className="rounded-sm border border-l2 px-1 font-mono text-[11px] text-t2">{children}</kbd>
   );
 }
 

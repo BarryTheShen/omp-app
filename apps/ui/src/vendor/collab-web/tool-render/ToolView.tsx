@@ -4,7 +4,8 @@
  */
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { FoldContext } from "../lib/fold";
 import { resolveToolRenderer } from "./registry";
 import type { ToolRenderHost, ToolRenderProps, ToolResultLike } from "./types";
 import { isRecord, replaceTabs, stripAnsi } from "./util";
@@ -50,7 +51,12 @@ function executeXdevDispatch(props: ToolViewProps): XdevDispatch | null {
 }
 
 export function ToolView(props: ToolViewProps): ReactNode {
-	const [open, setOpen] = useState(props.defaultOpen ?? false);
+	// omp-app: a pane's Ctrl+O opens or folds every card; a card drawn later starts as the last request said.
+	const fold = useContext(FoldContext).tools;
+	const [open, setOpen] = useState(fold.epoch > 0 ? fold.open : (props.defaultOpen ?? false));
+	useEffect(() => {
+		if (fold.epoch > 0) setOpen(fold.open);
+	}, [fold.epoch, fold.open]);
 	const xdev = executeXdevDispatch(props);
 	const { args, intent: argIntent } = normalizeArgs(props.args);
 	const intent = props.intent?.trim() || argIntent;

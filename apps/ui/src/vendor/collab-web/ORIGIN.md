@@ -7,3 +7,4 @@
   1. `components/transcript/Transcript.tsx` imports `ActiveTool` and `ConnectionPhase` from `lib/types.ts` (written here, copied from collab-web's `lib/client.ts`), because the guest client itself is not vendored.
   2. `tool-render/index.ts` no longer re-exports `./element` (the `<omp-tool-view>` web component is not used).
   3. `components/transcript/Transcript.tsx` exports `Row`, `AssistantBody` and `EntryRow`. omp-app draws these rows in its own list (`src/chat/TranscriptList.tsx`, on TanStack Virtual); collab-web's `Transcript` component and its scroll code are not used.
+  4. `tool-render/ToolView.tsx` and `components/transcript/Transcript.tsx` (`ThinkingBlock`) follow `FoldContext` from `lib/fold.ts` (written here): a pane opens or folds every tool card (Ctrl+O) or thinking block (Ctrl+T) at once, and a card drawn later starts as the last request said. The thinking block's button says whether it is open (`aria-expanded`), as the tool card's does.
