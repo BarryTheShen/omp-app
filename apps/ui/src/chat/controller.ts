@@ -10,7 +10,13 @@ import {
   SessionFileStore,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { ChatHostMethod, ChatHostMethodMap, QueueName } from "@omp-app/contracts/chat-host";
+import {
+  type ChatHostMethod,
+  type ChatHostMethodMap,
+  type HostDialogAnswer,
+  isHostDialogRequest,
+  type QueueName,
+} from "@omp-app/contracts/chat-host";
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, toChatModel } from "./store";
 
@@ -38,6 +44,8 @@ export class ChatController {
   #loadingOlder = false;
   #draft: ChatDraft | null;
   #disposed = false;
+  /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
+  #live = false;
   readonly #stopResync: () => void;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
@@ -84,8 +92,15 @@ export class ChatController {
       await this.#subscription.unsubscribe();
       return;
     }
+    this.#live = true;
     await chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" });
+    // omp's ask tool then sends all its questions in one request, with their checkboxes and typed answers; without
+    // it, omp asks each question as a plain choice, which still works.
+    await this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined);
     await this.#refreshState();
+    const open = await chat.openRequests({ threadId: opened.threadId });
+    if (this.#disposed) return;
+    this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
     this.store.setPhase("live");
   }
 
@@ -128,6 +143,14 @@ export class ChatController {
   async cycleThinking(): Promise<void> {
     const result = await this.#request("cycle_thinking_level", {});
     if (result !== null) this.store.setThinkingLevel(result.level);
+  }
+
+  /** Answers a dialog omp waits on (an approval, a question). */
+  async answer(id: string, answer: HostDialogAnswer): Promise<void> {
+    const threadId = this.#threadId;
+    if (threadId === null) throw new Error("The chat is not open yet.");
+    await this.client.port(ChatSessionPort).answer({ threadId, id, answer });
+    this.store.removeRequest(id);
   }
 
   /** Reads the next older window of the session file into the transcript. */
@@ -176,6 +199,11 @@ export class ChatController {
       this.#sessionFile = payload.sessionFile;
     }
     this.store.apply(payload);
+    if (payload.kind === "host_request") {
+      if (this.#live && isHostDialogRequest(payload.request))
+        this.store.addRequest(payload.request);
+      return;
+    }
     if (payload.kind !== "event") return;
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") void this.#reloadWindow();

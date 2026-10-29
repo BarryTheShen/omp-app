@@ -1,6 +1,6 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ChatSessionEvent, ProcessStatus } from "@omp-app/contracts";
-import type { ChatEvent, ChatHostState } from "@omp-app/contracts/chat-host";
+import type { ChatEvent, ChatHostState, HostDialogRequest } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
 
 /** The chat's model, as the message box names it. */
@@ -41,6 +41,8 @@ export interface ChatSnapshot {
   readonly queue: ChatQueue;
   /** Null while omp is idle. */
   readonly activity: ChatActivity | null;
+  /** The dialogs omp waits on (approvals, questions), oldest first. */
+  readonly requests: readonly HostDialogRequest[];
 }
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
@@ -58,6 +60,7 @@ const EMPTY: ChatSnapshot = {
   thinkingLevel: null,
   queue: NO_QUEUE,
   activity: null,
+  requests: [],
 };
 
 type MessageUpdate = Extract<ChatEvent, { type: "message_update" }>;
@@ -119,6 +122,7 @@ export class ChatStore {
   #workingSince = 0;
   #compacting = false;
   #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
+  #requests: readonly HostDialogRequest[] = [];
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -179,6 +183,28 @@ export class ChatStore {
     this.#publish();
   }
 
+  /**
+   * The dialogs the server still holds open when the chat opens (a replayed history cannot tell them from answered
+   * ones), followed by any that arrived live since.
+   */
+  restoreRequests(open: readonly HostDialogRequest[]): void {
+    const ids = new Set(open.map((request) => request.id));
+    this.#requests = [...open, ...this.#requests.filter((request) => !ids.has(request.id))];
+    this.#publish();
+  }
+
+  addRequest(request: HostDialogRequest): void {
+    if (this.#requests.some((open) => open.id === request.id)) return;
+    this.#requests = [...this.#requests, request];
+    this.#publish();
+  }
+
+  removeRequest(id: string): void {
+    if (!this.#requests.some((open) => open.id === id)) return;
+    this.#requests = this.#requests.filter((open) => open.id !== id);
+    this.#publish();
+  }
+
   apply(payload: ChatSessionEvent): void {
     switch (payload.kind) {
       case "event":
@@ -198,10 +224,12 @@ export class ChatStore {
           this.#activeTools = new Map();
           this.#compacting = false;
           this.#retry = null;
+          // A process that has ended waits on nothing.
+          this.#requests = [];
         }
         break;
       default:
-        // Host requests, shell runs and moves are drawn by later modules.
+        // Host requests come through the controller, which tells live ones from replayed history.
         return;
     }
     this.#publish();
@@ -293,6 +321,10 @@ export class ChatStore {
       case "auto_retry_end":
         this.#retry = null;
         return false;
+      case "ui_cancel":
+        // omp closed the dialog itself (its signal aborted or its timeout passed).
+        this.#requests = this.#requests.filter((open) => open.id !== event.requestId);
+        return false;
       default:
         return false;
     }
@@ -368,6 +400,7 @@ export class ChatStore {
       thinkingLevel: this.#thinkingLevel,
       queue: this.#queue,
       activity,
+      requests: this.#requests,
     };
     for (const listener of this.#listeners) listener();
   }

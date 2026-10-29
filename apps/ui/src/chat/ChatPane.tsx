@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useSyncExternalStore } from "react";
 import { Composer } from "./Composer";
 import type { ChatController } from "./controller";
+import { HostRequests } from "./HostRequests";
 import { TranscriptList } from "./TranscriptList";
 
 export function ChatPane({ controller }: { readonly controller: ChatController }): ReactNode {
@@ -9,6 +10,7 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <TranscriptList snapshot={snapshot} onNearTop={loadOlder} />
+      <HostRequests controller={controller} requests={snapshot.requests} />
       <Composer
         controller={controller}
         working={snapshot.working}
