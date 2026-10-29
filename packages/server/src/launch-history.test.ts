@@ -66,6 +66,14 @@ describe("launch link history", () => {
     ]);
   });
 
+  test("a start with the token of the start before it adds nothing, so a kept link stays one entry", async () => {
+    const dir = await dataFolder();
+    const { logger } = recordingLogger();
+    await openLaunchHistory(dir, logger).remember("kept-token");
+    await openLaunchHistory(dir, logger).remember("kept-token");
+    expect([...openLaunchHistory(dir, logger).earlier]).toEqual([launchTokenDigest("kept-token")]);
+  });
+
   test("keeps only the newest starts, so an older link reads as never printed", async () => {
     const dir = await dataFolder();
     const { logger } = recordingLogger();

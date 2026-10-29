@@ -14,7 +14,7 @@ const DIGEST = /^[0-9a-f]{64}$/;
 export interface LaunchHistory {
   /** Digests of the launch tokens that earlier starts of this data folder printed. */
   readonly earlier: ReadonlySet<string>;
-  /** Records this start's launch token. A file that cannot be written is logged; the app keeps running. */
+  /** Records this start's launch token, once: a start with the token of the start before it adds nothing. A file that cannot be written is logged; the app keeps running. */
   remember(token: string): Promise<void>;
 }
 
@@ -69,7 +69,10 @@ export function openLaunchHistory(dataDir: string, logger: Logger): LaunchHistor
   return {
     earlier: new Set(digests),
     async remember(token) {
-      digests = [...digests, launchTokenDigest(token)].slice(-REMEMBERED_STARTS);
+      const digest = launchTokenDigest(token);
+      // The installed app keeps its token across restarts (`launch-token.ts`), so most starts repeat the last one.
+      if (digests.at(-1) === digest) return;
+      digests = [...digests, digest].slice(-REMEMBERED_STARTS);
       try {
         await writeFileAtomic(join(dataDir, HISTORY_FILE), `${JSON.stringify(digests)}\n`);
       } catch (error) {

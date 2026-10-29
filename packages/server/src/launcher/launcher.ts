@@ -16,6 +16,7 @@ export const USAGE = `Usage: omp-app [folder] [options]
        omp-app tui [folder] [-- omp's options]
        omp-app logs [--lines <n>]
        omp-app debug-report
+       omp-app new-link
 
 Starts the omp app and opens it in your browser. The app runs the omp release it is built for,
 which its package holds.
@@ -31,6 +32,10 @@ omp in the terminal, on the same chats:
                  when you leave it (Ctrl+B, then D) or lose the connection; run it again to go back.
                  omp's own options go after --, for example: omp-app tui -- --resume <chat id>
 
+The app's link (the address with #token=) stays the same when the app restarts:
+  new-link       make a new link, for example when the old one was shared by mistake: the app
+                 prints it when it next starts, and links printed before then stop working
+
 Problems? The app keeps a log of what it does (never your prompts, files or keys):
   logs           print where the log is and its last lines (--lines sets how many, default 100)
   debug-report   write omp-app-debug-<time>.log in this folder, ready to attach to a GitHub issue
@@ -38,7 +43,7 @@ Problems? The app keeps a log of what it does (never your prompts, files or keys
 `;
 
 export type LauncherArgs = {
-  readonly command: "run" | "help" | "version" | "tui" | "logs" | "debug-report";
+  readonly command: "run" | "help" | "version" | "tui" | "logs" | "debug-report" | "new-link";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
@@ -99,7 +104,10 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       }
     } else if (arg.startsWith("-")) {
       return { ok: false, message: `Unknown option ${arg}.` };
-    } else if (index === 0 && (arg === "tui" || arg === "logs" || arg === "debug-report")) {
+    } else if (
+      index === 0 &&
+      (arg === "tui" || arg === "logs" || arg === "debug-report" || arg === "new-link")
+    ) {
       command = arg;
     } else if (folder === undefined) folder = arg;
     else return { ok: false, message: "Only one folder can be given." };
@@ -109,6 +117,12 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       ok: false,
       message: "The tui command takes a folder, then omp's own options after --.",
     };
+  }
+  if (
+    command === "new-link" &&
+    (folder !== undefined || port !== undefined || !open || lines !== undefined)
+  ) {
+    return { ok: false, message: "The new-link command takes no folder or options." };
   }
   return { ok: true, args: { command, folder, port, open, lines, ompArgs } };
 }

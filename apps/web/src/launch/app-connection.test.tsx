@@ -337,9 +337,7 @@ describe("app connection launch gate", () => {
       await screen.findByRole("heading", { name: "This launch link has expired" }),
     ).toBeTruthy();
     expect(screen.getByText("Open the URL the app printed when it last started.")).toBeTruthy();
-    expect(
-      screen.getByText("Start the app again to receive a fresh launch URL, then reload this page."),
-    ).toBeTruthy();
+    expect(screen.getByText("Running omp-app again prints its current link.")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "This launch link is not valid" })).toBeNull();
   });
 

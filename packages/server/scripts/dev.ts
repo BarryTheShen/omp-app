@@ -110,6 +110,11 @@ export interface CompositionServerOptions {
   readonly appDataDir?: string;
   /** The version shown to the browser; the installed app passes its release version. */
   readonly serverVersion?: string;
+  /**
+   * The launch token, the secret in the app's link. The installed command passes the one it keeps across restarts
+   * (`src/launch-token.ts`); without one, every start makes a new one.
+   */
+  readonly token?: string;
   /** How long a chat's omp process lives after the last tab leaves it; the default is 2 minutes. */
   readonly idleCloseMs?: number;
   /** Test/embedding override for the process launch directory surfaced to the browser. */
@@ -586,6 +591,7 @@ export async function createCompositionServer(
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
   const launchHistory = openLaunchHistory(appDataDir, logger);
   const server = createAppServer({
+    ...(options.token === undefined ? {} : { token: options.token }),
     port: options.port,
     instanceId,
     serverVersion,

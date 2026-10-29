@@ -8,6 +8,7 @@ import { existsSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { probeOmp } from "../src/capabilities/omp-version";
+import { keepLaunchToken, launchTokenFile, replaceLaunchToken } from "../src/launch-token";
 import {
   clearInstance,
   DEFAULT_PORT,
@@ -207,6 +208,23 @@ if (args.command === "debug-report") {
   console.log(`Wrote ${target}\n\nAttach this file to your GitHub issue.`);
   process.exit(0);
 }
+if (args.command === "new-link") {
+  try {
+    await replaceLaunchToken(launchTokenFile(logDir));
+  } catch (error) {
+    fail(`could not save a new link: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const running = await readRunningInstance(instanceFile(Bun.env, home), {
+    alive: isAlive,
+    responds,
+  });
+  console.log(
+    running
+      ? "A new link is saved. The app that is running keeps its current link until it restarts: restart it (systemctl --user restart omp-app when it runs as the service, or quit it and run omp-app again). Links printed before then stop working."
+      : "A new link is saved. The app prints it when it next starts, and links printed before then stop working.",
+  );
+  process.exit(0);
+}
 
 const logger = createLogger({ dir: logDir });
 // A crash leaves its stack in the log: both the caught rejections and the exception that ends the app.
@@ -257,6 +275,10 @@ if (port !== 0 && !(await portIsFree(port))) {
 if (chatHost !== undefined && !existsSync(chatHost)) {
   fail(`the app's chat host is missing (${chatHost}). Reinstall the package.`);
 }
+// The link stays the same from one start to the next (`omp-app new-link` replaces it): the token is kept beside the
+// instance record, so a saved link (a bookmark, the desktop window's link to this computer) survives a restart.
+const launchToken = await keepLaunchToken(launchTokenFile(logDir));
+if (!launchToken.kept) logger.warn("launch-token.not-saved", { detail: launchToken.reason });
 let started: StartResult<CompositionServer>;
 try {
   started = await startOrAttach({
@@ -269,6 +291,7 @@ try {
         cwd: folder,
         env: { PATH: searchPath },
         serverVersion: version,
+        token: launchToken.token,
         logger,
       }),
     readRunning,

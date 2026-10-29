@@ -38,6 +38,8 @@ tailscale serve --bg localhost:4317                                # HTTPS on th
 
 `omp-app` then prints a second link, `https://<computer>.<tailnet>.ts.net/#token=…`, that opens the app on another device of your tailnet. Send it to that device privately: whoever has the link can use the app. The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off` (or `tailscale serve reset`, which clears every serve setting of this computer), then unset the variable and restart the app.
 
+Both links stay the same when the app restarts or the computer reboots: the app keeps the secret part (the token after `#token=`) in `~/.local/state/omp-app/launch-token` (or under `$XDG_STATE_HOME`), a file only your account can read. If a link was shared by mistake, `omp-app new-link` makes a new one, which the app prints when it next starts (`systemctl --user restart omp-app` restarts the service); every link printed before then stops working.
+
 The window (`omp-app-desktop`) can open that server from another computer too. Run it once with the link:
 
 ```bash

@@ -260,7 +260,7 @@ function LaunchStatusScreen({
         </p>
         {rejected && (
           <p className="text-muted-foreground text-sm">
-            Start the app again to receive a fresh launch URL, then reload this page.
+            Running omp-app again prints its current link.
           </p>
         )}
         {onRetry ? (

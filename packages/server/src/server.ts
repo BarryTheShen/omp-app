@@ -8,6 +8,7 @@ import {
 
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
 import { launchTokenDigest } from "./launch-history";
+import { newLaunchToken } from "./launch-token";
 import type { Logger } from "./logging";
 import type { PortRegistry } from "./registry/ports";
 import { PORT_REGISTRY } from "./registry/ports";
@@ -154,15 +155,8 @@ function randomId(): string {
   return crypto.randomUUID();
 }
 
-function randomToken(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-}
-
 export function createAppServer(options: AppServerOptions = {}): AppServer {
-  const token = options.token ?? randomToken();
+  const token = options.token ?? newLaunchToken();
   if (token.length === 0) throw new Error("WebSocket token cannot be empty");
   const instanceId = options.instanceId ?? randomId();
   const replay = options.replay ?? new EventReplayHub(options.replayLimit ?? DEFAULT_REPLAY_LIMIT);
