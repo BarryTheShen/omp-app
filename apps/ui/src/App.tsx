@@ -4,6 +4,7 @@ import { cn } from "cn";
 import { ChevronLeft, SquarePen } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConnectionBanner } from "./ConnectionBanner";
 import { ChatPane } from "./chat/ChatPane";
 import { ChatController, type ChatTarget } from "./chat/controller";
 import { connect, readToken } from "./connection";
@@ -85,6 +86,7 @@ export function App(): ReactNode {
       className="grid h-full grid-cols-[244px_minmax(0,1fr)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)] max-sm:grid-cols-1"
       data-app-root="true"
     >
+      <ConnectionBanner client={connection.client} />
       <nav
         aria-label="Chats"
         className={cn("flex min-h-0 flex-col p-2", chatOpen && "max-sm:hidden")}

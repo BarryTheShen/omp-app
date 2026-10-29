@@ -140,7 +140,7 @@ describe("buildRows", () => {
     const rows = buildRows({
       ...idle,
       shell: { method: "python", input: "print(2)", startedAt: T, excludeFromContext: false },
-      notices: [{ id: 1, text: "Session: 12 messages" }],
+      notices: [{ id: 1, text: "Session: 12 messages", level: "output" }],
       entries: [
         message("b", {
           role: "bashExecution",

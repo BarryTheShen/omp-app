@@ -18,9 +18,18 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
     }),
     [controller],
   );
+  const welcome = useMemo(
+    () => (controller.isNew ? { folder: controller.folder } : null),
+    [controller],
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <TranscriptList snapshot={snapshot} onNearTop={loadOlder} actions={actions} />
+      <TranscriptList
+        snapshot={snapshot}
+        onNearTop={loadOlder}
+        actions={actions}
+        welcome={welcome}
+      />
       <HostRequests controller={controller} requests={snapshot.requests} />
       <Composer
         controller={controller}

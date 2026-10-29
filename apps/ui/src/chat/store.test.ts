@@ -248,6 +248,24 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().activity).toBeNull();
   });
 
+  test("a command's output and omp's notifications show as notices until dismissed", () => {
+    const store = new ChatStore();
+    store.apply(event({ type: "command_output", text: "Active tools: bash, read" }));
+    store.apply(event({ type: "ui_notify", message: "No open PRs", notifyType: "warning" }));
+    store.apply(event({ type: "ui_notify", message: "Reloaded" }));
+    expect(store.getSnapshot().notices.map(({ text, level }) => `${level}: ${text}`)).toEqual([
+      "output: Active tools: bash, read",
+      "warning: No open PRs",
+      "info: Reloaded",
+    ]);
+    const [first] = store.getSnapshot().notices;
+    if (first !== undefined) store.dismissNotice(first.id);
+    expect(store.getSnapshot().notices.map((notice) => notice.text)).toEqual([
+      "No open PRs",
+      "Reloaded",
+    ]);
+  });
+
   test("the working row keeps its object while its line is unchanged, so streaming frames do not redraw it", () => {
     const store = new ChatStore();
     store.apply(event({ type: "agent_start" }));

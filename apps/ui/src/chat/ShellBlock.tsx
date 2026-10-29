@@ -64,7 +64,14 @@ export function ShellBlock({
   );
 }
 
-/** What a built-in command printed, kept until it is dismissed. */
+const NOTICE_TEXT: Record<ChatNotice["level"], string> = {
+  output: "font-mono text-xs text-t2",
+  info: "font-sans text-[0.8125rem] text-t1",
+  warning: "font-sans text-[0.8125rem] text-warn-ink",
+  error: "font-sans text-[0.8125rem] text-bad-ink",
+};
+
+/** What a built-in command printed, or omp's notification, kept until it is dismissed. */
 export function NoticeRow({
   notice,
   onDismiss,
@@ -74,10 +81,12 @@ export function NoticeRow({
 }): ReactNode {
   return (
     <div
-      role="status"
+      role={notice.level === "error" ? "alert" : "status"}
       className="flex items-start gap-2 rounded-lg border border-l2 bg-raise px-3 py-2"
     >
-      <pre className="min-w-0 flex-1 font-mono text-xs whitespace-pre-wrap break-words text-t2">
+      <pre
+        className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${NOTICE_TEXT[notice.level]}`}
+      >
         {notice.text}
       </pre>
       <Button

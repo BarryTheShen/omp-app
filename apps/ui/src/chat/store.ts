@@ -31,10 +31,14 @@ export interface ChatShellRun {
   readonly excludeFromContext: boolean;
 }
 
-/** What one of omp's built-in commands printed (`/session`, `/usage`, …): shown in this browser only, as omp's TUI does. */
+/**
+ * What one of omp's built-in commands printed (`/session`, `/usage`, …), or a notification from omp or an extension:
+ * shown in this browser only, as omp's TUI does.
+ */
 export interface ChatNotice {
   readonly id: number;
   readonly text: string;
+  readonly level: "output" | "info" | "warning" | "error";
 }
 
 /** What a chat pane draws: the props of collab-web's transcript, plus the chat's own state. */
@@ -381,14 +385,18 @@ export class ChatStore {
         this.#requests = this.#requests.filter((open) => open.id !== event.requestId);
         return false;
       case "command_output":
-        this.#notices = [
-          ...this.#notices,
-          { id: (this.#notices.at(-1)?.id ?? 0) + 1, text: event.text },
-        ];
+        this.#notify(event.text, "output");
+        return false;
+      case "ui_notify":
+        this.#notify(event.message, event.notifyType ?? "info");
         return false;
       default:
         return false;
     }
+  }
+
+  #notify(text: string, level: ChatNotice["level"]): void {
+    this.#notices = [...this.#notices, { id: (this.#notices.at(-1)?.id ?? 0) + 1, text, level }];
   }
 
   /** Adds a finished message from the live stream, unless the transcript already holds it (read from the file). */

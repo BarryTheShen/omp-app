@@ -55,8 +55,8 @@ export class ChatController {
   readonly #stopResync: () => void;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
-  /** The folder the chat works in: `@` mentions search it. */
-  private readonly folder: FolderPath;
+  /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
+  readonly folder: FolderPath;
 
   constructor(client: AppClient, target: ChatTarget, folder: FolderPath) {
     this.client = client;
@@ -78,6 +78,11 @@ export class ChatController {
 
   get threadId(): ThreadId | null {
     return this.#threadId;
+  }
+
+  /** A chat started here from nothing (New chat), as against a saved one opened again. */
+  get isNew(): boolean {
+    return this.target.kind === "new";
   }
 
   async open(): Promise<void> {

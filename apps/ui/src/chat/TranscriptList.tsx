@@ -27,10 +27,13 @@ export function TranscriptList({
   snapshot,
   onNearTop,
   actions,
+  welcome,
 }: {
   readonly snapshot: ChatSnapshot;
   readonly onNearTop: () => void;
   readonly actions: RowActions;
+  /** A new chat's greeting while it is empty; null for a saved chat, which shows its entries as they load. */
+  readonly welcome: { readonly folder: string } | null;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { entries, stream, streamDone, activeTools, working, hasOlder, shell, notices } = snapshot;
@@ -85,6 +88,7 @@ export function TranscriptList({
           })}
         </div>
       </section>
+      {empty && welcome !== null && <Welcome folder={welcome.folder} />}
       {!empty && !virtualizer.isAtEnd() && (
         <Button
           variant="secondary"
@@ -96,6 +100,39 @@ export function TranscriptList({
           Jump to latest
         </Button>
       )}
+    </div>
+  );
+}
+
+/** The end of a folder's path, which names it: `…/projects/omp-app` for a long one. */
+function folderTail(folder: string): string {
+  const parts = folder.split("/").filter((part) => part !== "");
+  return parts.length <= 2 ? folder : `…/${parts.slice(-2).join("/")}`;
+}
+
+/** A new chat's first screen: where omp will work, and the keys of the message box. */
+function Welcome({ folder }: { readonly folder: string }): ReactNode {
+  const keys: readonly (readonly [string, string])[] = [
+    ["/", "commands"],
+    ["@", "files"],
+    ["!", "shell"],
+    ["Enter", "send"],
+  ];
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-9 opacity-90" />
+      <p className="text-base font-medium text-t1">What are we working on?</p>
+      <p className="max-w-full truncate font-mono text-xs text-t3">{folderTail(folder)}</p>
+      <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-t3">
+        {keys.map(([key, label]) => (
+          <li key={key}>
+            <kbd className="rounded-sm border border-l2 px-1 font-mono text-[11px] text-t2">
+              {key}
+            </kbd>{" "}
+            {label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
