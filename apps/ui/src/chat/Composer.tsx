@@ -46,6 +46,7 @@ export const Composer = memo(function Composer({
   controller,
   working,
   disabled,
+  closed,
   model,
   thinkingLevel,
   queue,
@@ -60,6 +61,8 @@ export const Composer = memo(function Composer({
   readonly controller: ChatController;
   readonly working: boolean;
   readonly disabled: boolean;
+  /** The chat could not be opened: the box says so, and nothing typed waits to be sent. */
+  readonly closed: boolean;
   readonly model: ChatModel | null;
   readonly thinkingLevel: string | null;
   readonly queue: ChatQueue;
@@ -161,7 +164,7 @@ export const Composer = memo(function Composer({
     const images = attachmentsRef.current;
     if ((value.length === 0 && images.length === 0) || sending) return;
     if (disabled) {
-      setWaitingToSend(mode);
+      if (!closed) setWaitingToSend(mode);
       return;
     }
     setWaitingToSend(null);
@@ -405,7 +408,13 @@ export const Composer = memo(function Composer({
             ref={boxRef}
             className="block max-h-[12lh] min-h-[2lh] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[0.875rem] leading-normal text-t1 outline-none [field-sizing:content] placeholder:text-t3"
             aria-label="Message"
-            placeholder={disabled ? "Opening the chat…" : "Message omp"}
+            placeholder={
+              closed
+                ? "This chat could not be opened"
+                : disabled
+                  ? "Opening the chat…"
+                  : "Message omp"
+            }
             value={text}
             rows={2}
             onChange={(event) => {

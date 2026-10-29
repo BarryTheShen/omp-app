@@ -81,6 +81,8 @@ export interface WorkspaceHandle {
   readonly open: (target: ChatTarget, where: "here" | "split") => void;
   readonly command: (id: WorkspaceCommand) => void;
   readonly focused: () => FocusedChat | null;
+  /** A chat was deleted: every pane that showed it gets a new chat. */
+  readonly forget: (threadId: ThreadId) => void;
 }
 
 /** What the workspace shows, for the sidebar: the focused pane's chat, the chats open in panes, and those waiting. */
@@ -336,6 +338,21 @@ export function Workspace({
         });
       },
       command: (id) => commands[id](),
+      forget: (threadId) => {
+        for (const api of apis.current.values()) {
+          for (const panel of api.panels) {
+            const shown = paramsOf(panel.params);
+            if (shown?.target.kind !== "existing" || shown.target.threadId !== threadId) continue;
+            panel.api.updateParameters({
+              chat: crypto.randomUUID(),
+              target: { kind: "new", folder: shown.folder },
+              folder: shown.folder,
+            } satisfies ChatPanelParams);
+            panel.api.setTitle("New chat");
+          }
+        }
+        report();
+      },
       focused: () => {
         const id = apis.current.get(tabsRef.current.active)?.activePanel?.id;
         const controller = id === undefined ? undefined : controllers.get(id);

@@ -41,3 +41,18 @@ export function keepWindow(threadId: string, window: CachedWindow): void {
     })
     .catch(() => undefined);
 }
+
+/** Forgets the window kept for a chat that was deleted. */
+export function forgetWindow(threadId: string): void {
+  writing = writing
+    .then(async () => {
+      await del(`chat:${threadId}`, store);
+      const order = (await get<string[]>(ORDER, store)) ?? [];
+      await set(
+        ORDER,
+        order.filter((id) => id !== threadId),
+        store,
+      );
+    })
+    .catch(() => undefined);
+}

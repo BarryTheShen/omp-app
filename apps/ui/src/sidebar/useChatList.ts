@@ -1,6 +1,7 @@
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
   AppFailure,
+  ChatSessionPort,
   type FolderPath,
   type SessionFile,
   SessionFileStore,
@@ -8,6 +9,7 @@ import {
   type ThreadId,
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { forgetWindow } from "../chat/windowCache";
 
 /** How long a burst of file and turn changes is gathered before the list is read again. */
 const SETTLE_MS = 250;
@@ -19,6 +21,13 @@ export interface ChatList {
   readonly running: ReadonlySet<ThreadId>;
   readonly pinned: ReadonlySet<ThreadId>;
   readonly setPinned: (id: ThreadId, pinned: boolean) => Promise<void>;
+  /** Renames a chat, open or not; the list then shows the title omp saved (it trims and cleans what was typed). */
+  readonly rename: (id: ThreadId, name: string) => Promise<void>;
+  /**
+   * Deletes a chat and its files. The server refuses a chat whose turn runs or that another tab holds, with its own
+   * sentence; this tab's own panes do not count, so a chat may be deleted while one of them shows it.
+   */
+  readonly remove: (session: SessionFile) => Promise<void>;
 }
 
 /** Follows one subscription until the returned function runs; one that fails to start is left alone. */
@@ -55,7 +64,8 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   }>({ ids: new Set(), revision: null });
   const pinsRef = useRef(pins);
   pinsRef.current = pins;
-
+  /** Reads the list again now; a no-op once the folder's list is gone. */
+  const reread = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -77,6 +87,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       timer = setTimeout(() => void read().catch(() => undefined), SETTLE_MS);
     };
     void read().catch(() => undefined);
+    reread.current = read;
     const stops = [
       follow(client.subscribe(SessionFileStore, "changed"), (change) => {
         if (change.folder === folder) soon();
@@ -95,6 +106,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     ];
     return () => {
       active = false;
+      reread.current = async () => undefined;
       clearTimeout(timer);
       for (const stop of stops) stop();
     };
@@ -139,5 +151,25 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     [client, readPins],
   );
 
-  return { sessions, running, pinned: pins.ids, setPinned };
+  const rename = useCallback(
+    async (id: ThreadId, name: string): Promise<void> => {
+      await client.port(ChatSessionPort).rename({ threadId: id, name });
+      await reread.current();
+    },
+    [client],
+  );
+
+  const remove = useCallback(
+    async (session: SessionFile): Promise<void> => {
+      // The chat's own folder is the one whose listing returns its file, so the server checks it there.
+      await client
+        .port(SessionFileStore)
+        .deleteSession({ folder: session.cwd, sessionFile: session.sessionFile });
+      forgetWindow(session.id);
+      await reread.current();
+    },
+    [client],
+  );
+
+  return { sessions, running, pinned: pins.ids, setPinned, rename, remove };
 }

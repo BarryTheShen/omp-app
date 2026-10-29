@@ -103,6 +103,7 @@ export function ChatPane({
         controller={controller}
         working={snapshot.working}
         disabled={snapshot.phase !== "live"}
+        closed={snapshot.phase === "ended"}
         model={snapshot.model}
         thinkingLevel={snapshot.thinkingLevel}
         queue={snapshot.queue}

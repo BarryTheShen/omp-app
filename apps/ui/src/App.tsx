@@ -127,6 +127,7 @@ function Shell({
         hidden={phone && showChat}
         onOpen={openChat}
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
+        onDeleted={(id) => workspace.current?.forget(id)}
       />
       <main
         className={cn(

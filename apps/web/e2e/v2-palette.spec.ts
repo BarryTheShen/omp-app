@@ -75,6 +75,8 @@ realTest.describe("new UI palette", () => {
       await palette(page).getByRole("option", { name: "src/parser.ts" }).click();
       await expect(box(page)).toHaveValue("@src/parser.ts ");
 
+      // The box puts the caret after what came in on the next frame; a select-all before that frame is collapsed by it.
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
       await box(page).fill("");
       await page.keyboard.press("Control+k");
       await search(page).fill("/compact");

@@ -58,6 +58,11 @@ export class ChatController {
   #leaf: string | null | undefined = undefined;
   /** Whether the file's window has been read: what this browser kept is shown only until then. */
   #windowRead = false;
+  /**
+   * Whether this pane's open took a view of the chat: the server counts it until it is closed, and stops omp once nobody
+   * views the chat and its idle time has passed.
+   */
+  #viewTaken = false;
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
@@ -99,7 +104,21 @@ export class ChatController {
     return this.target.kind === "new";
   }
 
+  /** Opens the chat for this pane. A failure is said in the transcript; a pane that went away meanwhile says nothing. */
   async open(): Promise<void> {
+    try {
+      await this.#open();
+    } catch (failure) {
+      if (this.#disposed) return;
+      this.store.addNotice(
+        `Could not open this chat: ${failure instanceof Error ? failure.message : String(failure)}`,
+        "error",
+      );
+      this.store.setPhase("ended");
+    }
+  }
+
+  async #open(): Promise<void> {
     if (this.#sessionFile !== null) {
       // A chat opened before shows what this browser kept of it at once; the file's window replaces it when it comes.
       const fromFile = this.#reloadWindow();
@@ -115,7 +134,11 @@ export class ChatController {
         ? { threadId: this.target.threadId }
         : { folderPath: this.target.folder, start: "new" },
     );
-    if (this.#disposed) return;
+    this.#viewTaken = true;
+    if (this.#disposed) {
+      await this.#releaseView(opened.threadId);
+      return;
+    }
     this.#threadId = opened.threadId;
     this.#draft ??= new ChatDraft(this.client, opened.threadId);
     this.#sessionFile = opened.sessionFile;
@@ -338,6 +361,20 @@ export class ChatController {
     this.#stopResync();
     this.#draft?.dispose();
     this.store.dispose();
-    await this.#subscription?.unsubscribe();
+    // A stream that ended with its chat (a deleted chat) has nothing left to unsubscribe.
+    await this.#subscription?.unsubscribe().catch(() => undefined);
+    if (this.#threadId !== null) await this.#releaseView(this.#threadId);
+  }
+
+  /** Lets go of the view this pane's open took, once. */
+  async #releaseView(threadId: ThreadId): Promise<void> {
+    if (!this.#viewTaken) return;
+    this.#viewTaken = false;
+    // The server answers a chat it no longer has (deleted meanwhile) with nothing to do, and a lost connection has let
+    // go of every view already, so a failure here leaves nothing held.
+    await this.client
+      .port(ChatSessionPort)
+      .close({ threadId })
+      .catch(() => undefined);
   }
 }
