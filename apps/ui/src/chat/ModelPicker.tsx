@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -21,34 +21,47 @@ type ModelList =
 const sameModel = (a: ChatModel | null, b: ChatModel): boolean =>
   a !== null && a.provider === b.provider && a.id === b.id;
 
-/** The chat's model as a chip; it opens omp's model list, searchable, grouped by provider. */
+/**
+ * The chat's model as a chip; it opens omp's model list, searchable, grouped by provider. Its open state is the pane's,
+ * so a failed request's "Switch model" opens it too.
+ */
 export function ModelPicker({
   controller,
   model,
   disabled,
+  open,
+  onOpenChange,
   onError,
 }: {
   readonly controller: ChatController;
   readonly model: ChatModel | null;
   readonly disabled: boolean;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
   readonly onError: (failure: unknown) => void;
 }): ReactNode {
-  const [open, setOpen] = useState(false);
   const [list, setList] = useState<ModelList>({ kind: "loading" });
 
-  const onOpenChange = (next: boolean): void => {
-    setOpen(next);
-    if (!next) return;
+  // The list is read each time it opens: omp refreshes its models in the background.
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
     controller
       .models()
-      .then((models) => setList({ kind: "ready", models }))
-      .catch((failure: unknown) =>
-        setList({
-          kind: "failed",
-          message: failure instanceof Error ? failure.message : String(failure),
-        }),
-      );
-  };
+      .then((models) => {
+        if (active) setList({ kind: "ready", models });
+      })
+      .catch((failure: unknown) => {
+        if (active)
+          setList({
+            kind: "failed",
+            message: failure instanceof Error ? failure.message : String(failure),
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, controller]);
 
   const groups = new Map<string, ChatModel[]>();
   if (list.kind === "ready") {
@@ -99,7 +112,7 @@ export function ModelPicker({
                     value={`${item.provider}/${item.id} ${item.name}`}
                     data-checked={sameModel(model, item)}
                     onSelect={() => {
-                      setOpen(false);
+                      onOpenChange(false);
                       void controller.setModel(item).catch(onError);
                     }}
                   >

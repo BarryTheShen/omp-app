@@ -1,15 +1,24 @@
-import { type ReactNode, useCallback, useSyncExternalStore } from "react";
+import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Composer } from "./Composer";
 import type { ChatController } from "./controller";
 import { HostRequests } from "./HostRequests";
-import { TranscriptList } from "./TranscriptList";
+import { type FailureActions, TranscriptList } from "./TranscriptList";
 
 export function ChatPane({ controller }: { readonly controller: ChatController }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const loadOlder = useCallback(() => void controller.loadOlder(), [controller]);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const actions = useMemo<FailureActions>(
+    () => ({
+      // omp's own `/retry`: the last failed turn, again.
+      onRetry: () => controller.send("/retry"),
+      onSwitchModel: () => setModelPickerOpen(true),
+    }),
+    [controller],
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <TranscriptList snapshot={snapshot} onNearTop={loadOlder} />
+      <TranscriptList snapshot={snapshot} onNearTop={loadOlder} actions={actions} />
       <HostRequests controller={controller} requests={snapshot.requests} />
       <Composer
         controller={controller}
@@ -19,6 +28,8 @@ export function ChatPane({ controller }: { readonly controller: ChatController }
         thinkingLevel={snapshot.thinkingLevel}
         queue={snapshot.queue}
         activity={snapshot.activity}
+        modelPickerOpen={modelPickerOpen}
+        onModelPickerOpenChange={setModelPickerOpen}
       />
     </div>
   );

@@ -171,6 +171,11 @@
   border-radius: var(--r-card);
 }
 
+/* A failed request shows as one failure row under the reply (`FailureRow`); collab-web's error chip would repeat it. */
+.tl-item .tr-stop:has(.tr-chip--err) {
+  display: none;
+}
+
 /* Tailwind's reset removes list markers; markdown lists keep theirs. */
 .tr-md ul {
   list-style: disc;

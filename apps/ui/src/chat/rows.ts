@@ -2,9 +2,19 @@ import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-p
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ChatSnapshot } from "./store";
 
-/** One item of the transcript list: an entry collab-web draws, the reply being written, running tools, or "thinking…". */
+/**
+ * One item of the transcript list: an entry collab-web draws, a failed request, the reply being written, running tools,
+ * or "thinking…".
+ */
 export type TranscriptRow =
   | { readonly kind: "entry"; readonly key: string; readonly entry: SessionEntry }
+  | {
+      readonly kind: "failure";
+      readonly key: string;
+      readonly error: string;
+      /** The chat's last word: nothing was said or started after it, so it can be retried. */
+      readonly latest: boolean;
+    }
   | {
       readonly kind: "stream";
       readonly key: string;
@@ -19,10 +29,24 @@ export type TranscriptRow =
     }
   | { readonly kind: "working"; readonly key: string };
 
+/** A reply that ended in an error, with what omp said about it. */
+function failure(entry: SessionEntry): { readonly error: string; readonly empty: boolean } | null {
+  if (entry.type !== "message" || entry.message.role !== "assistant") return null;
+  const message = entry.message as AssistantMessage;
+  if (message.stopReason !== "error") return null;
+  const error = message.errorMessage?.trim();
+  return {
+    error: error === undefined || error === "" ? "The request failed." : error,
+    empty: message.content.length === 0,
+  };
+}
+
 /** Whether collab-web's `EntryRow` draws anything for the entry: tool results show inside their call's card. */
 function drawn(entry: SessionEntry): boolean {
   switch (entry.type) {
     case "message":
+      // A failed reply with nothing in it is only its failure row.
+      if (failure(entry)?.empty === true) return false;
       return entry.message.role === "user" || entry.message.role === "assistant";
     case "custom_message":
       return entry.customType === "collab-prompt" || entry.display === true;
@@ -65,18 +89,33 @@ export function buildRows(
   const rows: TranscriptRow[] = [];
   const seen = new Map<string, number>();
   const committedCalls = new Set<string>();
+  // The last failure row, while no message has come after it.
+  let lastFailure: number | null = null;
   for (const entry of snapshot.entries) {
     if (entry.type === "message" && entry.message.role === "assistant") {
       for (const block of entry.message.content)
         if (block.type === "toolCall") committedCalls.add(block.id);
     }
-    if (!drawn(entry)) continue;
+    const failed = failure(entry);
+    // A message after a failure, or a reply that went through, means the failure is no longer the last word.
+    const role = entry.type === "message" ? entry.message.role : null;
+    if (role === "user" || (role === "assistant" && failed === null)) lastFailure = null;
     const base = entryKey(entry);
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    rows.push({ kind: "entry", key: count === 0 ? base : `${base}#${count}`, entry });
+    if (drawn(entry)) {
+      const count = seen.get(base) ?? 0;
+      seen.set(base, count + 1);
+      rows.push({ kind: "entry", key: count === 0 ? base : `${base}#${count}`, entry });
+    }
+    if (failed !== null) {
+      lastFailure = rows.length;
+      rows.push({ kind: "failure", key: `${base}:failure`, error: failed.error, latest: false });
+    }
   }
   const stream = snapshot.stream;
+  if (lastFailure !== null && !snapshot.working && stream === null) {
+    const row = rows[lastFailure];
+    if (row?.kind === "failure") rows[lastFailure] = { ...row, latest: true };
+  }
   if (stream !== null) {
     rows.push({
       kind: "stream",

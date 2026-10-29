@@ -28,6 +28,8 @@ export const Composer = memo(function Composer({
   thinkingLevel,
   queue,
   activity,
+  modelPickerOpen,
+  onModelPickerOpenChange,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -36,6 +38,8 @@ export const Composer = memo(function Composer({
   readonly thinkingLevel: string | null;
   readonly queue: ChatQueue;
   readonly activity: ChatActivity | null;
+  readonly modelPickerOpen: boolean;
+  readonly onModelPickerOpenChange: (open: boolean) => void;
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -143,6 +147,8 @@ export const Composer = memo(function Composer({
               controller={controller}
               model={model}
               disabled={disabled}
+              open={modelPickerOpen}
+              onOpenChange={onModelPickerOpenChange}
               onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
             />
             {thinkingLevel !== null && (

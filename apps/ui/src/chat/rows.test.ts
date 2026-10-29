@@ -84,4 +84,53 @@ describe("buildRows", () => {
     const rows = buildRows({ ...idle, working: true, entries: [] });
     expect(rows.map((row) => row.kind)).toEqual(["working"]);
   });
+
+  test("a failed request is one failure row; only the chat's last one can be retried", () => {
+    const failed = (id: string, at: number, error: string) =>
+      message(id, {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: error,
+        timestamp: at,
+      });
+    const entries = [
+      message("u1", { role: "user", content: "first", timestamp: T }),
+      failed("a1", T + 1, "401 Invalid API key"),
+      message("u2", { role: "user", content: "second", timestamp: T + 2 }),
+      failed("a2", T + 3, "503 Overloaded"),
+    ];
+    const rows = buildRows({ ...idle, entries });
+    expect(
+      rows.map((row) =>
+        row.kind === "failure"
+          ? `failure ${row.error} ${row.latest}`
+          : row.kind === "entry"
+            ? row.entry.id
+            : row.kind,
+      ),
+    ).toEqual(["u1", "failure 401 Invalid API key false", "u2", "failure 503 Overloaded true"]);
+
+    // While omp works again (a retry), the failure is no longer the last word.
+    const retrying = buildRows({ ...idle, working: true, entries });
+    expect(retrying.some((row) => row.kind === "failure" && row.latest)).toBe(false);
+  });
+
+  test("a reply that failed after it had begun keeps what it said, then shows the failure", () => {
+    const rows = buildRows({
+      ...idle,
+      entries: [
+        message("a", {
+          role: "assistant",
+          content: [{ type: "text", text: "A partial answer." }],
+          stopReason: "error",
+          errorMessage: "",
+          timestamp: T,
+        }),
+      ],
+    });
+    expect(rows.map((row) => (row.kind === "failure" ? `failure ${row.error}` : row.kind))).toEqual(
+      ["entry", "failure The request failed."],
+    );
+  });
 });

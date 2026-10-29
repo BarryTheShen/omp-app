@@ -10,6 +10,7 @@ import {
   Row,
 } from "../vendor/collab-web/components/transcript/Transcript";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
+import { FailureRow } from "./FailureRow";
 import { buildRows, type TranscriptRow, toolResults } from "./rows";
 import type { ChatSnapshot } from "./store";
 
@@ -24,9 +25,11 @@ const ESTIMATED_ROW_PX = 72;
 export function TranscriptList({
   snapshot,
   onNearTop,
+  actions,
 }: {
   readonly snapshot: ChatSnapshot;
   readonly onNearTop: () => void;
+  readonly actions: FailureActions;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { entries, stream, streamDone, activeTools, working, hasOlder } = snapshot;
@@ -75,7 +78,7 @@ export function TranscriptList({
                 className="tl-item absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >
-                <RowView row={row} results={results} active={activeTools} />
+                <RowView row={row} results={results} active={activeTools} actions={actions} />
               </div>
             );
           })}
@@ -96,18 +99,37 @@ export function TranscriptList({
   );
 }
 
+/** What a failed request offers: try the last turn again, or pick another model for it. */
+export interface FailureActions {
+  readonly onRetry: () => Promise<void>;
+  readonly onSwitchModel: () => void;
+}
+
 function RowView({
   row,
   results,
   active,
+  actions,
 }: {
   readonly row: TranscriptRow;
   readonly results: ReadonlyMap<string, ToolResultMessage>;
   readonly active: ReadonlyMap<string, ActiveTool>;
+  readonly actions: FailureActions;
 }): ReactNode {
   switch (row.kind) {
     case "entry":
       return <EntryRow entry={row.entry} results={results} active={active} />;
+    case "failure":
+      return (
+        <Row kind="assistant" gutter="">
+          <FailureRow
+            error={row.error}
+            latest={row.latest}
+            onRetry={actions.onRetry}
+            onSwitchModel={actions.onSwitchModel}
+          />
+        </Row>
+      );
     case "stream":
       return (
         <Row kind="assistant" gutter="agent">
