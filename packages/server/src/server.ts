@@ -34,6 +34,8 @@ export interface AppServerOptions {
   readonly replayLimit?: number;
   readonly replay?: EventReplayHub;
   readonly staticRoot?: string;
+  /** The new UI's built folder, served under `/v2/` beside the old UI (default: `apps/ui/dist` in the working folder). */
+  readonly uiRoot?: string;
   readonly registry?: PortRegistry;
   /** Where connections and failed calls are recorded; nothing is logged without one. */
   readonly logger?: Logger;
@@ -140,6 +142,9 @@ const STATIC_HEADERS = {
   "Referrer-Policy": "no-referrer",
 } as const;
 
+/** Where the new UI is served, beside the old one at `/`. */
+const UI_PREFIX = "/v2";
+
 async function serveStatic(root: string, pathname: string): Promise<Response> {
   const path = safeStaticPath(root, pathname);
   if (path === undefined) return new Response("Bad path", { status: 400, headers: STATIC_HEADERS });
@@ -177,6 +182,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
   const staticRoot = options.staticRoot ?? `${process.cwd()}/apps/web/dist`;
+  const uiRoot = options.uiRoot ?? `${process.cwd()}/apps/ui/dist`;
   const port = requestedPort(options);
   const origins = options.origins;
 
@@ -217,6 +223,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method not allowed", { status: 405 });
+      }
+      if (url.pathname === UI_PREFIX) {
+        return new Response(null, {
+          status: 308,
+          headers: { ...STATIC_HEADERS, Location: `${UI_PREFIX}/${url.search}` },
+        });
+      }
+      if (url.pathname.startsWith(`${UI_PREFIX}/`)) {
+        return serveStatic(uiRoot, url.pathname.slice(UI_PREFIX.length));
       }
       return serveStatic(staticRoot, url.pathname);
     },

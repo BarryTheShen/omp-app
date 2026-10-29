@@ -89,6 +89,8 @@ import { type AppServer, createAppServer } from "../src/server";
 export interface CompositionServerOptions {
   readonly port?: number;
   readonly staticRoot?: string;
+  /** The new UI's built folder, served under `/v2/` (default: `apps/ui/dist` of this checkout). */
+  readonly uiRoot?: string;
   /**
    * Test seam: a program that stands in for omp's command line in omp's own commands (`--version`, `models`, `usage`,
    * `config`; a wrapper script or a missing program in some e2e specs). Without it they run `ompCommand()`, the same
@@ -589,6 +591,7 @@ export async function createCompositionServer(
     ...createA1PortRegistrations(a1Context),
   ]);
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
+  const uiRoot = options.uiRoot ?? resolve(import.meta.dir, "../../..", "apps/ui/dist");
   const launchHistory = openLaunchHistory(appDataDir, logger);
   const server = createAppServer({
     ...(options.token === undefined ? {} : { token: options.token }),
@@ -599,6 +602,7 @@ export async function createCompositionServer(
     capabilities,
     replay,
     staticRoot,
+    uiRoot,
     registry,
     logger,
     earlierLaunchTokens: launchHistory.earlier,

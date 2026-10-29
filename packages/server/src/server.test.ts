@@ -449,6 +449,27 @@ describe("A0.6 upgrade and static serving", () => {
       await app.stop();
     }
   });
+  test("serves the new UI under /v2/ beside the old one, and sends /v2 to /v2/ with its query", async () => {
+    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const app = createAppServer({
+      port: 0,
+      staticRoot: fixtures,
+      uiRoot: `${fixtures}/ui`,
+      origins: ["http://allowed.test"],
+    });
+    try {
+      const v2 = await fetch(`${app.url}/v2/`);
+      expect(v2.status).toBe(200);
+      expect(await v2.text()).toContain("v2 static fixture");
+      expect(await (await fetch(`${app.url}/`)).text()).toContain("A0.6 static fixture");
+      const bare = await fetch(`${app.url}/v2?folder=a`, { redirect: "manual" });
+      expect(bare.status).toBe(308);
+      expect(bare.headers.get("location")).toBe("/v2/?folder=a");
+      expect((await fetch(`${app.url}/v2/missing.js`)).status).toBe(404);
+    } finally {
+      await app.stop();
+    }
+  });
   test("accepts a tokenized loopback WebSocket and sends the C0 welcome", async () => {
     const app = createAppServer({
       port: 0,

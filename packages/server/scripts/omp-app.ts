@@ -64,6 +64,19 @@ function webRoot(): string {
   );
 }
 
+/** The new UI's built files (served under `/v2/`), found the same way; absent until the packages carry them. */
+function uiRoot(): string | undefined {
+  const candidates = [
+    Bun.env.OMP_APP_UI_ROOT,
+    resolve(dirname(process.execPath), "../share/omp-app/ui"),
+    resolve(import.meta.dir, "../../../apps/ui/dist"),
+  ];
+  for (const candidate of candidates) {
+    if (candidate && existsSync(resolve(candidate, "index.html"))) return resolve(candidate);
+  }
+  return undefined;
+}
+
 /** The chat host the packages install beside the command: omp's own command line, built by the app (#2586). */
 const INSTALLED_CHAT_HOST = resolve(dirname(process.execPath), "../lib/omp-app/chat-host");
 /** A compiled command holds its sources in Bun's in-memory folder, where they cannot run as omp. */
@@ -279,6 +292,7 @@ if (chatHost !== undefined && !existsSync(chatHost)) {
 // instance record, so a saved link (a bookmark, the desktop window's link to this computer) survives a restart.
 const launchToken = await keepLaunchToken(launchTokenFile(logDir));
 if (!launchToken.kept) logger.warn("launch-token.not-saved", { detail: launchToken.reason });
+const builtUi = uiRoot();
 let started: StartResult<CompositionServer>;
 try {
   started = await startOrAttach({
@@ -287,6 +301,7 @@ try {
       createCompositionServer({
         port,
         staticRoot: webRoot(),
+        ...(builtUi === undefined ? {} : { uiRoot: builtUi }),
         chatHostBinary: chatHost,
         cwd: folder,
         env: { PATH: searchPath },

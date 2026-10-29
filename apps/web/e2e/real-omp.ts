@@ -109,6 +109,8 @@ export interface OpenOptions {
   readonly expectApp?: boolean;
   /** Opens the page in this browser context (the same profile, so localStorage is shared) instead of a new one. */
   readonly context?: BrowserContext;
+  /** The app's path to open with the launch link, for example `/v2/` for the new UI (default: the old UI at `/`). */
+  readonly path?: string;
 }
 
 export interface RealApp {
@@ -706,7 +708,9 @@ export const realTest = test.extend<{
         });
         page.on("pageerror", (error) => problems.push(`page error: ${error.message}`));
         await options.beforeLoad?.(page);
-        await page.goto(url);
+        const address = new URL(url);
+        if (options.path !== undefined) address.pathname = options.path;
+        await page.goto(address.toString());
         if (options.expectApp !== false) {
           // The app's first paint can take that long while other tests' browsers, servers and omps start.
           await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
