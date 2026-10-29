@@ -1,6 +1,5 @@
 /**
- * The palette is the assistant-ui home demo's. Its literal semantic values and the app's small
- * contrast corrections are documented in `research/ui-redesign.md`.
+ * The palette is the assistant-ui home demo's, with the app's small contrast corrections.
  *
  * Raw color, size and shadow values live here. `src/tokens.ts` is the typed mirror; the styles
  * tests enforce both the boundary and the mirror.

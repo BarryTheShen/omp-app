@@ -1,7 +1,8 @@
 /**
- * Builds `src/core/inventory.json` from `research/omp-feature-inventory.md`.
+ * Builds `src/core/inventory.json` from omp's feature inventory, a Markdown file kept outside this
+ * repository.
  *
- *   bun scripts/build-inventory.ts        (run in packages/contracts)
+ *   bun scripts/build-inventory.ts <inventory markdown>        (run in packages/contracts)
  *
  * Every item row (`- [ ] **name** (kind) — … *rpc:* `status` — … *UI:* ui. *Source:* `…``) under a
  * `### <group> <title>` heading becomes `{ id, group, name, kind, rpc, ui, source }`.
@@ -24,14 +25,6 @@ export interface InventoryRow {
   source: string;
 }
 
-export const INVENTORY_SOURCE = join(
-  import.meta.dir,
-  "..",
-  "..",
-  "..",
-  "research",
-  "omp-feature-inventory.md",
-);
 const TARGET = join(import.meta.dir, "..", "src", "core", "inventory.json");
 
 const GROUP_HEADING = /^### ([A-Z][0-9]) /;
@@ -106,7 +99,12 @@ export function inventoryJson(rows: readonly InventoryRow[]): string {
 }
 
 if (import.meta.main) {
-  const { rows, problems } = parseInventory(await Bun.file(INVENTORY_SOURCE).text());
+  const source = process.argv[2];
+  if (source === undefined) {
+    console.error("usage: bun scripts/build-inventory.ts <inventory markdown>");
+    process.exit(2);
+  }
+  const { rows, problems } = parseInventory(await Bun.file(source).text());
   if (problems.length > 0) {
     console.error(`Not writing ${TARGET}:\n- ${problems.join("\n- ")}`);
     process.exit(1);

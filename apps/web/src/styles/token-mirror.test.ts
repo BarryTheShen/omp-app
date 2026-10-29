@@ -5,9 +5,6 @@ import { describe, expect, test } from "vitest";
 import { colorTokens, fontTokens, radiusTokens, shadowTokens, typeScaleTokens } from "../tokens";
 
 const CSS = readFileSync(join(process.cwd(), "src/styles/tokens.css"), "utf8");
-const DESIGN = readFileSync(join(process.cwd(), "../../research/ui-redesign.md"), "utf8");
-const approvedTokenBlock = DESIGN.match(/```css\s*([\s\S]*?)\s*```/)?.[1];
-if (approvedTokenBlock === undefined) throw new Error("The approved token block is missing");
 type TokenMap = Map<string, string>;
 
 function block(selector: string, source = CSS): string {
@@ -48,8 +45,6 @@ const light = declarations(block(":root"));
 const darkOverrides = declarations(block(".dark"));
 const dark = new Map([...light, ...darkOverrides]);
 const themes = { light, dark } as const;
-const approvedLight = declarations(block(":root", approvedTokenBlock));
-const approvedDark = declarations(block(".dark", approvedTokenBlock));
 
 function cssTypeScale(): TokenMap {
   const values = new Map<string, string>();
@@ -125,14 +120,6 @@ describe("typed design-token mirror", () => {
       );
     }
   });
-  test("the light and dark semantic blocks match the approved design values", () => {
-    expect(light.size).toBe(approvedLight.size);
-    expect(darkOverrides.size).toBe(approvedDark.size);
-    for (const [name, value] of approvedLight) expect(light.get(name), `light ${name}`).toBe(value);
-    for (const [name, value] of approvedDark)
-      expect(darkOverrides.get(name), `dark ${name}`).toBe(value);
-  });
-
   test("every font token references an @theme declaration", () => {
     for (const [name, value] of Object.entries(fontTokens)) {
       const property = /^var\((--[\w-]+)\)$/.exec(value)?.[1];

@@ -10,3 +10,11 @@ test-results/
 .env.*
 .DS_Store
 *.tsbuildinfo
+# Development notes stay outside the repository.
+/PLAN.md
+/PRIORITIES.md
+/AGENTS.md
+/AI-README.md
+/reassessment/
+/research/
+/archive/

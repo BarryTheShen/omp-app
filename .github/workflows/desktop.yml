@@ -1,6 +1,6 @@
 # Desktop app (#1036): builds the omp-app-desktop package (the "omp app" window, its bundled server
 # and the web app), checks the Rust code, and uploads the .deb. Runs by hand, and on pull requests
-# that change the desktop app or its packaging. Only GitHub-owned actions are used (AGENTS.md), so
+# that change the desktop app or its packaging. Only GitHub-owned actions are used, so
 # Rust and Bun are installed by run steps, as release.yml installs Bun.
 name: desktop
 
@@ -92,7 +92,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Build the package (window, server, web app, .deb)
-        run: bash packaging/build-desktop-deb.sh "0.1.$(git rev-list --count HEAD)"
+        run: bash packaging/build-desktop-deb.sh "0.2.$(git rev-list --count HEAD)"
 
       - name: Check the Rust code (clippy, then the unit tests)
         working-directory: apps/desktop/src-tauri

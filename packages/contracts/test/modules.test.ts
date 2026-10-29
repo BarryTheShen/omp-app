@@ -12,24 +12,6 @@ import {
 const ROOT = join(import.meta.dir, "..", "..", "..");
 
 describe("module table", () => {
-  test("matches PLAN.md, Modules (42)", async () => {
-    const plan = await Bun.file(join(ROOT, "PLAN.md")).text();
-    const table = plan.split("## Modules (42)")[1]?.split("\n## ")[0] ?? "";
-    const rows = [
-      ...table.matchAll(
-        /^\| \[(\w\d)\]\(modules\/\1\/README\.md\) \| (.+?) \| (W\d) \| ([SML]) \| (.+?) \|$/gm,
-      ),
-    ].map(([, id, name, wave, size, needs]) => ({
-      id,
-      name,
-      wave,
-      size,
-      needs: needs === "—" ? [] : (needs ?? "").split(", "),
-    }));
-    expect(rows).toHaveLength(42);
-    expect(rows).toEqual(MODULES.map((module) => ({ ...module, needs: [...module.needs] })));
-  });
-
   test("lists the ids in table order and every id has a header", async () => {
     expect([...MODULE_IDS]).toEqual(MODULES.map((module) => module.id));
     for (const id of MODULE_IDS) {
@@ -139,9 +121,7 @@ describe("ownerOfPath", () => {
     ["apps/web/src/modules/P1/roster.tsx", "P1"],
     ["apps/web/src/registry/tools.ts", "main"],
     ["modules/D5/README.md", "D5"],
-    ["./PLAN.md", "main"],
     ["bun.lock", "main"],
-    ["research/omp-feature-inventory.md", "main"],
   ];
 
   test.each(cases)("%s belongs to %s", (path, owner) => {

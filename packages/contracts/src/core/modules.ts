@@ -1,8 +1,8 @@
 /**
- * The 42 modules of PLAN.md and who owns what: repository paths, omp setting sections, slash
+ * The 42 modules and who owns what: repository paths, omp setting sections, slash
  * commands and panels.
  *
- * The module table mirrors PLAN.md, "Modules (42)"; a test compares the two. Namespace ownership
+ * Namespace ownership
  * is derived from the module headers (`modules/<id>/README.md`): every claim cites the header
  * text it rests on, and a test checks each quote against the header. Where two headers claimed
  * the same namespace, or no header named something omp 18.6.1 added, the main agent decided the
@@ -71,7 +71,7 @@ export interface ModuleInfo {
   readonly needs: readonly ModuleId[];
 }
 
-/** PLAN.md, "Modules (42)", in its order. */
+/** The 42 modules, in build order. */
 export const MODULES: readonly ModuleInfo[] = [
   {
     id: "C0",
@@ -365,7 +365,7 @@ export const MODULES: readonly ModuleInfo[] = [
 
 // Repository paths
 
-/** A module, or `main`: the main agent (the build chat named in AI-README.md). */
+/** A module, or `main`: the main agent. */
 export type Owner = ModuleId | "main";
 
 export interface PathRule {
@@ -426,12 +426,8 @@ export const PATH_OWNERSHIP: readonly PathRule[] = [
   {
     path: "modules/<ModuleId>/",
     owner: "<ModuleId>",
-    note: "the module header; its lead edits it within AGENTS.md and lists every change",
+    note: "the module header; its lead edits it and lists every change",
   },
-  { path: "AGENTS.md", owner: "main", note: "only with the owner's approval" },
-  { path: "AI-README.md", owner: "main" },
-  { path: "PLAN.md", owner: "main" },
-  { path: "research/", owner: "main" },
   { path: "package.json", owner: "main" },
   { path: "tsconfig.base.json", owner: "main" },
   { path: "biome.json", owner: "main" },
@@ -1305,7 +1301,7 @@ export const NAMESPACE_OWNERSHIP: readonly NamespaceClaim[] = [
     "D5",
     ["D5"],
     [D5_S1],
-    `${NEW_IN_18_6_1} It moves the session into a new worktree; worktrees await the scope decision in PLAN.md.`,
+    `${NEW_IN_18_6_1} It moves the session into a new worktree; worktrees await a scope decision.`,
   ),
   decided(
     "slash-command",
