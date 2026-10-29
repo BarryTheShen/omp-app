@@ -1,6 +1,15 @@
 import type { FolderPath, SessionFile, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
-import { Ellipsis, PencilLine, Pin, PinOff, Search, SquarePen, Trash2 } from "lucide-react";
+import {
+  Ellipsis,
+  PencilLine,
+  Pin,
+  PinOff,
+  Search,
+  Settings,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
@@ -19,7 +28,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatTarget } from "../chat/controller";
+import { KEYS, keycap } from "../keys/table";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import type { WorkspaceView } from "../workspace/Workspace";
 import type { ChatList } from "./useChatList";
@@ -52,6 +63,7 @@ export function Sidebar({
   onOpen,
   onPrefetch,
   onDeleted,
+  onSettings,
 }: {
   readonly folder: FolderPath;
   readonly list: ChatList;
@@ -63,6 +75,7 @@ export function Sidebar({
   readonly onPrefetch: (session: SessionFile) => void;
   /** A chat was deleted: the panes that showed it move on. */
   readonly onDeleted: (id: ThreadId) => void;
+  readonly onSettings: () => void;
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -170,8 +183,25 @@ export function Sidebar({
           {problem}
         </p>
       )}
-      <div className="flex px-1 pt-2">
+      <div className="flex items-center justify-between px-1 pt-2">
         <ThemeSwitch />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Settings"
+                aria-keyshortcuts="Control+,"
+                className="text-t3 hover:text-t1"
+                onClick={onSettings}
+              />
+            }
+          >
+            <Settings />
+          </TooltipTrigger>
+          <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
+        </Tooltip>
       </div>
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>

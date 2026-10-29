@@ -7,6 +7,7 @@ import type {
   HostDialogRequest,
   PlanModeStatus,
   SubagentSnapshot,
+  UiOpenUrlEvent,
 } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
 
@@ -81,7 +82,12 @@ export interface ChatSnapshot {
   readonly proposal: PlanProposal | null;
   /** The chat's goal (goal mode); null without one. */
   readonly goal: GoalAnswer["goal"];
+  /** The page a sign-in waits on (omp's `ui_open_url`), until the sign-in ends. */
+  readonly signIn: SignInPage | null;
 }
+
+/** A sign-in's page to open: its address, a short local link to it when omp runs one, and omp's instructions. */
+export type SignInPage = Omit<UiOpenUrlEvent, "type">;
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
 
@@ -106,6 +112,7 @@ const EMPTY: ChatSnapshot = {
   planMode: null,
   proposal: null,
   goal: null,
+  signIn: null,
 };
 
 /** A transcript to draw that is not a live chat (a subagent's, in the Agent Hub): its entries, and whether it runs. */
@@ -216,6 +223,7 @@ export class ChatStore {
   #planMode: PlanModeStatus | null = null;
   #proposal: PlanProposal | null = null;
   #goal: GoalAnswer["goal"] = null;
+  #signIn: SignInPage | null = null;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -293,6 +301,12 @@ export class ChatStore {
 
   setGoal(goal: GoalAnswer["goal"]): void {
     this.#goal = goal;
+    this.#publish();
+  }
+
+  /** The sign-in ended (signed in, refused or failed): its page is not shown any more. */
+  clearSignIn(): void {
+    this.#signIn = null;
     this.#publish();
   }
 
@@ -515,6 +529,13 @@ export class ChatStore {
       case "ui_notify":
         this.#notify(event.message, event.notifyType ?? "info");
         return false;
+      case "ui_open_url":
+        this.#signIn = {
+          url: event.url,
+          ...(event.launchUrl === undefined ? {} : { launchUrl: event.launchUrl }),
+          ...(event.instructions === undefined ? {} : { instructions: event.instructions }),
+        };
+        return false;
       case "subagent_lifecycle": {
         const { payload } = event;
         const known = this.#agents.get(payload.id);
@@ -694,6 +715,7 @@ export class ChatStore {
       planMode: this.#planMode,
       proposal: this.#proposal,
       goal: this.#goal,
+      signIn: this.#signIn,
     };
     for (const listener of this.#listeners) listener();
   }

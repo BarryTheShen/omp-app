@@ -91,6 +91,21 @@ export const ConfigWriteArgs = z
   );
 export type ConfigWriteArgs = z.infer<typeof ConfigWriteArgs>;
 
+/** Takes a setting out of one layer's file, a secret or not: a lower layer, or omp's default, applies again. */
+export const ConfigUnsetArgs = z
+  .strictObject({
+    key: ConfigKey,
+    layer: ConfigWriteLayer,
+    folder: FolderPath.nullable(),
+    /** As a write's: `null` means the file is expected to be absent. */
+    expectedRevision: Revision.nullable(),
+  })
+  .refine(
+    (args) => (args.layer === "project" ? args.folder !== null : args.folder === null),
+    "project writes require a folder; global/app writes require a null folder",
+  );
+export type ConfigUnsetArgs = z.infer<typeof ConfigUnsetArgs>;
+
 export const ConfigWriteResult = z
   .strictObject({
     key: ConfigKey,
@@ -135,6 +150,11 @@ export const ConfigStore = definePort({
     },
     write: {
       args: ConfigWriteArgs,
+      result: ConfigWriteResult,
+      capability: "host.config",
+    },
+    unset: {
+      args: ConfigUnsetArgs,
       result: ConfigWriteResult,
       capability: "host.config",
     },

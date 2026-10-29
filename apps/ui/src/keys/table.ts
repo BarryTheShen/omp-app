@@ -120,6 +120,12 @@ export const KEYS = {
     group: "App",
     label: "Show the keys",
   },
+  settings: {
+    hotkey: "ctrl+comma, meta+comma",
+    scope: "workspace",
+    group: "App",
+    label: "Open the settings",
+  },
 
   foldTools: {
     hotkey: "ctrl+o",

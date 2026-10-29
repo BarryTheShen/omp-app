@@ -21,6 +21,7 @@ import {
   type GoalParams,
   type HostDialogAnswer,
   isHostDialogRequest,
+  type LoginProvider,
   type PlanFile,
   type QueueName,
   type SubagentTranscript,
@@ -257,6 +258,23 @@ export class ChatController {
   async models(): Promise<readonly ChatModel[]> {
     const { models } = await this.#request("get_available_models", {});
     return models.map(toChatModel);
+  }
+
+  /** omp's sign-in providers, and whether each has a sign-in stored. */
+  async loginProviders(): Promise<readonly LoginProvider[]> {
+    return (await this.#request("get_login_providers", {})).providers;
+  }
+
+  /**
+   * Signs in to a provider through this chat's omp. omp sends the page to open (the store's `signIn`) and may ask for
+   * a code as one of its questions; this ends when the sign-in does.
+   */
+  async login(providerId: string): Promise<void> {
+    try {
+      await this.#request("login", { providerId });
+    } finally {
+      this.store.clearSignIn();
+    }
   }
 
   async setModel(model: ChatModel): Promise<void> {

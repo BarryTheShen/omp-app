@@ -108,6 +108,7 @@ export type ConfigChangeListener = (change: ConfigChanged) => void | Promise<voi
 type ConfigReadRequest = Omit<ConfigReadArgs, "folder"> & { readonly folder: string | null };
 type ConfigListRequest = { readonly prefix?: string; readonly folder: string | null };
 type ConfigWriteRequest = Omit<ConfigWriteArgs, "folder"> & { readonly folder: string | null };
+type ConfigUnsetRequest = Omit<ConfigWriteRequest, "value">;
 
 type LayerValues = ReadonlyMap<string, JsonValue>;
 
@@ -484,7 +485,19 @@ export class ConfigStoreService {
     };
   }
 
-  async write(args: ConfigWriteRequest): Promise<ConfigWriteResult> {
+  write(args: ConfigWriteRequest): Promise<ConfigWriteResult> {
+    return this.change(args, args.value);
+  }
+
+  /** Takes a setting out of one layer's file: only its key goes, so a lower layer, or omp's default, applies again. */
+  unset(args: ConfigUnsetRequest): Promise<ConfigWriteResult> {
+    return this.change(args, "unset");
+  }
+
+  private async change(
+    args: ConfigUnsetRequest,
+    value: ConfigWriteRequest["value"] | "unset",
+  ): Promise<ConfigWriteResult> {
     const folder = this.validateFolder(args.folder);
     this.validateWriteScope(args.layer, folder);
     if (args.layer === "project") await this.requireProjectFolder(folder);
@@ -518,7 +531,8 @@ export class ConfigStoreService {
     const resolved = this.resolveSetting(key, current)?.value;
     const secret = this.isSecretEntry(key, resolved);
     const hiddenUrl = !secret && resolved !== undefined && hidesUrlSetting(key, resolved);
-    if (secret !== args.value.secret && !(hiddenUrl && args.value.secret)) {
+    // Taking a value out shows nothing, so an unset takes any setting.
+    if (value !== "unset" && secret !== value.secret && !(hiddenUrl && value.secret)) {
       throw failure(
         "invalid_args",
         secret
@@ -527,11 +541,14 @@ export class ConfigStoreService {
       );
     }
     try {
-      if (args.value.secret) {
-        if (args.value.action === "set") document.setIn(pathParts(key), args.value.value);
+      if (value === "unset") {
+        // Only the key goes: an emptied parent stays (omp reads it as unset) with any comment written on it.
+        document.deleteIn(pathParts(key));
+      } else if (value.secret) {
+        if (value.action === "set") document.setIn(pathParts(key), value.value);
         else document.deleteIn(pathParts(key));
       } else {
-        document.setIn(pathParts(key), args.value.value);
+        document.setIn(pathParts(key), value.value);
       }
     } catch {
       throw failure(
@@ -550,8 +567,12 @@ export class ConfigStoreService {
     const after = await this.readScope(folder);
     // The change reaches the open watchers now, as a hand edit's does: another page's open chat sees the new value.
     await this.publishFileChange({ path: currentWriteSnapshot.path, layer: args.layer, folder });
-    // A hidden value that is removed reads back as an unset secret, as a removed secret does.
-    const entry = this.entryForKey(key, after, secret || hiddenUrl);
+    // A hidden value that is removed reads back as an unset secret, as a removed secret does; a plain value that no
+    // layer and no default sets any more reads as its change event reports it (no value).
+    const entry =
+      value === "unset" && !secret && !hiddenUrl
+        ? this.eventEntry(key, after, args.layer)
+        : this.entryForKey(key, after, secret || hiddenUrl);
     return {
       key,
       layer: args.layer,

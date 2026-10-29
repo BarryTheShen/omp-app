@@ -1,4 +1,4 @@
-import type { AppClient, AppClientSubscription } from "@omp-app/client";
+import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   ChatSessionPort,
@@ -10,6 +10,7 @@ import {
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { forgetWindow } from "../chat/windowCache";
+import { follow } from "../follow";
 
 /** How long a burst of file and turn changes is gathered before the list is read again. */
 const SETTLE_MS = 250;
@@ -28,31 +29,6 @@ export interface ChatList {
    * sentence; this tab's own panes do not count, so a chat may be deleted while one of them shows it.
    */
   readonly remove: (session: SessionFile) => Promise<void>;
-}
-
-/** Follows one subscription until the returned function runs; one that fails to start is left alone. */
-function follow<Payload>(
-  pending: Promise<AppClientSubscription<Payload>>,
-  listener: (payload: Payload) => void,
-): () => void {
-  let active = true;
-  let detach: (() => void) | undefined;
-  let subscription: AppClientSubscription<Payload> | undefined;
-  void pending
-    .then((started) => {
-      if (!active) {
-        void started.unsubscribe().catch(() => undefined);
-        return;
-      }
-      subscription = started;
-      detach = started.onEvent(listener);
-    })
-    .catch(() => undefined);
-  return () => {
-    active = false;
-    detach?.();
-    void subscription?.unsubscribe().catch(() => undefined);
-  };
 }
 
 export function useChatList(client: AppClient, folder: FolderPath): ChatList {

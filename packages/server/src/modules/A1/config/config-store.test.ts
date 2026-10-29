@@ -270,6 +270,42 @@ describe("ConfigStoreService", () => {
     store.dispose();
   });
 
+  test("a plain unset removes only the key, so omp's default applies again and the file's comments stay", async () => {
+    const root = await temporaryDirectory();
+    const agent = join(root, "agent");
+    const configPath = join(agent, "config.yml");
+    await writeText(
+      configPath,
+      "# keep this comment\ngoal:\n  enabled: false\ntheme:\n  dark: titanium\n  light: paper\n",
+    );
+    const store = new ConfigStoreService({
+      agentDir: agent,
+      appDataDir: join(root, "app"),
+      defaultValues: { "goal.enabled": true },
+    });
+    const unset = async (key: string) =>
+      store.unset({
+        key,
+        layer: "global",
+        folder: null,
+        expectedRevision: (await store.list({ folder: null })).revision,
+      });
+    const result = await unset("goal.enabled");
+    expect(result.entry).toMatchObject({ key: "goal.enabled", secret: false, value: true });
+    expect(result.entry.source).not.toBe("global");
+    // Nothing sets it afterwards (no default either): no value.
+    expect((await unset("theme.dark")).entry).toMatchObject({ key: "theme.dark", value: null });
+    const content = await readFile(configPath, "utf8");
+    expect(content).toContain("# keep this comment\ngoal: {}");
+    expect(content).not.toContain("enabled");
+    expect(content).not.toContain("dark");
+    expect(content).toContain("theme:\n  light: paper");
+    // Unsetting what is not there changes nothing.
+    await unset("goal.enabled");
+    expect(await readFile(configPath, "utf8")).toBe(content);
+    store.dispose();
+  });
+
   test("rejects a compare-and-swap write after an external edit", async () => {
     const root = await temporaryDirectory();
     const agent = join(root, "agent");

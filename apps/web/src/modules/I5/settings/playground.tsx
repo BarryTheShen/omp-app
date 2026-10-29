@@ -85,6 +85,19 @@ function createClient(): PortClient<typeof ConfigStore> {
         entry,
       } as ConfigWriteResult;
     },
+    unset: async (args) => {
+      current = current.filter((candidate) => candidate.key !== args.key);
+      const previousRevision = revision;
+      revision = `${revision}-next`;
+      return {
+        key: args.key,
+        layer: args.layer,
+        folder: args.folder,
+        revision,
+        previousRevision,
+        entry: { key: args.key, secret: false, value: null, source: args.layer, overrides: [] },
+      } as ConfigWriteResult;
+    },
   };
 }
 

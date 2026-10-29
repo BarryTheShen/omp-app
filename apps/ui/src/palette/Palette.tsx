@@ -108,6 +108,7 @@ export function Palette({
   onOpenChat,
   onShortcuts,
   onSetGoal,
+  onSettings,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -118,6 +119,7 @@ export function Palette({
   readonly onShortcuts: () => void;
   /** Opens the goal dialog for a chat. */
   readonly onSetGoal: (controller: ChatController) => void;
+  readonly onSettings: () => void;
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
@@ -200,6 +202,13 @@ export function Palette({
         run: () => close(onShortcuts),
       },
       ...chatModes(controller, close, onSetGoal),
+      {
+        key: "app:settings",
+        group: "Commands",
+        label: KEYS.settings.label,
+        keys: keycap(KEYS.settings),
+        run: () => close(onSettings),
+      },
       ...commands.map((command) => ({
         key: `omp:${command.name}`,
         group: "Commands" as const,

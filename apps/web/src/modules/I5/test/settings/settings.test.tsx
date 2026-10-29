@@ -96,6 +96,9 @@ function configClient(): PortClient<typeof ConfigStore> {
           overrides: [],
         },
       }) as never,
+    unset: async () => {
+      throw new Error("The speech and services settings never take a value out.");
+    },
   };
 }
 

@@ -29,6 +29,10 @@ export function createConfigStoreRegistration(context: A1PortContext): PortRegis
         assertNotAborted(handlerContext);
         return context.configStore.write(args);
       },
+      unset: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return context.configStore.unset(args);
+      },
     },
     context.publish,
     bindings,

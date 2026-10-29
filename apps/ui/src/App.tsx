@@ -3,7 +3,9 @@ import { AppPort, type FolderPath } from "@omp-app/contracts";
 import { cn } from "cn";
 import { ChevronLeft } from "lucide-react";
 import {
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -23,6 +25,11 @@ import { Shortcuts } from "./palette/Shortcuts";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
+
+/** The settings sheet and omp's settings with it load when it first opens. */
+const SettingsPage = lazy(() =>
+  import("./settings/SettingsPage").then((module) => ({ default: module.SettingsPage })),
+);
 
 type Connection =
   | { readonly kind: "connecting" }
@@ -109,6 +116,16 @@ function Shell({
   const [shortcuts, setShortcuts] = useState(false);
   /** The chat the goal dialog sets a goal for, while it is open. */
   const [goalFor, setGoalFor] = useState<ChatController | null>(null);
+  const [settings, setSettings] = useState(false);
+  /** Loaded once opened, so its closing keeps its words in place. */
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  /** The chat focused when the settings opened: provider sign-in runs in it. */
+  const [settingsChat, setSettingsChat] = useState<ChatController | null>(null);
+  const showSettings = useCallback(() => {
+    setSettingsChat(workspace.current?.focused()?.controller ?? null);
+    setSettingsLoaded(true);
+    setSettings(true);
+  }, []);
   const openChat = useCallback((target: ChatTarget, where: "here" | "split"): void => {
     workspace.current?.open(target, where);
     setShowChat(true);
@@ -117,6 +134,18 @@ function Shell({
   const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
   useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
   useHotkeys(KEYS.shortcuts.hotkey, () => setShortcuts((open) => !open), anywhere);
+  useHotkeys(
+    KEYS.settings.hotkey,
+    () => {
+      if (settings) {
+        setSettings(false);
+        return;
+      }
+      showSettings();
+    },
+    anywhere,
+    [settings, showSettings],
+  );
   return (
     <div
       className="grid h-full grid-cols-[244px_minmax(0,1fr)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)] max-sm:grid-cols-1"
@@ -131,6 +160,7 @@ function Shell({
         onOpen={openChat}
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
         onDeleted={(id) => workspace.current?.forget(id)}
+        onSettings={showSettings}
       />
       <main
         className={cn(
@@ -162,9 +192,22 @@ function Shell({
         onOpenChat={openChat}
         onShortcuts={showShortcuts}
         onSetGoal={setGoalFor}
+        onSettings={showSettings}
       />
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />
+      {settingsLoaded && (
+        <Suspense fallback={null}>
+          <SettingsPage
+            client={client}
+            folder={folder}
+            controller={settingsChat}
+            phone={phone}
+            open={settings}
+            onOpenChange={setSettings}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
