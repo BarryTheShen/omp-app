@@ -22,7 +22,17 @@ const idle = {
   working: false,
   shell: null,
   notices: [],
+  hasOlder: false,
 };
+
+function entry(id: string, value: Record<string, unknown>): SessionEntry {
+  return {
+    id,
+    parentId: null,
+    timestamp: new Date(T).toISOString(),
+    ...value,
+  } as unknown as SessionEntry;
+}
 
 describe("buildRows", () => {
   test("a message keeps its row when the file's copy, under omp's own id, replaces the live one", () => {
@@ -30,6 +40,23 @@ describe("buildRows", () => {
     const live = buildRows({ ...idle, entries: [message("live-msg-1", text)] });
     const fromFile = buildRows({ ...idle, entries: [message("a1b2c3d4", text)] });
     expect(live.map((row) => row.key)).toEqual(fromFile.map((row) => row.key));
+  });
+
+  test("the model and thinking level a chat starts with are not drawn; a later change is", () => {
+    const entries = [
+      entry("m0", { type: "model_change", provider: "fake", modelId: "fake-model" }),
+      entry("t0", { type: "thinking_level_change", thinkingLevel: "high" }),
+      message("u1", { role: "user", content: "hi", timestamp: T }),
+      entry("m1", { type: "model_change", provider: "fake", modelId: "other" }),
+    ];
+    expect(buildRows({ ...idle, entries }).map((row) => row.key)).toEqual(
+      buildRows({ ...idle, entries: entries.slice(2) }).map((row) => row.key),
+    );
+    expect(buildRows({ ...idle, entries }).filter((row) => row.kind === "entry")).toHaveLength(2);
+    // A window that does not reach the chat's start may begin with a real change.
+    expect(
+      buildRows({ ...idle, hasOlder: true, entries: entries.slice(0, 1) }).map((row) => row.kind),
+    ).toEqual(["entry"]);
   });
 
   test("tool results show inside their call's card, not as rows of their own", () => {

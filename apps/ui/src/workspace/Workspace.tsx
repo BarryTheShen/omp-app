@@ -28,6 +28,7 @@ import {
   type PaneHost,
   PaneHostContext,
 } from "./ChatPanel";
+import { equalized, swappedWithNext } from "./layout";
 import { TabStrip } from "./TabStrip";
 import {
   activateTab,
@@ -44,6 +45,8 @@ import {
 
 const THEME: DockviewTheme = { name: "omp", className: "dockview-theme-omp" };
 const COMPONENTS = { chat: ChatPanel };
+/** How much one resize key widens, narrows, heightens or shortens the focused pane. */
+const RESIZE_STEP_PX = 48;
 
 /** What the sidebar asks of the workspace. */
 export interface WorkspaceHandle {
@@ -325,6 +328,43 @@ export function Workspace({
     keys,
   );
   useHotkeys("ctrl+shift+w", () => withActive((api) => api.activePanel?.api.close()), keys);
+  // Swap with the next pane, and equalize, rebuild the layout with the same panes (their chats stay open).
+  useHotkeys(
+    "ctrl+shift+f8",
+    () =>
+      withActive((api) => {
+        const group = api.activeGroup;
+        const swapped = group === undefined ? null : swappedWithNext(api.toJSON(), group.id);
+        if (swapped === null) return;
+        api.fromJSON(swapped, { reuseExistingPanels: true });
+        focusPane(api);
+      }),
+    keys,
+  );
+  useHotkeys(
+    "meta+ctrl+equal",
+    () =>
+      withActive((api) => {
+        api.fromJSON(equalized(api.toJSON()), { reuseExistingPanels: true });
+        focusPane(api);
+      }),
+    keys,
+  );
+  useHotkeys(
+    "meta+ctrl+shift+left, meta+ctrl+shift+right, meta+ctrl+shift+up, meta+ctrl+shift+down",
+    (_event, handler) =>
+      withActive((api) => {
+        const group = api.activeGroup;
+        const key = handler.keys?.[0];
+        if (group === undefined || key === undefined) return;
+        // Wider, narrower, taller, shorter by a step, as kitty's resize.
+        const step = RESIZE_STEP_PX;
+        if (key === "arrowleft" || key === "arrowright")
+          group.api.setSize({ width: group.api.width + (key === "arrowright" ? step : -step) });
+        else group.api.setSize({ height: group.api.height + (key === "arrowup" ? step : -step) });
+      }),
+    keys,
+  );
   useHotkeys(
     "ctrl+shift+t",
     () =>

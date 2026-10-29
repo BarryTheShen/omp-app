@@ -39,8 +39,9 @@ export function TranscriptList({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { entries, stream, streamDone, activeTools, working, hasOlder, shell, notices } = snapshot;
   const rows = useMemo(
-    () => buildRows({ entries, stream, streamDone, activeTools, working, shell, notices }),
-    [entries, stream, streamDone, activeTools, working, shell, notices],
+    () =>
+      buildRows({ entries, stream, streamDone, activeTools, working, shell, notices, hasOlder }),
+    [entries, stream, streamDone, activeTools, working, shell, notices, hasOlder],
   );
   const results = useMemo(() => toolResults(entries), [entries]);
   const virtualizer = useVirtualizer({

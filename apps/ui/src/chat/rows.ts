@@ -118,7 +118,14 @@ export function toolResults(
 export function buildRows(
   snapshot: Pick<
     ChatSnapshot,
-    "entries" | "stream" | "streamDone" | "activeTools" | "working" | "shell" | "notices"
+    | "entries"
+    | "stream"
+    | "streamDone"
+    | "activeTools"
+    | "working"
+    | "shell"
+    | "notices"
+    | "hasOlder"
   >,
 ): readonly TranscriptRow[] {
   const rows: TranscriptRow[] = [];
@@ -126,7 +133,12 @@ export function buildRows(
   const committedCalls = new Set<string>();
   // The last failure row, while no message has come after it.
   let lastFailure: number | null = null;
+  // The model and thinking level a chat starts with are its settings, not changes: drawn from its first message on.
+  let started = snapshot.hasOlder;
   for (const entry of snapshot.entries) {
+    if (entry.type === "message") started = true;
+    if (!started && (entry.type === "model_change" || entry.type === "thinking_level_change"))
+      continue;
     if (entry.type === "message" && entry.message.role === "assistant") {
       for (const block of entry.message.content)
         if (block.type === "toolCall") committedCalls.add(block.id);
