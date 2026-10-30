@@ -2,9 +2,9 @@ import type { Page } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
 /**
- * The new UI (`apps/ui`, under `/v2/`) on real omp, when the app's server is slow: a chat opened before shows at once
- * from what this browser kept, a chat the pointer rests on is read ahead, and a new chat takes a message before it is
- * ready.
+ * The new UI (`apps/ui`, under `/v2/`) on real omp, when the app's server is slow: a chat left a moment ago comes back
+ * as the page kept it open, a chat opened before a reload shows at once from what this browser kept, a chat the pointer
+ * rests on is read ahead, and a new chat takes a message before it is ready.
  */
 realTest.describe("new UI reopening and typing ahead", () => {
   realTest.setTimeout(240_000);
@@ -33,7 +33,37 @@ realTest.describe("new UI reopening and typing ahead", () => {
   const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
 
   realTest(
-    "a chat opened before shows at once while the server is slow to read its file; resting on a chat reads it ahead",
+    "a chat left a moment ago comes back as it was at once, while the server is slow, without reading its file again",
+    async ({ realApp }) => {
+      let server!: SlowServer;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (target: Page) => {
+          server = await slowServer(target, 5_000);
+        },
+      });
+      const box = page.getByRole("textbox", { name: "Message" });
+      await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+      await expect(transcript(page).getByText("Seeded chat 1")).toBeVisible({ timeout: 60_000 });
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+      await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
+      await expect(transcript(page).getByText("Seeded chat 2")).toBeVisible({ timeout: 60_000 });
+
+      // From now on, opening a chat and reading its file each take the server five seconds.
+      server.slow = /"method":"(open|readEntryWindow)"/;
+      const readsBefore = fileReads(server);
+      await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+      await expect(transcript(page).getByText("Seeded chat 1")).toBeVisible({ timeout: 1_500 });
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 1_500 });
+      // The page kept it open: its file is not read again to show it.
+      expect(fileReads(server)).toBe(readsBefore);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "after a reload, a chat opened before shows at once while the server is slow to read its file; resting on a chat reads it ahead",
     async ({ realApp }) => {
       let server!: SlowServer;
       const page = await realApp.open({
@@ -46,7 +76,9 @@ realTest.describe("new UI reopening and typing ahead", () => {
       await expect(transcript(page).getByText("Seeded chat 1")).toBeVisible({ timeout: 60_000 });
       await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
       await expect(transcript(page).getByText("Seeded chat 2")).toBeVisible({ timeout: 60_000 });
-      await expect(transcript(page).getByText("Seeded chat 1")).toHaveCount(0);
+      // A reload ends the chats the page kept open; what this browser kept of each chat stays.
+      await page.reload();
+      await expect(transcript(page).getByText("Seeded chat 2")).toBeVisible({ timeout: 60_000 });
 
       // From now on, reading a chat's file takes the server five seconds.
       server.slow = /"method":"readEntryWindow"/;

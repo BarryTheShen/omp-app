@@ -16,6 +16,7 @@ import type { ComposerHandle } from "../chat/Composer";
 import { ChatController, type ChatTarget } from "../chat/controller";
 import { userText } from "../chat/MessageActions";
 import { inbox } from "../inbox/inbox";
+import { chatCache } from "./chatCache";
 
 /** A pane's chat: `chat` names this pane's chat, so a new chat that gets its id keeps its controller. */
 export interface ChatPanelParams {
@@ -94,7 +95,10 @@ export const PaneHostContext = createContext<PaneHost | null>(null);
 
 const TITLE_CHARACTERS = 60;
 
-/** One chat pane in dockview: its own controller for as long as the pane shows that chat. */
+/**
+ * One chat pane in dockview: the chat's controller for as long as the pane shows that chat. A chat the page kept open
+ * (`chatCache`) is taken from there and shown as it is now; the pane gives its chat back when it moves on.
+ */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>): ReactNode {
   const host = use(PaneHostContext);
   if (host === null) throw new Error("ChatPanel needs the workspace around it.");
@@ -115,16 +119,20 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   const controller = opened?.chat === params.chat ? opened.controller : null;
   const root = useRef<HTMLDivElement | null>(null);
 
-  // A new controller only when the pane is given another chat; the same chat gaining its id keeps it.
+  // A controller only when the pane is given another chat; the same chat gaining its id keeps it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `params.chat` names the chat; target and folder go with it
   useEffect(() => {
-    const next = new ChatController(client, params.target, params.folder, params.chat);
+    const kept =
+      params.target.kind === "existing"
+        ? chatCache.take(client, params.target.threadId)
+        : undefined;
+    const next = kept ?? new ChatController(client, params.target, params.folder, params.chat);
     setOpened({ chat: params.chat, controller: next });
     controllers.set(api.id, next);
-    void next.open();
+    if (kept === undefined) void next.open();
     return () => {
       if (controllers.get(api.id) === next) controllers.delete(api.id);
-      void next.dispose();
+      chatCache.keep(client, next);
     };
   }, [client, params.chat]);
 

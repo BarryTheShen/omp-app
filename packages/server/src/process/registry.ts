@@ -3,10 +3,13 @@ import { AppFailure } from "@omp-app/contracts";
 import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "./omp-process";
 
 /**
- * Each omp process holds about 380 MB while idle, so a chat nobody watches is stopped after two
- * minutes: coming back to it restarts omp and replays its history (a couple of seconds).
+ * Each omp process holds about 380 MB while idle. A chat nobody views stays up for an hour, so coming back to it finds
+ * omp ready; after that it is stopped, and coming back restarts omp and replays its history (a couple of seconds).
  */
-const DEFAULT_IDLE_CLOSE_MS = 2 * 60 * 1000;
+const DEFAULT_IDLE_CLOSE_MS = 60 * 60 * 1000;
+
+/** At most this many chats nobody views stay up: past it, the one left unviewed longest is stopped first. */
+const DEFAULT_MAX_IDLE = 12;
 
 /** How long a wait for omp to stop lasts before it refuses. A stop takes at most about five seconds (SIGTERM, then SIGKILL). */
 const STOP_LIMIT_MS = 10 * 1000;
@@ -31,8 +34,10 @@ function defaultTimer(): ProcessTimer {
 }
 
 export interface OmpProcessRegistryOptions {
-  /** How long an unwatched thread's process stays up before it is checked and stopped. Default 2 minutes. */
+  /** How long an unwatched thread's process stays up before it is checked and stopped. Default an hour. */
   readonly idleCloseMs?: number;
+  /** How many unwatched threads keep their process before the one unwatched longest is stopped. Default 12. */
+  readonly maxIdle?: number;
   /** Makes a thread's omp: `spawnOmpProcess` with the pinned omp in the server, a stand-in in tests. */
   readonly createProcess: (options: OmpProcessOptions) => OmpProcess;
   /** Injectable for deterministic idle-close tests; defaults to the global timer. */
@@ -69,6 +74,8 @@ interface Entry {
   /** `!` commands running in this thread's omp, each holding it up (see `holdCommand`). */
   commands: number;
   idleTimer: unknown;
+  /** When the thread was last left with nobody viewing it, as a count; undefined while it is viewed, busy or running a command. */
+  idleOrder: number | undefined;
 }
 
 /**
@@ -81,6 +88,9 @@ interface Entry {
  */
 export class OmpProcessRegistry {
   readonly #idleCloseMs: number;
+  readonly #maxIdle: number;
+  /** Counts each time a thread is left unwatched, so the threads unwatched longest are found first. */
+  #idleCount = 0;
   readonly #createProcess: (options: OmpProcessOptions) => OmpProcess;
   readonly #timer: ProcessTimer;
   readonly #entries = new Map<ThreadId, Entry>();
@@ -96,6 +106,7 @@ export class OmpProcessRegistry {
 
   constructor(options: OmpProcessRegistryOptions) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
+    this.#maxIdle = options.maxIdle ?? DEFAULT_MAX_IDLE;
     this.#createProcess = options.createProcess;
     this.#timer = options.timer ?? defaultTimer();
   }
@@ -134,6 +145,7 @@ export class OmpProcessRegistry {
       }
       existing.watchers += 1;
       this.#cancelIdle(existing);
+      existing.idleOrder = undefined;
       return existing.process;
     }
     const process = this.#createProcess(options);
@@ -145,6 +157,7 @@ export class OmpProcessRegistry {
       busy: false,
       commands: 0,
       idleTimer: undefined,
+      idleOrder: undefined,
       unsubscribe: () => undefined,
     };
     entry.unsubscribe = this.#forgetWhenStopped(entry);
@@ -403,13 +416,32 @@ export class OmpProcessRegistry {
     }
   }
 
-  #scheduleIdleIfNeeded(entry: Entry): void {
+  #scheduleIdleIfNeeded(entry: Entry, trim = true): void {
     this.#cancelIdle(entry);
-    if (entry.watchers > 0 || entry.busy || entry.commands > 0) return;
+    if (entry.watchers > 0 || entry.busy || entry.commands > 0) {
+      entry.idleOrder = undefined;
+      return;
+    }
+    entry.idleOrder ??= ++this.#idleCount;
     entry.idleTimer = this.#timer.setTimeout(() => {
       entry.idleTimer = undefined;
       void this.#closeIfIdle(entry);
     }, this.#idleCloseMs);
+    if (trim) this.#trimIdle();
+  }
+
+  /**
+   * Past `maxIdle` unwatched threads, the ones unwatched longest are checked now instead of after the idle wait, each
+   * stopped once omp says it is settled. One that is not keeps its timer and is not asked again by this trim.
+   */
+  #trimIdle(): void {
+    const idle = [...this.#entries.values()]
+      .filter((entry) => entry.idleOrder !== undefined && entry.idleTimer !== undefined)
+      .sort((a, b) => (a.idleOrder ?? 0) - (b.idleOrder ?? 0));
+    for (const entry of idle.slice(0, Math.max(0, idle.length - this.#maxIdle))) {
+      this.#cancelIdle(entry);
+      void this.#closeIfIdle(entry, 0, false);
+    }
   }
 
   #stillUnwatched(entry: Entry, ownWatchers = 0): boolean {
@@ -424,6 +456,7 @@ export class OmpProcessRegistry {
   async #closeIfIdle(
     entry: Entry,
     ownWatchers = 0,
+    trim = true,
   ): Promise<{ readonly stopping: Promise<void> } | undefined> {
     if (!this.#stillUnwatched(entry, ownWatchers)) return undefined;
     if (this.#idleHooks !== undefined) {
@@ -436,7 +469,7 @@ export class OmpProcessRegistry {
       }
       if (!this.#stillUnwatched(entry, ownWatchers)) return undefined;
       if (!settled) {
-        this.#scheduleIdleIfNeeded(entry);
+        this.#scheduleIdleIfNeeded(entry, trim);
         return undefined;
       }
     }

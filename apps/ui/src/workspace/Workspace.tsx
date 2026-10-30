@@ -34,6 +34,7 @@ import {
   type PaneHost,
   PaneHostContext,
 } from "./ChatPanel";
+import { chatCache } from "./chatCache";
 import { equalized, swappedWithNext } from "./layout";
 import { TabStrip } from "./TabStrip";
 import {
@@ -86,7 +87,7 @@ export interface WorkspaceHandle {
   readonly open: (target: ChatTarget, where: "here" | "split") => void;
   readonly command: (id: WorkspaceCommand) => void;
   readonly focused: () => FocusedChat | null;
-  /** A chat was deleted: every pane that showed it gets a new chat. */
+  /** A chat was deleted: every pane that showed it gets a new chat, and the page stops keeping it open. */
   readonly forget: (threadId: ThreadId) => void;
 }
 
@@ -350,6 +351,8 @@ export function Workspace({
       },
       command: (id) => commands[id](),
       forget: (threadId) => {
+        // Before the panes move on, so the one that showed it closes it instead of keeping it open.
+        chatCache.forget(threadId);
         for (const api of apis.current.values()) {
           for (const panel of api.panels) {
             const shown = paramsOf(panel.params);

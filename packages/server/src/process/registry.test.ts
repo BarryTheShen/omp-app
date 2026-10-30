@@ -583,6 +583,63 @@ describe("OmpProcessRegistry", () => {
     });
   });
 
+  describe("the cap on unwatched threads", () => {
+    function capped(timer: ManualTimer, created: StubProcess[]): OmpProcessRegistry {
+      return new OmpProcessRegistry({
+        timer,
+        idleCloseMs: 60_000,
+        maxIdle: 2,
+        createProcess: (processOptions) => {
+          const process = new StubProcess(processOptions);
+          created.push(process);
+          return process;
+        },
+      });
+    }
+    const threads = ["thread-a", "thread-b", "thread-c"].map((id) => ThreadId.parse(id));
+
+    test("past the cap the thread left unwatched longest stops at once; one viewed again loses its place", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = capped(timer, created);
+      const [a, b, c] = threads as [ThreadId, ThreadId, ThreadId];
+      for (const thread of threads) registry.acquire(options(thread, "/workspace/cap"));
+      registry.release(a);
+      registry.release(b);
+      // a is viewed again and left again, so b is now the one left unwatched longest.
+      registry.acquire(options(a, "/workspace/cap"));
+      registry.release(a);
+      registry.release(c);
+      // With no idle hooks the stop starts at once, inside the release.
+
+      expect(created.map((process) => process.stopCalls)).toEqual([0, 1, 0]);
+      expect(threads.map((thread) => registry.has(thread))).toEqual([true, false, true]);
+    });
+
+    test("a thread omp says is not settled stays past the cap, and that trim asks it only once", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = capped(timer, created);
+      const [a] = threads as [ThreadId, ThreadId, ThreadId];
+      const asked: ThreadId[] = [];
+      registry.setIdleHooks({
+        isSettled: async (thread) => {
+          asked.push(thread);
+          return thread !== a;
+        },
+        stopped: () => undefined,
+      });
+      for (const thread of threads) registry.acquire(options(thread, "/workspace/cap"));
+      for (const thread of threads) registry.release(thread);
+      await Bun.sleep(0);
+
+      expect(asked).toEqual([a]);
+      expect(created.map((process) => process.stopCalls)).toEqual([0, 0, 0]);
+      // It keeps an idle timer of its own, so the hour still applies to it.
+      expect(timer.callbacks.size).toBe(3);
+    });
+  });
+
   test("stopIfUnwatched stops an unwatched process at once and leaves a watched one running", async () => {
     const timer = new ManualTimer();
     const created: StubProcess[] = [];

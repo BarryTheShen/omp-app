@@ -118,6 +118,10 @@ export class ChatController {
    * views the chat and its idle time has passed.
    */
   #viewTaken = false;
+  /** The open's own `open` call has answered: from then on a view let go is taken back with a call of its own. */
+  #openAnswered = false;
+  /** The page keeps this chat while no pane shows it, holding no view (see `park`). */
+  #parked = false;
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
@@ -208,10 +212,13 @@ export class ChatController {
         : { folderPath: this.target.folder, start: "new" },
     );
     this.#viewTaken = true;
+    this.#openAnswered = true;
     if (this.#disposed) {
       await this.#releaseView(opened.threadId);
       return;
     }
+    // Kept by the page before its open answered: it holds no view while no pane shows it.
+    if (this.#parked) void this.#releaseView(opened.threadId);
     this.#threadId = opened.threadId;
     if (this.target.kind === "new") this.#draft.keepFor(opened.threadId);
     this.#sessionFile = opened.sessionFile;
@@ -737,6 +744,33 @@ export class ChatController {
     // A stream that ended with its chat (a deleted chat) has nothing left to unsubscribe.
     await this.#subscription?.unsubscribe().catch(() => undefined);
     if (this.#threadId !== null) await this.#releaseView(this.#threadId);
+  }
+
+  /**
+   * The page keeps this chat open while no pane shows it (`chatCache`): its transcript and live events stay, and the
+   * view its pane took is let go, so another tab may delete the chat and the server's idle rule decides how long omp
+   * stays up. `unpark` takes the view back.
+   */
+  async park(): Promise<void> {
+    this.#parked = true;
+    const threadId = this.#threadId;
+    if (threadId !== null) await this.#releaseView(threadId);
+  }
+
+  /** A pane shows the kept chat again: it takes the view back, unless its first open is still under way and takes it. */
+  async unpark(): Promise<void> {
+    this.#parked = false;
+    const threadId = this.#threadId;
+    if (!this.#openAnswered || threadId === null || this.#viewTaken || this.#disposed) return;
+    // Taken before the call answers, so a park meanwhile lets it go again (its close follows this open).
+    this.#viewTaken = true;
+    try {
+      await this.client.port(ChatSessionPort).open({ threadId });
+    } catch {
+      this.#viewTaken = false;
+      return;
+    }
+    if (this.#disposed || this.#parked) await this.#releaseView(threadId);
   }
 
   /** Lets go of the view this pane's open took, once. */
