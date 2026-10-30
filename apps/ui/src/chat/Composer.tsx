@@ -12,6 +12,7 @@ import { AgentsPill } from "../agents/AgentsPill";
 import { btwQuestion } from "../btw/btw";
 import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
+import { showPanel } from "../panels/panel-state";
 import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
 import { type Attachment, readImages } from "./attachments";
@@ -208,12 +209,12 @@ export const Composer = memo(function Composer({
       return;
     }
     setWaitingToSend(null);
-    // omp's `/btw`: a side question, answered beside the chat in its sheet; `/btw` alone opens the sheet.
+    // omp's `/btw`: a side question, answered beside the chat in the side panel's BTW history; `/btw` alone opens it.
     const aside = btwQuestion(value);
     if (aside !== null) {
       if (aside === "") {
         update("");
-        controller.btw.show();
+        showPanel("btw");
         return;
       }
       setSending(true);
@@ -226,7 +227,8 @@ export const Composer = memo(function Composer({
           update(
             now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now,
           );
-          controller.btw.show(record.id);
+          controller.btw.select(record.id);
+          showPanel("btw");
         })
         .catch((failure: unknown) => setError(`Not asked: ${errorText(failure)}`))
         .finally(() => setSending(false));

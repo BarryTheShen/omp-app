@@ -1,9 +1,10 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath } from "@omp-app/contracts";
-import { Bot, Gauge, ListChecks, type LucideIcon } from "lucide-react";
+import { Bot, Gauge, ListChecks, type LucideIcon, MessageCircleQuestion } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ChatController } from "../chat/controller";
 import { AgentsPanel } from "./agents/AgentsPanel";
+import { BtwPanel } from "./btw/BtwPanel";
 import { ProgressPanel } from "./progress/ProgressPanel";
 import { UsagePanel } from "./usage/UsagePanel";
 
@@ -30,7 +31,7 @@ export interface Panel {
   readonly render: (context: PanelContext) => ReactNode;
 }
 
-/** The panels in their tab order: usage, the subagents, then the goal and the checklist. */
+/** The panels in their order: usage, the subagents, the goal and the checklist, then the side questions. */
 export const PANELS: readonly Panel[] = [
   {
     id: "usage",
@@ -49,5 +50,11 @@ export const PANELS: readonly Panel[] = [
     title: "Progress",
     icon: ListChecks,
     render: ({ chat, openGoal }) => <ProgressPanel chat={chat} openGoal={openGoal} />,
+  },
+  {
+    id: "btw",
+    title: "BTW history",
+    icon: MessageCircleQuestion,
+    render: ({ chat }) => <BtwPanel chat={chat} />,
   },
 ];

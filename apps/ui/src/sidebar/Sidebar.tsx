@@ -70,6 +70,7 @@ export function Sidebar({
   onDeleted,
   onSettings,
   workspace,
+  phone,
 }: {
   /** The folder at the top, with its menu to switch it. */
   readonly folderMenu: ReactNode;
@@ -86,6 +87,8 @@ export function Sidebar({
   readonly onSettings: () => void;
   /** For the What's new card, which starts a tour in the workspace. */
   readonly workspace: RefObject<WorkspaceHandle | null>;
+  /** On a phone, where the side panel has no rail at the window's edge, its button sits here. */
+  readonly phone: boolean;
 }): ReactNode {
   const [query, setQuery] = useState("");
   const sidePanelOpen = usePanelState().open;
@@ -204,25 +207,27 @@ export function Sidebar({
         <ThemeSwitch />
         <div className="flex items-center gap-0.5">
           <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  data-tour="side-panel-button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Side panel"
-                  aria-pressed={sidePanelOpen}
-                  aria-keyshortcuts="Control+Alt+B"
-                  className="text-t3 hover:text-t1 aria-pressed:text-t1"
-                  onClick={togglePanel}
-                />
-              }
-            >
-              <PanelRight />
-            </TooltipTrigger>
-            <TooltipContent side="top">Side panel · {keycap(KEYS.sidePanel)}</TooltipContent>
-          </Tooltip>
+          {phone && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    data-tour="side-panel-button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Side panel"
+                    aria-pressed={sidePanelOpen}
+                    aria-keyshortcuts="Control+Alt+B"
+                    className="text-t3 hover:text-t1 aria-pressed:text-t1"
+                    onClick={togglePanel}
+                  />
+                }
+              >
+                <PanelRight />
+              </TooltipTrigger>
+              <TooltipContent side="top">Side panel · {keycap(KEYS.sidePanel)}</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={

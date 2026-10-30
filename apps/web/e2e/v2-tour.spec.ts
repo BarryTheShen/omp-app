@@ -65,6 +65,7 @@ realTest.describe("new UI tours", () => {
         /Tour: Agents and progress/,
         /Tour: Notes above the box/,
         /Tour: Your inbox/,
+        /Tour: The side panel on the right/,
       ]);
 
       expect(realApp.problems).toEqual([]);

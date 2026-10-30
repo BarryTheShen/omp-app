@@ -108,13 +108,14 @@ describe("the side questions' store", () => {
     expect(btw.getSnapshot().records?.[0]?.answer).toBe("streamed");
   });
 
-  test("says an answer asked here is ready when it ends while the sheet is put away", () => {
+  test("says an answer asked here is ready when it ends while the BTW history is put away", () => {
     const { btw, said } = store();
     btw.apply({ type: "btw_record", record: topic("mine", T) });
     btw.asked(topic("mine", T));
     btw.apply({ type: "btw_record", record: topic("theirs", T + 1) });
-    btw.show("mine");
-    btw.close();
+    btw.setShown(true);
+    btw.select("mine");
+    btw.setShown(false);
     expect(said).toEqual([STILL_ANSWERING]);
 
     btw.apply({ type: "btw_record", record: topic("theirs", T + 1, { status: "complete" }) });
@@ -125,16 +126,16 @@ describe("the side questions' store", () => {
     expect(said).toEqual([STILL_ANSWERING, ANSWER_READY]);
   });
 
-  test("says nothing when the sheet is open, or when the answer was cancelled", () => {
+  test("says nothing while the BTW history shows the chat, or when the answer was cancelled", () => {
     const { btw, said } = store();
     btw.apply({ type: "btw_record", record: topic("a", T) });
     btw.asked(topic("a", T));
-    btw.show("a");
+    btw.setShown(true);
     btw.apply({
       type: "btw_record",
       record: topic("a", T, { status: "complete", answer: "pong" }),
     });
-    btw.close();
+    btw.setShown(false);
     expect(said).toEqual([]);
 
     const followUp = {

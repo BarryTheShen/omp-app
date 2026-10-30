@@ -396,7 +396,9 @@ const MODELS_AND_ROLES: Tour = {
   ],
 };
 
-const BTW_SHEET = part("btw-sheet");
+const BTW_PANEL = part("btw-panel");
+const SIDE_PANEL_RAIL = part("side-panel-rail");
+const SIDE_PANEL = part("side-panel");
 
 const SIDE_QUESTIONS: Tour = {
   id: "side-questions-2026-10-30",
@@ -407,27 +409,23 @@ const SIDE_QUESTIONS: Tour = {
     {
       target: MESSAGE_BOX,
       title: "Ask on the side",
-      text: "Type <b>/btw</b>, take it from the menu with Enter, and press Enter again: it opens the BTW history, where omp keeps this chat's side questions.",
-      action: { kind: "appears", selector: BTW_SHEET },
+      text: "Type <b>/btw</b>, take it from the menu with Enter, and press Enter again: the side panel opens on the BTW history, where omp keeps this chat's side questions.",
+      action: { kind: "appears", selector: BTW_PANEL },
     },
     {
-      target: BTW_SHEET,
+      target: BTW_PANEL,
       title: "Your side questions",
-      text: "<b>/btw</b> with a question asks omp about this chat on the side, also while it works: the answer comes here and stays out of the chat. <b>Follow up</b> asks more, <b>Copy answer</b> copies it. {stop} puts it away; an answer still coming goes on, and the chat says when it is ready.",
-      action: { kind: "disappears", selector: BTW_SHEET },
+      text: "<b>/btw</b> with a question asks omp about this chat on the side, also while it works: the answer comes here, beside the chat, and stays out of it. <b>Follow up</b> asks more, <b>Copy answer</b> copies it. Put the panel away and an answer still coming goes on; the chat says when it is ready.",
+      action: next,
     },
     {
-      target: WORKSPACE,
-      centred: true,
+      target: SIDE_PANEL_RAIL,
       title: "Find it again",
-      text: "<b>/btw</b> opens it again, as does <b>BTW history</b> in {palette}.",
+      text: "<b>/btw</b> opens it again, as do its button on this rail and {palette}.",
       action: next,
     },
   ],
 };
-
-const SIDE_PANEL_BUTTON = part("side-panel-button");
-const SIDE_PANEL = part("side-panel");
 
 const SIDE_PANEL_TOUR: Tour = {
   id: "side-panel-2026-10-30",
@@ -436,9 +434,9 @@ const SIDE_PANEL_TOUR: Tour = {
   sandbox: true,
   steps: [
     {
-      target: SIDE_PANEL_BUTTON,
+      target: SIDE_PANEL_RAIL,
       title: "Side panel",
-      text: "This button or {sidePanel} shows the side panel beside your chats. Try it.",
+      text: "This rail at the right edge opens the side panel beside your chats, on the panel you click; {sidePanel} shows and hides it too. Click <b>Usage</b>, the first one.",
       action: { kind: "appears", selector: SIDE_PANEL },
     },
     {
@@ -448,9 +446,9 @@ const SIDE_PANEL_TOUR: Tour = {
       action: next,
     },
     {
-      target: SIDE_PANEL_BUTTON,
+      target: SIDE_PANEL_RAIL,
       title: "Hide it",
-      text: "{sidePanel} or the button hides it; the palette has it too. It stays as you leave it.",
+      text: "Click the panel's button again, or {sidePanel}; the palette has it too. It stays as you leave it.",
       action: { kind: "disappears", selector: SIDE_PANEL },
     },
   ],
@@ -479,8 +477,6 @@ const MODEL_HUB_TOUR: Tour = {
   ],
 };
 
-const PANEL_TABS = part("side-panel-tabs");
-
 const AGENTS_PROGRESS_TOUR: Tour = {
   id: "agents-progress-2026-10-30",
   title: "Agents and progress",
@@ -488,21 +484,21 @@ const AGENTS_PROGRESS_TOUR: Tour = {
   sandbox: true,
   steps: [
     {
-      target: SIDE_PANEL_BUTTON,
+      target: SIDE_PANEL_RAIL,
       title: "The side panel",
-      text: "This button or {sidePanel} shows the side panel. Try it.",
+      text: "This rail at the right edge, or {sidePanel}, shows the side panel. Try it.",
       action: { kind: "appears", selector: SIDE_PANEL },
     },
     {
-      target: PANEL_TABS,
-      title: "Three panels",
-      text: "<b>Usage</b>, <b>Agents</b>: the chat's subagents (a click opens the Agent Hub on one), and <b>Progress</b>: its goal, omp's todo list and plan mode. They follow the chat you are in.",
+      target: SIDE_PANEL_RAIL,
+      title: "Four panels",
+      text: "<b>Usage</b>; <b>Agents</b>: the chat's subagents (a click opens the Agent Hub on one); <b>Progress</b>: its goal, omp's todo list and plan mode; and <b>BTW history</b>: its side questions. They follow the chat you are in.",
       action: next,
     },
     {
-      target: SIDE_PANEL_BUTTON,
+      target: SIDE_PANEL_RAIL,
       title: "Hide it",
-      text: "{sidePanel} or the button hides it.",
+      text: "Click the panel's button again, or {sidePanel}.",
       action: { kind: "disappears", selector: SIDE_PANEL },
     },
   ],
@@ -547,6 +543,27 @@ const INBOX_TOUR: Tour = {
   ],
 };
 
+const SIDE_RAIL_TOUR: Tour = {
+  id: "side-rail-2026-10-30",
+  title: "The side panel on the right",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "One button per panel",
+      text: "The side panel's buttons are on this rail at the right edge, where the panel opens: <b>Usage</b>, <b>Agents</b>, <b>Progress</b> and the new <b>BTW history</b>. A button opens the panel on its panel; the same button again puts it away. Click <b>BTW history</b>, the last one.",
+      action: { kind: "appears", selector: BTW_PANEL },
+    },
+    {
+      target: BTW_PANEL,
+      title: "Side questions beside the chat",
+      text: "<b>/btw</b> no longer covers the screen: its questions and answers stay here, next to the chat, which you can keep reading and using.",
+      action: next,
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -561,4 +578,5 @@ export const TOURS: readonly Tour[] = [
   AGENTS_PROGRESS_TOUR,
   NOTES_TOUR,
   INBOX_TOUR,
+  SIDE_RAIL_TOUR,
 ];

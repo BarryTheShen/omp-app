@@ -2,17 +2,23 @@ import type { Page } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
 /**
- * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the BTW history sheet and is answered there,
- * out of the chat; a follow-up joins its topic; Esc puts the sheet away while an answer still comes, the chat says so and
- * says when it is ready; Stop answer cancels one and keeps what came; the history is there again after a reload. In
- * Chromium and in WebKit, the desktop window's engine.
+ * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the side panel's BTW history beside the
+ * chat, which stays usable, and is answered there, out of the chat; a follow-up joins its topic; putting the history
+ * away while an answer still comes says so, and the chat says when it is ready; Stop answer cancels one and keeps what
+ * came; the history is there again after a reload. In Chromium and in WebKit, the desktop window's engine.
  */
 const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
 export const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
-export const sheet = (page: Page) => page.getByRole("dialog", { name: "BTW history" });
-const topics = (page: Page) => sheet(page).getByRole("listbox", { name: "Side questions" });
-const thread = (page: Page) => sheet(page).getByRole("region", { name: "Side question" });
+export const history = (page: Page) =>
+  page
+    .getByRole("complementary", { name: "Side panel" })
+    .getByRole("tabpanel", { name: "BTW history" });
+/** The rail's button for the BTW history: it shows the history, or puts it away when it shows. */
+const railButton = (page: Page) =>
+  page.getByRole("navigation", { name: "Side panel" }).getByRole("button", { name: "BTW history" });
+const topics = (page: Page) => history(page).getByRole("listbox", { name: "Side questions" });
+const thread = (page: Page) => history(page).getByRole("region", { name: "Side question" });
 
 async function newChat(page: Page): Promise<void> {
   await chats(page).getByRole("button", { name: "New chat" }).click();
@@ -32,7 +38,7 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
       realTest.setTimeout(240_000);
 
       realTest(
-        "a side question is answered in the BTW history, out of the chat, and a follow-up joins it",
+        "a side question is answered in the BTW history beside the chat, out of the chat, and a follow-up joins it",
         async ({ realApp }) => {
           const page = await realApp.open({ path: "/" });
           await newChat(page);
@@ -43,24 +49,31 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
           });
 
           await send(page, "/btw What is this chat about?");
-          await expect(sheet(page)).toBeVisible();
+          await expect(history(page)).toBeVisible();
+          await expect(railButton(page)).toHaveAttribute("aria-pressed", "true");
           const first = thread(page).getByRole("article", { name: "Question" });
           await expect(first).toContainText("What is this chat about?");
           await expect(first).toContainText("pong", { timeout: 60_000 });
           await expect(topics(page).getByRole("option")).toHaveCount(1);
           await expect(topics(page).getByRole("option")).toHaveAttribute("aria-selected", "true");
 
+          // The chat stays in view and usable beside it: the question left the box, which takes text.
+          await expect(box(page)).toHaveValue("");
+          await box(page).fill("typed while it shows");
+          await expect(box(page)).toHaveValue("typed while it shows");
+          await box(page).fill("");
+
           // Follow up opens a field under the answer; an empty one is refused in omp's words.
-          await sheet(page).getByRole("button", { name: "Follow up" }).click();
-          const field = sheet(page).getByRole("textbox", { name: "Follow up:" });
+          await history(page).getByRole("button", { name: "Follow up" }).click();
+          const field = history(page).getByRole("textbox", { name: "Follow up:" });
           await expect(field).toBeFocused();
           await field.press("Enter");
-          await expect(sheet(page).getByText("Enter a follow-up question.")).toBeVisible();
-          // Esc in the field puts the field away, not the sheet.
+          await expect(history(page).getByText("Enter a follow-up question.")).toBeVisible();
+          // Esc in the field puts the field away, not the history.
           await field.press("Escape");
           await expect(field).toBeHidden();
-          await expect(sheet(page)).toBeVisible();
-          await sheet(page).getByRole("button", { name: "Follow up" }).click();
+          await expect(history(page)).toBeVisible();
+          await history(page).getByRole("button", { name: "Follow up" }).click();
           await field.fill("Say more.");
           await field.press("Enter");
           const followUp = thread(page).getByRole("article", { name: "Follow-up" });
@@ -70,17 +83,15 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
 
           if (engine === "chromium") {
             await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-            await sheet(page).getByRole("button", { name: "Copy answer" }).click();
-            await expect(sheet(page).getByText("✓ Copied")).toBeVisible();
-            await expect(sheet(page).getByRole("button", { name: "Copy again" })).toBeVisible();
+            await history(page).getByRole("button", { name: "Copy answer" }).click();
+            await expect(history(page).getByText("✓ Copied")).toBeVisible();
+            await expect(history(page).getByRole("button", { name: "Copy again" })).toBeVisible();
             expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("pong");
           }
 
-          // Esc puts the sheet away (an open sheet hides the rest of the page from assistive tech, so the box is read
-          // after it): the question left the box, and the chat never held the side questions.
-          await page.keyboard.press("Escape");
-          await expect(sheet(page)).toBeHidden();
-          await expect(box(page)).toHaveValue("");
+          // The rail's button puts it away; the chat never held the side questions.
+          await railButton(page).click();
+          await expect(history(page)).toBeHidden();
           await expect(transcript(page).getByText("What is this chat about?")).toHaveCount(0);
           await expect(transcript(page).getByText("Say more.")).toHaveCount(0);
 
@@ -99,19 +110,19 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
           await box(page).press("Enter");
           await expect(box(page)).toHaveValue("/btw ");
           await box(page).press("Enter");
-          await expect(sheet(page)).toBeVisible();
+          await expect(history(page)).toBeVisible();
           await expect(topics(page).getByRole("option")).toHaveCount(1);
           await expect(thread(page).getByRole("article")).toHaveCount(2);
-          await page.keyboard.press("Escape");
-          await expect(sheet(page)).toBeHidden();
           await expect(box(page)).toHaveValue("");
+          await railButton(page).click();
+          await expect(history(page)).toBeHidden();
 
           expect(realApp.problems).toEqual([]);
         },
       );
 
       realTest(
-        "Esc puts the sheet away while an answer comes and the chat says when it is ready; Stop answer cancels one",
+        "putting the history away while an answer comes says so, and the chat says when it is ready; Stop answer cancels one",
         async ({ realApp }) => {
           const page = await realApp.open({ path: "/" });
           await newChat(page);
@@ -119,8 +130,8 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
           // A side question that answers for a few seconds, put away at once.
           await send(page, "/btw stream_long_code");
           await expect(thread(page).getByText("Answering")).toBeVisible();
-          await page.keyboard.press("Escape");
-          await expect(sheet(page)).toBeHidden();
+          await railButton(page).click();
+          await expect(history(page)).toBeHidden();
           await expect(
             page.getByText("/btw is still answering in the background · /btw to reopen it"),
           ).toBeVisible();
@@ -128,12 +139,12 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
             timeout: 60_000,
           });
 
-          // /btw opens the sheet on that answer, whole.
+          // /btw opens the history on that answer, whole.
           await send(page, "/btw ");
           await expect(thread(page)).toContainText("Here is the long streamed block:");
           await expect(thread(page).getByText("Answering")).toHaveCount(0);
-          await page.keyboard.press("Escape");
-          await expect(sheet(page)).toBeHidden();
+          await railButton(page).click();
+          await expect(history(page)).toBeHidden();
 
           // A second, long answer: X (Stop answer) cancels it and keeps what came.
           await send(page, "/btw stream_steady");
@@ -144,7 +155,7 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
             "Cancelled",
           );
           await expect(thread(page)).toContainText("Steady line 0");
-          await expect(sheet(page).getByRole("button", { name: "Stop answer" })).toHaveCount(0);
+          await expect(history(page).getByRole("button", { name: "Stop answer" })).toHaveCount(0);
 
           expect(realApp.problems).toEqual([]);
         },

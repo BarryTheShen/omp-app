@@ -63,7 +63,9 @@ const panel = (page: Page) => page.getByRole("complementary", { name: "Side pane
 const thisChat = (page: Page) => page.getByRole("region", { name: "This chat" });
 const accounts = (page: Page) => page.getByRole("region", { name: "Your accounts" });
 const numbers = (page: Page, title: string) => thisChat(page).getByRole("group", { name: title });
-const button = (page: Page) => page.getByRole("button", { name: "Side panel", exact: true });
+/** A panel's button on the rail at the window's right edge. */
+const railButton = (page: Page, name: string) =>
+  page.getByRole("navigation", { name: "Side panel" }).getByRole("button", { name });
 const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
 const boxes = (page: Page) => page.getByRole("textbox", { name: "Message" });
 
@@ -77,18 +79,25 @@ realTest.describe("new UI side panel", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "the key, the button and the palette show and hide it, and it stays open after a reload",
+    "the key, the rail and the palette show and hide it, and it stays open after a reload",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
       await expect(panel(page)).toHaveCount(0);
-      await expect(button(page)).toHaveAttribute("aria-pressed", "false");
+      await expect(railButton(page, "Usage")).toHaveAttribute("aria-pressed", "false");
 
       await page.keyboard.press("Control+Alt+KeyB");
       await expect(panel(page)).toBeVisible();
       await expect(panel(page).getByRole("heading", { name: "Usage" })).toBeVisible();
-      await expect(button(page)).toHaveAttribute("aria-pressed", "true");
-      await button(page).click();
+      await expect(railButton(page, "Usage")).toHaveAttribute("aria-pressed", "true");
+      // The rail's button of the panel shown puts it away; another one shows its own panel.
+      await railButton(page, "Usage").click();
+      await expect(panel(page)).toHaveCount(0);
+      await railButton(page, "Progress").click();
+      await expect(panel(page).getByRole("heading", { name: "Progress" })).toBeVisible();
+      await expect(railButton(page, "Progress")).toHaveAttribute("aria-pressed", "true");
+      await expect(railButton(page, "Usage")).toHaveAttribute("aria-pressed", "false");
+      await railButton(page, "Progress").click();
       await expect(panel(page)).toHaveCount(0);
 
       await page.keyboard.press("Control+k");
@@ -172,12 +181,11 @@ realTest.describe("new UI side panel", () => {
         timeout: 120_000,
       });
       await page.keyboard.press("Control+Alt+KeyB");
-      const tab = (name: string) =>
-        panel(page).getByRole("tablist", { name: "Panels" }).getByRole("tab", { name });
+      const tab = (name: string) => railButton(page, name);
 
       // Progress: no goal yet; omp's todo list as omp writes it.
       await tab("Progress").click();
-      await expect(tab("Progress")).toHaveAttribute("aria-selected", "true");
+      await expect(tab("Progress")).toHaveAttribute("aria-pressed", "true");
       const progress = panel(page).getByRole("tabpanel", { name: "Progress" });
       await expect(progress).toContainText("No goal in this chat.");
       await expect(progress).toContainText("omp keeps no todo list in this chat.");

@@ -11,9 +11,9 @@ import { hidePanel, showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
 
 /**
- * The side column right of the workspace: one panel at a time, for the focused pane's chat. Closed by default; its key,
- * the button beside the settings gear and the palette open it, and it opens on the panel it showed last. On a phone it
- * is a sheet from the right.
+ * The side column right of the workspace: one panel at a time, for the focused pane's chat. Closed by default; the rail
+ * at the window's right edge, its key and the palette open it, and it opens on the panel it showed last. On a phone,
+ * where there is no rail, it is a sheet from the right with the panels as tabs.
  */
 export function SidePanel({
   client,
@@ -40,7 +40,7 @@ export function SidePanel({
         tabIndex={-1}
         className="flex items-center gap-1 border-b border-l2 px-3 py-2 outline-none"
       >
-        {PANELS.length > 1 && (
+        {phone && PANELS.length > 1 && (
           <div
             role="tablist"
             aria-label="Panels"

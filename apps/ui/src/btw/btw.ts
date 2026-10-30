@@ -66,34 +66,33 @@ export function withBtwCommand(commands: readonly ChatHostCommand[]): readonly C
   return [...commands.slice(0, at), BTW_COMMAND, ...commands.slice(at)];
 }
 
-/** omp's words when the sheet is put away while an answer of this pane's still comes, as Tern says them. */
+/** omp's words when the BTW history is put away while an answer of this pane's still comes, as Tern says them. */
 export const STILL_ANSWERING = "/btw is still answering in the background · /btw to reopen it";
-/** omp's words when such an answer ends while the sheet is put away. */
+/** omp's words when such an answer ends while the BTW history is put away. */
 export const ANSWER_READY = "/btw answer ready · /btw to read it";
 
 export interface BtwSnapshot {
   /** The chat's side questions, newest first; null until they are read. */
   readonly records: readonly BtwRecord[] | null;
-  /** Whether the BTW history sheet is open. */
-  readonly open: boolean;
-  /** The topic the sheet shows; null for the newest. */
+  /** The topic the BTW history shows; null for the newest. */
   readonly selected: string | null;
-  /** Counts the chat's moves to another session: the sheet reads that session's side questions. */
+  /** Counts the chat's moves to another session: the BTW history reads that session's side questions. */
   readonly session: number;
 }
 
 /**
- * A chat pane's side questions (omp's `/btw`) and their sheet. Their answers stream into this store, not into the
- * chat's: a piece of a side answer redraws the sheet only.
+ * A chat pane's side questions (omp's `/btw`), shown in the side panel's BTW history. Their answers stream into this
+ * store, not into the chat's: a piece of a side answer redraws the BTW history only.
  */
 export class BtwStore {
   #records: readonly BtwRecord[] | null = null;
-  #open = false;
   #selected: string | null = null;
   #session = 0;
-  /** Topics asked from this pane: an answer of theirs that ends while the sheet is put away is said, as omp does. */
+  /** Whether the BTW history shows this chat's side questions now. */
+  #shown = false;
+  /** Topics asked from this pane: an answer of theirs that ends while the history is put away is said, as omp does. */
   readonly #asked = new Set<string>();
-  #snapshot: BtwSnapshot = { records: null, open: false, selected: null, session: 0 };
+  #snapshot: BtwSnapshot = { records: null, selected: null, session: 0 };
   readonly #listeners = new Set<() => void>();
   readonly #say: (text: string) => void;
 
@@ -131,8 +130,8 @@ export class BtwStore {
   }
 
   /**
-   * A topic as omp sent it: it started or ended. An answer asked here that ends while the sheet is put away is said, in
-   * omp's words.
+   * A topic as omp sent it: it started or ended. An answer asked here that ends while the BTW history is put away is
+   * said, in omp's words.
    */
   put(record: BtwRecord): void {
     const records = this.#records ?? [];
@@ -145,7 +144,7 @@ export class BtwStore {
     if (
       wasRunning &&
       latestTurn(record).status === "complete" &&
-      !this.#open &&
+      !this.#shown &&
       this.#asked.has(record.id)
     )
       this.#say(ANSWER_READY);
@@ -163,28 +162,24 @@ export class BtwStore {
     this.put(record);
   }
 
-  /** Opens the sheet, on topic `selected` when given (else where it was, or the newest). */
-  show(selected?: string): void {
-    this.#open = true;
-    if (selected !== undefined) this.#selected = selected;
-    this.#publish();
-  }
-
-  /** Shows topic `id` in the open sheet. */
+  /** The BTW history shows topic `id`. */
   select(id: string): void {
     this.#selected = id;
     this.#publish();
   }
 
-  /** Puts the sheet away; an answer of this pane's still coming goes on, and omp's words say so. */
-  close(): void {
-    if (!this.#open) return;
-    this.#open = false;
+  /**
+   * The BTW history shows this chat's side questions, or no longer does (the panel closed, or another tab or another
+   * pane's chat took it): an answer of this pane's still coming goes on, and omp's words say so.
+   */
+  setShown(shown: boolean): void {
+    if (this.#shown === shown) return;
+    this.#shown = shown;
+    if (shown) return;
     const running = (this.#records ?? []).some(
       (record) => this.#asked.has(record.id) && latestTurn(record).status === "running",
     );
     if (running) this.#say(STILL_ANSWERING);
-    this.#publish();
   }
 
   /** The chat moved to another session (a new chat, a branch, a fork): its side questions are that session's. */
@@ -212,7 +207,6 @@ export class BtwStore {
   #publish(): void {
     this.#snapshot = {
       records: this.#records,
-      open: this.#open,
       selected: this.#selected,
       session: this.#session,
     };

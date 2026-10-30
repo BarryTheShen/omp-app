@@ -111,13 +111,6 @@ function chatModes(
     });
   }
   items.push({
-    key: "chat:btw",
-    group: "Commands",
-    label: "BTW history",
-    detail: "Side questions asked with /btw",
-    run: () => close(() => controller.btw.show()),
-  });
-  items.push({
     key: "chat:models",
     group: "Commands",
     label: KEYS.modelHub.label,

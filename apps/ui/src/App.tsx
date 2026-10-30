@@ -28,6 +28,7 @@ import { inbox, setInboxOpen } from "./inbox/inbox";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
+import { PanelRail } from "./panels/PanelRail";
 import { togglePanel, usePanelState } from "./panels/panel-state";
 import { SidePanel } from "./panels/SidePanel";
 import type { SettingsPlace } from "./settings/SettingsPage";
@@ -229,9 +230,10 @@ function Shell({
     <div
       className={cn(
         "grid h-full max-sm:grid-cols-1",
+        // The last column is the side panel's rail, at the window's right edge where the panel opens.
         sidePanel.open && !phone
-          ? "grid-cols-[244px_minmax(0,1fr)_320px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_300px]"
-          : "grid-cols-[244px_minmax(0,1fr)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)]",
+          ? "grid-cols-[244px_minmax(0,1fr)_320px_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_300px_40px]"
+          : "grid-cols-[244px_minmax(0,1fr)_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_40px]",
       )}
       data-app-root="true"
     >
@@ -247,6 +249,7 @@ function Shell({
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
         workspace={workspace}
+        phone={phone}
       />
       <main
         data-tour="workspace"
@@ -277,6 +280,7 @@ function Shell({
         phone={phone}
         openGoal={setGoalFor}
       />
+      {!phone && <PanelRail />}
       <Palette
         open={palette}
         onOpenChange={setPalette}

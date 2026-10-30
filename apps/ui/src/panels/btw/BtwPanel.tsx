@@ -8,17 +8,19 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ChatController } from "../chat/controller";
-import { Markdown, StreamingMarkdown } from "../vendor/collab-web/components/transcript/Markdown";
-import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "./btw";
+import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "../../btw/btw";
+import type { ChatController } from "../../chat/controller";
+import {
+  Markdown,
+  StreamingMarkdown,
+} from "../../vendor/collab-web/components/transcript/Markdown";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
 
-/** omp's times in the sheet (its `#timeFormat` and `#dateFormat`): a topic's time, and its first question's date. */
+/** omp's times in its history (its `#timeFormat` and `#dateFormat`): a topic's time, and its first question's date. */
 const TIME = new Intl.DateTimeFormat("en", {
   hour: "2-digit",
   minute: "2-digit",
@@ -71,7 +73,7 @@ function QuestionLabel({ text }: { readonly text: string }): ReactNode {
   });
 }
 
-/** A button that names its key in its tooltip, as omp's sheet does. */
+/** A button that names its key in its tooltip, as omp's history does. */
 function KeyButton({
   label,
   keyName,
@@ -112,7 +114,7 @@ function KeyButton({
   );
 }
 
-/** One question of a topic and its answer: the question titles it, the answer follows, as in omp's sheet. */
+/** One question of a topic and its answer: the question titles it, the answer follows, as in omp's history. */
 function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number }): ReactNode {
   const answered = turn.answer.trim() !== "";
   return (
@@ -152,12 +154,20 @@ function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number 
 }
 
 /**
- * omp's BTW history sheet, as Tern shows it: the chat's side questions on the left, newest first, and the one picked on
- * the right as a short document with its follow-ups. Esc puts the sheet away and an answer still coming goes on; Stop
- * answer (X) cancels it, Copy answer (C) copies it, Follow up (F, or Enter in the list) asks more in the same topic.
+ * omp's BTW history in the side panel, beside the chat it belongs to (the focused pane's): the chat's side questions,
+ * newest first, and the one picked as a short document with its follow-ups. Stop answer (X) cancels an answer, Copy
+ * answer (C) copies it, Follow up (F, or Enter in the list) asks more in the same topic.
  */
-export function BtwSheet({ controller }: { readonly controller: ChatController }): ReactNode {
-  const { records, open, selected, session } = useSyncExternalStore(
+export function BtwPanel({ chat }: { readonly chat: ChatController | null }): ReactNode {
+  if (chat === null)
+    return (
+      <p className="px-4 py-3 text-[0.8125rem] text-t3">Open a chat to see its side questions.</p>
+    );
+  return <BtwHistory controller={chat} />;
+}
+
+function BtwHistory({ controller }: { readonly controller: ChatController }): ReactNode {
+  const { records, selected, session } = useSyncExternalStore(
     controller.btw.subscribe,
     controller.btw.getSnapshot,
   );
@@ -168,16 +178,20 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
   const [pending, setPending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
   const threadRef = useRef<HTMLElement>(null);
   /** Whether the thread follows its newest text: until the reader scrolls up. */
   const following = useRef(true);
   const fieldId = useId();
 
-  // omp's history is read again each time the sheet opens (omp's terminal may have asked some), and for a new session.
+  // While this is drawn, the chat's side questions are on screen: an answer of the chat's ends without a word.
+  useEffect(() => {
+    controller.btw.setShown(true);
+    return () => controller.btw.setShown(false);
+  }, [controller]);
+
+  // omp's history is read each time it is shown (omp's terminal may have asked some), and for a new session.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a move to another session reads that session's side questions
   useEffect(() => {
-    if (!open) return;
     let alive = true;
     setProblem(null);
     controller
@@ -189,7 +203,7 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
     return () => {
       alive = false;
     };
-  }, [open, session, controller]);
+  }, [session, controller]);
 
   const current = records?.find((record) => record.id === selected) ?? records?.[0];
   const currentId = current?.id;
@@ -200,12 +214,12 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
   const turns = current === undefined ? [] : turnsOf(current);
   const answered = turns.reduce((length, turn) => length + turn.answer.length + 1, 0);
 
-  // The follow-up field belongs to one topic, while the sheet is open.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new topic or a closed sheet starts without the field
+  // The follow-up field belongs to one topic of one chat.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: another topic or another chat starts without the field
   useEffect(() => {
     setComposing(false);
     setNotice(null);
-  }, [currentId, open]);
+  }, [currentId, controller]);
 
   // A topic opens at its newest turn, and the thread follows the answer as it comes until the reader scrolls up.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when another topic is picked
@@ -286,7 +300,7 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
     );
   };
 
-  /** The sheet's keys, as omp's: X stops the answer, C copies it, F (or Enter in the list) follows up. */
+  /** The history's keys, as omp's: X stops the answer, C copies it, F (or Enter in the list) follows up. */
   const onKeys = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
@@ -310,151 +324,125 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
 
   const empty = records !== null && records.length === 0;
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next, details) => {
-        if (next) return;
-        // Esc in the follow-up field puts the field away, not the sheet.
-        if (composing && details.reason === "escape-key") {
-          details.cancel();
-          setComposing(false);
-          return;
-        }
-        controller.btw.close();
-      }}
-    >
-      <DialogContent
-        data-tour="btw-sheet"
-        showCloseButton={false}
-        onKeyDown={onKeys}
-        // The picked topic takes the focus, else the header: never a button, whose tooltip would take the first Esc.
-        initialFocus={() =>
-          listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ?? headerRef.current
-        }
-        className={`flex max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none ${
-          empty ? "w-[min(520px,96vw)]" : "h-[min(680px,92dvh)] w-[min(960px,96vw)]"
-        }`}
-      >
-        <header ref={headerRef} tabIndex={-1} className="border-b border-l2 px-4 py-3 outline-none">
-          <DialogTitle className="text-sm font-semibold text-t1">BTW history</DialogTitle>
-          <DialogDescription className="sr-only">
-            Side questions about this chat, asked with /btw. Their answers stay out of the chat.
-          </DialogDescription>
-        </header>
-        {records === null ? (
-          <p className="flex-1 p-6 text-t3">
-            {problem === null ? "Reading the side questions…" : problem}
+    // biome-ignore lint/a11y/noStaticElementInteractions: the history's keys (X, C, F) act anywhere inside it, as omp's
+    <div data-tour="btw-panel" onKeyDown={onKeys} className="flex h-full min-h-0 flex-col">
+      {records === null ? (
+        <p className="px-4 py-3 text-[0.8125rem] text-t3">
+          {problem === null ? "Reading the side questions…" : problem}
+        </p>
+      ) : empty ? (
+        <div className="flex flex-col gap-2 px-4 py-6">
+          <p className="font-medium text-t1">No side questions yet</p>
+          <p className="text-[0.8125rem] text-t3">
+            Ask one with <code className="font-mono">/btw &lt;question&gt;</code>. The answer stays
+            out of the main conversation.
           </p>
-        ) : empty ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-            <p className="font-medium text-t1">No side questions yet</p>
-            <p className="max-w-sm text-t3">
-              Ask one with <code className="font-mono">/btw &lt;question&gt;</code>. The answer
-              stays out of the main conversation.
-            </p>
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <div
-              ref={listRef}
-              role="listbox"
-              aria-label="Side questions"
-              onKeyDown={onListKeys}
-              className="max-h-40 shrink-0 overflow-y-auto border-b border-l2 p-1.5 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0"
-            >
-              {records.map((record) => {
-                const picked = record.id === currentId;
-                const followUps = record.followUps?.length ?? 0;
-                return (
-                  <div
-                    key={record.id}
-                    data-id={record.id}
-                    role="option"
-                    aria-selected={picked}
-                    tabIndex={picked ? 0 : -1}
-                    onClick={() => controller.btw.select(record.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === " ") {
-                        event.preventDefault();
-                        controller.btw.select(record.id);
-                      }
-                    }}
-                    className={`flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                      picked ? "bg-l2" : "hover:bg-l1"
-                    }`}
+        </div>
+      ) : (
+        <>
+          <div
+            ref={listRef}
+            role="listbox"
+            aria-label="Side questions"
+            onKeyDown={onListKeys}
+            className="max-h-[38%] shrink-0 overflow-y-auto border-b border-l2 p-1.5"
+          >
+            {records.map((record) => {
+              const picked = record.id === currentId;
+              const followUps = record.followUps?.length ?? 0;
+              return (
+                <div
+                  key={record.id}
+                  data-id={record.id}
+                  role="option"
+                  aria-selected={picked}
+                  tabIndex={picked ? 0 : -1}
+                  onClick={() => controller.btw.select(record.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === " ") {
+                      event.preventDefault();
+                      controller.btw.select(record.id);
+                    }
+                  }}
+                  className={`flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    picked ? "bg-l2" : "hover:bg-l1"
+                  }`}
+                >
+                  <span className="line-clamp-2 text-[0.8125rem] text-t1">
+                    <QuestionLabel text={record.question} />
+                  </span>
+                  <span
+                    className={`flex items-center gap-1.5 text-xs ${picked ? "text-t1" : "text-t3"}`}
                   >
-                    <span className="line-clamp-2 text-[0.8125rem] text-t1">
-                      <QuestionLabel text={record.question} />
-                    </span>
-                    <span
-                      className={`flex items-center gap-1.5 text-xs ${picked ? "text-t1" : "text-t3"}`}
-                    >
-                      <span className="font-mono">{TIME.format(record.createdAt)}</span>
-                      {followUps > 0 && (
-                        <span>
-                          · {followUps} follow-up{followUps === 1 ? "" : "s"}
-                        </span>
-                      )}
-                      <span className="ml-auto">
-                        <Status status={latestTurn(record).status} />
+                    <span className="font-mono">{TIME.format(record.createdAt)}</span>
+                    {followUps > 0 && (
+                      <span>
+                        · {followUps} follow-up{followUps === 1 ? "" : "s"}
                       </span>
+                    )}
+                    <span className="ml-auto">
+                      <Status status={latestTurn(record).status} />
                     </span>
-                  </div>
-                );
-              })}
-            </div>
-            <section
-              ref={threadRef}
-              aria-label="Side question"
-              onScroll={(event) => {
-                const thread = event.currentTarget;
-                following.current =
-                  thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
-              }}
-              className="tr-root flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4"
-            >
-              {turns.map((turn, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: a topic's turns only grow at the end
-                <Turn key={index} turn={turn} index={index} />
-              ))}
-              {composing && (
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor={fieldId} className="text-xs font-medium text-accent-ink">
-                    Follow up:
-                  </label>
-                  <Textarea
-                    id={fieldId}
-                    autoFocus
-                    rows={2}
-                    value={draft}
-                    placeholder="Ask about this answer…"
-                    onChange={(event) => {
-                      setDraft(event.target.value);
-                      setNotice(null);
-                    }}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === "Enter" &&
-                        !event.shiftKey &&
-                        !event.nativeEvent.isComposing
-                      ) {
-                        event.preventDefault();
-                        sendFollowUp();
-                      }
-                    }}
-                  />
-                  {notice !== null && <p className="text-xs text-warn-ink">{notice}</p>}
+                  </span>
                 </div>
-              )}
-            </section>
+              );
+            })}
           </div>
-        )}
-        {records !== null && problem !== null && (
-          <p role="alert" className="border-t border-l2 px-4 py-2 text-xs text-bad-ink">
-            {problem}
-          </p>
-        )}
-        <footer className="flex items-center gap-2 border-t border-l2 px-4 py-3">
+          <section
+            ref={threadRef}
+            aria-label="Side question"
+            onScroll={(event) => {
+              const thread = event.currentTarget;
+              following.current = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
+            }}
+            className="tr-root flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-3 text-[0.8125rem]"
+          >
+            {turns.map((turn, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a topic's turns only grow at the end
+              <Turn key={index} turn={turn} index={index} />
+            ))}
+            {composing && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={fieldId} className="text-xs font-medium text-accent-ink">
+                  Follow up:
+                </label>
+                <Textarea
+                  id={fieldId}
+                  autoFocus
+                  rows={2}
+                  value={draft}
+                  placeholder="Ask about this answer…"
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    setNotice(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setComposing(false);
+                    } else if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      sendFollowUp();
+                    }
+                  }}
+                />
+                {notice !== null && <p className="text-xs text-warn-ink">{notice}</p>}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+      {records !== null && problem !== null && (
+        <p role="alert" className="border-t border-l2 px-4 py-2 text-xs text-bad-ink">
+          {problem}
+        </p>
+      )}
+      {current !== undefined && (
+        <footer className="flex flex-wrap items-center gap-2 border-t border-l2 px-3 py-2.5">
           {composing ? (
             <>
               <span className="flex-1" />
@@ -475,7 +463,7 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
             </>
           ) : (
             <>
-              {current !== undefined && isRunning(current) && (
+              {isRunning(current) && (
                 <KeyButton label="Stop answer" keyName="X" ariaKeys="x" onClick={stop} />
               )}
               {copyable && (
@@ -488,12 +476,6 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
               )}
               {copyable && copied && <span className="text-xs text-ok-ink">✓ Copied</span>}
               <span className="flex-1" />
-              <KeyButton
-                label="Close"
-                keyName="Esc"
-                ariaKeys="Escape"
-                onClick={() => controller.btw.close()}
-              />
               {canFollowUp && (
                 <KeyButton
                   label="Follow up"
@@ -506,7 +488,7 @@ export function BtwSheet({ controller }: { readonly controller: ChatController }
             </>
           )}
         </footer>
-      </DialogContent>
-    </Dialog>
+      )}
+    </div>
   );
 }

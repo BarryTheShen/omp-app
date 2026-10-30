@@ -9,7 +9,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AgentHub } from "../agents/AgentHub";
-import { BtwSheet } from "../btw/BtwSheet";
 import { ModelHub } from "../models/ModelHub";
 import { PlanReview } from "../plan/PlanReview";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
@@ -247,8 +246,6 @@ export function ChatPane({
       {snapshot.proposal !== null && snapshot.planMode?.enabled === true && (
         <PlanReview controller={controller} proposal={snapshot.proposal} />
       )}
-      {/* omp's /btw: the side questions' sheet, opened by /btw, the palette, or an answer asked here. */}
-      <BtwSheet controller={controller} />
       {/* omp's Alt+M: the Models dialog, opened by the key or the palette. */}
       <ModelHub controller={controller} />
     </div>

@@ -1,5 +1,5 @@
 import { expect, realTest } from "./real-omp";
-import { box, defineBtwChecks, sheet } from "./v2-btw-checks";
+import { box, defineBtwChecks, history } from "./v2-btw-checks";
 
 /** omp's `/btw` in the new UI in Chromium (the config's Chrome), and the Side questions tour. */
 defineBtwChecks("chromium");
@@ -8,7 +8,7 @@ realTest.describe("new UI side questions tour", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "the Side questions tour waits for /btw and for the sheet to be put away",
+    "the Side questions tour waits for /btw to open the BTW history, then shows where to find it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       const popover = page.locator(".driver-popover");
@@ -28,11 +28,10 @@ realTest.describe("new UI side questions tour", () => {
       await shown.press("Enter");
       await expect(shown).toHaveValue("/btw ");
       await shown.press("Enter");
-      await expect(sheet(page)).toBeVisible();
+      await expect(history(page)).toBeVisible();
       await expect(heading).toHaveText("Your side questions");
 
-      await page.keyboard.press("Escape");
-      await expect(sheet(page)).toBeHidden();
+      await popover.getByRole("button", { name: "Next" }).click();
       await expect(heading).toHaveText("Find it again");
       await popover.getByRole("button", { name: "Done" }).click();
       await expect(popover).toHaveCount(0);
