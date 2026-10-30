@@ -1,11 +1,21 @@
 import type { AppClient } from "@omp-app/client";
-import { UsageLimitStore, type UsageLimitsResult, type UsageLimitWindow } from "@omp-app/contracts";
+import { UsageLimitStore, UsageLimitsResult, type UsageLimitWindow } from "@omp-app/contracts";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import type { ChatController, ChatUsage } from "../../chat/controller";
+import { lastSeen } from "../../lastSeen";
 import { barPercent, type LimitTone, limitTone, resetAtWords, resetsInWords } from "./usage-words";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
+
+/** A chat's numbers as the panel showed them last, for this page: a panel opened during a turn shows them. */
+const keptUsage = (threadId: string) => lastSeen<ChatUsage>(`usage:${threadId}`);
+
+/** The accounts' limits as the panel showed them last, also after a reload: they carry the time they were read. */
+const lastAccounts = lastSeen<UsageLimitsResult>("accounts", (stored) => {
+  const parsed = UsageLimitsResult.safeParse(stored);
+  return parsed.success ? parsed.data : undefined;
+});
 
 const FILL: Record<LimitTone, string> = {
   normal: "bg-accent-ink",
@@ -103,7 +113,11 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
     const current = chat.store.getSnapshot().model;
     return current === null ? "" : `${current.provider}/${current.id}`;
   });
-  const [usage, setUsage] = useState<ChatUsage | null>(null);
+  /** The last read, with the chat it was read for: the section stays when the focused chat changes. */
+  const [read, setRead] = useState<{
+    readonly chat: ChatController;
+    readonly usage: ChatUsage;
+  } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a changed model is read again too
   useEffect(() => {
@@ -111,9 +125,10 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
     let alive = true;
     chat
       .usage()
-      .then((read) => {
+      .then((usage) => {
+        if (chat.threadId !== null) keptUsage(chat.threadId).set(usage);
         if (!alive) return;
-        setUsage(read);
+        setRead({ chat, usage });
         setProblem(null);
       })
       .catch(
@@ -125,7 +140,15 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
     };
   }, [chat, live, working, model]);
 
-  if (usage === null) return <p className="text-[0.8125rem] text-t3">{problem ?? "Reading…"}</p>;
+  // Until this chat's numbers are read, the ones it showed last (during a turn they are not read).
+  const usage =
+    read?.chat === chat
+      ? read.usage
+      : chat.threadId === null
+        ? undefined
+        : keptUsage(chat.threadId).get();
+  if (usage === undefined)
+    return <p className="text-[0.8125rem] text-t3">{problem ?? "Reading…"}</p>;
   const { stats, tokensPerSecond } = usage;
   const context = stats.contextUsage;
   const premium = Math.round((stats.premiumRequests + Number.EPSILON) * 100) / 100;
@@ -223,7 +246,7 @@ function LimitBar({
 
 /** The signed-in accounts' usage limits as omp reports them, read when the panel opens and every minute after. */
 function AccountsSection({ client }: { readonly client: AppClient }): ReactNode {
-  const [result, setResult] = useState<UsageLimitsResult | null>(null);
+  const [result, setResult] = useState<UsageLimitsResult | null>(() => lastAccounts.get() ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -233,6 +256,7 @@ function AccountsSection({ client }: { readonly client: AppClient }): ReactNode 
         .port(UsageLimitStore)
         .read({})
         .then((found) => {
+          lastAccounts.set(found);
           if (!alive) return;
           setResult(found);
           setProblem(null);

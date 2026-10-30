@@ -126,4 +126,38 @@ realTest.describe("new UI reopening and typing ahead", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "the chat list and the model menu show what they showed last at once while the server is slow, also after a reload",
+    async ({ realApp }) => {
+      let server!: SlowServer;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (target: Page) => {
+          server = await slowServer(target, 5_000);
+        },
+      });
+      const box = page.getByRole("textbox", { name: "Message" });
+      const fakeModel = page.getByRole("option", { name: /Fake Model/ });
+      await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+      await page.getByRole("button", { name: /^Model: / }).click();
+      await expect(fakeModel).toBeVisible({ timeout: 30_000 });
+      await page.keyboard.press("Escape");
+
+      // From now on, listing the chats and omp's models each take the server five seconds.
+      server.slow = /"method":"listSessions"|get_available_models/;
+      await page.reload();
+      await expect(chats(page).getByRole("button", { name: "Seeded chat 2" })).toBeVisible({
+        timeout: 1_500,
+      });
+      await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+      await page.getByRole("button", { name: /^Model: / }).click();
+      await expect(fakeModel).toBeVisible({ timeout: 1_500 });
+      await page.keyboard.press("Escape");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

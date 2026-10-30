@@ -1,9 +1,13 @@
 import type { FileSearchCandidate } from "@omp-app/contracts";
 import type { ChatHostCommand } from "@omp-app/contracts/chat-host";
 import { useEffect, useMemo, useState } from "react";
+import { lastSeen } from "../lastSeen";
 import type { MenuItem } from "./ComposerMenu";
 import type { ChatController } from "./controller";
 import { findTrigger, matchCommands, mentionText, replaceTrigger } from "./triggers";
+
+/** omp's commands as the menu listed them last in a folder (its skills and prompts are the folder's), for this page. */
+const keptCommands = (folder: string) => lastSeen<readonly ChatHostCommand[]>(`commands:${folder}`);
 
 /** How long typing pauses before an `@` mention searches the folder. */
 const SEARCH_PAUSE_MS = 120;
@@ -39,21 +43,34 @@ export function useComposerMenu(
   // A dismissal holds while the caret stays in that trigger; a `/` typed again later opens the menu again.
   if (dismissed !== null && triggerId !== dismissed) setDismissed(null);
   const open = trigger !== null && triggerId !== dismissed;
-  const [commands, setCommands] = useState<readonly ChatHostCommand[] | null>(null);
+  const [commands, setCommands] = useState<readonly ChatHostCommand[] | null>(
+    () => keptCommands(controller.folder).get() ?? null,
+  );
+  /** This box has read omp's commands: until then the menu shows the folder's list from last time. */
+  const [read, setRead] = useState(false);
   const [files, setFiles] = useState<{
     readonly query: string;
     readonly found: readonly FileSearchCandidate[];
   } | null>(null);
   const [active, setActive] = useState(0);
 
-  const wantsCommands = open && trigger.kind === "command" && commands === null;
+  const wantsCommands = open && trigger.kind === "command" && !read;
   useEffect(() => {
     if (!wantsCommands) return;
     let alive = true;
     controller
       .commands()
-      .then((list) => alive && setCommands(list))
-      .catch(() => alive && setCommands([]));
+      .then((list) => {
+        keptCommands(controller.folder).set(list);
+        if (!alive) return;
+        setCommands(list);
+        setRead(true);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setCommands((shown) => shown ?? []);
+        setRead(true);
+      });
     return () => {
       alive = false;
     };

@@ -2,6 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { AppClient, AppClientSubscription } from "@omp-app/client";
 import {
   AppFailure,
+  AppPort,
   type ChatSessionClient,
   type ChatSessionEvent,
   ChatSessionPort,
@@ -106,6 +107,10 @@ export class ChatController {
   #loadingOlder = false;
   #draft: ChatDraft;
   #disposed = false;
+  /** When this controller began, for the times its open reports (`#mark`). */
+  readonly #createdAt = performance.now();
+  /** Each step of the open, in milliseconds since `#createdAt`; reported into the server's log once the chat is live. */
+  readonly #marks: Record<string, number> = {};
   /**
    * Where the transcript's branch ends after an edit rewound the chat: an entry, or null for the chat's very start.
    * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
@@ -201,9 +206,12 @@ export class ChatController {
       const fromFile = this.#reloadWindow();
       const threadId = this.#threadId;
       const kept = threadId === null ? undefined : await cachedWindow(threadId);
-      if (kept !== undefined && !this.#windowRead && !this.#disposed)
+      if (kept !== undefined && !this.#windowRead && !this.#disposed) {
         this.store.setWindow(kept.entries, kept.hasOlder);
+        this.#mark("kept_window_ms");
+      }
       await fromFile;
+      this.#mark("file_window_ms");
     }
     const chat = this.client.port(ChatSessionPort);
     const opened = await chat.open(
@@ -213,6 +221,7 @@ export class ChatController {
     );
     this.#viewTaken = true;
     this.#openAnswered = true;
+    this.#mark("open_ms");
     if (this.#disposed) {
       await this.#releaseView(opened.threadId);
       return;
@@ -232,15 +241,19 @@ export class ChatController {
       return;
     }
     this.#live = true;
+    this.#mark("subscribed_ms");
     await chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" });
     // omp's ask tool then sends all its questions in one request, with their checkboxes and typed answers; without
     // it, omp asks each question as a plain choice, which still works.
     await this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined);
     await this.#refreshState();
+    this.#mark("state_ms");
     const open = await chat.openRequests({ threadId: opened.threadId });
     if (this.#disposed) return;
     this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
     this.store.setPhase("live");
+    this.#mark("live_ms");
+    this.#reportTimes();
     const unshown = (what: string) => (failure: unknown) => {
       if (this.#disposed) return;
       this.store.addNotice(
@@ -263,6 +276,23 @@ export class ChatController {
     if (this.#disposed) return;
     if (switches === this.#planSwitches) this.store.setPlanMode(plan);
     this.store.setGoal(goal.goal);
+  }
+
+  #mark(step: string): void {
+    this.#marks[step] ??= Math.round(performance.now() - this.#createdAt);
+  }
+
+  /**
+   * The steps of this open and when each ended, into the server's log as a `trace` line (numbers only), so a slow
+   * open shows where its time went: the browser's copy shown, the file's window, the server's open, omp's first
+   * answer (`state_ms`: a new omp's start), and the box usable.
+   */
+  #reportTimes(): void {
+    const marks = { ...this.#marks, new_chat: this.target.kind === "new" ? 1 : 0 };
+    void this.client
+      .port(AppPort)
+      .reportClientTrace({ marks, gaps: [], supported: ["chat-open"] })
+      .catch(() => undefined);
   }
 
   /** Plan mode switches so far: an answer about plan mode counts only while no later switch is on its way. */

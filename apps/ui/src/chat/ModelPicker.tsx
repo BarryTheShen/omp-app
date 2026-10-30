@@ -10,6 +10,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { lastSeen } from "../lastSeen";
 import type { ChatController } from "./controller";
 import type { ChatModel } from "./store";
 
@@ -17,6 +18,18 @@ type ModelList =
   | { readonly kind: "loading" }
   | { readonly kind: "failed"; readonly message: string }
   | { readonly kind: "ready"; readonly models: readonly ChatModel[] };
+
+const isModel = (value: unknown): value is ChatModel =>
+  typeof value === "object" &&
+  value !== null &&
+  ["provider", "id", "name"].every(
+    (key) => typeof (value as Record<string, unknown>)[key] === "string",
+  );
+
+/** omp's models as the menu listed them last, also after a reload. */
+const lastModels = lastSeen<readonly ChatModel[]>("models", (stored) =>
+  Array.isArray(stored) && stored.every(isModel) ? stored : undefined,
+);
 
 const sameModel = (a: ChatModel | null, b: ChatModel): boolean =>
   a !== null && a.provider === b.provider && a.id === b.id;
@@ -43,24 +56,33 @@ export function ModelPicker({
   readonly onOpenChange: (open: boolean) => void;
   readonly onError: (failure: unknown) => void;
 }): ReactNode {
-  const [list, setList] = useState<ModelList>({ kind: "loading" });
+  const [list, setList] = useState<ModelList>(() => {
+    const kept = lastModels.get();
+    return kept === undefined ? { kind: "loading" } : { kind: "ready", models: kept };
+  });
   const named = model !== null && role !== null && role !== "default" ? role : null;
 
-  // The list is read each time it opens: omp refreshes its models in the background.
+  // The list is read each time it opens: omp refreshes its models in the background. Until the read answers, the menu
+  // shows the list it showed last; a read that fails leaves that list.
   useEffect(() => {
     if (!open) return;
     let active = true;
     controller
       .models()
       .then((models) => {
+        lastModels.set(models);
         if (active) setList({ kind: "ready", models });
       })
       .catch((failure: unknown) => {
         if (active)
-          setList({
-            kind: "failed",
-            message: failure instanceof Error ? failure.message : String(failure),
-          });
+          setList((shown) =>
+            shown.kind === "ready"
+              ? shown
+              : {
+                  kind: "failed",
+                  message: failure instanceof Error ? failure.message : String(failure),
+                },
+          );
       });
     return () => {
       active = false;

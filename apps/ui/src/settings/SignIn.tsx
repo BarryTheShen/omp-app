@@ -9,9 +9,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ChatController } from "../chat/controller";
+import { lastSeen } from "../lastSeen";
 
 const words = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
+
+/** omp's providers and who is signed in, as this page listed them last. */
+const lastProviders = lastSeen<readonly LoginProvider[]>("login-providers");
 
 /**
  * Sign-in to omp's providers, at the top of the Providers tab. omp signs in inside a chat, so this goes through the
@@ -32,18 +36,27 @@ export function SignIn({ controller }: { readonly controller: ChatController | n
 
 function Providers({ controller }: { readonly controller: ChatController }): ReactNode {
   const { signIn } = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
-  const [providers, setProviders] = useState<readonly LoginProvider[] | null>(null);
+  const [providers, setProviders] = useState<readonly LoginProvider[] | null>(
+    () => lastProviders.get() ?? null,
+  );
   const [problem, setProblem] = useState<string | null>(null);
   /** The provider being signed in to. */
   const [busy, setBusy] = useState<LoginProvider | null>(null);
   /** The provider chosen to sign in to next. */
   const [choice, setChoice] = useState<string | null>(null);
+  // Until the read answers, the list shown last; a read that fails keeps it, and says so.
   const read = useCallback(
     () =>
-      controller.loginProviders().then(setProviders, (failure: unknown) => {
-        setProviders([]);
-        setProblem(`omp could not list its providers: ${words(failure)}`);
-      }),
+      controller.loginProviders().then(
+        (listed) => {
+          lastProviders.set(listed);
+          setProviders(listed);
+        },
+        (failure: unknown) => {
+          setProviders((shown) => shown ?? []);
+          setProblem(`omp could not list its providers: ${words(failure)}`);
+        },
+      ),
     [controller],
   );
   useEffect(() => {

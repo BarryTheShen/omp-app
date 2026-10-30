@@ -4,7 +4,7 @@ import {
   ChatSessionPort,
   type FolderPath,
   type RunningSession,
-  type SessionFile,
+  SessionFile,
   SessionFileStore,
   SessionPinStore,
   type ThreadId,
@@ -12,10 +12,27 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { forgetWindow } from "../chat/windowCache";
 import { follow } from "../follow";
+import { lastSeen } from "../lastSeen";
 
 /** How long a burst of file and turn changes is gathered before the list is read again. */
 const SETTLE_MS = 250;
 const LIMIT = 50;
+
+/**
+ * A folder's chats as the list showed them last, also after a reload, so the list is there at once while it is read
+ * again. The copy kept leaves out each chat's subagents (the list does not show them, and they can be many).
+ */
+const keptChats = (folder: FolderPath) =>
+  lastSeen<readonly SessionFile[]>(`chats:${folder}`, (stored) => {
+    if (!Array.isArray(stored)) return undefined;
+    const sessions: SessionFile[] = [];
+    for (const each of stored) {
+      const parsed = SessionFile.safeParse(each);
+      if (!parsed.success) return undefined;
+      sessions.push(parsed.data);
+    }
+    return sessions;
+  });
 
 /** The launch folder's chats, kept current: which run a turn now, and which are pinned (omp's pins). */
 export interface ChatList {
@@ -38,7 +55,9 @@ export interface ChatList {
 }
 
 export function useChatList(client: AppClient, folder: FolderPath): ChatList {
-  const [sessions, setSessions] = useState<readonly SessionFile[]>([]);
+  const [sessions, setSessions] = useState<readonly SessionFile[]>(
+    () => keptChats(folder).get() ?? [],
+  );
   const [starting, setStarting] = useState<readonly RunningSession[]>([]);
   const [running, setRunning] = useState<ReadonlySet<ThreadId>>(new Set());
   const [pins, setPins] = useState<{
@@ -52,9 +71,12 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Another folder: its list from last time until it is read.
+    setSessions(keptChats(folder).get() ?? []);
     const read = async (): Promise<void> => {
       const listed = await client.port(SessionFileStore).listSessions({ folder, limit: LIMIT });
       if (!active) return;
+      keptChats(folder).set(listed.sessions.map((session) => ({ ...session, subagents: [] })));
       setSessions(listed.sessions);
       setStarting(listed.running ?? []);
       setRunning(

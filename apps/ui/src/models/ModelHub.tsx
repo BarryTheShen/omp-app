@@ -18,7 +18,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatController } from "../chat/controller";
+import { lastSeen } from "../lastSeen";
 import { assignLevel, modelsFor, roleGroups, roleValueText, windowText } from "./hub";
+
+/** The hub as the dialog showed it last for a folder (its project settings are the folder's), for this page. */
+const keptHub = (folder: string) => lastSeen<Hub>(`model-hub:${folder}`);
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -60,7 +64,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
     controller.modelHubToggle.subscribe,
     controller.modelHubToggle.getSnapshot,
   );
-  const [hub, setHub] = useState<Hub | null>(null);
+  const [hub, setHub] = useState<Hub | null>(() => keptHub(controller.folder).get() ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const [picked, setPicked] = useState("default");
   const [query, setQuery] = useState("");
@@ -72,7 +76,8 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
   const levelsRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
 
-  // omp's hub reads the settings again each time it opens: another chat or omp's terminal may have changed them.
+  // omp's hub reads the settings again each time it opens: another chat or omp's terminal may have changed them. Until
+  // the read answers, the dialog shows the hub it showed last.
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -82,6 +87,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
     controller
       .modelHub()
       .then((read) => {
+        keptHub(controller.folder).set(read);
         if (!alive) return;
         setHub(read);
         // The first read lands after the dialog opened on its header: the picked role takes the focus.
@@ -105,7 +111,9 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
   const scoped = hub?.storage === "project" ? { scope } : {};
 
   const reload = async (): Promise<void> => {
-    setHub(await controller.modelHub());
+    const read = await controller.modelHub();
+    keptHub(controller.folder).set(read);
+    setHub(read);
   };
 
   const run = (action: () => Promise<readonly string[]>): void => {
