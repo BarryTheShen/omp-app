@@ -43,12 +43,53 @@ realTest.describe("new UI chat states", () => {
       realApp.allowProblem(/WebSocket|401|403|expired/i);
 
       // The harness's restart prints a new link with a new token, so the page's link expires.
-      await realApp.restartServer();
-      await expect(
-        page.getByRole("alert").filter({ hasText: "This link has expired." }),
-      ).toBeVisible({
-        timeout: 90_000,
+      const link = await realApp.restartServer();
+      const expired = page.getByRole("alert").filter({ hasText: "This link has expired." });
+      await expect(expired).toBeVisible({ timeout: 90_000 });
+
+      // The new link typed into the same tab changes only the address's fragment: the app works again.
+      await page.goto(link);
+      await expect(expired).toHaveCount(0, { timeout: 60_000 });
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "New chat" })
+        .click();
+      await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        { timeout: 120_000 },
+      );
+
+      // What the restart prints is allowed above; the harness fails the test at its end on anything else.
+    },
+  );
+
+  realTest(
+    "says a link the app never printed is not valid, in the words of the expired banner",
+    async ({ realApp, browser }) => {
+      // The page reports the server's refusal; it is the case under test.
+      realApp.allowProblem(/WebSocket|401|403|invalid|not valid/i);
+      const first = await realApp.open({ path: "/" });
+      const origin = new URL(first.url()).origin;
+
+      // A tab of its own, so it holds no launch token from an earlier page.
+      const wrong = await browser.newPage();
+      const wrongProblems: string[] = [];
+      wrong.on("console", (message) => {
+        if (message.type() === "error") wrongProblems.push(message.text());
       });
+      await wrong.goto(`${origin}/#token=not-the-token`);
+      await expect(
+        wrong.getByText("This link is not valid. Open the app with the link omp-app printed.", {
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(wrong.getByText("Could not reach the app")).toHaveCount(0);
+      // All it logs is the refused connection.
+      expect(wrongProblems.filter((text) => !/WebSocket|401|403/i.test(text))).toEqual([]);
+      await wrong.context().close();
+
+      expect(realApp.problems).toEqual([]);
     },
   );
 });

@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 /** What a refused link means, in the words a person acts on. */
-const REFUSED: Record<NonNullable<ConnectionStateEvent["refusal"]>, string> = {
+export const REFUSED_WORDS: Record<NonNullable<ConnectionStateEvent["refusal"]>, string> = {
   expired:
     "This link has expired. Open the app with the link omp-app printed when it last started.",
   invalid: "This link is not valid. Open the app with the link omp-app printed.",
@@ -26,7 +26,7 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
         {reconnecting
           ? "Reconnecting to the app…"
           : state.refusal !== undefined
-            ? REFUSED[state.refusal]
+            ? REFUSED_WORDS[state.refusal]
             : "The connection to the app has closed."}
       </span>
       {!reconnecting && state.refusal === undefined && (

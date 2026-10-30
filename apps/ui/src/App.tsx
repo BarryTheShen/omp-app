@@ -1,4 +1,4 @@
-import type { AppClient } from "@omp-app/client";
+import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { AppPort, type FolderPath } from "@omp-app/contracts";
 import { cn } from "cn";
 import { ChevronLeft } from "lucide-react";
@@ -14,7 +14,7 @@ import {
 } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
-import { ConnectionBanner } from "./ConnectionBanner";
+import { ConnectionBanner, REFUSED_WORDS } from "./ConnectionBanner";
 import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
@@ -40,6 +40,7 @@ type Connection =
   | { readonly kind: "connecting" }
   | { readonly kind: "no-link" }
   | { readonly kind: "failed"; readonly message: string }
+  | { readonly kind: "refused"; readonly refusal: NonNullable<ConnectionStateEvent["refusal"]> }
   | { readonly kind: "ready"; readonly client: AppClient; readonly folder: FolderPath };
 
 /** Tailwind's `sm` breakpoint: below it, one pane. */
@@ -71,22 +72,43 @@ export function App(): ReactNode {
     }
     const client = connect(token);
     let active = true;
+    // A refused link says why in the banner's words, as soon as the server refuses it; before the app is ready, that is
+    // all there is to show.
+    const stopWatching = client.onConnectionState(({ refusal }) => {
+      if (active && refusal !== undefined)
+        setConnection((now) => (now.kind === "ready" ? now : { kind: "refused", refusal }));
+    });
     void (async () => {
       try {
         const info = await client.port(AppPort).serverInfo({});
         if (active) setConnection({ kind: "ready", client, folder: info.launchFolder });
       } catch (error) {
         if (active)
-          setConnection({
-            kind: "failed",
-            message: error instanceof Error ? error.message : String(error),
-          });
+          setConnection((now) =>
+            now.kind === "refused"
+              ? now
+              : {
+                  kind: "failed",
+                  message: error instanceof Error ? error.message : String(error),
+                },
+          );
       }
     })();
     return () => {
       active = false;
+      stopWatching();
       client.dispose();
     };
+  }, []);
+
+  // A link pasted into this tab changes only the address's `#token=…`, which loads nothing: reload to read the token.
+  useEffect(() => {
+    const onHashChange = (): void => {
+      const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
+      if (token !== null && token.length > 0) window.location.reload();
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   if (connection.kind === "no-link") {
@@ -94,6 +116,9 @@ export function App(): ReactNode {
   }
   if (connection.kind === "failed") {
     return <Note>Could not reach the app: {connection.message}</Note>;
+  }
+  if (connection.kind === "refused") {
+    return <Note>{REFUSED_WORDS[connection.refusal]}</Note>;
   }
   if (connection.kind === "connecting") {
     return <Note>Connecting…</Note>;
