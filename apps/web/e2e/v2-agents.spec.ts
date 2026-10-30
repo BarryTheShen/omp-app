@@ -67,6 +67,41 @@ realTest.describe("new UI Agent Hub", () => {
   );
 
   realTest(
+    "a subagent that ended is still in the Hub with its transcript after the server restarts",
+    async ({ realApp }) => {
+      // The restart closes the old page's connection.
+      realApp.allowProblem(/WebSocket|401|403|expired/i);
+      const page = await realApp.open({ path: "/" });
+      const context = page.context();
+      await newChat(page);
+      await box(page).fill("spawn_subagent");
+      await box(page).press("Enter");
+      await expect(page.getByRole("button", { name: "1 agent", exact: true })).toBeVisible({
+        timeout: 90_000,
+      });
+      await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
+        timeout: 60_000,
+      });
+      // The layout keeps the chat once it is saved, so the reopened page shows it again.
+      await page.waitForTimeout(1_500);
+
+      await page.close();
+      await realApp.restartServer();
+      const again = await realApp.open({ path: "/", context });
+      await expect(box(again)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // omp's roster starts empty after the restart; the subagent's transcript beside the chat brings it back.
+      await again.getByRole("button", { name: "1 agent", exact: true }).click({ timeout: 60_000 });
+      const hub = hubOf(again);
+      await hub.getByRole("button", { name: /^NestedProbe/ }).click();
+      await expect(hub.getByRole("region", { name: "NestedProbe's log" })).toContainText(
+        "nested_probe_child",
+        { timeout: 30_000 },
+      );
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "Alt+A opens the Hub, a message reaches a running subagent, and Alt+A closes it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });

@@ -9,8 +9,10 @@ import {
   type FileSearchCandidate,
   FileSearchPort,
   type FolderPath,
-  type SessionFilePath,
+  SessionFilePath,
   SessionFileStore,
+  type SubagentReadResult,
+  type SubagentTranscript,
   type ThreadId,
 } from "@omp-app/contracts";
 import {
@@ -27,7 +29,7 @@ import {
   type ModelHub,
   type PlanFile,
   type QueueName,
-  type SubagentTranscript,
+  type SubagentSnapshot,
 } from "@omp-app/contracts/chat-host";
 import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
@@ -56,6 +58,30 @@ export type ChatTarget =
       readonly sessionFile: SessionFilePath;
     }
   | { readonly kind: "new"; readonly folder: FolderPath };
+
+/**
+ * A transcript beside the chat's file that records an end, as a row of omp's roster: the outcome omp recorded in the
+ * parent's task result wins, else the transcript's own end. One that records none may still run, and omp's roster has
+ * it while it does.
+ */
+function endedAgent(transcript: SubagentTranscript): SubagentSnapshot[] {
+  const status = transcript.recordedStatus ?? transcript.status;
+  if (status === "unknown" || transcript.endedAt === null) return [];
+  const endedAt = Date.parse(transcript.endedAt);
+  if (!Number.isFinite(endedAt)) return [];
+  return [
+    {
+      id: transcript.agentId,
+      index: 0,
+      agent: transcript.agent ?? "",
+      // A transcript does not record where its agent type came from; nothing shows it.
+      agentSource: "bundled",
+      status: status === "stopped" ? "aborted" : status,
+      sessionFile: transcript.sessionFile,
+      lastUpdate: endedAt,
+    },
+  ];
+}
 
 /**
  * One open chat: its store, its chat host and its event stream. Opening paints the newest entries of the session file
@@ -245,13 +271,36 @@ export class ChatController {
     if (!this.#disposed && switches === this.#planSwitches) this.store.setPlanMode(status);
   }
 
-  /** omp's roster of this chat's subagents, kept current by its lifecycle and progress events. */
+  /**
+   * omp's roster of this chat's subagents, kept current by its lifecycle and progress events, with the ones that ended
+   * before: omp's roster forgets them when the chat's omp starts again, but their transcripts stay beside its file.
+   */
   async #followAgents(threadId: ThreadId): Promise<void> {
     await this.client
       .port(ChatSessionPort)
       .setSubagentSubscription({ threadId, level: "progress" });
-    const { subagents } = await this.#request("get_subagents", {});
-    if (!this.#disposed) this.store.setAgents(subagents);
+    const [{ subagents }, ended] = await Promise.all([
+      this.#request("get_subagents", {}),
+      this.#endedAgents(),
+    ]);
+    if (this.#disposed) return;
+    const live = new Set(subagents.map((agent) => agent.id));
+    this.store.setAgents([...ended.filter((agent) => !live.has(agent.id)), ...subagents]);
+  }
+
+  /** The subagents whose transcripts beside the chat's file record an end; none before omp has written the file. */
+  async #endedAgents(): Promise<SubagentSnapshot[]> {
+    const sessionFile = this.#sessionFile;
+    if (sessionFile === null) return [];
+    try {
+      const { transcripts } = await this.client
+        .port(SessionFileStore)
+        .listSubagents({ sessionFile });
+      return transcripts.flatMap(endedAgent);
+    } catch (failure) {
+      if (failure instanceof AppFailure && failure.appError.code === "not_found") return [];
+      throw failure;
+    }
   }
 
   /**
@@ -499,9 +548,14 @@ export class ChatController {
     await this.#request("abort_bash", {});
   }
 
-  /** A subagent's transcript: its file's whole lines from `fromByte` on, for the Agent Hub. */
-  subagentTranscript(subagentId: string, fromByte: number): Promise<SubagentTranscript> {
-    return this.#request("get_subagent_messages", { subagentId, fromByte });
+  /**
+   * One page of a subagent's transcript, its whole lines from `fromByte` on (at most 4 MiB a page), running or ended: the
+   * server reads it beside the chat's file, so it needs no roster that still knows the subagent.
+   */
+  agentTranscript(sessionFile: string, fromByte: number): Promise<SubagentReadResult> {
+    return this.client
+      .port(SessionFileStore)
+      .readSubagent({ sessionFile: SessionFilePath.parse(sessionFile), fromByte });
   }
 
   /** omp's hard kill of a running subagent; false when it was no longer running. */

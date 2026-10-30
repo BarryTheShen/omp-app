@@ -153,12 +153,7 @@ function AgentLog({
   readonly agent: SubagentSnapshot;
 }): ReactNode {
   const running = isRunning(agent);
-  const { entries, error } = useAgentTranscript(
-    controller,
-    agent.id,
-    agent.sessionFile !== undefined,
-    running,
-  );
+  const { entries, error } = useAgentTranscript(controller, agent.sessionFile, running);
   const [draft, setDraft] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const snapshot = useMemo(() => transcriptOnly(entries, running), [entries, running]);
@@ -306,33 +301,37 @@ const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * A subagent's transcript as its file grows: read from where the last read ended, every {@link POLL_MS} while it runs,
- * and once more when it has stopped. A file that was replaced is read again from its start.
+ * A subagent's transcript as its file grows: read from where the last read ended, page after page while pages bring
+ * more, again every {@link POLL_MS} while it runs, and once more when it has stopped. A file that was replaced is read
+ * again from its start.
  */
 function useAgentTranscript(
   controller: ChatController,
-  id: string,
-  hasFile: boolean,
+  file: string | undefined,
   running: boolean,
 ): { readonly entries: readonly SessionEntry[]; readonly error: string | null } {
   const [entries, setEntries] = useState<readonly SessionEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const read = useRef({ nextByte: 0, entries: [] as readonly SessionEntry[] });
   useEffect(() => {
-    if (!hasFile) return;
+    if (file === undefined) return;
     let stopped = false;
     let reading = false;
     const poll = async (): Promise<void> => {
       if (reading) return;
       reading = true;
       try {
-        const next = await controller.subagentTranscript(id, read.current.nextByte);
-        if (stopped) return;
-        const fresh = next.entries as unknown as readonly SessionEntry[];
-        const before = next.reset ? [] : read.current.entries;
-        read.current = { nextByte: next.nextByte, entries: [...before, ...fresh] };
-        if (next.reset || fresh.length > 0) setEntries(read.current.entries);
-        setError(null);
+        for (;;) {
+          const next = await controller.agentTranscript(file, read.current.nextByte);
+          if (stopped) return;
+          const fresh = next.entries as unknown as readonly SessionEntry[];
+          const before = next.reset ? [] : read.current.entries;
+          read.current = { nextByte: next.nextByte, entries: [...before, ...fresh] };
+          if (next.reset || fresh.length > 0) setEntries(read.current.entries);
+          setError(null);
+          // A long transcript comes in pages: the last one brings no more bytes.
+          if (next.nextByte <= next.fromByte) break;
+        }
       } catch (failure) {
         if (!stopped) setError(errorText(failure));
       } finally {
@@ -350,6 +349,6 @@ function useAgentTranscript(
       stopped = true;
       clearInterval(timer);
     };
-  }, [controller, id, hasFile, running]);
+  }, [controller, file, running]);
   return { entries, error };
 }
