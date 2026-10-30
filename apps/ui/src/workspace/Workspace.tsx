@@ -29,6 +29,7 @@ import { type Options, useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
+import { forgetNewChatDraft } from "../chat/drafts";
 import { KEYS, keycap } from "../keys/table";
 import {
   panelOf,
@@ -48,6 +49,7 @@ import { chatCache } from "./chatCache";
 import { carriesChat, droppedChat } from "./chatDrag";
 import { keepDividerDragsFromSelecting } from "./dividers";
 import { equalized, swappedWithNext } from "./layout";
+import { chatOfPane, closePaneAsked, PaneTab } from "./PaneTab";
 import { TabStrip } from "./TabStrip";
 import {
   activateTab,
@@ -362,6 +364,26 @@ export function Workspace({
     if (api !== undefined) action(api);
   }, []);
 
+  /**
+   * Closes a tab the person asked to close: each chat pane in it goes as if closed itself, so its new chat's kept text
+   * goes too. The panes come from the tab's dockview when it is mounted, else from its saved layout.
+   */
+  const closeTabAsked = useCallback((id: string) => {
+    const api = apis.current.get(id);
+    const panes =
+      api !== undefined
+        ? api.panels.map((panel) => panel.params)
+        : Object.values(
+            tabsRef.current.tabs.find((tab) => tab.id === id)?.layout?.panels ?? {},
+          ).map((panel) => panel.params);
+    for (const params of panes) {
+      const chat = chatOfPane(params);
+      if (chat !== undefined) void forgetNewChatDraft(chat);
+    }
+    apis.current.delete(id);
+    setTabs((state) => closeTab(state, id));
+  }, []);
+
   /** The workspace's commands: kitty's keys run them, and the palette offers them. */
   const commands = useMemo<Record<WorkspaceCommand, () => void>>(
     () => ({
@@ -375,7 +397,10 @@ export function Workspace({
           else api.maximizeGroup(panel);
           focusPane(api);
         }),
-      closePane: () => withActive((api) => api.activePanel?.api.close()),
+      closePane: () =>
+        withActive((api) => {
+          if (api.activePanel !== undefined) closePaneAsked(api.activePanel);
+        }),
       // Swap with the next pane, and equalize, rebuild the layout with the same panes (their chats stay open).
       swapPane: () =>
         withActive((api) => {
@@ -398,16 +423,12 @@ export function Workspace({
         }),
       nextTab: () => setTabs((state) => stepTab(state, 1)),
       previousTab: () => setTabs((state) => stepTab(state, -1)),
-      closeTab: () => {
-        const id = tabsRef.current.active;
-        apis.current.delete(id);
-        setTabs((state) => closeTab(state, id));
-      },
+      closeTab: () => closeTabAsked(tabsRef.current.active),
       renameTab: () => setRenaming(tabsRef.current.active),
       moveTabRight: () => setTabs((state) => moveTab(state, 1)),
       moveTabLeft: () => setTabs((state) => moveTab(state, -1)),
     }),
-    [addChat, focusPane, folder, withActive],
+    [addChat, closeTabAsked, focusPane, folder, withActive],
   );
 
   useImperativeHandle(
@@ -615,10 +636,7 @@ export function Workspace({
               labels={labels}
               renaming={renaming}
               onActivate={(id) => setTabs((state) => activateTab(state, id))}
-              onClose={(id) => {
-                apis.current.delete(id);
-                setTabs((state) => closeTab(state, id));
-              }}
+              onClose={closeTabAsked}
               onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
               onRenaming={setRenaming}
             />
@@ -640,6 +658,7 @@ export function Workspace({
                   defaultRenderer="always"
                   disableFloatingGroups
                   singleTabMode="fullwidth"
+                  defaultTabComponent={PaneTab}
                   watermarkComponent={EmptyTab}
                 />
               </div>

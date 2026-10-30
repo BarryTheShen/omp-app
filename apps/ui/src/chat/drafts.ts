@@ -1,8 +1,10 @@
 import type { AppClient } from "@omp-app/client";
 import { type DraftScope, DraftStore, type Revision, type ThreadId } from "@omp-app/contracts";
-import { createStore, get, set } from "idb-keyval";
+import { createStore, del, get, set } from "idb-keyval";
 
 const local = createStore("omp-app-ui", "drafts");
+/** Where this browser keeps a new chat's text: under its pane's key. */
+const newChatKey = (paneChat: string): string => `new-chat:${paneChat}`;
 /** How long typing pauses before the app's copy is written. */
 const SERVER_DELAY_MS = 800;
 
@@ -38,7 +40,7 @@ export class ChatDraft {
       this.#loadKey = home;
       this.#scope = { kind: "thread", threadId: home };
     } else {
-      this.#loadKey = `new-chat:${home.paneChat}`;
+      this.#loadKey = newChatKey(home.paneChat);
       this.#scope = null;
     }
     this.#keys = [this.#loadKey];
@@ -138,4 +140,13 @@ export class ChatDraft {
     });
     this.#revision = saved.revision;
   }
+}
+
+/**
+ * A new chat's pane was closed: its text, kept under the pane's key only so a reload that reopens the pane finds it, goes
+ * too. A chat's copies under its id stay, as they do for every closed chat. A pane that became a saved chat still has its
+ * old key, and a missing key is not an error.
+ */
+export function forgetNewChatDraft(paneChat: string): Promise<void> {
+  return del(newChatKey(paneChat), local).catch(() => undefined);
 }

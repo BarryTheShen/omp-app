@@ -5,6 +5,23 @@ import { expect, realTest } from "./real-omp";
 realTest.describe("new UI message box", () => {
   const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
+  /** The keys a new chat's pane keeps its unsent text under in this browser (IndexedDB `omp-app-ui`/`drafts`). */
+  const newChatKeys = (page: Page) =>
+    page.evaluate(() => {
+      const { promise, resolve, reject } = Promise.withResolvers<string[]>();
+      const opening = indexedDB.open("omp-app-ui");
+      opening.onerror = () => reject(opening.error);
+      opening.onsuccess = () => {
+        const db = opening.result;
+        const reading = db.transaction("drafts").objectStore("drafts").getAllKeys();
+        reading.onerror = () => reject(reading.error);
+        reading.onsuccess = () => {
+          db.close();
+          resolve(reading.result.map(String).filter((key) => key.startsWith("new-chat:")));
+        };
+      };
+      return promise;
+    });
 
   realTest.describe("with two saved chats", () => {
     realTest.use({ seedSessions: 2 });
@@ -230,6 +247,85 @@ realTest.describe("new UI message box", () => {
       await expect(again.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
       await again.waitForTimeout(1_500);
       await expect(box(again)).toHaveValue("");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a new chat closed before sending leaves no draft behind",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      const page = await realApp.open({ path: "/" });
+      const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+
+      // A new chat's unsent text is kept under its pane's key.
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await box(page).fill("never sent");
+      await page.waitForTimeout(1_500);
+      const first = await newChatKeys(page);
+      expect(first).toHaveLength(1);
+
+      // Closing that pane (Ctrl+Shift+W) removes the key.
+      await page.keyboard.press("Control+Shift+O");
+      await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
+      await expect(box(page).nth(1)).toBeFocused();
+      await page.keyboard.press("Meta+Control+ArrowLeft");
+      await expect(box(page).nth(0)).toBeFocused();
+      await page.keyboard.press("Control+Shift+W");
+      await expect(box(page)).toHaveCount(1, { timeout: 30_000 });
+      await expect.poll(() => newChatKeys(page)).not.toContain(first[0]);
+      expect(await newChatKeys(page)).toEqual([]);
+
+      // Swap, equalize and a reload rebuild the layout with the same panes: their text stays.
+      await page.keyboard.press("Control+Shift+O");
+      await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
+      await expect(box(page).nth(1)).toBeFocused();
+      await box(page).nth(1).fill("still here");
+      await page.waitForTimeout(1_500);
+      const kept = await newChatKeys(page);
+      expect(kept).toHaveLength(1);
+      await page.keyboard.press("Control+Shift+F8");
+      await page.keyboard.press("Meta+Control+Equal");
+      await page.waitForTimeout(1_000);
+      expect(await newChatKeys(page)).toEqual(kept);
+      await page.reload();
+      await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
+      await expect
+        .poll(async () =>
+          box(page).evaluateAll((boxes) =>
+            boxes.map((each) => (each as HTMLTextAreaElement).value),
+          ),
+        )
+        .toContain("still here");
+      expect(await newChatKeys(page)).toEqual(kept);
+
+      // Closing a tab (Ctrl+Shift+Q) removes the keys of its panes.
+      await page.keyboard.press("Control+Shift+T");
+      await expect(tabs).toHaveCount(2);
+      await box(page).filter({ visible: true }).fill("in a tab");
+      await page.waitForTimeout(1_500);
+      const both = await newChatKeys(page);
+      expect(both).toHaveLength(2);
+      expect(both).toEqual(expect.arrayContaining(kept));
+      await page.keyboard.press("Control+Shift+Q");
+      await expect(tabs).toHaveCount(0);
+      await expect.poll(() => newChatKeys(page)).toEqual(kept);
+
+      // So does the close button in a pane's title bar.
+      await page.keyboard.press("Control+Shift+O");
+      await expect(box(page)).toHaveCount(3, { timeout: 60_000 });
+      const caret = page.locator("[data-chat-pane] textarea:focus");
+      await expect(caret).toBeVisible();
+      await caret.fill("closed from its title bar");
+      await page.waitForTimeout(1_500);
+      expect(await newChatKeys(page)).toHaveLength(2);
+      await page
+        .locator(".dv-groupview.dv-active-group")
+        .getByRole("button", { name: "Close New chat" })
+        .click();
+      await expect(box(page)).toHaveCount(2, { timeout: 30_000 });
+      await expect.poll(() => newChatKeys(page)).toEqual(kept);
 
       expect(realApp.problems).toEqual([]);
     },
