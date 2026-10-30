@@ -19,6 +19,9 @@ import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
 import { useWaitingNotifications } from "./desktop/notify";
+import { FolderMenu } from "./folders/FolderMenu";
+import { keepLinkFolder } from "./folders/folder";
+import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
@@ -60,6 +63,7 @@ export function App(): ReactNode {
   const [connection, setConnection] = useState<Connection>({ kind: "connecting" });
 
   useEffect(() => {
+    keepLinkFolder();
     const token = readToken();
     if (token === null) {
       setConnection({ kind: "no-link" });
@@ -94,20 +98,22 @@ export function App(): ReactNode {
   if (connection.kind === "connecting") {
     return <Note>Connecting…</Note>;
   }
-  return <Shell client={connection.client} folder={connection.folder} />;
+  return <Shell client={connection.client} launchFolder={connection.folder} />;
 }
 
 /**
- * The launch folder's chats beside the workspace of chat panes (kitty's tabs and splits); on a phone, the list or one
+ * The chosen folder's chats beside the workspace of chat panes (kitty's tabs and splits); on a phone, the list or one
  * chat. A click opens a chat in the focused pane, Alt+click beside it.
  */
 function Shell({
   client,
-  folder,
+  launchFolder,
 }: {
   readonly client: AppClient;
-  readonly folder: FolderPath;
+  readonly launchFolder: FolderPath;
 }): ReactNode {
+  const choice = useFolder(client, launchFolder);
+  const { folder } = choice;
   const list = useChatList(client, folder);
   const [view, setView] = useState<WorkspaceView>(NOTHING_OPEN);
   useWaitingNotifications(view.waiting);
@@ -160,6 +166,7 @@ function Shell({
     >
       <ConnectionBanner client={client} />
       <Sidebar
+        folderMenu={<FolderMenu client={client} choice={choice} />}
         folder={folder}
         list={list}
         view={view}

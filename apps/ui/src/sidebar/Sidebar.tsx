@@ -52,11 +52,12 @@ const REVEAL =
   "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
 
 /**
- * The launch folder's chats: those waiting for you first, then pinned ones, then the rest, newest first. Each row has
+ * The chosen folder's chats: those waiting for you first, then pinned ones, then the rest, newest first. Each row has
  * its state (running, waiting for you) and whether it is open in a pane; search narrows every list. A click opens a
  * chat in the focused pane, Alt+click beside it. Each row's menu renames or deletes its chat.
  */
 export function Sidebar({
+  folderMenu,
   folder,
   list,
   view,
@@ -67,6 +68,8 @@ export function Sidebar({
   onSettings,
   workspace,
 }: {
+  /** The folder at the top, with its menu to switch it. */
+  readonly folderMenu: ReactNode;
   readonly folder: FolderPath;
   readonly list: ChatList;
   readonly view: WorkspaceView;
@@ -155,6 +158,7 @@ export function Sidebar({
   );
   return (
     <nav aria-label="Chats" className={cn("flex min-h-0 flex-col p-2", hidden && "hidden")}>
+      {folderMenu}
       <Button
         data-tour="new-chat"
         variant="ghost"

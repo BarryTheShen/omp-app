@@ -332,10 +332,41 @@ const PALETTE_AND_SETTINGS: Tour = {
   ],
 };
 
+const FOLDER = part("folder");
+const FOLDER_MENU = part("folder-menu");
+
+const FOLDERS: Tour = {
+  id: "folders-2026-10-30",
+  title: "Folders",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: FOLDER,
+      title: "Your folder",
+      text: "omp works in a folder, and the list shows that folder's chats. New chat starts one here.",
+      action: next,
+    },
+    {
+      target: FOLDER,
+      title: "Switch folders",
+      text: "Click here: it lists the folders that have chats, and <b>Open a folder…</b> takes any path.",
+      action: { kind: "appears", selector: FOLDER_MENU },
+    },
+    {
+      target: FOLDER_MENU,
+      title: "Pick one",
+      text: "Pick a folder to see its chats, or press {stop} to stay here. The app remembers the folder you pick.",
+      action: { kind: "disappears", selector: FOLDER_MENU },
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
   MESSAGE_BOX_TOUR,
   INSIDE_A_CHAT,
   PALETTE_AND_SETTINGS,
+  FOLDERS,
 ];

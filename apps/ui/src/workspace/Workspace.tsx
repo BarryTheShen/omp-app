@@ -189,7 +189,11 @@ export function Workspace({
     for (const group of api.groups) group.header.hidden = phoneRef.current || api.groups.length < 2;
   }, []);
 
-  /** A new pane with a chat, beside the focused one or on its own; it gets the caret once its message box is there. */
+  /**
+   * A new pane with a chat, beside the focused one or on its own; it gets the caret once its message box is there. A new
+   * chat runs in the focused pane's folder (as kitty's new window keeps the current one's), else the shown folder; a
+   * chat from the list belongs to the list's folder.
+   */
   const addChat = useCallback(
     (api: DockviewApi, target: ChatTarget, direction?: "right" | "below") => {
       const reference = api.activePanel;
@@ -202,7 +206,7 @@ export function Workspace({
         params: {
           chat: crypto.randomUUID(),
           target: target.kind === "new" ? { kind: "new", folder: chatFolder } : target,
-          folder: chatFolder,
+          folder: target.kind === "new" ? chatFolder : folder,
         },
         ...(direction !== undefined && reference !== undefined
           ? { position: { referencePanel: reference, direction } }
@@ -329,11 +333,11 @@ export function Workspace({
           const panel = api.activePanel;
           if (where === "split" || panel === undefined) addChat(api, target, "right");
           else {
-            const shown = paramsOf(panel.params);
+            // A new chat runs in the folder it names; a chat from the list belongs to the list's folder.
             panel.api.updateParameters({
               chat: crypto.randomUUID(),
               target,
-              folder: shown?.folder ?? folder,
+              folder: target.kind === "new" ? target.folder : folder,
             } satisfies ChatPanelParams);
             panel.api.setTitle("New chat");
             focus.request(panel.id, true);

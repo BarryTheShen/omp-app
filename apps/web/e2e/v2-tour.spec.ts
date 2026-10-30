@@ -57,6 +57,7 @@ realTest.describe("new UI tours", () => {
         /Tour: The message box/,
         /Tour: Inside a chat/,
         /Tour: Palette, keys and settings/,
+        /Tour: Folders/,
       ]);
 
       expect(realApp.problems).toEqual([]);
