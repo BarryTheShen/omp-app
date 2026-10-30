@@ -273,6 +273,25 @@ describe("ChatStore", () => {
     ]);
   });
 
+  test("a note too long for a toast, or on several lines, stays in the chat as a row; a short one passes as a toast", () => {
+    const store = new ChatStore();
+    const tools = Array.from({ length: 40 }, (_, index) => `mcp__notion_tool_${index}`).join(", ");
+    store.apply(event({ type: "ui_notify", message: `MCP tools: ${tools}` }));
+    store.apply(event({ type: "notice", level: "warning", message: "first line\nsecond line" }));
+    store.toast(`New window: ${"refused ".repeat(30)}`, "error");
+    expect(store.getSnapshot().toast).toBeNull();
+    expect(store.getSnapshot().notices.map((notice) => notice.level)).toEqual([
+      "info",
+      "warning",
+      "error",
+    ]);
+    expect(store.getSnapshot().notices[0]?.text).toBe(`MCP tools: ${tools}`);
+
+    store.apply(event({ type: "ui_notify", message: "Reloaded" }));
+    expect(store.getSnapshot().toast).toMatchObject({ text: "Reloaded", tone: "info" });
+    expect(store.getSnapshot().notices).toHaveLength(3);
+  });
+
   test("one toast at a time: a newer one takes its place, and only its own time ends it", () => {
     const store = new ChatStore();
     store.apply(event({ type: "ui_notify", message: "Reloaded" }));

@@ -169,6 +169,12 @@ function proposalOf(result: unknown, args: unknown): PlanProposal | null {
   return { planFilePath, title };
 }
 
+/**
+ * A toast is a status line. A note longer than two lines' worth, or one on several lines (such as the list of tools an
+ * MCP server brought), stays in the chat as a row instead, where it can be read in full and dismissed.
+ */
+const TOAST_MAX_CHARACTERS = 160;
+
 /** omp's subagent lifecycle statuses, as its roster names them. */
 const LIFECYCLE_STATUS = {
   started: "running",
@@ -452,7 +458,7 @@ export class ChatStore {
     this.#publish();
   }
 
-  /** One of omp's status lines, or the page's own (an action that failed): it replaces the toast shown. */
+  /** One of omp's status lines, or the page's own (an action that failed): it replaces the toast shown; a long one is a row. */
   toast(text: string, tone: ChatToast["tone"]): void {
     this.#showToast(text, tone);
     this.#publish();
@@ -466,6 +472,10 @@ export class ChatStore {
   }
 
   #showToast(text: string, tone: ChatToast["tone"]): void {
+    if (text.length > TOAST_MAX_CHARACTERS || text.includes("\n")) {
+      this.#notify(text, tone === "success" ? "info" : tone);
+      return;
+    }
     this.#toastSeq += 1;
     this.#toast = { id: this.#toastSeq, text, tone };
   }
@@ -638,12 +648,12 @@ export class ChatStore {
         this.#goal = event.goal;
         return false;
       case "ui_notify":
-        // An extension's or omp's notification: a status line in omp's TUI, a toast here.
+        // An extension's or omp's notification: a status line in omp's TUI, a toast here (a long one stays as a row).
         this.#showToast(event.message, event.notifyType ?? "info");
         return false;
       case "notice": {
         // omp's out-of-band notices, as its TUI shows them: an error (the session or a side answer could not be saved)
-        // stays in the transcript until dismissed; anything else passes as a toast.
+        // stays in the transcript until dismissed; anything else passes as a toast, unless it is too long for one.
         const text = event.source ? `${event.source}: ${event.message}` : event.message;
         if (event.level === "error") this.#notify(text, "error");
         else this.#showToast(text, event.level);

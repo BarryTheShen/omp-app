@@ -52,7 +52,8 @@ export function Toast({
       )}
     >
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT[toast.tone])} />
-      <span className="min-w-0">{toast.text}</span>
+      {/* The store keeps a long note out of toasts; a narrow pane still never shows more than two lines. */}
+      <span className="line-clamp-2 min-w-0 break-words">{toast.text}</span>
     </div>
   );
 }
