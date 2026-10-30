@@ -3,6 +3,7 @@ import {
   AppFailure,
   ChatSessionPort,
   type FolderPath,
+  type RunningSession,
   type SessionFile,
   SessionFileStore,
   SessionPinStore,
@@ -19,6 +20,11 @@ const LIMIT = 50;
 /** The launch folder's chats, kept current: which run a turn now, and which are pinned (omp's pins). */
 export interface ChatList {
   readonly sessions: readonly SessionFile[];
+  /**
+   * The chats whose first reply runs now. omp writes a chat's file only once that reply is done, so these are not in
+   * `sessions` yet: the server names only their ids.
+   */
+  readonly starting: readonly RunningSession[];
   readonly running: ReadonlySet<ThreadId>;
   readonly pinned: ReadonlySet<ThreadId>;
   readonly setPinned: (id: ThreadId, pinned: boolean) => Promise<void>;
@@ -33,6 +39,7 @@ export interface ChatList {
 
 export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   const [sessions, setSessions] = useState<readonly SessionFile[]>([]);
+  const [starting, setStarting] = useState<readonly RunningSession[]>([]);
   const [running, setRunning] = useState<ReadonlySet<ThreadId>>(new Set());
   const [pins, setPins] = useState<{
     readonly ids: ReadonlySet<ThreadId>;
@@ -49,6 +56,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       const listed = await client.port(SessionFileStore).listSessions({ folder, limit: LIMIT });
       if (!active) return;
       setSessions(listed.sessions);
+      setStarting(listed.running ?? []);
       setRunning(
         new Set([
           ...listed.sessions
@@ -147,5 +155,5 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     [client],
   );
 
-  return { sessions, running, pinned: pins.ids, setPinned, rename, remove };
+  return { sessions, starting, running, pinned: pins.ids, setPinned, rename, remove };
 }

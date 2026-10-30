@@ -22,7 +22,7 @@ realTest.describe("new UI chat list and pane keys", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
-      // omp writes a chat's file with its first reply; from then on the chat is in the list.
+      // The chat has its row from its first message on, named by it; omp writes its file with the first reply.
       await boxes(page).fill("hello");
       await boxes(page).press("Enter");
       const row = chats(page).getByRole("button", { name: /^hello/ });
@@ -100,6 +100,40 @@ realTest.describe("new UI chat list and pane keys", () => {
         await expect(box).toBeFocused();
         await page.keyboard.type("typed at once");
         await expect(box).toHaveValue("typed at once");
+
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
+      "a new chat keeps its row while its first reply runs: the row opens it, and stays when the reply is done",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await newChat(page);
+        await boxes(page).fill("long first reply stream_steady");
+        await boxes(page).press("Enter");
+        const transcript = page.getByRole("region", { name: "Transcript" });
+        await expect(transcript).toContainText("Steady line 0", { timeout: 90_000 });
+        // omp writes the chat's file only once this reply is done; the chat's row is in the list before that.
+        await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+        const row = chats(page).getByRole("button", { name: /^long first reply stream_steady/ });
+        await expect(row).toHaveAccessibleName("long first reply stream_steady, running", {
+          timeout: 10_000,
+        });
+        // Without a file there is nothing to pin, rename or delete yet.
+        const item = chats(page)
+          .getByRole("listitem")
+          .filter({ hasText: "long first reply stream_steady" });
+        await expect(item.getByRole("button", { name: "More" })).toHaveCount(0);
+
+        await row.click();
+        await expect(transcript).toContainText("long first reply stream_steady");
+        await expect(transcript).toContainText(/Steady line [1-9]/, { timeout: 30_000 });
+        // The reply ends and omp writes the file: the same row stays, now with its menu.
+        await expect(row).toHaveAccessibleName("long first reply stream_steady, open in a pane", {
+          timeout: 120_000,
+        });
+        await expect(item.getByRole("button", { name: "More" })).toHaveCount(1);
 
         expect(realApp.problems).toEqual([]);
       },

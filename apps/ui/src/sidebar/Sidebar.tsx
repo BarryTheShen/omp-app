@@ -1,4 +1,4 @@
-import type { FolderPath, SessionFile, ThreadId } from "@omp-app/contracts";
+import type { FolderPath, RunningSession, SessionFile, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
 import {
   Ellipsis,
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatTarget } from "../chat/controller";
+import { firstPromptOf } from "../chat/firstPrompts";
 import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
 import { togglePanel, usePanelState } from "../panels/panel-state";
@@ -47,6 +48,9 @@ type ChatState = "waiting" | "running" | null;
 const titleOf = (session: SessionFile): string =>
   session.displayTitle ?? session.title ?? session.firstPrompt ?? "Untitled chat";
 
+/** A chat whose first reply still runs has no file to title it yet: the first message this page sent in it names it. */
+const startingTitleOf = (id: ThreadId): string => firstPromptOf(id) ?? "New chat";
+
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -57,7 +61,8 @@ const REVEAL =
 /**
  * The chosen folder's chats: those waiting for you first, then pinned ones, then the rest, newest first. Each row has
  * its state (running, waiting for you) and whether it is open in a pane; search narrows every list. A click opens a
- * chat in the focused pane, Alt+click beside it. Each row's menu renames or deletes its chat.
+ * chat in the focused pane, Alt+click beside it. Each row's menu renames or deletes its chat. A chat whose first reply
+ * still runs has its row before omp has written its file, at the top, with no pin or menu until that file comes.
  */
 export function Sidebar({
   folderMenu,
@@ -109,6 +114,12 @@ export function Sidebar({
   const rest = shown.filter(
     (session) => !list.pinned.has(session.id) && !view.waiting.has(session.id),
   );
+  const listed = new Set(list.sessions.map((session) => session.id));
+  const starting = list.starting.filter(
+    (chat) =>
+      !listed.has(chat.id) &&
+      (needle === "" || startingTitleOf(chat.id).toLowerCase().includes(needle)),
+  );
   const stateOf = (id: ThreadId): ChatState =>
     view.waiting.has(id) ? "waiting" : list.running.has(id) ? "running" : null;
   const rename = (session: SessionFile, typed: string): void => {
@@ -143,24 +154,37 @@ export function Sidebar({
       state={stateOf(session.id)}
       open={view.open.has(session.id)}
       focused={view.focused === session.id}
-      pinned={list.pinned.has(session.id)}
       onOpen={(where) =>
         onOpen({ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }, where)
       }
-      onPrefetch={() => onPrefetch(session)}
-      onPin={() => {
-        setProblem(null);
-        list
-          .setPinned(session.id, !list.pinned.has(session.id))
-          .catch((failure: unknown) =>
-            setProblem(`Could not change the pin: ${errorText(failure)}`),
-          );
+      actions={{
+        pinned: list.pinned.has(session.id),
+        onPrefetch: () => onPrefetch(session),
+        onPin: () => {
+          setProblem(null);
+          list
+            .setPinned(session.id, !list.pinned.has(session.id))
+            .catch((failure: unknown) =>
+              setProblem(`Could not change the pin: ${errorText(failure)}`),
+            );
+        },
+        onRename: (typed) => rename(session, typed),
+        onDelete: () => {
+          setDeleting(session);
+          setConfirming(true);
+        },
       }}
-      onRename={(typed) => rename(session, typed)}
-      onDelete={() => {
-        setDeleting(session);
-        setConfirming(true);
-      }}
+    />
+  );
+  const startingRow = (chat: RunningSession): ReactNode => (
+    <ChatRow
+      key={chat.id}
+      title={startingTitleOf(chat.id)}
+      saving={false}
+      state={stateOf(chat.id)}
+      open={view.open.has(chat.id)}
+      focused={view.focused === chat.id}
+      onOpen={(where) => onOpen({ kind: "existing", threadId: chat.id, sessionFile: null }, where)}
     />
   );
   return (
@@ -192,8 +216,9 @@ export function Sidebar({
       <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto">
         {waiting.length > 0 && <Section label="Needs you">{waiting.map(row)}</Section>}
         {pinned.length > 0 && <Section label="Pinned">{pinned.map(row)}</Section>}
-        <Section label="Chats">{rest.map(row)}</Section>
-        {needle !== "" && shown.length === 0 && (
+        {/* One array, keyed by chat: a chat whose file comes keeps its row's element as it moves to its saved row. */}
+        <Section label="Chats">{[...starting.map(startingRow), ...rest.map(row)]}</Section>
+        {needle !== "" && shown.length === 0 && starting.length === 0 && (
           <p className="px-2 py-1 text-xs text-t3">No chat's title has "{query.trim()}".</p>
         )}
       </div>
@@ -289,18 +314,23 @@ function Section({
   );
 }
 
+/** What a saved chat's row offers besides opening it: reading it ahead, its pin, and its menu's Rename and Delete. */
+interface RowActions {
+  readonly pinned: boolean;
+  readonly onPrefetch: () => void;
+  readonly onPin: () => void;
+  readonly onRename: (typed: string) => void;
+  readonly onDelete: () => void;
+}
+
 function ChatRow({
   title,
   state,
   saving,
   open,
   focused,
-  pinned,
   onOpen,
-  onPrefetch,
-  onPin,
-  onRename,
-  onDelete,
+  actions,
 }: {
   readonly title: string;
   readonly state: ChatState;
@@ -308,12 +338,9 @@ function ChatRow({
   readonly saving: boolean;
   readonly open: boolean;
   readonly focused: boolean;
-  readonly pinned: boolean;
   readonly onOpen: (where: "here" | "split") => void;
-  readonly onPrefetch: () => void;
-  readonly onPin: () => void;
-  readonly onRename: (typed: string) => void;
-  readonly onDelete: () => void;
+  /** None for a chat whose first reply still runs: it has no file to read ahead, pin, rename or delete yet. */
+  readonly actions?: RowActions;
 }): ReactNode {
   // A pointer passing over the list reads nothing; one that rests on a row a moment reads that chat ahead.
   const resting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -337,7 +364,8 @@ function ChatRow({
     <li
       className="group/row flex items-center rounded-md hover:bg-l1 has-[[aria-current=true]]:bg-l2"
       onPointerEnter={() => {
-        resting.current = setTimeout(onPrefetch, PREFETCH_REST_MS);
+        if (actions !== undefined)
+          resting.current = setTimeout(actions.onPrefetch, PREFETCH_REST_MS);
       }}
       onPointerLeave={() => clearTimeout(resting.current)}
     >
@@ -348,7 +376,7 @@ function ChatRow({
             renaming.current = false;
             refocus.current = byKey;
             setEditing(false);
-            if (typed !== null) onRename(typed);
+            if (typed !== null) actions?.onRename(typed);
           }}
         />
       ) : (
@@ -374,19 +402,19 @@ function ChatRow({
           {open && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-t3" />}
         </button>
       )}
-      {!editing && (
+      {!editing && actions !== undefined && (
         <>
           <button
             type="button"
             // In the row of its chat; the chat's title stays the name of the row's own button.
-            aria-label={pinned ? "Unpin" : "Pin"}
+            aria-label={actions.pinned ? "Unpin" : "Pin"}
             className={cn(
               "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
               REVEAL,
             )}
-            onClick={onPin}
+            onClick={actions.onPin}
           >
-            {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+            {actions.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -408,7 +436,7 @@ function ChatRow({
                 <PencilLine />
                 Rename
               </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
                 <Trash2 />
                 Delete…
               </DropdownMenuItem>

@@ -36,6 +36,7 @@ import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { ModelHubToggle } from "../models/hub";
 import { ChatDraft } from "./drafts";
+import { noteFirstPrompt } from "./firstPrompts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
 import { cachedWindow, keepWindow } from "./windowCache";
@@ -55,7 +56,8 @@ export type ChatTarget =
   | {
       readonly kind: "existing";
       readonly threadId: ThreadId;
-      readonly sessionFile: SessionFilePath;
+      /** Null for a chat whose first reply still runs: omp writes its file once that reply is done. */
+      readonly sessionFile: SessionFilePath | null;
     }
   | { readonly kind: "new"; readonly folder: FolderPath };
 
@@ -314,6 +316,8 @@ export class ChatController {
     images: readonly ChatHostImage[] = [],
   ): Promise<void> {
     await this.#planSwitch;
+    if (this.target.kind === "new" && this.#threadId !== null)
+      noteFirstPrompt(this.#threadId, text);
     const message = { text, ...(images.length > 0 ? { images: [...images] } : {}) };
     const behind = { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } as const;
     if (this.store.getSnapshot().working) {
