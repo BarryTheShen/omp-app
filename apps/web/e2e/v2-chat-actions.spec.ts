@@ -22,7 +22,7 @@ realTest.describe("new UI chat rename and delete", () => {
   realTest(
     "a chat is renamed in its row: Esc leaves it, Enter saves it, and omp's title stays after a reload",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await choose(page, "Seeded chat 2", "Rename");
       const field = chats(page).getByRole("textbox", { name: "Chat title" });
       await expect(field).toBeFocused();
@@ -52,7 +52,7 @@ realTest.describe("new UI chat rename and delete", () => {
   realTest(
     "a chat a pane shows is deleted after a confirmation: its row goes, the pane gets a new chat, and it stays gone",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(transcript(page).getByText("Seeded chat 1")).toBeVisible({ timeout: 60_000 });
 
@@ -87,7 +87,7 @@ realTest.describe("new UI chat rename and delete", () => {
   realTest(
     "a chat put out of its pane is let go: another tab can then delete it",
     async ({ realApp }) => {
-      const first = await realApp.open({ path: "/v2/" });
+      const first = await realApp.open({ path: "/" });
       await chats(first).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(boxes(first)).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
@@ -99,7 +99,7 @@ realTest.describe("new UI chat rename and delete", () => {
         timeout: 120_000,
       });
 
-      const second = await realApp.open({ path: "/v2/" });
+      const second = await realApp.open({ path: "/" });
       await choose(second, "Seeded chat 1", "Delete…");
       await second
         .getByRole("alertdialog", { name: "Delete this chat?" })
@@ -120,7 +120,7 @@ realTest.describe("new UI chat rename and delete", () => {
   realTest(
     "a chat whose turn runs is not deleted: the list says why, and the chat stays as it was",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await boxes(page).fill("stream_steady");

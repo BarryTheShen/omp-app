@@ -27,7 +27,7 @@ realTest.describe("new UI settings", () => {
   realTest(
     "open by the gear, Ctrl+, and the palette; search finds a setting by its words",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await openSettings(page);
       // The app's own tab first, then omp's tabs in omp's order, each page with omp's lead sentence.
       await expect(nav(page).getByRole("button")).toHaveText([
@@ -77,7 +77,7 @@ realTest.describe("new UI settings", () => {
   realTest(
     "a switch, a choice, a menu and a number are written to omp's file, marked with Reset, and kept after a restart",
     async ({ realApp }) => {
-      let page = await realApp.open({ path: "/v2/" });
+      let page = await realApp.open({ path: "/" });
       await openSettings(page);
       await tab(page, "Tasks").click();
       const goal = sheet(page).getByRole("switch", { name: "Goal Mode" });
@@ -116,7 +116,7 @@ realTest.describe("new UI settings", () => {
       // The page goes first: a page left open would try its old link while the server is down (an expected error).
       await page.close();
       await realApp.restartServer();
-      page = await realApp.open({ path: "/v2/" });
+      page = await realApp.open({ path: "/" });
       await openSettings(page);
       await tab(page, "Model").click();
       await expect(
@@ -149,7 +149,7 @@ realTest.describe("new UI settings", () => {
   realTest(
     "this folder's settings go to its own file and leave every folder's alone",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await openSettings(page);
       await sheet(page)
         .getByRole("group", { name: "Whose settings" })
@@ -182,7 +182,7 @@ realTest.describe("new UI settings", () => {
   );
 
   realTest("provider sign-in goes through the open chat", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await openSettings(page);
     await tab(page, "Providers").click();
     const signIn = sheet(page).getByRole("region", { name: "Sign-in" });

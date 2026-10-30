@@ -6,7 +6,7 @@ realTest.describe("new UI look", () => {
     "switches the theme in one click, keeps it after a reload, and follows the system when asked",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(120_000);
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       const html = page.locator("html");
       const body = page.locator("body");
       const theme = page.getByRole("group", { name: "Theme" });
@@ -41,7 +41,7 @@ realTest.describe("new UI look", () => {
       "shows the chat list or one chat, with a way back to the list",
       async ({ realApp }, testInfo) => {
         testInfo.setTimeout(180_000);
-        const page = await realApp.open({ path: "/v2/" });
+        const page = await realApp.open({ path: "/" });
         await page.setViewportSize({ width: 390, height: 844 });
         const chats = page.getByRole("navigation", { name: "Chats" });
         const transcript = page.getByRole("region", { name: "Transcript" });

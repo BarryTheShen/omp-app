@@ -73,17 +73,19 @@ done
 [[ -n $address ]] || { echo "FAIL: no address printed" >&2; cat "$work/out.log" >&2; exit 1; }
 base=${address%%/#*}
 
-page=$(curl -sf "$base/")
-grep -q 'id="root"' <<<"$page" || { echo "FAIL: the page has no app root" >&2; exit 1; }
-script=$(grep -o -E '/assets/[^"]+\.js' <<<"$page" | head -1)
-curl -sf -o /dev/null "$base$script" || { echo "FAIL: the app script $script is not served" >&2; exit 1; }
-
-# The new UI under /v2/, from the package: its page and its script.
-page=$(curl -sf "$base/v2/")
-grep -q 'id="root"' <<<"$page" || { echo "FAIL: the new UI's page (/v2/) has no app root" >&2; exit 1; }
-script=$(grep -o -E '/v2/assets/[^"]+\.js' <<<"$page" | head -1)
+# The new UI at the root, from the package: its own page, and its script.
+curl -sf "$base/" -o "$work/ui.html" || { echo "FAIL: the root serves no page" >&2; exit 1; }
+cmp -s "$work/ui.html" "$work/root/usr/share/omp-app/ui/index.html" || { echo "FAIL: the root is not the package's new UI" >&2; exit 1; }
+script=$(grep -o -E '/assets/[^"]+\.js' "$work/ui.html" | head -1)
 [[ -n $script ]] || { echo "FAIL: the new UI's page names no script" >&2; exit 1; }
 curl -sf -o /dev/null "$base$script" || { echo "FAIL: the new UI's script $script is not served" >&2; exit 1; }
+
+# The old UI under /old/ while it stays: its own page, and its script, named relative to the page.
+curl -sf "$base/old/" -o "$work/web.html" || { echo "FAIL: /old/ serves no page" >&2; exit 1; }
+cmp -s "$work/web.html" "$work/root/usr/share/omp-app/web/index.html" || { echo "FAIL: /old/ is not the package's old UI" >&2; exit 1; }
+script=$(grep -o -E '\./assets/[^"]+\.js' "$work/web.html" | head -1)
+[[ -n $script ]] || { echo "FAIL: the old UI's page names no script" >&2; exit 1; }
+curl -sf -o /dev/null "$base/old/${script#./}" || { echo "FAIL: the old UI's script $script is not served under /old/" >&2; exit 1; }
 
 second=$("$app" --no-open)
 grep -q 'already running' <<<"$second" || { echo "FAIL: a second launch did not find the first" >&2; echo "$second" >&2; exit 1; }

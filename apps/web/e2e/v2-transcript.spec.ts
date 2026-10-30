@@ -8,7 +8,7 @@ realTest.describe("new UI transcript", () => {
   realTest.setTimeout(240_000);
 
   async function newChat(realApp: RealApp): Promise<Page> {
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await page
       .getByRole("navigation", { name: "Chats" })
       .getByRole("button", { name: "New chat" })

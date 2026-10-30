@@ -27,7 +27,7 @@ realTest.describe("new UI palette", () => {
   }
 
   realTest("runs the app's commands, opens chats and switches the theme", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await newChat(page);
 
     await box(page).press("Control+k");
@@ -64,7 +64,7 @@ realTest.describe("new UI palette", () => {
   realTest(
     "puts a file or one of omp's commands into the box, and switches the model",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await newChat(page);
 
       await box(page).press("Control+k");
@@ -102,7 +102,7 @@ realTest.describe("new UI palette", () => {
   );
 
   realTest("Ctrl+/ shows every key", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await page.keyboard.press("Control+Slash");
     const sheet = page.getByRole("dialog", { name: "Keys" });
     await expect(sheet).toBeVisible();

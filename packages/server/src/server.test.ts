@@ -403,10 +403,13 @@ describe("A0.6 upgrade and static serving", () => {
     ).toEqual({ closeCode: 4403, reason: "origin not allowed" });
     // Without a remote origin, the Tailscale host is a bad Host.
     expect(
-      authorizeWebSocketUpgrade(request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"), {
-        token: "right",
-        port: 4317,
-      }),
+      authorizeWebSocketUpgrade(
+        request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
+        {
+          token: "right",
+          port: 4317,
+        },
+      ),
     ).toMatchObject({ status: 403 });
   });
 
@@ -433,23 +436,6 @@ describe("A0.6 upgrade and static serving", () => {
   });
 
   test("binds loopback, serves the static root and exposes a random token", async () => {
-    const app = createAppServer({
-      port: 0,
-      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
-      origins: ["http://allowed.test"],
-    });
-    try {
-      expect(app.port).toBeGreaterThan(0);
-      expect(app.url).toBe(`http://127.0.0.1:${app.port}`);
-      expect(app.token.length).toBe(43);
-      const response = await fetch(`${app.url}/`);
-      expect(response.status).toBe(200);
-      expect(await response.text()).toContain("A0.6 static fixture");
-    } finally {
-      await app.stop();
-    }
-  });
-  test("serves the new UI under /v2/ beside the old one, and sends /v2 to /v2/ with its query", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({
       port: 0,
@@ -458,14 +444,36 @@ describe("A0.6 upgrade and static serving", () => {
       origins: ["http://allowed.test"],
     });
     try {
-      const v2 = await fetch(`${app.url}/v2/`);
-      expect(v2.status).toBe(200);
-      expect(await v2.text()).toContain("v2 static fixture");
-      expect(await (await fetch(`${app.url}/`)).text()).toContain("A0.6 static fixture");
-      const bare = await fetch(`${app.url}/v2?folder=a`, { redirect: "manual" });
-      expect(bare.status).toBe(308);
-      expect(bare.headers.get("location")).toBe("/v2/?folder=a");
-      expect((await fetch(`${app.url}/v2/missing.js`)).status).toBe(404);
+      expect(app.port).toBeGreaterThan(0);
+      expect(app.url).toBe(`http://127.0.0.1:${app.port}`);
+      expect(app.token.length).toBe(43);
+      const response = await fetch(`${app.url}/`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("v2 static fixture");
+    } finally {
+      await app.stop();
+    }
+  });
+  test("serves the new UI at the root and the old one under /old/, and sends old addresses on with their query", async () => {
+    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const app = createAppServer({
+      port: 0,
+      staticRoot: fixtures,
+      uiRoot: `${fixtures}/ui`,
+      origins: ["http://allowed.test"],
+    });
+    const location = async (path: string) =>
+      (await fetch(`${app.url}${path}`, { redirect: "manual" })).headers.get("location");
+    try {
+      expect(await (await fetch(`${app.url}/`)).text()).toContain("v2 static fixture");
+      expect(await (await fetch(`${app.url}/old/`)).text()).toContain("A0.6 static fixture");
+      // A file only the old UI has, such as one of its own pages, is still served at the root.
+      expect(await (await fetch(`${app.url}/old-page.html`)).text()).toContain("old page fixture");
+      expect(await location("/old?folder=a")).toBe("/old/?folder=a");
+      expect(await location("/v2?folder=a")).toBe("/?folder=a");
+      expect(await location("/v2/?folder=a")).toBe("/?folder=a");
+      expect(await location("/v2/assets/a.js")).toBe("/assets/a.js");
+      expect((await fetch(`${app.url}/missing.js`)).status).toBe(404);
     } finally {
       await app.stop();
     }

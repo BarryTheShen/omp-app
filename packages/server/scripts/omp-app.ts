@@ -64,7 +64,7 @@ function webRoot(): string {
   );
 }
 
-/** The new UI's built files (served under `/v2/`), found the same way; absent until the packages carry them. */
+/** The new UI's built files (served at the root), found the same way; without them the root serves the old UI's files. */
 function uiRoot(): string | undefined {
   const candidates = [
     Bun.env.OMP_APP_UI_ROOT,

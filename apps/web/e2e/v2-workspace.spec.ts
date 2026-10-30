@@ -20,7 +20,7 @@ realTest.describe("new UI workspace", () => {
   realTest(
     "splits, zoom, moving between panes and closing one with kitty's keys; the panes come back after a reload",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       // An empty tab offers a chat of its own, beside the list's.
       await expect(page.getByRole("main").getByRole("button", { name: "New chat" })).toBeVisible();
       await chats(page).getByRole("button", { name: "New chat" }).click();
@@ -61,7 +61,7 @@ realTest.describe("new UI workspace", () => {
   realTest(
     "tabs: a new tab with a new chat, rename, move, next and close; the tabs come back after a reload",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await chats(page).getByRole("button", { name: "New chat" }).click();
       await opened(page, 1);
       await boxes(page).first().click();
@@ -109,7 +109,7 @@ realTest.describe("new UI workspace", () => {
     realTest(
       "a click opens a chat in the focused pane, Alt+click beside it, and an open chat gets the focus",
       async ({ realApp }) => {
-        const page = await realApp.open({ path: "/v2/" });
+        const page = await realApp.open({ path: "/" });
         const first = chats(page).getByRole("button", { name: "Seeded chat 1" });
         const second = chats(page).getByRole("button", { name: "Seeded chat 2" });
 
@@ -139,7 +139,7 @@ realTest.describe("new UI workspace", () => {
     );
 
     realTest("a phone shows the list or one chat", async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await page.setViewportSize({ width: 390, height: 844 });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(chats(page)).toBeHidden();

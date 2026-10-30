@@ -37,7 +37,7 @@ realTest.describe("new UI reopening and typing ahead", () => {
     async ({ realApp }) => {
       let server!: SlowServer;
       const page = await realApp.open({
-        path: "/v2/",
+        path: "/",
         beforeLoad: async (target: Page) => {
           server = await slowServer(target, 5_000);
         },
@@ -70,7 +70,7 @@ realTest.describe("new UI reopening and typing ahead", () => {
     async ({ realApp }) => {
       let server!: SlowServer;
       const page = await realApp.open({
-        path: "/v2/",
+        path: "/",
         beforeLoad: async (target: Page) => {
           server = await slowServer(target, 4_000);
         },

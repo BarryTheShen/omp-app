@@ -8,7 +8,7 @@ realTest.describe("new UI core", () => {
     "opens a saved chat at its end, streams a new chat's reply, and Esc stops a reply",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(300_000);
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       const chats = page.getByRole("navigation", { name: "Chats" });
       const transcript = page.getByRole("region", { name: "Transcript" });
 

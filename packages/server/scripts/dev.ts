@@ -89,7 +89,7 @@ import { type AppServer, createAppServer } from "../src/server";
 export interface CompositionServerOptions {
   readonly port?: number;
   readonly staticRoot?: string;
-  /** The new UI's built folder, served under `/v2/` (default: `apps/ui/dist` of this checkout). */
+  /** The new UI's built folder, served at the root (default: `apps/ui/dist` of this checkout). */
   readonly uiRoot?: string;
   /**
    * Test seam: a program that stands in for omp's command line in omp's own commands (`--version`, `models`, `usage`,

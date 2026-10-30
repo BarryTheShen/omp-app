@@ -71,7 +71,7 @@ realTest.describe("new UI in the desktop window", () => {
   realTest(
     "a picture pasted in the window is read from the window's clipboard; pasted text stays text",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/", beforeLoad: fakeWindow });
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       const box = await newChat(page);
       const calls = async () => (await windowCalls(page)).map(([command]) => command);
       // WebKitGTK's paste event: text when text was copied, nothing at all for a copied picture.
@@ -96,7 +96,7 @@ realTest.describe("new UI in the desktop window", () => {
   realTest(
     "the App tab lists the window's servers: one click opens one, a pasted link connects, a refused link says why",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/", beforeLoad: fakeWindow });
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       await settingsButton(page).click();
       const app = appSettings(page);
       await expect(app.getByRole("button", { name: "Use this computer's server" })).toBeVisible();
@@ -131,7 +131,7 @@ realTest.describe("new UI in the desktop window", () => {
   realTest(
     "the palette offers the window's servers and its link field; a browser has neither",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/", beforeLoad: fakeWindow });
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       const palette = page.getByRole("dialog", { name: "Palette" });
       const search = async (target: Page) => {
         await expect(settingsButton(target)).toBeVisible({ timeout: 120_000 });
@@ -156,7 +156,7 @@ realTest.describe("new UI in the desktop window", () => {
       await palette.getByRole("option", { name: "Connect to another server…" }).click();
       await expect(linkField(page)).toBeFocused();
 
-      const browser = await realApp.open({ path: "/v2/" });
+      const browser = await realApp.open({ path: "/" });
       await search(browser);
       await expect(
         browser.getByRole("dialog", { name: "Palette" }).getByRole("option", { name: /server/i }),
@@ -172,7 +172,7 @@ realTest.describe("new UI in the desktop window", () => {
   realTest(
     "a chat that starts waiting while the window is in the background raises a notification with its title",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/", beforeLoad: fakeWindow });
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       const box = await newChat(page);
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
       const notices = async () =>

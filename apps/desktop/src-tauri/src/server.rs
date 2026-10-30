@@ -192,7 +192,7 @@ impl LaunchSteps for AppSteps {
     fn open_server(&mut self, address: Url) {
         // Off the main thread, which this runs on: the page first waits for GStreamer's launch scan (see `open_server_page`).
         let app = self.app.clone();
-        thread::spawn(move || open_server_page(&app, new_ui_page(address)));
+        thread::spawn(move || open_server_page(&app, address));
     }
 
     fn watch_server(&mut self, child: Self::Started) {
@@ -308,7 +308,7 @@ fn open_remote_page(app: AppHandle, link: Url) {
 fn open_local(app: AppHandle) {
     thread::spawn(move || {
         if let Some(address) = running_server() {
-            open_server_page(&app, new_ui_page(address));
+            open_server_page(&app, address);
             return;
         }
         match spawn(&app) {
@@ -432,7 +432,7 @@ fn open_when_recorded(app: &AppHandle) {
     let found = address::wait_for_instance(&record, START_TIMEOUT);
     let url = found.and_then(|address| Url::parse(&address.url).ok());
     match url {
-        Some(url) => open_server_page(app, new_ui_page(url)),
+        Some(url) => open_server_page(app, url),
         None => show_error(app),
     }
 }
@@ -577,16 +577,6 @@ fn choose_destination(app: &AppHandle, destination: &mut PathBuf) -> bool {
     true
 }
 
-/// Where the window opens this computer's server: the new UI, under `/v2/` until it replaces the old UI at `/`.
-const NEW_UI_PATH: &str = "/v2/";
-
-/// This computer's server's address as the new UI's page; the token stays in the fragment. A kept link to another
-/// computer is opened as it was given instead, since that server may not have the new UI yet.
-fn new_ui_page(mut address: Url) -> Url {
-    address.set_path(NEW_UI_PATH);
-    address
-}
-
 /// Shows the app in the window: the starting page becomes the server's address. Nothing happens once
 /// the app is quitting.
 fn open_server_page(app: &AppHandle, url: Url) {
@@ -718,13 +708,6 @@ mod tests {
         assert!(is_app("blob:http://127.0.0.1:27183/x"));
         assert!(!is_app("blob:https://example.com/x"));
         assert!(!is_app("http://example.com"));
-    }
-
-    #[test]
-    fn this_computers_server_opens_at_the_new_ui_with_its_token() {
-        let page = new_ui_page(url("http://127.0.0.1:4317/#token=abc-123_x"));
-        assert_eq!(page.as_str(), "http://127.0.0.1:4317/v2/#token=abc-123_x");
-        assert!(is_app_address(&page, None));
     }
 
     #[test]

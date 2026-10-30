@@ -20,7 +20,7 @@ realTest.describe("new UI chat list and pane keys", () => {
   realTest(
     "a new chat joins the list and shows as running while omp answers; a question puts it under Needs you",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await newChat(page);
       // omp writes a chat's file with its first reply; from then on the chat is in the list.
       await boxes(page).fill("hello");
@@ -55,7 +55,7 @@ realTest.describe("new UI chat list and pane keys", () => {
     realTest(
       "search narrows the list, and a pinned chat comes first, also after a reload",
       async ({ realApp }) => {
-        const page = await realApp.open({ path: "/v2/" });
+        const page = await realApp.open({ path: "/" });
         const search = chats(page).getByRole("searchbox", { name: "Search chats" });
         await search.fill("chat 2");
         await expect(chats(page).getByRole("button", { name: "Seeded chat 2" })).toBeVisible();
@@ -88,7 +88,7 @@ realTest.describe("new UI chat list and pane keys", () => {
     realTest(
       "a chat picked from the list, and New chat, put the caret in the pane's message box",
       async ({ realApp }) => {
-        const page = await realApp.open({ path: "/v2/" });
+        const page = await realApp.open({ path: "/" });
         const box = boxes(page);
         await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
         await expect(box).toBeFocused();
@@ -107,7 +107,7 @@ realTest.describe("new UI chat list and pane keys", () => {
   });
 
   realTest("resize, equalize and swap the focused pane with kitty's keys", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await page.setViewportSize({ width: 1440, height: 900 });
     await newChat(page);
     await boxes(page).first().fill("in the first pane");

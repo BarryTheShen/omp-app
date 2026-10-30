@@ -14,7 +14,7 @@ realTest.describe("new UI todos", () => {
   realTest(
     "omp's todo list shows above the box with the task it works on, follows each change, and opens in full",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await page
         .getByRole("navigation", { name: "Chats" })
         .getByRole("button", { name: "New chat" })

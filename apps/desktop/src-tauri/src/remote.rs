@@ -22,7 +22,7 @@ const LINK_FILE: &str = "desktop-server";
 const SERVERS_FILE: &str = "desktop-servers";
 /// How many of them the window remembers.
 const REMEMBERED: usize = 8;
-/// The paths a link may name: the app's root, or the new UI under `/v2/`.
+/// The paths a link may name: the app's root, or `/v2/`, where the new UI was before it became the root.
 const LINK_PATHS: [&str; 2] = ["/", "/v2/"];
 /// How long the window waits for the other computer to accept a connection before it shows the error page.
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
@@ -60,8 +60,9 @@ pub fn choice(args: &[String]) -> Result<Choice, String> {
     Ok(found)
 }
 
-/// The link of a server on another computer: an https address with a host, at the app's root or its new UI (`/v2/`),
-/// whose fragment carries a token. Plain http is refused, since the token would cross the network unencrypted.
+/// The link of a server on another computer: an https address with a host, at the app's root (or `/v2/`, the new UI's
+/// former place, which the server sends on), whose fragment carries a token. Plain http is refused, since the token
+/// would cross the network unencrypted.
 pub fn parse_link(text: &str) -> Option<Url> {
     let url = Url::parse(text.trim()).ok()?;
     let has_host = url.host_str().is_some_and(|host| !host.is_empty());
@@ -184,8 +185,8 @@ mod tests {
         assert_eq!(host(&link), "devbox.tail1234.ts.net");
         let more = "https://devbox.tail1234.ts.net/#token=t&folder=%2Fhome%2Fuser";
         assert!(parse_link(more).is_some(), "other fields may follow");
-        let new_ui = "https://devbox.tail1234.ts.net/v2/#token=t";
-        assert!(parse_link(new_ui).is_some(), "the new UI's page");
+        let former = "https://devbox.tail1234.ts.net/v2/#token=t";
+        assert!(parse_link(former).is_some(), "the new UI's former page");
     }
 
     #[test]

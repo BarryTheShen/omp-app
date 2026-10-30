@@ -33,8 +33,9 @@ export interface AppServerOptions {
   readonly capabilities?: CapabilityMapType;
   readonly replayLimit?: number;
   readonly replay?: EventReplayHub;
+  /** The old UI's built folder: served under `/old/` while it stays, and for any file the new UI does not have. */
   readonly staticRoot?: string;
-  /** The new UI's built folder, served under `/v2/` beside the old UI (default: `apps/ui/dist` in the working folder). */
+  /** The new UI's built folder, served at the app's root (default: `apps/ui/dist` in the working folder). */
   readonly uiRoot?: string;
   readonly registry?: PortRegistry;
   /** Where connections and failed calls are recorded; nothing is logged without one. */
@@ -142,8 +143,14 @@ const STATIC_HEADERS = {
   "Referrer-Policy": "no-referrer",
 } as const;
 
-/** Where the new UI is served, beside the old one at `/`. */
-const UI_PREFIX = "/v2";
+/** Where the old UI is served while it stays: the new UI is the app's root. */
+const OLD_PREFIX = "/old";
+/** Where the new UI was served before it became the root; links to it are sent on. */
+const FORMER_UI_PREFIX = "/v2";
+
+function redirect(location: string): Response {
+  return new Response(null, { status: 308, headers: { ...STATIC_HEADERS, Location: location } });
+}
 
 async function serveStatic(root: string, pathname: string): Promise<Response> {
   const path = safeStaticPath(root, pathname);
@@ -224,16 +231,16 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method not allowed", { status: 405 });
       }
-      if (url.pathname === UI_PREFIX) {
-        return new Response(null, {
-          status: 308,
-          headers: { ...STATIC_HEADERS, Location: `${UI_PREFIX}/${url.search}` },
-        });
+      if (url.pathname === OLD_PREFIX) return redirect(`${OLD_PREFIX}/${url.search}`);
+      if (url.pathname.startsWith(`${OLD_PREFIX}/`)) {
+        return serveStatic(staticRoot, url.pathname.slice(OLD_PREFIX.length));
       }
-      if (url.pathname.startsWith(`${UI_PREFIX}/`)) {
-        return serveStatic(uiRoot, url.pathname.slice(UI_PREFIX.length));
+      if (url.pathname === FORMER_UI_PREFIX || url.pathname.startsWith(`${FORMER_UI_PREFIX}/`)) {
+        return redirect(`${url.pathname.slice(FORMER_UI_PREFIX.length) || "/"}${url.search}`);
       }
-      return serveStatic(staticRoot, url.pathname);
+      // The new UI first; a file it does not have may be one of the old UI's own pages or files, served as before.
+      const page = await serveStatic(uiRoot, url.pathname);
+      return page.status === 404 ? serveStatic(staticRoot, url.pathname) : page;
     },
     websocket: {
       open: (socket) => {

@@ -13,7 +13,7 @@ realTest.describe("new UI message box", () => {
       "keeps typed text across a reload, a cleared browser and a switch to another chat",
       async ({ realApp }, testInfo) => {
         testInfo.setTimeout(240_000);
-        const page = await realApp.open({ path: "/v2/" });
+        const page = await realApp.open({ path: "/" });
         const text = "half a thought about the parser";
 
         await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
@@ -57,7 +57,7 @@ realTest.describe("new UI message box", () => {
     "queues a follow-up, takes it back with Edit, and Esc stops the reply and returns what was queued",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(240_000);
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       const followUp = "after this, write the docs";
       await chats(page).getByRole("button", { name: "New chat" }).click();
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
@@ -93,7 +93,7 @@ realTest.describe("new UI message box", () => {
     "changes the thinking level and the model from the message box",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(180_000);
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await chats(page).getByRole("button", { name: "New chat" }).click();
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 

@@ -25,7 +25,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
   realTest(
     "plan mode by Alt+Shift+P and its chip; omp's plan is reviewed, approved and run, and names the chat",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await newChat(page);
       await expect(off(page)).toBeVisible({ timeout: 30_000 });
       // The chip shows a switch at once: omp's first answer after a chat opens takes seconds here.
@@ -61,7 +61,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
   realTest(
     "the late answer to an earlier switch does not turn plan mode back, even briefly",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await newChat(page);
       await expect(off(page)).toBeVisible({ timeout: 30_000 });
       await box(page).press("Alt+Shift+KeyP");
@@ -98,7 +98,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
   );
 
   realTest("a goal is set from the palette, paused, resumed and dropped", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await newChat(page);
     await box(page).press("Control+k");
     const palette = page.getByRole("dialog", { name: "Palette" });

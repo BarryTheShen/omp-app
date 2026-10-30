@@ -7,7 +7,7 @@ realTest.describe("new UI chat states", () => {
   realTest(
     "a new chat greets with its folder and the box's keys until the first message",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await page
         .getByRole("navigation", { name: "Chats" })
         .getByRole("button", { name: "New chat" })
@@ -35,7 +35,7 @@ realTest.describe("new UI chat states", () => {
   realTest(
     "says the link expired when the app's server starts again with a new one",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible({
         timeout: 60_000,
       });

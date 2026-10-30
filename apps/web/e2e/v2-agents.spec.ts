@@ -35,7 +35,7 @@ realTest.describe("new UI Agent Hub", () => {
   realTest(
     "a running subagent shows in the Hub with its transcript, and Kill stops it",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await newChat(page);
       await box(page).fill("spawn_long_subagent");
       await box(page).press("Enter");
@@ -69,7 +69,7 @@ realTest.describe("new UI Agent Hub", () => {
   realTest(
     "Alt+A opens the Hub, a message reaches a running subagent, and Alt+A closes it",
     async ({ realApp }) => {
-      const page = await realApp.open({ path: "/v2/" });
+      const page = await realApp.open({ path: "/" });
       await newChat(page);
       await box(page).fill("spawn_steerable_subagent");
       await box(page).press("Enter");
@@ -100,7 +100,7 @@ realTest.describe("new UI Agent Hub", () => {
     const agents = join(dirname(realApp.agentDir), "home", ".omp", "agent", "agents");
     await mkdir(agents, { recursive: true });
     await writeFile(join(agents, "fgprobe.md"), FOREGROUND_AGENT);
-    const page = await realApp.open({ path: "/v2/" });
+    const page = await realApp.open({ path: "/" });
     await newChat(page);
     await box(page).fill("spawn_foreground_intent 8");
     await box(page).press("Enter");
