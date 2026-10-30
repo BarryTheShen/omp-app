@@ -114,7 +114,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   // A new controller only when the pane is given another chat; the same chat gaining its id keeps it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `params.chat` names the chat; target and folder go with it
   useEffect(() => {
-    const next = new ChatController(client, params.target, params.folder);
+    const next = new ChatController(client, params.target, params.folder, params.chat);
     setOpened({ chat: params.chat, controller: next });
     controllers.set(api.id, next);
     void next.open();

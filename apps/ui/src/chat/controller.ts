@@ -53,7 +53,7 @@ export class ChatController {
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;
   #loadingOlder = false;
-  #draft: ChatDraft | null;
+  #draft: ChatDraft;
   #disposed = false;
   /**
    * Where the transcript's branch ends after an edit rewound the chat: an entry, or null for the chat's very start.
@@ -80,13 +80,17 @@ export class ChatController {
   /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
   readonly folder: FolderPath;
 
-  constructor(client: AppClient, target: ChatTarget, folder: FolderPath) {
+  /** `paneChat` names the pane's chat: a new chat's unsent text is kept under it until the chat has an id. */
+  constructor(client: AppClient, target: ChatTarget, folder: FolderPath, paneChat: string) {
     this.client = client;
     this.target = target;
     this.folder = folder;
     this.#threadId = target.kind === "existing" ? target.threadId : null;
     this.#sessionFile = target.kind === "existing" ? target.sessionFile : null;
-    this.#draft = target.kind === "existing" ? new ChatDraft(client, target.threadId) : null;
+    this.#draft =
+      target.kind === "existing"
+        ? new ChatDraft(client, target.threadId)
+        : ChatDraft.forNewChat(client, paneChat);
     // A gap in the event stream: the file holds what was missed, and omp's state says whether a turn started or ended.
     this.#stopResync = client.onResync((event) => {
       if (event.stream !== this.#subscription?.stream) return;
@@ -95,8 +99,8 @@ export class ChatController {
     });
   }
 
-  /** The chat's unsent text; null until a new chat has its id. */
-  get draft(): ChatDraft | null {
+  /** The chat's unsent text. A new chat's is kept from the start, under its pane, and under its id once it has one. */
+  get draft(): ChatDraft {
     return this.#draft;
   }
 
@@ -150,7 +154,7 @@ export class ChatController {
       return;
     }
     this.#threadId = opened.threadId;
-    this.#draft ??= new ChatDraft(this.client, opened.threadId);
+    if (this.target.kind === "new") this.#draft.keepFor(opened.threadId);
     this.#sessionFile = opened.sessionFile;
     this.#subscription = await this.client.subscribe(ChatSessionPort, "event", {
       scope: opened.threadId,
@@ -496,6 +500,7 @@ export class ChatController {
     if (payload.kind === "moved") {
       this.#threadId = payload.threadId;
       this.#sessionFile = payload.sessionFile;
+      if (this.target.kind === "new") this.#draft.keepFor(payload.threadId);
     }
     this.store.apply(payload);
     if (payload.kind === "host_request") {
@@ -552,7 +557,7 @@ export class ChatController {
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#stopResync();
-    this.#draft?.dispose();
+    this.#draft.dispose();
     this.store.dispose();
     // A stream that ended with its chat (a deleted chat) has nothing left to unsubscribe.
     await this.#subscription?.unsubscribe().catch(() => undefined);

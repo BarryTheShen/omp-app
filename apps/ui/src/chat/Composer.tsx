@@ -165,12 +165,11 @@ export const Composer = memo(function Composer({
   const update = (next: string): void => {
     textRef.current = next;
     setText(next);
-    draft?.change(next);
+    draft.change(next);
   };
 
   // The kept text comes back when the chat opens, unless something was typed first.
   useEffect(() => {
-    if (draft === null) return;
     let active = true;
     void draft.load().then((kept) => {
       if (!active || kept === "" || textRef.current !== "") return;

@@ -193,4 +193,45 @@ realTest.describe("new UI message box", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "keeps text typed in a new chat across a reload and a server restart",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      // A restart refuses the open page's connection and expires its link; the page reports both.
+      realApp.allowProblem(/WebSocket|401|403|expired/i);
+      const page = await realApp.open({ path: "/" });
+      const context = page.context();
+
+      // Some text right after the click, before the box says "Message omp", and more once it does.
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await box(page).fill("half a thought");
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("half a thought, finished");
+      // The app's copy is written once typing pauses.
+      await page.waitForTimeout(1_500);
+
+      // The layout is kept, so the same pane comes back with its text.
+      await page.reload();
+      await expect(box(page)).toHaveValue("half a thought, finished", { timeout: 60_000 });
+
+      // A restart: a page of the same browser profile, so its local copy is still there.
+      await page.close();
+      await realApp.restartServer();
+      const again = await realApp.open({ path: "/", context });
+      await expect(box(again)).toHaveValue("half a thought, finished", { timeout: 60_000 });
+
+      // Sent, the text does not come back.
+      await expect(box(again)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(again).press("Enter");
+      await expect(again.getByText("pong", { exact: true })).toBeVisible({ timeout: 90_000 });
+      await again.waitForTimeout(1_500);
+      await again.reload();
+      await expect(again.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await again.waitForTimeout(1_500);
+      await expect(box(again)).toHaveValue("");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
