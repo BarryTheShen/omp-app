@@ -1,7 +1,15 @@
 import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
 import { ArrowDown } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import {
@@ -23,18 +31,126 @@ const ESTIMATED_ROW_PX = 72;
 /**
  * Which resized rows move the scroll position with them: only rows wholly above the top of the view. TanStack's default
  * also moves it for a row's first measurement when the row only starts above the view; such a row grows below the line
- * being read, so moving the view pushes that line off the screen (332 px in WebKit). The row's place is read as laid out
- * now: the scroll position already moved for the rows measured before it in the same batch, and the row moved with
- * them. A row measured again keeps TanStack's rule: not while the reader scrolls up.
+ * being read, so moving the view pushes that line off the screen (332 px in WebKit). The row's place is read from the
+ * layout as it is now: `getVirtualItems()` rebuilds it (the scroll position already moved for the rows measured before
+ * it in the same batch, and the row moved with them), and `measurementsCache` holds the layout's places, as
+ * `scrollOffset` is one; the drawn places differ while a correction is held (each row shifted back by the held amount).
+ * A row measured again keeps TanStack's rule: not while the reader scrolls up.
  */
 function movesView(
   item: VirtualItem,
   _delta: number,
   instance: Virtualizer<HTMLDivElement, Element>,
 ): boolean {
-  const row = instance.getVirtualItems().find((each) => each.index === item.index) ?? item;
+  instance.getVirtualItems();
+  const row = instance.measurementsCache[item.index] ?? item;
   if (row.end > (instance.scrollOffset ?? 0)) return false;
   return !instance.itemSizeCache.has(item.key) || instance.scrollDirection !== "backward";
+}
+
+/** How near the end still counts as at the end: the list then follows new output. */
+const AT_END_PX = 80;
+
+/** Keys that scroll the transcript when it has the focus: WebKit animates them, as it does the wheel. */
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+
+/** How long a wheel or a scroll key may go without scrolling before it counts as one at an edge, which moves nothing. */
+const NO_SCROLL_MS = 150;
+
+/**
+ * Holds the list's position corrections while the reader scrolls with the wheel or the keys, and writes them once the
+ * scroll has ended. A correction (for a row above the view measured for the first time) is a `scrollTop` write, and
+ * WebKit stops a running scroll animation at such a write (`ScrollAnimator::scrollToPositionWithoutAnimation`): a wheel
+ * step in the desktop window fell short by up to two thirds whenever a row above was measured. TanStack already holds
+ * corrections while a write cannot land (`_canWriteScroll`, for a touch on iOS): it shows the rows shifted back by the
+ * amount held, so the line being read stays put, and writes the whole amount in one paint once a write can land. The
+ * reader's own scroll is one of those times here; the list's own writes (following new output, jumping to the end) are
+ * not, and neither is a scroll that already ended. A wheel at an edge scrolls nothing: the hold ends after
+ * `NO_SCROLL_MS`, and a render writes what it held. The hook is TanStack's own; should a new version drop it, the page
+ * says so in the console (which fails every end-to-end spec) and scrolls as it did before.
+ */
+function useHoldCorrectionsWhileReading(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  instance: Virtualizer<HTMLDivElement, Element>,
+): void {
+  const [, render] = useReducer((count: number) => count + 1, 0);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const internals = instance as unknown as { _canWriteScroll?: () => boolean };
+    const canWrite = internals._canWriteScroll;
+    if (typeof canWrite !== "function") {
+      console.error(
+        "TanStack Virtual has no _canWriteScroll: the transcript writes its corrections during scrolls again.",
+      );
+      return;
+    }
+    /** The reader's wheel or key started a scroll that has not ended yet. */
+    let reading = false;
+    /** The element scrolled since that wheel or key. */
+    let moved = false;
+    let idle = 0;
+    const input = (): void => {
+      reading = true;
+      moved = false;
+      window.clearTimeout(idle);
+      idle = window.setTimeout(() => {
+        if (!reading || moved) return;
+        reading = false;
+        render();
+      }, NO_SCROLL_MS);
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest("input, textarea") !== null)
+      )
+        return;
+      if (SCROLL_KEYS.has(event.key)) input();
+    };
+    const onScroll = (): void => {
+      if (reading) moved = true;
+    };
+    element.addEventListener("wheel", input, { passive: true });
+    element.addEventListener("keydown", onKey);
+    element.addEventListener("scroll", onScroll, { passive: true });
+    // TanStack asks before every correction and flush; a scroll that moved and then ended ends the hold.
+    internals._canWriteScroll = () => {
+      if (reading && moved && !instance.isScrolling) reading = false;
+      return canWrite() && !reading;
+    };
+    return () => {
+      window.clearTimeout(idle);
+      element.removeEventListener("wheel", input);
+      element.removeEventListener("keydown", onKey);
+      element.removeEventListener("scroll", onScroll);
+      internals._canWriteScroll = canWrite;
+    };
+  }, [scrollRef, instance]);
+}
+
+/**
+ * Keeps a reader who is at the end at the end when the list gets shorter (the working row and the box grow as the chat
+ * goes live): the list follows output that grows, not a view that shrinks.
+ */
+function useStayAtEndWhenShorter(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  instance: Virtualizer<HTMLDivElement, Element>,
+): void {
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    let height = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const before = height;
+      height = element.clientHeight;
+      if (height >= before) return;
+      if (element.scrollHeight - element.scrollTop - before <= AT_END_PX) instance.scrollToEnd();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [scrollRef, instance]);
 }
 
 /**
@@ -75,12 +191,14 @@ export function TranscriptList({
     getItemKey: (index) => rows[index]?.key ?? index,
     anchorTo: "end",
     followOnAppend: true,
-    scrollEndThreshold: 80,
+    scrollEndThreshold: AT_END_PX,
     overscan: 6,
     paddingStart: 24,
     paddingEnd: 16,
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
+  useHoldCorrectionsWhileReading(scrollRef, virtualizer);
+  useStayAtEndWhenShorter(scrollRef, virtualizer);
 
   // Start at the latest entry once the first window is there.
   const empty = rows.length === 0;

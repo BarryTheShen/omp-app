@@ -67,10 +67,49 @@ function topRow(page: Page): Promise<{ readonly text: string; readonly top: numb
   });
 }
 
+/** How far the transcript is from its end, in pixels. */
+function fromEnd(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
+    return root === null ? -1 : Math.round(root.scrollHeight - root.scrollTop - root.clientHeight);
+  });
+}
+
+/** The transcript's scroll position, in pixels. */
+function scrollTop(page: Page): Promise<number> {
+  return page.evaluate(
+    () => document.querySelector<HTMLElement>("section[aria-label='Transcript']")?.scrollTop ?? -1,
+  );
+}
+
 /**
- * The transcript's scrolling in one engine (`browserName` is chosen at the top of the file that calls this): older
- * entries loading above keep the line being read where it is, and a streaming reply changes only its own row and
- * stays at the bottom.
+ * Where the row whose text starts with `text` is, from the transcript's top edge, and its place in the list (it grows
+ * when older entries load above); null when the row is not drawn.
+ */
+function rowPlace(
+  page: Page,
+  text: string,
+): Promise<{ readonly top: number; readonly index: number } | null> {
+  return page.evaluate((wanted) => {
+    const root = document.querySelector("section[aria-label='Transcript']");
+    if (root === null) return null;
+    const match = [...root.querySelectorAll<HTMLElement>(".tl-item")].find((element) =>
+      element.innerText.replace(/\s+/g, " ").startsWith(wanted),
+    );
+    return match === undefined
+      ? null
+      : {
+          top: match.getBoundingClientRect().top - root.getBoundingClientRect().top,
+          index: Number(match.dataset.index),
+        };
+  }, text);
+}
+
+/**
+ * The transcript's scrolling in one engine (`browserName` is chosen at the top of the file that calls this): a live
+ * chat shows its end, each wheel step up moves the line being read as far as the wheel asked while rows above are
+ * measured, older entries loading above keep the line being read where it is, and a streaming reply changes only its
+ * own row and stays at the bottom.
  */
 export function defineScrollChecks(engine: string): void {
   realTest.describe(`new UI transcript scrolling, ${engine}`, () => {
@@ -96,6 +135,47 @@ export function defineScrollChecks(engine: string): void {
         },
       );
     }
+
+    realTest(
+      "a live chat shows its end, and each wheel step up moves the line being read as far as it asks, also while older entries load above",
+      async ({ realApp }, testInfo) => {
+        testInfo.setTimeout(360_000);
+        const page = await realApp.open({ path: "/" });
+        await openLongChat(page);
+        // The box and the working row grow as the chat goes live; the end stays in view.
+        await expect.poll(() => fromEnd(page), { timeout: 5_000 }).toBeLessThanOrEqual(2);
+        await page.getByRole("region", { name: "Transcript" }).hover();
+        const short: string[] = [];
+        /** One wheel step up, checked; true when older entries loaded above the line read during it. */
+        const step = async (label: string): Promise<boolean> => {
+          const before = await topRow(page);
+          const was = before === null ? null : await rowPlace(page, before.text);
+          await page.mouse.wheel(0, -300);
+          // WebKit animates a wheel step; it has ended well within this.
+          await page.waitForTimeout(500);
+          const now = before === null ? null : await rowPlace(page, before.text);
+          const moved = now === null || was === null ? null : Math.round(now.top - was.top);
+          // At the very top a step moves only as far as there is room.
+          if ((moved === null || Math.abs(moved - 300) > 4) && (await scrollTop(page)) > 0)
+            short.push(`${label}: ${moved} px`);
+          return now !== null && was !== null && now.index > was.index;
+        };
+        for (let n = 1; n <= 15; n += 1) await step(`from the end, step ${n}`);
+        // Near the top of what is loaded, so that the next older entries load above in the middle of the steps.
+        await page.evaluate(() => {
+          const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
+          if (root !== null) root.scrollTop = 6000;
+        });
+        await page.waitForTimeout(1500);
+        let loadedAt: number | null = null;
+        for (let n = 1; n <= 60 && (loadedAt === null || n <= loadedAt + 5); n += 1) {
+          if ((await step(`near the top, step ${n}`)) && loadedAt === null) loadedAt = n;
+        }
+        expect(loadedAt, "older entries loaded above during the steps").not.toBeNull();
+        expect(short).toEqual([]);
+        expect(realApp.problems).toEqual([]);
+      },
+    );
 
     realTest(
       "older entries loading above keep the line being read where it is",
