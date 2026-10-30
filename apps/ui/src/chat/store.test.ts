@@ -356,10 +356,10 @@ describe("ChatStore", () => {
         ],
       },
     ];
-    store.setState({
-      queuedMessages: { steering: [], followUp: [] },
-      todoPhases: board("pending"),
-    } as never);
+    store.setState(
+      { queuedMessages: { steering: [], followUp: [] }, todoPhases: board("pending") } as never,
+      store.activityMark,
+    );
     expect(store.getSnapshot().todos[0]?.tasks[0]?.status).toBe("pending");
 
     const end = (toolName: string, phases: unknown, isError = false) =>
@@ -376,23 +376,44 @@ describe("ChatStore", () => {
     store.apply(end("bash", board("abandoned")));
     expect(store.getSnapshot().todos[0]?.tasks[0]?.status).toBe("completed");
     // A state read without a todo list leaves the one shown.
-    store.setState({ queuedMessages: { steering: [], followUp: [] } } as never);
+    store.setState({ queuedMessages: { steering: [], followUp: [] } } as never, store.activityMark);
     expect(store.getSnapshot().todos).toHaveLength(1);
   });
 
-  test("a state read during a turn this store did not see start shows omp working until the turn ends", () => {
+  test("a state read says whether omp works and compacts, unless a turn or a compaction started or ended after it was asked", () => {
     const store = new ChatStore();
-    const idle = { queuedMessages: { steering: [], followUp: [] }, isStreaming: false } as never;
-    store.setState(idle);
-    expect(store.getSnapshot().working).toBe(false);
-    store.setState({ queuedMessages: { steering: [], followUp: [] }, isStreaming: true } as never);
+    const read = (isStreaming: boolean, isCompacting = false) =>
+      ({ queuedMessages: { steering: [], followUp: [] }, isStreaming, isCompacting }) as never;
+    // Opened in the middle of a turn, or its start lost in a reconnect: the read shows omp working.
+    store.setState(read(true), store.activityMark);
     expect(store.getSnapshot().working).toBe(true);
     expect(store.getSnapshot().activity).not.toBeNull();
-    // A later read that misses the turn's end does not end it: omp's own end of turn does.
-    store.setState(idle);
-    expect(store.getSnapshot().working).toBe(true);
+    // A read asked before the turn ended that answers after the end is older than the end: it changes nothing.
+    const asked = store.activityMark;
     store.apply(event({ type: "agent_end", messages: [] }));
+    store.setState(read(true), asked);
     expect(store.getSnapshot().working).toBe(false);
+    // A turn whose end was lost: the read ends it.
+    store.apply(event({ type: "agent_start" }));
+    store.setState(read(false), store.activityMark);
+    expect(store.getSnapshot().working).toBe(false);
+    expect(store.getSnapshot().activity).toBeNull();
+    // A compaction whose end was lost ends with a read too.
+    store.setState(read(false, true), store.activityMark);
+    expect(store.getSnapshot().activity).not.toBeNull();
+    store.setState(read(false), store.activityMark);
+    expect(store.getSnapshot().activity).toBeNull();
+  });
+
+  test("a turn found running when omp refused a prompt as busy outlasts a read asked before it was found", () => {
+    const store = new ChatStore();
+    const asked = store.activityMark;
+    store.markWorking();
+    store.setState(
+      { queuedMessages: { steering: [], followUp: [] }, isStreaming: false } as never,
+      asked,
+    );
+    expect(store.getSnapshot().working).toBe(true);
   });
 
   test("omp's answer to a write of xd://propose waits for review under the model's name; a failed write or another file does not", () => {

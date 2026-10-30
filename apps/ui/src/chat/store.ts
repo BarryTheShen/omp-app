@@ -204,6 +204,7 @@ export class ChatStore {
   #streamDone = false;
   #activeTools: ReadonlyMap<string, ActiveTool> = new Map();
   #working = false;
+  #activityMark = 0;
   #phase: ConnectionPhase = "connecting";
   #process: ProcessStatus | null = null;
   #model: ChatModel | null = null;
@@ -267,23 +268,38 @@ export class ChatStore {
   }
 
   /**
-   * The chat's state as `get_state` read it: its model, thinking level, queue and (when given) todo list, and whether
-   * omp is in a turn: a chat opened in the middle of a turn did not see it start.
+   * Counts the starts and ends of turns and compactions this store has taken. A state read is asked at one count and
+   * answers at a later one: when the count moved in between, those events are newer than the read.
+   */
+  get activityMark(): number {
+    return this.#activityMark;
+  }
+
+  /**
+   * The chat's state as `get_state` read it: its model, thinking level, queue and (when given) todo list. `asked` is
+   * `activityMark` when the read was asked: unless a turn or a compaction started or ended since, the read also says
+   * whether omp works and compacts, for a page that opened in the middle of a turn or missed events in a reconnect.
    */
   setState(
     state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages"> &
-      Partial<Pick<ChatHostState, "todoPhases" | "isStreaming">>,
+      Partial<Pick<ChatHostState, "todoPhases" | "isStreaming" | "isCompacting">>,
+    asked: number,
   ): void {
     this.#model = state.model === undefined ? null : toChatModel(state.model);
     this.#thinkingLevel = state.thinkingLevel ?? null;
     this.#queue = takeBackable(state.queuedMessages);
     if (state.todoPhases !== undefined) this.#todos = state.todoPhases;
-    if (state.isStreaming === true) this.#startWorking();
+    if (asked === this.#activityMark) {
+      if (state.isStreaming === true) this.#startWorking();
+      if (state.isStreaming === false) this.#stopWorking();
+      if (state.isCompacting !== undefined) this.#setCompacting(state.isCompacting);
+    }
     this.#publish();
   }
 
   /** omp turned out to be in a turn this page did not see start: what is sent now steers it. */
   markWorking(): void {
+    this.#activityMark += 1;
     this.#startWorking();
     this.#publish();
   }
@@ -292,6 +308,17 @@ export class ChatStore {
     if (this.#working) return;
     this.#working = true;
     this.#workingSince = Date.now();
+  }
+
+  #stopWorking(): void {
+    this.#working = false;
+    this.#activeTools = new Map();
+    this.#retry = null;
+  }
+
+  #setCompacting(compacting: boolean): void {
+    if (compacting && !this.#compacting && !this.#working) this.#workingSince = Date.now();
+    this.#compacting = compacting;
   }
 
   setModel(model: ChatModel): void {
@@ -395,10 +422,9 @@ export class ChatStore {
           payload.status === "stopped" ||
           payload.status === "error"
         ) {
-          this.#working = false;
-          this.#activeTools = new Map();
+          this.#activityMark += 1;
+          this.#stopWorking();
           this.#compacting = false;
-          this.#retry = null;
           // A process that has ended waits on nothing.
           this.#requests = [];
         }
@@ -505,13 +531,13 @@ export class ChatStore {
         return false;
       }
       case "agent_start":
+        this.#activityMark += 1;
         this.#working = true;
         this.#workingSince = Date.now();
         return false;
       case "agent_end":
-        this.#working = false;
-        this.#activeTools = new Map();
-        this.#retry = null;
+        this.#activityMark += 1;
+        this.#stopWorking();
         return false;
       case "thinking_level_changed":
         this.#thinkingLevel = event.configured ?? event.thinkingLevel ?? null;
@@ -520,11 +546,12 @@ export class ChatStore {
         this.#queue = takeBackable(event);
         return false;
       case "auto_compaction_start":
-        this.#compacting = true;
-        if (!this.#working) this.#workingSince = Date.now();
+        this.#activityMark += 1;
+        this.#setCompacting(true);
         return false;
       case "auto_compaction_end":
-        this.#compacting = false;
+        this.#activityMark += 1;
+        this.#setCompacting(false);
         return false;
       case "auto_retry_start":
         this.#retry = { attempt: event.attempt, maxAttempts: event.maxAttempts };

@@ -156,4 +156,41 @@ realTest.describe("new UI message box", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a page that misses a turn's start and end in a reconnect still shows Stop during the turn and Send after it",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(240_000);
+      // The server keeps a chat's last 256 events, so a page that comes back after more than that misses them, and the
+      // client reports the gap. Once `lose` is set, this page's socket loses every turn's start and end.
+      let lose = false;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(/\/ws/, (ws) => {
+            const server = ws.connectToServer();
+            ws.onMessage((message) => server.send(message));
+            server.onMessage((message) => {
+              if (!(lose && /"type":"agent_(start|end)"/.test(String(message)))) ws.send(message);
+            });
+          }),
+      });
+      const stop = page.getByRole("button", { name: "Stop" });
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("slow_tool 3");
+      await box(page).press("Enter");
+      await expect(stop).toBeVisible({ timeout: 60_000 });
+      await expect(stop).toBeHidden({ timeout: 60_000 });
+
+      lose = true;
+      await box(page).fill("slow_tool 15");
+      await box(page).press("Enter");
+      await expect(stop).toBeVisible({ timeout: 10_000 });
+      await expect(stop).toBeHidden({ timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

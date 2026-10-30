@@ -83,9 +83,11 @@ export class ChatController {
     this.#threadId = target.kind === "existing" ? target.threadId : null;
     this.#sessionFile = target.kind === "existing" ? target.sessionFile : null;
     this.#draft = target.kind === "existing" ? new ChatDraft(client, target.threadId) : null;
-    // A gap in the event stream: the file holds what was missed.
+    // A gap in the event stream: the file holds what was missed, and omp's state says whether a turn started or ended.
     this.#stopResync = client.onResync((event) => {
-      if (event.stream === this.#subscription?.stream) this.#refreshWindow();
+      if (event.stream !== this.#subscription?.stream) return;
+      this.#refreshWindow();
+      this.#refreshState().catch(() => undefined);
     });
   }
 
@@ -444,8 +446,9 @@ export class ChatController {
   }
 
   async #refreshState(): Promise<void> {
+    const asked = this.store.activityMark;
     const state = await this.#request("get_state", {});
-    if (!this.#disposed) this.store.setState(state);
+    if (!this.#disposed) this.store.setState(state, asked);
   }
 
   #onEvent(payload: ChatSessionEvent): void {
