@@ -117,4 +117,43 @@ realTest.describe("new UI message box", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a chat opened in the middle of a turn shows Stop, and Enter steers it, also when the page never saw the turn start",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(240_000);
+      const first = await realApp.open({ path: "/" });
+      await chats(first).getByRole("button", { name: "New chat" }).click();
+      await expect(box(first)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(first).fill("slow_tool 30");
+      await box(first).press("Enter");
+      await expect(first.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60_000 });
+
+      // Another page opens the chat while the tool runs and never gets the turn's start, as after a reload late in a
+      // long turn, when the start is no longer among the events the server replays.
+      const second = await realApp.open({
+        path: "/",
+        beforeLoad: (page) =>
+          page.routeWebSocket(/\/ws/, (ws) => {
+            const server = ws.connectToServer();
+            ws.onMessage((message) => server.send(message));
+            server.onMessage((message) => {
+              if (!String(message).includes('"type":"agent_start"')) ws.send(message);
+            });
+          }),
+      });
+      await chats(second)
+        .getByRole("button", { name: /^slow_tool 30/ })
+        .click();
+      await expect(box(second)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(second.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30_000 });
+      await box(second).fill("steer from the other page");
+      await box(second).press("Enter");
+      await expect(
+        second.getByRole("region", { name: "Transcript" }).getByText("steer from the other page"),
+      ).toBeVisible({ timeout: 90_000 });
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

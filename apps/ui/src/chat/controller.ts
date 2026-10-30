@@ -212,19 +212,30 @@ export class ChatController {
     if (!this.#disposed) this.store.setAgents(subagents);
   }
 
-  /** Sends a message: a new prompt, or while omp works, a steer (`followUp` queues it behind the turn). */
+  /**
+   * Sends a message: a new prompt, or while omp works, a steer (`followUp` queues it behind the turn). A prompt omp
+   * refuses as busy (a turn this page did not see start, as when the chat was opened in the middle of one) is sent
+   * again the same way.
+   */
   async send(
     text: string,
     mode: "auto" | "followUp" = "auto",
     images: readonly ChatHostImage[] = [],
   ): Promise<void> {
     await this.#planSwitch;
-    const working = this.store.getSnapshot().working;
-    await this.#request("prompt", {
-      text,
-      ...(images.length > 0 ? { images: [...images] } : {}),
-      ...(working ? { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } : {}),
-    });
+    const message = { text, ...(images.length > 0 ? { images: [...images] } : {}) };
+    const behind = { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } as const;
+    if (this.store.getSnapshot().working) {
+      await this.#request("prompt", { ...message, ...behind });
+      return;
+    }
+    try {
+      await this.#request("prompt", message);
+    } catch (failure) {
+      if (!(failure instanceof AppFailure && failure.appError.code === "agent_busy")) throw failure;
+      this.store.markWorking();
+      await this.#request("prompt", { ...message, ...behind });
+    }
   }
 
   /**

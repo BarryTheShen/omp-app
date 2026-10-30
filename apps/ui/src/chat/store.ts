@@ -266,16 +266,32 @@ export class ChatStore {
     this.#publish();
   }
 
-  /** The chat's state as `get_state` read it: its model, thinking level, queue and (when given) todo list. */
+  /**
+   * The chat's state as `get_state` read it: its model, thinking level, queue and (when given) todo list, and whether
+   * omp is in a turn: a chat opened in the middle of a turn did not see it start.
+   */
   setState(
     state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages"> &
-      Partial<Pick<ChatHostState, "todoPhases">>,
+      Partial<Pick<ChatHostState, "todoPhases" | "isStreaming">>,
   ): void {
     this.#model = state.model === undefined ? null : toChatModel(state.model);
     this.#thinkingLevel = state.thinkingLevel ?? null;
     this.#queue = takeBackable(state.queuedMessages);
     if (state.todoPhases !== undefined) this.#todos = state.todoPhases;
+    if (state.isStreaming === true) this.#startWorking();
     this.#publish();
+  }
+
+  /** omp turned out to be in a turn this page did not see start: what is sent now steers it. */
+  markWorking(): void {
+    this.#startWorking();
+    this.#publish();
+  }
+
+  #startWorking(): void {
+    if (this.#working) return;
+    this.#working = true;
+    this.#workingSince = Date.now();
   }
 
   setModel(model: ChatModel): void {

@@ -380,6 +380,21 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().todos).toHaveLength(1);
   });
 
+  test("a state read during a turn this store did not see start shows omp working until the turn ends", () => {
+    const store = new ChatStore();
+    const idle = { queuedMessages: { steering: [], followUp: [] }, isStreaming: false } as never;
+    store.setState(idle);
+    expect(store.getSnapshot().working).toBe(false);
+    store.setState({ queuedMessages: { steering: [], followUp: [] }, isStreaming: true } as never);
+    expect(store.getSnapshot().working).toBe(true);
+    expect(store.getSnapshot().activity).not.toBeNull();
+    // A later read that misses the turn's end does not end it: omp's own end of turn does.
+    store.setState(idle);
+    expect(store.getSnapshot().working).toBe(true);
+    store.apply(event({ type: "agent_end", messages: [] }));
+    expect(store.getSnapshot().working).toBe(false);
+  });
+
   test("omp's answer to a write of xd://propose waits for review under the model's name; a failed write or another file does not", () => {
     const store = new ChatStore();
     const write = (id: string, path: string, details: unknown, isError = false) => {
