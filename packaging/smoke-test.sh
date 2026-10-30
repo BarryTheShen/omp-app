@@ -78,6 +78,13 @@ grep -q 'id="root"' <<<"$page" || { echo "FAIL: the page has no app root" >&2; e
 script=$(grep -o -E '/assets/[^"]+\.js' <<<"$page" | head -1)
 curl -sf -o /dev/null "$base$script" || { echo "FAIL: the app script $script is not served" >&2; exit 1; }
 
+# The new UI under /v2/, from the package: its page and its script.
+page=$(curl -sf "$base/v2/")
+grep -q 'id="root"' <<<"$page" || { echo "FAIL: the new UI's page (/v2/) has no app root" >&2; exit 1; }
+script=$(grep -o -E '/v2/assets/[^"]+\.js' <<<"$page" | head -1)
+[[ -n $script ]] || { echo "FAIL: the new UI's page names no script" >&2; exit 1; }
+curl -sf -o /dev/null "$base$script" || { echo "FAIL: the new UI's script $script is not served" >&2; exit 1; }
+
 second=$("$app" --no-open)
 grep -q 'already running' <<<"$second" || { echo "FAIL: a second launch did not find the first" >&2; echo "$second" >&2; exit 1; }
 

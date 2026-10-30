@@ -185,7 +185,7 @@ impl LaunchSteps for AppSteps {
     fn open_server(&mut self, address: Url) {
         // Off the main thread, which this runs on: the page first waits for GStreamer's launch scan (see `open_server_page`).
         let app = self.app.clone();
-        thread::spawn(move || open_server_page(&app, address));
+        thread::spawn(move || open_server_page(&app, new_ui_page(address)));
     }
 
     fn watch_server(&mut self, child: Self::Started) {
@@ -277,7 +277,7 @@ fn open_remote_page(app: AppHandle, link: Url) {
 fn open_local(app: AppHandle) {
     thread::spawn(move || {
         if let Some(address) = running_server() {
-            open_server_page(&app, address);
+            open_server_page(&app, new_ui_page(address));
             return;
         }
         match spawn(&app) {
@@ -326,10 +326,14 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
     let paths = app.path();
     let resources = paths.resource_dir().map_err(|error| error.to_string())?;
     let web_root = resources.join("web");
+    let ui_root = resources.join("ui");
     let chat_host = resources.join("chat-host");
-    // The server would fall back to other folders if this one were missing; that must not happen.
+    // The server would fall back to other folders if these were missing; that must not happen.
     if !web_root.join("index.html").is_file() {
         return Err(format!("the web app is not in {}", web_root.display()));
+    }
+    if !ui_root.join("index.html").is_file() {
+        return Err(format!("the new UI is not in {}", ui_root.display()));
     }
     if !chat_host.is_file() {
         return Err(format!(
@@ -347,6 +351,7 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
         .args([folder.as_os_str(), OsStr::new("--no-open")])
         .current_dir(&folder)
         .env("OMP_APP_WEB_ROOT", &web_root)
+        .env("OMP_APP_UI_ROOT", &ui_root)
         // omp is the chat host that ships with the app, never one installed on this computer.
         .env("OMP_APP_CHAT_HOST_BIN", &chat_host)
         // The server takes this port when it is free, and otherwise a free port (see DESKTOP_PORT).
@@ -394,7 +399,7 @@ fn open_when_recorded(app: &AppHandle) {
     let found = address::wait_for_instance(&record, START_TIMEOUT);
     let url = found.and_then(|address| Url::parse(&address.url).ok());
     match url {
-        Some(url) => open_server_page(app, url),
+        Some(url) => open_server_page(app, new_ui_page(url)),
         None => show_error(app),
     }
 }
@@ -539,6 +544,16 @@ fn choose_destination(app: &AppHandle, destination: &mut PathBuf) -> bool {
     true
 }
 
+/// Where the window opens this computer's server: the new UI, under `/v2/` until it replaces the old UI at `/`.
+const NEW_UI_PATH: &str = "/v2/";
+
+/// This computer's server's address as the new UI's page; the token stays in the fragment. A kept link to another
+/// computer is opened as it was given instead, since that server may not have the new UI yet.
+fn new_ui_page(mut address: Url) -> Url {
+    address.set_path(NEW_UI_PATH);
+    address
+}
+
 /// Shows the app in the window: the starting page becomes the server's address. Nothing happens once
 /// the app is quitting.
 fn open_server_page(app: &AppHandle, url: Url) {
@@ -670,6 +685,13 @@ mod tests {
         assert!(is_app("blob:http://127.0.0.1:27183/x"));
         assert!(!is_app("blob:https://example.com/x"));
         assert!(!is_app("http://example.com"));
+    }
+
+    #[test]
+    fn this_computers_server_opens_at_the_new_ui_with_its_token() {
+        let page = new_ui_page(url("http://127.0.0.1:4317/#token=abc-123_x"));
+        assert_eq!(page.as_str(), "http://127.0.0.1:4317/v2/#token=abc-123_x");
+        assert!(is_app_address(&page, None));
     }
 
     #[test]

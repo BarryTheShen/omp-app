@@ -9,6 +9,7 @@ import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState }
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentsPill } from "../agents/AgentsPill";
+import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
@@ -149,6 +150,8 @@ export const Composer = memo(function Composer({
       setError(refused.length > 0 ? refused.join(" ") : null);
     });
   };
+  /** Pictures read from the desktop window's clipboard so far, which names the next one. */
+  const windowPastes = useRef(0);
 
   const update = (next: string): void => {
     textRef.current = next;
@@ -458,10 +461,23 @@ export const Composer = memo(function Composer({
             onKeyDown={onKeyDown}
             onPaste={(event) => {
               const files = [...event.clipboardData.files];
-              // A copied picture comes as a file; text copied from a page goes in as text, as before.
-              if (files.length === 0 || event.clipboardData.getData("text/plain") !== "") return;
+              // Text copied from a page goes in as text, as before.
+              if (event.clipboardData.getData("text/plain") !== "") return;
+              if (files.length > 0) {
+                event.preventDefault();
+                addFiles(files);
+                return;
+              }
+              // In the desktop window a copied picture comes as nothing at all: the window reads its clipboard.
+              if (desktopBridge() === null) return;
               event.preventDefault();
-              addFiles(files);
+              readDesktopClipboardPicture(++windowPastes.current)
+                .then((file) => {
+                  if (file !== null) addFiles([file]);
+                })
+                .catch((failure: unknown) =>
+                  setError(`Could not paste the picture: ${errorText(failure)}`),
+                );
             }}
           />
           <div className="flex items-center gap-1 px-2 pb-2">

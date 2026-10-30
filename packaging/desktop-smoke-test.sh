@@ -355,15 +355,14 @@ wait_turn_done() {
   done
   return 1
 }
-# Clicks into the window's message box, then types the text $2 and presses Enter. A new chat that is ready centres its
-# greeting and message box in the conversation pane (#2087): in the 1200 x 800 window the pane spans x 240 to 1200, and
-# the box's text line sits at y 428 (measured on fix-2087's empty-chat capture at 800 px high), so the click goes to
-# (720, 428). While the chat still opens, the box is a disabled line at the bottom, which is why the caller waits for
-# omp first. Measure it again when the composer's layout changes. There is no window manager under Xvfb, so the window
-# gets the keyboard focus from xdotool.
+# Clicks into the window's message box, then types the text $2 and presses Enter. In the new UI a new chat's message box
+# sits at the bottom of its pane: in the 1200 x 800 window, once the chat is ready, its box is x 350, y 698, 718 x 42
+# (measured with a real-omp spec at a 1200 x 800 viewport), so the click goes to its centre (709, 719). The caller waits
+# for omp first, as the box takes text once the chat is open. Measure it again when the message box's layout changes.
+# There is no window manager under Xvfb, so the window gets the keyboard focus from xdotool.
 send_in_window() {
   xdotool windowfocus "$1" 2>/dev/null || true
-  xdotool mousemove --window "$1" 720 428 click 1 || return 1
+  xdotool mousemove --window "$1" 709 719 click 1 || return 1
   sleep 1
   xdotool key --clearmodifiers ctrl+a || return 1
   xdotool type --delay 60 -- "$2" || return 1
@@ -384,10 +383,12 @@ launch "$app"
 app_pid=$LAUNCHED
 wid=$(wait_window 120) || fail "T1: no window opened within 120 s"
 info=$(server_info 90) || fail "T1: the server never answered its start page"
-read -r side _ <<<"$info"
+read -r side base <<<"$info"
 [[ $(readlink "/proc/$app_pid/exe") == "$app" ]] || fail "T1: the window process is not the package's binary"
 [[ $(readlink "/proc/$side/exe") == "$sidecar_bin" ]] || fail "T1: the server is not the package's server binary"
 cmp -s "$work/index-$side.html" "$root/usr/lib/omp-app-desktop/web/index.html" || fail "T1: the served page is not the package's web app"
+curl -sf "$base/v2/" -o "$work/ui-$side.html" || fail "T1: the server does not serve the new UI at /v2/"
+cmp -s "$work/ui-$side.html" "$root/usr/lib/omp-app-desktop/ui/index.html" || fail "T1: the page at /v2/ is not the package's new UI"
 wait_log 'connection.open' 60 || fail "T1: the window never connected to its server, so the app did not load"
 wait_log 'omp\.probe status=ok' 30 || fail "T1: the server's log has no healthy omp probe, so the omp the package holds did not start"
 note "T1 the window opened and the app loaded (it connected to its server), and the server's omp probe was healthy"
@@ -516,11 +517,11 @@ info=$(server_info 90) || fail "T8: the server never answered"
 read -r side _ <<<"$info"
 [[ $side == "$kept" ]] || fail "T8: the window's server is $side, not $kept: a second server started"
 sleep 5
-# The sidebar's New chat button: its place is fixed by the window's size (1200 x 800, server.rs) and an empty workspace
-# folder. Measured in the app at that size after the UI redesign: the button's box is x 12, y 124, 215 x 32, so its
-# centre is (120, 140). Measure it again (a real-omp spec reading getByRole("button", { name: "New chat" })) when the
-# sidebar's layout changes.
-xdotool mousemove --window "$wid" 120 140 click 1 || fail "T8: could not click New chat"
+# The new UI's New chat button, at the top of its chat list: its place is fixed by the window's size (1200 x 800,
+# server.rs). Measured in the new UI at that size: the button's box is x 8, y 8, 208 x 32, so its centre is (112, 24).
+# Measure it again (a real-omp spec reading the Chats list's getByRole("button", { name: "New chat" }) at a 1200 x 800
+# viewport) when the sidebar's layout changes.
+xdotool mousemove --window "$wid" 112 24 click 1 || fail "T8: could not click New chat"
 wait_log 'status=running' 90 || fail "T8: New chat did not start omp (the server logged no running omp)"
 omp_pid=$(grep -o 'status=running pid=[0-9]*' "$state/omp-app.log" | tail -n 1 | cut -d= -f3)
 [[ -n $omp_pid ]] || fail "T8: New chat did not start omp"
@@ -552,7 +553,7 @@ info=$(server_info 90) || fail "T9: the server never answered"
 read -r side _ <<<"$info"
 [[ $side == "$before_server" ]] || fail "T9: the window's server is $side, not $before_server: a second server started"
 sleep 5
-xdotool mousemove --window "$wid" 120 140 click 1 || fail "T9: could not click New chat"
+xdotool mousemove --window "$wid" 112 24 click 1 || fail "T9: could not click New chat"
 wait_log_count 'status=running' $((${running_before:-0} + 1)) 90 || fail "T9: New chat did not start omp (the server logged no new running omp)"
 sleep 6
 # The server's log has no line for a sent prompt, so the provider's request log marks the start of the turn.

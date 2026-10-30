@@ -23,6 +23,7 @@
     "externalBin": ["binaries/omp-app-desktop-server"],
     "resources": {
       "resources/web": "web",
+      "resources/ui": "ui",
       "resources/chat-host": "chat-host"
     },
     "linux": {

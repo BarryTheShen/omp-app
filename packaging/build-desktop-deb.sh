@@ -26,13 +26,14 @@ package="omp-app-desktop_${version}_amd64.deb"
 out="$root/dist/desktop"
 cd "$root"
 
-# The web app and the server come from this checkout. Tauri bundles both: the web app as a resource
-# (resources/web), the server as the sidecar named by tauri.conf.json (binaries/...-<target triple>).
+# The web apps and the server come from this checkout. Tauri bundles them: the web app and the new UI as resources
+# (resources/web, resources/ui), the server as the sidecar named by tauri.conf.json (binaries/...-<target triple>).
 bun run build
 triple=$(rustc -vV | sed -n 's/^host: //p')
 rm -rf "$crate/resources" "$crate/binaries"
 mkdir -p "$crate/resources" "$crate/binaries"
 cp -r apps/web/dist "$crate/resources/web"
+cp -r apps/ui/dist "$crate/resources/ui"
 bun build --compile --minify --target=bun-linux-x64 \
   --define "OMP_APP_VERSION=\"$version\"" \
   packages/server/scripts/omp-app.ts --outfile "$crate/binaries/omp-app-desktop-server-$triple"

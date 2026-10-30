@@ -33,6 +33,8 @@ bun build --compile --minify --target=bun-linux-x64 \
 # with: CHAT_HOST_BUN names it (release.yml installs it), else the `bun` on PATH. The script refuses any other Bun.
 "${CHAT_HOST_BUN:-bun}" packages/server/scripts/build-chat-host.ts "$stage/usr/lib/omp-app/chat-host"
 cp -r apps/web/dist "$stage/usr/share/omp-app/web"
+# The new UI, served under /v2/ (the command finds it beside itself).
+cp -r apps/ui/dist "$stage/usr/share/omp-app/ui"
 install -m 0644 packaging/omp-app.desktop "$stage/usr/share/applications/omp-app.desktop"
 install -m 0644 packaging/omp-app.service "$stage/usr/lib/systemd/user/omp-app.service"
 install -m 0644 apps/web/public/favicon.svg "$stage/usr/share/icons/hicolor/scalable/apps/omp-app.svg"
