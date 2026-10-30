@@ -36,6 +36,7 @@ import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { ModelHubToggle } from "../models/hub";
+import { clientTags, frameMarks, watchFrames } from "../perf/frames";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
@@ -111,6 +112,10 @@ export class ChatController {
   readonly #createdAt = performance.now();
   /** Each step of the open, in milliseconds since `#createdAt`; reported into the server's log once the chat is live. */
   readonly #marks: Record<string, number> = {};
+  /** The page's frames while the chat opens, from the start of `#open` until the chat is live. */
+  #openFrames: ReturnType<typeof watchFrames> | null = null;
+  /** The page was hidden at some moment of the open (its frames then say nothing about how it draws). */
+  #hiddenDuringOpen = false;
   /**
    * Where the transcript's branch ends after an edit rewound the chat: an entry, or null for the chat's very start.
    * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
@@ -201,6 +206,9 @@ export class ChatController {
   }
 
   async #open(): Promise<void> {
+    this.#openFrames = watchFrames(() => {
+      if (document.visibilityState === "hidden") this.#hiddenDuringOpen = true;
+    });
     if (this.#sessionFile !== null) {
       // A chat opened before shows what this browser kept of it at once; the file's window replaces it when it comes.
       const fromFile = this.#reloadWindow();
@@ -243,9 +251,11 @@ export class ChatController {
     this.#live = true;
     this.#mark("subscribed_ms");
     await chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" });
+    this.#mark("event_options_ms");
     // omp's ask tool then sends all its questions in one request, with their checkboxes and typed answers; without
     // it, omp asks each question as a plain choice, which still works.
     await this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined);
+    this.#mark("ask_dialog_ms");
     await this.#refreshState();
     this.#mark("state_ms");
     const open = await chat.openRequests({ threadId: opened.threadId });
@@ -284,14 +294,26 @@ export class ChatController {
 
   /**
    * The steps of this open and when each ended, into the server's log as a `trace` line (numbers only), so a slow
-   * open shows where its time went: the browser's copy shown, the file's window, the server's open, omp's first
-   * answer (`state_ms`: a new omp's start), and the box usable.
+   * open shows where its time went: the browser's copy shown, the file's window, the server's open, the subscription,
+   * omp's first answers (`state_ms`: a new omp's start), and the box usable; with the page's frames meanwhile (a long
+   * frame is the page busy, so a step that waited on it took long without the server being slow).
    */
   #reportTimes(): void {
-    const marks = { ...this.#marks, new_chat: this.target.kind === "new" ? 1 : 0 };
+    const frames = this.#openFrames?.stop();
+    this.#openFrames = null;
+    const marks = {
+      ...this.#marks,
+      ...(frames === undefined ? {} : frameMarks(frames)),
+      new_chat: this.target.kind === "new" ? 1 : 0,
+      hidden: this.#hiddenDuringOpen ? 1 : 0,
+    };
     void this.client
       .port(AppPort)
-      .reportClientTrace({ marks, gaps: [], supported: ["chat-open"] })
+      .reportClientTrace({
+        marks,
+        gaps: [...(frames?.longGaps ?? [])],
+        supported: ["chat-open", ...clientTags()],
+      })
       .catch(() => undefined);
   }
 
@@ -768,6 +790,8 @@ export class ChatController {
 
   async dispose(): Promise<void> {
     this.#disposed = true;
+    this.#openFrames?.stop();
+    this.#openFrames = null;
     this.#stopResync();
     this.#draft.dispose();
     this.store.dispose();

@@ -31,6 +31,7 @@ import { Shortcuts } from "./palette/Shortcuts";
 import { PanelRail } from "./panels/PanelRail";
 import { togglePanel, usePanelState } from "./panels/panel-state";
 import { SidePanel } from "./panels/SidePanel";
+import { traceScrolling } from "./perf/scrollTrace";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
@@ -147,6 +148,17 @@ function Shell({
   const list = useChatList(client, folder);
   const [view, setView] = useState<WorkspaceView>(NOTHING_OPEN);
   useWaitingNotifications(view.waiting);
+  // How smoothly this page scrolls, measured on a sample of scrolls and kept in the server's debug log.
+  useEffect(
+    () =>
+      traceScrolling((trace) => {
+        client
+          .port(AppPort)
+          .reportClientTrace(trace)
+          .catch(() => undefined);
+      }),
+    [client],
+  );
   /** On a phone: the list of chats, or the chat. */
   const [showChat, setShowChat] = useState(false);
   const workspace = useRef<WorkspaceHandle>(null);

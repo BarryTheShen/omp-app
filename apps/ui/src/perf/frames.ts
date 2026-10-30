@@ -1,0 +1,108 @@
+import { desktopBridge } from "../desktop/bridge";
+
+/** A frame longer than this blocked the page: whatever it had to draw or answer waited for it. */
+const LONG_FRAME_MS = 50;
+/** The most long-frame gaps one report carries (the server takes 200 numbers). */
+const MAX_GAPS = 100;
+
+/** How the page drew frames over a span: from the time of each frame as `requestAnimationFrame` ran it. */
+export interface FrameStats {
+  readonly frames: number;
+  /** The median and the 95th percentile of the time between frames, and the longest. */
+  readonly p50: number;
+  readonly p95: number;
+  readonly max: number;
+  /** Frames longer than LONG_FRAME_MS, and the time spent in them beyond one 60 Hz frame. */
+  readonly longFrames: number;
+  readonly blockedMs: number;
+  /** Each long frame's length, in the order they came. */
+  readonly longGaps: readonly number[];
+}
+
+const round = (value: number): number => Math.round(value * 10) / 10;
+
+function quantile(sorted: readonly number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
+}
+
+/** The statistics of frames drawn at `times` (milliseconds, in order). */
+export function frameStats(times: readonly number[]): FrameStats {
+  const gaps = times.slice(1).map((time, index) => time - (times[index] ?? time));
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const long = gaps.filter((gap) => gap > LONG_FRAME_MS);
+  return {
+    frames: gaps.length,
+    p50: round(quantile(sorted, 0.5)),
+    p95: round(quantile(sorted, 0.95)),
+    max: round(sorted.at(-1) ?? 0),
+    longFrames: long.length,
+    blockedMs: Math.round(long.reduce((sum, gap) => sum + gap - 1000 / 60, 0)),
+    longGaps: long.slice(0, MAX_GAPS).map(Math.round),
+  };
+}
+
+/** How far a scrolled element moved between frames, from its `scrollTop` at each frame. */
+export interface ScrollMoves {
+  readonly movedPx: number;
+  /** The largest move between two frames: a large one is the content jumping instead of gliding. */
+  readonly maxJumpPx: number;
+  /** Frames in which it did not move, between its first and last move. */
+  readonly stillFrames: number;
+}
+
+export function scrollMoves(tops: readonly number[]): ScrollMoves {
+  const moves = tops.slice(1).map((top, index) => Math.abs(top - (tops[index] ?? top)));
+  const first = moves.findIndex((move) => move > 0);
+  const last = moves.length - 1 - [...moves].reverse().findIndex((move) => move > 0);
+  return {
+    movedPx: Math.round(moves.reduce((sum, move) => sum + move, 0)),
+    maxJumpPx: Math.round(Math.max(0, ...moves)),
+    stillFrames: first < 0 ? 0 : moves.slice(first, last + 1).filter((move) => move === 0).length,
+  };
+}
+
+/** Records the time of every frame, and runs `onFrame` in each, until `stop`. */
+export function watchFrames(onFrame?: () => void): { readonly stop: () => FrameStats } {
+  const times: number[] = [];
+  let watching = true;
+  const tick = (): void => {
+    if (!watching) return;
+    times.push(performance.now());
+    onFrame?.();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  return {
+    stop: () => {
+      watching = false;
+      return frameStats(times);
+    },
+  };
+}
+
+/** What a frame report says about the page that sent it: the desktop window or a browser, and the engine. */
+export function clientTags(): readonly string[] {
+  const agent = navigator.userAgent;
+  const engine = /Firefox\//.test(agent)
+    ? "gecko"
+    : /Chrome\/|CriOS\//.test(agent)
+      ? "chromium"
+      : "webkit";
+  return [desktopBridge() === null ? "browser" : "desktop", engine];
+}
+
+/** A report's numbers about the frames and the window they were drawn in. */
+export function frameMarks(stats: FrameStats): Record<string, number> {
+  return {
+    frames: stats.frames,
+    frame_p50_ms: stats.p50,
+    frame_p95_ms: stats.p95,
+    frame_max_ms: stats.max,
+    long_frames: stats.longFrames,
+    blocked_ms: stats.blockedMs,
+    window_w: window.innerWidth,
+    window_h: window.innerHeight,
+    dpr_x100: Math.round(window.devicePixelRatio * 100),
+  };
+}
