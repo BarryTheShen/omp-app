@@ -17,6 +17,7 @@ import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
 import type { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
+import type { BtwHistoryRecord } from "@oh-my-pi/pi-tui/overlays/btw-history";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import type { Goal } from "@oh-my-pi/pi-tui/tools/goal";
 import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
@@ -260,6 +261,15 @@ export type SetModelParams = z.infer<typeof SetModelParams>;
 
 export const CycleRoleModelsParams = z.object({ direction: z.enum(["forward", "backward"]) });
 export type CycleRoleModelsParams = z.infer<typeof CycleRoleModelsParams>;
+
+export const BtwParams = z.object({
+  question: z.string().min(1),
+  recordId: z.string().min(1).optional(),
+});
+export type BtwParams = z.infer<typeof BtwParams>;
+
+export const BtwCancelParams = z.object({ recordId: z.string().min(1).optional() });
+export type BtwCancelParams = z.infer<typeof BtwCancelParams>;
 
 /** A role's model as omp resolves it for Ctrl+P (`getRoleModelCycle`): `smol`, `default`, `slow` or one of the user's. */
 export interface RoleModel {
@@ -509,6 +519,25 @@ export interface ChatHostMethodMap {
   readonly get_available_models: {
     readonly params: EmptyParams;
     readonly result: { readonly models: ReturnType<Session["getAvailableModels"]> };
+  };
+  /**
+   * omp's `/btw` (the chat host's `BtwController`, a port of omp's own): a side question about the chat (or a follow-up in topic `recordId`), answered
+   * beside it, also while omp works. It answers once the question is saved as running; the answer comes as `btw_delta`
+   * and `btw_record` events. One side question runs at a time.
+   */
+  readonly btw: {
+    readonly params: BtwParams;
+    readonly result: { readonly record: BtwHistoryRecord };
+  };
+  /** Cancels the running side question (only topic `recordId`, when given); answered outside the command order. */
+  readonly btw_cancel: {
+    readonly params: BtwCancelParams;
+    readonly result: { readonly cancelled: boolean };
+  };
+  /** The chat's side questions, newest first, as omp keeps them (shared with omp's terminal); a running one carries its answer so far. */
+  readonly get_btw_history: {
+    readonly params: EmptyParams;
+    readonly result: { readonly records: readonly BtwHistoryRecord[] };
   };
   /**
    * The roles Ctrl+P walks: omp's `cycleOrder` setting, the roles of it that resolve to an available model (omp skips the
@@ -775,6 +804,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_available_models: EmptyParams,
   get_role_models: EmptyParams,
   cycle_role_models: CycleRoleModelsParams,
+  btw: BtwParams,
+  btw_cancel: BtwCancelParams,
+  get_btw_history: EmptyParams,
   set_thinking_level: ThinkingLevelParams,
   cycle_thinking_level: EmptyParams,
   get_available_thinking_levels: EmptyParams,
@@ -953,4 +985,21 @@ export type ChatEvent =
   | SubagentEvent
   | SessionSettledEvent
   | ExtensionErrorEvent
-  | LiveEvent;
+  | LiveEvent
+  | BtwDeltaEvent
+  | BtwRecordEvent;
+
+/** omp's `/btw` answering: the next piece of a side question's answer (omp's `btw_delta`). */
+export interface BtwDeltaEvent {
+  readonly type: "btw_delta";
+  readonly recordId: string;
+  readonly delta: string;
+}
+/**
+ * A side question started or ended (complete, cancelled, an error): its whole record (omp's `btw_record`). A side
+ * question omp could not save comes as omp's `notice` with source `btw-history`.
+ */
+export interface BtwRecordEvent {
+  readonly type: "btw_record";
+  readonly record: BtwHistoryRecord;
+}

@@ -389,6 +389,36 @@ const MODELS_AND_ROLES: Tour = {
   ],
 };
 
+const BTW_SHEET = part("btw-sheet");
+
+const SIDE_QUESTIONS: Tour = {
+  id: "side-questions-2026-10-30",
+  title: "Side questions",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Ask on the side",
+      text: "Type <b>/btw</b>, take it from the menu with Enter, and press Enter again: it opens the BTW history, where omp keeps this chat's side questions.",
+      action: { kind: "appears", selector: BTW_SHEET },
+    },
+    {
+      target: BTW_SHEET,
+      title: "Your side questions",
+      text: "<b>/btw</b> with a question asks omp about this chat on the side, also while it works: the answer comes here and stays out of the chat. <b>Follow up</b> asks more, <b>Copy answer</b> copies it. {stop} puts it away; an answer still coming goes on, and the chat says when it is ready.",
+      action: { kind: "disappears", selector: BTW_SHEET },
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "Find it again",
+      text: "<b>/btw</b> opens it again, as does <b>BTW history</b> in {palette}.",
+      action: next,
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -397,4 +427,5 @@ export const TOURS: readonly Tour[] = [
   PALETTE_AND_SETTINGS,
   FOLDERS,
   MODELS_AND_ROLES,
+  SIDE_QUESTIONS,
 ];

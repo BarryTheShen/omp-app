@@ -26,6 +26,7 @@ import {
   type QueueName,
   type SubagentTranscript,
 } from "@omp-app/contracts/chat-host";
+import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
@@ -49,6 +50,8 @@ export type ChatTarget =
  */
 export class ChatController {
   readonly store = new ChatStore();
+  /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them go to the chat. */
+  readonly btw = new BtwStore((text) => this.store.addNotice(text, "info"));
   #threadId: ThreadId | null;
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;
@@ -360,7 +363,9 @@ export class ChatController {
   /** omp's `/` commands for this chat, read once and then kept current by omp's `available_commands`. */
   commands(): Promise<readonly ChatHostCommand[]> {
     if (this.#commands === null) {
-      const read = this.#request("get_available_commands", {}).then((result) => result.commands);
+      const read = this.#request("get_available_commands", {}).then((result) =>
+        withBtwCommand(result.commands),
+      );
       // A failed read is tried again next time.
       read.catch(() => {
         if (this.#commands === read) this.#commands = null;
@@ -368,6 +373,39 @@ export class ChatController {
       this.#commands = read;
     }
     return this.#commands;
+  }
+
+  /**
+   * Asks a side question about the chat (or a follow-up in topic `recordId`), as omp's `/btw` does: answered beside the
+   * chat, also while omp works, and kept out of it. Resolves once omp saved it as running; its answer streams into
+   * `btw`.
+   */
+  async askBtw(question: string, recordId?: string): Promise<BtwRecord> {
+    try {
+      const { record } = await this.#request("btw", {
+        question,
+        ...(recordId === undefined ? {} : { recordId }),
+      });
+      this.btw.asked(record);
+      return record;
+    } catch (failure) {
+      throw btwFailure(failure);
+    }
+  }
+
+  /** Stops the side question of topic `recordId` while it answers; false when it was not answering. */
+  async cancelBtw(recordId: string): Promise<boolean> {
+    return (await this.#request("btw_cancel", { recordId })).cancelled;
+  }
+
+  /** Reads the chat's side questions again, as omp keeps them (omp's terminal may have asked some). */
+  async loadBtw(): Promise<void> {
+    try {
+      const { records } = await this.#request("get_btw_history", {});
+      if (!this.#disposed) this.btw.setRecords(records);
+    } catch (failure) {
+      throw btwFailure(failure);
+    }
   }
 
   /** Files and folders of the chat's folder that match an `@` mention. */
@@ -501,7 +539,10 @@ export class ChatController {
       this.#threadId = payload.threadId;
       this.#sessionFile = payload.sessionFile;
       if (this.target.kind === "new") this.#draft.keepFor(payload.threadId);
+      this.btw.reset();
     }
+    // A side question's answer redraws its sheet only, not the chat.
+    if (payload.kind === "event" && this.btw.apply(payload.event)) return;
     this.store.apply(payload);
     if (payload.kind === "host_request") {
       if (this.#live && isHostDialogRequest(payload.request))
@@ -522,7 +563,7 @@ export class ChatController {
     // Plan mode can change outside this pane (another tab, omp's own commands): read it again when omp settles.
     if (payload.event.type === "session_settled") this.#readPlanMode().catch(() => undefined);
     if (payload.event.type === "available_commands")
-      this.#commands = Promise.resolve(payload.event.commands);
+      this.#commands = Promise.resolve(withBtwCommand(payload.event.commands));
   }
 
   /** Reads the newest window again after omp wrote to the file; a new chat's file waits for omp's first reply. */
@@ -575,4 +616,11 @@ export class ChatController {
       .close({ threadId })
       .catch(() => undefined);
   }
+}
+
+/** A server that predates `/btw` refuses its methods' names: said in words a person acts on. */
+function btwFailure(failure: unknown): unknown {
+  return failure instanceof AppFailure && failure.appError.code === "invalid_args"
+    ? new Error("This app server cannot answer side questions yet; it needs an update.")
+    : failure;
 }

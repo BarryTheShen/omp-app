@@ -605,6 +605,13 @@ export class ChatStore {
       case "ui_notify":
         this.#notify(event.message, event.notifyType ?? "info");
         return false;
+      case "notice":
+        // omp's out-of-band notices (a side question or the session that could not be saved, …), as its TUI shows them.
+        this.#notify(
+          event.source ? `${event.source}: ${event.message}` : event.message,
+          event.level,
+        );
+        return false;
       case "ui_open_url":
         this.#signIn = {
           url: event.url,

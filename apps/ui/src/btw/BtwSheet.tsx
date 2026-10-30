@@ -1,0 +1,512 @@
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ChatController } from "../chat/controller";
+import { Markdown, StreamingMarkdown } from "../vendor/collab-web/components/transcript/Markdown";
+import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "./btw";
+
+const failureText = (failure: unknown): string =>
+  failure instanceof Error ? failure.message : String(failure);
+
+/** omp's times in the sheet (its `#timeFormat` and `#dateFormat`): a topic's time, and its first question's date. */
+const TIME = new Intl.DateTimeFormat("en", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const DATE = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+const isRunning = (record: BtwRecord): boolean => latestTurn(record).status === "running";
+
+/** A status worth naming next to an answer, in omp's words; an answered question needs none. */
+function Status({ status }: { readonly status: BtwTurn["status"] }): ReactNode {
+  switch (status) {
+    case "running":
+      return (
+        <span className="inline-flex items-center gap-1 text-accent-ink">
+          <span aria-hidden className="size-1.5 rounded-full bg-current" />
+          Answering
+        </span>
+      );
+    case "cancelled":
+      return <span className="text-warn-ink">Cancelled</span>;
+    case "error":
+      return <span className="text-bad-ink">Failed</span>;
+    case "interrupted":
+      return <span className="text-warn-ink">Interrupted</span>;
+    case "complete":
+      return null;
+  }
+}
+
+/** A question as a row's label: its `code` in the monospace face, without the backticks, as omp shows it. */
+function QuestionLabel({ text }: { readonly text: string }): ReactNode {
+  return text.split(/`([^`]+)`/).map((part, index) => {
+    if (part === "") return null;
+    // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed text, in their order
+    if (index % 2 === 0) return <span key={index}>{part}</span>;
+    return (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed text, in their order
+      <code key={index} className="font-mono text-[0.95em]">
+        {part}
+      </code>
+    );
+  });
+}
+
+/** A button that names its key in its tooltip, as omp's sheet does. */
+function KeyButton({
+  label,
+  keyName,
+  ariaKeys,
+  primary = false,
+  disabled = false,
+  onClick,
+}: {
+  readonly label: string;
+  /** The key as the tooltip says it: "Esc", "Enter", "X". */
+  readonly keyName: string;
+  /** The key for `aria-keyshortcuts`: "Escape", "Enter", "x". */
+  readonly ariaKeys: string;
+  readonly primary?: boolean;
+  readonly disabled?: boolean;
+  readonly onClick: () => void;
+}): ReactNode {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="sm"
+            variant={primary ? "default" : "outline"}
+            disabled={disabled}
+            aria-keyshortcuts={ariaKeys}
+            onClick={onClick}
+          />
+        }
+      >
+        {label}
+      </TooltipTrigger>
+      <TooltipContent>
+        {label} ({keyName})
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** One question of a topic and its answer: the question titles it, the answer follows, as in omp's sheet. */
+function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number }): ReactNode {
+  const answered = turn.answer.trim() !== "";
+  return (
+    <article className="flex flex-col gap-1.5" aria-label={index === 0 ? "Question" : "Follow-up"}>
+      <div className="font-medium text-t1">
+        <Markdown text={turn.question} />
+      </div>
+      <p className="flex items-center gap-1.5 text-xs text-t3">
+        <span>
+          {index === 0 ? DATE.format(turn.createdAt) : `Follow-up · ${TIME.format(turn.createdAt)}`}
+        </span>
+        {turn.status !== "complete" && (
+          <>
+            <span aria-hidden>·</span>
+            <Status status={turn.status} />
+          </>
+        )}
+      </p>
+      {/* A failed turn with no text says only why it failed. */}
+      {(answered || turn.error === undefined) && (
+        <div className="pt-1">
+          {answered ? (
+            turn.status === "running" ? (
+              <StreamingMarkdown text={turn.answer} />
+            ) : (
+              <Markdown text={turn.answer} />
+            )
+          ) : (
+            <p className="text-t3">{turn.status === "running" ? "Thinking…" : "No answer text."}</p>
+          )}
+        </div>
+      )}
+      {turn.error !== undefined && <p className="text-bad-ink">{turn.error}</p>}
+      {turn.status === "interrupted" && <p className="text-t3">Not resumed in this view.</p>}
+    </article>
+  );
+}
+
+/**
+ * omp's BTW history sheet, as Tern shows it: the chat's side questions on the left, newest first, and the one picked on
+ * the right as a short document with its follow-ups. Esc puts the sheet away and an answer still coming goes on; Stop
+ * answer (X) cancels it, Copy answer (C) copies it, Follow up (F, or Enter in the list) asks more in the same topic.
+ */
+export function BtwSheet({ controller }: { readonly controller: ChatController }): ReactNode {
+  const { records, open, selected, session } = useSyncExternalStore(
+    controller.btw.subscribe,
+    controller.btw.getSnapshot,
+  );
+  const [problem, setProblem] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const threadRef = useRef<HTMLElement>(null);
+  /** Whether the thread follows its newest text: until the reader scrolls up. */
+  const following = useRef(true);
+  const fieldId = useId();
+
+  // omp's history is read again each time the sheet opens (omp's terminal may have asked some), and for a new session.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a move to another session reads that session's side questions
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setProblem(null);
+    controller
+      .loadBtw()
+      .catch(
+        (failure: unknown) =>
+          alive && setProblem(`Could not read the side questions: ${failureText(failure)}`),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [open, session, controller]);
+
+  const current = records?.find((record) => record.id === selected) ?? records?.[0];
+  const currentId = current?.id;
+  const anyRunning = records?.some(isRunning) ?? false;
+  const canFollowUp = current !== undefined && !pending && !anyRunning;
+  const copyable = current !== undefined && copyText(current) !== undefined;
+  const copied = copiedId !== null && copiedId === currentId;
+  const turns = current === undefined ? [] : turnsOf(current);
+  const answered = turns.reduce((length, turn) => length + turn.answer.length + 1, 0);
+
+  // The follow-up field belongs to one topic, while the sheet is open.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new topic or a closed sheet starts without the field
+  useEffect(() => {
+    setComposing(false);
+    setNotice(null);
+  }, [currentId, open]);
+
+  // A topic opens at its newest turn, and the thread follows the answer as it comes until the reader scrolls up.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when another topic is picked
+  useEffect(() => {
+    following.current = true;
+  }, [currentId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the topic's text grows or the field opens
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (thread !== null && following.current) thread.scrollTop = thread.scrollHeight;
+  }, [currentId, answered, composing]);
+
+  const stop = (): void => {
+    if (current === undefined) return;
+    controller
+      .cancelBtw(current.id)
+      .catch((failure: unknown) =>
+        setProblem(`Could not stop the answer: ${failureText(failure)}`),
+      );
+  };
+
+  const copy = (): void => {
+    if (current === undefined) return;
+    const text = copyText(current);
+    if (text === undefined) return;
+    const id = current.id;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => setCopiedId(id))
+      .catch((failure: unknown) =>
+        setProblem(`Could not copy the answer: ${failureText(failure)}`),
+      );
+  };
+
+  const sendFollowUp = (): void => {
+    const question = draft.trim();
+    if (question === "") {
+      setNotice("Enter a follow-up question.");
+      return;
+    }
+    if (current === undefined || anyRunning || pending) {
+      setNotice("A BTW request is busy. Try again when it finishes.");
+      return;
+    }
+    setPending(true);
+    setNotice(null);
+    controller
+      .askBtw(question, current.id)
+      .then(() => {
+        setComposing(false);
+        setDraft("");
+      })
+      .catch((failure: unknown) => setNotice(failureText(failure)))
+      .finally(() => setPending(false));
+  };
+
+  /** Moves the list's pick (arrows, Home, End), and the focus with it. */
+  const onListKeys = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (records === null || current === undefined) return;
+    const at = records.findIndex((record) => record.id === current.id);
+    const to =
+      event.key === "ArrowDown"
+        ? at + 1
+        : event.key === "ArrowUp"
+          ? at - 1
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? records.length - 1
+              : null;
+    if (to === null) return;
+    event.preventDefault();
+    const next = records[Math.max(0, Math.min(records.length - 1, to))];
+    if (next === undefined) return;
+    controller.btw.select(next.id);
+    requestAnimationFrame(() =>
+      listRef.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(next.id)}"]`)?.focus(),
+    );
+  };
+
+  /** The sheet's keys, as omp's: X stops the answer, C copies it, F (or Enter in the list) follows up. */
+  const onKeys = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("textarea, input") !== null) return;
+    const key = event.key.toLowerCase();
+    if (key === "x" && current !== undefined && isRunning(current)) {
+      event.preventDefault();
+      stop();
+    } else if (key === "c" && copyable) {
+      event.preventDefault();
+      copy();
+    } else if (
+      (key === "f" || (event.key === "Enter" && target.getAttribute("role") === "option")) &&
+      canFollowUp &&
+      !composing
+    ) {
+      event.preventDefault();
+      setComposing(true);
+    }
+  };
+
+  const empty = records !== null && records.length === 0;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next, details) => {
+        if (next) return;
+        // Esc in the follow-up field puts the field away, not the sheet.
+        if (composing && details.reason === "escape-key") {
+          details.cancel();
+          setComposing(false);
+          return;
+        }
+        controller.btw.close();
+      }}
+    >
+      <DialogContent
+        data-tour="btw-sheet"
+        showCloseButton={false}
+        onKeyDown={onKeys}
+        // The picked topic takes the focus, else the header: never a button, whose tooltip would take the first Esc.
+        initialFocus={() =>
+          listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ?? headerRef.current
+        }
+        className={`flex max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none ${
+          empty ? "w-[min(520px,96vw)]" : "h-[min(680px,92dvh)] w-[min(960px,96vw)]"
+        }`}
+      >
+        <header ref={headerRef} tabIndex={-1} className="border-b border-l2 px-4 py-3 outline-none">
+          <DialogTitle className="text-sm font-semibold text-t1">BTW history</DialogTitle>
+          <DialogDescription className="sr-only">
+            Side questions about this chat, asked with /btw. Their answers stay out of the chat.
+          </DialogDescription>
+        </header>
+        {records === null ? (
+          <p className="flex-1 p-6 text-t3">
+            {problem === null ? "Reading the side questions…" : problem}
+          </p>
+        ) : empty ? (
+          <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+            <p className="font-medium text-t1">No side questions yet</p>
+            <p className="max-w-sm text-t3">
+              Ask one with <code className="font-mono">/btw &lt;question&gt;</code>. The answer
+              stays out of the main conversation.
+            </p>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+            <div
+              ref={listRef}
+              role="listbox"
+              aria-label="Side questions"
+              onKeyDown={onListKeys}
+              className="max-h-40 shrink-0 overflow-y-auto border-b border-l2 p-1.5 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0"
+            >
+              {records.map((record) => {
+                const picked = record.id === currentId;
+                const followUps = record.followUps?.length ?? 0;
+                return (
+                  <div
+                    key={record.id}
+                    data-id={record.id}
+                    role="option"
+                    aria-selected={picked}
+                    tabIndex={picked ? 0 : -1}
+                    onClick={() => controller.btw.select(record.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === " ") {
+                        event.preventDefault();
+                        controller.btw.select(record.id);
+                      }
+                    }}
+                    className={`flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      picked ? "bg-l2" : "hover:bg-l1"
+                    }`}
+                  >
+                    <span className="line-clamp-2 text-[0.8125rem] text-t1">
+                      <QuestionLabel text={record.question} />
+                    </span>
+                    <span
+                      className={`flex items-center gap-1.5 text-xs ${picked ? "text-t1" : "text-t3"}`}
+                    >
+                      <span className="font-mono">{TIME.format(record.createdAt)}</span>
+                      {followUps > 0 && (
+                        <span>
+                          · {followUps} follow-up{followUps === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      <span className="ml-auto">
+                        <Status status={latestTurn(record).status} />
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <section
+              ref={threadRef}
+              aria-label="Side question"
+              onScroll={(event) => {
+                const thread = event.currentTarget;
+                following.current =
+                  thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
+              }}
+              className="tr-root flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4"
+            >
+              {turns.map((turn, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a topic's turns only grow at the end
+                <Turn key={index} turn={turn} index={index} />
+              ))}
+              {composing && (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={fieldId} className="text-xs font-medium text-accent-ink">
+                    Follow up:
+                  </label>
+                  <Textarea
+                    id={fieldId}
+                    autoFocus
+                    rows={2}
+                    value={draft}
+                    placeholder="Ask about this answer…"
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                      setNotice(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        !event.shiftKey &&
+                        !event.nativeEvent.isComposing
+                      ) {
+                        event.preventDefault();
+                        sendFollowUp();
+                      }
+                    }}
+                  />
+                  {notice !== null && <p className="text-xs text-warn-ink">{notice}</p>}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+        {records !== null && problem !== null && (
+          <p role="alert" className="border-t border-l2 px-4 py-2 text-xs text-bad-ink">
+            {problem}
+          </p>
+        )}
+        <footer className="flex items-center gap-2 border-t border-l2 px-4 py-3">
+          {composing ? (
+            <>
+              <span className="flex-1" />
+              <KeyButton
+                label="Cancel"
+                keyName="Esc"
+                ariaKeys="Escape"
+                onClick={() => setComposing(false)}
+              />
+              <KeyButton
+                label={pending ? "Sending…" : "Send"}
+                keyName="Enter"
+                ariaKeys="Enter"
+                primary
+                disabled={pending}
+                onClick={sendFollowUp}
+              />
+            </>
+          ) : (
+            <>
+              {current !== undefined && isRunning(current) && (
+                <KeyButton label="Stop answer" keyName="X" ariaKeys="x" onClick={stop} />
+              )}
+              {copyable && (
+                <KeyButton
+                  label={copied ? "Copy again" : "Copy answer"}
+                  keyName="C"
+                  ariaKeys="c"
+                  onClick={copy}
+                />
+              )}
+              {copyable && copied && <span className="text-xs text-ok-ink">✓ Copied</span>}
+              <span className="flex-1" />
+              <KeyButton
+                label="Close"
+                keyName="Esc"
+                ariaKeys="Escape"
+                onClick={() => controller.btw.close()}
+              />
+              {canFollowUp && (
+                <KeyButton
+                  label="Follow up"
+                  keyName="F"
+                  ariaKeys="f"
+                  primary
+                  onClick={() => setComposing(true)}
+                />
+              )}
+            </>
+          )}
+        </footer>
+      </DialogContent>
+    </Dialog>
+  );
+}

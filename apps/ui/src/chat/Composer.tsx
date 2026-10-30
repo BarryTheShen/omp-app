@@ -9,6 +9,7 @@ import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState }
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentsPill } from "../agents/AgentsPill";
+import { btwQuestion } from "../btw/btw";
 import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { PlanChip } from "../plan/PlanChip";
@@ -203,6 +204,30 @@ export const Composer = memo(function Composer({
       return;
     }
     setWaitingToSend(null);
+    // omp's `/btw`: a side question, answered beside the chat in its sheet; `/btw` alone opens the sheet.
+    const aside = btwQuestion(value);
+    if (aside !== null) {
+      if (aside === "") {
+        update("");
+        controller.btw.show();
+        return;
+      }
+      setSending(true);
+      setError(null);
+      controller
+        .askBtw(aside)
+        .then((record) => {
+          // Only what was asked leaves the box; anything typed since stays.
+          const now = textRef.current;
+          update(
+            now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now,
+          );
+          controller.btw.show(record.id);
+        })
+        .catch((failure: unknown) => setError(`Not asked: ${errorText(failure)}`))
+        .finally(() => setSending(false));
+      return;
+    }
     const run = shellRun(value);
     if (run !== null && run.input === "") return;
     setSending(true);

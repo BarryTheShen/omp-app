@@ -68,7 +68,10 @@ const THEMES: readonly (readonly [ThemeChoice, string])[] = [
 
 const FILE_PAUSE_MS = 120;
 
-/** The focused chat's modes: plan mode on or off (where omp offers it), and a goal when the chat has none going. */
+/**
+ * The focused chat's modes: plan mode on or off (where omp offers it), a goal when the chat has none going, and the
+ * chat's side questions (omp's `/btw`).
+ */
 function chatModes(
   controller: ChatController | null,
   close: (then: () => void) => void,
@@ -105,6 +108,13 @@ function chatModes(
       run: () => close(() => onSetGoal(controller)),
     });
   }
+  items.push({
+    key: "chat:btw",
+    group: "Commands",
+    label: "BTW history",
+    detail: "Side questions asked with /btw",
+    run: () => close(() => controller.btw.show()),
+  });
   return items;
 }
 

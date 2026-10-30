@@ -66,6 +66,7 @@ import {
   type RoleModel,
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
+import { BtwController } from "./btw";
 import { SessionEventStream } from "./events";
 import { GoalController } from "./goal";
 import { pageMessages, selectEntries } from "./history";
@@ -112,6 +113,8 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "steer_subagent",
   // A live session connects before it answers; omp starts it outside the command order too.
   "live_start",
+  // omp's cancel of a side question is synchronous and must overtake a `btw` still starting or a long command.
+  "btw_cancel",
 ]);
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
@@ -153,6 +156,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   };
   const results = new PromptResults(session, emit, scheduledTurn);
   const settle = new SettleWatcher(session, emit, log, scheduledTurn);
+  // omp's `/btw` (`btw.ts`, a port of omp's own): one side question at a time beside the chat, its turns saved in the
+  // session's BTW history, where omp's terminal reads them too; its answers and records go out as chat events, and a
+  // history that cannot be saved as omp's `notice`.
+  const btw = new BtwController(session, emit, log);
   /** Prompts being admitted and answers outside the command order: drained before the chat ends. */
   const background = new Set<Promise<unknown>>();
   const track = (task: Promise<unknown>): void => {
@@ -240,6 +247,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     },
     trackAgentInvokingMessage: (task) => tracker.track(task),
     wrapSessionChange: async (change, { detachesRun }) => {
+      // A running side question is cancelled and saved before the session goes, as omp's RPC mode does.
+      await btw.close();
       // An extension's session change gets the same goal hold and reattach as the host's.
       await goal.beginSessionChange();
       // Unknown until the change returns: one that throws counts as detached, as in omp.
@@ -292,6 +301,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     options: { readonly endsOpenPrompts: boolean },
   ): Promise<Result> => {
     let result: Result | undefined;
+    await btw.close();
     await goal.beginSessionChange();
     try {
       result = await change();
@@ -404,6 +414,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         entry ?? { role: result.role, model: result.model, explicitThinkingLevel: false },
       );
     },
+    btw: async ({ question, recordId }) => ({ record: await btw.ask(question, recordId) }),
+    btw_cancel: async ({ recordId }) => ({ cancelled: btw.cancel(recordId) }),
+    get_btw_history: async () => ({ records: await btw.history() }),
     set_thinking_level: async ({ level }) => {
       // omp's own parser turns the name into its level (an `Effort` member, `off`, `inherit` or `auto`).
       const parsed = parseConfiguredThinkingLevel(level);
@@ -928,6 +941,12 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   hostUris.clear();
   // The live call (microphone, socket) ends before the session it hands work to, as in omp.
   await live.stop();
+  // A running side question ends as cancelled and every answer is saved before the session goes.
+  await btw
+    .close()
+    .catch((error: unknown) =>
+      log(`chat host: a side question was not saved: ${errorMessage(error)}`),
+    );
   await serial;
   abortBuiltinCommands();
   while (background.size > 0) await Promise.allSettled([...background]);
