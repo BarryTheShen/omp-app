@@ -189,6 +189,7 @@ export function Palette({
   onSetGoal,
   onSettings,
   onServers,
+  onNewWindow,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -202,6 +203,8 @@ export function Palette({
   readonly onSettings: () => void;
   /** Opens the settings at the desktop window's servers, the cursor in the link field. */
   readonly onServers: () => void;
+  /** Opens another desktop window, in the desktop window only. */
+  readonly onNewWindow: () => void;
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
@@ -313,6 +316,18 @@ export function Palette({
         keys: keycap(KEYS.sidePanel),
         run: () => close(togglePanel),
       },
+      // Another desktop window; a browser has none to open.
+      ...(bridge === null
+        ? []
+        : [
+            {
+              key: "app:newWindow",
+              group: "Commands" as const,
+              label: KEYS.newWindow.label,
+              keys: keycap(KEYS.newWindow),
+              run: () => close(onNewWindow),
+            },
+          ]),
       ...PANELS.map((panel) => ({
         key: `panel:${panel.id}`,
         group: "Commands" as const,

@@ -80,6 +80,13 @@ const PANES: Tour = {
       action: next,
     },
     {
+      target: TABS,
+      title: "More windows",
+      text: "In the desktop window, {newWindow} opens another window on the same server, with one empty tab of its own. Closing a window leaves the others open.",
+      action: next,
+      desktopOnly: true,
+    },
+    {
       target: WORKSPACE,
       centred: true,
       title: "Split the screen",

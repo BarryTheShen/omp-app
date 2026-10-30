@@ -8,6 +8,7 @@ fn main() {
             "open_server",
             "use_this_computer",
             "notify",
+            "new_window",
         ]),
     ))
     .unwrap();

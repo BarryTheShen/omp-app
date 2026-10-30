@@ -14,6 +14,8 @@ export interface KeyBinding {
   readonly scope: KeyScope;
   readonly group: "Panes" | "Tabs" | "Message box" | "Transcript" | "App";
   readonly label: string;
+  /** A key of the desktop window only: a browser keeps its own use of it, so the app neither binds nor lists it there. */
+  readonly desktopOnly?: true;
 }
 
 export const KEYS = {
@@ -131,6 +133,13 @@ export const KEYS = {
     scope: "workspace",
     group: "App",
     label: "Show or hide the side panel",
+  },
+  newWindow: {
+    hotkey: "ctrl+shift+n",
+    scope: "workspace",
+    group: "App",
+    label: "New window",
+    desktopOnly: true,
   },
 
   foldTools: {

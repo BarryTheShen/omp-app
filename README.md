@@ -47,7 +47,7 @@ omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net/#token=…'   # ke
 omp-app-desktop --local                                                 # back to this computer's own server
 ```
 
-The window keeps the link in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. Run either command while the window is open to move it to the other server. Only an `https://` link with a token is accepted. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
+The window keeps the link in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` link with a token is accepted. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
 
 ### omp in the terminal, on the same chats
 

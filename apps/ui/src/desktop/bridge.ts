@@ -59,6 +59,14 @@ export function openDesktopServer(bridge: Bridge, choice: ServerChoice): Promise
   return bridge.invoke("use_this_computer");
 }
 
+/**
+ * Opens another desktop window, on the server this window shows, at the next free window of the app. A refusal (the
+ * server does not answer) rejects with the window's reason.
+ */
+export function openDesktopWindow(bridge: Bridge): Promise<unknown> {
+  return bridge.invoke("new_window");
+}
+
 /** A refusal's words: the window rejects a command with its reason as text. */
 export const refusalText = (failure: unknown): string =>
   typeof failure === "string"

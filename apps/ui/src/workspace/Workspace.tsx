@@ -40,6 +40,7 @@ import {
   activateTab,
   addTab,
   closeTab,
+  layoutStorage,
   loadTabs,
   moveTab,
   renameTab,
@@ -127,7 +128,9 @@ export function Workspace({
   readonly onView: (view: WorkspaceView) => void;
   readonly ref: Ref<WorkspaceHandle>;
 }): ReactNode {
-  const [tabs, setTabs] = useState<WorkspaceTabs>(() => loadTabs(localStorage.getItem(TABS_KEY)));
+  const [tabs, setTabs] = useState<WorkspaceTabs>(() =>
+    loadTabs(layoutStorage().getItem(TABS_KEY)),
+  );
   const [renaming, setRenaming] = useState<string | null>(null);
   /** The focused pane's title in each tab, for tabs without a name of their own. */
   const [titles, setTitles] = useState<ReadonlyMap<string, string>>(new Map());
@@ -144,7 +147,7 @@ export function Workspace({
   /** Tabs made with Ctrl+Shift+T, which open with a new chat. */
   const freshTabs = useRef(new Set<string>());
 
-  useEffect(() => localStorage.setItem(TABS_KEY, JSON.stringify(tabs)), [tabs]);
+  useEffect(() => layoutStorage().setItem(TABS_KEY, JSON.stringify(tabs)), [tabs]);
 
   /** Tells the sidebar what is open, focused and waiting, and keeps each tab's focused title. */
   const report = useCallback(() => {

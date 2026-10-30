@@ -17,6 +17,8 @@
 # A second launch with `--local` or `--remote` moves the open window: back to this computer's running server, or to the
 # other computer's address (a listener there sees the window's TLS handshake; it is no https server, so the page does not
 # load, and the window shows the error page naming the computer and the reason, #2664).
+# More windows: Ctrl+Shift+N (a page command of the window) and a second launch with `--new-window` open another window
+# on the same server; a window that is not the last closes alone, and the last one's close ends the app (T11).
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -373,6 +375,32 @@ send_in_window() {
 free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
 # The kept link file's mode, as octal digits; empty when there is no file.
 link_mode() { stat -c %a "$link_file" 2>/dev/null; }
+# Gives a window the keyboard as a person would: raised above the others (with no window manager they all sit in the same
+# place), focused, and clicked in an empty part of the app, the middle of its workspace.
+use_window() {
+  xdotool windowraise "$1" windowfocus "$1" 2>/dev/null || true
+  sleep 1
+  xdotool mousemove --window "$1" 800 400 click 1 || return 1
+  sleep 1
+}
+wait_window_count() { # waits up to $2 seconds until $1 windows of the app are open
+  local n
+  for n in $(seq 1 $(($2 * 5))); do
+    [[ $(window_ids | wc -l) == "$1" ]] && return 0
+    sleep 0.2
+  done
+  return 1
+}
+wait_new_window() { # waits up to $2 seconds for a window whose id is not among those in $1 (separated by spaces), and prints its id
+  local n id
+  for n in $(seq 1 $(($2 * 5))); do
+    for id in $(window_ids); do
+      [[ " $1 " == *" $id "* ]] || { echo "$id"; return 0; }
+    done
+    sleep 0.2
+  done
+  return 1
+}
 
 trap 'note "interrupted"; finish 1' INT TERM
 dpkg-deb -x "$deb" "$root" || fail "cannot extract $deb"
@@ -730,6 +758,63 @@ is_alive "$side" || fail "T10: the server $side ended"
 servers=$(sidecars_of_run | wc -l)
 [[ $servers == 1 ]] || fail "T10: $servers server processes of this run at the end of T10"
 note "T10 the window closed, and this computer's server $side runs on, the only one"
+
+note "== T11: more windows: Ctrl+Shift+N opens another window on the same server, a page command works in it, a second launch with --new-window opens one more, a window that is not the last closes alone, and the last one's close ends the app"
+stops_before=$(stop_count)
+opens_before=$(count_log 'connection.open')
+launch "$app"
+p=$LAUNCHED
+wid=$(wait_window 120) || fail "T11: no window"
+info=$(server_info 90) || fail "T11: the server never answered"
+read -r attached _ <<<"$info"
+[[ $attached == "$side" ]] || fail "T11: the window's server is $attached, not $side: a second server started"
+wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 90 || fail "T11: the first window never connected to its server"
+sleep 5
+use_window "$wid" || fail "T11: could not click in the first window"
+xdotool key --clearmodifiers ctrl+shift+n || fail "T11: could not press Ctrl+Shift+N"
+second_wid=$(wait_new_window "$wid" 60) || fail "T11: Ctrl+Shift+N opened no second window"
+wait_log_count 'connection.open' $((${opens_before:-0} + 2)) 90 || fail "T11: the second window never connected to the server"
+[[ $(window_ids | wc -l) == 2 ]] || fail "T11: $(window_ids | wc -l) windows after one Ctrl+Shift+N"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 ]] || fail "T11: $servers server processes of this run after the second window opened"
+note "T11 Ctrl+Shift+N opened a second window, which connected to the same server"
+sleep 5
+shot "$second_wid" second-window
+# A page command in the second window: its own Ctrl+Shift+N asks for a third window, which the window-* capability allows.
+use_window "$second_wid" || fail "T11: could not click in the second window"
+xdotool key --clearmodifiers ctrl+shift+n || fail "T11: could not press Ctrl+Shift+N in the second window"
+third_wid=$(wait_new_window "$wid $second_wid" 60) || fail "T11: Ctrl+Shift+N in the second window opened no third window, so a page command does not work there"
+wait_log_count 'connection.open' $((${opens_before:-0} + 3)) 90 || fail "T11: the third window never connected to the server"
+note "T11 a page command works in the second window: its Ctrl+Shift+N opened a third"
+close_window "$third_wid" || fail "T11: could not send the third window the close request"
+wait_window_count 2 30 || fail "T11: $(window_ids | wc -l) windows after the third closed, not 2"
+is_alive "$p" || fail "T11: the app quit when a window that was not the last closed"
+note "T11 the third window closed alone, and the app runs on with two"
+launch "$app" --new-window
+launcher=$LAUNCHED
+wait_gone "$launcher" 30 || fail "T11: the second launch with --new-window did not exit"
+wait "$launcher"
+fourth_wid=$(wait_new_window "$wid $second_wid" 60) || fail "T11: a second launch with --new-window opened no window"
+wait_log_count 'connection.open' $((${opens_before:-0} + 4)) 90 || fail "T11: the window of --new-window never connected to the server"
+[[ $(window_ids | wc -l) == 3 ]] || fail "T11: $(window_ids | wc -l) windows after --new-window, not 3"
+note "T11 a second launch with --new-window opened one more window, and the launch itself exited"
+# The first window may close while others stay: nothing is renamed, and the app runs on.
+close_window "$wid" || fail "T11: could not send the first window the close request"
+wait_window_count 2 30 || fail "T11: $(window_ids | wc -l) windows after the first closed, not 2"
+is_alive "$p" || fail "T11: the app quit when the first window closed while others stayed"
+close_window "$second_wid" || fail "T11: could not send the second window the close request"
+wait_window_count 1 30 || fail "T11: $(window_ids | wc -l) windows after the second closed, not 1"
+is_alive "$p" || fail "T11: the app quit when a window closed and one stayed"
+note "T11 the first window and the second closed one after the other, and the app runs on with the last"
+close_window "$fourth_wid" || fail "T11: could not send the last window the close request"
+wait_gone "$p" 40 || fail "T11: the app did not exit after its last window closed"
+wait "$p"
+note "T11 the last window closed and the app exited (status $?)"
+is_alive "$side" || fail "T11: the server $side ended when the windows closed"
+[[ $(stop_count) == "$stops_before" ]] || fail "T11: the server logged a stop when the windows closed"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 ]] || fail "T11: $servers server processes of this run at the end of T11"
+note "T11 the server $side runs on after the last window closed, and logged no stop"
 
 note "== end: the test stops the server itself: SIGTERM to the pid in instance.json ends it, its omp processes, and its record"
 server=$(record_pid) || fail "end: there is no instance record while the server should run"

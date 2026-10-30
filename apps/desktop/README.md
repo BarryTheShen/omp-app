@@ -4,6 +4,8 @@ A desktop window for the omp app. It opens the app in a window on the app's own 
 
 Closing the window leaves the server running, so chats keep going; stop it with `systemctl --user stop omp-app` when the user service runs it, else `kill $(jq .pid ~/.local/state/omp-app/instance.json)`.
 
+The app can have several windows. Ctrl+Shift+N, or "New window" in the command palette, opens another one on the same server (a window on a server on another computer opens its server again); so does "New Window" in the launcher's right-click menu, or `omp-app-desktop --new-window` while the app is open. The first window keeps its tabs and panes for the next start; the others start with one empty tab and keep theirs only until they close. Closing a window that is not the last closes it alone; closing the last one ends the app. A second launch brings forward the window that had the focus last.
+
 The server the window starts uses port 4317, the port of the `omp-app` command and the user service, when it is free, so the web app keeps its stored settings (theme, sidebar, last chat) whichever of them started the server. When the port is busy, the server takes a free port instead.
 "Save debug log" (in the command palette) saves its file into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from.
 

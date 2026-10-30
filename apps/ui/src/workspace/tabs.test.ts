@@ -1,8 +1,9 @@
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import {
   addTab,
   closeTab,
   initialTabs,
+  layoutStorage,
   loadTabs,
   moveTab,
   renameTab,
@@ -64,5 +65,27 @@ describe("workspace tabs", () => {
     ).toBe("x");
     for (const raw of [null, "", "{", "[]", JSON.stringify({ tabs: [{ title: 3 }] })])
       expect(loadTabs(raw).tabs).toHaveLength(1);
+  });
+});
+
+describe("where a page keeps its tabs", () => {
+  // The unit tests run without a DOM: each storage is a marker the choice returns.
+  beforeAll(() => {
+    vi.stubGlobal("localStorage", "the first window's storage");
+    vi.stubGlobal("sessionStorage", "the window's own storage");
+  });
+  afterAll(() => vi.unstubAllGlobals());
+
+  test("the first desktop window keeps them for the next start; another desktop window keeps its own", () => {
+    expect(layoutStorage(true, "")).toBe("the first window's storage");
+    expect(layoutStorage(true, "?window=main")).toBe("the first window's storage");
+    expect(layoutStorage(true, "?window=")).toBe("the first window's storage");
+    expect(layoutStorage(true, "?window=window-2")).toBe("the window's own storage");
+    expect(layoutStorage(true, "?folder=%2Ftmp&window=window-12")).toBe("the window's own storage");
+  });
+
+  test("a browser tab keeps them for the next start whatever its address says", () => {
+    expect(layoutStorage(false, "")).toBe("the first window's storage");
+    expect(layoutStorage(false, "?window=window-2")).toBe("the first window's storage");
   });
 });

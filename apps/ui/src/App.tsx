@@ -18,6 +18,7 @@ import { ConnectionBanner, REFUSED_WORDS } from "./ConnectionBanner";
 import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
+import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
 import { useWaitingNotifications } from "./desktop/notify";
 import { FolderMenu } from "./folders/FolderMenu";
 import { keepLinkFolder } from "./folders/folder";
@@ -174,6 +175,18 @@ function Shell({
   const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
   useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
   useHotkeys(KEYS.shortcuts.hotkey, () => setShortcuts((open) => !open), anywhere);
+  // The desktop window opens another window; a browser keeps its own use of the key. A refusal passes as a toast, as
+  // the failure of any action just taken does.
+  const newWindow = useCallback(() => {
+    const bridge = desktopBridge();
+    if (bridge === null) return;
+    openDesktopWindow(bridge).catch((failure: unknown) =>
+      workspace.current
+        ?.focused()
+        ?.controller.store.toast(`New window: ${refusalText(failure)}`, "error"),
+    );
+  }, []);
+  useHotkeys(KEYS.newWindow.hotkey, newWindow, { ...anywhere, enabled: desktopBridge() !== null });
   useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
   const sidePanel = usePanelState();
   /** The focused pane's chat, for the side panel; read again whenever the workspace's view changes. */
@@ -257,6 +270,7 @@ function Shell({
         onSetGoal={setGoalFor}
         onSettings={showSettings}
         onServers={showServers}
+        onNewWindow={newWindow}
       />
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />

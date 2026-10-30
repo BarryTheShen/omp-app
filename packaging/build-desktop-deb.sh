@@ -87,6 +87,10 @@ grep -Fxq 'Name=omp app' <<<"$entry" || {
   echo "the applications-menu entry is not named omp app" >&2
   exit 1
 }
+grep -Fxq 'Actions=new-window;' <<<"$entry" && grep -Eq '^Exec=.+ --new-window$' <<<"$entry" || {
+  echo "the applications-menu entry has no New Window action" >&2
+  exit 1
+}
 
 (cd "$out" && sha256sum "$package" >SHA256SUMS)
 echo "built $out/$package ($(du -h "$out/$package" | cut -f1))"

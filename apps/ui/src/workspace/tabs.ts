@@ -1,4 +1,5 @@
 import type { SerializedDockview } from "dockview-react";
+import { desktopBridge } from "../desktop/bridge";
 
 /** One workspace tab, as kitty's: its own layout of chat panes, saved as dockview writes it. */
 export interface WorkspaceTab {
@@ -16,6 +17,24 @@ export interface WorkspaceTabs {
 
 /** Where the tabs are kept in this browser. */
 export const TABS_KEY = "omp-app.ui.workspace";
+
+/** The first desktop window's label, whose tabs the next start restores. */
+const FIRST_WINDOW = "main";
+
+/**
+ * Where this page keeps its tabs. A browser tab and the first desktop window keep them in localStorage, which the next
+ * start restores. Any other desktop window, which the desktop app opens at an address with `?window=<label>`, keeps its
+ * own in sessionStorage under the same key: a reload keeps them, closing the window drops them, and it starts with one
+ * empty tab, so no window overwrites another's layout. A browser tab ignores the query.
+ */
+export function layoutStorage(
+  inDesktopWindow: boolean = desktopBridge() !== null,
+  search: string = window.location.search,
+): Storage {
+  const label = new URLSearchParams(search).get("window");
+  const another = label !== null && label !== "" && label !== FIRST_WINDOW;
+  return inDesktopWindow && another ? sessionStorage : localStorage;
+}
 
 const newTab = (): WorkspaceTab => ({ id: crypto.randomUUID(), title: null, layout: null });
 

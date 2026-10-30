@@ -17,7 +17,12 @@
 //!
 //! A window that keeps the link of a server on another computer (see `remote.rs`) opens that server instead, and
 //! starts, attaches to and watches nothing on this computer.
+//!
+//! The app can have several windows (see `windows.rs`). Each opens the server it was given: a window on another
+//! computer's server keeps to it, and the server that ends here shows the error page in the windows on this computer's
+//! server only. The first window is `main`, whose server is the one the next start restores.
 
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
@@ -40,7 +45,7 @@ use crate::downloads;
 use crate::gstreamer::RegistryScan;
 use crate::keys;
 use crate::remote;
-use crate::WINDOW_LABEL;
+use crate::windows;
 
 /// The sidecar's file name: the bundler installs it next to the window binary under this name.
 const SIDECAR: &str = "omp-app-desktop-server";
@@ -55,13 +60,14 @@ const ERROR_PAGE: &str = "error.html";
 /// The page for "the server on another computer did not answer", served from apps/desktop/ui.
 const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// The window's commands a page may call (see `clipboard.rs`, `commands.rs` and `capabilities/default.json`).
-const PAGE_PERMISSIONS: [&str; 6] = [
+const PAGE_PERMISSIONS: [&str; 7] = [
     "allow-read-clipboard-png",
     "allow-servers",
     "allow-connect-server",
     "allow-open-server",
     "allow-use-this-computer",
     "allow-notify",
+    "allow-new-window",
 ];
 const WINDOW_TITLE: &str = "omp app";
 /// How long a server that was started has to record itself and answer. The server answers only after its omp checks,
@@ -79,13 +85,19 @@ pub struct Shared {
 
 #[derive(Default)]
 struct State {
-    /// Set when the app quits: nothing may open in the window or show an error after this.
+    /// Set when the app quits: nothing may open in a window or show an error after this.
     quitting: bool,
-    /// The origin of the server on another computer that the window opens (see `remote.rs`). Its pages are the
-    /// window's own, besides the bundled pages and this computer's server.
-    remote_origin: Option<String>,
+    /// The origin of the server on another computer that each window opens, by the window's label (see `remote.rs`).
+    /// Its pages are that window's own, besides the bundled pages and this computer's server. A window without an
+    /// entry opens this computer's server.
+    remote_origins: HashMap<String, String>,
     /// The origins given the page commands so far (see `grant_page_commands`).
     granted: Vec<String>,
+    /// The window that had the focus last (see `windows::pick`).
+    last_focused: Option<String>,
+    /// The windows whose close is under way: a window is gone only once its close is through, and meanwhile it does
+    /// not count as one that stays (see `window_closes`).
+    closing: Vec<String>,
 }
 
 fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
@@ -163,12 +175,12 @@ impl LaunchSteps for AppSteps {
 
     fn remote(&mut self) -> Option<Url> {
         let link = kept_link()?;
-        set_remote(&self.app, Some(&link));
+        set_remote(&self.app, windows::MAIN, Some(&link));
         Some(link)
     }
 
     fn open_remote(&mut self, link: Url) {
-        open_remote_page(self.app.clone(), link);
+        open_remote_page(self.app.clone(), windows::MAIN.to_owned(), link);
     }
 
     fn running(&mut self) -> Option<Url> {
@@ -180,7 +192,7 @@ impl LaunchSteps for AppSteps {
     }
 
     fn open_window(&mut self, page: &'static str) -> bool {
-        match build_window(&self.app, WebviewUrl::App(page.into())) {
+        match build_window(&self.app, windows::MAIN, WebviewUrl::App(page.into())) {
             Ok(_) => true,
             Err(error) => {
                 eprintln!("omp app: the window did not open: {error}");
@@ -193,11 +205,11 @@ impl LaunchSteps for AppSteps {
     fn open_server(&mut self, address: Url) {
         // Off the main thread, which this runs on: the page first waits for GStreamer's launch scan (see `open_server_page`).
         let app = self.app.clone();
-        thread::spawn(move || open_server_page(&app, address));
+        thread::spawn(move || open_server_page(&app, windows::MAIN, address));
     }
 
     fn watch_server(&mut self, child: Self::Started) {
-        watch(self.app.clone(), child);
+        watch(self.app.clone(), windows::MAIN.to_owned(), child);
     }
 }
 
@@ -254,10 +266,8 @@ pub fn apply_choice(args: &[String]) -> Result<(), String> {
         remote::Choice::Remote(link) => {
             let kept = remote::keep(&file, &link);
             // Only the list of servers to offer again: the window opens the kept link whatever becomes of it.
-            if let Some(list) = servers_file().filter(|_| kept.is_ok()) {
-                if let Err(error) = remote::remember(&list, &link) {
-                    eprintln!("omp app: the server could not be remembered: {error}");
-                }
+            if kept.is_ok() {
+                remember_server(&link);
             }
             kept
         }
@@ -266,54 +276,121 @@ pub fn apply_choice(args: &[String]) -> Result<(), String> {
     done.map_err(|error| format!("{}: {error}", file.display()))
 }
 
-/// A second launch with `--remote <link>` or `--local` moves the open window to that server. Its own process has
-/// already kept or forgotten the link (see `apply_choice` in `main`), and refused a bad link; without either, the
-/// window only comes forward.
-pub fn relaunch(app: &AppHandle, args: &[String]) {
+/// Remembers `link` first among the servers on other computers the app opened, to offer again: the list only, not the
+/// link the next start opens. A link that cannot be remembered is only logged.
+fn remember_server(link: &Url) {
+    let Some(list) = servers_file() else {
+        return;
+    };
+    if let Err(error) = remote::remember(&list, link) {
+        eprintln!("omp app: the server could not be remembered: {error}");
+    }
+}
+
+/// As `apply_choice`, for window `label` moved by a command of its page. Only a move of `main` changes the link the
+/// next start opens; a move of another window changes that window alone, and its link is only remembered, so the
+/// window's server can be found again (to open another window on it).
+pub fn apply_choice_for(label: &str, args: &[String]) -> Result<(), String> {
+    if label == windows::MAIN {
+        return apply_choice(args);
+    }
+    if let remote::Choice::Remote(link) = remote::choice(args)? {
+        remember_server(&link);
+    }
+    Ok(())
+}
+
+/// A second launch lands here. `--remote <link>` or `--local` moves `main`, the window whose server the kept link
+/// names: its own process has already kept or forgotten the link (see `apply_choice` in `main`), and refused a bad
+/// link. `--new-window` opens another window like the one focused last, and without either the window focused last
+/// comes forward (any open window when it is gone).
+pub fn second_launch(app: &AppHandle, args: &[String]) {
+    let moves = matches!(remote::choice(args), Ok(choice) if choice != remote::Choice::Unchanged);
+    let source = if moves {
+        windows::pick(None, &open_labels(app))
+    } else {
+        pick_window(app)
+    };
+    let Some(source) = source else {
+        return;
+    };
+    if moves {
+        relaunch(app, &source, args);
+    }
+    if windows::asks_for_new_window(args) {
+        if let Err(reason) = open_window_like(app, &source) {
+            eprintln!("omp app: a new window did not open: {reason}");
+        }
+    } else {
+        focus(app, &source);
+    }
+}
+
+/// Moves window `label` as a launch with these arguments would: to the server on another computer a link names, or
+/// back to this computer's. Without either it stays where it is.
+pub fn relaunch(app: &AppHandle, label: &str, args: &[String]) {
     match remote::choice(args) {
         Ok(remote::Choice::Remote(link)) => {
-            set_remote(app, Some(&link));
-            show_page(app, STARTING_PAGE);
-            open_remote_page(app.clone(), link);
+            set_remote(app, label, Some(&link));
+            show_page(app, label, STARTING_PAGE);
+            open_remote_page(app.clone(), label.to_owned(), link);
         }
         Ok(remote::Choice::Local) => {
-            set_remote(app, None);
-            show_page(app, STARTING_PAGE);
-            open_local(app.clone());
+            set_remote(app, label, None);
+            show_page(app, label, STARTING_PAGE);
+            open_local(app.clone(), label.to_owned());
         }
         Ok(remote::Choice::Unchanged) | Err(_) => {}
     }
 }
 
-/// Notes which server on another computer the window opens, if any: its pages are then the window's own.
-fn set_remote(app: &AppHandle, link: Option<&Url>) {
+/// Notes which server on another computer window `label` opens, if any: its pages are then that window's own.
+fn set_remote(app: &AppHandle, label: &str, link: Option<&Url>) {
     let origin = link.map(remote::origin);
-    with_state(app, |state| state.remote_origin = origin);
-}
-
-/// Opens the server on another computer, off the main thread. Its pages may call the window's commands, as this
-/// computer's server's pages may. The starting page shows until the computer accepts a connection; a computer that
-/// does not shows the error page, which names it.
-fn open_remote_page(app: AppHandle, link: Url) {
-    thread::spawn(move || {
-        grant_page_commands(&app, &remote::origin(&link));
-        if remote::reachable(&link) {
-            open_server_page(&app, link);
-        } else {
-            show_remote_error(&app, &remote::host(&link), None);
+    with_state(app, |state| match origin {
+        Some(origin) => {
+            state.remote_origins.insert(label.to_owned(), origin);
+        }
+        None => {
+            state.remote_origins.remove(label);
         }
     });
 }
 
-/// Opens the app on this computer's server: the one that runs, or one started now (as `launch` does).
-fn open_local(app: AppHandle) {
+/// The origin of the server on another computer that window `label` opens; None for this computer's server.
+fn remote_origin_of(app: &AppHandle, label: &str) -> Option<String> {
+    with_state(app, |state| state.remote_origins.get(label).cloned())
+}
+
+/// The computer's name of the server on another computer that window `label` opens; None for this computer's server.
+pub fn current_server(app: &AppHandle, label: &str) -> Option<String> {
+    let origin = remote_origin_of(app, label)?;
+    Url::parse(&origin).ok()?.host_str().map(str::to_owned)
+}
+
+/// Opens the server on another computer in window `label`, off the main thread. Its pages may call the window's
+/// commands, as this computer's server's pages may. The starting page shows until the computer accepts a connection; a
+/// computer that does not shows the error page, which names it.
+fn open_remote_page(app: AppHandle, label: String, link: Url) {
+    thread::spawn(move || {
+        grant_page_commands(&app, &remote::origin(&link));
+        if remote::reachable(&link) {
+            open_server_page(&app, &label, link);
+        } else {
+            show_remote_error(&app, &label, &remote::host(&link), None);
+        }
+    });
+}
+
+/// Opens the app on this computer's server in window `label`: the one that runs, or one started now (as `launch` does).
+fn open_local(app: AppHandle, label: String) {
     thread::spawn(move || {
         if let Some(address) = running_server() {
-            open_server_page(&app, address);
+            open_server_page(&app, &label, address);
             return;
         }
         match spawn(&app) {
-            Ok(child) => watch(app, child),
+            Ok(child) => watch(app, label, child),
             Err(problem) => {
                 eprintln!("omp app: the server did not start: {problem}");
                 show_error(&app);
@@ -338,7 +415,8 @@ fn grant_page_commands(app: &AppHandle, origin: &str) {
     let mut capability = CapabilityBuilder::new(format!("remote-server-{number}"))
         .remote(format!("{origin}/*"))
         .local(false)
-        .window(WINDOW_LABEL);
+        .window(windows::MAIN)
+        .window(windows::PATTERN);
     for permission in PAGE_PERMISSIONS {
         capability = capability.permission(permission);
     }
@@ -407,11 +485,11 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
     command.spawn().map_err(|error| error.to_string())
 }
 
-/// Watches the server this window started, for as long as the window runs. One thread waits for the server to end;
-/// when it does and no server answers (a server that found another instance running also ends, and that instance
-/// serves the window), the error page is shown. The other thread waits for the record to name a server that answers,
-/// and opens the app on it.
-fn watch(app: AppHandle, mut child: Child) {
+/// Watches the server this app started, for as long as it runs. One thread waits for the server to end; when it does
+/// and no server answers (a server that found another instance running also ends, and that instance serves the
+/// windows), the error page is shown. The other thread waits for the record to name a server that answers, and opens
+/// the app on it in window `label`.
+fn watch(app: AppHandle, label: String, mut child: Child) {
     let ender = app.clone();
     thread::spawn(move || {
         let _ = child.wait();
@@ -419,13 +497,13 @@ fn watch(app: AppHandle, mut child: Child) {
             show_error(&ender);
         }
     });
-    thread::spawn(move || open_when_recorded(&app));
+    thread::spawn(move || open_when_recorded(&app, &label));
 }
 
-/// Waits for the record to name a live server that answers, and opens the app on it. If none does within
-/// `START_TIMEOUT`, the error page is shown, and the server that was started is left alone. The server's start can
-/// take a long time on a busy computer, so the window shows the starting page until it answers.
-fn open_when_recorded(app: &AppHandle) {
+/// Waits for the record to name a live server that answers, and opens the app on it in window `label`. If none does
+/// within `START_TIMEOUT`, the error page is shown, and the server that was started is left alone. The server's start
+/// can take a long time on a busy computer, so the window shows the starting page until it answers.
+fn open_when_recorded(app: &AppHandle, label: &str) {
     let Some(record) = instance_record() else {
         show_error(app);
         return;
@@ -433,7 +511,7 @@ fn open_when_recorded(app: &AppHandle) {
     let found = address::wait_for_instance(&record, START_TIMEOUT);
     let url = found.and_then(|address| Url::parse(&address.url).ok());
     match url {
-        Some(url) => open_server_page(app, url),
+        Some(url) => open_server_page(app, label, url),
         None => show_error(app),
     }
 }
@@ -452,17 +530,70 @@ pub fn quit(app: AppHandle) {
     });
 }
 
-fn new_window(
-    app: &AppHandle,
+/// The labels of the windows that are open now.
+fn open_labels(app: &AppHandle) -> Vec<String> {
+    app.webview_windows().into_keys().collect()
+}
+
+/// The window a launch or a command that names none means (see `windows::pick`): None when no window is open.
+fn pick_window(app: &AppHandle) -> Option<String> {
+    let open = open_labels(app);
+    let last = with_state(app, |state| state.last_focused.clone());
+    windows::pick(last.as_deref(), &open)
+}
+
+/// Brings a window forward: out of the minimized state, shown, and focused.
+fn focus(app: &AppHandle, label: &str) {
+    if let Some(window) = app.get_webview_window(label) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// The window has the focus now.
+pub fn focused(app: &AppHandle, label: &str) {
+    with_state(app, |state| state.last_focused = Some(label.to_owned()));
+}
+
+/// Whether the window may close alone, because another window stays open that is not itself being closed. When none
+/// does, this is the last window, and its close ends the app (see `quit`). A window that may close is noted as
+/// closing until it is gone (see `destroyed`).
+pub fn window_closes(app: &AppHandle, label: &str) -> bool {
+    let open = open_labels(app);
+    with_state(app, |state| {
+        let alone = windows::closes_alone(&open, &state.closing, label);
+        if alone {
+            state.closing.push(label.to_owned());
+        }
+        alone
+    })
+}
+
+/// The window is gone: what the app kept for it goes too.
+pub fn destroyed(app: &AppHandle, label: &str) {
+    with_state(app, |state| {
+        state.closing.retain(|closing| closing != label);
+        state.remote_origins.remove(label);
+        if state.last_focused.as_deref() == Some(label) {
+            state.last_focused = None;
+        }
+    });
+}
+
+fn new_window<'a>(
+    app: &'a AppHandle,
+    label: &str,
     page: WebviewUrl,
-) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
+) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     let handle = app.clone();
-    WebviewWindowBuilder::new(app, WINDOW_LABEL, page)
+    let owner = label.to_owned();
+    WebviewWindowBuilder::new(app, label, page)
         .title(WINDOW_TITLE)
         .inner_size(1200.0, 800.0)
         .min_inner_size(640.0, 480.0)
         .on_navigation(move |target| {
-            let remote = with_state(&handle, |state| state.remote_origin.clone());
+            let remote = remote_origin_of(&handle, &owner);
             let inside = is_app_address(target, remote.as_deref());
             if !inside {
                 open_externally(target);
@@ -483,13 +614,73 @@ fn new_window(
         })
 }
 
-/// Builds the app's window, with its page loads watched (see `watch_page_loads`) and its keys with Super handed to the
-/// page (see `keys.rs`).
-fn build_window(app: &AppHandle, page: WebviewUrl) -> tauri::Result<WebviewWindow> {
-    let window = new_window(app, page).build()?;
+/// Builds one of the app's windows, named `label`, with its page loads watched (see `watch_page_loads`) and its keys
+/// with Super handed to the page (see `keys.rs`).
+fn build_window(app: &AppHandle, label: &str, page: WebviewUrl) -> tauri::Result<WebviewWindow> {
+    let window = new_window(app, label, page).build()?;
     watch_page_loads(&window);
     keys::forward_super_keys(&window);
     Ok(window)
+}
+
+/// Opens another window on the server window `source` shows, as the New window command of its page does: this
+/// computer's server, or the server on another computer that `source` opens, whose link (with its token) is looked up
+/// here, since a page keeps no token in its address. The new window is the next free `window-N`, and its address
+/// carries that as `?window=<label>`, which tells its page which window it is.
+pub fn open_window_like(app: &AppHandle, source: &str) -> Result<(), String> {
+    if with_state(app, |state| state.quitting) {
+        return Err("the app is quitting".to_owned());
+    }
+    let origin = remote_origin_of(app, source);
+    let address = match &origin {
+        Some(origin) => link_for_origin(origin)
+            .ok_or_else(|| format!("the link of {origin} is not kept any more"))?,
+        None => running_server().ok_or("this computer's server does not answer")?,
+    };
+    let handle = app.clone();
+    app.run_on_main_thread(move || open_window_on(&handle, &address, origin))
+        .map_err(|error| error.to_string())
+}
+
+/// Builds the new window. This runs on the main thread, so two windows asked for at once get different labels.
+fn open_window_on(app: &AppHandle, address: &Url, origin: Option<String>) {
+    let mut taken = open_labels(app);
+    with_state(app, |state| taken.extend(state.closing.iter().cloned()));
+    let label = windows::next_label(&taken);
+    // Known before the page loads, which `on_navigation` checks against it.
+    if let Some(origin) = origin {
+        with_state(app, |state| {
+            state.remote_origins.insert(label.clone(), origin);
+        });
+    }
+    let page = WebviewUrl::External(window_url(address, &label));
+    match build_window(app, &label, page) {
+        Ok(window) => {
+            focused(app, &label);
+            let _ = window.set_focus();
+        }
+        Err(error) => {
+            eprintln!("omp app: the new window did not open: {error}");
+            destroyed(app, &label);
+        }
+    }
+}
+
+/// The link of the server on another computer whose origin is `origin`, from the kept link or the servers the app
+/// opened: the link carries the token its pages need.
+fn link_for_origin(origin: &str) -> Option<Url> {
+    kept_link()
+        .into_iter()
+        .chain(remembered_servers())
+        .find(|link| remote::origin(link) == origin)
+}
+
+/// `address` with `?window=<label>`, which tells the page which window it is. The token stays in the fragment, and a
+/// query the address has stays too.
+fn window_url(address: &Url, label: &str) -> Url {
+    let mut url = address.clone();
+    url.query_pairs_mut().append_pair("window", label);
+    url
 }
 
 /// A page of the server on another computer that does not open shows the error page, naming the computer and what went
@@ -500,17 +691,23 @@ fn build_window(app: &AppHandle, page: WebviewUrl) -> tauri::Result<WebviewWindo
 /// error page when the server ends (see `watch`).
 fn watch_page_loads(window: &WebviewWindow) {
     let app = window.app_handle().clone();
+    let label = window.label().to_owned();
     let watched = window.with_webview(move |webview| {
         let view = webview.inner();
-        let failed = app.clone();
+        let (failed, failed_label) = (app.clone(), label.clone());
         view.connect_load_failed(move |_, _, uri, error| {
             let replaced = error.matches(NetworkError::Cancelled)
                 || error.matches(PolicyError::FrameLoadInterruptedByPolicyChange);
-            !replaced && remote_page_failed(&failed, uri, &error.to_string())
+            !replaced && remote_page_failed(&failed, &failed_label, uri, &error.to_string())
         });
-        let refused = app.clone();
+        let (refused, refused_label) = (app.clone(), label.clone());
         view.connect_load_failed_with_tls_errors(move |_, uri, _, _| {
-            remote_page_failed(&refused, uri, "its certificate was not accepted")
+            remote_page_failed(
+                &refused,
+                &refused_label,
+                uri,
+                "its certificate was not accepted",
+            )
         });
         view.connect_load_changed(move |view, event| {
             if event != LoadEvent::Committed {
@@ -521,7 +718,7 @@ fn watch_page_loads(window: &WebviewWindow) {
             };
             let problem = answer_problem(response.status_code());
             if let (Some(problem), Some(uri)) = (problem, response.uri()) {
-                remote_page_failed(&app, &uri, &problem);
+                remote_page_failed(&app, &label, &uri, &problem);
             }
         });
     });
@@ -530,15 +727,15 @@ fn watch_page_loads(window: &WebviewWindow) {
     }
 }
 
-/// Shows the error page when `uri` is a page of the server on another computer that did not open, and logs why. Returns
-/// whether it was one.
-fn remote_page_failed(app: &AppHandle, uri: &str, problem: &str) -> bool {
-    let remote = with_state(app, |state| state.remote_origin.clone());
+/// Shows the error page in window `label` when `uri` is a page of the server on another computer that the window
+/// opens and that did not open, and logs why. Returns whether it was one.
+fn remote_page_failed(app: &AppHandle, label: &str, uri: &str, problem: &str) -> bool {
+    let remote = remote_origin_of(app, label);
     let Some(host) = remote_page_host(uri, remote.as_deref()) else {
         return false;
     };
     eprintln!("omp app: the app on {host} did not open: {problem}");
-    show_remote_error(app, &host, Some(problem));
+    show_remote_error(app, label, &host, Some(problem));
     true
 }
 
@@ -580,9 +777,9 @@ fn choose_destination(app: &AppHandle, destination: &mut PathBuf) -> bool {
     true
 }
 
-/// Shows the app in the window: the starting page becomes the server's address. Nothing happens once
-/// the app is quitting.
-fn open_server_page(app: &AppHandle, url: Url) {
+/// Shows the app in window `label`: the starting page becomes the server's address. Nothing happens once the app is
+/// quitting, and a window that is gone while others stay open is left alone (see `open_in_a_window_if_none`).
+fn open_server_page(app: &AppHandle, label: &str, url: Url) {
     if with_state(app, |state| state.quitting) {
         return;
     }
@@ -590,52 +787,68 @@ fn open_server_page(app: &AppHandle, url: Url) {
     // open would stall while the scan runs, so the page waits here for the launch scan to finish.
     app.state::<RegistryScan>().wait(REGISTRY_SCAN_WAIT);
     let handle = app.clone();
-    let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
+    let label = label.to_owned();
+    let _ = app.run_on_main_thread(move || match handle.get_webview_window(&label) {
         Some(window) => {
             if let Err(error) = window.navigate(url) {
                 eprintln!("omp app: the app did not open in the window: {error}");
             }
         }
-        None => {
-            if let Err(error) = build_window(&handle, WebviewUrl::External(url)) {
-                // Without a window nothing can be shown: quit.
-                eprintln!("omp app: the window did not open: {error}");
-                handle.exit(1);
-            }
-        }
+        None => open_in_a_window_if_none(&handle, &label, WebviewUrl::External(url)),
     });
 }
 
-/// Shows the error page in the window, or in a new window when none is open yet.
-fn show_error(app: &AppHandle) {
-    show_page(app, ERROR_PAGE);
+/// A page for a window that is gone is dropped, and the windows that stay are not touched. With no window open at all,
+/// the page opens in a new one, named `label`.
+fn open_in_a_window_if_none(app: &AppHandle, label: &str, page: WebviewUrl) {
+    if !app.webview_windows().is_empty() {
+        return;
+    }
+    if let Err(error) = build_window(app, label, page) {
+        // Without a window nothing can be shown: quit.
+        eprintln!("omp app: the window did not open: {error}");
+        app.exit(1);
+    }
 }
 
-/// Shows one of the bundled pages in the window, or in a new window when none is open yet.
-fn show_page(app: &AppHandle, page: &'static str) {
+/// Shows the error page in the windows on this computer's server (the ones on another computer's server do not depend
+/// on it), or in a new window when none is open yet.
+fn show_error(app: &AppHandle) {
+    let open = open_labels(app);
+    if open.is_empty() {
+        show_page(app, windows::MAIN, ERROR_PAGE);
+        return;
+    }
+    let local: Vec<String> = with_state(app, |state| {
+        open.into_iter()
+            .filter(|label| !state.remote_origins.contains_key(label))
+            .collect()
+    });
+    for label in local {
+        show_page(app, &label, ERROR_PAGE);
+    }
+}
+
+/// Shows one of the bundled pages in window `label`, or in a new window when none is open yet.
+fn show_page(app: &AppHandle, label: &str, page: &'static str) {
     if with_state(app, |state| state.quitting) {
         return;
     }
     let handle = app.clone();
-    let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
+    let label = label.to_owned();
+    let _ = app.run_on_main_thread(move || match handle.get_webview_window(&label) {
         Some(window) => {
             if let Ok(url) = Url::parse(&format!("tauri://localhost/{page}")) {
                 let _ = window.navigate(url);
             }
         }
-        None => {
-            if let Err(error) = build_window(&handle, WebviewUrl::App(page.into())) {
-                // Without a window nothing can be shown: quit.
-                eprintln!("omp app: the page did not open: {error}");
-                handle.exit(1);
-            }
-        }
+        None => open_in_a_window_if_none(&handle, &label, WebviewUrl::App(page.into())),
     });
 }
 
-/// Shows the page for "the server on another computer did not open", naming the computer: it did not answer, or it
-/// answered and the page did not open, for `problem` (see `watch_page_loads`).
-fn show_remote_error(app: &AppHandle, host: &str, problem: Option<&str>) {
+/// Shows the page for "the server on another computer did not open", naming the computer, in window `label`: it did
+/// not answer, or it answered and the page did not open, for `problem` (see `watch_page_loads`).
+fn show_remote_error(app: &AppHandle, label: &str, host: &str, problem: Option<&str>) {
     if with_state(app, |state| state.quitting) {
         return;
     }
@@ -647,17 +860,13 @@ fn show_remote_error(app: &AppHandle, host: &str, problem: Option<&str>) {
         url.query_pairs_mut().append_pair("problem", problem);
     }
     let handle = app.clone();
-    let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
+    let label = label.to_owned();
+    let _ = app.run_on_main_thread(move || match handle.get_webview_window(&label) {
         Some(window) => {
             let _ = window.navigate(url);
         }
         None => {
-            let page = WebviewUrl::App(REMOTE_ERROR_PAGE.into());
-            if let Err(error) = build_window(&handle, page) {
-                // Without a window nothing can be shown: quit.
-                eprintln!("omp app: the page did not open: {error}");
-                handle.exit(1);
-            }
+            open_in_a_window_if_none(&handle, &label, WebviewUrl::App(REMOTE_ERROR_PAGE.into()))
         }
     });
 }
@@ -753,6 +962,25 @@ mod tests {
         let proxy = answer_problem(502);
         assert_eq!(proxy.as_deref(), Some("it answered with HTTP 502"));
         assert!(answer_problem(404).is_some());
+    }
+
+    #[test]
+    fn a_new_windows_address_names_the_window_and_keeps_the_token_and_the_query() {
+        let plain = window_url(&url("http://127.0.0.1:4317/#token=t"), "window-2");
+        assert_eq!(
+            plain.as_str(),
+            "http://127.0.0.1:4317/?window=window-2#token=t"
+        );
+        let remote = window_url(&url("https://devbox.tail1234.ts.net/#token=t"), "window-3");
+        assert_eq!(
+            remote.as_str(),
+            "https://devbox.tail1234.ts.net/?window=window-3#token=t"
+        );
+        let with_query = window_url(&url("http://127.0.0.1:4317/?folder=a#token=t"), "window-2");
+        assert_eq!(
+            with_query.as_str(),
+            "http://127.0.0.1:4317/?folder=a&window=window-2#token=t"
+        );
     }
 
     /// The address the recording steps find a server at.
