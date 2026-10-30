@@ -273,19 +273,21 @@ describe("ChatStore", () => {
     ]);
   });
 
-  test("a note too long for a toast, or on several lines, stays in the chat as a row; a short one passes as a toast", () => {
+  test("a status line too long for a toast, or on several lines, is a dim row; a long warning or error is a notice", () => {
     const store = new ChatStore();
     const tools = Array.from({ length: 40 }, (_, index) => `mcp__notion_tool_${index}`).join(", ");
-    store.apply(event({ type: "ui_notify", message: `MCP tools: ${tools}` }));
+    store.apply(
+      event({ type: "notice", level: "info", message: `mounted ${tools}`, source: "xdev" }),
+    );
     store.apply(event({ type: "notice", level: "warning", message: "first line\nsecond line" }));
     store.toast(`New window: ${"refused ".repeat(30)}`, "error");
     expect(store.getSnapshot().toast).toBeNull();
     expect(store.getSnapshot().notices.map((notice) => notice.level)).toEqual([
-      "info",
+      "status",
       "warning",
       "error",
     ]);
-    expect(store.getSnapshot().notices[0]?.text).toBe(`MCP tools: ${tools}`);
+    expect(store.getSnapshot().notices[0]?.text).toBe(`xdev: mounted ${tools}`);
 
     store.apply(event({ type: "ui_notify", message: "Reloaded" }));
     expect(store.getSnapshot().toast).toMatchObject({ text: "Reloaded", tone: "info" });

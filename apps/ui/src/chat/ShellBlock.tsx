@@ -1,5 +1,6 @@
+import { cn } from "cn";
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ShellRunView } from "./rows";
 import type { ChatNotice } from "./store";
@@ -64,14 +65,14 @@ export function ShellBlock({
   );
 }
 
-const NOTICE_TEXT: Record<ChatNotice["level"], string> = {
+const NOTICE_TEXT: Record<Exclude<ChatNotice["level"], "status">, string> = {
   output: "font-mono text-xs text-t2",
   info: "font-sans text-[0.8125rem] text-t1",
   warning: "font-sans text-[0.8125rem] text-warn-ink",
   error: "font-sans text-[0.8125rem] text-bad-ink",
 };
 
-/** What a built-in command printed, or omp's notification, kept until it is dismissed. */
+/** What a built-in command printed, or omp's notification, kept until it is dismissed; omp's status lines stay dim. */
 export function NoticeRow({
   notice,
   onDismiss,
@@ -79,6 +80,7 @@ export function NoticeRow({
   readonly notice: ChatNotice;
   readonly onDismiss: (id: number) => void;
 }): ReactNode {
+  if (notice.level === "status") return <StatusLine text={notice.text} />;
   return (
     <div
       role={notice.level === "error" ? "alert" : "status"}
@@ -99,5 +101,26 @@ export function NoticeRow({
         <X />
       </Button>
     </div>
+  );
+}
+
+/**
+ * One of omp's status lines too long for a toast, as omp's terminal shows it: a dim line in the chat, here cut to one
+ * line (the tools omp mounted at its start fill many). A click shows all of it.
+ */
+function StatusLine({ text }: { readonly text: string }): ReactNode {
+  const [whole, setWhole] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-expanded={whole}
+      className={cn(
+        "w-full min-w-0 rounded-md px-1 text-left font-sans text-[0.8125rem] text-t3 outline-none hover:text-t2 focus-visible:ring-2 focus-visible:ring-ring",
+        whole ? "whitespace-pre-wrap break-words" : "truncate",
+      )}
+      onClick={() => setWhole((shown) => !shown)}
+    >
+      {text}
+    </button>
   );
 }

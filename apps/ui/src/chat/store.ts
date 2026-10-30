@@ -47,7 +47,8 @@ export interface ChatShellRun {
 export interface ChatNotice {
   readonly id: number;
   readonly text: string;
-  readonly level: "output" | "info" | "warning" | "error";
+  /** `status`: one of omp's status lines, too long for a toast: a dim line in the chat, as omp's terminal shows it. */
+  readonly level: "output" | "status" | "info" | "warning" | "error";
 }
 
 /**
@@ -473,7 +474,9 @@ export class ChatStore {
 
   #showToast(text: string, tone: ChatToast["tone"]): void {
     if (text.length > TOAST_MAX_CHARACTERS || text.includes("\n")) {
-      this.#notify(text, tone === "success" ? "info" : tone);
+      // Too long for a toast: a status line stays a dim line in the chat, as in omp's terminal (a list of mounted
+      // tools at each start); a warning or an error is a notice to read.
+      this.#notify(text, tone === "info" || tone === "success" ? "status" : tone);
       return;
     }
     this.#toastSeq += 1;
