@@ -51,7 +51,7 @@ export function Shortcuts({
 }): ReactNode {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent data-tour="keys" className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
         <DialogTitle>Keys</DialogTitle>
         <KeyList />
       </DialogContent>

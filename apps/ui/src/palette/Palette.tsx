@@ -29,6 +29,8 @@ import { LOCAL_SERVER_LABEL, remoteServerLabel } from "../desktop/ServerSection"
 import { KEYS, keycap } from "../keys/table";
 import type { ChatList } from "../sidebar/useChatList";
 import { setThemeChoice, type ThemeChoice } from "../theme/theme";
+import { startTour } from "../tour/runner";
+import { TOURS } from "../tour/tours";
 import type { WorkspaceCommand, WorkspaceHandle } from "../workspace/Workspace";
 
 const SCOPES = ["All", "Commands", "Files", "Chats", "Models"] as const;
@@ -284,6 +286,16 @@ export function Palette({
         keys: keycap(KEYS.settings),
         run: () => close(onSettings),
       },
+      ...TOURS.map((tour) => ({
+        key: `tour:${tour.id}`,
+        group: "Commands" as const,
+        label: `Tour: ${tour.title}`,
+        detail: `${tour.minutes} min`,
+        run: () =>
+          close(() => {
+            if (workspace.current !== null) startTour(tour, workspace.current);
+          }),
+      })),
       ...windowServers(bridge, servers, close, onServers, controller),
       ...commands.map((command) => ({
         key: `omp:${command.name}`,
@@ -336,6 +348,7 @@ export function Palette({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        data-tour="palette"
         showCloseButton={false}
         className="top-1/4 translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
       >

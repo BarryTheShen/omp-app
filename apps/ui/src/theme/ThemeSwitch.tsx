@@ -16,6 +16,7 @@ export function ThemeSwitch(): ReactNode {
   return (
     <ToggleGroup
       aria-label="Theme"
+      data-tour="theme"
       size="sm"
       spacing={0.5}
       className="rounded-lg border border-l2 p-0.5"

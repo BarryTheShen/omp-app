@@ -10,6 +10,8 @@ const SEARCH_PAUSE_MS = 120;
 const MAX_COMMANDS = 50;
 
 export interface ComposerMenuState {
+  /** What opened the menu: `/` for omp's commands, `@` for a file. */
+  readonly kind: "command" | "file";
   readonly label: string;
   readonly items: readonly MenuItem[];
   readonly active: number;
@@ -100,6 +102,7 @@ export function useComposerMenu(
     return { menu: null, move: () => undefined, pick: () => null, dismiss: () => undefined };
   const searching = trigger.kind === "file" && files?.query !== trigger.query;
   const menu: ComposerMenuState = {
+    kind: trigger.kind,
     label: trigger.kind === "command" ? "omp's commands" : "Files to mention",
     items,
     active: Math.min(active, Math.max(0, items.length - 1)),

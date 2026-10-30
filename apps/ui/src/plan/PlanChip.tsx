@@ -24,6 +24,7 @@ export function PlanChip({
       <TooltipTrigger
         render={
           <Button
+            data-tour="plan"
             type="button"
             variant="ghost"
             size="sm"

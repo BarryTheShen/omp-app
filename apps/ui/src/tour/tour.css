@@ -1,0 +1,111 @@
+/*
+ * The tour's popover (driver.js draws it) in the app's look, from the role variables in styles/index.css. Driver's own
+ * stylesheet comes first (`runner.ts` imports it before this one) and every rule here is more specific than its own.
+ */
+.driver-popover.omp-tour {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  font-family: inherit;
+  max-width: 320px;
+}
+
+.driver-popover.omp-tour .driver-popover-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.driver-popover.omp-tour .driver-popover-description {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.omp-tour kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-family: var(--font-mono, var(--mono));
+  font-size: 11px;
+  color: var(--foreground);
+}
+
+.driver-popover.omp-tour .driver-popover-progress-text {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* Next, Skip and Done. */
+.driver-popover.omp-tour .driver-popover-footer-btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  text-shadow: none;
+}
+
+.driver-popover.omp-tour .driver-popover-footer-btn:hover {
+  background: var(--primary);
+  filter: brightness(1.1);
+}
+
+.driver-popover.omp-tour .driver-popover-footer-btn:focus-visible,
+.driver-popover.omp-tour .driver-popover-close-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.driver-popover.omp-tour .driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+
+.driver-popover.omp-tour .driver-popover-close-btn:hover {
+  color: var(--foreground);
+}
+
+/* The arrow takes the popover's background; driver colours only the side that points at the element. */
+.driver-popover.omp-tour .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--popover);
+}
+
+.driver-popover.omp-tour .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--popover);
+}
+
+.driver-popover.omp-tour .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--popover);
+}
+
+.driver-popover.omp-tour .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--popover);
+}
+
+/* The element a step points at: an accent ring, as the dimming around it hardly shows on the dark theme. */
+.driver-active .driver-active-element {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/*
+ * A step about the whole workspace: the popover in the middle of the window. Driver places a popover with inline
+ * styles, so these win with !important; the arrow would point at nothing.
+ */
+.driver-popover.omp-tour.omp-tour-centred {
+  /* biome-ignore lint/complexity/noImportantStyles: only !important wins over driver's inline placement */
+  top: 50% !important;
+  /* biome-ignore lint/complexity/noImportantStyles: only !important wins over driver's inline placement */
+  left: 50% !important;
+  /* biome-ignore lint/complexity/noImportantStyles: only !important wins over driver's inline placement */
+  right: auto !important;
+  /* biome-ignore lint/complexity/noImportantStyles: only !important wins over driver's inline placement */
+  bottom: auto !important;
+  translate: -50% -50%;
+}
+
+.driver-popover.omp-tour.omp-tour-centred .driver-popover-arrow {
+  display: none;
+}

@@ -167,7 +167,10 @@ function SettingsSheet({
   );
 
   return (
-    <DialogContent className="flex h-[min(780px,94dvh)] w-[min(1080px,96vw)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none">
+    <DialogContent
+      data-tour="settings-sheet"
+      className="flex h-[min(780px,94dvh)] w-[min(1080px,96vw)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+    >
       <DialogTitle className="sr-only">Settings</DialogTitle>
       {(!phone || !showPage) && nav}
       {showPage && (

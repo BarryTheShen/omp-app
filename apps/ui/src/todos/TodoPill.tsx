@@ -43,6 +43,7 @@ export function TodoPill({ phases }: { readonly phases: TodoPhases }): ReactNode
       <PopoverTrigger
         render={
           <button
+            data-tour="todos"
             type="button"
             className="flex h-6 max-w-80 min-w-0 items-center gap-1.5 rounded-full border border-l2 px-2.5 text-xs text-t2 outline-none hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={`Todos: ${done} of ${tasks.length} done${now === null ? "" : `, now: ${now.content}`}`}

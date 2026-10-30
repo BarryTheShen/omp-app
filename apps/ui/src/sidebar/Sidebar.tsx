@@ -10,7 +10,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +32,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ChatTarget } from "../chat/controller";
 import { KEYS, keycap } from "../keys/table";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
-import type { WorkspaceView } from "../workspace/Workspace";
+import { WhatsNew } from "../tour/WhatsNew";
+import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
 import type { ChatList } from "./useChatList";
 
 /** How long the pointer rests on a chat before it is read ahead. */
@@ -64,6 +65,7 @@ export function Sidebar({
   onPrefetch,
   onDeleted,
   onSettings,
+  workspace,
 }: {
   readonly folder: FolderPath;
   readonly list: ChatList;
@@ -76,6 +78,8 @@ export function Sidebar({
   /** A chat was deleted: the panes that showed it move on. */
   readonly onDeleted: (id: ThreadId) => void;
   readonly onSettings: () => void;
+  /** For the What's new card, which starts a tour in the workspace. */
+  readonly workspace: RefObject<WorkspaceHandle | null>;
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -152,6 +156,7 @@ export function Sidebar({
   return (
     <nav aria-label="Chats" className={cn("flex min-h-0 flex-col p-2", hidden && "hidden")}>
       <Button
+        data-tour="new-chat"
         variant="ghost"
         className="justify-start gap-2 px-2 text-t2 hover:text-t1"
         onClick={() => onOpen({ kind: "new", folder }, "here")}
@@ -159,7 +164,10 @@ export function Sidebar({
         <SquarePen />
         New chat
       </Button>
-      <label className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1">
+      <label
+        data-tour="search-chats"
+        className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1"
+      >
         <Search className="size-3.5 shrink-0" />
         <input
           type="search"
@@ -170,7 +178,7 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto">
         {waiting.length > 0 && <Section label="Needs you">{waiting.map(row)}</Section>}
         {pinned.length > 0 && <Section label="Pinned">{pinned.map(row)}</Section>}
         <Section label="Chats">{rest.map(row)}</Section>
@@ -183,12 +191,14 @@ export function Sidebar({
           {problem}
         </p>
       )}
+      <WhatsNew workspace={workspace} />
       <div className="flex items-center justify-between px-1 pt-2">
         <ThemeSwitch />
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
+                data-tour="settings"
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Settings"

@@ -81,6 +81,7 @@ export function ModelPicker({
       <PopoverTrigger
         render={
           <Button
+            data-tour="model"
             type="button"
             variant="ghost"
             size="sm"

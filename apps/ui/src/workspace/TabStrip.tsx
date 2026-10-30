@@ -30,6 +30,7 @@ export function TabStrip({
 }): ReactNode {
   return (
     <div
+      data-tour="tabs"
       role="tablist"
       aria-label="Tabs"
       className="flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto px-1.5 pt-1"

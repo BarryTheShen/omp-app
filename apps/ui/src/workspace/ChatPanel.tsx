@@ -135,7 +135,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   }, [controller, api.id, focus]);
 
   return (
-    <div ref={root} className="flex h-full min-h-0 flex-col bg-panel">
+    <div ref={root} data-chat-pane className="flex h-full min-h-0 flex-col bg-panel">
       {controller !== null && (
         <PaneChat
           key={params.chat}

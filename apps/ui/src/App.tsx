@@ -168,8 +168,10 @@ function Shell({
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
+        workspace={workspace}
       />
       <main
+        data-tour="workspace"
         className={cn(
           "my-1.5 mr-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-l2 bg-panel max-sm:m-0 max-sm:rounded-none max-sm:border-0",
           phone && !showChat && "hidden",

@@ -15,12 +15,14 @@ export interface MenuItem {
  * highlight with the arrow keys and takes a row with Enter or Tab; a click takes one too.
  */
 export function ComposerMenu({
+  kind,
   label,
   items,
   active,
   empty,
   onPick,
 }: {
+  readonly kind: "command" | "file";
   readonly label: string;
   readonly items: readonly MenuItem[];
   readonly active: number;
@@ -29,6 +31,8 @@ export function ComposerMenu({
 }): ReactNode {
   return (
     <Command
+      data-tour="composer-menu"
+      data-kind={kind}
       shouldFilter={false}
       value={items[active]?.key ?? ""}
       className="absolute inset-x-0 bottom-full mb-2 h-auto rounded-xl border border-l2 shadow-lg"

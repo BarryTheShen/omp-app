@@ -378,6 +378,7 @@ export const Composer = memo(function Composer({
           </div>
         )}
         <form
+          data-tour="message-box"
           className={`relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
           onSubmit={(event) => {
             event.preventDefault();
@@ -401,6 +402,7 @@ export const Composer = memo(function Composer({
         >
           {menu.menu !== null && (
             <ComposerMenu
+              kind={menu.menu.kind}
               label={menu.menu.label}
               items={menu.menu.items}
               active={menu.menu.active}
@@ -482,7 +484,10 @@ export const Composer = memo(function Composer({
           />
           <div className="flex items-center gap-1 px-2 pb-2">
             {shell !== null && (
-              <span className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1">
+              <span
+                data-tour="shell-mode"
+                className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1"
+              >
                 {shell.method}
                 {shell.excludeFromContext ? " · not in context" : ""}
               </span>
@@ -578,6 +583,7 @@ function ThinkingChip({
       <TooltipTrigger
         render={
           <Button
+            data-tour="thinking"
             type="button"
             variant="ghost"
             size="sm"
