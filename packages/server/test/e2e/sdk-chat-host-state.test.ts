@@ -63,6 +63,66 @@ describe("the chat host's state methods", () => {
     );
 
     programTest(
+      `${program.name}: Ctrl+P's roles list in omp's order, skip a role without a model, and cycle both ways`,
+      async () => {
+        const chat = await chats.start(command, {
+          config: [
+            "modelRoles:",
+            "  smol: fake/claude-3-haiku-20240307",
+            "  slow: fake/claude-fable-5",
+            "  plan: fake/no-such-model",
+            "cycleOrder: [smol, default, plan, slow]",
+            "",
+          ].join("\n"),
+        });
+        await chat.client.hello;
+        const listed = await chat.client.request("get_role_models", {});
+        expect(listed.order).toEqual(["smol", "default", "plan", "slow"]);
+        // `plan` names a model omp does not have: it is left out, as omp's Ctrl+P skips it.
+        expect(listed.roles.map((role) => `${role.role}=${role.modelId}`)).toEqual([
+          "smol=claude-3-haiku-20240307",
+          "default=fake-model",
+          "slow=claude-fable-5",
+        ]);
+        expect(listed.current).toBe("default");
+
+        const forward = await chat.client.request("cycle_role_models", { direction: "forward" });
+        expect(forward).toEqual({
+          role: "slow",
+          provider: "fake",
+          modelId: "claude-fable-5",
+          name: "Claude Fable 5",
+          thinkingLevel: null,
+        });
+        expect((await chat.client.request("get_state", {})).model?.id).toBe("claude-fable-5");
+        // After the last role comes the first, and back again.
+        const wrapped = await chat.client.request("cycle_role_models", { direction: "forward" });
+        expect(wrapped?.role).toBe("smol");
+        const back = await chat.client.request("cycle_role_models", { direction: "backward" });
+        expect(back?.role).toBe("slow");
+        expect((await chat.client.request("get_role_models", {})).current).toBe("slow");
+
+        // A model picked outside the roles is no role's.
+        await chat.client.request("set_model", { provider: "fake", modelId: "fake-vision" });
+        expect((await chat.client.request("get_role_models", {})).current).toBeNull();
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: with only the default role there is nothing to cycle`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const listed = await chat.client.request("get_role_models", {});
+        expect(listed.roles.map((role) => role.role)).toEqual(["default"]);
+        expect(await chat.client.request("cycle_role_models", { direction: "forward" })).toBeNull();
+        expect((await chat.client.request("get_state", {})).model?.id).toBe("fake-model");
+      },
+      60_000,
+    );
+
+    programTest(
       `${program.name}: thinking levels list, set and cycle, and an unknown level is refused`,
       async () => {
         const chat = await chats.start(command);

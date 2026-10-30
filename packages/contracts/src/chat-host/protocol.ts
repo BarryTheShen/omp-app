@@ -258,6 +258,20 @@ export interface ChatHostToolDescriptor {
 export const SetModelParams = z.object({ provider: z.string().min(1), modelId: z.string().min(1) });
 export type SetModelParams = z.infer<typeof SetModelParams>;
 
+export const CycleRoleModelsParams = z.object({ direction: z.enum(["forward", "backward"]) });
+export type CycleRoleModelsParams = z.infer<typeof CycleRoleModelsParams>;
+
+/** A role's model as omp resolves it for Ctrl+P (`getRoleModelCycle`): `smol`, `default`, `slow` or one of the user's. */
+export interface RoleModel {
+  readonly role: string;
+  readonly provider: string;
+  readonly modelId: string;
+  /** The model's display name. */
+  readonly name: string;
+  /** The thinking level the role names (`slow: provider/model:high`), which a switch to it applies; null for none. */
+  readonly thinkingLevel: string | null;
+}
+
 /**
  * The thinking levels omp's session takes (`ConfiguredThinkingLevel`: omp's `ThinkingLevel` and `auto`), by name. The
  * mapped type makes a level omp adds or drops fail the typecheck here.
@@ -495,6 +509,26 @@ export interface ChatHostMethodMap {
   readonly get_available_models: {
     readonly params: EmptyParams;
     readonly result: { readonly models: ReturnType<Session["getAvailableModels"]> };
+  };
+  /**
+   * The roles Ctrl+P walks: omp's `cycleOrder` setting, the roles of it that resolve to an available model (omp skips the
+   * others, and `default` falls back to the live model), and the one the live model is (null when none is).
+   */
+  readonly get_role_models: {
+    readonly params: EmptyParams;
+    readonly result: {
+      readonly order: readonly string[];
+      readonly roles: readonly RoleModel[];
+      readonly current: string | null;
+    };
+  };
+  /**
+   * Switches the live model to the next or previous role's, as Ctrl+P and Shift+Ctrl+P do in omp; only the session
+   * changes, not the settings. null when fewer than two roles have a model ("Only one role model available").
+   */
+  readonly cycle_role_models: {
+    readonly params: CycleRoleModelsParams;
+    readonly result: RoleModel | null;
   };
   readonly set_thinking_level: {
     readonly params: ThinkingLevelParams;
@@ -739,6 +773,8 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   python: PythonParams,
   set_model: SetModelParams,
   get_available_models: EmptyParams,
+  get_role_models: EmptyParams,
+  cycle_role_models: CycleRoleModelsParams,
   set_thinking_level: ThinkingLevelParams,
   cycle_thinking_level: EmptyParams,
   get_available_thinking_levels: EmptyParams,

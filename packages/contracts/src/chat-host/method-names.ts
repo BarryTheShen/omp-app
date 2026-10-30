@@ -16,6 +16,8 @@ export const CHAT_HOST_METHOD_NAMES = [
   "python",
   "set_model",
   "get_available_models",
+  "get_role_models",
+  "cycle_role_models",
   "set_thinking_level",
   "cycle_thinking_level",
   "get_available_thinking_levels",

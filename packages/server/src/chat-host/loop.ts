@@ -16,6 +16,7 @@ import { AgentBusyError } from "@oh-my-pi/pi-agent-core";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
+import { cfgCycleOrder } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import {
   clearPluginRootsAndCaches,
   resolveActiveProjectRegistryPath,
@@ -62,6 +63,7 @@ import {
   parseServerLine,
   type QueuedInputParams,
   type QueuedMessage,
+  type RoleModel,
   type ShellRunResult,
 } from "@omp-app/contracts/chat-host";
 import { SessionEventStream } from "./events";
@@ -375,6 +377,32 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     get_available_models: async () => {
       await session.modelRegistry.awaitBackgroundRefresh();
       return { models: session.getAvailableModels() };
+    },
+    // Both read the catalog as it is, as omp's Ctrl+P does: they run in the command order, and waiting there for omp's
+    // background model refresh (seconds, or a network timeout) held up every request behind them.
+    get_role_models: async () => {
+      const order = cfgCycleOrder.get(session.settings);
+      const cycle = session.getRoleModelCycle(order);
+      // omp falls back to the first role when the live model is none of them; the app shows no role then.
+      const at = cycle?.models[cycle.currentIndex];
+      const live = session.model;
+      return {
+        order: [...order],
+        roles: cycle?.models.map(roleModel) ?? [],
+        current:
+          at !== undefined && live !== undefined && modelsMatch(at.model, live) ? at.role : null,
+      };
+    },
+    cycle_role_models: async ({ direction }) => {
+      const order = cfgCycleOrder.get(session.settings);
+      const result = await session.cycleRoleModels(order, direction);
+      if (result === undefined) return null;
+      const entry = session
+        .getRoleModelCycle(order)
+        ?.models.find((each) => each.role === result.role);
+      return roleModel(
+        entry ?? { role: result.role, model: result.model, explicitThinkingLevel: false },
+      );
     },
     set_thinking_level: async ({ level }) => {
       // omp's own parser turns the name into its level (an `Effort` member, `off`, `inherit` or `auto`).
@@ -961,6 +989,32 @@ async function findModel(session: AgentSession, provider: string, modelId: strin
   if (model) return model;
   await session.modelRegistry.awaitBackgroundRefresh();
   return find();
+}
+
+/** A role of omp's Ctrl+P cycle (`getRoleModelCycle`), as resolved now. */
+type ResolvedRoleModel = NonNullable<
+  ReturnType<AgentSession["getRoleModelCycle"]>
+>["models"][number];
+
+/** A role's model as the app shows it: the thinking level only when the role names one, as omp applies it then. */
+function roleModel(entry: ResolvedRoleModel): RoleModel {
+  return {
+    role: entry.role,
+    provider: entry.model.provider,
+    modelId: entry.model.id,
+    name: entry.model.name,
+    thinkingLevel:
+      entry.explicitThinkingLevel && entry.thinkingLevel !== undefined
+        ? `${entry.thinkingLevel}`
+        : null,
+  };
+}
+
+function modelsMatch(
+  a: { readonly provider: string; readonly id: string },
+  b: { readonly provider: string; readonly id: string },
+): boolean {
+  return a.provider === b.provider && a.id === b.id;
 }
 
 /** The chat's state, as omp's session reports it (the fields of omp's own `get_state`, `rpc-mode.ts:2064-2107`). */
