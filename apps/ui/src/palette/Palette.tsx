@@ -190,6 +190,7 @@ export function Palette({
   onSettings,
   onServers,
   onNewWindow,
+  onInbox,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -205,6 +206,8 @@ export function Palette({
   readonly onServers: () => void;
   /** Opens another desktop window, in the desktop window only. */
   readonly onNewWindow: () => void;
+  /** Opens the inbox: the chats waiting for you, and what runs settled with while you were elsewhere. */
+  readonly onInbox: () => void;
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
@@ -315,6 +318,13 @@ export function Palette({
         label: sidePanel.open ? "Hide the side panel" : "Show the side panel",
         keys: keycap(KEYS.sidePanel),
         run: () => close(togglePanel),
+      },
+      {
+        key: "app:inbox",
+        group: "Commands",
+        label: "Inbox",
+        detail: "Chats waiting for you, and turns that ended while you were elsewhere",
+        run: () => close(onInbox),
       },
       // Another desktop window; a browser has none to open.
       ...(bridge === null

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatTarget } from "../chat/controller";
+import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
 import { togglePanel, usePanelState } from "../panels/panel-state";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
@@ -202,6 +203,7 @@ export function Sidebar({
       <div className="flex items-center justify-between px-1 pt-2">
         <ThemeSwitch />
         <div className="flex items-center gap-0.5">
+          <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
           <Tooltip>
             <TooltipTrigger
               render={

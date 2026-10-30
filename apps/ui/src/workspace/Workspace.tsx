@@ -464,6 +464,10 @@ export function Workspace({
       composers,
       onPaneChanged: report,
       newChat: (api) => addChat(api, { kind: "new", folder }),
+      inView: (paneId) =>
+        document.visibilityState === "visible" &&
+        document.hasFocus() &&
+        apis.current.get(tabsRef.current.active)?.activePanel?.id === paneId,
     }),
     [client, focus, controllers, composers, report, addChat, folder],
   );

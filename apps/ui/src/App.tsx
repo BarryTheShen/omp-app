@@ -24,6 +24,7 @@ import { FolderMenu } from "./folders/FolderMenu";
 import { keepLinkFolder } from "./folders/folder";
 import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
+import { inbox, setInboxOpen } from "./inbox/inbox";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
@@ -171,6 +172,25 @@ function Shell({
     workspace.current?.open(target, where);
     setShowChat(true);
   }, []);
+  // The chat you are in is seen: what it settled with leaves the inbox when the focus moves to it, and when the page
+  // comes to the front with it focused.
+  useEffect(() => {
+    const look = (): void => {
+      if (document.visibilityState === "visible" && document.hasFocus()) inbox.seen(view.focused);
+    };
+    look();
+    window.addEventListener("focus", look);
+    document.addEventListener("visibilitychange", look);
+    return () => {
+      window.removeEventListener("focus", look);
+      document.removeEventListener("visibilitychange", look);
+    };
+  }, [view.focused]);
+  /** Opens the inbox; on a phone the list of chats shows first, where the bell is. */
+  const showInbox = useCallback(() => {
+    setShowChat(false);
+    setInboxOpen(true);
+  }, []);
   const showShortcuts = useCallback(() => setShortcuts(true), []);
   const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
   useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
@@ -271,6 +291,7 @@ function Shell({
         onSettings={showSettings}
         onServers={showServers}
         onNewWindow={newWindow}
+        onInbox={showInbox}
       />
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />

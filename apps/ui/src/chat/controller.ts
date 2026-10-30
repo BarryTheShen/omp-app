@@ -31,6 +31,7 @@ import {
 } from "@omp-app/contracts/chat-host";
 import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
+import { type Attention, AttentionTracker } from "../inbox/attention";
 import { ModelHubToggle } from "../models/hub";
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
@@ -68,6 +69,9 @@ export class ChatController {
   readonly modelHubToggle = new ModelHubToggle();
   /** This pane's Agent Hub: closed, or open on a subagent or on the list alone. */
   readonly agentHub = new AgentHubState();
+  /** Reads this chat's live events for what its runs settle with (the inbox's rows). */
+  readonly #attention = new AttentionTracker();
+  readonly #attentionListeners = new Set<(attention: Attention) => void>();
   #threadId: ThreadId | null;
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;
@@ -135,6 +139,14 @@ export class ChatController {
   /** A chat started here from nothing (New chat), as against a saved one opened again. */
   get isNew(): boolean {
     return this.target.kind === "new";
+  }
+
+  /** What this chat's live runs settle with that may need you: a turn done or failed, omp gone. */
+  onAttention(listener: (attention: Attention) => void): () => void {
+    this.#attentionListeners.add(listener);
+    return () => {
+      this.#attentionListeners.delete(listener);
+    };
   }
 
   /** Opens the chat for this pane. A failure is said in the transcript; a pane that went away meanwhile says nothing. */
@@ -602,6 +614,12 @@ export class ChatController {
     // A side question's answer redraws its sheet only, not the chat.
     if (payload.kind === "event" && this.btw.apply(payload.event)) return;
     this.store.apply(payload);
+    // The server's replay of the chat's history is not news.
+    if (this.#live) {
+      const attention = this.#attention.take(payload);
+      if (attention !== null)
+        for (const listener of [...this.#attentionListeners]) listener(attention);
+    }
     if (payload.kind === "host_request") {
       if (this.#live && isHostDialogRequest(payload.request))
         this.store.addRequest(payload.request);

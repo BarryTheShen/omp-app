@@ -523,6 +523,30 @@ const NOTES_TOUR: Tour = {
   ],
 };
 
+const INBOX_BUTTON = part("inbox-button");
+const INBOX = part("inbox");
+
+const INBOX_TOUR: Tour = {
+  id: "inbox-2026-10-30",
+  title: "Your inbox",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: INBOX_BUTTON,
+      title: "The inbox",
+      text: "Chats waiting for you, and turns that end while you are in another pane, tab or window, gather behind this bell, as in Tern; the number counts them. Open it.",
+      action: { kind: "appears", selector: INBOX },
+    },
+    {
+      target: INBOX,
+      title: "Back to a chat",
+      text: "A row takes you to its chat, and looking at a chat clears what it finished with. <b>Clear</b> empties the finished rows; a chat waiting for your answer stays until you answer it.",
+      action: next,
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -536,4 +560,5 @@ export const TOURS: readonly Tour[] = [
   MODEL_HUB_TOUR,
   AGENTS_PROGRESS_TOUR,
   NOTES_TOUR,
+  INBOX_TOUR,
 ];

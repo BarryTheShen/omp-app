@@ -15,6 +15,7 @@ import { ChatPane } from "../chat/ChatPane";
 import type { ComposerHandle } from "../chat/Composer";
 import { ChatController, type ChatTarget } from "../chat/controller";
 import { userText } from "../chat/MessageActions";
+import { inbox } from "../inbox/inbox";
 
 /** A pane's chat: `chat` names this pane's chat, so a new chat that gets its id keeps its controller. */
 export interface ChatPanelParams {
@@ -85,6 +86,8 @@ export interface PaneHost {
   readonly onPaneChanged: () => void;
   /** Opens a new chat in a pane of that tab (an empty tab's New chat). */
   readonly newChat: (api: DockviewApi) => void;
+  /** Whether this pane is the one you are in: the focused pane of the tab shown, with the page in front and focused. */
+  readonly inView: (paneId: string) => boolean;
 }
 
 export const PaneHostContext = createContext<PaneHost | null>(null);
@@ -95,7 +98,8 @@ const TITLE_CHARACTERS = 60;
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>): ReactNode {
   const host = use(PaneHostContext);
   if (host === null) throw new Error("ChatPanel needs the workspace around it.");
-  const { client, focus, controllers, composers, onPaneChanged } = host;
+  const { client, focus, controllers, composers, onPaneChanged, inView } = host;
+  const paneInView = useCallback(() => inView(api.id), [inView, api.id]);
   const onComposer = useCallback(
     (handle: ComposerHandle | null) => {
       if (handle === null) composers.delete(api.id);
@@ -144,6 +148,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
           api={api}
           onPaneChanged={onPaneChanged}
           onComposer={onComposer}
+          inView={paneInView}
         />
       )}
     </div>
@@ -156,12 +161,15 @@ function PaneChat({
   api,
   onPaneChanged,
   onComposer,
+  inView,
 }: {
   readonly controller: ChatController;
   readonly params: ChatPanelParams;
   readonly api: IDockviewPanelProps<ChatPanelParams>["api"];
   readonly onPaneChanged: () => void;
   readonly onComposer: (handle: ComposerHandle | null) => void;
+  /** Whether this pane is the one you are in now. */
+  readonly inView: () => boolean;
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const first = snapshot.entries
@@ -185,6 +193,29 @@ function PaneChat({
     api.updateParameters({ ...params, target: { kind: "existing", threadId, sessionFile } });
     onPaneChanged();
   }, [api, params, saved, threadId, sessionFile, onPaneChanged]);
+
+  // The inbox: this chat waits for you for as long as it does, and what its runs settle with while you are in another
+  // pane, tab or window is kept there until you look.
+  const titleNow = useRef(title);
+  useEffect(() => {
+    titleNow.current = title;
+  }, [title]);
+  useEffect(() => {
+    if (threadId === null || sessionFile === null) return;
+    const chat = { threadId, sessionFile, title };
+    inbox.setWaiting(chat, waiting);
+    return () => inbox.setWaiting(chat, false);
+  }, [threadId, sessionFile, title, waiting]);
+  useEffect(
+    () =>
+      controller.onAttention((attention) => {
+        const id = controller.threadId;
+        const file = controller.sessionFile;
+        if (id === null || file === null || inView()) return;
+        inbox.add({ threadId: id, sessionFile: file, title: titleNow.current }, attention);
+      }),
+    [controller, inView],
+  );
 
   return <ChatPane key={params.chat} controller={controller} onComposer={onComposer} />;
 }

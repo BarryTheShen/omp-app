@@ -64,6 +64,7 @@ realTest.describe("new UI tours", () => {
         /Tour: A model for each role/,
         /Tour: Agents and progress/,
         /Tour: Notes above the box/,
+        /Tour: Your inbox/,
       ]);
 
       expect(realApp.problems).toEqual([]);
