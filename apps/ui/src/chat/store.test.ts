@@ -248,22 +248,51 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().activity).toBeNull();
   });
 
-  test("a command's output and omp's notifications show as notices until dismissed", () => {
+  test("a command's output and omp's errors stay as notices until dismissed; its status lines pass as toasts", () => {
     const store = new ChatStore();
     store.apply(event({ type: "command_output", text: "Active tools: bash, read" }));
+    store.apply(
+      event({
+        type: "notice",
+        level: "error",
+        message: "disk full",
+        source: "session-persistence",
+      }),
+    );
     store.apply(event({ type: "ui_notify", message: "No open PRs", notifyType: "warning" }));
-    store.apply(event({ type: "ui_notify", message: "Reloaded" }));
     expect(store.getSnapshot().notices.map(({ text, level }) => `${level}: ${text}`)).toEqual([
       "output: Active tools: bash, read",
-      "warning: No open PRs",
-      "info: Reloaded",
+      "error: session-persistence: disk full",
     ]);
+    expect(store.getSnapshot().toast).toMatchObject({ text: "No open PRs", tone: "warning" });
+
     const [first] = store.getSnapshot().notices;
     if (first !== undefined) store.dismissNotice(first.id);
     expect(store.getSnapshot().notices.map((notice) => notice.text)).toEqual([
-      "No open PRs",
-      "Reloaded",
+      "session-persistence: disk full",
     ]);
+  });
+
+  test("one toast at a time: a newer one takes its place, and only its own time ends it", () => {
+    const store = new ChatStore();
+    store.apply(event({ type: "ui_notify", message: "Reloaded" }));
+    const first = store.getSnapshot().toast;
+    store.apply(event({ type: "notice", level: "info", message: "Saved", source: "btw-history" }));
+    const second = store.getSnapshot().toast;
+    expect(second).toMatchObject({ text: "btw-history: Saved", tone: "info" });
+
+    // The replaced toast's timer ends nothing; the shown one's does.
+    if (first !== null) store.dismissToast(first.id);
+    expect(store.getSnapshot().toast).toBe(second);
+    if (second !== null) store.dismissToast(second.id);
+    expect(store.getSnapshot().toast).toBeNull();
+
+    // A toast after a dismissal gets a new id, so an old timer cannot end it.
+    store.toast("Only one role model available", "info");
+    const third = store.getSnapshot().toast;
+    expect(third?.id).not.toBe(first?.id);
+    if (first !== null) store.dismissToast(first.id);
+    expect(store.getSnapshot().toast).toBe(third);
   });
 
   test("omp's roster and its subagent events make one row per agent, in spawn order, with the latest progress", () => {

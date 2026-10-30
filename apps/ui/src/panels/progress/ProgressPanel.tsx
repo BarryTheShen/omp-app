@@ -113,7 +113,7 @@ function ChatProgress({
                 chat
                   .setPlanMode(!plan.enabled)
                   .catch((failure: unknown) =>
-                    chat.store.addNotice(
+                    chat.store.toast(
                       `Plan mode: ${failure instanceof Error ? failure.message : String(failure)}`,
                       "error",
                     ),

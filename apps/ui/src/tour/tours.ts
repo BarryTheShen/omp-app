@@ -501,6 +501,21 @@ const AGENTS_PROGRESS_TOUR: Tour = {
   ],
 };
 
+const NOTES_TOUR: Tour = {
+  id: "notes-2026-10-30",
+  title: "Notes above the box",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "omp's short notes",
+      text: "omp's short notes now show just above the message box for a few seconds, then fade, as in Tern: a side answer ready, only one role model, an action that failed. What a command prints, and why a chat could not open, still stay in the chat. Windows and menus now open with Tern's short pop.",
+      action: next,
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -513,4 +528,5 @@ export const TOURS: readonly Tour[] = [
   SIDE_PANEL_TOUR,
   MODEL_HUB_TOUR,
   AGENTS_PROGRESS_TOUR,
+  NOTES_TOUR,
 ];

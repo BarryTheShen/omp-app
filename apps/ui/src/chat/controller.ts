@@ -62,8 +62,8 @@ export type ChatTarget =
  */
 export class ChatController {
   readonly store = new ChatStore();
-  /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them go to the chat. */
-  readonly btw = new BtwStore((text) => this.store.addNotice(text, "info"));
+  /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them show as toasts. */
+  readonly btw = new BtwStore((text) => this.store.toast(text, "info"));
   /** Whether this pane's Models dialog (omp's Alt+M) is open. */
   readonly modelHubToggle = new ModelHubToggle();
   /** This pane's Agent Hub: closed, or open on a subagent or on the list alone. */
@@ -338,7 +338,7 @@ export class ChatController {
    */
   async cycleRole(direction: "forward" | "backward"): Promise<void> {
     if (this.#noRoles) {
-      this.store.addNotice(
+      this.store.toast(
         "This app server cannot switch role models yet; it needs an update.",
         "info",
       );
@@ -347,7 +347,7 @@ export class ChatController {
     const switched = await this.#request("cycle_role_models", { direction });
     if (switched === null) {
       // omp's own words for a cycle with one role, or none, that has a model.
-      this.store.addNotice("Only one role model available", "info");
+      this.store.toast("Only one role model available", "info");
       return;
     }
     this.store.setRole(switched.role);

@@ -48,6 +48,8 @@ export function ChatPane({
     (id: number) => controller.store.hideRoleTrack(id),
     [controller],
   );
+  // Stable for the same reason: a toast's own timer ends it.
+  const hideToast = useCallback((id: number) => controller.store.dismissToast(id), [controller]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [restore, setRestore] = useState<ComposerRestore | null>(null);
   const [folds, setFolds] = useState<Folds>(NO_FOLDS);
@@ -97,7 +99,7 @@ export function ChatPane({
             if (back !== null) setRestore({ key: Date.now(), ...back });
           })
           .catch((failure: unknown) =>
-            controller.store.addNotice(
+            controller.store.toast(
               `Could not edit that message: ${failure instanceof Error ? failure.message : String(failure)}`,
               "error",
             ),
@@ -150,7 +152,7 @@ export function ChatPane({
       controller
         .setPlanMode(!planMode.enabled)
         .catch((failure: unknown) =>
-          controller.store.addNotice(
+          controller.store.toast(
             `Plan mode: ${failure instanceof Error ? failure.message : String(failure)}`,
             "error",
           ),
@@ -163,7 +165,7 @@ export function ChatPane({
       controller
         .cycleRole(event.shiftKey ? "backward" : "forward")
         .catch((failure: unknown) =>
-          controller.store.addNotice(
+          controller.store.toast(
             `Could not switch the model: ${failure instanceof Error ? failure.message : String(failure)}`,
             "error",
           ),
@@ -201,6 +203,8 @@ export function ChatPane({
         role={snapshot.role}
         roleTrack={snapshot.roleTrack}
         onRoleTrackDone={hideRoleTrack}
+        toast={snapshot.toast}
+        onToastDone={hideToast}
         thinkingLevel={snapshot.thinkingLevel}
         queue={snapshot.queue}
         activity={snapshot.activity}

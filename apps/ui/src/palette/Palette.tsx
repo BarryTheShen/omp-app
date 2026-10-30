@@ -94,7 +94,7 @@ function chatModes(
           controller
             .setPlanMode(!enabled)
             .catch((failure: unknown) =>
-              controller.store.addNotice(
+              controller.store.toast(
                 `Plan mode: ${failure instanceof Error ? failure.message : String(failure)}`,
                 "error",
               ),
@@ -142,7 +142,7 @@ function windowServers(
   const move = (choice: ServerChoice) => () =>
     close(() => {
       openDesktopServer(bridge, choice).catch((failure: unknown) =>
-        controller?.store.addNotice(`Server: ${refusalText(failure)}`, "error"),
+        controller?.store.toast(`Server: ${refusalText(failure)}`, "error"),
       );
     });
   const items: Item[] = [

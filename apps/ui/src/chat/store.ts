@@ -40,13 +40,24 @@ export interface ChatShellRun {
 }
 
 /**
- * What one of omp's built-in commands printed (`/session`, `/usage`, …), or a notification from omp or an extension:
- * shown in this browser only, as omp's TUI does.
+ * What one of omp's built-in commands printed (`/session`, `/usage`, …), or something that explains the chat itself (it
+ * could not open, a part of it is missing, omp could not save it): a row at the transcript's end, in this browser only,
+ * as omp's TUI prints it, until dismissed.
  */
 export interface ChatNotice {
   readonly id: number;
   readonly text: string;
   readonly level: "output" | "info" | "warning" | "error";
+}
+
+/**
+ * One of omp's status lines (a model switched, a side answer ready, an action that failed): a toast above the message
+ * box for a moment, as Tern draws it, one at a time, a new one replacing the one shown.
+ */
+export interface ChatToast {
+  readonly id: number;
+  readonly text: string;
+  readonly tone: "success" | "info" | "warning" | "error";
 }
 
 /** After Ctrl+P: the roles it walks, in their order, and the one switched to; shown for a moment above the box. */
@@ -80,6 +91,8 @@ export interface ChatSnapshot {
   readonly requests: readonly HostDialogRequest[];
   readonly shell: ChatShellRun | null;
   readonly notices: readonly ChatNotice[];
+  /** omp's latest status line while it shows; null otherwise. */
+  readonly toast: ChatToast | null;
   /** The chat's subagents as omp's roster keeps them, in the order they were started. */
   readonly agents: readonly SubagentSnapshot[];
   /** omp's todo list, phase by phase; empty while the chat has none. */
@@ -118,6 +131,7 @@ const EMPTY: ChatSnapshot = {
   requests: [],
   shell: null,
   notices: [],
+  toast: null,
   agents: [],
   todos: [],
   planMode: null,
@@ -231,6 +245,9 @@ export class ChatStore {
   /** Commands and code this browser sent with `!!` or `$$`, until omp starts them. */
   readonly #excluded = new Set<string>();
   #notices: readonly ChatNotice[] = [];
+  #toast: ChatToast | null = null;
+  /** Never reused, so a toast's timer can only end that toast. */
+  #toastSeq = 0;
   #agents: ReadonlyMap<string, SubagentSnapshot> = new Map();
   #agentList: readonly SubagentSnapshot[] = [];
   #todos: ChatHostState["todoPhases"] = [];
@@ -429,10 +446,28 @@ export class ChatStore {
     this.#publish();
   }
 
-  /** A notice from the page itself, such as an edit omp refused. */
+  /** A row from the page itself that explains the chat: it could not open, or a part of it is not shown. */
   addNotice(text: string, level: ChatNotice["level"]): void {
     this.#notify(text, level);
     this.#publish();
+  }
+
+  /** One of omp's status lines, or the page's own (an action that failed): it replaces the toast shown. */
+  toast(text: string, tone: ChatToast["tone"]): void {
+    this.#showToast(text, tone);
+    this.#publish();
+  }
+
+  /** The toast's time is up (its id: a newer one stays). */
+  dismissToast(id: number): void {
+    if (this.#toast?.id !== id) return;
+    this.#toast = null;
+    this.#publish();
+  }
+
+  #showToast(text: string, tone: ChatToast["tone"]): void {
+    this.#toastSeq += 1;
+    this.#toast = { id: this.#toastSeq, text, tone };
   }
 
   /** A run this browser is about to send, so its box can say whether omp keeps it out of context. */
@@ -603,15 +638,17 @@ export class ChatStore {
         this.#goal = event.goal;
         return false;
       case "ui_notify":
-        this.#notify(event.message, event.notifyType ?? "info");
+        // An extension's or omp's notification: a status line in omp's TUI, a toast here.
+        this.#showToast(event.message, event.notifyType ?? "info");
         return false;
-      case "notice":
-        // omp's out-of-band notices (a side question or the session that could not be saved, …), as its TUI shows them.
-        this.#notify(
-          event.source ? `${event.source}: ${event.message}` : event.message,
-          event.level,
-        );
+      case "notice": {
+        // omp's out-of-band notices, as its TUI shows them: an error (the session or a side answer could not be saved)
+        // stays in the transcript until dismissed; anything else passes as a toast.
+        const text = event.source ? `${event.source}: ${event.message}` : event.message;
+        if (event.level === "error") this.#notify(text, "error");
+        else this.#showToast(text, event.level);
         return false;
+      }
       case "ui_open_url":
         this.#signIn = {
           url: event.url,
@@ -793,6 +830,7 @@ export class ChatStore {
       requests: this.#requests,
       shell: this.#shell,
       notices: this.#notices,
+      toast: this.#toast,
       agents: this.#agentList,
       todos: this.#todos,
       planMode: this.#planMode,

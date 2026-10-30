@@ -68,16 +68,24 @@ realTest.describe("new UI role models", () => {
     },
   );
 
-  realTest("with one role, Ctrl+P says so and keeps the model", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/" });
-    await newChat(page);
-    await box(page).press("Control+p");
-    await expect(
-      page.getByRole("region", { name: "Transcript" }).getByText("Only one role model available"),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(chip(page)).toHaveAccessibleName("Model: Fake Model");
-    await expect(track(page)).toHaveCount(0);
+  realTest(
+    "with one role, Ctrl+P says so in a toast above the box that passes, and keeps the model",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await box(page).press("Control+p");
+      // omp's status line, as Tern draws it: a toast for a moment, not a row in the chat.
+      const toast = page.getByRole("status").filter({ hasText: "Only one role model available" });
+      await expect(toast).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByRole("region", { name: "Transcript" }).getByText("Only one role model available"),
+      ).toHaveCount(0);
+      await expect(chip(page)).toHaveAccessibleName("Model: Fake Model");
+      await expect(track(page)).toHaveCount(0);
+      // Tern's 5.2 s for a note that is not a success, then a 260 ms fade.
+      await expect(toast).toHaveCount(0, { timeout: 10_000 });
 
-    expect(realApp.problems).toEqual([]);
-  });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

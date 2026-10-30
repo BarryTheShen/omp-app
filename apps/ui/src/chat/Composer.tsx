@@ -21,7 +21,8 @@ import type { ChatController } from "./controller";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
 import { RoleTrack } from "./RoleTrack";
-import type { ChatActivity, ChatModel, ChatQueue, RoleTrack as Track } from "./store";
+import type { ChatActivity, ChatModel, ChatQueue, ChatToast, RoleTrack as Track } from "./store";
+import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
 import { useComposerMenu } from "./useComposerMenu";
 import { WorkingRow } from "./WorkingRow";
@@ -63,6 +64,8 @@ export const Composer = memo(function Composer({
   role,
   roleTrack,
   onRoleTrackDone,
+  toast,
+  onToastDone,
   thinkingLevel,
   queue,
   activity,
@@ -90,6 +93,9 @@ export const Composer = memo(function Composer({
   /** After Ctrl+P, the roles in their order for a moment; `onRoleTrackDone` ends it. */
   readonly roleTrack: Track | null;
   readonly onRoleTrackDone: (id: number) => void;
+  /** omp's latest status line, as a toast above the box; `onToastDone` ends it. */
+  readonly toast: ChatToast | null;
+  readonly onToastDone: (id: number) => void;
   readonly thinkingLevel: string | null;
   readonly queue: ChatQueue;
   readonly activity: ChatActivity | null;
@@ -401,7 +407,8 @@ export const Composer = memo(function Composer({
 
   return (
     <div className="px-4 pt-2 pb-4">
-      <div className="mx-auto max-w-[720px]">
+      <div className="relative mx-auto max-w-[720px]">
+        {toast !== null && <Toast toast={toast} onDone={onToastDone} />}
         {activity !== null && <WorkingRow activity={activity} />}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
