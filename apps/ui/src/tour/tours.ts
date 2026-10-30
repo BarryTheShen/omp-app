@@ -362,6 +362,33 @@ const FOLDERS: Tour = {
   ],
 };
 
+const MODELS_AND_ROLES: Tour = {
+  id: "models-roles-2026-10-30",
+  title: "Models and roles",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("model"),
+      title: "Roles",
+      text: "{nextRole} switches this chat to the next role's model, as in omp: its roles, such as smol, default and slow. Try it.",
+      action: keys("nextRole"),
+    },
+    {
+      target: part("model"),
+      title: "And back",
+      text: "The roles showed above the box for a moment, the one in use filled; the chip names it. {previousRole} goes back.",
+      action: keys("previousRole"),
+    },
+    {
+      target: part("model"),
+      title: "Any model",
+      text: "{model} picks any model for this chat only (or click here). Which model each role uses is omp's own setting, which omp's Alt+M sets in the terminal.",
+      action: next,
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -369,4 +396,5 @@ export const TOURS: readonly Tour[] = [
   INSIDE_A_CHAT,
   PALETTE_AND_SETTINGS,
   FOLDERS,
+  MODELS_AND_ROLES,
 ];

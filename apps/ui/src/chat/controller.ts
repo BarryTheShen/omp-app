@@ -70,6 +70,10 @@ export class ChatController {
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
+  /** The roles Ctrl+P walks, in omp's `cycleOrder`, as last read; empty until read. */
+  #roleOrder: readonly string[] = [];
+  /** The server answers no role methods (it predates them): Ctrl+P says so instead of failing. */
+  #noRoles = false;
   readonly #stopResync: () => void;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
@@ -176,6 +180,7 @@ export class ChatController {
     };
     this.#followAgents(opened.threadId).catch(unshown("This chat's subagents are not shown"));
     this.#readModes().catch(unshown("Plan mode and the goal are not shown"));
+    this.#refreshRole().catch(() => undefined);
   }
 
   /** omp's plan mode and the chat's goal, as they are when the chat opens. */
@@ -302,6 +307,42 @@ export class ChatController {
   async cycleThinking(): Promise<void> {
     const result = await this.#request("cycle_thinking_level", {});
     if (result !== null) this.store.setThinkingLevel(result.level);
+  }
+
+  /**
+   * Switches the chat to the next or previous role's model, as omp's Ctrl+P and Shift+Ctrl+P do (only this chat; the
+   * settings stay), and shows the roles in their order for a moment, the one switched to marked.
+   */
+  async cycleRole(direction: "forward" | "backward"): Promise<void> {
+    if (this.#noRoles) {
+      this.store.addNotice(
+        "This app server cannot switch role models yet; it needs an update.",
+        "info",
+      );
+      return;
+    }
+    const switched = await this.#request("cycle_role_models", { direction });
+    if (switched === null) {
+      // omp's own words for a cycle with one role, or none, that has a model.
+      this.store.addNotice("Only one role model available", "info");
+      return;
+    }
+    this.store.setRole(switched.role);
+    if (this.#roleOrder.length > 0) this.store.showRoleTrack(this.#roleOrder, switched.role);
+  }
+
+  /** The live model's role and the roles' order (`get_role_models`); a server that predates them gives none. */
+  async #refreshRole(): Promise<void> {
+    try {
+      const roles = await this.#request("get_role_models", {});
+      if (this.#disposed) return;
+      this.#roleOrder = roles.order;
+      this.store.setRole(roles.current);
+    } catch (failure) {
+      if (!(failure instanceof AppFailure && failure.appError.code === "invalid_args"))
+        throw failure;
+      this.#noRoles = true;
+    }
   }
 
   /** Answers a dialog omp waits on (an approval, a question). */
@@ -467,7 +508,10 @@ export class ChatController {
     if (payload.event.type === "agent_start") this.#leaf = undefined;
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") this.#refreshWindow();
-    if (payload.event.type === "model_changed") void this.#refreshState();
+    if (payload.event.type === "model_changed") {
+      void this.#refreshState();
+      this.#refreshRole().catch(() => undefined);
+    }
     // omp cleared finished todos on its own; the list it kept comes with the state.
     if (payload.event.type === "todo_auto_clear") this.#refreshState().catch(() => undefined);
     // Plan mode can change outside this pane (another tab, omp's own commands): read it again when omp settles.

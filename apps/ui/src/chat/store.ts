@@ -49,6 +49,14 @@ export interface ChatNotice {
   readonly level: "output" | "info" | "warning" | "error";
 }
 
+/** After Ctrl+P: the roles it walks, in their order, and the one switched to; shown for a moment above the box. */
+export interface RoleTrack {
+  readonly order: readonly string[];
+  readonly current: string;
+  /** Tells one switch's track from the next one's. */
+  readonly id: number;
+}
+
 /** What a chat pane draws: the props of collab-web's transcript, plus the chat's own state. */
 export interface ChatSnapshot {
   readonly entries: readonly SessionEntry[];
@@ -84,6 +92,9 @@ export interface ChatSnapshot {
   readonly goal: GoalAnswer["goal"];
   /** The page a sign-in waits on (omp's `ui_open_url`), until the sign-in ends. */
   readonly signIn: SignInPage | null;
+  /** The role whose model the chat runs (omp's `smol`, `default`, `slow`, …); null when none, or the server cannot tell. */
+  readonly role: string | null;
+  readonly roleTrack: RoleTrack | null;
 }
 
 /** A sign-in's page to open: its address, a short local link to it when omp runs one, and omp's instructions. */
@@ -113,6 +124,8 @@ const EMPTY: ChatSnapshot = {
   proposal: null,
   goal: null,
   signIn: null,
+  role: null,
+  roleTrack: null,
 };
 
 /** A transcript to draw that is not a live chat (a subagent's, in the Agent Hub): its entries, and whether it runs. */
@@ -225,6 +238,8 @@ export class ChatStore {
   #proposal: PlanProposal | null = null;
   #goal: GoalAnswer["goal"] = null;
   #signIn: SignInPage | null = null;
+  #role: string | null = null;
+  #roleTrack: RoleTrack | null = null;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -328,6 +343,24 @@ export class ChatStore {
 
   setThinkingLevel(level: string | null): void {
     this.#thinkingLevel = level;
+    this.#publish();
+  }
+
+  /** The live model's role as omp reports it (`get_role_models`); null for none, or a server without roles. */
+  setRole(role: string | null): void {
+    this.#role = role;
+    this.#publish();
+  }
+
+  /** After Ctrl+P: the roles in order and the one switched to, until `hideRoleTrack` with its id. */
+  showRoleTrack(order: readonly string[], current: string): void {
+    this.#roleTrack = { order, current, id: (this.#roleTrack?.id ?? 0) + 1 };
+    this.#publish();
+  }
+
+  hideRoleTrack(id: number): void {
+    if (this.#roleTrack?.id !== id) return;
+    this.#roleTrack = null;
     this.#publish();
   }
 
@@ -759,6 +792,8 @@ export class ChatStore {
       proposal: this.#proposal,
       goal: this.#goal,
       signIn: this.#signIn,
+      role: this.#role,
+      roleTrack: this.#roleTrack,
     };
     for (const listener of this.#listeners) listener();
   }

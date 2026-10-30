@@ -189,6 +189,18 @@ export const KEYS = {
     label: "Next thinking level",
   },
   model: { hotkey: "alt+p", scope: "box", group: "Message box", label: "Choose the model" },
+  nextRole: {
+    hotkey: "ctrl+p",
+    scope: "pane",
+    group: "Message box",
+    label: "Next role's model (smol, default, slow)",
+  },
+  previousRole: {
+    hotkey: "ctrl+shift+p",
+    scope: "pane",
+    group: "Message box",
+    label: "Previous role's model",
+  },
   retry: { hotkey: "alt+r", scope: "box", group: "Message box", label: "Retry the failed turn" },
   takeBack: {
     hotkey: "alt+up",

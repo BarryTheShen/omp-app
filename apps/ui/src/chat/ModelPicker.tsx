@@ -23,11 +23,13 @@ const sameModel = (a: ChatModel | null, b: ChatModel): boolean =>
 
 /**
  * The chat's model as a chip; it opens omp's model list, searchable, grouped by provider. Its open state is the pane's,
- * so a failed request's "Switch model" opens it too.
+ * so a failed request's "Switch model" opens it too. A model that is a role's other than `default` (Ctrl+P switches
+ * between them) is shown with the role: "slow · Claude Opus".
  */
 export function ModelPicker({
   controller,
   model,
+  role,
   disabled,
   open,
   onOpenChange,
@@ -35,12 +37,14 @@ export function ModelPicker({
 }: {
   readonly controller: ChatController;
   readonly model: ChatModel | null;
+  readonly role: string | null;
   readonly disabled: boolean;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onError: (failure: unknown) => void;
 }): ReactNode {
   const [list, setList] = useState<ModelList>({ kind: "loading" });
+  const named = model !== null && role !== null && role !== "default" ? role : null;
 
   // The list is read each time it opens: omp refreshes its models in the background.
   useEffect(() => {
@@ -87,12 +91,15 @@ export function ModelPicker({
             size="sm"
             // The chip gives way first on a narrow box, so Send stays in it.
             className="max-w-56 min-w-0 shrink gap-1 text-t2 hover:text-t1"
-            aria-label={`Model: ${model?.name ?? "none"}`}
+            aria-label={`Model: ${model?.name ?? "none"}${named === null ? "" : ` (${named})`}`}
             disabled={disabled}
           />
         }
       >
-        <span className="truncate">{model?.name ?? "Choose a model"}</span>
+        <span className="truncate">
+          {named === null ? "" : `${named} · `}
+          {model?.name ?? "Choose a model"}
+        </span>
         <ChevronDown />
       </PopoverTrigger>
       <PopoverContent align="start" side="top" className="w-80 p-0">

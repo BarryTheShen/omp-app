@@ -58,6 +58,7 @@ realTest.describe("new UI tours", () => {
         /Tour: Inside a chat/,
         /Tour: Palette, keys and settings/,
         /Tour: Folders/,
+        /Tour: Models and roles/,
       ]);
 
       expect(realApp.problems).toEqual([]);

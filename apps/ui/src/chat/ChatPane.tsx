@@ -28,7 +28,8 @@ export interface ComposerRestore {
 /**
  * One chat: its transcript, what omp waits on, and the message box. Ctrl+O opens or folds every tool card and Ctrl+T
  * shows or hides every thinking block, anywhere in the pane; Alt+A opens or closes the Agent Hub, as does the agents
- * pill above the box, and a task card's agent opens it on that agent.
+ * pill above the box, and a task card's agent opens it on that agent; Ctrl+P and Shift+Ctrl+P switch to the next or
+ * previous role's model, as in omp.
  */
 export function ChatPane({
   controller,
@@ -40,6 +41,11 @@ export function ChatPane({
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const loadOlder = useCallback(() => void controller.loadOlder(), [controller]);
+  // Stable, so the role track's timer is not restarted by every render while omp streams.
+  const hideRoleTrack = useCallback(
+    (id: number) => controller.store.hideRoleTrack(id),
+    [controller],
+  );
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [restore, setRestore] = useState<ComposerRestore | null>(null);
   const [folds, setFolds] = useState<Folds>(NO_FOLDS);
@@ -137,6 +143,19 @@ export function ChatPane({
         );
       return;
     }
+    // omp's Ctrl+P and Shift+Ctrl+P: the next or previous role's model (smol, default, slow, as omp's roles are set).
+    if (event.ctrlKey && !event.altKey && !event.metaKey && event.code === "KeyP") {
+      event.preventDefault();
+      controller
+        .cycleRole(event.shiftKey ? "backward" : "forward")
+        .catch((failure: unknown) =>
+          controller.store.addNotice(
+            `Could not switch the model: ${failure instanceof Error ? failure.message : String(failure)}`,
+            "error",
+          ),
+        );
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
     const which = event.code === "KeyO" ? "tools" : event.code === "KeyT" ? "thinking" : null;
     if (which === null) return;
@@ -165,6 +184,9 @@ export function ChatPane({
         disabled={snapshot.phase !== "live"}
         closed={snapshot.phase === "ended"}
         model={snapshot.model}
+        role={snapshot.role}
+        roleTrack={snapshot.roleTrack}
+        onRoleTrackDone={hideRoleTrack}
         thinkingLevel={snapshot.thinkingLevel}
         queue={snapshot.queue}
         activity={snapshot.activity}

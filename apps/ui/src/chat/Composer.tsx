@@ -19,7 +19,8 @@ import { ComposerMenu } from "./ComposerMenu";
 import type { ChatController } from "./controller";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
-import type { ChatActivity, ChatModel, ChatQueue } from "./store";
+import { RoleTrack } from "./RoleTrack";
+import type { ChatActivity, ChatModel, ChatQueue, RoleTrack as Track } from "./store";
 import { shellRun } from "./triggers";
 import { useComposerMenu } from "./useComposerMenu";
 import { WorkingRow } from "./WorkingRow";
@@ -58,6 +59,9 @@ export const Composer = memo(function Composer({
   disabled,
   closed,
   model,
+  role,
+  roleTrack,
+  onRoleTrackDone,
   thinkingLevel,
   queue,
   activity,
@@ -80,6 +84,11 @@ export const Composer = memo(function Composer({
   /** The chat could not be opened: the box says so, and nothing typed waits to be sent. */
   readonly closed: boolean;
   readonly model: ChatModel | null;
+  /** The role whose model the chat runs (omp's `smol`, `slow`, …); the chip names it, `default` aside. */
+  readonly role: string | null;
+  /** After Ctrl+P, the roles in their order for a moment; `onRoleTrackDone` ends it. */
+  readonly roleTrack: Track | null;
+  readonly onRoleTrackDone: (id: number) => void;
   readonly thinkingLevel: string | null;
   readonly queue: ChatQueue;
   readonly activity: ChatActivity | null;
@@ -370,6 +379,7 @@ export const Composer = memo(function Composer({
     <div className="px-4 pt-2 pb-4">
       <div className="mx-auto max-w-[720px]">
         {activity !== null && <WorkingRow activity={activity} />}
+        {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
         {(agentsTotal > 0 || todos.some((phase) => phase.tasks.length > 0)) && (
           <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">
@@ -495,6 +505,7 @@ export const Composer = memo(function Composer({
             <ModelPicker
               controller={controller}
               model={model}
+              role={role}
               disabled={disabled}
               open={modelPickerOpen}
               onOpenChange={onModelPickerOpenChange}
