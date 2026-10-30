@@ -52,6 +52,12 @@ export function ChatPane({
   const hideToast = useCallback((id: number) => controller.store.dismissToast(id), [controller]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [restore, setRestore] = useState<ComposerRestore | null>(null);
+  /**
+   * An edit on its way: omp goes back to before the message and the chat is read again, which takes a moment on a long
+   * chat. Edit is offered again once it is through, so a second click cannot bring the message back twice.
+   */
+  const [editing, setEditing] = useState(false);
+  const editingNow = useRef(false);
   const [folds, setFolds] = useState<Folds>(NO_FOLDS);
   /** The Agent Hub, while it is open: the subagent shown, or null for the list alone (the side panel opens it too). */
   const hub = useSyncExternalStore(controller.agentHub.subscribe, controller.agentHub.getSnapshot);
@@ -84,7 +90,7 @@ export function ChatPane({
   );
   const waiting = snapshot.requests[0];
   const approval = waiting?.method === "ui.approve" ? waiting.id : null;
-  const canEdit = !snapshot.working && snapshot.phase === "live";
+  const canEdit = !snapshot.working && snapshot.phase === "live" && !editing;
   const actions = useMemo<RowActions>(
     () => ({
       // omp's own `/retry`: the last failed turn, again.
@@ -93,6 +99,9 @@ export function ChatPane({
       onStopShell: () => controller.stopShell(),
       onDismissNotice: (id) => controller.store.dismissNotice(id),
       onEdit: (entryId) => {
+        if (editingNow.current) return;
+        editingNow.current = true;
+        setEditing(true);
         controller
           .rewind(entryId)
           .then((back) => {
@@ -103,7 +112,11 @@ export function ChatPane({
               `Could not edit that message: ${failure instanceof Error ? failure.message : String(failure)}`,
               "error",
             ),
-          );
+          )
+          .finally(() => {
+            editingNow.current = false;
+            setEditing(false);
+          });
       },
       canEdit,
     }),

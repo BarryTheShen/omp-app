@@ -58,6 +58,30 @@ realTest.describe("new UI edit and attachments", () => {
   );
 
   realTest(
+    "Edit clicked twice while omp goes back puts the message in the box once",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const box = page.getByRole("textbox", { name: "Message" });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const edit = page.getByRole("button", { name: "Edit this message" });
+
+      await box.fill("only once");
+      await box.press("Enter");
+      await expect(transcript.getByText("pong")).toHaveCount(1, { timeout: 60_000 });
+      await expect(edit).toHaveCount(1, { timeout: 30_000 });
+
+      await transcript.getByText("only once").hover();
+      // The second click comes while omp is still going back: it must not bring the message again.
+      await edit.dblclick();
+      await expect(box).toHaveValue("only once");
+      await page.waitForTimeout(1_000);
+      await expect(box).toHaveValue("only once");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "a pasted or dropped image goes with the message, Remove takes one out, and other files are refused by name",
     async ({ realApp }) => {
       const page = await newChat(realApp);

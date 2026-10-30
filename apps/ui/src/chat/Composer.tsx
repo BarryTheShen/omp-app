@@ -21,6 +21,7 @@ import type { ChatController } from "./controller";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
 import { RoleTrack } from "./RoleTrack";
+import { withRestored } from "./restored";
 import type { ChatActivity, ChatModel, ChatQueue, ChatToast, RoleTrack as Track } from "./store";
 import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
@@ -35,10 +36,6 @@ export interface ComposerHandle {
   /** Puts text at the caret (over a selection), then the caret after it. */
   readonly insert: (text: string) => void;
 }
-
-/** Text that came back from omp's queue, put in front of what the box holds. */
-const withRestored = (restored: readonly string[], current: string): string =>
-  [...restored, current].filter((part) => part.trim() !== "").join("\n\n");
 
 /** An image omp gave back (an edited message's), as the box holds it. */
 const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
