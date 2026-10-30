@@ -517,11 +517,11 @@ info=$(server_info 90) || fail "T8: the server never answered"
 read -r side _ <<<"$info"
 [[ $side == "$kept" ]] || fail "T8: the window's server is $side, not $kept: a second server started"
 sleep 5
-# The new UI's New chat button, at the top of its chat list: its place is fixed by the window's size (1200 x 800,
-# server.rs). Measured in the new UI at that size: the button's box is x 8, y 8, 208 x 32, so its centre is (112, 24).
-# Measure it again (a real-omp spec reading the Chats list's getByRole("button", { name: "New chat" }) at a 1200 x 800
-# viewport) when the sidebar's layout changes.
-xdotool mousemove --window "$wid" 112 24 click 1 || fail "T8: could not click New chat"
+# The new UI's New chat button, under the folder at the top of its chat list: its place is fixed by the window's size
+# (1200 x 800, server.rs). Measured in the new UI at that size: the folder's button is x 8, y 8, 208 x 32 and New chat's
+# box is x 8, y 40, 208 x 32, so its centre is (112, 56). Measure it again (a real-omp spec reading the Chats list's
+# getByRole("button", { name: "New chat" }) at a 1200 x 800 viewport) when the sidebar's layout changes.
+xdotool mousemove --window "$wid" 112 56 click 1 || fail "T8: could not click New chat"
 wait_log 'status=running' 90 || fail "T8: New chat did not start omp (the server logged no running omp)"
 omp_pid=$(grep -o 'status=running pid=[0-9]*' "$state/omp-app.log" | tail -n 1 | cut -d= -f3)
 [[ -n $omp_pid ]] || fail "T8: New chat did not start omp"
@@ -532,6 +532,38 @@ sleep 4
 outcome=$(grep 'omp.process' "$state/omp-app.log" | tail -n 1 | grep -o 'status=[a-z]*')
 note "T8 omp reported $outcome for the new chat (without a model or key, omp stops; the window says so)"
 shot "$wid" new-chat
+# The app's pane keys are kitty's and hold Super, and WebKitGTK never tells the page about Super: unless the window
+# hands those keys to the page (keys.rs), Super+Ctrl+Shift+Left reaches it as Ctrl+Shift+Left, the previous tab, which
+# with one tab does nothing. A second pane comes first (Ctrl+Shift+O). Its chat changes the screen while its omp starts
+# (and here, with no model, stops), so the check waits until the screen stands still for a second; three presses of
+# Super+Ctrl+Shift+Left must then move the panes' edge, changing much of the screen.
+command -v compare >/dev/null || fail "T8: ImageMagick's compare is missing"
+differing() { # the number of pixels that differ between the screenshots $1 and $2
+  local out
+  out=$(compare -fuzz 5% -metric AE "$1" "$2" null: 2>&1 >/dev/null)
+  python3 -c 'import re, sys; m = re.match(r"\s*([0-9.]+(?:e[+-]?[0-9]+)?)", sys.argv[1]); print(int(float(m.group(1))) if m else -1)' "$out"
+}
+xdotool windowfocus "$wid" 2>/dev/null || true
+running=$(count_log 'status=running')
+xdotool key ctrl+shift+o || fail "T8: could not press Ctrl+Shift+O"
+wait_log_count 'status=running' $((running + 1)) 90 || fail "T8: Ctrl+Shift+O started no omp for a second pane"
+still=-1
+for _ in $(seq 1 30); do
+  import -window "$wid" "$work/keys-1.png" || fail "T8: could not take a screenshot of the two panes"
+  sleep 1
+  import -window "$wid" "$work/keys-2.png" || fail "T8: could not take a screenshot of the two panes"
+  still=$(differing "$work/keys-1.png" "$work/keys-2.png")
+  [[ $still -ge 0 && $still -le 500 ]] && break
+done
+[[ $still -ge 0 && $still -le 500 ]] || fail "T8: the two panes never stood still for a second in 60 s ($still pixels changed)"
+xdotool key super+ctrl+shift+Left super+ctrl+shift+Left super+ctrl+shift+Left || fail "T8: could not press Super+Ctrl+Shift+Left"
+sleep 2
+import -window "$wid" "$work/keys-3.png" || fail "T8: could not take the screenshot after Super+Ctrl+Shift+Left"
+moved=$(differing "$work/keys-2.png" "$work/keys-3.png")
+shot "$wid" pane-resized-with-super
+note "T8 pixels that differ: $still in a second without a key, $moved after Super+Ctrl+Shift+Left three times"
+[[ $moved -ge 5000 ]] || fail "T8: Super+Ctrl+Shift+Left did not resize the pane ($moved pixels changed)"
+note "T8 Super+Ctrl+Shift+Left resized the pane in the window"
 close_window "$wid"
 wait_gone "$p" 40 || fail "T8: the app did not exit after its window closed"
 wait "$p"
@@ -553,7 +585,7 @@ info=$(server_info 90) || fail "T9: the server never answered"
 read -r side _ <<<"$info"
 [[ $side == "$before_server" ]] || fail "T9: the window's server is $side, not $before_server: a second server started"
 sleep 5
-xdotool mousemove --window "$wid" 112 24 click 1 || fail "T9: could not click New chat"
+xdotool mousemove --window "$wid" 112 56 click 1 || fail "T9: could not click New chat"
 wait_log_count 'status=running' $((${running_before:-0} + 1)) 90 || fail "T9: New chat did not start omp (the server logged no new running omp)"
 sleep 6
 # The server's log has no line for a sent prompt, so the provider's request log marks the start of the turn.

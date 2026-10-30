@@ -38,6 +38,7 @@ use webkit2gtk::{
 use crate::address;
 use crate::downloads;
 use crate::gstreamer::RegistryScan;
+use crate::keys;
 use crate::remote;
 use crate::WINDOW_LABEL;
 
@@ -482,10 +483,12 @@ fn new_window(
         })
 }
 
-/// Builds the app's window, with its page loads watched (see `watch_page_loads`).
+/// Builds the app's window, with its page loads watched (see `watch_page_loads`) and its keys with Super handed to the
+/// page (see `keys.rs`).
 fn build_window(app: &AppHandle, page: WebviewUrl) -> tauri::Result<WebviewWindow> {
     let window = new_window(app, page).build()?;
     watch_page_loads(&window);
+    keys::forward_super_keys(&window);
     Ok(window)
 }
 

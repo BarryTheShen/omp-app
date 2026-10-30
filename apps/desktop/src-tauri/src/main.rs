@@ -12,6 +12,7 @@ mod clipboard;
 mod commands;
 mod downloads;
 mod gstreamer;
+mod keys;
 mod remote;
 mod server;
 mod signals;
