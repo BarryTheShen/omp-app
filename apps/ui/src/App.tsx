@@ -26,6 +26,8 @@ import { GoalDialog } from "./goal/GoalDialog";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
+import { togglePanel, usePanelState } from "./panels/panel-state";
+import { SidePanel } from "./panels/SidePanel";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
@@ -172,6 +174,14 @@ function Shell({
   const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
   useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
   useHotkeys(KEYS.shortcuts.hotkey, () => setShortcuts((open) => !open), anywhere);
+  useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
+  const sidePanel = usePanelState();
+  /** The focused pane's chat, for the side panel; read again whenever the workspace's view changes. */
+  const [focusedChat, setFocusedChat] = useState<ChatController | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the view says when the focused pane changed
+  useEffect(() => {
+    setFocusedChat(workspace.current?.focused()?.controller ?? null);
+  }, [view]);
   useHotkeys(
     KEYS.settings.hotkey,
     () => {
@@ -186,7 +196,12 @@ function Shell({
   );
   return (
     <div
-      className="grid h-full grid-cols-[244px_minmax(0,1fr)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)] max-sm:grid-cols-1"
+      className={cn(
+        "grid h-full max-sm:grid-cols-1",
+        sidePanel.open && !phone
+          ? "grid-cols-[244px_minmax(0,1fr)_320px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_300px]"
+          : "grid-cols-[244px_minmax(0,1fr)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)]",
+      )}
       data-app-root="true"
     >
       <ConnectionBanner client={client} />
@@ -224,6 +239,7 @@ function Shell({
         )}
         <Workspace ref={workspace} client={client} folder={folder} phone={phone} onView={setView} />
       </main>
+      <SidePanel client={client} folder={folder} chat={focusedChat} phone={phone} />
       <Palette
         open={palette}
         onOpenChange={setPalette}

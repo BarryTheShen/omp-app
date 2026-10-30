@@ -27,6 +27,8 @@ import {
 } from "../desktop/bridge";
 import { LOCAL_SERVER_LABEL, remoteServerLabel } from "../desktop/ServerSection";
 import { KEYS, keycap } from "../keys/table";
+import { showPanel, togglePanel, usePanelState } from "../panels/panel-state";
+import { PANELS } from "../panels/registry";
 import type { ChatList } from "../sidebar/useChatList";
 import { setThemeChoice, type ThemeChoice } from "../theme/theme";
 import { startTour } from "../tour/runner";
@@ -196,6 +198,7 @@ export function Palette({
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
+  const sidePanel = usePanelState();
   const [commands, setCommands] = useState<readonly ChatHostCommand[]>([]);
   const [models, setModels] = useState<readonly ChatModel[]>([]);
   const [files, setFiles] = useState<readonly FileSearchCandidate[]>([]);
@@ -296,6 +299,19 @@ export function Palette({
         keys: keycap(KEYS.settings),
         run: () => close(onSettings),
       },
+      {
+        key: "app:sidePanel",
+        group: "Commands",
+        label: sidePanel.open ? "Hide the side panel" : "Show the side panel",
+        keys: keycap(KEYS.sidePanel),
+        run: () => close(togglePanel),
+      },
+      ...PANELS.map((panel) => ({
+        key: `panel:${panel.id}`,
+        group: "Commands" as const,
+        label: `Side panel: ${panel.title}`,
+        run: () => close(() => showPanel(panel.id)),
+      })),
       ...TOURS.map((tour) => ({
         key: `tour:${tour.id}`,
         group: "Commands" as const,

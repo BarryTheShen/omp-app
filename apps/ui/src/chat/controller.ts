@@ -36,6 +36,13 @@ import { cachedWindow, keepWindow } from "./windowCache";
 export const FIRST_WINDOW_BYTES = 512 * 1024;
 const OLDER_WINDOW_BYTES = 1024 * 1024;
 
+/** A chat's usage for the side panel: omp's session statistics (its `/session` numbers) and the last reply's speed. */
+export interface ChatUsage {
+  readonly stats: ChatHostMethodMap["get_session_stats"]["result"];
+  /** Output tokens per second of the last reply; null when omp has none to tell. */
+  readonly tokensPerSecond: number | null;
+}
+
 export type ChatTarget =
   | {
       readonly kind: "existing";
@@ -358,6 +365,15 @@ export class ChatController {
     if (threadId === null) throw new Error("The chat is not open yet.");
     await this.client.port(ChatSessionPort).answer({ threadId, id, answer });
     this.store.removeRequest(id);
+  }
+
+  /** This chat's usage: omp's session statistics and the last reply's speed. */
+  async usage(): Promise<ChatUsage> {
+    const [stats, state] = await Promise.all([
+      this.#request("get_session_stats", {}),
+      this.#request("get_state", {}),
+    ]);
+    return { stats, tokensPerSecond: state.tokensPerSecond };
   }
 
   /** omp's `/` commands for this chat, read once and then kept current by omp's `available_commands`. */

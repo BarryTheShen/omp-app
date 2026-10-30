@@ -2,6 +2,7 @@ import type { FolderPath, SessionFile, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
 import {
   Ellipsis,
+  PanelRight,
   PencilLine,
   Pin,
   PinOff,
@@ -31,6 +32,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatTarget } from "../chat/controller";
 import { KEYS, keycap } from "../keys/table";
+import { togglePanel, usePanelState } from "../panels/panel-state";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
 import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
@@ -85,6 +87,7 @@ export function Sidebar({
   readonly workspace: RefObject<WorkspaceHandle | null>;
 }): ReactNode {
   const [query, setQuery] = useState("");
+  const sidePanelOpen = usePanelState().open;
   const [problem, setProblem] = useState<string | null>(null);
   /** Titles typed into a rename that omp has not saved yet. */
   const [renamed, setRenamed] = useState<ReadonlyMap<ThreadId, string>>(new Map());
@@ -198,24 +201,45 @@ export function Sidebar({
       <WhatsNew workspace={workspace} />
       <div className="flex items-center justify-between px-1 pt-2">
         <ThemeSwitch />
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                data-tour="settings"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Settings"
-                aria-keyshortcuts="Control+,"
-                className="text-t3 hover:text-t1"
-                onClick={onSettings}
-              />
-            }
-          >
-            <Settings />
-          </TooltipTrigger>
-          <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-tour="side-panel-button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Side panel"
+                  aria-pressed={sidePanelOpen}
+                  aria-keyshortcuts="Control+Alt+B"
+                  className="text-t3 hover:text-t1 aria-pressed:text-t1"
+                  onClick={togglePanel}
+                />
+              }
+            >
+              <PanelRight />
+            </TooltipTrigger>
+            <TooltipContent side="top">Side panel · {keycap(KEYS.sidePanel)}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-tour="settings"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Settings"
+                  aria-keyshortcuts="Control+,"
+                  className="text-t3 hover:text-t1"
+                  onClick={onSettings}
+                />
+              }
+            >
+              <Settings />
+            </TooltipTrigger>
+            <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>

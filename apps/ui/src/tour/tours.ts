@@ -419,6 +419,36 @@ const SIDE_QUESTIONS: Tour = {
   ],
 };
 
+const SIDE_PANEL_BUTTON = part("side-panel-button");
+const SIDE_PANEL = part("side-panel");
+
+const SIDE_PANEL_TOUR: Tour = {
+  id: "side-panel-2026-10-30",
+  title: "Side panel and usage",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_BUTTON,
+      title: "Side panel",
+      text: "This button or {sidePanel} shows the side panel beside your chats. Try it.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: SIDE_PANEL,
+      title: "Usage",
+      text: "The chat you are in: how full its context is, and its messages, tokens and cost, as omp's <b>/session</b> counts them, read again after every reply. Below, your accounts' limits and when they reset.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_BUTTON,
+      title: "Hide it",
+      text: "{sidePanel} or the button hides it; the palette has it too. It stays as you leave it.",
+      action: { kind: "disappears", selector: SIDE_PANEL },
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -428,4 +458,5 @@ export const TOURS: readonly Tour[] = [
   FOLDERS,
   MODELS_AND_ROLES,
   SIDE_QUESTIONS,
+  SIDE_PANEL_TOUR,
 ];

@@ -126,6 +126,12 @@ export const KEYS = {
     group: "App",
     label: "Open the settings",
   },
+  sidePanel: {
+    hotkey: "ctrl+alt+b",
+    scope: "workspace",
+    group: "App",
+    label: "Show or hide the side panel",
+  },
 
   foldTools: {
     hotkey: "ctrl+o",
