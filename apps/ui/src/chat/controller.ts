@@ -14,19 +14,23 @@ import {
   type ThreadId,
 } from "@omp-app/contracts";
 import {
+  type AssignModelRoleParams,
   type ChatHostCommand,
   type ChatHostImage,
   type ChatHostMethod,
   type ChatHostMethodMap,
+  type ClearModelRoleParams,
   type GoalParams,
   type HostDialogAnswer,
   isHostDialogRequest,
   type LoginProvider,
+  type ModelHub,
   type PlanFile,
   type QueueName,
   type SubagentTranscript,
 } from "@omp-app/contracts/chat-host";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
+import { ModelHubToggle } from "../models/hub";
 import { ChatDraft } from "./drafts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
@@ -59,6 +63,8 @@ export class ChatController {
   readonly store = new ChatStore();
   /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them go to the chat. */
   readonly btw = new BtwStore((text) => this.store.addNotice(text, "info"));
+  /** Whether this pane's Models dialog (omp's Alt+M) is open. */
+  readonly modelHubToggle = new ModelHubToggle();
   #threadId: ThreadId | null;
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;
@@ -359,6 +365,39 @@ export class ChatController {
     }
   }
 
+  /** omp's model hub for this chat (Alt+M): its roles with the model each resolves to, and the models a role takes. */
+  async modelHub(): Promise<ModelHub> {
+    try {
+      return await this.#request("get_model_hub", {});
+    } catch (failure) {
+      throw olderServer(failure, "change model roles");
+    }
+  }
+
+  /**
+   * Gives a role a model, as omp's hub does: `default` also switches this chat, other roles only change their setting.
+   * `applied` is false where omp did not apply it; `status` is the line omp shows.
+   */
+  async assignRole(
+    params: AssignModelRoleParams,
+  ): Promise<{ readonly applied: boolean; readonly status: string }> {
+    try {
+      return await this.#request("assign_model_role", params);
+    } catch (failure) {
+      throw olderServer(failure, "change model roles");
+    }
+  }
+
+  /** Clears a role's setting, as omp's hub does; the lines omp shows for it (a second when this chat switched). */
+  async clearRole(params: ClearModelRoleParams): Promise<readonly string[]> {
+    try {
+      const { status, switchedTo } = await this.#request("clear_model_role", params);
+      return switchedTo === null ? [status] : [status, `Default model: ${switchedTo}`];
+    } catch (failure) {
+      throw olderServer(failure, "change model roles");
+    }
+  }
+
   /** Answers a dialog omp waits on (an approval, a question). */
   async answer(id: string, answer: HostDialogAnswer): Promise<void> {
     const threadId = this.#threadId;
@@ -405,7 +444,7 @@ export class ChatController {
       this.btw.asked(record);
       return record;
     } catch (failure) {
-      throw btwFailure(failure);
+      throw olderServer(failure, "answer side questions");
     }
   }
 
@@ -420,7 +459,7 @@ export class ChatController {
       const { records } = await this.#request("get_btw_history", {});
       if (!this.#disposed) this.btw.setRecords(records);
     } catch (failure) {
-      throw btwFailure(failure);
+      throw olderServer(failure, "answer side questions");
     }
   }
 
@@ -634,9 +673,9 @@ export class ChatController {
   }
 }
 
-/** A server that predates `/btw` refuses its methods' names: said in words a person acts on. */
-function btwFailure(failure: unknown): unknown {
+/** A server that predates a method refuses its name: said in words a person acts on. */
+function olderServer(failure: unknown, cannot: string): unknown {
   return failure instanceof AppFailure && failure.appError.code === "invalid_args"
-    ? new Error("This app server cannot answer side questions yet; it needs an update.")
+    ? new Error(`This app server cannot ${cannot} yet; it needs an update.`)
     : failure;
 }

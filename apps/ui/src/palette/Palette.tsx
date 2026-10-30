@@ -117,6 +117,13 @@ function chatModes(
     detail: "Side questions asked with /btw",
     run: () => close(() => controller.btw.show()),
   });
+  items.push({
+    key: "chat:models",
+    group: "Commands",
+    label: KEYS.modelHub.label,
+    keys: keycap(KEYS.modelHub),
+    run: () => close(() => controller.modelHubToggle.show()),
+  });
   return items;
 }
 

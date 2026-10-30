@@ -10,6 +10,7 @@ import {
 } from "react";
 import { AgentHub } from "../agents/AgentHub";
 import { BtwSheet } from "../btw/BtwSheet";
+import { ModelHub } from "../models/ModelHub";
 import { PlanReview } from "../plan/PlanReview";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
@@ -111,6 +112,18 @@ export function ChatPane({
     [controller],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    // omp's Alt+M: the Models dialog, where each role gets its model.
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      event.code === "KeyM"
+    ) {
+      event.preventDefault();
+      controller.modelHubToggle.toggle();
+      return;
+    }
     if (
       event.altKey &&
       !event.ctrlKey &&
@@ -219,6 +232,8 @@ export function ChatPane({
       )}
       {/* omp's /btw: the side questions' sheet, opened by /btw, the palette, or an answer asked here. */}
       <BtwSheet controller={controller} />
+      {/* omp's Alt+M: the Models dialog, opened by the key or the palette. */}
+      <ModelHub controller={controller} />
     </div>
   );
 }

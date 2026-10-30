@@ -207,6 +207,12 @@ export const KEYS = {
     group: "Message box",
     label: "Previous role's model",
   },
+  modelHub: {
+    hotkey: "alt+m",
+    scope: "pane",
+    group: "Message box",
+    label: "Models: give each role its model",
+  },
   retry: { hotkey: "alt+r", scope: "box", group: "Message box", label: "Retry the failed turn" },
   takeBack: {
     hotkey: "alt+up",

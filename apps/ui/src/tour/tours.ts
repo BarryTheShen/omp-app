@@ -383,7 +383,7 @@ const MODELS_AND_ROLES: Tour = {
     {
       target: part("model"),
       title: "Any model",
-      text: "{model} picks any model for this chat only (or click here). Which model each role uses is omp's own setting, which omp's Alt+M sets in the terminal.",
+      text: "{model} picks any model for this chat only (or click here). {modelHub} sets which model each role uses.",
       action: next,
     },
   ],
@@ -449,6 +449,29 @@ const SIDE_PANEL_TOUR: Tour = {
   ],
 };
 
+const MODEL_HUB = part("model-hub");
+
+const MODEL_HUB_TOUR: Tour = {
+  id: "model-hub-2026-10-30",
+  title: "A model for each role",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Models",
+      text: "{modelHub} opens omp's Models: which model each of omp's roles uses. Try it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: MODEL_HUB,
+      title: "Each role's model",
+      text: "The roles are on the left, each with its model (<b>auto</b> is omp's own pick). Choosing a model on the right gives it to the role: <b>Default</b> also switches this chat; the others serve {nextRole} and omp's own work (subagents, commit messages, …). The chips set the role's thinking, <b>Clear role</b> hands it back to omp. {stop} closes it; the palette has it too.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -459,4 +482,5 @@ export const TOURS: readonly Tour[] = [
   MODELS_AND_ROLES,
   SIDE_QUESTIONS,
   SIDE_PANEL_TOUR,
+  MODEL_HUB_TOUR,
 ];
