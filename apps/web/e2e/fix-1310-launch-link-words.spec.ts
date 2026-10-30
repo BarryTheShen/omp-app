@@ -60,13 +60,13 @@ realTest(
     const origin = new URL(page.url()).origin;
 
     // The address changes only in its fragment, as when a person types a different link into the same tab.
-    await page.goto(`${origin}/#token=not-the-token`);
+    await page.goto(`${origin}/old/#token=not-the-token`);
     await expect(page.getByRole("heading", { name: NOT_VALID })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(NOT_VALID_HINT)).toBeVisible();
     await expect(page.getByRole("heading", { name: EXPIRED })).toHaveCount(0);
     await capture(page, "1310-not-valid-light", "light");
 
-    const wrongLink = `${origin}/#token=not-the-token`;
+    const wrongLink = `${origin}/old/#token=not-the-token`;
     const dark = await openLink(browser, wrongLink, { dark: true });
     await expect(dark.tab.getByRole("heading", { name: NOT_VALID })).toBeVisible({
       timeout: 30_000,
@@ -90,7 +90,7 @@ realTest(
     realApp.allowProblem(/WebSocket connection to .* failed/);
     const page = await realApp.open();
     const origin = new URL(page.url()).origin;
-    const earlierLink = `${origin}/#token=${realApp.token}`;
+    const earlierLink = `${origin}/old/#token=${realApp.token}`;
 
     await realApp.restartServer();
     await expect(page.getByRole("heading", { name: EXPIRED })).toBeVisible({ timeout: 90_000 });

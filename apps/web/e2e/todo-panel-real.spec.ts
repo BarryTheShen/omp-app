@@ -33,7 +33,8 @@ async function openTodoTab(page: Page): Promise<Locator> {
   if ((await show.count()) > 0) await show.first().click();
   const sidebar = page.locator('[data-shell-sidebar="right"]');
   await sidebar.getByRole("tab", { name: "Todo checklist" }).click();
-  await expect(sidebar.getByText("Write the thing").first()).toBeVisible();
+  // The list is drawn after the tab opens, so this wait is longer than the default five seconds.
+  await expect(sidebar.getByText("Write the thing").first()).toBeVisible({ timeout: 30_000 });
   return sidebar;
 }
 

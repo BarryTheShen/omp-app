@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page, WebSocketRoute } from "@playwright/test";
-import { expect, type RealApp, realTest, sendPrompt, startChat } from "./real-omp";
+import { expect, oldUiLink, type RealApp, realTest, sendPrompt, startChat } from "./real-omp";
 
 realTest.setTimeout(300_000);
 
@@ -798,7 +798,7 @@ realTest(
     const page = await realApp.open();
     await typeLongDraft(page);
     const launch = await realApp.restartServer();
-    await page.goto(launch);
+    await page.goto(oldUiLink(launch));
     await expect(composer(page)).toHaveValue(LONG_DRAFT, { timeout: 120_000 });
   },
 );

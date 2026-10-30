@@ -88,7 +88,7 @@ realTest(
     await sendPrompt(composer, PROMPT);
     await expect(question(first)).toBeVisible({ timeout: 45_000 });
 
-    const launch = `${new URL(first.url()).origin}/#token=${encodeURIComponent(realApp.token)}`;
+    const launch = `${new URL(first.url()).origin}/old/#token=${encodeURIComponent(realApp.token)}`;
     const popup = first.waitForEvent("popup");
     await first.evaluate((url) => {
       window.open(url, "_blank");

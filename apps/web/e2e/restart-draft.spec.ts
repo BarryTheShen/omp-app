@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  oldUiLink,
   realTest,
   screenshots,
   sendPrompt,
@@ -49,7 +50,7 @@ realTest(
 
     // Opening the new link in the same tab loads the app again from that address.
     await app.goto("about:blank");
-    await app.goto(link);
+    await app.goto(oldUiLink(link));
     await expect(transcript(app).getByText("pong", { exact: true })).toBeVisible({
       timeout: 90_000,
     });
@@ -102,7 +103,7 @@ realTest(
       timeout: 90_000,
     });
     await app.goto("about:blank");
-    await app.goto(link);
+    await app.goto(oldUiLink(link));
     await expect(transcript(app).getByText("pong", { exact: true })).toBeVisible({
       timeout: 90_000,
     });

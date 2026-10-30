@@ -34,7 +34,7 @@ async function openFolderLink(
   folder: string,
   problems: string[],
 ): Promise<Page> {
-  const link = `${new URL(tab.url()).origin}/#token=${encodeURIComponent(realApp.token)}&folder=${encodeURIComponent(folder)}`;
+  const link = `${new URL(tab.url()).origin}/old/#token=${encodeURIComponent(realApp.token)}&folder=${encodeURIComponent(folder)}`;
   const page = await tab.context().newPage();
   page.on("console", (message) => {
     if (message.type() === "error") problems.push(`console error: ${message.text()}`);

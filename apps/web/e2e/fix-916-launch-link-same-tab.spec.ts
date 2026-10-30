@@ -1,4 +1,4 @@
-import { expect, realTest, sendPrompt, startChat } from "./real-omp";
+import { expect, oldUiLink, realTest, sendPrompt, startChat } from "./real-omp";
 
 /**
  * Issue 916. After omp-app restarts, the new launch link typed into the tab that is already open
@@ -28,7 +28,7 @@ realTest(
     });
 
     // The new link typed into the same tab, as a person does: only the fragment changes.
-    await page.goto(link);
+    await page.goto(oldUiLink(link));
     await expect(page.getByRole("heading", { name: "This launch link has expired" })).toHaveCount(
       0,
       { timeout: 30_000 },

@@ -1,6 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  expect,
+  oldUiLink,
+  realTest,
+  screenshots,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 realTest.setTimeout(300_000);
 // omp-app comes back at the same address: a port of 0 is picked at the first start and kept across the restart, so the old tab
@@ -34,7 +41,7 @@ realTest(
 
     // Opening the new link in the same tab loads the app again from that address.
     await app.goto("about:blank");
-    await app.goto(link);
+    await app.goto(oldUiLink(link));
     await expect(composer).toHaveValue(DRAFT, { timeout: 60_000 });
     // The restored chat has no message, so the session list still has none.
     await expect(app.getByText("No sessions in this folder")).toBeVisible({ timeout: 30_000 });

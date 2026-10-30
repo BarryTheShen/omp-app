@@ -56,7 +56,10 @@ realTest("gates terminal-only provider setup in real omp", async ({ realApp }) =
   playgroundUrl.search = "";
   playgroundUrl.hash = "";
   await page.goto(playgroundUrl.toString());
-  await expect(page.getByRole("heading", { name: "Provider setup" })).toBeVisible();
+  // The page opens a chat in real omp and reads its capabilities before it draws the panel, which takes seconds.
+  await expect(page.getByRole("heading", { name: "Provider setup" })).toBeVisible({
+    timeout: 60_000,
+  });
   await expect(page.getByText("omp can only open provider setup in its terminal.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Run setup" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Set up providers" })).toBeDisabled();

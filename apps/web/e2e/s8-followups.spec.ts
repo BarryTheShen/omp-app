@@ -1,5 +1,5 @@
 import type { Locator } from "@playwright/test";
-import { expect, realTest, sendPrompt, startChat } from "./real-omp";
+import { expect, realTest, sendPrompt, startChat, waitForFiniteAnimations } from "./real-omp";
 
 realTest.use({ seedSessions: 12 });
 
@@ -104,6 +104,8 @@ realTest("S8-10 clicking a blank row area opens that chat", async ({ realApp }) 
     await startChat(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await openSessions(page);
+    // The drawer slides in: its rows are measured once it has stopped, not while it moves.
+    await waitForFiniteAnimations(page);
     const row = page.locator('[data-slot="r1-session-row"]:visible').nth(1);
     await expect(row).toHaveAttribute("data-selected", "false");
     const moreAction = row.getByRole("button", { name: /More actions for/ });

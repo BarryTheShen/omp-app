@@ -102,6 +102,17 @@ export interface SeedEntries {
   readonly entries: readonly Record<string, unknown>[];
 }
 
+/**
+ * A launch link, which the server prints for the new UI (at its root), as the same link for the old UI under `/old/`,
+ * where `realApp.open()` opens it. For a spec that goes to a link by hand, after `realApp.restartServer()` or with a
+ * token of its own, and still means the old UI.
+ */
+export function oldUiLink(link: string): string {
+  const address = new URL(link);
+  address.pathname = "/old/";
+  return address.toString();
+}
+
 export interface OpenOptions {
   /** Runs before the app loads, for example to add an init script; its result is ignored. */
   readonly beforeLoad?: (page: Page) => Promise<unknown>;

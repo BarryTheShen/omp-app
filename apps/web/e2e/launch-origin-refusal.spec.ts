@@ -107,7 +107,7 @@ realTest("a page from a disallowed origin explains how to reach the app", async 
   });
   const target = new URL(lightPage.url());
   const proxy = await startOriginRewritingProxy(target);
-  const launchLink = `${proxy.url}/#token=${encodeURIComponent(realApp.token)}`;
+  const launchLink = `${proxy.url}/old/#token=${encodeURIComponent(realApp.token)}`;
   let darkPage: Page | undefined;
   try {
     const lightBackground = await showRefusal(lightPage, launchLink, "light");

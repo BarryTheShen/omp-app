@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
+import { expect, oldUiLink, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 /**
  * A saved chat whose model is gone (not in omp's catalog) cannot be restored: omp 18.6.3 and later refuse it
@@ -161,7 +161,7 @@ realTest(
 
     // The server restarts: the chat is refused again, and the same page offers the picker.
     const afterRestart = await realApp.restartServer();
-    await page.goto(afterRestart);
+    await page.goto(oldUiLink(afterRestart));
     await openSavedChatFromList(page);
     await expectSentenceAndPicker(page);
     await pickFakeModel(page);
@@ -169,7 +169,7 @@ realTest(
 
     // A second restart: the chat opens with the model picked for it, without asking again.
     const afterSecondRestart = await realApp.restartServer();
-    await page.goto(afterSecondRestart);
+    await page.goto(oldUiLink(afterSecondRestart));
     await openSavedChatFromList(page);
     await expectChatOpened(page);
   },
