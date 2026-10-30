@@ -21,7 +21,8 @@ realTest.describe("new UI workspace", () => {
     "splits, zoom, moving between panes and closing one with kitty's keys; the panes come back after a reload",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/v2/" });
-      await expect(page.getByText("Pick a chat or start a new one.")).toBeVisible();
+      // An empty tab offers a chat of its own, beside the list's.
+      await expect(page.getByRole("main").getByRole("button", { name: "New chat" })).toBeVisible();
       await chats(page).getByRole("button", { name: "New chat" }).click();
       await opened(page, 1);
       await boxes(page).first().click();

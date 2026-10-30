@@ -84,6 +84,26 @@ realTest.describe("new UI chat list and pane keys", () => {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest(
+      "a chat picked from the list, and New chat, put the caret in the pane's message box",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/v2/" });
+        const box = boxes(page);
+        await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+        await expect(box).toBeFocused();
+        // The pane shows a chat now: the next pick and New chat replace it in the same pane.
+        await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
+        await expect(box).toBeFocused();
+        await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await chats(page).getByRole("button", { name: "New chat" }).click();
+        await expect(box).toBeFocused();
+        await page.keyboard.type("typed at once");
+        await expect(box).toHaveValue("typed at once");
+
+        expect(realApp.problems).toEqual([]);
+      },
+    );
   });
 
   realTest("resize, equalize and swap the focused pane with kitty's keys", async ({ realApp }) => {

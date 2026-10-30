@@ -5,13 +5,16 @@ import {
   DockviewReact,
   type DockviewReadyEvent,
   type DockviewTheme,
+  type IWatermarkPanelProps,
   type SerializedDockview,
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
+import { SquarePen } from "lucide-react";
 import "../styles/dockview.css";
 import {
   type ReactNode,
   type Ref,
+  use,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -20,9 +23,10 @@ import {
   useState,
 } from "react";
 import { type Options, useHotkeys } from "react-hotkeys-hook";
+import { Button } from "@/components/ui/button";
 import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
-import { KEYS } from "../keys/table";
+import { KEYS, keycap } from "../keys/table";
 import {
   ChatPanel,
   type ChatPanelParams,
@@ -332,8 +336,8 @@ export function Workspace({
               folder: shown?.folder ?? folder,
             } satisfies ChatPanelParams);
             panel.api.setTitle("New chat");
+            focus.request(panel.id, true);
           }
-          focusPane(api);
           report();
         });
       },
@@ -366,6 +370,7 @@ export function Workspace({
       commands,
       composers,
       controllers,
+      focus,
       focusPane,
       folder,
       report,
@@ -445,8 +450,15 @@ export function Workspace({
   );
 
   const host = useMemo<PaneHost>(
-    () => ({ client, focus, controllers, composers, onPaneChanged: report }),
-    [client, focus, controllers, composers, report],
+    () => ({
+      client,
+      focus,
+      controllers,
+      composers,
+      onPaneChanged: report,
+      newChat: (api) => addChat(api, { kind: "new", folder }),
+    }),
+    [client, focus, controllers, composers, report, addChat, folder],
   );
   const labels = new Map(
     tabs.tabs.flatMap((tab) => {
@@ -498,11 +510,33 @@ export function Workspace({
   );
 }
 
-/** A tab with no pane: the first one, before a chat is picked, and the last one once its panes are closed. */
-function EmptyTab(): ReactNode {
+/** The keys that reach everything else, on an empty tab. */
+const START_KEYS = [KEYS.palette, KEYS.shortcuts, KEYS.settings] as const;
+
+/**
+ * A tab with no pane: the first one, before a chat is picked, and the last one once its panes are closed. Its New chat
+ * opens in this tab.
+ */
+function EmptyTab({ containerApi }: IWatermarkPanelProps): ReactNode {
+  const host = use(PaneHostContext);
   return (
-    <div className="grid h-full place-items-center bg-panel px-6 text-center text-t3">
-      Pick a chat or start a new one.
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-panel px-6 text-center">
+      <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-9 opacity-90" />
+      <p className="text-base font-medium text-t1">Pick a chat, or start a new one.</p>
+      <Button size="sm" onClick={() => host?.newChat(containerApi)}>
+        <SquarePen />
+        New chat
+      </Button>
+      <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-t3">
+        {START_KEYS.map((binding) => (
+          <li key={binding.label}>
+            <kbd className="rounded-sm border border-l2 px-1 font-mono text-[11px] text-t2">
+              {keycap(binding)}
+            </kbd>{" "}
+            {binding.label.toLowerCase()}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

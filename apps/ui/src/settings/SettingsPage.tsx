@@ -330,9 +330,7 @@ function marked(text: string, needle: string): ReactNode {
   return (
     <>
       {text.slice(0, at)}
-      <mark className="rounded-sm bg-accent/25 text-inherit">
-        {text.slice(at, at + needle.length)}
-      </mark>
+      <mark className="rounded-sm bg-accent/25 text-t1">{text.slice(at, at + needle.length)}</mark>
       {text.slice(at + needle.length)}
     </>
   );

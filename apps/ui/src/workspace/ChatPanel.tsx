@@ -1,6 +1,6 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath } from "@omp-app/contracts";
-import type { IDockviewPanelProps } from "dockview-react";
+import type { DockviewApi, IDockviewPanelProps } from "dockview-react";
 import {
   createContext,
   type ReactNode,
@@ -28,7 +28,8 @@ const FOCUS_FRAMES = 30;
 
 /**
  * The caret for panes. A pane asked for before its message box can take the caret (a pane just made: not drawn yet, or
- * not yet placed and shown by dockview) takes it once it can, if nothing else was asked for meanwhile.
+ * not yet placed and shown by dockview) takes it once it can, if nothing else was asked for meanwhile. A pane whose
+ * chat was just replaced waits for its new box: the old one is still drawn, and goes with the caret in it.
  */
 export class PaneFocus {
   readonly #boxes = new Map<string, () => boolean>();
@@ -45,9 +46,10 @@ export class PaneFocus {
     };
   }
 
-  request(id: string): void {
+  request(id: string, replaced = false): void {
     this.#pending = id;
     this.#frames = 0;
+    if (replaced) this.#boxes.delete(id);
     this.#try();
   }
 
@@ -81,6 +83,8 @@ export interface PaneHost {
   readonly composers: Map<string, ComposerHandle>;
   /** Tells the workspace a pane's chat, title or state changed. */
   readonly onPaneChanged: () => void;
+  /** Opens a new chat in a pane of that tab (an empty tab's New chat). */
+  readonly newChat: (api: DockviewApi) => void;
 }
 
 export const PaneHostContext = createContext<PaneHost | null>(null);

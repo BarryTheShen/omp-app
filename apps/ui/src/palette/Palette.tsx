@@ -1,5 +1,6 @@
 import type { FileSearchCandidate } from "@omp-app/contracts";
 import type { ChatHostCommand } from "@omp-app/contracts/chat-host";
+import { CornerDownLeft } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import {
   Command,
@@ -389,7 +390,8 @@ export function Palette({
             ))}
           </CommandList>
           <p className="border-t border-l2 px-3 py-1.5 text-xs text-t3">
-            ↑↓ navigate · ↵ run · esc close
+            ↑↓ navigate · <CornerDownLeft aria-hidden className="inline size-3 align-[-0.125em]" />
+            <span className="sr-only">enter</span> run · esc close
           </p>
         </Command>
       </DialogContent>

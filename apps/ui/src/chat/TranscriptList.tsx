@@ -1,5 +1,5 @@
 import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
 import { ArrowDown } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,23 @@ import type { ChatSnapshot } from "./store";
 
 /** A first guess at a row's height; every row is measured once drawn. */
 const ESTIMATED_ROW_PX = 72;
+
+/**
+ * Which resized rows move the scroll position with them: only rows wholly above the top of the view. TanStack's default
+ * also moves it for a row's first measurement when the row only starts above the view; such a row grows below the line
+ * being read, so moving the view pushes that line off the screen (332 px in WebKit). The row's place is read as laid out
+ * now: the scroll position already moved for the rows measured before it in the same batch, and the row moved with
+ * them. A row measured again keeps TanStack's rule: not while the reader scrolls up.
+ */
+function movesView(
+  item: VirtualItem,
+  _delta: number,
+  instance: Virtualizer<HTMLDivElement, Element>,
+): boolean {
+  const row = instance.getVirtualItems().find((each) => each.index === item.index) ?? item;
+  if (row.end > (instance.scrollOffset ?? 0)) return false;
+  return !instance.itemSizeCache.has(item.key) || instance.scrollDirection !== "backward";
+}
 
 /**
  * The transcript as a virtual list in TanStack Virtual's chat mode (https://tanstack.com/virtual/latest/docs/chat.md):
@@ -63,6 +80,7 @@ export function TranscriptList({
     paddingStart: 24,
     paddingEnd: 16,
   });
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
 
   // Start at the latest entry once the first window is there.
   const empty = rows.length === 0;
