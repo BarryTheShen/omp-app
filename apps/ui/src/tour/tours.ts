@@ -472,6 +472,35 @@ const MODEL_HUB_TOUR: Tour = {
   ],
 };
 
+const PANEL_TABS = part("side-panel-tabs");
+
+const AGENTS_PROGRESS_TOUR: Tour = {
+  id: "agents-progress-2026-10-30",
+  title: "Agents and progress",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_BUTTON,
+      title: "The side panel",
+      text: "This button or {sidePanel} shows the side panel. Try it.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: PANEL_TABS,
+      title: "Three panels",
+      text: "<b>Usage</b>, <b>Agents</b>: the chat's subagents (a click opens the Agent Hub on one), and <b>Progress</b>: its goal, omp's todo list and plan mode. They follow the chat you are in.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_BUTTON,
+      title: "Hide it",
+      text: "{sidePanel} or the button hides it.",
+      action: { kind: "disappears", selector: SIDE_PANEL },
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -483,4 +512,5 @@ export const TOURS: readonly Tour[] = [
   SIDE_QUESTIONS,
   SIDE_PANEL_TOUR,
   MODEL_HUB_TOUR,
+  AGENTS_PROGRESS_TOUR,
 ];

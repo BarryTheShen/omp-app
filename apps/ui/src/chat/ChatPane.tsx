@@ -51,24 +51,24 @@ export function ChatPane({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [restore, setRestore] = useState<ComposerRestore | null>(null);
   const [folds, setFolds] = useState<Folds>(NO_FOLDS);
-  /** The Agent Hub, while it is open: the subagent shown, or null for the list alone. */
-  const [hub, setHub] = useState<{ readonly selected: string | null } | null>(null);
+  /** The Agent Hub, while it is open: the subagent shown, or null for the list alone (the side panel opens it too). */
+  const hub = useSyncExternalStore(controller.agentHub.subscribe, controller.agentHub.getSnapshot);
   const root = useRef<HTMLDivElement | null>(null);
-  const openAgents = useCallback(() => setHub({ selected: null }), []);
+  const openAgents = useCallback(() => controller.agentHub.open(), [controller]);
   const closeAgents = useCallback(() => {
-    setHub(null);
+    controller.agentHub.close();
     // The caret goes back to where Alt+A or the pill took it from.
     root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
-  }, []);
+  }, [controller]);
   // Task cards link the agents omp's roster knows; the ids change only when an agent comes or goes, not with progress.
   const agentIds = snapshot.agents.map((agent) => agent.id).join("\n");
   const host = useMemo<ToolRenderHost>(() => {
     const known = new Set(agentIds.split("\n"));
     return {
       hasAgent: (id) => known.has(id),
-      openAgent: (id) => setHub({ selected: id }),
+      openAgent: (id) => controller.agentHub.open(id),
     };
-  }, [agentIds]);
+  }, [agentIds, controller]);
   const agentsRunning = snapshot.agents.filter(
     (agent) => agent.status === "running" || agent.status === "pending",
   ).length;
@@ -222,7 +222,7 @@ export function ChatPane({
           controller={controller}
           agents={snapshot.agents}
           selected={hub.selected}
-          onSelect={(id) => setHub({ selected: id })}
+          onSelect={(id) => controller.agentHub.open(id)}
           onClose={closeAgents}
         />
       )}

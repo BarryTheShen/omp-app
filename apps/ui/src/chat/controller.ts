@@ -29,6 +29,7 @@ import {
   type QueueName,
   type SubagentTranscript,
 } from "@omp-app/contracts/chat-host";
+import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { ModelHubToggle } from "../models/hub";
 import { ChatDraft } from "./drafts";
@@ -65,6 +66,8 @@ export class ChatController {
   readonly btw = new BtwStore((text) => this.store.addNotice(text, "info"));
   /** Whether this pane's Models dialog (omp's Alt+M) is open. */
   readonly modelHubToggle = new ModelHubToggle();
+  /** This pane's Agent Hub: closed, or open on a subagent or on the list alone. */
+  readonly agentHub = new AgentHubState();
   #threadId: ThreadId | null;
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;

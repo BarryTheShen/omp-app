@@ -163,6 +163,72 @@ realTest.describe("new UI side panel", () => {
     },
   );
 
+  realTest(
+    "Progress shows the todo list, sets and pauses a goal and turns plan mode on; Agents lists a subagent and opens the Agent Hub on it",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
+        timeout: 120_000,
+      });
+      await page.keyboard.press("Control+Alt+KeyB");
+      const tab = (name: string) =>
+        panel(page).getByRole("tablist", { name: "Panels" }).getByRole("tab", { name });
+
+      // Progress: no goal yet; omp's todo list as omp writes it.
+      await tab("Progress").click();
+      await expect(tab("Progress")).toHaveAttribute("aria-selected", "true");
+      const progress = panel(page).getByRole("tabpanel", { name: "Progress" });
+      await expect(progress).toContainText("No goal in this chat.");
+      await expect(progress).toContainText("omp keeps no todo list in this chat.");
+      await boxes(page).first().fill("make_todos");
+      await boxes(page).first().press("Enter");
+      const todos = progress.getByRole("region", { name: "Todos", exact: true });
+      await expect(todos.getByRole("listitem", { name: "Now: Write the thing" })).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(todos.getByRole("listitem", { name: "To do: Test the thing" })).toBeVisible();
+      await expect(progress).toContainText("0/2 done");
+
+      // A goal set from the panel, then paused there.
+      await progress.getByRole("button", { name: "Set a goal…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Set a goal" });
+      await dialog.getByRole("textbox", { name: "Objective" }).fill("Ship the release");
+      await dialog.getByRole("button", { name: "Set goal" }).click();
+      await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+      const goal = progress.getByRole("region", { name: "Goal", exact: true });
+      await expect(goal).toContainText("Ship the release", { timeout: 30_000 });
+      await expect(goal).toContainText("Working on it");
+      await goal.getByRole("button", { name: "Pause" }).click();
+      await expect(goal).toContainText("Paused");
+      await goal.getByRole("button", { name: "Drop" }).click();
+      await expect(progress).toContainText("No goal in this chat.");
+
+      // Plan mode (omp offers it here: the box shows its chip) turns on and off from the panel.
+      await progress.getByRole("button", { name: "Turn on" }).click();
+      await expect(progress).toContainText("On: omp plans and changes nothing until you approve.");
+      await progress.getByRole("button", { name: "Turn off" }).click();
+      await expect(progress).toContainText("Off: omp works on the chat directly.");
+
+      // Agents: the chat's subagent, live; a click opens the Agent Hub on it, where Kill stops it.
+      await tab("Agents").click();
+      const agents = panel(page).getByRole("tabpanel", { name: "Agents" });
+      await expect(agents).toContainText("No subagents in this chat yet.");
+      await boxes(page).first().fill("spawn_long_subagent");
+      await boxes(page).first().press("Enter");
+      const row = agents.getByRole("button", { name: /^LongProbe: / });
+      await expect(row).toHaveAccessibleName(/^LongProbe: \S+, running/, { timeout: 60_000 });
+      await row.click();
+      const hub = page.getByRole("complementary", { name: "Agent Hub" });
+      const agent = hub.getByRole("region", { name: "LongProbe", exact: true });
+      await expect(agent).toBeVisible();
+      await agent.getByRole("button", { name: "Kill" }).click();
+      await expect(row).toHaveAccessibleName(/^LongProbe: \S+, aborted/, { timeout: 30_000 });
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest("on a phone the panel is a sheet", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
     await page.setViewportSize({ width: 390, height: 844 });

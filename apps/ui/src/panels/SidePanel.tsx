@@ -20,11 +20,14 @@ export function SidePanel({
   folder,
   chat,
   phone,
+  openGoal,
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly chat: ChatController | null;
   readonly phone: boolean;
+  /** Opens the goal dialog for a chat. */
+  readonly openGoal: (chat: ChatController) => void;
 }): ReactNode {
   const { open, panel } = usePanelState();
   const headerRef = useRef<HTMLElement>(null);
@@ -38,7 +41,12 @@ export function SidePanel({
         className="flex items-center gap-1 border-b border-l2 px-3 py-2 outline-none"
       >
         {PANELS.length > 1 && (
-          <div role="tablist" aria-label="Panels" className="flex gap-0.5">
+          <div
+            role="tablist"
+            aria-label="Panels"
+            data-tour="side-panel-tabs"
+            className="flex gap-0.5"
+          >
             {PANELS.map((item) => (
               <Tooltip key={item.id}>
                 <TooltipTrigger
@@ -80,8 +88,8 @@ export function SidePanel({
           <TooltipContent>Close · {keycap(KEYS.sidePanel)}</TooltipContent>
         </Tooltip>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {chosen.render({ client, folder, chat })}
+      <div role="tabpanel" aria-label={chosen.title} className="min-h-0 flex-1 overflow-y-auto">
+        {chosen.render({ client, folder, chat, openGoal })}
       </div>
     </>
   );

@@ -1,15 +1,22 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath } from "@omp-app/contracts";
-import { Gauge, type LucideIcon } from "lucide-react";
+import { Bot, Gauge, ListChecks, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ChatController } from "../chat/controller";
+import { AgentsPanel } from "./agents/AgentsPanel";
+import { ProgressPanel } from "./progress/ProgressPanel";
 import { UsagePanel } from "./usage/UsagePanel";
 
-/** What a panel draws from: the app's client, the open folder, and the focused pane's chat (null when none is). */
+/**
+ * What a panel draws from: the app's client, the open folder, the focused pane's chat (null when none is), and the
+ * app's dialogs a panel may open.
+ */
 export interface PanelContext {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly chat: ChatController | null;
+  /** Opens the goal dialog for a chat (the palette's "Set a goal for this chat…"). */
+  readonly openGoal: (chat: ChatController) => void;
 }
 
 /**
@@ -23,11 +30,24 @@ export interface Panel {
   readonly render: (context: PanelContext) => ReactNode;
 }
 
+/** The panels in their tab order: usage, the subagents, then the goal and the checklist. */
 export const PANELS: readonly Panel[] = [
   {
     id: "usage",
     title: "Usage",
     icon: Gauge,
     render: ({ client, chat }) => <UsagePanel client={client} chat={chat} />,
+  },
+  {
+    id: "agents",
+    title: "Agents",
+    icon: Bot,
+    render: ({ chat }) => <AgentsPanel chat={chat} />,
+  },
+  {
+    id: "progress",
+    title: "Progress",
+    icon: ListChecks,
+    render: ({ chat, openGoal }) => <ProgressPanel chat={chat} openGoal={openGoal} />,
   },
 ];

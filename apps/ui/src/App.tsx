@@ -239,7 +239,13 @@ function Shell({
         )}
         <Workspace ref={workspace} client={client} folder={folder} phone={phone} onView={setView} />
       </main>
-      <SidePanel client={client} folder={folder} chat={focusedChat} phone={phone} />
+      <SidePanel
+        client={client}
+        folder={folder}
+        chat={focusedChat}
+        phone={phone}
+        openGoal={setGoalFor}
+      />
       <Palette
         open={palette}
         onOpenChange={setPalette}
