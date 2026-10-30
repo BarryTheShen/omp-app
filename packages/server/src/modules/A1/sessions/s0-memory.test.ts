@@ -82,7 +82,47 @@ async function makeFixture(): Promise<{ readonly root: string; readonly chat: st
   return { root, chat };
 }
 
+const LIVE_LIMIT_BYTES = 100 * 1024 * 1024;
+/** How often memory is read while a call runs, and how often a full collection runs. */
+const SAMPLE_MS = 2;
+const COLLECT_MS = 5;
+
+/**
+ * Runs `read` and returns its result with the most live memory (JS heap plus external buffers) the call held above where
+ * it started. The process's RSS would also count garbage the collector has not freed yet, which depends on its timing and
+ * on what ran earlier in the process; with a full collection every few milliseconds only what the call keeps is left.
+ */
+async function withPeakLive<T>(
+  read: () => Promise<T>,
+): Promise<{ readonly result: T; readonly peak: number }> {
+  const live = (): number => {
+    const { heapUsed, external } = process.memoryUsage();
+    return heapUsed + external;
+  };
+  Bun.gc(true);
+  const start = live();
+  let peak = 0;
+  const sample = (): void => {
+    peak = Math.max(peak, live() - start);
+  };
+  const sampler = setInterval(sample, SAMPLE_MS);
+  const collector = setInterval(() => Bun.gc(true), COLLECT_MS);
+  try {
+    const result = await read();
+    // What the call returns is still held here.
+    sample();
+    return { result, peak };
+  } finally {
+    clearInterval(sampler);
+    clearInterval(collector);
+  }
+}
+
+const TEST_TIMEOUT_MS = 120_000;
+
 describe("SP-S0 bounded nested session readers", () => {
+  // A full collection every few milliseconds is slow in a process with a large heap: in the whole package's run the
+  // list takes about ten seconds, against under half a second when this file runs alone.
   test("readSession does not load nested transcripts, while listSubagents preserves metadata", async () => {
     const fixture = await makeFixture();
     try {
@@ -92,17 +132,13 @@ describe("SP-S0 bounded nested session readers", () => {
         tempRoot: path.join(fixture.root, "tmp"),
         leaseProbe: async () => "inactive" as const,
       });
-      // RSS is the whole process's: collect what earlier test files in this process left, so the growth is the read's.
-      Bun.gc(true);
-      const before = process.memoryUsage().rss;
-      const session = await store.readSession(fixture.chat);
-      const afterRead = process.memoryUsage().rss;
-      expect(session.subagents).toEqual([]);
-      expect(afterRead - before).toBeLessThan(100 * 1024 * 1024);
+      const read = await withPeakLive(() => store.readSession(fixture.chat));
+      expect(read.result.subagents).toEqual([]);
+      expect(read.peak).toBeLessThan(LIVE_LIMIT_BYTES);
 
-      const listed = await store.listSubagents(fixture.chat);
-      expect(listed.transcripts).toHaveLength(NESTED_FILES);
-      expect(listed.transcripts[0]).toMatchObject({
+      const list = await withPeakLive(() => store.listSubagents(fixture.chat));
+      expect(list.result.transcripts).toHaveLength(NESTED_FILES);
+      expect(list.result.transcripts[0]).toMatchObject({
         key: "Worker0",
         agentId: "Worker0",
         parent: null,
@@ -111,9 +147,9 @@ describe("SP-S0 bounded nested session readers", () => {
         aborted: false,
         agent: "task",
       });
-      expect(process.memoryUsage().rss - afterRead).toBeLessThan(100 * 1024 * 1024);
+      expect(list.peak).toBeLessThan(LIVE_LIMIT_BYTES);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, TEST_TIMEOUT_MS);
 });
