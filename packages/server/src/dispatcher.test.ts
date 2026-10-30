@@ -249,3 +249,63 @@ describe("the dispatcher's fallback for an unexpected error", () => {
     expect(text).not.toContain("args");
   });
 });
+
+describe("a connection whose socket closed without the server hearing of it", () => {
+  test("a sweep ends it once, its ports let go of what it held, and the log names the client", async () => {
+    const dir = await tempDir();
+    const released: string[] = [];
+    const registry = createPortRegistry([
+      {
+        port: TestPort,
+        handlers: {
+          crash: async () => null,
+          refuse: async () => null,
+          slow: async () => null,
+        },
+        onConnectionClosed: (connectionId) => {
+          released.push(connectionId);
+        },
+      },
+    ]);
+    const dispatcher = new Dispatcher({
+      registry,
+      replay: new EventReplayHub(2),
+      welcome: WelcomeFrame.parse({
+        type: "welcome",
+        protocol: "omp-app/1",
+        instanceId: "instance-1",
+        serverVersion: "test",
+        omp: null,
+        capabilities: CapabilityMap.parse({}),
+      }),
+      logger: createLogger({ dir }),
+    });
+    let open = true;
+    const socket = (id: string, isOpen: () => boolean): DispatcherSocket => ({
+      id,
+      send: () => undefined,
+      close: () => undefined,
+      isOpen,
+    });
+    dispatcher.open(
+      socket("gone0000-0000-0000-0000-000000000000", () => open),
+      "TestBrowser/1.0 (phone)",
+    );
+    dispatcher.open(socket("alive000-0000-0000-0000-000000000000", () => true));
+
+    expect(dispatcher.sweep()).toBe(0);
+    open = false;
+    expect(dispatcher.sweep()).toBe(1);
+    expect(dispatcher.sweep()).toBe(0);
+    // Ports hear of a closed connection right after it closes, as with a socket's own close.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(released).toEqual(["gone0000-0000-0000-0000-000000000000"]);
+
+    const text = readLogTail(dir, 20);
+    expect(text).toContain("connection.open id=gone0000 total=1 client=");
+    expect(text).toContain("TestBrowser/1.0 (phone)");
+    expect(text).toMatch(/connection\.close id=gone0000 pending_calls=0 reason=reaped/);
+    expect(text).toMatch(/WARN {2}connection\.reaped count=1 total=1/);
+  });
+});

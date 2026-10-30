@@ -19,6 +19,8 @@ export interface DispatcherSocket {
   readonly id: string;
   send(frame: ServerFrame): void;
   close(code: number, reason: string): void;
+  /** Whether the connection is still open (see `Dispatcher.sweep`); a socket that cannot tell (a test's) counts as open. */
+  readonly isOpen?: () => boolean;
 }
 
 export type DispatcherWelcome = z.output<typeof WelcomeFrameSchema>;
@@ -175,12 +177,19 @@ export class DispatcherSession {
     }
   }
 
-  close(): void {
+  /** Whether the session's socket is still open, as far as the socket can tell. */
+  socketOpen(): boolean {
+    return this.#socket.isOpen?.() ?? true;
+  }
+
+  /** Ends the session: its calls are aborted, its subscriptions dropped, and each port lets go of what it held for it. */
+  close(reason?: "reaped"): void {
     if (this.#closed) return;
     this.#closed = true;
     this.#logger?.info("connection.close", {
       id: this.#socket.id.slice(0, 8),
       pending_calls: this.#pending.size,
+      ...(reason === undefined ? {} : { reason }),
     });
     for (const pending of this.#pending.values()) pending.controller.abort("connection_closed");
     this.#pending.clear();
@@ -380,20 +389,43 @@ export class Dispatcher {
     this.#options = options;
   }
 
-  open(socket: DispatcherSocket): DispatcherSession {
+  /** A connection's session; `client` names the browser or app that opened it (its user agent), for the log. */
+  open(socket: DispatcherSocket, client?: string): DispatcherSession {
     let session: DispatcherSession;
     session = new DispatcherSession(socket, this.#options, () => this.#sessions.delete(session));
     this.#sessions.add(session);
     this.#options.logger?.info("connection.open", {
       id: socket.id.slice(0, 8),
       total: this.#sessions.size,
+      ...(client === undefined ? {} : { client }),
     });
     return session;
   }
 
-  close(session: DispatcherSession): void {
-    session.close();
+  close(session: DispatcherSession, reason?: "reaped"): void {
+    session.close(reason);
     this.#sessions.delete(session);
+  }
+
+  /**
+   * Ends the sessions whose socket has closed without the server hearing of it: the runtime closed the connection and
+   * never called the close handler, which left the session, and the views and subscriptions it holds, for good. Each
+   * is closed as a socket's close would close it. The server runs it every minute.
+   */
+  sweep(): number {
+    let reaped = 0;
+    for (const session of [...this.#sessions]) {
+      if (session.socketOpen()) continue;
+      this.close(session, "reaped");
+      reaped += 1;
+    }
+    if (reaped > 0) {
+      this.#options.logger?.warn("connection.reaped", {
+        count: reaped,
+        total: this.#sessions.size,
+      });
+    }
+    return reaped;
   }
 
   publish(stream: StreamKey, payload: unknown): ReplayEventFrame {

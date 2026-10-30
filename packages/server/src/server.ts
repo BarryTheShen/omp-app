@@ -20,6 +20,10 @@ const DEFAULT_SERVER_VERSION = "0.0.0";
 const DEFAULT_REPLAY_LIMIT = 256;
 /** The most `stop()` waits for Bun to finish closing connections. */
 const STOP_WAIT_MS = 1_000;
+/** How often connections whose socket closed unheard are looked for (`Dispatcher.sweep`). */
+const SWEEP_MS = 60_000;
+/** How much of a client's user agent the log keeps, to tell the desktop app, a browser and a phone apart. */
+const CLIENT_CHARACTERS = 160;
 
 export interface AppServerOptions {
   readonly port?: number;
@@ -224,6 +228,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   interface SocketData {
     readonly id: string;
     readonly authFailure?: UpgradeClose;
+    /** The client's user agent, for the log. */
+    readonly client: string;
     session?: DispatcherSession;
   }
 
@@ -251,6 +257,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const upgraded = server.upgrade(request, {
           data: {
             id: randomId(),
+            client: (request.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
             ...(authorization ? { authFailure: authorization } : {}),
           },
         });
@@ -279,10 +286,16 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
         const dispatcherSocket = {
           id: socket.data.id,
-          send: (frame: ServerFrame) => socket.send(JSON.stringify(ServerFrameSchema.parse(frame))),
+          send: (frame: ServerFrame) => {
+            // Bun drops what is sent on a closed connection (status 0): the session ends as the socket's close would end it.
+            if (socket.send(JSON.stringify(ServerFrameSchema.parse(frame))) === 0) {
+              throw new Error("The connection has closed.");
+            }
+          },
           close: (code: number, reason: string) => socket.close(code, reason),
+          isOpen: () => socket.readyState === 1,
         };
-        socket.data.session = dispatcher.open(dispatcherSocket);
+        socket.data.session = dispatcher.open(dispatcherSocket, socket.data.client);
       },
       message: (socket, message) => {
         socket.data.session?.receive(message);
@@ -293,6 +306,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     },
   });
   const actualPort = bunServer.port ?? port;
+  // It never holds the process up: a server that is not stopped still lets it exit.
+  const sweeper = setInterval(() => dispatcher.sweep(), SWEEP_MS);
+  sweeper.unref();
   let stopped = false;
   const appServer: AppServer = {
     port: actualPort,
@@ -304,6 +320,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     async stop() {
       if (stopped) return;
       stopped = true;
+      clearInterval(sweeper);
       dispatcher.closeAll();
       // Bun's stop(true) never resolves once the server itself has closed a socket (a rejected
       // token, a protocol error): quitting then hung forever, for example after an old tab with a
