@@ -1,10 +1,11 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FoldContext } from "../../lib/fold";
 import type { ActiveTool, ConnectionPhase } from "../../lib/types";
 import { fmtTokens } from "../../lib/format";
+import { deliveredText, jobRows } from "../../lib/notices";
 import type { ToolRenderHost } from "../../tool-render";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { ToolCard } from "./ToolCard";
@@ -79,6 +80,39 @@ function ThinkingBlock({ text, redacted }: { text: string; redacted?: boolean })
 				thinking{redacted ? " · redacted" : ""}
 			</button>
 			{open && <div className="tr-think-body">{redacted ? "(redacted by provider)" : text}</div>}
+		</div>
+	);
+}
+
+/**
+ * omp-app: a background job that finished, as omp's terminal draws it (`buildAsyncResultBlock`): one row per job, and the
+ * row folds out what the job delivered (omp hands that text to the model, so the terminal does not show it).
+ */
+function JobNotice({ details, content }: { details: unknown; content: unknown }): ReactNode {
+	const fold = useContext(FoldContext).tools;
+	const [open, setOpen] = useState(fold.epoch > 0 && fold.open);
+	useEffect(() => {
+		if (fold.epoch > 0) setOpen(fold.open);
+	}, [fold.epoch, fold.open]);
+	const delivered = deliveredText(content);
+	return (
+		<div className="tr-job" data-custom-type="async-result">
+			<button type="button" className="tr-job-head" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+				<ChevronRight size={11} className={`tr-chev${open ? " tr-chev--open" : ""}`} />
+				<span className="tr-job-rows">
+					{jobRows(details).map(row => (
+						<span key={row.jobId} className={`tr-job-row tr-job-row--${row.tone}`}>
+							{row.tone === "err" ? <X size={12} aria-hidden /> : <Check size={12} aria-hidden />}
+							{/* The spaces are for the button's name; the row's gap lays the parts out. */}
+							<span className="tr-job-text">{row.text}</span>{" "}
+							<span className="tr-job-dim">[{row.type}]</span>{" "}
+							<span className="tr-job-id">{row.jobId}</span>
+							{row.duration !== undefined && <> <span className="tr-job-dim">({row.duration})</span></>}
+						</span>
+					))}
+				</span>
+			</button>
+			{open && delivered !== "" && <pre className="tr-job-body">{delivered}</pre>}
 		</div>
 	);
 }
@@ -228,6 +262,13 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 				);
 			}
 			if (!entry.display) return null;
+			if (entry.customType === "async-result") {
+				return (
+					<Row kind="custom" gutter="" title={entry.timestamp}>
+						<JobNotice details={entry.details} content={entry.content} />
+					</Row>
+				);
+			}
 			return (
 				<Row kind="custom" gutter="" title={entry.timestamp}>
 					<div className="tr-custom">

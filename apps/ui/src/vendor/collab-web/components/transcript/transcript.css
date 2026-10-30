@@ -190,6 +190,83 @@
 	transform: rotate(90deg);
 }
 
+/* ---- background jobs (omp-app: omp's "Background job completed" rows) ---- */
+
+.tr-job-head {
+	display: inline-flex;
+	align-items: flex-start;
+	gap: 4px;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+	color: var(--fg-muted);
+	font-family: var(--font-ui);
+	font-size: 12px;
+	text-align: left;
+}
+
+.tr-job-head > .tr-chev {
+	margin-top: 3px;
+}
+
+.tr-job-head:hover {
+	color: var(--fg);
+}
+
+.tr-job-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.tr-job-row {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.tr-job-row--ok > svg {
+	color: var(--ok);
+}
+
+.tr-job-row--err > svg,
+.tr-job-row--err > .tr-job-text {
+	color: var(--err);
+}
+
+.tr-job-row--muted > svg {
+	color: var(--fg-faint);
+}
+
+.tr-job-dim {
+	color: var(--fg-faint);
+	font-family: var(--font-mono);
+	font-size: 11px;
+}
+
+.tr-job-id {
+	color: var(--accent);
+	font-family: var(--font-mono);
+	font-size: 11px;
+}
+
+.tr-job-body {
+	align-self: stretch;
+	max-height: 320px;
+	margin: 4px 0 2px 15px;
+	padding: 6px 10px;
+	overflow: auto;
+	border-left: 2px solid var(--border);
+	color: var(--fg-muted);
+	font-family: var(--font-mono);
+	font-size: 11.5px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
 /* ---- dividers & markers ---- */
 
 .tr-divider {
