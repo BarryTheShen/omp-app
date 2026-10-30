@@ -53,8 +53,15 @@ const STARTING_PAGE: &str = "starting.html";
 const ERROR_PAGE: &str = "error.html";
 /// The page for "the server on another computer did not answer", served from apps/desktop/ui.
 const REMOTE_ERROR_PAGE: &str = "remote-error.html";
-/// The window's one command a page may call (see `clipboard.rs` and `capabilities/default.json`).
-const CLIPBOARD_PERMISSION: &str = "allow-read-clipboard-png";
+/// The window's commands a page may call (see `clipboard.rs`, `commands.rs` and `capabilities/default.json`).
+const PAGE_PERMISSIONS: [&str; 6] = [
+    "allow-read-clipboard-png",
+    "allow-servers",
+    "allow-connect-server",
+    "allow-open-server",
+    "allow-use-this-computer",
+    "allow-notify",
+];
 const WINDOW_TITLE: &str = "omp app";
 /// How long a server that was started has to record itself and answer. The server answers only after its omp checks,
 /// and the first start of the omp the package holds also sets that omp up (it unpacks its native parts into the home
@@ -76,7 +83,7 @@ struct State {
     /// The origin of the server on another computer that the window opens (see `remote.rs`). Its pages are the
     /// window's own, besides the bundled pages and this computer's server.
     remote_origin: Option<String>,
-    /// The origins given the clipboard command so far (see `grant_clipboard`).
+    /// The origins given the page commands so far (see `grant_page_commands`).
     granted: Vec<String>,
 }
 
@@ -215,12 +222,27 @@ fn link_file() -> Option<PathBuf> {
 }
 
 /// The link of a server on another computer that the window keeps, if any.
-fn kept_link() -> Option<Url> {
+pub fn kept_link() -> Option<Url> {
     remote::kept(&link_file()?)
 }
 
-/// Keeps or forgets the link the launch's arguments name (see `remote::choice`). A `--remote` with a link of another
-/// shape, or a link that cannot be kept, is refused with the reason; the link itself is never printed.
+/// Where the window remembers the servers on other computers it opened (see `remote::remember`).
+fn servers_file() -> Option<PathBuf> {
+    let config = std::env::var_os("XDG_CONFIG_HOME");
+    let home = std::env::var_os("HOME");
+    remote::servers_file(config.as_deref(), home.as_deref())
+}
+
+/// The servers on other computers the window opened, newest first.
+pub fn remembered_servers() -> Vec<Url> {
+    servers_file()
+        .map(|file| remote::remembered(&file))
+        .unwrap_or_default()
+}
+
+/// Keeps or forgets the link the launch's arguments name (see `remote::choice`), and remembers a kept one among the
+/// servers the window opened. A `--remote` with a link of another shape, or a link that cannot be kept, is refused with
+/// the reason; the link itself is never printed.
 pub fn apply_choice(args: &[String]) -> Result<(), String> {
     let choice = remote::choice(args)?;
     if choice == remote::Choice::Unchanged {
@@ -228,7 +250,16 @@ pub fn apply_choice(args: &[String]) -> Result<(), String> {
     }
     let file = link_file().ok_or("the home folder was not found")?;
     let done = match choice {
-        remote::Choice::Remote(link) => remote::keep(&file, &link),
+        remote::Choice::Remote(link) => {
+            let kept = remote::keep(&file, &link);
+            // Only the list of servers to offer again: the window opens the kept link whatever becomes of it.
+            if let Some(list) = servers_file().filter(|_| kept.is_ok()) {
+                if let Err(error) = remote::remember(&list, &link) {
+                    eprintln!("omp app: the server could not be remembered: {error}");
+                }
+            }
+            kept
+        }
         _ => remote::forget(&file),
     };
     done.map_err(|error| format!("{}: {error}", file.display()))
@@ -259,12 +290,12 @@ fn set_remote(app: &AppHandle, link: Option<&Url>) {
     with_state(app, |state| state.remote_origin = origin);
 }
 
-/// Opens the server on another computer, off the main thread. Its pages may read the clipboard's picture, as this
+/// Opens the server on another computer, off the main thread. Its pages may call the window's commands, as this
 /// computer's server's pages may. The starting page shows until the computer accepts a connection; a computer that
 /// does not shows the error page, which names it.
 fn open_remote_page(app: AppHandle, link: Url) {
     thread::spawn(move || {
-        grant_clipboard(&app, &remote::origin(&link));
+        grant_page_commands(&app, &remote::origin(&link));
         if remote::reachable(&link) {
             open_server_page(&app, link);
         } else {
@@ -290,9 +321,9 @@ fn open_local(app: AppHandle) {
     });
 }
 
-/// Gives the clipboard command to the pages of `origin` in the window, once per origin. No other site gets anything
-/// (this computer's server has it from `capabilities/default.json`).
-fn grant_clipboard(app: &AppHandle, origin: &str) {
+/// Gives the window's page commands to the pages of `origin`, once per origin. No other site gets anything (this
+/// computer's server has them from `capabilities/default.json`).
+fn grant_page_commands(app: &AppHandle, origin: &str) {
     let number = with_state(app, |state| {
         if state.granted.iter().any(|granted| granted == origin) {
             return None;
@@ -303,13 +334,15 @@ fn grant_clipboard(app: &AppHandle, origin: &str) {
     let Some(number) = number else {
         return;
     };
-    let capability = CapabilityBuilder::new(format!("remote-server-{number}"))
+    let mut capability = CapabilityBuilder::new(format!("remote-server-{number}"))
         .remote(format!("{origin}/*"))
         .local(false)
-        .window(WINDOW_LABEL)
-        .permission(CLIPBOARD_PERMISSION);
+        .window(WINDOW_LABEL);
+    for permission in PAGE_PERMISSIONS {
+        capability = capability.permission(permission);
+    }
     if let Err(error) = app.add_capability(capability) {
-        eprintln!("omp app: the server's pages could not be given the clipboard: {error}");
+        eprintln!("omp app: the server's pages could not be given the window's commands: {error}");
     }
 }
 

@@ -9,6 +9,7 @@
 
 mod address;
 mod clipboard;
+mod commands;
 mod downloads;
 mod gstreamer;
 mod remote;
@@ -34,7 +35,14 @@ fn main() {
             focus_window(app)
         }))
         .manage(server::Shared::default())
-        .invoke_handler(tauri::generate_handler![clipboard::read_clipboard_png])
+        .invoke_handler(tauri::generate_handler![
+            clipboard::read_clipboard_png,
+            commands::servers,
+            commands::connect_server,
+            commands::open_server,
+            commands::use_this_computer,
+            commands::notify,
+        ])
         .on_window_event(|window, event| {
             // Closing the window hides it at once, and the app ends (see `server::quit`). The server keeps running.
             if let WindowEvent::CloseRequested { api, .. } = event {

@@ -19,12 +19,16 @@ const APP_TAB = "app";
 const words = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
 
+/** Where the settings open: the app's tab, or its Server section with the cursor in the link field. */
+export type SettingsPlace = "app" | "server";
+
 /** omp's settings in one sheet, as Tern's prefs page: tabs with what changed, search, and each row's Reset. */
 export function SettingsPage({
   client,
   folder,
   controller,
   phone,
+  place,
   open,
   onOpenChange,
 }: {
@@ -34,13 +38,20 @@ export function SettingsPage({
   /** The chat focused when the settings opened: provider sign-in runs in it. */
   readonly controller: ChatController | null;
   readonly phone: boolean;
+  readonly place: SettingsPlace;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }): ReactNode {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open && (
-        <SettingsSheet client={client} folder={folder} controller={controller} phone={phone} />
+        <SettingsSheet
+          client={client}
+          folder={folder}
+          controller={controller}
+          phone={phone}
+          place={place}
+        />
       )}
     </Dialog>
   );
@@ -51,11 +62,13 @@ function SettingsSheet({
   folder,
   controller,
   phone,
+  place,
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly controller: ChatController | null;
   readonly phone: boolean;
+  readonly place: SettingsPlace;
 }): ReactNode {
   const [data, setData] = useState<SettingsData | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -73,8 +86,8 @@ function SettingsSheet({
   const [thisFolder, setThisFolder] = useState(false);
   const layer: ConfigWriteLayer = thisFolder ? "project" : "global";
   const config = useConfig(client, thisFolder ? { layer, folder } : { layer, folder: null });
-  // On a phone the tab list comes first, then the chosen tab; elsewhere the app's own tab.
-  const [tabId, setTabId] = useState<string | null>(phone ? null : APP_TAB);
+  // On a phone the tab list comes first, then the chosen tab; elsewhere, or for the Server section, the app's own tab.
+  const [tabId, setTabId] = useState<string | null>(phone && place === "app" ? null : APP_TAB);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
 
@@ -218,7 +231,7 @@ function SettingsSheet({
                 layer={layer}
               />
             )}
-            {appOpen && <AppPage />}
+            {appOpen && <AppPage focusServerLink={place === "server"} />}
             {data !== null && needle === "" && tab !== null && (
               <TabPage
                 tab={tab}

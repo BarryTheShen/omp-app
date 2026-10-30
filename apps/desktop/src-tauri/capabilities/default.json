@@ -1,11 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The app's server pages in this window may read a picture from the clipboard, and nothing else.",
+  "description": "The app's server pages in this window may read a picture from the clipboard, list and open the servers the window knows, and show a desktop notification; nothing else.",
   "windows": ["main"],
   "local": false,
   "remote": {
     "urls": ["http://127.0.0.1:*/*"]
   },
-  "permissions": ["allow-read-clipboard-png"]
+  "permissions": [
+    "allow-read-clipboard-png",
+    "allow-servers",
+    "allow-connect-server",
+    "allow-open-server",
+    "allow-use-this-computer",
+    "allow-notify"
+  ]
 }

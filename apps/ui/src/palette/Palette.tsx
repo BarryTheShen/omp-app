@@ -15,6 +15,16 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { ChatController, ChatTarget } from "../chat/controller";
 import type { ChatModel } from "../chat/store";
 import { mentionText } from "../chat/triggers";
+import {
+  type Bridge,
+  type DesktopServers,
+  desktopBridge,
+  desktopServers,
+  openDesktopServer,
+  refusalText,
+  type ServerChoice,
+} from "../desktop/bridge";
+import { LOCAL_SERVER_LABEL, remoteServerLabel } from "../desktop/ServerSection";
 import { KEYS, keycap } from "../keys/table";
 import type { ChatList } from "../sidebar/useChatList";
 import { setThemeChoice, type ThemeChoice } from "../theme/theme";
@@ -96,6 +106,53 @@ function chatModes(
 }
 
 /**
+ * The desktop window's servers, in the window only: connect to another by its link (in the settings' Server section),
+ * this computer's server, and the servers on other computers the window opened, but the one it shows.
+ */
+function windowServers(
+  bridge: Bridge | null,
+  servers: DesktopServers | null,
+  close: (then: () => void) => void,
+  onServers: () => void,
+  controller: ChatController | null,
+): readonly Item[] {
+  if (bridge === null) return [];
+  const move = (choice: ServerChoice) => () =>
+    close(() => {
+      openDesktopServer(bridge, choice).catch((failure: unknown) =>
+        controller?.store.addNotice(`Server: ${refusalText(failure)}`, "error"),
+      );
+    });
+  const items: Item[] = [
+    {
+      key: "server:connect",
+      group: "Commands",
+      label: "Connect to another server…",
+      run: () => close(onServers),
+    },
+  ];
+  if (servers === null) return items;
+  if (servers.current !== null) {
+    items.push({
+      key: "server:local",
+      group: "Commands",
+      label: LOCAL_SERVER_LABEL,
+      run: move({ kind: "local" }),
+    });
+  }
+  for (const host of servers.remote) {
+    if (host === servers.current) continue;
+    items.push({
+      key: `server:${host}`,
+      group: "Commands",
+      label: remoteServerLabel(host),
+      run: move({ kind: "host", host }),
+    });
+  }
+  return items;
+}
+
+/**
  * The palette (Ctrl+K), as Tern's: the app's commands and omp's, the folder's files, the chats and the models, each a
  * scope, with "All" by default. A file or one of omp's commands goes into the focused chat's message box.
  */
@@ -109,6 +166,7 @@ export function Palette({
   onShortcuts,
   onSetGoal,
   onSettings,
+  onServers,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -120,6 +178,8 @@ export function Palette({
   /** Opens the goal dialog for a chat. */
   readonly onSetGoal: (controller: ChatController) => void;
   readonly onSettings: () => void;
+  /** Opens the settings at the desktop window's servers, the cursor in the link field. */
+  readonly onServers: () => void;
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
@@ -152,6 +212,20 @@ export function Palette({
       alive = false;
     };
   }, [controller]);
+
+  // The desktop window's servers, read as the palette opens there.
+  const bridge = desktopBridge();
+  const [servers, setServers] = useState<DesktopServers | null>(null);
+  useEffect(() => {
+    if (!open || bridge === null) return;
+    let alive = true;
+    desktopServers(bridge)
+      .then((found) => alive && setServers(found))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [open, bridge]);
 
   const wantsFiles = open && (scope === "Files" || scope === "All") && query.trim() !== "";
   useEffect(() => {
@@ -209,6 +283,7 @@ export function Palette({
         keys: keycap(KEYS.settings),
         run: () => close(onSettings),
       },
+      ...windowServers(bridge, servers, close, onServers, controller),
       ...commands.map((command) => ({
         key: `omp:${command.name}`,
         group: "Commands" as const,

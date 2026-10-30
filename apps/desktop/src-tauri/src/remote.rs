@@ -18,11 +18,17 @@ use tauri::Url;
 /// Where the link is kept, under the config folder.
 const LINK_FOLDER: &str = "omp-app";
 const LINK_FILE: &str = "desktop-server";
+/// The servers on other computers the window opened, beside the kept link.
+const SERVERS_FILE: &str = "desktop-servers";
+/// How many of them the window remembers.
+const REMEMBERED: usize = 8;
+/// The paths a link may name: the app's root, or the new UI under `/v2/`.
+const LINK_PATHS: [&str; 2] = ["/", "/v2/"];
 /// How long the window waits for the other computer to accept a connection before it shows the error page.
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 /// Why a `--remote` was refused.
 const MISSING_LINK: &str = "--remote needs the server's link";
-const LINK_SHAPE: &str =
+pub const LINK_SHAPE: &str =
     "the link must look like https://<computer>.<tailnet>.ts.net/#token=<token>";
 
 /// What the command line asks for.
@@ -54,15 +60,15 @@ pub fn choice(args: &[String]) -> Result<Choice, String> {
     Ok(found)
 }
 
-/// The link of a server on another computer: an https address with a host, at the root, whose fragment carries a
-/// token. Plain http is refused, since the token would cross the network unencrypted.
+/// The link of a server on another computer: an https address with a host, at the app's root or its new UI (`/v2/`),
+/// whose fragment carries a token. Plain http is refused, since the token would cross the network unencrypted.
 pub fn parse_link(text: &str) -> Option<Url> {
     let url = Url::parse(text.trim()).ok()?;
     let has_host = url.host_str().is_some_and(|host| !host.is_empty());
     let mut pairs = url.fragment().unwrap_or_default().split('&');
     let token = pairs.find_map(|pair| pair.strip_prefix("token="));
     let has_token = token.is_some_and(|token| !token.is_empty());
-    let shaped = url.scheme() == "https" && url.path() == "/";
+    let shaped = url.scheme() == "https" && LINK_PATHS.contains(&url.path());
     (shaped && has_host && has_token).then_some(url)
 }
 
@@ -94,8 +100,8 @@ pub fn kept(file: &Path) -> Option<Url> {
     parse_link(&fs::read_to_string(file).ok()?)
 }
 
-/// Keeps `link` in `file`, which only this account can read or write.
-pub fn keep(file: &Path, link: &Url) -> io::Result<()> {
+/// Writes `text` and a newline to `file`, which only this account can read or write.
+fn write_private(file: &Path, text: &str) -> io::Result<()> {
     if let Some(folder) = file.parent() {
         fs::create_dir_all(folder)?;
     }
@@ -104,7 +110,39 @@ pub fn keep(file: &Path, link: &Url) -> io::Result<()> {
     let mut out = options.open(file)?;
     // A file that was there before keeps its old mode when it is opened: set it.
     fs::set_permissions(file, fs::Permissions::from_mode(0o600))?;
-    writeln!(out, "{link}")
+    writeln!(out, "{text}")
+}
+
+/// Keeps `link` in `file`, which only this account can read or write.
+pub fn keep(file: &Path, link: &Url) -> io::Result<()> {
+    write_private(file, link.as_str())
+}
+
+/// Where the window remembers the servers on other computers it opened: beside the kept link.
+pub fn servers_file(config_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    Some(link_file(config_home, home)?.with_file_name(SERVERS_FILE))
+}
+
+/// The servers on other computers the window opened, newest first. A missing or damaged file means none; a line of
+/// another shape is skipped.
+pub fn remembered(file: &Path) -> Vec<Url> {
+    fs::read_to_string(file)
+        .map(|text| text.lines().filter_map(parse_link).collect())
+        .unwrap_or_default()
+}
+
+/// Remembers `link` first among the servers the window opened: one per computer (a newer link replaces an older one,
+/// whose token may have changed), at most `REMEMBERED`, in a file only this account can read.
+pub fn remember(file: &Path, link: &Url) -> io::Result<()> {
+    let mut links = vec![link.clone()];
+    links.extend(
+        remembered(file)
+            .into_iter()
+            .filter(|known| origin(known) != origin(link)),
+    );
+    links.truncate(REMEMBERED);
+    let lines: Vec<&str> = links.iter().map(Url::as_str).collect();
+    write_private(file, &lines.join("\n"))
 }
 
 /// Forgets the kept link. No file is not an error.
@@ -146,6 +184,8 @@ mod tests {
         assert_eq!(host(&link), "devbox.tail1234.ts.net");
         let more = "https://devbox.tail1234.ts.net/#token=t&folder=%2Fhome%2Fuser";
         assert!(parse_link(more).is_some(), "other fields may follow");
+        let new_ui = "https://devbox.tail1234.ts.net/v2/#token=t";
+        assert!(parse_link(new_ui).is_some(), "the new UI's page");
     }
 
     #[test]
@@ -248,6 +288,39 @@ mod tests {
         let file = scratch.0.join(LINK_FILE);
         fs::write(&file, "http://devbox.tail1234.ts.net/#token=t").unwrap();
         assert_eq!(kept(&file), None);
+    }
+
+    #[test]
+    fn remembered_servers_are_newest_first_one_per_computer_at_most_eight_and_private() {
+        let scratch = Scratch::new("servers");
+        let file = scratch.0.join("omp-app").join(SERVERS_FILE);
+        assert!(remembered(&file).is_empty());
+        let link = |computer: &str, token: &str| {
+            Url::parse(&format!(
+                "https://{computer}.tail1234.ts.net/#token={token}"
+            ))
+            .unwrap()
+        };
+        remember(&file, &link("a", "1")).unwrap();
+        remember(&file, &link("b", "1")).unwrap();
+        // The same computer again, with a new token: it moves first, and its old link goes.
+        remember(&file, &link("a", "2")).unwrap();
+        assert_eq!(remembered(&file), vec![link("a", "2"), link("b", "1")]);
+        assert_eq!(mode(&file), 0o600);
+        for n in 0..10 {
+            remember(&file, &link(&format!("c{n}"), "1")).unwrap();
+        }
+        let kept = remembered(&file);
+        assert_eq!(kept.len(), REMEMBERED);
+        assert_eq!(kept[0], link("c9", "1"));
+        assert!(!kept.contains(&link("a", "2")), "the oldest are forgotten");
+    }
+
+    #[test]
+    fn the_servers_file_sits_beside_the_kept_link() {
+        let home = Some(OsStr::new("/home/u"));
+        let expected = PathBuf::from("/home/u/.config/omp-app/desktop-servers");
+        assert_eq!(servers_file(None, home), Some(expected));
     }
 
     fn link_to(port: u16) -> Url {

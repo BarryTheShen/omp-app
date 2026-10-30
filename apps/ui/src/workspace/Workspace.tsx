@@ -89,8 +89,8 @@ export interface WorkspaceHandle {
 export interface WorkspaceView {
   readonly focused: ThreadId | null;
   readonly open: ReadonlySet<ThreadId>;
-  /** Open chats with an approval or a question waiting for you. */
-  readonly waiting: ReadonlySet<ThreadId>;
+  /** Open chats with an approval or a question waiting for you, each with its pane's title. */
+  readonly waiting: ReadonlyMap<ThreadId, string>;
 }
 
 const paramsOf = (params: unknown): ChatPanelParams | undefined =>
@@ -145,7 +145,7 @@ export function Workspace({
   /** Tells the sidebar what is open, focused and waiting, and keeps each tab's focused title. */
   const report = useCallback(() => {
     const open = new Set<ThreadId>();
-    const waiting = new Set<ThreadId>();
+    const waiting = new Map<ThreadId, string>();
     const next = new Map<string, string>();
     for (const tab of tabsRef.current.tabs) {
       const api = apis.current.get(tab.id);
@@ -155,7 +155,7 @@ export function Workspace({
         if (target?.kind !== "existing") continue;
         open.add(target.threadId);
         if ((controllers.get(panel.id)?.store.getSnapshot().requests.length ?? 0) > 0)
-          waiting.add(target.threadId);
+          waiting.set(target.threadId, panel.title ?? "");
       }
       const title = api.activePanel?.title;
       if (title !== undefined) next.set(tab.id, title);

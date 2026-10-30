@@ -18,10 +18,12 @@ import { ConnectionBanner } from "./ConnectionBanner";
 import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
+import { useWaitingNotifications } from "./desktop/notify";
 import { GoalDialog } from "./goal/GoalDialog";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
+import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
@@ -51,7 +53,7 @@ function usePhone(): boolean {
   );
 }
 
-const NOTHING_OPEN: WorkspaceView = { focused: null, open: new Set(), waiting: new Set() };
+const NOTHING_OPEN: WorkspaceView = { focused: null, open: new Set(), waiting: new Map() };
 
 /** Connects with the page's launch link, then shows the app. */
 export function App(): ReactNode {
@@ -108,6 +110,7 @@ function Shell({
 }): ReactNode {
   const list = useChatList(client, folder);
   const [view, setView] = useState<WorkspaceView>(NOTHING_OPEN);
+  useWaitingNotifications(view.waiting);
   /** On a phone: the list of chats, or the chat. */
   const [showChat, setShowChat] = useState(false);
   const workspace = useRef<WorkspaceHandle>(null);
@@ -117,15 +120,19 @@ function Shell({
   /** The chat the goal dialog sets a goal for, while it is open. */
   const [goalFor, setGoalFor] = useState<ChatController | null>(null);
   const [settings, setSettings] = useState(false);
+  const [settingsPlace, setSettingsPlace] = useState<SettingsPlace>("app");
   /** Loaded once opened, so its closing keeps its words in place. */
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   /** The chat focused when the settings opened: provider sign-in runs in it. */
   const [settingsChat, setSettingsChat] = useState<ChatController | null>(null);
-  const showSettings = useCallback(() => {
+  const openSettings = useCallback((place: SettingsPlace) => {
     setSettingsChat(workspace.current?.focused()?.controller ?? null);
+    setSettingsPlace(place);
     setSettingsLoaded(true);
     setSettings(true);
   }, []);
+  const showSettings = useCallback(() => openSettings("app"), [openSettings]);
+  const showServers = useCallback(() => openSettings("server"), [openSettings]);
   const openChat = useCallback((target: ChatTarget, where: "here" | "split"): void => {
     workspace.current?.open(target, where);
     setShowChat(true);
@@ -193,6 +200,7 @@ function Shell({
         onShortcuts={showShortcuts}
         onSetGoal={setGoalFor}
         onSettings={showSettings}
+        onServers={showServers}
       />
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />
@@ -203,6 +211,7 @@ function Shell({
             folder={folder}
             controller={settingsChat}
             phone={phone}
+            place={settingsPlace}
             open={settings}
             onOpenChange={setSettings}
           />

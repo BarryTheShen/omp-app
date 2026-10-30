@@ -1,9 +1,13 @@
 import type { ReactNode } from "react";
+import { ServerSection } from "../desktop/ServerSection";
 import { KeyList } from "../palette/Shortcuts";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 
-/** The app's own settings, before omp's tabs: how it looks, the server it is connected to, and its keys. */
-export function AppPage(): ReactNode {
+/**
+ * The app's own settings, before omp's tabs: how it looks, the server it is connected to, and its keys.
+ * `focusServerLink` puts the cursor in the desktop window's field for another server's link.
+ */
+export function AppPage({ focusServerLink }: { readonly focusServerLink: boolean }): ReactNode {
   return (
     <section aria-label="App settings">
       <p className="pt-5 text-xs text-t3">App</p>
@@ -19,11 +23,7 @@ export function AppPage(): ReactNode {
         </div>
         <ThemeSwitch />
       </div>
-      <h3 className="mt-6 text-xs font-medium text-t3">Server</h3>
-      <div className="flex items-center gap-4 py-3">
-        <p className="min-w-0 flex-1 text-sm text-t1">Connected to</p>
-        <p className="truncate font-mono text-xs text-t2">{window.location.host}</p>
-      </div>
+      <ServerSection focusLink={focusServerLink} />
       <h3 className="mt-6 mb-3 text-xs font-medium text-t3">Keys</h3>
       <KeyList />
     </section>
