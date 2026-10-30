@@ -17,6 +17,8 @@ const IMAGE_BLOB_REF = /^blob:sha256:([0-9a-f]{64})$/;
 
 const SCAN_CHUNK_BYTES = 1024 * 1024;
 const HEAD_FINGERPRINT_BYTES = 256;
+/** Bytes kept from just before an index's end: a rewrite that moved anything before them changes them. */
+const TAIL_FINGERPRINT_BYTES = 256;
 const CACHED_FILES = 4;
 const NEWLINE = 10;
 
@@ -35,6 +37,8 @@ export interface FileIndex {
   readonly mtimeMs: number;
   readonly head: string;
   readonly scannedTo: number;
+  /** The bytes just before `scannedTo` when it was indexed. */
+  readonly tail: Buffer;
   readonly records: ReadonlyMap<EntryId, EntryRecord>;
   readonly fileLastId: EntryId | null;
 }
@@ -187,28 +191,37 @@ async function scanRange(
 }
 
 /**
- * The index of one session file as it is now. A cached index is returned as it is while the file's size
- * and mtime are unchanged. Session files only grow, so when the size grew and the first bytes still match,
- * only the new lines are scanned. Anything else (a rewrite, a shrink, a same-size change) is scanned from the
- * first byte. Only the size at the start of the call is read.
+ * The index of one session file as it is now. A cached index is returned as it is while the file's size and mtime are
+ * unchanged. A longer file whose first bytes, and whose bytes just before the indexed end, are unchanged had lines
+ * appended, so only the new lines are scanned. Anything else is scanned from the first byte: omp also rewrites session
+ * files in place (its maintenance's `rewriteEntries`), which moves every line after the first change. `fresh` asks for
+ * that full scan whatever the cache holds. Only the size at the start of the call is read.
  */
-export async function indexSessionFile(file: string): Promise<FileIndex> {
+export async function indexSessionFile(file: string, fresh = false): Promise<FileIndex> {
   const handle = await open(file, "r");
   try {
     const { size, mtimeMs } = await handle.stat();
-    const previous = cache.get(file);
+    const previous = fresh ? undefined : cache.get(file);
     if (previous !== undefined && previous.size === size && previous.mtimeMs === mtimeMs) {
       return previous;
     }
     const head = (await readBytes(handle, 0, HEAD_FINGERPRINT_BYTES)).toString("utf8");
-    const extend = previous !== undefined && size > previous.size && head.startsWith(previous.head);
+    const extend =
+      previous !== undefined &&
+      size > previous.size &&
+      head.startsWith(previous.head) &&
+      (
+        await readBytes(handle, previous.scannedTo - previous.tail.length, previous.tail.length)
+      ).equals(previous.tail);
     const records = extend ? new Map(previous.records) : new Map<EntryId, EntryRecord>();
     const scan = await scanRange(handle, extend ? previous.scannedTo : 0, size, records);
+    const tailLength = Math.min(TAIL_FINGERPRINT_BYTES, scan.scannedTo);
     const index: FileIndex = {
       size,
       mtimeMs,
       head,
       scannedTo: scan.scannedTo,
+      tail: await readBytes(handle, scan.scannedTo - tailLength, tailLength),
       records,
       fileLastId: scan.lastId ?? (extend ? previous.fileLastId : null),
     };
@@ -244,13 +257,54 @@ export function branchPath(
   return path;
 }
 
-async function readEntry(file: string, record: EntryRecord): Promise<Record<string, unknown>> {
+/** The index no longer matches the file: omp rewrote it in place after it was indexed. */
+class StaleIndex extends Error {}
+
+/**
+ * Reads entry `id` where the index puts it. The line there must be that entry with that parent; anything else means the
+ * file was rewritten after it was indexed.
+ */
+async function readEntry(
+  file: string,
+  id: EntryId,
+  record: EntryRecord,
+): Promise<Record<string, unknown>> {
   const text = await Bun.file(file)
     .slice(record.offset, record.offset + record.length)
     .text();
-  const value: unknown = JSON.parse(text);
-  if (!isJsonObject(value)) throw notFound("A session entry in this file is not an object");
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new StaleIndex();
+  }
+  if (!isJsonObject(value) || value.id !== id) throw new StaleIndex();
+  const parentId =
+    typeof value.parentId === "string" && value.parentId.length > 0 ? value.parentId : null;
+  if (parentId !== record.parentId) throw new StaleIndex();
   return value;
+}
+
+/**
+ * Runs `read` on the file's index. A read that finds the index stale indexes the file again from its first byte and
+ * runs once more; a file rewritten again meanwhile is refused for now, to be asked again.
+ */
+async function withIndex<T>(file: string, read: (index: FileIndex) => Promise<T>): Promise<T> {
+  try {
+    return await read(await indexSessionFile(file));
+  } catch (error) {
+    if (!(error instanceof StaleIndex)) throw error;
+  }
+  try {
+    return await read(await indexSessionFile(file, true));
+  } catch (error) {
+    if (!(error instanceof StaleIndex)) throw error;
+    throw new AppFailure({
+      code: "unavailable",
+      message: "The session file changed while it was read; try again.",
+      retryable: true,
+    });
+  }
 }
 
 /** Shortens one long text to its head and tail, with a note of how much was left out. */
@@ -416,47 +470,51 @@ async function readEntryWindowFromIndex(
   file: string,
   request: WindowRequest,
 ): Promise<WindowResult> {
-  const index = await indexSessionFile(file);
-  const leafId = request.leafId ?? index.fileLastId;
-  if (leafId === null) {
+  return withIndex(file, async (index) => {
+    const leafId = request.leafId ?? index.fileLastId;
+    if (leafId === null) {
+      return {
+        leafId: null,
+        fileLastId: index.fileLastId,
+        entries: [],
+        oldestId: null,
+        hasOlder: false,
+      };
+    }
+    const path = branchPath(index.records, leafId);
+    if (path === undefined) throw notFound("That entry is not in this session file");
+    let from = 0;
+    if (request.before !== undefined) {
+      const at = path.indexOf(request.before);
+      if (at === -1) throw notFound("That entry is not on this branch");
+      from = at + 1;
+    }
+    const budget = request.byteBudget ?? DEFAULT_WINDOW_BYTES;
+    const chosen: Record<string, unknown>[] = [];
+    let used = 0;
+    let oldestId: EntryId | null = null;
+    for (let next = from; next < path.length; next += 1) {
+      const id = path[next];
+      const record = id === undefined ? undefined : index.records.get(id);
+      if (id === undefined || record === undefined) break;
+      const entry = await withImageBlobs(
+        cutOutputs(await readEntry(file, id, record)),
+        request.blobsDir,
+      );
+      const size = Buffer.byteLength(JSON.stringify(entry), "utf8");
+      if (chosen.length > 0 && used + size > budget) break;
+      chosen.push(entry);
+      used += size;
+      oldestId = id;
+    }
     return {
-      leafId: null,
+      leafId,
       fileLastId: index.fileLastId,
-      entries: [],
-      oldestId: null,
-      hasOlder: false,
+      entries: chosen.reverse(),
+      oldestId,
+      hasOlder: from + chosen.length < path.length,
     };
-  }
-  const path = branchPath(index.records, leafId);
-  if (path === undefined) throw notFound("That entry is not in this session file");
-  let from = 0;
-  if (request.before !== undefined) {
-    const at = path.indexOf(request.before);
-    if (at === -1) throw notFound("That entry is not on this branch");
-    from = at + 1;
-  }
-  const budget = request.byteBudget ?? DEFAULT_WINDOW_BYTES;
-  const chosen: Record<string, unknown>[] = [];
-  let used = 0;
-  let oldestId: EntryId | null = null;
-  for (let next = from; next < path.length; next += 1) {
-    const id = path[next];
-    const record = id === undefined ? undefined : index.records.get(id);
-    if (id === undefined || record === undefined) break;
-    const entry = await withImageBlobs(cutOutputs(await readEntry(file, record)), request.blobsDir);
-    const size = Buffer.byteLength(JSON.stringify(entry), "utf8");
-    if (chosen.length > 0 && used + size > budget) break;
-    chosen.push(entry);
-    used += size;
-    oldestId = id;
-  }
-  return {
-    leafId,
-    fileLastId: index.fileLastId,
-    entries: chosen.reverse(),
-    oldestId,
-    hasOlder: from + chosen.length < path.length,
-  };
+  });
 }
 
 async function readFileLastId(file: string): Promise<EntryId | null> {
@@ -487,8 +545,9 @@ export async function readEntryOutput(
   file: string,
   entryId: EntryId,
 ): Promise<Record<string, unknown>> {
-  const index = await indexSessionFile(file);
-  const record = index.records.get(entryId);
-  if (record === undefined) throw notFound("That entry is not in this session file");
-  return readEntry(file, record);
+  return withIndex(file, async (index) => {
+    const record = index.records.get(entryId);
+    if (record === undefined) throw notFound("That entry is not in this session file");
+    return readEntry(file, entryId, record);
+  });
 }

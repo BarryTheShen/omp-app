@@ -32,6 +32,14 @@ function message(id: string, parentId: string | null, text: string): string {
     message: { role: "user", content: [{ type: "text", text }] },
   });
 }
+
+/** A session of user messages, each the child of the one before: u1, u2, … */
+function chain(texts: readonly string[]): string {
+  const messages = texts.map((text, index) =>
+    message(`u${index + 1}`, index === 0 ? null : `u${index}`, text),
+  );
+  return `${[header("maintained"), ...messages].join("\n")}\n`;
+}
 function compaction(id: string, parentId: string, firstKeptEntryId: string): string {
   return JSON.stringify({
     type: "compaction",
@@ -341,6 +349,45 @@ describe("session entry windows", () => {
         "utf8",
       );
       expect(ids((await readEntryWindow(file, {})).entries)).toEqual(["x1"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an index made before omp rewrote the file in place, longer and with the same start, is made again", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "maintained.jsonl");
+      await writeFile(file, chain(["one", "two", "three", "four", "five"]), "utf8");
+      // Reading one entry's whole output indexes the file.
+      expect(textOf(await readEntryOutput(file, EntryId.parse("u4")))).toBe("four");
+
+      // omp's maintenance rewrites the whole file with an entry grown (`rewriteEntries`), then appends to it.
+      const grown = `two ${"grown ".repeat(20)}`;
+      await writeFile(file, chain(["one", grown, "three", "four", "five", "six"]), "utf8");
+      const branch = await readEntryWindow(file, { leafId: EntryId.parse("u5") });
+      expect(ids(branch.entries)).toEqual(["u1", "u2", "u3", "u4", "u5"]);
+      expect(branch.entries.map(textOf)).toEqual(["one", grown, "three", "four", "five"]);
+      expect(textOf(await readEntryOutput(file, EntryId.parse("u4")))).toBe("four");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an in-place rewrite that leaves the bytes before the index's end where they were is caught when an entry is read", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "shifted.jsonl");
+      const kept = ["four ".repeat(40), "five ".repeat(40)];
+      await writeFile(file, chain(["one", "2", "3333", ...kept]), "utf8");
+      expect(textOf(await readEntryOutput(file, EntryId.parse("u1")))).toBe("one");
+
+      // u2 grows by as much as u3 shrinks, so u4 and u5 keep their bytes and places; then u6 is added.
+      await writeFile(file, chain(["one", "2222", "3", ...kept, "six"]), "utf8");
+      const branch = await readEntryWindow(file, { leafId: EntryId.parse("u5") });
+      expect(ids(branch.entries)).toEqual(["u1", "u2", "u3", "u4", "u5"]);
+      expect(branch.entries.map(textOf)).toEqual(["one", "2222", "3", ...kept]);
+      expect(textOf(await readEntryOutput(file, EntryId.parse("u3")))).toBe("3");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
