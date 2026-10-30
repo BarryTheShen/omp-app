@@ -224,23 +224,67 @@ function entryRowEqual(prev: EntryRowProps, next: EntryRowProps): boolean {
 	return true;
 }
 
+/**
+ * omp-app: a message omp shows (`display`), drawn the same from the file (`custom_message`) and from the live stream
+ * (a `custom` message, before the file holds it): a finished background job as omp's row, anything else as its type and
+ * text.
+ */
+function CustomBody({
+	customType,
+	details,
+	content,
+}: {
+	customType: string;
+	details: unknown;
+	content: string | readonly (TextContent | ImageContent)[];
+}): ReactNode {
+	if (customType === "async-result") return <JobNotice details={details} content={content} />;
+	return (
+		<div className="tr-custom">
+			<span className="tr-chip">{customType}</span>
+			<MsgContent content={content} />
+		</div>
+	);
+}
+
 export const EntryRow = memo(function EntryRow({ entry, results, active, host }: EntryRowProps): ReactNode {
 	switch (entry.type) {
 		case "message": {
 			const msg = entry.message;
-			switch (msg.role) {
+			// omp-app: `custom` is omp's own message kind, which the wire's role list does not name.
+			switch (msg.role as string) {
 				case "user":
 					return (
 						<Row kind="user" gutter="host" title={entry.timestamp}>
-							<MsgContent content={msg.content} />
+							<MsgContent content={(msg as Extract<typeof msg, { role: "user" }>).content} />
 						</Row>
 					);
 				case "assistant":
 					return (
 						<Row kind="assistant" gutter="agent" title={entry.timestamp}>
-							<AssistantBody message={msg} results={results} active={active} pending={false} host={host} />
+							<AssistantBody
+								message={msg as AssistantMessage}
+								results={results}
+								active={active}
+								pending={false}
+								host={host}
+							/>
 						</Row>
 					);
+				case "custom": {
+					const custom = msg as unknown as {
+						customType: string;
+						display?: boolean;
+						details?: unknown;
+						content: string | readonly (TextContent | ImageContent)[];
+					};
+					if (custom.display !== true) return null;
+					return (
+						<Row kind="custom" gutter="" title={entry.timestamp}>
+							<CustomBody customType={custom.customType} details={custom.details} content={custom.content} />
+						</Row>
+					);
+				}
 				default:
 					// toolResult entries are consumed via pairing; developer & unknown roles skipped
 					return null;
@@ -262,19 +306,9 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 				);
 			}
 			if (!entry.display) return null;
-			if (entry.customType === "async-result") {
-				return (
-					<Row kind="custom" gutter="" title={entry.timestamp}>
-						<JobNotice details={entry.details} content={entry.content} />
-					</Row>
-				);
-			}
 			return (
 				<Row kind="custom" gutter="" title={entry.timestamp}>
-					<div className="tr-custom">
-						<span className="tr-chip">{entry.customType}</span>
-						<MsgContent content={entry.content} />
-					</div>
+					<CustomBody customType={entry.customType} details={entry.details} content={entry.content} />
 				</Row>
 			);
 		}

@@ -79,7 +79,8 @@ realTest.describe("new UI Agent Hub", () => {
       await expect(page.getByRole("button", { name: "1 agent", exact: true })).toBeVisible({
         timeout: 90_000,
       });
-      await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
+      // The subagent ran as a background job: omp's row says when it is done (its text folds inside the row).
+      await expect(page.getByRole("button", { name: /^Background job completed/ })).toBeVisible({
         timeout: 60_000,
       });
       // The layout keeps the chat once it is saved, so the reopened page shows it again.

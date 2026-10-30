@@ -59,6 +59,23 @@ describe("buildRows", () => {
     ).toEqual(["entry"]);
   });
 
+  test("a message omp shows (a background job's notice) gets its row from the live stream; one it hides does not", () => {
+    const notice = (display: boolean) =>
+      message("live-msg-9", {
+        role: "custom",
+        customType: "async-result",
+        display,
+        content:
+          "<system-notice>\nBackground job bg_1 has completed.\nquick-done\n</system-notice>",
+        details: { jobs: [{ jobId: "bg_1", type: "bash", status: "completed" }] },
+        timestamp: T,
+      });
+    const drawn = (entries: SessionEntry[]) =>
+      buildRows({ ...idle, entries }).filter((row) => row.kind === "entry");
+    expect(drawn([notice(true)])).toHaveLength(1);
+    expect(drawn([notice(false)])).toHaveLength(0);
+  });
+
   test("tool results show inside their call's card, not as rows of their own", () => {
     const rows = buildRows({
       ...idle,

@@ -76,10 +76,14 @@ function failure(entry: SessionEntry): { readonly error: string; readonly empty:
 /** Whether collab-web's `EntryRow` draws anything for the entry: tool results show inside their call's card. */
 function drawn(entry: SessionEntry): boolean {
   switch (entry.type) {
-    case "message":
+    case "message": {
       // A failed reply with nothing in it is only its failure row.
       if (failure(entry)?.empty === true) return false;
-      return entry.message.role === "user" || entry.message.role === "assistant";
+      // `custom` is omp's own message kind (a background job's notice), live before the file holds it.
+      const role: string = entry.message.role;
+      if (role === "custom") return (entry.message as { display?: unknown }).display === true;
+      return role === "user" || role === "assistant";
+    }
     case "custom_message":
       return entry.customType === "collab-prompt" || entry.display === true;
     case "compaction":
