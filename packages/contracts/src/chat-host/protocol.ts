@@ -301,6 +301,77 @@ const THINKING_LEVELS: { readonly [Level in `${ConfiguredThinkingLevel}`]: Level
 export const ThinkingLevelParams = z.object({ level: z.enum(THINKING_LEVELS) });
 export type ThinkingLevelParams = z.infer<typeof ThinkingLevelParams>;
 
+/** Where a role's setting is kept when omp's `modelRoleStorage` is `project`: omp's `ModelRoleSelectionScope`. */
+export const ModelRoleScope = z.enum(["global", "project"]);
+export type ModelRoleScope = z.infer<typeof ModelRoleScope>;
+
+export const AssignModelRoleParams = z.object({
+  provider: z.string().min(1),
+  modelId: z.string().min(1),
+  role: z.string().min(1),
+  thinkingLevel: z.enum(THINKING_LEVELS).optional(),
+  scope: ModelRoleScope.optional(),
+});
+export type AssignModelRoleParams = z.infer<typeof AssignModelRoleParams>;
+
+export const ClearModelRoleParams = z.object({
+  role: z.string().min(1),
+  scope: ModelRoleScope.optional(),
+});
+export type ClearModelRoleParams = z.infer<typeof ClearModelRoleParams>;
+
+/** One role of omp's model hub. */
+export interface HubRole {
+  readonly role: string;
+  /** omp's short label for the role (`getRoleInfo(role).tag`); null when it has none. */
+  readonly tag: string | null;
+  readonly name: string;
+  /** omp's hub lists chat roles first and the kinds of runner (image, search, judge, …) after. */
+  readonly section: "chat" | "kind";
+  /** The role's setting as omp reads it (`provider/id`, with `:level` when it names one); null when unset. */
+  readonly value: string | null;
+  /** Which settings layer the value comes from: `runtime`, `overlay`, `project`, `global` or `default`. */
+  readonly provenance: string;
+  /** The model the role resolves to, from its value or, when it has none, omp's auto-selection; null when none fits. */
+  readonly model: {
+    readonly provider: string;
+    readonly modelId: string;
+    readonly name: string;
+  } | null;
+  /** The thinking level the role applies (`inherit` where it names none); null when the role has no model. */
+  readonly thinkingLevel: string | null;
+  /** True when `model` is omp's auto-selection, not the role's setting. */
+  readonly autoSelected: boolean;
+}
+
+/** One model of omp's model hub. */
+export interface HubModel {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly name: string;
+  readonly contextWindow: number | null;
+  readonly reasoning: boolean;
+  /**
+   * The thinking levels a role assignment can apply to the model (omp's hub offers these and no others): none for a
+   * model that does not reason; `inherit`, `off`, its efforts, and `auto` where its reasoning surface is verified.
+   */
+  readonly thinkingLevels: readonly string[];
+  /** The roles that accept the model (omp's `getRoleInfo(role).accepts`). */
+  readonly roles: readonly string[];
+}
+
+/** What omp's model hub shows. */
+export interface ModelHub {
+  /** omp's `modelRoleStorage` setting: where a role's setting is written when assigned. */
+  readonly storage: "global" | "project";
+  /** The live chat's model. */
+  readonly current: { readonly provider: string; readonly modelId: string } | null;
+  /** In omp's order: its chat roles, then the kinds of runner, then roles of the user's own. */
+  readonly roles: readonly HubRole[];
+  /** The models a role can be given, in the hub's order: those with a role first, then the most recently used. */
+  readonly models: readonly HubModel[];
+}
+
 export const EnabledParams = z.object({ enabled: z.boolean() });
 export type EnabledParams = z.infer<typeof EnabledParams>;
 
@@ -559,6 +630,32 @@ export interface ChatHostMethodMap {
     readonly params: CycleRoleModelsParams;
     readonly result: RoleModel | null;
   };
+  /**
+   * What omp's model hub (Alt+M) shows: the roles with the model each resolves to (omp's own auto-selection for a role
+   * that has none) and the models a role can take. Read as the catalog is, like `get_role_models`.
+   */
+  readonly get_model_hub: {
+    readonly params: EmptyParams;
+    readonly result: ModelHub;
+  };
+  /**
+   * Gives a role a model, as the hub's `onAssign` does: `default` also switches the live chat (unless a higher settings
+   * layer shadows the target), and other roles only write the setting. `applied` is false where omp's hub returns false;
+   * `status` is the line omp shows. Refused with omp's own message where the hub shows an error.
+   */
+  readonly assign_model_role: {
+    readonly params: AssignModelRoleParams;
+    readonly result: { readonly applied: boolean; readonly status: string };
+  };
+  /**
+   * Clears a role's setting, as the hub's `onUnassign` does. `status` is omp's "… role cleared — auto-selection
+   * applies"; `switchedTo` is `provider/id` when clearing `default` exposed another persisted default and the live chat
+   * switched to it (omp's second line, "Default model: provider/id"), else null.
+   */
+  readonly clear_model_role: {
+    readonly params: ClearModelRoleParams;
+    readonly result: { readonly status: string; readonly switchedTo: string | null };
+  };
   readonly set_thinking_level: {
     readonly params: ThinkingLevelParams;
     readonly result: EmptyParams;
@@ -807,6 +904,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   btw: BtwParams,
   btw_cancel: BtwCancelParams,
   get_btw_history: EmptyParams,
+  get_model_hub: EmptyParams,
+  assign_model_role: AssignModelRoleParams,
+  clear_model_role: ClearModelRoleParams,
   set_thinking_level: ThinkingLevelParams,
   cycle_thinking_level: EmptyParams,
   get_available_thinking_levels: EmptyParams,

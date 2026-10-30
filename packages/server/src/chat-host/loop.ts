@@ -74,6 +74,7 @@ import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
 import { LiveVoice } from "./live";
 import { HostMethodError } from "./method-error";
+import { assignModelRole, clearModelRole, findModel, readModelHub } from "./model-hub";
 import type { LineWriter } from "./output";
 import { PlanMode } from "./plan";
 import {
@@ -417,6 +418,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     btw: async ({ question, recordId }) => ({ record: await btw.ask(question, recordId) }),
     btw_cancel: async ({ recordId }) => ({ cancelled: btw.cancel(recordId) }),
     get_btw_history: async () => ({ records: await btw.history() }),
+    get_model_hub: async () => readModelHub(session),
+    assign_model_role: (params) => assignModelRole(session, params),
+    clear_model_role: (params) => clearModelRole(session, params),
     set_thinking_level: async ({ level }) => {
       // omp's own parser turns the name into its level (an `Effort` member, `off`, `inherit` or `auto`).
       const parsed = parseConfiguredThinkingLevel(level);
@@ -992,22 +996,6 @@ function configUpdate(session: AgentSession): ConfigUpdateEvent {
     ...(model ? { model } : {}),
     ...(thinkingLevel ? { thinkingLevel } : {}),
   };
-}
-
-/**
- * The available model with this provider and id. One that is not in the catalog yet waits for omp's background
- * discovery first (a discovery-backed provider fills in seconds after start), as omp's own lookup does
- * (`rpc-mode.ts:959-965`).
- */
-async function findModel(session: AgentSession, provider: string, modelId: string) {
-  const find = () =>
-    session
-      .getAvailableModels()
-      .find((model) => model.provider === provider && model.id === modelId);
-  const model = find();
-  if (model) return model;
-  await session.modelRegistry.awaitBackgroundRefresh();
-  return find();
 }
 
 /** A role of omp's Ctrl+P cycle (`getRoleModelCycle`), as resolved now. */
