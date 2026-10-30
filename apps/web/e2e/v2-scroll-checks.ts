@@ -180,38 +180,68 @@ export function defineScrollChecks(engine: string): void {
     realTest(
       "older entries loading above keep the line being read where it is",
       async ({ realApp }) => {
-        const page = await realApp.open({ path: "/" });
+        // The older entries are held back until the line read is taken, as over a slow link: they then land above a
+        // line the reader is already reading. Without the hold a fast load lands first, and nothing is checked.
+        let release = (): void => undefined;
+        const released = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        let asked = false;
+        const page = await realApp.open({
+          path: "/",
+          beforeLoad: (opened) =>
+            opened.routeWebSocket(/\/ws/, (ws) => {
+              const server = ws.connectToServer();
+              const held = new Set<string>();
+              ws.onMessage((message) => {
+                const frame = JSON.parse(String(message)) as {
+                  type?: string;
+                  id?: unknown;
+                  method?: string;
+                  args?: { before?: unknown };
+                };
+                if (
+                  frame.type === "call" &&
+                  frame.method === "readEntryWindow" &&
+                  frame.args?.before !== undefined
+                ) {
+                  held.add(String(frame.id));
+                  asked = true;
+                }
+                server.send(message);
+              });
+              server.onMessage((message) => {
+                const frame = JSON.parse(String(message)) as { type?: string; id?: unknown };
+                if (frame.type === "result" && held.delete(String(frame.id))) {
+                  void released.then(() => ws.send(message));
+                  return;
+                }
+                ws.send(message);
+              });
+            }),
+        });
         await openLongChat(page);
-        // At the top of what is loaded, the next older entries load above: the list grows.
-        const height = () =>
-          page.evaluate(
-            () =>
-              document.querySelector(".tl-item")?.parentElement?.getBoundingClientRect().height ??
-              0,
-          );
-        const start = await height();
         await page.evaluate(() => {
           const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
           if (root !== null) root.scrollTop = 0;
         });
-        await page.waitForTimeout(100);
+        // At the top of what is loaded, the page asks for the next older entries.
+        await expect.poll(() => asked, { timeout: 30_000 }).toBe(true);
+        await page.waitForTimeout(300);
         const before = await topRow(page);
         expect(before).not.toBeNull();
-        await expect.poll(height, { timeout: 60_000 }).toBeGreaterThan(start);
+        const text = before?.text ?? "";
+        const was = await rowPlace(page, text);
+        release();
+        // They land above it: the line read is further down the list.
+        await expect
+          .poll(async () => (await rowPlace(page, text))?.index ?? -1, { timeout: 60_000 })
+          .toBeGreaterThan(was?.index ?? 0);
         // Rows that land are measured over the next frames; the line read must not move meanwhile.
         await page.waitForTimeout(2000);
-        const after = await page.evaluate((wanted) => {
-          const root = document.querySelector("section[aria-label='Transcript']");
-          if (root === null) return null;
-          const match = [...root.querySelectorAll<HTMLElement>(".tl-item")].find((element) =>
-            element.innerText.replace(/\s+/g, " ").startsWith(wanted),
-          );
-          return match === undefined
-            ? null
-            : match.getBoundingClientRect().top - root.getBoundingClientRect().top;
-        }, before?.text ?? "");
-        expect(after).not.toBeNull();
-        expect(Math.abs((after ?? 0) - (before?.top ?? 0))).toBeLessThanOrEqual(2);
+        const now = await rowPlace(page, text);
+        expect(now).not.toBeNull();
+        expect(Math.abs((now?.top ?? 0) - (before?.top ?? 0))).toBeLessThanOrEqual(2);
         expect(realApp.problems).toEqual([]);
       },
     );

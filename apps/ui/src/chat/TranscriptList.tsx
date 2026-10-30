@@ -29,13 +29,18 @@ import type { ChatSnapshot } from "./store";
 const ESTIMATED_ROW_PX = 72;
 
 /**
- * Which resized rows move the scroll position with them: only rows wholly above the top of the view. TanStack's default
- * also moves it for a row's first measurement when the row only starts above the view; such a row grows below the line
- * being read, so moving the view pushes that line off the screen (332 px in WebKit). The row's place is read from the
- * layout as it is now: `getVirtualItems()` rebuilds it (the scroll position already moved for the rows measured before
- * it in the same batch, and the row moved with them), and `measurementsCache` holds the layout's places, as
- * `scrollOffset` is one; the drawn places differ while a correction is held (each row shifted back by the held amount).
- * A row measured again keeps TanStack's rule: not while the reader scrolls up.
+ * Which resized rows move the scroll position with them, so that the line being read stays where it is. TanStack's
+ * rule, read against the layout as it is now:
+ * - A row measured for the first time moves it when the row starts above the top of the view: its estimate was wrong
+ *   above the line being read. That includes a row across the top edge: older entries that land while the first row is
+ *   read put a new row in the space above it, and its height pushed the first row down by the difference (165 px).
+ * - A row measured again moves it only when it lies wholly above the view, and not while the reader scrolls up: a row
+ *   across the top edge changed below the part being read.
+ *
+ * TanStack reads the row's place from a cache that an earlier row in the same batch of measurements may have made stale
+ * (its correction moved the scroll position and the rows after it), which moved the line read by 332 px in WebKit.
+ * Here `getVirtualItems()` rebuilds the places first; `measurementsCache` then holds the layout's places, as
+ * `scrollOffset` is one (the drawn places differ while a correction is held: each row shifted back by the held amount).
  */
 function movesView(
   item: VirtualItem,
@@ -44,8 +49,9 @@ function movesView(
 ): boolean {
   instance.getVirtualItems();
   const row = instance.measurementsCache[item.index] ?? item;
-  if (row.end > (instance.scrollOffset ?? 0)) return false;
-  return !instance.itemSizeCache.has(item.key) || instance.scrollDirection !== "backward";
+  const top = instance.scrollOffset ?? 0;
+  if (!instance.itemSizeCache.has(item.key)) return row.start < top;
+  return row.end <= top && instance.scrollDirection !== "backward";
 }
 
 /** How near the end still counts as at the end: the list then follows new output. */
