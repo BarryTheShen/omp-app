@@ -17,6 +17,7 @@ import { TodoPill } from "../todos/TodoPill";
 import { type Attachment, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
+import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
@@ -290,13 +291,14 @@ export const Composer = memo(function Composer({
     requestAnimationFrame(() => boxRef.current?.setSelectionRange(next.caret, next.caret));
   };
 
-  /** Up on the first line goes back through what was sent, Down on the last line forward, back to what was typed. */
+  /**
+   * Up on the first row the box draws goes back through what was sent, Down on the last row forward, back to what was
+   * typed. A long line wraps over several rows: the arrows move through them first.
+   */
   const browse = (step: 1 | -1, box: HTMLTextAreaElement): boolean => {
     const value = textRef.current;
     if (box.selectionStart !== box.selectionEnd) return false;
-    const before = value.slice(0, box.selectionStart);
-    if (step < 0 ? before.includes("\n") : value.slice(box.selectionStart).includes("\n"))
-      return false;
+    if (!caretOnEdgeRow(box, step < 0 ? "first" : "last")) return false;
     const at = browsing.current;
     if (at === null && (step > 0 || history.length === 0)) return false;
     const kept = at?.kept ?? value;

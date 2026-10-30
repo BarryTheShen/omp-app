@@ -201,9 +201,7 @@ function Shell({
     const bridge = desktopBridge();
     if (bridge === null) return;
     openDesktopWindow(bridge).catch((failure: unknown) =>
-      workspace.current
-        ?.focused()
-        ?.controller.store.toast(`New window: ${refusalText(failure)}`, "error"),
+      workspace.current?.focused()?.controller.store.toast(refusalText(failure), "error"),
     );
   }, []);
   useHotkeys(KEYS.newWindow.hotkey, newWindow, { ...anywhere, enabled: desktopBridge() !== null });

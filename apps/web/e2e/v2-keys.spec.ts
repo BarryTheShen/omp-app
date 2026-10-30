@@ -51,6 +51,41 @@ realTest.describe("new UI chat keys", () => {
   );
 
   realTest(
+    "Up and Down move through the rows of a long message before they go through what was sent",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      await send(page, "earlier message");
+      await expect(transcript(page).getByText("pong")).toHaveCount(1, { timeout: 60_000 });
+
+      // One line, no newline, long enough to wrap over several rows of the box.
+      const long = Array.from({ length: 40 }, (_, index) => `word${index}`).join(" ");
+      await box(page).fill(long);
+      const caret = () =>
+        box(page).evaluate((element) => (element as HTMLTextAreaElement).selectionStart);
+      await box(page).press("End");
+      const end = await caret();
+      expect(end).toBe(long.length);
+
+      await box(page).press("ArrowUp");
+      await expect(box(page)).toHaveValue(long);
+      expect(await caret()).toBeLessThan(end);
+      // Each Up moves the caret a row up; only on the first row does it go back to what was sent.
+      for (let press = 0; press < 10; press += 1) {
+        const before = await caret();
+        await box(page).press("ArrowUp");
+        if ((await box(page).inputValue()) !== long) break;
+        expect(await caret()).toBeLessThan(before);
+      }
+      await expect(box(page)).toHaveValue("earlier message");
+      // Down from the last row of what was sent comes back to the long message, all of it.
+      await box(page).press("ArrowDown");
+      await expect(box(page)).toHaveValue(long);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "Shift+Tab changes the thinking level, Alt+P opens the model list, Alt+R retries a failed turn",
     async ({ realApp }) => {
       const page = await newChat(realApp);

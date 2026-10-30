@@ -61,10 +61,18 @@ export function openDesktopServer(bridge: Bridge, choice: ServerChoice): Promise
 
 /**
  * Opens another desktop window, on the server this window shows, at the next free window of the app. A refusal (the
- * server does not answer) rejects with the window's reason.
+ * server does not answer, or a desktop app older than New window) rejects with the words for it.
  */
-export function openDesktopWindow(bridge: Bridge): Promise<unknown> {
-  return bridge.invoke("new_window");
+export async function openDesktopWindow(bridge: Bridge): Promise<unknown> {
+  try {
+    return await bridge.invoke("new_window");
+  } catch (failure) {
+    const reason = refusalText(failure);
+    // A desktop app that predates the command refuses it as one its capabilities do not list (Tauri's ACL).
+    if (/not allowed by ACL|not found/i.test(reason))
+      throw new Error("This desktop app is older than New window: install 0.2.1319 or newer.");
+    throw new Error(`New window: ${reason}`);
+  }
 }
 
 /** A refusal's words: the window rejects a command with its reason as text. */
