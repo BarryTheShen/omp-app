@@ -396,6 +396,39 @@ const MODELS_AND_ROLES: Tour = {
   ],
 };
 
+const MODEL_MENU = part("model-menu");
+
+/**
+ * The model menu's own steps act inside the menu (a click on the tour's Next lands outside it and closes it), so the
+ * only Next is the last step's.
+ */
+const MODEL_MENU_TOUR: Tour = {
+  id: "model-menu-2026-10-30",
+  title: "Your model menu",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("model"),
+      title: "The model menu",
+      text: "Click the model, or press {model}.",
+      action: { kind: "appears", selector: MODEL_MENU },
+    },
+    {
+      target: part("model-star"),
+      title: "Star a model",
+      text: "Starred models come first, under <b>Favorites</b>, on every device you use. Click the star (or press {starModel}) to star or unstar the highlighted model.",
+      action: { kind: "click" },
+    },
+    {
+      target: MODEL_MENU,
+      title: "Favorites, Recent, then the rest",
+      text: "After your stars come the models omp used last, then each provider's models, newest first. The eye beside a model hides it ({hideModel}): hidden models wait folded at the bottom, and the search still finds them.",
+      action: next,
+    },
+  ],
+};
+
 const BTW_PANEL = part("btw-panel");
 const SIDE_PANEL_RAIL = part("side-panel-rail");
 const SIDE_PANEL = part("side-panel");
@@ -579,4 +612,5 @@ export const TOURS: readonly Tour[] = [
   NOTES_TOUR,
   INBOX_TOUR,
   SIDE_RAIL_TOUR,
+  MODEL_MENU_TOUR,
 ];

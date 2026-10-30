@@ -54,6 +54,7 @@ import { readWorkspaceState } from "../src/modules/A1/git";
 import { createGithubRefs } from "../src/modules/A1/github-refs";
 import { readHostMetadata } from "../src/modules/A1/host";
 import { createMemoryStore } from "../src/modules/A1/memory";
+import { ModelPreferenceStoreService } from "../src/modules/A1/model-preferences";
 import { createPasteFileStore } from "../src/modules/A1/paste-files";
 import { createSessionPinStore } from "../src/modules/A1/pins";
 import { createPlanDocumentStore } from "../src/modules/A1/plans";
@@ -498,6 +499,7 @@ export async function createCompositionServer(
     agentDir,
     watchRegistry: fileWatch,
   });
+  const modelPreferenceStore = new ModelPreferenceStoreService({ appDataDir });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
   const usageLimitStore = createUsageLimitStore({ env, command: ompCmd });
   const extensionCatalog = createExtensionCatalog({
@@ -567,6 +569,7 @@ export async function createCompositionServer(
     ompCommandGateway,
     backgroundJobStopStore,
     sessionPinStore,
+    modelPreferenceStore,
     providerAccountStore,
     usageLimitStore,
     extensionCatalog,

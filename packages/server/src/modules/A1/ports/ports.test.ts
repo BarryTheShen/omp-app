@@ -18,6 +18,7 @@ import {
   HostMetadataPort,
   McpCommandsPort,
   MemoryStore,
+  ModelPreferenceStore,
   OmpCommandGateway,
   PasteFileStore,
   PlanDocumentStore,
@@ -215,6 +216,11 @@ function createContext(
         ),
       onOutput: () => () => undefined,
       onCompaction: () => () => undefined,
+    },
+    modelPreferenceStore: {
+      read: async () => ({ favorites: [], hidden: [], revision: "revision-1" }),
+      set: async () => ({ favorites: [], hidden: [], revision: "revision-2" }),
+      subscribe: () => () => undefined,
     },
     sessionPinStore: {
       list: async () => ({ pins: [], revision: "revision-1", readAt: "2026-01-01T00:00:00.000Z" }),
@@ -421,6 +427,7 @@ describe("A1.9 port registrations", () => {
       GitStatePort,
       HostMetadataPort,
       MemoryStore,
+      ModelPreferenceStore,
       McpCommandsPort,
       OmpCommandGateway,
       PasteFileStore,

@@ -36,6 +36,7 @@ import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { ModelHubToggle } from "../models/hub";
+import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
 import { clientTags, frameMarks, watchFrames } from "../perf/frames";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
@@ -423,6 +424,36 @@ export class ChatController {
   async models(): Promise<readonly ChatModel[]> {
     const { models } = await this.#request("get_available_models", {});
     return models.map(toChatModel);
+  }
+
+  /**
+   * What the model menu lists: omp's models, each provider's newest first, and the ones omp used most recently
+   * (`provider/id`, newest first). An app server older than the menu gives omp's models as they come, with none recent.
+   */
+  async modelMenu(): Promise<{
+    readonly models: readonly ChatModel[];
+    readonly recent: readonly string[];
+  }> {
+    try {
+      const menu = await this.#request("get_model_menu", {});
+      return {
+        models: menu.models.map((model) => ({
+          provider: model.provider,
+          id: model.modelId,
+          name: model.name,
+        })),
+        recent: menu.recent,
+      };
+    } catch (failure) {
+      if (!(failure instanceof AppFailure && failure.appError.code === "invalid_args"))
+        throw failure;
+      return { models: await this.models(), recent: [] };
+    }
+  }
+
+  /** The model menu's stars and hidden models: the server's, the same for every pane and device. */
+  get modelPreferences(): ModelPreferencesStore {
+    return modelPreferencesFor(this.client);
   }
 
   /** omp's sign-in providers, and whether each has a sign-in stored. */

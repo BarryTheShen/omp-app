@@ -138,15 +138,18 @@ realTest.describe("new UI reopening and typing ahead", () => {
         },
       });
       const box = page.getByRole("textbox", { name: "Message" });
-      const fakeModel = page.getByRole("option", { name: /Fake Model/ });
+      // Its provider's row: the model may be listed under Recent too.
+      const fakeModel = page
+        .getByRole("group", { name: "fake" })
+        .getByRole("option", { name: /Fake Model/ });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
       await page.getByRole("button", { name: /^Model: / }).click();
       await expect(fakeModel).toBeVisible({ timeout: 30_000 });
       await page.keyboard.press("Escape");
 
-      // From now on, listing the chats and omp's models each take the server five seconds.
-      server.slow = /"method":"listSessions"|get_available_models/;
+      // From now on, listing the chats and the model menu's models each take the server five seconds.
+      server.slow = /"method":"listSessions"|get_model_menu/;
       await page.reload();
       await expect(chats(page).getByRole("button", { name: "Seeded chat 2" })).toBeVisible({
         timeout: 1_500,

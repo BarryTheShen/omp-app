@@ -9,6 +9,7 @@ export * from "./host-metadata";
 export * from "./mcp-commands";
 export * from "./memory-commands";
 export * from "./memory-store";
+export * from "./model-preferences";
 export * from "./omp-command-gateway";
 export * from "./paste-file-store";
 export * from "./plan-documents";

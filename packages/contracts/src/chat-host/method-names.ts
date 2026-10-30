@@ -22,6 +22,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "btw_cancel",
   "get_btw_history",
   "get_model_hub",
+  "get_model_menu",
   "assign_model_role",
   "clear_model_role",
   "set_thinking_level",

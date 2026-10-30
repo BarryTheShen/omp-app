@@ -75,6 +75,7 @@ import { InputGate } from "./input";
 import { LiveVoice } from "./live";
 import { HostMethodError } from "./method-error";
 import { assignModelRole, clearModelRole, findModel, readModelHub } from "./model-hub";
+import { readModelMenu } from "./model-menu";
 import type { LineWriter } from "./output";
 import { PlanMode } from "./plan";
 import {
@@ -419,6 +420,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     btw_cancel: async ({ recordId }) => ({ cancelled: btw.cancel(recordId) }),
     get_btw_history: async () => ({ records: await btw.history() }),
     get_model_hub: async () => readModelHub(session),
+    get_model_menu: async () => readModelMenu(session),
     assign_model_role: (params) => assignModelRole(session, params),
     clear_model_role: (params) => clearModelRole(session, params),
     set_thinking_level: async ({ level }) => {

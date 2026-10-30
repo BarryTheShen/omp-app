@@ -13,6 +13,7 @@ import type { readWorkspaceState } from "../git";
 import type { GithubRefsService } from "../github-refs";
 import type { readHostMetadata } from "../host";
 import type { MemoryStoreService } from "../memory";
+import type { ModelPreferenceStoreService } from "../model-preferences";
 import type { PasteFileStoreService } from "../paste-files";
 import type { SessionPinStoreService } from "../pins";
 import type { PlanDocumentStoreService } from "../plans";
@@ -31,6 +32,8 @@ export interface A1PortContext {
   readonly ompCommandGateway: OmpCommandGatewayService;
   readonly backgroundJobStopStore: BackgroundJobStopStoreService;
   readonly sessionPinStore: SessionPinStoreService;
+  /** The model menu's stars and hidden models, in the app's data folder. */
+  readonly modelPreferenceStore: ModelPreferenceStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
   readonly usageLimitStore: UsageLimitStoreService;
   readonly extensionCatalog: ExtensionCatalogService;

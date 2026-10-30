@@ -204,6 +204,18 @@ export const KEYS = {
     label: "Next thinking level",
   },
   model: { hotkey: "alt+p", scope: "box", group: "Message box", label: "Choose the model" },
+  starModel: {
+    hotkey: "alt+s",
+    scope: "box",
+    group: "Message box",
+    label: "In the model menu: star or unstar the highlighted model",
+  },
+  hideModel: {
+    hotkey: "alt+h",
+    scope: "box",
+    group: "Message box",
+    label: "In the model menu: hide or show the highlighted model",
+  },
   nextRole: {
     hotkey: "ctrl+p",
     scope: "pane",

@@ -372,6 +372,24 @@ export interface ModelHub {
   readonly models: readonly HubModel[];
 }
 
+/** One model of the chat's model menu, as omp names it. */
+export interface MenuModel {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly name: string;
+}
+
+/** What the chat's model menu lists. */
+export interface ModelMenu {
+  /**
+   * omp's available models in its model browser's order without the role and recently-used steps: by provider, then
+   * omp's priority, then the newest version first (`sortModelItems` with `skipRoleRank` and no recent order).
+   */
+  readonly models: readonly MenuModel[];
+  /** The models omp used most recently, newest first, as `provider/id` (omp's own history, as its model browser reads it). */
+  readonly recent: readonly string[];
+}
+
 export const EnabledParams = z.object({ enabled: z.boolean() });
 export type EnabledParams = z.infer<typeof EnabledParams>;
 
@@ -637,6 +655,14 @@ export interface ChatHostMethodMap {
   readonly get_model_hub: {
     readonly params: EmptyParams;
     readonly result: ModelHub;
+  };
+  /**
+   * The chat's model menu: omp's available models by provider, newest first, and the ones it used most recently. Waits
+   * for omp's background model refresh first, as `get_available_models` does.
+   */
+  readonly get_model_menu: {
+    readonly params: EmptyParams;
+    readonly result: ModelMenu;
   };
   /**
    * Gives a role a model, as the hub's `onAssign` does: `default` also switches the live chat (unless a higher settings
@@ -905,6 +931,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   btw_cancel: BtwCancelParams,
   get_btw_history: EmptyParams,
   get_model_hub: EmptyParams,
+  get_model_menu: EmptyParams,
   assign_model_role: AssignModelRoleParams,
   clear_model_role: ClearModelRoleParams,
   set_thinking_level: ThinkingLevelParams,
