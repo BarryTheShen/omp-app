@@ -478,6 +478,42 @@ describe("A0.6 upgrade and static serving", () => {
       await app.stop();
     }
   });
+  test("a built asset is kept for good and goes gzipped to a browser that takes gzip; the page is never kept", async () => {
+    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const app = createAppServer({
+      port: 0,
+      staticRoot: fixtures,
+      uiRoot: `${fixtures}/ui`,
+      origins: ["http://allowed.test"],
+    });
+    const get = (path: string, encoding: string) =>
+      fetch(`${app.url}${path}`, { headers: { "Accept-Encoding": encoding }, decompress: false });
+    const unzipped = async (response: Response) =>
+      new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(await response.arrayBuffer())));
+    try {
+      const built = await Bun.file(`${fixtures}/ui/assets/app-fixture.js`).text();
+
+      const zipped = await get("/assets/app-fixture.js", "br, gzip;q=0.8");
+      expect(zipped.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(zipped.headers.get("content-encoding")).toBe("gzip");
+      expect(zipped.headers.get("vary")).toBe("Accept-Encoding");
+      expect(zipped.headers.get("content-type")).toContain("javascript");
+      expect(await unzipped(zipped)).toBe(built);
+
+      // A browser that refuses gzip gets the file as it is, kept for good all the same.
+      const plain = await get("/assets/app-fixture.js", "gzip;q=0, identity");
+      expect(plain.headers.get("content-encoding")).toBeNull();
+      expect(plain.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(await plain.text()).toBe(built);
+
+      const page = await get("/", "gzip");
+      expect(page.headers.get("cache-control")).toBe("no-store");
+      expect(page.headers.get("content-encoding")).toBe("gzip");
+      expect(await unzipped(page)).toContain("v2 static fixture");
+    } finally {
+      await app.stop();
+    }
+  });
   test("accepts a tokenized loopback WebSocket and sends the C0 welcome", async () => {
     const app = createAppServer({
       port: 0,

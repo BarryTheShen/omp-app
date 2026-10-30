@@ -152,15 +152,43 @@ function redirect(location: string): Response {
   return new Response(null, { status: 308, headers: { ...STATIC_HEADERS, Location: location } });
 }
 
-async function serveStatic(root: string, pathname: string): Promise<Response> {
+/** Vite names each file it builds under `assets/` after its contents, so a browser may keep it for good. */
+const KEPT_FOR_GOOD = { "Cache-Control": "public, max-age=31536000, immutable" } as const;
+
+/** Text a browser can take gzipped: the new UI's script is about 1.8 MB, a quarter of that gzipped. */
+const COMPRESSIBLE = /\.(?:js|mjs|css|html|svg|json|map|txt)$/;
+
+/** Whether the request takes gzip: named in Accept-Encoding, and not with `q=0`. */
+function acceptsGzip(request: Request): boolean {
+  return (request.headers.get("accept-encoding") ?? "").split(",").some((part) => {
+    const [name, ...parameters] = part.split(";").map((piece) => piece.trim().toLowerCase());
+    return name === "gzip" && !parameters.some((parameter) => /^q=0(?:\.0*)?$/.test(parameter));
+  });
+}
+
+/**
+ * A file of a UI's build. index.html carries the build's asset hashes, so it is never kept; the hashed assets are kept
+ * for good. Text goes gzipped, as a stream, to a browser that takes it, so a large script costs a quarter of the time
+ * over a slow link and the server never holds one in memory.
+ */
+async function serveStatic(root: string, pathname: string, request: Request): Promise<Response> {
   const path = safeStaticPath(root, pathname);
   if (path === undefined) return new Response("Bad path", { status: 400, headers: STATIC_HEADERS });
   const file = Bun.file(path);
   if (!(await file.exists()))
     return new Response("Not found", { status: 404, headers: STATIC_HEADERS });
-  // index.html carries the build's asset hashes, so it must never be served from a stale cache.
-  const cache = path.endsWith("/index.html") ? { "Cache-Control": "no-store" } : {};
-  return new Response(file, { headers: { ...STATIC_HEADERS, ...cache } });
+  const cache = path.endsWith("/index.html")
+    ? { "Cache-Control": "no-store" }
+    : /\/assets\/[^/]+$/.test(path)
+      ? KEPT_FOR_GOOD
+      : {};
+  if (!COMPRESSIBLE.test(path))
+    return new Response(file, { headers: { ...STATIC_HEADERS, ...cache } });
+  const headers = { ...STATIC_HEADERS, ...cache, Vary: "Accept-Encoding" };
+  if (!acceptsGzip(request)) return new Response(file, { headers });
+  return new Response(file.stream().pipeThrough(new CompressionStream("gzip")), {
+    headers: { ...headers, "Content-Type": file.type, "Content-Encoding": "gzip" },
+  });
 }
 
 function randomId(): string {
@@ -233,14 +261,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       }
       if (url.pathname === OLD_PREFIX) return redirect(`${OLD_PREFIX}/${url.search}`);
       if (url.pathname.startsWith(`${OLD_PREFIX}/`)) {
-        return serveStatic(staticRoot, url.pathname.slice(OLD_PREFIX.length));
+        return serveStatic(staticRoot, url.pathname.slice(OLD_PREFIX.length), request);
       }
       if (url.pathname === FORMER_UI_PREFIX || url.pathname.startsWith(`${FORMER_UI_PREFIX}/`)) {
         return redirect(`${url.pathname.slice(FORMER_UI_PREFIX.length) || "/"}${url.search}`);
       }
       // The new UI first; a file it does not have may be one of the old UI's own pages or files, served as before.
-      const page = await serveStatic(uiRoot, url.pathname);
-      return page.status === 404 ? serveStatic(staticRoot, url.pathname) : page;
+      const page = await serveStatic(uiRoot, url.pathname, request);
+      return page.status === 404 ? serveStatic(staticRoot, url.pathname, request) : page;
     },
     websocket: {
       open: (socket) => {
