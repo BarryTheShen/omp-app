@@ -58,6 +58,13 @@ function track(process: OmpProcess): OmpProcess {
   return process;
 }
 
+/** An `OMP_APP_DATA_DIR` where the tests run would move the app's data out of the temp home: omp's env drops it. */
+function isolatedEnv(
+  extra: Readonly<Record<string, string | undefined>> = {},
+): Record<string, string | undefined> {
+  return { OMP_APP_DATA_DIR: undefined, ...extra };
+}
+
 interface WaitOptions {
   readonly timer?: ManualTimer;
   readonly pump?: () => void;
@@ -174,7 +181,7 @@ describe("OmpProcess spawn and stdio", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
-        env: { FAKE_OMP_PASSTHROUGH_CHECK: "isolated-value" },
+        env: isolatedEnv({ FAKE_OMP_PASSTHROUGH_CHECK: "isolated-value" }),
       }),
     );
 
@@ -196,7 +203,7 @@ describe("OmpProcess spawn and stdio", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
-        env: { PI_CONFIG_FILES: configured },
+        env: isolatedEnv({ PI_CONFIG_FILES: configured }),
       }),
     );
 
@@ -212,12 +219,39 @@ describe("OmpProcess spawn and stdio", () => {
     const expectedPolicy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
     expect(policy).toBe(expectedPolicy);
   });
+  test("puts the policy in the folder OMP_APP_DATA_DIR names", async () => {
+    const folder = await temporaryFolder();
+    const appData = await temporaryFolder();
+    const process = track(
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        chatCommand: [FAKE_OMP],
+        env: isolatedEnv({ OMP_APP_DATA_DIR: appData }),
+      }),
+    );
+
+    process.start();
+    const notice = await waitForFrame(process, (frame) => frame.type === "notice");
+    const policy = join(appData, "omp-app-usage-reset-policy.yml");
+    expect(String(notice.configFiles).split(":").at(-1)).toBe(policy);
+    expect(await readFile(policy, "utf8")).toBe(
+      "codexResets:\n  autoRedeem: no\nclaudeResets:\n  autoRedeem: no\n",
+    );
+  });
   test("does not rewrite an unchanged policy when a second process starts", async () => {
     const folder = await temporaryFolder();
     const policy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
     const startProcess = async (): Promise<void> => {
       const process = track(
-        spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+        spawnOmpProcess({
+          threadId,
+          folder,
+          homeDir: folder,
+          chatCommand: [FAKE_OMP],
+          env: isolatedEnv(),
+        }),
       );
       await process.start();
       await waitForFrame(process, (frame) => frame.kind === "hello");
@@ -237,7 +271,13 @@ describe("OmpProcess spawn and stdio", () => {
     await mkdir(join(folder, ".omp", "app"), { recursive: true });
     await writeFile(policy, "codexResets:\n  autoRedeem: yes\n");
     const process = track(
-      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        chatCommand: [FAKE_OMP],
+        env: isolatedEnv(),
+      }),
     );
     await process.start();
     await waitForFrame(process, (frame) => frame.kind === "hello");
@@ -257,7 +297,7 @@ describe("OmpProcess spawn and stdio", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
-        env: { OMP_APP_DATA_DIR: appData },
+        env: isolatedEnv({ OMP_APP_DATA_DIR: appData }),
       }),
     );
     process.onEvent((event) => events.push(event));
@@ -282,7 +322,7 @@ describe("OmpProcess spawn and stdio", () => {
           folder,
           homeDir: folder,
           chatCommand: [FAKE_OMP],
-          env: { OMP_APP_DATA_DIR: appData },
+          env: isolatedEnv({ OMP_APP_DATA_DIR: appData }),
         }),
       );
       await process.start();
@@ -296,7 +336,13 @@ describe("OmpProcess spawn and stdio", () => {
   test("round-trips a written command as the fake's echoed response", async () => {
     const folder = await temporaryFolder();
     const process = track(
-      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        chatCommand: [FAKE_OMP],
+        env: isolatedEnv(),
+      }),
     );
     await process.start();
     await waitForFrame(process, (frame) => frame.kind === "hello");
@@ -315,7 +361,13 @@ describe("OmpProcess spawn and stdio", () => {
   test("rejects start() once stopped, and stop() is idempotent", async () => {
     const folder = await temporaryFolder();
     const process = track(
-      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        chatCommand: [FAKE_OMP],
+        env: isolatedEnv(),
+      }),
     );
     await process.start();
     await waitForFrame(process, (frame) => frame.kind === "hello");
@@ -357,7 +409,13 @@ describe("OmpProcess shutdown", () => {
     const folder = await temporaryFolder();
     const events: OmpProcessEvent[] = [];
     const process = track(
-      spawnOmpProcess({ threadId, folder, homeDir: folder, chatCommand: [FAKE_OMP] }),
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        chatCommand: [FAKE_OMP],
+        env: isolatedEnv(),
+      }),
     );
     process.onEvent((event) => events.push(event));
     let closedWith: unknown;
@@ -383,7 +441,7 @@ describe("OmpProcess shutdown", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
-        env: { FAKE_OMP_IGNORE_SIGTERM: "1" },
+        env: isolatedEnv({ FAKE_OMP_IGNORE_SIGTERM: "1" }),
         terminationGraceMs: 25,
         timer,
       }),
@@ -411,6 +469,7 @@ describe("OmpProcess shutdown", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
+        env: isolatedEnv(),
         terminationGraceMs: 25,
         timer,
         spawn: spawnWhoseFirstStopWaitFails(),
@@ -442,7 +501,10 @@ describe("OmpProcess crash handling", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
-        env: { FAKE_OMP_EXIT_CODE: "9", FAKE_OMP_STDERR: "diagnostic: fixture crash" },
+        env: isolatedEnv({
+          FAKE_OMP_EXIT_CODE: "9",
+          FAKE_OMP_STDERR: "diagnostic: fixture crash",
+        }),
       }),
     );
     let closeCause: unknown;
@@ -472,7 +534,10 @@ describe("OmpProcess crash handling", () => {
         folder,
         homeDir: folder,
         chatCommand: [FAKE_OMP],
-        env: { FAKE_OMP_EXIT_CODE: "3", FAKE_OMP_STDERR: `error: provider rejected key ${key}` },
+        env: isolatedEnv({
+          FAKE_OMP_EXIT_CODE: "3",
+          FAKE_OMP_STDERR: `error: provider rejected key ${key}`,
+        }),
       }),
     );
     await process.start();
@@ -492,7 +557,7 @@ describe("OmpProcess crash handling", () => {
         homeDir: folder,
         chatCommand: [FAKE_OMP],
         maxStderrBytes: 2500,
-        env: { FAKE_OMP_EXIT_CODE: "1", FAKE_OMP_STDERR: head + tail },
+        env: isolatedEnv({ FAKE_OMP_EXIT_CODE: "1", FAKE_OMP_STDERR: head + tail }),
       }),
     );
 
