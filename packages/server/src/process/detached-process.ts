@@ -15,7 +15,11 @@ import {
   OmpProcessId as OmpProcessIdSchema,
   ThreadId,
 } from "@omp-app/contracts";
-import { type ChatHostHello, parseHostLine } from "@omp-app/contracts/chat-host";
+import {
+  CHAT_HOST_SOCKET_ARG,
+  type ChatHostHello,
+  parseHostLine,
+} from "@omp-app/contracts/chat-host";
 import {
   buildChatEnv,
   homeFolderArguments,
@@ -232,9 +236,9 @@ class DetachedOmpProcess implements OmpProcess {
         homeDir,
         folder: this.folder,
       });
-      env.OMP_APP_HOST_SOCKET = socketPath;
       const command = [
         ...options.chatCommand,
+        `${CHAT_HOST_SOCKET_ARG}=${socketPath}`,
         ...(await homeFolderArguments(this.folder, homeDir)),
         ...(options.args ?? []),
       ];
@@ -532,6 +536,20 @@ class DetachedOmpProcess implements OmpProcess {
 /** Starts a chat host that outlives the server, reached over its socket. */
 export function spawnDetachedOmpProcess(options: DetachedOmpProcessOptions): OmpProcess {
   return new DetachedOmpProcess(options);
+}
+
+/**
+ * Whether a host an earlier server left running is restarted on this server's build once its chat settles (D2): it runs
+ * another omp, or an older build of the app, which answers fewer of the methods this server's own host answers (its
+ * check's evidence; with none, only omp's version is compared). A newer host answering more is kept.
+ */
+export function restartsWhenSettled(
+  hello: Pick<ChatHostHello, "ompVersion" | "methods">,
+  own: { readonly ompVersion: string; readonly methods: ReadonlySet<string> },
+): boolean {
+  if (hello.ompVersion !== own.ompVersion) return true;
+  const answered = new Set<string>(hello.methods);
+  return [...own.methods].some((method) => !answered.has(method));
 }
 
 /**

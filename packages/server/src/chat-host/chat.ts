@@ -4,7 +4,8 @@
  * In order:
  * 1. the link to the server is taken before anything else can use it: stdin and stdout (omp claims stdin the same way
  *    before its extensions load, `main.ts:1835`; stdout goes to the protocol, `output.ts`), or with
- *    `OMP_APP_HOST_SOCKET` a Unix socket the server connects to (D2, `socket.ts`), so the chat can outlive the server;
+ *    `--app-host-socket=<path>` a Unix socket the server connects to (D2, `socket.ts`), so the chat can outlive the
+ *    server;
  * 2. the session is built from the chat's launch flags (`session-factory.ts`); a chat that cannot start exits 1 with the
  *    reason on stderr, which the server shows;
  * 3. the loop runs (`loop.ts`) until the server closes stdin, or an extension shuts the chat down; on a socket, until the
@@ -16,9 +17,11 @@
  * Disposing would abort a worker still running, and the app would list it as Cancelled, as if the person had stopped it;
  * left alone it records no end, and the app lists it as Stopped (#1337, #781).
  */
+
 import { SessionResolutionError } from "@oh-my-pi/pi-coding-agent/main";
 import { VERSION } from "@oh-my-pi/pi-utils/dirs";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
+import { CHAT_HOST_SOCKET_ARG } from "@omp-app/contracts/chat-host/args";
 import { startHandback } from "./handback";
 import { linesOf } from "./input";
 import { runChatLoop } from "./loop";
@@ -29,6 +32,22 @@ import { type HostSocket, openHostSocket } from "./socket";
 
 /** How long a host on a socket waits for its server's first connection before it gives up. */
 const FIRST_CONNECTION_MS = 60_000;
+
+/**
+ * The host's socket (D2): `--app-host-socket=<path>` first among its arguments, the way the server starts a host. A host
+ * that an older server starts while the app is being updated gets it as `OMP_APP_HOST_SOCKET`.
+ */
+function socketOf(args: readonly string[]): {
+  readonly socketPath: string | undefined;
+  readonly rest: readonly string[];
+} {
+  const prefix = `${CHAT_HOST_SOCKET_ARG}=`;
+  const first = args[0];
+  if (first?.startsWith(prefix))
+    return { socketPath: first.slice(prefix.length), rest: args.slice(1) };
+  const fromEnv = process.env.OMP_APP_HOST_SOCKET;
+  return { socketPath: fromEnv === "" ? undefined : fromEnv, rest: args };
+}
 
 /**
  * `OMP_APP_HANDBACK_MS`: how long a host on a socket waits for its server to come back before it hands the chat back.
@@ -49,16 +68,15 @@ interface Transport {
 }
 
 export async function runChat(args: readonly string[]): Promise<never> {
-  const socketPath = process.env.OMP_APP_HOST_SOCKET;
-  const transport =
-    socketPath === undefined || socketPath === "" ? stdio() : await socket(socketPath);
+  const { socketPath, rest } = socketOf(args);
+  const transport = socketPath === undefined ? stdio() : await socket(socketPath);
   if (transport === null) return exit(1);
   // A terminal notification writes a bell or an escape sequence to stdout, inside the protocol.
   process.env.PI_NOTIFICATIONS = "off";
 
   let chat: Awaited<ReturnType<typeof createChatSession>>;
   try {
-    chat = await createChatSession(args, (message) => process.stderr.write(`${message}\n`));
+    chat = await createChatSession(rest, (message) => process.stderr.write(`${message}\n`));
   } catch (error) {
     process.stderr.write(`${startFailure(error)}\n`);
     return exit(1);

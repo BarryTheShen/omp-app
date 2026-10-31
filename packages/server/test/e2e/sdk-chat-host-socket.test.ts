@@ -6,7 +6,7 @@
 import { afterEach, describe, expect } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { CHAT_HOST_CHAT_ARG } from "@omp-app/contracts/chat-host";
+import { CHAT_HOST_CHAT_ARG, CHAT_HOST_SOCKET_ARG } from "@omp-app/contracts/chat-host";
 import { ChatHostClient, type LineDuplex } from "../../src/chat-host/client";
 import { chatHostChats, PROGRAMS, realTest } from "./sdk-chat-host-harness";
 
@@ -64,13 +64,22 @@ describe("the chat host on a socket", () => {
       async () => {
         const { home, folder, env } = await chats.prepare();
         const socket = join(home, "hosts", "chat.sock");
-        const host = Bun.spawn([...command, CHAT_HOST_CHAT_ARG, "--model", "fake/fake-model"], {
-          cwd: folder,
-          env: { ...process.env, ...env, OMP_APP_HOST_SOCKET: socket, OMP_APP_HANDBACK_MS: "3000" },
-          stdin: "ignore",
-          stdout: "ignore",
-          stderr: "inherit",
-        });
+        const host = Bun.spawn(
+          [
+            ...command,
+            CHAT_HOST_CHAT_ARG,
+            `${CHAT_HOST_SOCKET_ARG}=${socket}`,
+            "--model",
+            "fake/fake-model",
+          ],
+          {
+            cwd: folder,
+            env: { ...process.env, ...env, OMP_APP_HANDBACK_MS: "3000" },
+            stdin: "ignore",
+            stdout: "ignore",
+            stderr: "inherit",
+          },
+        );
         hosts.push(host);
 
         const first = await connect(socket);

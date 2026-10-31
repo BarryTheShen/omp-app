@@ -50,7 +50,7 @@ import {
  */
 type Session = AgentSession;
 
-export { CHAT_HOST_CHAT_ARG } from "./args";
+export { CHAT_HOST_CHAT_ARG, CHAT_HOST_SOCKET_ARG } from "./args";
 export * from "./dialogs";
 export * from "./host-requests";
 export * from "./host-tools";

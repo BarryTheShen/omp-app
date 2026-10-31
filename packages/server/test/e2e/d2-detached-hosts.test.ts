@@ -534,4 +534,25 @@ describe("D2: hosts that outlive the server", () => {
     },
     240_000,
   );
+
+  realTest(
+    "a command a chat runs gets neither its host's socket nor the server's switches, so a server it starts cannot take the host's place",
+    async () => {
+      const { folder, start, sockets } = await setup("60000");
+      const running = await start();
+      const chat = running.client.port(ChatSessionPort);
+      const opened = await chat.open({ folderPath: FolderPath.parse(folder), start: "new" });
+      const [socket] = await sockets();
+      expect(socket).toBeDefined();
+      const run = (await chat.request({
+        threadId: opened.threadId,
+        method: "bash",
+        params: { command: 'printf "[%s|%s]" "$OMP_APP_HOST_SOCKET" "$OMP_APP_DETACHED_HOSTS"' },
+      })) as { readonly output: string };
+      expect(run.output).toContain("[|]");
+      expect(existsSync(socket as string)).toBe(true);
+      await chat.close({ threadId: opened.threadId });
+    },
+    120_000,
+  );
 });

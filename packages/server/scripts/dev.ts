@@ -88,6 +88,7 @@ import {
   logOmpProcess,
   OmpProcessRegistry,
   ompSessionOwnersDir,
+  restartsWhenSettled,
   sessionLeaseProbe,
   spawnDetachedOmpProcess,
   spawnOmpProcess,
@@ -459,15 +460,23 @@ export async function createCompositionServer(
   };
   const a0Runtime = createA0Runtime(a0Context);
   // D2: the hosts an earlier server left running are taken over before any browser is taken, so a chat that kept running
-  // through the restart goes on here. A host on another omp is restarted on this one between turns; one on another
-  // protocol finishes its turn and hands its chat back.
+  // through the restart goes on here. A host on another omp or an older build of the app is restarted on this one between
+  // turns (`restartsWhenSettled`); one on another protocol finishes its turn and hands its chat back.
+  const own = {
+    ompVersion: OMP_VERSION,
+    methods: new Set<string>(
+      (capabilityResult?.evidence ?? [])
+        .filter((each) => each.status === "available")
+        .map((each) => each.command),
+    ),
+  };
   if (detachedHosts) {
     const found = await adoptRunningHosts({
       hostsDir,
       protocol: CHAT_HOST_PROTOCOL_VERSION,
       adopt: (process, hello) =>
         a0Runtime.adopt(logOmpProcess(process, logger), hello, {
-          restartWhenSettled: hello.ompVersion !== OMP_VERSION,
+          restartWhenSettled: restartsWhenSettled(hello, own),
         }),
       handingBack: (threadId) => a0Runtime.handingBack(threadId),
       onFailed: (threadId, error) =>

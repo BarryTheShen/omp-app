@@ -2,6 +2,7 @@ export {
   adoptRunningHosts,
   type DetachedOmpProcessOptions,
   handBackHosts,
+  restartsWhenSettled,
   spawnDetachedOmpProcess,
   systemdUserScopes,
 } from "./detached-process";

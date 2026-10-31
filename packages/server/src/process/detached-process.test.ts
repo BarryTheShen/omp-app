@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
-import { adoptRunningHosts, handBackHosts } from "./detached-process";
+import { adoptRunningHosts, handBackHosts, restartsWhenSettled } from "./detached-process";
 import type { OmpProcess } from "./omp-process";
 
 const dirs: string[] = [];
@@ -205,5 +205,43 @@ describe("an attached host's output", () => {
     expect(lines.map((line) => (JSON.parse(line) as { kind: string }).kind)).toEqual(["hello"]);
 
     await attached.release?.();
+  });
+});
+
+describe("which adopted hosts are restarted between turns", () => {
+  const own = { ompVersion: "18.12.6", methods: new Set(["prompt", "get_state", "get_jobs"]) };
+
+  test("a host on this build is kept; one on another omp, or an older build answering fewer methods, is restarted", () => {
+    expect(
+      restartsWhenSettled(
+        { ompVersion: "18.12.6", methods: ["prompt", "get_state", "get_jobs"] },
+        own,
+      ),
+    ).toBe(false);
+    expect(
+      restartsWhenSettled(
+        { ompVersion: "18.12.5", methods: ["prompt", "get_state", "get_jobs"] },
+        own,
+      ),
+    ).toBe(true);
+    expect(
+      restartsWhenSettled({ ompVersion: "18.12.6", methods: ["prompt", "get_state"] }, own),
+    ).toBe(true);
+  });
+
+  test("a newer host answering more is kept, and with no check to compare, only omp's version counts", () => {
+    expect(
+      restartsWhenSettled(
+        { ompVersion: "18.12.6", methods: ["prompt", "get_state", "get_jobs", "newer"] },
+        own,
+      ),
+    ).toBe(false);
+    const unchecked = { ompVersion: "18.12.6", methods: new Set<string>() };
+    expect(restartsWhenSettled({ ompVersion: "18.12.6", methods: ["prompt"] }, unchecked)).toBe(
+      false,
+    );
+    expect(restartsWhenSettled({ ompVersion: "18.12.5", methods: ["prompt"] }, unchecked)).toBe(
+      true,
+    );
   });
 });

@@ -439,8 +439,18 @@ class SpawnedOmpProcess implements OmpProcess {
 }
 
 /**
+ * The server's own switches: no chat host reads them, and nothing a chat runs may inherit them. A test server a chat's
+ * command starts would otherwise run its chats in hosts that outlive it, and a host there could take this host's socket.
+ */
+const SERVER_ONLY_VARIABLES = [
+  "OMP_APP_DETACHED_HOSTS",
+  "OMP_APP_HOST_SOCKET",
+  "OMP_APP_NEW_CHATS_READY",
+] as const;
+
+/**
  * The environment a chat starts with: the server's, the chat's overrides on top (a key set to `undefined` is removed),
- * and the app's usage-reset policy added to omp's config files.
+ * without the server's own switches, and the app's usage-reset policy added to omp's config files.
  */
 export async function buildChatEnv(options: {
   readonly overrides: Readonly<Record<string, string | undefined>>;
@@ -455,6 +465,7 @@ export async function buildChatEnv(options: {
     if (value === undefined) delete env[key];
     else env[key] = value;
   }
+  for (const key of SERVER_ONLY_VARIABLES) delete env[key];
   const appData = await ensureAppDataDir({ env, homeDir: options.homeDir, cwd: options.folder });
   const policyPath = join(appData, USAGE_RESET_POLICY_FILE);
   let current: string | undefined;
