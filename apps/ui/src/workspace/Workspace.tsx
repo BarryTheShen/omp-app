@@ -139,14 +139,19 @@ export function Workspace({
   folder,
   phone,
   onView,
+  onShown,
   ref,
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly phone: boolean;
   readonly onView: (view: WorkspaceView) => void;
+  /** A tab of its own with a new chat came to the front (a new tab, a tour's sandbox): a phone shows the chat then. */
+  readonly onShown?: () => void;
   readonly ref: Ref<WorkspaceHandle>;
 }): ReactNode {
+  const onShownRef = useRef(onShown);
+  onShownRef.current = onShown;
   const [tabs, setTabs] = useState<WorkspaceTabs>(() =>
     loadTabs(layoutStorage().getItem(TABS_KEY)),
   );
@@ -324,8 +329,10 @@ export function Workspace({
         }
       }
       // A tab made with Ctrl+Shift+T opens with a new chat, as kitty's opens with a shell; the first tab waits for a pick.
-      if (freshTabs.current.delete(tabId) && api.totalPanels === 0)
+      if (freshTabs.current.delete(tabId) && api.totalPanels === 0) {
         addChat(api, { kind: "new", folder });
+        onShownRef.current?.();
+      }
       // A phone opens on a new chat in the shown tab, ready to type, with the list a tap away: going through the list
       // to start one is slow on a phone. A new chat already in front stays, with the text kept for it.
       if (phoneRef.current && !phoneStarted.current && tabId === tabsRef.current.active) {

@@ -205,4 +205,39 @@ realTest.describe("new UI on a phone", () => {
       },
     );
   });
+
+  realTest(
+    "the phone's tour, started from the list, shows the chat and points at the keys, the quick panel and the top bar",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const popover = page.locator(".driver-popover");
+      const heading = popover.locator(".driver-popover-title");
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      const list = page.getByRole("navigation", { name: "Chats" });
+      await list.getByRole("button", { name: "Menu" }).tap();
+      await page.getByRole("menuitem", { name: "What's new" }).tap();
+      await page
+        .getByRole("dialog", { name: "What's new", exact: true })
+        .getByRole("button", { name: "Take the tour: Your phone's controls" })
+        .tap();
+
+      // The tour's chat shows, not the list, and its steps point at what they name. The tour's own tab is a second
+      // one, so the first tab's chat is still on the page, hidden.
+      const shown = (tour: string) =>
+        page.locator(`[data-tour='${tour}']`).filter({ visible: true });
+      await expect(heading).toHaveText("The keys a phone lacks", { timeout: 30_000 });
+      await expect(shown("phone-keys")).toHaveClass(/driver-active-element/);
+      await popover.getByRole("button", { name: "Next" }).tap();
+      await expect(heading).toHaveText("Quick prompts");
+      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await expect(heading).toHaveText("One tap answers");
+      await popover.getByRole("button", { name: "Next" }).tap();
+      await expect(heading).toHaveText("Your chats");
+      await expect(shown("phone-top-bar")).toHaveClass(/driver-active-element/);
+      await popover.getByRole("button", { name: "Done" }).tap();
+      await expect(popover).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });

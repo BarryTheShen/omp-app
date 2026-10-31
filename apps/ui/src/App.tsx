@@ -244,6 +244,8 @@ function Shell({
     workspace.current?.open(target, where);
     setShowChat(true);
   }, []);
+  /** On a phone: the workspace brought a chat forward by itself (a new tab, a tour's sandbox), so it shows. */
+  const showChatView = useCallback(() => setShowChat(true), []);
   // The chat you are in is seen: what it settled with leaves the inbox when the focus moves to it, and when the page
   // comes to the front with it focused.
   useEffect(() => {
@@ -354,7 +356,7 @@ function Shell({
       >
         {phone && (
           // The phone's top bar: back to the list (marked while a chat waits on you), the chat's name, a new chat.
-          <div className="flex h-11 shrink-0 items-center gap-1 px-1">
+          <div data-tour="phone-top-bar" className="flex h-11 shrink-0 items-center gap-1 px-1">
             <Button
               variant="ghost"
               size="sm"
@@ -389,6 +391,7 @@ function Shell({
             folder={folder}
             phone={phone}
             onView={setView}
+            onShown={showChatView}
           />
         </SidePaneContext>
       </main>

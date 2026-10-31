@@ -34,6 +34,7 @@ export function KeyRow({
 }): ReactNode {
   return (
     <div
+      data-tour="phone-keys"
       role="toolbar"
       aria-label="Keys"
       // Every button in the row looks like a key, the settings' chips too.
@@ -41,7 +42,12 @@ export function KeyRow({
       // The box keeps the focus: a key pressed while typing leaves the keyboard up.
       onPointerDown={(event) => event.preventDefault()}
     >
-      <Key label={panelOpen ? "Keyboard" : "Quick prompts"} expanded={panelOpen} onPress={onPanel}>
+      <Key
+        tour="quick-prompts-key"
+        label={panelOpen ? "Keyboard" : "Quick prompts"}
+        expanded={panelOpen}
+        onPress={onPanel}
+      >
         {panelOpen ? <Keyboard /> : <Zap />}
       </Key>
       {settings}
@@ -76,15 +82,19 @@ function Key({
   expanded,
   onPress,
   children,
+  tour,
 }: {
   readonly label: string;
   /** For a key that opens something: whether it is open. */
   readonly expanded?: boolean;
   readonly onPress: () => void;
   readonly children: ReactNode;
+  /** The key's name for a tour step. */
+  readonly tour?: string;
 }): ReactNode {
   return (
     <Button
+      data-tour={tour}
       type="button"
       variant="secondary"
       size="sm"

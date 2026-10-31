@@ -702,6 +702,39 @@ const IPHONE_TOUR: Tour = {
   ],
 };
 
+const PHONE_TOUR: Tour = {
+  id: "phone-2026-10-31",
+  title: "Your phone's controls",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("phone-keys"),
+      title: "The keys a phone lacks",
+      text: "Under the box: <b>⚡</b> quick prompts, the model, the thinking level and plan mode, then <b>/</b> commands, <b>@</b> files, <b>!</b> the shell, and <b>↑ ↓</b> for what you sent. A key leaves the keyboard up; the row scrolls sideways.",
+      action: next,
+    },
+    {
+      target: part("quick-prompts-key"),
+      title: "Quick prompts",
+      text: "<b>⚡</b> puts your quick prompts where the keyboard was, and <b>⌨</b> brings the keyboard back. Open them.",
+      action: { kind: "appears", selector: part("quick-panel") },
+    },
+    {
+      target: part("quick-panel"),
+      title: "One tap answers",
+      text: "Tap a prompt to send it as it is, or hold it to put it in the box and change it first. <b>Sent</b> lists what you sent in this chat; a tap puts one back in the box.",
+      action: next,
+    },
+    {
+      target: part("phone-top-bar"),
+      title: "Your chats",
+      text: "The app opens on a new chat. <b>Chats</b> opens the list, and the pencil starts another chat. In the list, hold a chat to pin, rename or delete it.",
+      action: next,
+    },
+  ],
+};
+
 const PROVIDER_ACCOUNTS = part("provider-accounts");
 
 const PROVIDER_ACCOUNTS_TOUR: Tour = {
@@ -798,6 +831,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-phone",
+    when: "2026-10-31T12:45:00-05:00",
+    summary:
+      "On a phone: the app opens on a new chat, a key row and quick prompts above the keyboard, and a tidier chat list.",
+    tours: [PHONE_TOUR],
+  },
   {
     id: "2026-10-31-devices",
     when: "2026-10-31T05:58:00-05:00",

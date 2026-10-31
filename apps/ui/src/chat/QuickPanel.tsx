@@ -37,6 +37,7 @@ export function QuickPanel({
   const [tab, setTab] = useState<"prompts" | "sent">("prompts");
   return (
     <section
+      data-tour="quick-panel"
       aria-label="Quick prompts"
       className="mt-2 flex h-[min(42dvh,320px)] flex-col rounded-xl border border-l2 bg-card"
     >
