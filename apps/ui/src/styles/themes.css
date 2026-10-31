@@ -110,3 +110,280 @@
   --pop-bg: #ffffff;
   --dim: rgb(244 244 241 / 50%);
 }
+
+/* palette themes: start (written by `bun run themes`; do not edit) */
+
+/* Catppuccin Latte: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
+[data-theme="catppuccin-latte"] {
+  color-scheme: light;
+
+  --t1: #4c4f69;
+  --t2: #5c5f77;
+  --t3: #65687e;
+  --t4: #9ca0b0;
+  --ink: #4c4f69;
+  --l1: rgb(76 79 105 / 6%);
+  --l2: rgb(76 79 105 / 9%);
+  --l3: rgb(76 79 105 / 14%);
+  --l4: rgb(76 79 105 / 22%);
+  --accent: #1e66f5;
+  --accent-ink: #004dda;
+  --accent-fill: #1e66f5;
+  --ok: #40a02b;
+  --warn: #df8e1d;
+  --bad: #d20f39;
+  --live: #8839ef;
+  --ok-ink: #196900;
+  --warn-ink: #845000;
+  --bad-ink: #b3002d;
+  --ok-fill: #258904;
+  --bad-fill: #d20f39;
+  --live-fill: #8839ef;
+  --ink-pen: #fe640b;
+  --ink-pen-fill: #cb4d00;
+  --page: #e6e9ef;
+  --panel: #eff1f5;
+  --card: #eff1f5;
+  --raise: #e6e9ef;
+  --code-bg: #e6e9ef;
+  --tbl-head: #e6e9ef;
+  --chip-bg: rgb(76 79 105 / 5.5%);
+  --pop-bg: #eff1f5;
+  --dim: rgb(230 233 239 / 50%);
+}
+
+/* Catppuccin Frappé: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
+[data-theme="catppuccin-frappe"] {
+  color-scheme: dark;
+
+  --t1: #c6d0f5;
+  --t2: #b5bfe2;
+  --t3: #aab2d3;
+  --t4: #737994;
+  --ink: #c6d0f5;
+  --l1: rgb(198 208 245 / 7%);
+  --l2: rgb(198 208 245 / 10%);
+  --l3: rgb(198 208 245 / 15%);
+  --l4: rgb(198 208 245 / 24%);
+  --accent: #8caaee;
+  --accent-ink: #bad0ff;
+  --accent-fill: #5974b4;
+  --ok: #a6d189;
+  --warn: #e5c890;
+  --bad: #e78284;
+  --live: #ca9ee6;
+  --ok-ink: #b1dc94;
+  --warn-ink: #eacd95;
+  --bad-ink: #ffbfbe;
+  --ok-fill: #5a813c;
+  --bad-fill: #b9595d;
+  --live-fill: #8e64a8;
+  --ink-pen: #ef9f76;
+  --ink-pen-fill: #ae633c;
+  --page: #292c3c;
+  --panel: #303446;
+  --card: #414559;
+  --raise: #414559;
+  --code-bg: #232634;
+  --tbl-head: #292c3c;
+  --chip-bg: rgb(198 208 245 / 7%);
+  --pop-bg: #414559;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Catppuccin Macchiato: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
+[data-theme="catppuccin-macchiato"] {
+  color-scheme: dark;
+
+  --t1: #cad3f5;
+  --t2: #b8c0e0;
+  --t3: #a5adcb;
+  --t4: #6e738d;
+  --ink: #cad3f5;
+  --l1: rgb(202 211 245 / 7%);
+  --l2: rgb(202 211 245 / 10%);
+  --l3: rgb(202 211 245 / 15%);
+  --l4: rgb(202 211 245 / 24%);
+  --accent: #8aadf4;
+  --accent-ink: #9fbfff;
+  --accent-fill: #5575b8;
+  --ok: #a6da95;
+  --warn: #eed49f;
+  --bad: #ed8796;
+  --live: #c6a0f6;
+  --ok-ink: #a6da95;
+  --warn-ink: #eed49f;
+  --bad-ink: #ffa4b0;
+  --ok-fill: #528241;
+  --bad-fill: #b85868;
+  --live-fill: #8a64b5;
+  --ink-pen: #f5a97f;
+  --ink-pen-fill: #aa643b;
+  --page: #1e2030;
+  --panel: #24273a;
+  --card: #363a4f;
+  --raise: #363a4f;
+  --code-bg: #181926;
+  --tbl-head: #1e2030;
+  --chip-bg: rgb(202 211 245 / 7%);
+  --pop-bg: #363a4f;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Catppuccin Mocha: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
+[data-theme="catppuccin-mocha"] {
+  color-scheme: dark;
+
+  --t1: #cdd6f4;
+  --t2: #bac2de;
+  --t3: #a6adc8;
+  --t4: #6c7086;
+  --ink: #cdd6f4;
+  --l1: rgb(205 214 244 / 7%);
+  --l2: rgb(205 214 244 / 10%);
+  --l3: rgb(205 214 244 / 15%);
+  --l4: rgb(205 214 244 / 24%);
+  --accent: #89b4fa;
+  --accent-ink: #89b4fa;
+  --accent-fill: #4e76b7;
+  --ok: #a6e3a1;
+  --warn: #f9e2af;
+  --bad: #f38ba8;
+  --live: #cba6f7;
+  --ok-ink: #a6e3a1;
+  --warn-ink: #f9e2af;
+  --bad-ink: #fa91ae;
+  --ok-fill: #498246;
+  --bad-fill: #b75673;
+  --live-fill: #8a66b2;
+  --ink-pen: #fab387;
+  --ink-pen-fill: #a7663c;
+  --page: #181825;
+  --panel: #1e1e2e;
+  --card: #313244;
+  --raise: #313244;
+  --code-bg: #11111b;
+  --tbl-head: #181825;
+  --chip-bg: rgb(205 214 244 / 7%);
+  --pop-bg: #313244;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Tokyo Night: https://github.com/tokyo-night/tokyo-night-vscode-theme/tree/master/themes (MIT), tokyo-night-color-theme.json */
+[data-theme="tokyo-night"] {
+  color-scheme: dark;
+
+  --t1: #a9b1d6;
+  --t2: #8d91af;
+  --t3: #8389a5;
+  --t4: #363b54;
+  --ink: #a9b1d6;
+  --l1: rgb(169 177 214 / 7%);
+  --l2: rgb(169 177 214 / 10%);
+  --l3: rgb(169 177 214 / 15%);
+  --l4: rgb(169 177 214 / 24%);
+  --accent: #7aa2f7;
+  --accent-ink: #7aa2f7;
+  --accent-fill: #4f74c4;
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --bad: #f7768e;
+  --live: #bb9af7;
+  --ok-ink: #9ece6a;
+  --warn-ink: #e0af68;
+  --bad-ink: #f7768e;
+  --ok-fill: #578217;
+  --bad-fill: #c84b66;
+  --live-fill: #8664bc;
+  --ink-pen: #ff9e64;
+  --ink-pen-fill: #b75d1d;
+  --page: #16161e;
+  --panel: #1a1b26;
+  --card: #1e202e;
+  --raise: #202330;
+  --code-bg: #14141b;
+  --tbl-head: #16161e;
+  --chip-bg: rgb(169 177 214 / 7%);
+  --pop-bg: #202330;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Tokyo Night Storm: https://github.com/tokyo-night/tokyo-night-vscode-theme/tree/master/themes (MIT), tokyo-night-storm-color-theme.json */
+[data-theme="tokyo-night-storm"] {
+  color-scheme: dark;
+
+  --t1: #a9b1d6;
+  --t2: #939dc8;
+  --t3: #919abf;
+  --t4: #3b4261;
+  --ink: #a9b1d6;
+  --l1: rgb(169 177 214 / 7%);
+  --l2: rgb(169 177 214 / 10%);
+  --l3: rgb(169 177 214 / 15%);
+  --l4: rgb(169 177 214 / 24%);
+  --accent: #7aa2f7;
+  --accent-ink: #8cb1ff;
+  --accent-fill: #4f74c4;
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --bad: #f7768e;
+  --live: #bb9af7;
+  --ok-ink: #9ece6a;
+  --warn-ink: #e0af68;
+  --bad-ink: #ff8ea0;
+  --ok-fill: #578217;
+  --bad-fill: #c84b66;
+  --live-fill: #8664bc;
+  --ink-pen: #ff9e64;
+  --ink-pen-fill: #b75d1d;
+  --page: #1f2335;
+  --panel: #24283b;
+  --card: #292e42;
+  --raise: #2c324a;
+  --code-bg: #1b1e2e;
+  --tbl-head: #1f2335;
+  --chip-bg: rgb(169 177 214 / 7%);
+  --pop-bg: #2c324a;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Tokyo Night Light: https://github.com/tokyo-night/tokyo-night-vscode-theme/tree/master/themes (MIT), tokyo-night-light-color-theme.json */
+[data-theme="tokyo-night-light"] {
+  color-scheme: light;
+
+  --t1: #343b59;
+  --t2: #363c4d;
+  --t3: #5c5e6c;
+  --t4: #9da0ab;
+  --ink: #343b59;
+  --l1: rgb(52 59 89 / 6%);
+  --l2: rgb(52 59 89 / 9%);
+  --l3: rgb(52 59 89 / 14%);
+  --l4: rgb(52 59 89 / 22%);
+  --accent: #2959aa;
+  --accent-ink: #1f4f9f;
+  --accent-fill: #2959aa;
+  --ok: #33635c;
+  --warn: #8f5e15;
+  --bad: #8c4351;
+  --live: #7b43ba;
+  --ok-ink: #295952;
+  --warn-ink: #724700;
+  --bad-ink: #823b49;
+  --ok-fill: #33635c;
+  --bad-fill: #8c4351;
+  --live-fill: #7b43ba;
+  --ink-pen: #965027;
+  --ink-pen-fill: #965027;
+  --page: #d6d8df;
+  --panel: #e6e7ed;
+  --card: #e6e7ed;
+  --raise: #dcdee3;
+  --code-bg: #dcdee3;
+  --tbl-head: #dadce3;
+  --chip-bg: rgb(52 59 89 / 5.5%);
+  --pop-bg: #e6e7ed;
+  --dim: rgb(214 216 223 / 50%);
+}
+
+/* palette themes: end */

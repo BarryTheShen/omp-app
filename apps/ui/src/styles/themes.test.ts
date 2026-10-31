@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { PALETTES } from "../theme/palettes";
 import css from "./themes.css?raw";
 
 type Rgba = readonly [number, number, number, number];
@@ -69,47 +70,50 @@ const TINTED = ["--accent-ink", "--ok-ink", "--warn-ink", "--bad-ink"];
 const TINT = 0.14;
 const WHITE: Rgba = [255, 255, 255, 1];
 
-describe.each(["tern-dark", "tern-light"])("%s", (theme) => {
-  const tokens = themeTokens(theme);
-  const color = (name: string): Rgba => {
-    const value = tokens.get(name);
-    if (value === undefined) throw new Error(`${theme} does not set ${name}`);
-    return parseColor(value);
-  };
+describe.each(["tern-dark", "tern-light", ...PALETTES.map((palette) => palette.id)])(
+  "%s",
+  (theme) => {
+    const tokens = themeTokens(theme);
+    const color = (name: string): Rgba => {
+      const value = tokens.get(name);
+      if (value === undefined) throw new Error(`${theme} does not set ${name}`);
+      return parseColor(value);
+    };
 
-  test.each(TEXT.flatMap((text) => SURFACES.map((surface) => [text, surface] as const)))(
-    "%s on %s reads at 4.5:1 or more",
-    (text, surface) => {
-      expect(contrast(color(text), color(surface))).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+    test.each(TEXT.flatMap((text) => SURFACES.map((surface) => [text, surface] as const)))(
+      "%s on %s reads at 4.5:1 or more",
+      (text, surface) => {
+        expect(contrast(color(text), color(surface))).toBeGreaterThanOrEqual(4.5);
+      },
+    );
 
-  test.each(
-    ROW_TEXT.flatMap((text) =>
-      ROW_FILLS.flatMap((fill) =>
-        ["--page", "--panel"].map((surface) => [text, fill, surface] as const),
+    test.each(
+      ROW_TEXT.flatMap((text) =>
+        ROW_FILLS.flatMap((fill) =>
+          ["--page", "--panel"].map((surface) => [text, fill, surface] as const),
+        ),
       ),
-    ),
-  )("%s on %s over %s reads at 4.5:1 or more", (text, fill, surface) => {
-    expect(contrast(color(text), over(color(fill), color(surface)))).toBeGreaterThanOrEqual(4.5);
-  });
+    )("%s on %s over %s reads at 4.5:1 or more", (text, fill, surface) => {
+      expect(contrast(color(text), over(color(fill), color(surface)))).toBeGreaterThanOrEqual(4.5);
+    });
 
-  test.each(FILLS_UNDER_WHITE)("white text on %s reads at 4.5:1 or more", (fill) => {
-    expect(contrast(WHITE, color(fill))).toBeGreaterThanOrEqual(4.5);
-  });
+    test.each(FILLS_UNDER_WHITE)("white text on %s reads at 4.5:1 or more", (fill) => {
+      expect(contrast(WHITE, color(fill))).toBeGreaterThanOrEqual(4.5);
+    });
 
-  test.each(TINTED.flatMap((ink) => SURFACES.map((surface) => [ink, surface] as const)))(
-    "%s on its own tint over %s reads at 4.5:1 or more",
-    (ink, surface) => {
-      const [r, g, b] = color(ink);
-      const tint = over([r, g, b, TINT], color(surface));
-      expect(contrast(color(ink), tint)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+    test.each(TINTED.flatMap((ink) => SURFACES.map((surface) => [ink, surface] as const)))(
+      "%s on its own tint over %s reads at 4.5:1 or more",
+      (ink, surface) => {
+        const [r, g, b] = color(ink);
+        const tint = over([r, g, b, TINT], color(surface));
+        expect(contrast(color(ink), tint)).toBeGreaterThanOrEqual(4.5);
+      },
+    );
 
-  test("the focus ring stands out from the page and panels at 3:1 or more", () => {
-    for (const surface of ["--page", "--panel", "--card"]) {
-      expect(contrast(color("--accent"), color(surface))).toBeGreaterThanOrEqual(3);
-    }
-  });
-});
+    test("the focus ring stands out from the page and panels at 3:1 or more", () => {
+      for (const surface of ["--page", "--panel", "--card"]) {
+        expect(contrast(color("--accent"), color(surface))).toBeGreaterThanOrEqual(3);
+      }
+    });
+  },
+);

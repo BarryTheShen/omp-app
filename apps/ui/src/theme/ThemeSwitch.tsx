@@ -2,18 +2,18 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { setThemeChoice, type ThemeChoice, useThemeChoice } from "./theme";
+import { setThemeMode, type ThemeMode, useThemeMode } from "./theme";
 
-/** The themes to choose from, as the switch and a phone's menu offer them. */
-export const THEME_CHOICES: readonly { value: ThemeChoice; label: string; icon: ReactNode }[] = [
+/** The switch's choices, as the switch and a phone's menu offer them: Light and Dark are your light and dark themes. */
+export const THEME_CHOICES: readonly { value: ThemeMode; label: string; icon: ReactNode }[] = [
   { value: "system", label: "Match the system", icon: <Monitor /> },
-  { value: "tern-light", label: "Light", icon: <Sun /> },
-  { value: "tern-dark", label: "Dark", icon: <Moon /> },
+  { value: "light", label: "Light", icon: <Sun /> },
+  { value: "dark", label: "Dark", icon: <Moon /> },
 ];
 
-/** The theme in one click: match the system, light or dark. */
+/** The theme in one click: match the system, or your light or your dark theme (the gallery picks them). */
 export function ThemeSwitch(): ReactNode {
-  const choice = useThemeChoice();
+  const mode = useThemeMode();
   return (
     <ToggleGroup
       aria-label="Theme"
@@ -21,10 +21,10 @@ export function ThemeSwitch(): ReactNode {
       size="sm"
       spacing={0.5}
       className="rounded-lg border border-l2 p-0.5"
-      value={[choice]}
+      value={[mode]}
       onValueChange={(next) => {
         const picked = THEME_CHOICES.find((item) => item.value === next[0]);
-        if (picked !== undefined) setThemeChoice(picked.value);
+        if (picked !== undefined) setThemeMode(picked.value);
       }}
     >
       {THEME_CHOICES.map(({ value, label, icon }) => (

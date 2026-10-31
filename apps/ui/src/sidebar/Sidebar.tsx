@@ -50,7 +50,7 @@ import { useLongPress } from "../longPress";
 import { togglePanel, usePanelState } from "../panels/panel-state";
 import { useSwipe } from "../swipe";
 import { THEME_CHOICES, ThemeSwitch } from "../theme/ThemeSwitch";
-import { setThemeChoice, type ThemeChoice, useThemeChoice } from "../theme/theme";
+import { setThemeMode, type ThemeMode, useThemeMode } from "../theme/theme";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
 import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
@@ -371,7 +371,7 @@ function PhoneMenu({
   readonly onSidePanel: () => void;
   readonly onWhatsNew: () => void;
 }): ReactNode {
-  const theme = useThemeChoice();
+  const theme = useThemeMode();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -393,7 +393,7 @@ function PhoneMenu({
         <DropdownMenuRadioGroup
           data-tour="theme"
           value={theme}
-          onValueChange={(value) => setThemeChoice(value as ThemeChoice)}
+          onValueChange={(value) => setThemeMode(value as ThemeMode)}
         >
           {THEME_CHOICES.map(({ value, label, icon }) => (
             <DropdownMenuRadioItem key={value} value={value}>

@@ -15,20 +15,27 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>omp</title>
     <script>
-      // The kept theme before the first paint; src/theme/theme.ts keeps it current afterwards (same key and rule).
+      // The kept theme before the first paint; src/theme/theme.ts keeps it current afterwards (same keys and rule): the
+      // choice, the mode of a chosen theme, and the light and the dark theme that "system" follows.
       (() => {
-        let choice = null;
-        try {
-          choice = localStorage.getItem("omp-app.ui.theme");
-        } catch {}
-        const theme =
-          choice === "tern-light" || choice === "tern-dark"
-            ? choice
-            : choice === "system" && matchMedia("(prefers-color-scheme: light)").matches
-              ? "tern-light"
-              : "tern-dark";
+        const read = (key) => {
+          try {
+            return localStorage.getItem(key);
+          } catch {
+            return null;
+          }
+        };
+        const choice = read("omp-app.ui.theme") ?? "tern-dark";
+        let theme = choice;
+        let dark = read("omp-app.ui.theme.mode") !== "light";
+        if (choice === "system") {
+          dark = !matchMedia("(prefers-color-scheme: light)").matches;
+          theme =
+            read(dark ? "omp-app.ui.theme.dark" : "omp-app.ui.theme.light") ??
+            (dark ? "tern-dark" : "tern-light");
+        }
         document.documentElement.dataset.theme = theme;
-        document.documentElement.classList.toggle("dark", theme === "tern-dark");
+        document.documentElement.classList.toggle("dark", dark);
       })();
     </script>
   </head>

@@ -52,7 +52,7 @@ realTest.describe("new UI palette", () => {
     ).toBeVisible({ timeout: 60_000 });
 
     await page.keyboard.press("Control+k");
-    await search(page).fill("theme: light");
+    await search(page).fill("Theme: Tern Light");
     await search(page).press("Enter");
     await expect(
       page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Light" }),

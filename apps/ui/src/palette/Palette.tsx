@@ -30,7 +30,7 @@ import { KEYS, keycap } from "../keys/table";
 import { showPanel, togglePanel, usePanelState } from "../panels/panel-state";
 import { PANELS } from "../panels/registry";
 import type { ChatList } from "../sidebar/useChatList";
-import { setThemeChoice, type ThemeChoice } from "../theme/theme";
+import { previewTheme, setSystemTheme, setThemeChoice, setThemeMode, THEMES } from "../theme/theme";
 import { startTour } from "../tour/runner";
 import { TOURS } from "../tour/tours";
 import type { WorkspaceCommand, WorkspaceHandle } from "../workspace/Workspace";
@@ -62,11 +62,9 @@ const WORKSPACE_COMMANDS: readonly WorkspaceCommand[] = [
   "closeTab",
 ];
 
-const THEMES: readonly (readonly [ThemeChoice, string])[] = [
-  ["system", "Theme: match the system"],
-  ["tern-light", "Theme: light"],
-  ["tern-dark", "Theme: dark"],
-];
+/** The theme a palette row is: its key without `theme:`; none for other rows and for "match the system". */
+const themeOfRow = (key: string): string | null =>
+  key.startsWith("theme:") && key !== "theme:system" ? key.slice("theme:".length) : null;
 
 const FILE_PAUSE_MS = 120;
 
@@ -207,6 +205,8 @@ export function Palette({
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
+  /** The highlighted row's key: cmdk reports a highlight (also its own, as a search narrows the rows) only when told it. */
+  const [highlighted, setHighlighted] = useState("");
   const sidePanel = usePanelState();
   const [commands, setCommands] = useState<readonly ChatHostCommand[]>([]);
   const [models, setModels] = useState<readonly ChatModel[]>([]);
@@ -214,11 +214,14 @@ export function Palette({
   const focused = open ? (workspace.current?.focused() ?? null) : null;
   const controller = focused?.controller ?? null;
 
-  // Each opening starts afresh: all scopes, nothing typed (however it was closed: Esc, a click or a run).
+  // Each opening starts afresh: all scopes, nothing typed (however it was closed: Esc, a click or a run). A theme row
+  // shown while it was highlighted goes when the palette closes, unless it was chosen.
   useEffect(() => {
     if (open) return;
     setQuery("");
     setScope("All");
+    setHighlighted("");
+    previewTheme(null);
   }, [open]);
 
   // What the focused chat offers, read as the palette opens.
@@ -287,11 +290,23 @@ export function Palette({
         keys: keycap(KEYS[id]),
         run: () => close(() => workspace.current?.command(id)),
       })),
-      ...THEMES.map(([choice, label]) => ({
-        key: `theme:${choice}`,
+      {
+        key: "theme:system",
+        group: "Commands",
+        label: "Theme: match the system",
+        run: () => close(() => setThemeMode("system")),
+      },
+      ...THEMES.map((theme) => ({
+        key: `theme:${theme.id}`,
         group: "Commands" as const,
-        label,
-        run: () => close(() => setThemeChoice(choice)),
+        label: `Theme: ${theme.name}`,
+        detail: theme.mode === "dark" ? "Dark" : "Light",
+        // Chosen before the palette closes, so the preview never flicks back to the old theme.
+        run: () => {
+          setSystemTheme(theme.id);
+          setThemeChoice(theme.id);
+          close(() => undefined);
+        },
       })),
       {
         key: "app:shortcuts",
@@ -414,7 +429,16 @@ export function Palette({
         className="top-1/4 translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
       >
         <DialogTitle className="sr-only">Palette</DialogTitle>
-        <Command shouldFilter={false} className="h-auto">
+        <Command
+          shouldFilter={false}
+          className="h-auto"
+          // A highlighted theme row shows the app in that theme, as VS Code's and Zed's theme pickers do.
+          value={highlighted}
+          onValueChange={(value) => {
+            setHighlighted(value);
+            previewTheme(themeOfRow(value));
+          }}
+        >
           <CommandInput
             placeholder="Search commands, files, chats and models"
             value={query}

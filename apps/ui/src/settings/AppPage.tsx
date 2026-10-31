@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ServerSection } from "../desktop/ServerSection";
 import { KeyList } from "../palette/Shortcuts";
 import { usePhone } from "../phone";
+import { ThemeGallery } from "../theme/ThemeGallery";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { Devices } from "./Devices";
 import { QuickPromptsSection } from "./QuickPromptsSection";
@@ -28,12 +29,18 @@ export function AppPage({
         How this app looks, the server it is connected to, the devices paired with it, and its keys.
       </p>
       <h3 className="mt-6 text-xs font-medium text-t3">Look</h3>
-      <div className="flex items-center gap-4 border-b border-l1 py-3">
+      <div className="flex items-center gap-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm text-t1">Theme</p>
-          <p className="mt-0.5 text-xs text-t3">Match the system, or always light or dark.</p>
+          <p className="mt-0.5 text-xs text-t3">
+            Match the system, or always light or dark. Light and Dark are the themes you pick below;
+            point at one to see the app in it.
+          </p>
         </div>
         <ThemeSwitch />
+      </div>
+      <div className="border-b border-l1 pb-5">
+        <ThemeGallery />
       </div>
       {phone && <QuickPromptsSection />}
       <ServerSection focusLink={focusServerLink} />
