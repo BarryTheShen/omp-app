@@ -25,10 +25,13 @@ function px(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
 }
 
-/** The iPhone's iOS version from the browser's name for itself (`... OS 26_1 like Mac OS X ...`), if it gives one. */
-function iosVersion(): string | null {
-  const match = /OS (\d+)_(\d+)/.exec(navigator.userAgent);
-  return match === null ? null : `ios-${match[1]}-${match[2]}`;
+/**
+ * The browser's WebKit release from its name for itself, where the viewport's faults are fixed or not: Safari's
+ * `Version/27.0.1`. The iOS number there is frozen (an iPhone on iOS 27 says `OS 18_7`), so it is not used.
+ */
+function safariVersion(): string | null {
+  const match = /Version\/(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(navigator.userAgent);
+  return match === null ? null : `safari-${match.slice(1).filter(Boolean).join("-")}`;
 }
 
 /** The heights the browser reports, where the page and its message box end, and where the shown chat is. */
@@ -96,8 +99,12 @@ export function traceViewport(report: (trace: ClientTraceReport) => void): () =>
   const standalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as { standalone?: boolean }).standalone === true;
-  const ios = iosVersion();
-  const tags = [...clientTags(), standalone ? "standalone" : "tab", ...(ios === null ? [] : [ios])];
+  const safari = safariVersion();
+  const tags = [
+    ...clientTags(),
+    standalone ? "standalone" : "tab",
+    ...(safari === null ? [] : [safari]),
+  ];
   let sent = 0;
   let pending: Cause | null = null;
   let frame = 0;
