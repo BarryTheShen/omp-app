@@ -37,6 +37,7 @@ import { KEYS, keycap } from "../keys/table";
 import { togglePanel, usePanelState } from "../panels/panel-state";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
+import { startChatDrag } from "../workspace/chatDrag";
 import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
 import type { ChatList } from "./useChatList";
 
@@ -154,9 +155,8 @@ export function Sidebar({
       state={stateOf(session.id)}
       open={view.open.has(session.id)}
       focused={view.focused === session.id}
-      onOpen={(where) =>
-        onOpen({ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }, where)
-      }
+      target={{ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }}
+      onOpen={onOpen}
       actions={{
         pinned: list.pinned.has(session.id),
         onPrefetch: () => onPrefetch(session),
@@ -184,7 +184,8 @@ export function Sidebar({
       state={stateOf(chat.id)}
       open={view.open.has(chat.id)}
       focused={view.focused === chat.id}
-      onOpen={(where) => onOpen({ kind: "existing", threadId: chat.id, sessionFile: null }, where)}
+      target={{ kind: "existing", threadId: chat.id, sessionFile: null }}
+      onOpen={onOpen}
     />
   );
   return (
@@ -329,6 +330,7 @@ function ChatRow({
   saving,
   open,
   focused,
+  target,
   onOpen,
   actions,
 }: {
@@ -338,7 +340,9 @@ function ChatRow({
   readonly saving: boolean;
   readonly open: boolean;
   readonly focused: boolean;
-  readonly onOpen: (where: "here" | "split") => void;
+  /** The chat the row opens, and carries when dragged onto the workspace. */
+  readonly target: ChatTarget;
+  readonly onOpen: (target: ChatTarget, where: "here" | "split") => void;
   /** None for a chat whose first reply still runs: it has no file to read ahead, pin, rename or delete yet. */
   readonly actions?: RowActions;
 }): ReactNode {
@@ -388,7 +392,10 @@ function ChatRow({
           aria-busy={saving ? "true" : undefined}
           // One phrase for a screen reader: the title, its state, and whether a pane shows it.
           aria-label={said.join(", ")}
-          onClick={(event) => onOpen(event.altKey ? "split" : "here")}
+          onClick={(event) => onOpen(target, event.altKey ? "split" : "here")}
+          // Dropped on the workspace, the chat opens where it lands (the workspace's drop handling).
+          draggable
+          onDragStart={(event) => startChatDrag(event.dataTransfer, target)}
         >
           <span
             aria-hidden

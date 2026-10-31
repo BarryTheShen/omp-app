@@ -82,3 +82,15 @@
   opacity: 0.7;
   transition: opacity 120ms var(--out);
 }
+
+/*
+ * A chat dragged from the list goes to the pane under the pointer. The panes draw their content in dockview's overlays
+ * (`defaultRenderer="always"`), which hand drag events on to the pane's drop target and count the drag entering and
+ * leaving them; every control inside one does that too, and around the message box the drag looked gone, so the drop
+ * was lost. While a chat is dragged (`data-chat-drag`, set by startChatDrag) nothing inside a pane takes the pointer, so
+ * the drag meets only the overlay itself.
+ */
+:root[data-chat-drag] .dockview-theme-omp .dv-render-overlay *,
+:root[data-chat-drag] .dockview-theme-omp .dv-content-container * {
+  pointer-events: none;
+}

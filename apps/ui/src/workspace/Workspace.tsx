@@ -2,10 +2,13 @@ import type { AppClient } from "@omp-app/client";
 import type { FolderPath, ThreadId } from "@omp-app/contracts";
 import {
   type DockviewApi,
+  type DockviewGroupPanel,
   DockviewReact,
   type DockviewReadyEvent,
   type DockviewTheme,
+  type IDockviewPanel,
   type IWatermarkPanelProps,
+  type Position,
   type SerializedDockview,
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
@@ -28,6 +31,13 @@ import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
 import { KEYS, keycap } from "../keys/table";
 import {
+  panelOf,
+  ShownTabContext,
+  SIDE_PANE,
+  SidePane,
+  type SidePaneParams,
+} from "../panels/SidePane";
+import {
   ChatPanel,
   type ChatPanelParams,
   PaneFocus,
@@ -35,6 +45,7 @@ import {
   PaneHostContext,
 } from "./ChatPanel";
 import { chatCache } from "./chatCache";
+import { carriesChat, droppedChat } from "./chatDrag";
 import { equalized, swappedWithNext } from "./layout";
 import { TabStrip } from "./TabStrip";
 import {
@@ -52,7 +63,7 @@ import {
 } from "./tabs";
 
 const THEME: DockviewTheme = { name: "omp", className: "dockview-theme-omp" };
-const COMPONENTS = { chat: ChatPanel };
+const COMPONENTS = { chat: ChatPanel, side: SidePane };
 /** How much one resize key widens, narrows, heightens or shortens the focused pane. */
 const RESIZE_STEP_PX = 48;
 
@@ -89,6 +100,8 @@ export interface WorkspaceHandle {
   readonly focused: () => FocusedChat | null;
   /** A chat was deleted: every pane that showed it gets a new chat, and the page stops keeping it open. */
   readonly forget: (threadId: ThreadId) => void;
+  /** Shows the side pane on a panel in the shown tab, at the right of its panes, or takes it away (`null`). */
+  readonly side: (panel: string | null) => void;
 }
 
 /** What the workspace shows, for the sidebar: the focused pane's chat, the chats open in panes, and those waiting. */
@@ -97,6 +110,8 @@ export interface WorkspaceView {
   readonly open: ReadonlySet<ThreadId>;
   /** Open chats with an approval or a question waiting for you, each with its pane's title. */
   readonly waiting: ReadonlyMap<ThreadId, string>;
+  /** The panel the shown tab's side pane shows; null when that tab has no side pane. */
+  readonly side: string | null;
 }
 
 const paramsOf = (params: unknown): ChatPanelParams | undefined =>
@@ -147,6 +162,19 @@ export function Workspace({
   const phoneZoomed = useRef(false);
   /** Tabs made with Ctrl+Shift+T, which open with a new chat. */
   const freshTabs = useRef(new Set<string>());
+  /** Each tab's chat pane focused last, by its dockview: the side pane taking the focus leaves it the chat in use. */
+  const lastChat = useRef(new WeakMap<DockviewApi, string>());
+  /** A tab's chat pane in use: the focused pane, or while the side pane has the focus, the chat pane focused last. */
+  const chatPaneIn = useCallback((api: DockviewApi | undefined): IDockviewPanel | undefined => {
+    if (api === undefined) return undefined;
+    const active = api.activePanel;
+    if (active !== undefined && active.id !== SIDE_PANE) return active;
+    const last = lastChat.current.get(api);
+    return (
+      (last === undefined ? undefined : api.getPanel(last)) ??
+      api.panels.find((panel) => panel.id !== SIDE_PANE)
+    );
+  }, []);
 
   useEffect(() => layoutStorage().setItem(TABS_KEY, JSON.stringify(tabs)), [tabs]);
 
@@ -165,20 +193,27 @@ export function Workspace({
         if ((controllers.get(panel.id)?.store.getSnapshot().requests.length ?? 0) > 0)
           waiting.set(target.threadId, panel.title ?? "");
       }
-      const title = api.activePanel?.title;
+      const title = chatPaneIn(api)?.title;
       if (title !== undefined) next.set(tab.id, title);
     }
-    const focused = paramsOf(apis.current.get(tabsRef.current.active)?.activePanel?.params)?.target;
-    onView({ focused: focused?.kind === "existing" ? focused.threadId : null, open, waiting });
+    const shown = apis.current.get(tabsRef.current.active);
+    const focused = paramsOf(chatPaneIn(shown)?.params)?.target;
+    const side = (shown?.getPanel(SIDE_PANE)?.params as SidePaneParams | undefined)?.panel ?? null;
+    onView({
+      focused: focused?.kind === "existing" ? focused.threadId : null,
+      open,
+      waiting,
+      side,
+    });
     setTitles(next);
-  }, [onView, controllers]);
+  }, [onView, controllers, chatPaneIn]);
 
   const focusPane = useCallback(
     (api: DockviewApi) => {
-      const id = api.activePanel?.id;
+      const id = chatPaneIn(api)?.id;
       if (id !== undefined) focus.request(id);
     },
-    [focus],
+    [focus, chatPaneIn],
   );
 
   /** On a phone the focused pane fills the screen: dockview's zoom, which a phone's layout does not keep. */
@@ -200,7 +235,7 @@ export function Workspace({
    */
   const addChat = useCallback(
     (api: DockviewApi, target: ChatTarget, direction?: "right" | "below") => {
-      const reference = api.activePanel;
+      const reference = chatPaneIn(api);
       const chatFolder = paramsOf(reference?.params)?.folder ?? folder;
       const id = crypto.randomUUID();
       api.addPanel<ChatPanelParams>({
@@ -215,6 +250,55 @@ export function Workspace({
         ...(direction !== undefined && reference !== undefined
           ? { position: { referencePanel: reference, direction } }
           : {}),
+      });
+      focus.request(id);
+    },
+    [folder, focus, chatPaneIn],
+  );
+
+  /**
+   * A chat dropped from the list opens where it lands: on a pane's edge it splits there, on its middle it goes beside
+   * it, on the workspace's own edge it runs along that side. A chat a pane shows already moves there, from another tab
+   * too, so one pane still shows each chat; dropped on its own pane, it only takes the caret.
+   */
+  const dropChat = useCallback(
+    (
+      api: DockviewApi,
+      target: ChatTarget,
+      group: DockviewGroupPanel | undefined,
+      position: Position,
+    ) => {
+      const side = position === "center" ? "right" : position;
+      let shown: { readonly api: DockviewApi; readonly panel: IDockviewPanel } | undefined;
+      if (target.kind === "existing")
+        for (const other of apis.current.values()) {
+          const panel = other.panels.find((candidate) => {
+            const showing = paramsOf(candidate.params)?.target;
+            return showing?.kind === "existing" && showing.threadId === target.threadId;
+          });
+          if (panel !== undefined) shown = { api: other, panel };
+        }
+      if (shown?.api === api) {
+        // Its own pane, or the only pane of this tab: removing it would close the tab under the drop.
+        if (shown.panel.group === group || api.totalPanels === 1) {
+          focus.request(shown.panel.id);
+          return;
+        }
+        if (group !== undefined) {
+          shown.panel.api.moveTo({ group, position: side });
+          focus.request(shown.panel.id);
+          return;
+        }
+      }
+      if (shown !== undefined) shown.api.removePanel(shown.panel);
+      const direction = side === "top" ? "above" : side === "bottom" ? "below" : side;
+      const id = crypto.randomUUID();
+      api.addPanel<ChatPanelParams>({
+        id,
+        component: "chat",
+        title: "New chat",
+        params: { chat: crypto.randomUUID(), target, folder },
+        position: group === undefined ? { direction } : { referenceGroup: group, direction },
       });
       focus.request(id);
     },
@@ -245,6 +329,8 @@ export function Workspace({
       });
       api.onDidActivePanelChange(() => {
         if (apis.current.get(tabId) !== api) return;
+        const active = api.activePanel;
+        if (active !== undefined && active.id !== SIDE_PANE) lastChat.current.set(api, active.id);
         zoomForPhone(api);
         report();
       });
@@ -256,10 +342,18 @@ export function Workspace({
           setTabs((state) => closeTab(state, tabId));
         }
       });
+      // A chat dragged from the list: dockview lights where it would land, and the drop opens it there.
+      api.onUnhandledDragOver((event) => {
+        if (carriesChat(event.nativeEvent)) event.accept();
+      });
+      api.onDidDrop((event) => {
+        const target = droppedChat(event.nativeEvent);
+        if (target !== null) dropChat(api, target, event.group, event.position);
+      });
       syncHeaders(api);
       report();
     },
-    [addChat, folder, report, syncHeaders, zoomForPhone],
+    [addChat, dropChat, folder, report, syncHeaders, zoomForPhone],
   );
 
   const withActive = useCallback((action: (api: DockviewApi) => void): void => {
@@ -334,7 +428,7 @@ export function Workspace({
           }
         }
         withActive((api) => {
-          const panel = api.activePanel;
+          const panel = chatPaneIn(api);
           if (where === "split" || panel === undefined) addChat(api, target, "right");
           else {
             // A new chat runs in the folder it names; a chat from the list belongs to the list's folder.
@@ -368,15 +462,40 @@ export function Workspace({
         report();
       },
       focused: () => {
-        const id = apis.current.get(tabsRef.current.active)?.activePanel?.id;
+        const id = chatPaneIn(apis.current.get(tabsRef.current.active))?.id;
         const controller = id === undefined ? undefined : controllers.get(id);
         return controller === undefined || id === undefined
           ? null
           : { controller, composer: composers.get(id) };
       },
+      side: (panel) =>
+        withActive((api) => {
+          const pane = api.getPanel(SIDE_PANE);
+          if (panel === null) {
+            pane?.api.close();
+            return;
+          }
+          const title = panelOf(panel)?.title ?? "";
+          if (pane !== undefined) {
+            pane.api.updateParameters({ panel } satisfies SidePaneParams);
+            pane.api.setTitle(title);
+          } else
+            api.addPanel<SidePaneParams>({
+              id: SIDE_PANE,
+              component: "side",
+              title,
+              params: { panel },
+              position: { direction: "right" },
+              initialWidth: 320,
+              // The chat keeps the caret: the side pane opens beside it.
+              inactive: true,
+            });
+          report();
+        }),
     }),
     [
       addChat,
+      chatPaneIn,
       commands,
       composers,
       controllers,
@@ -483,43 +602,47 @@ export function Workspace({
 
   return (
     <PaneHostContext value={host}>
-      <div className="flex min-h-0 flex-1 flex-col">
-        {tabs.tabs.length > 1 && !phone && (
-          <TabStrip
-            tabs={tabs.tabs}
-            active={tabs.active}
-            labels={labels}
-            renaming={renaming}
-            onActivate={(id) => setTabs((state) => activateTab(state, id))}
-            onClose={(id) => {
-              apis.current.delete(id);
-              setTabs((state) => closeTab(state, id));
-            }}
-            onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
-            onRenaming={setRenaming}
-          />
-        )}
-        <div className="relative min-h-0 flex-1">
-          {tabs.tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className="absolute inset-0"
-              hidden={tab.id !== tabs.active}
-              data-tab={tab.id}
-            >
-              <DockviewReact
-                components={COMPONENTS}
-                theme={THEME}
-                onReady={(event) => ready(tab.id, event)}
-                defaultRenderer="always"
-                disableFloatingGroups
-                singleTabMode="fullwidth"
-                watermarkComponent={EmptyTab}
-              />
-            </div>
-          ))}
+      <ShownTabContext value={apis.current.get(tabs.active) ?? null}>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {tabs.tabs.length > 1 && !phone && (
+            <TabStrip
+              tabs={tabs.tabs}
+              active={tabs.active}
+              labels={labels}
+              renaming={renaming}
+              onActivate={(id) => setTabs((state) => activateTab(state, id))}
+              onClose={(id) => {
+                apis.current.delete(id);
+                setTabs((state) => closeTab(state, id));
+              }}
+              onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
+              onRenaming={setRenaming}
+            />
+          )}
+          <div className="relative min-h-0 flex-1">
+            {tabs.tabs.map((tab) => (
+              <div
+                key={tab.id}
+                className="absolute inset-0"
+                hidden={tab.id !== tabs.active}
+                data-tab={tab.id}
+                // Several panes side by side or stacked: the tour that has you drag a chat into a split waits for it.
+                data-split={(apis.current.get(tab.id)?.totalPanels ?? 0) > 1 ? "" : undefined}
+              >
+                <DockviewReact
+                  components={COMPONENTS}
+                  theme={THEME}
+                  onReady={(event) => ready(tab.id, event)}
+                  defaultRenderer="always"
+                  disableFloatingGroups
+                  singleTabMode="fullwidth"
+                  watermarkComponent={EmptyTab}
+                />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </ShownTabContext>
     </PaneHostContext>
   );
 }

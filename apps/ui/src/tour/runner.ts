@@ -129,6 +129,7 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
     for (const end of [...waits]) end();
     document.removeEventListener("focusin", onFocusIn, true);
     overlay.destroy();
+    delete document.documentElement.dataset.tourThrough;
     if (stopCurrent === stop) stopCurrent = null;
   }
   stopCurrent = stop;
@@ -198,6 +199,9 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
       const action: TourAction =
         step.target !== null && element === null ? { kind: "next" } : step.action;
       const label = index === steps.length - 1 ? "Done" : action.kind === "next" ? "Next" : "Skip";
+      // A step whose action ends outside its highlighted element leaves the dimmed page usable (tour.css).
+      if (step.throughOverlay === true) document.documentElement.dataset.tourThrough = "";
+      else delete document.documentElement.dataset.tourThrough;
       overlay.highlight({
         ...(element === null ? {} : { element }),
         popover: {

@@ -109,3 +109,18 @@
 .driver-popover.omp-tour.omp-tour-centred .driver-popover-arrow {
   display: none;
 }
+
+/*
+ * A step whose action ends outside its highlighted element (`throughOverlay`: a chat dragged from the list onto a
+ * pane): the dimmed page lets the pointer through to the panes. Driver sets the dimming's pointer-events inline, and
+ * takes the pointer from every element but the highlighted one (`.driver-active *`); the panes' own elements, where a
+ * drag lands, take it again. A hidden pane keeps dockview's inline `none`.
+ */
+:root[data-tour-through] .driver-overlay path {
+  /* biome-ignore lint/complexity/noImportantStyles: only !important wins over driver's inline pointer-events */
+  pointer-events: none !important;
+}
+
+:root[data-tour-through] .driver-active :is(.dv-render-overlay, .dv-content-container) {
+  pointer-events: auto;
+}

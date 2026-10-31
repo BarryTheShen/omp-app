@@ -11,21 +11,19 @@ import { hidePanel, showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
 
 /**
- * The side column right of the workspace: one panel at a time, for the focused pane's chat. Closed by default; the rail
- * at the window's right edge, its key and the palette open it, and it opens on the panel it showed last. On a phone,
- * where there is no rail, it is a sheet from the right with the panels as tabs.
+ * The side panel on a phone: a sheet from the right, one panel at a time for the focused pane's chat, with the panels
+ * as tabs. The list's button, its key and the palette open it, on the panel it showed last. On a desktop the side panel
+ * is a pane of the workspace (`SidePane`).
  */
 export function SidePanel({
   client,
   folder,
   chat,
-  phone,
   openGoal,
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly chat: ChatController | null;
-  readonly phone: boolean;
   /** Opens the goal dialog for a chat. */
   readonly openGoal: (chat: ChatController) => void;
 }): ReactNode {
@@ -40,7 +38,7 @@ export function SidePanel({
         tabIndex={-1}
         className="flex items-center gap-1 border-b border-l2 px-3 py-2 outline-none"
       >
-        {phone && PANELS.length > 1 && (
+        {PANELS.length > 1 && (
           <div
             role="tablist"
             aria-label="Panels"
@@ -93,35 +91,23 @@ export function SidePanel({
       </div>
     </>
   );
-  if (phone) {
-    return (
-      <Dialog
-        open={open}
-        onOpenChange={(next) => {
-          if (!next) hidePanel();
-        }}
-      >
-        <DialogContent
-          data-tour="side-panel"
-          showCloseButton={false}
-          // The sheet opens on its header, not its close button, whose tooltip would take the first Esc.
-          initialFocus={headerRef}
-          className="top-0 right-0 left-auto flex h-dvh w-[min(360px,92vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-none"
-        >
-          <DialogTitle className="sr-only">Side panel: {chosen.title}</DialogTitle>
-          {body}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-  if (!open) return null;
   return (
-    <aside
-      data-tour="side-panel"
-      aria-label="Side panel"
-      className="my-1.5 mr-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-l2 bg-panel"
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) hidePanel();
+      }}
     >
-      {body}
-    </aside>
+      <DialogContent
+        data-tour="side-panel"
+        showCloseButton={false}
+        // The sheet opens on its header, not its close button, whose tooltip would take the first Esc.
+        initialFocus={headerRef}
+        className="top-0 right-0 left-auto flex h-dvh w-[min(360px,92vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-none"
+      >
+        <DialogTitle className="sr-only">Side panel: {chosen.title}</DialogTitle>
+        {body}
+      </DialogContent>
+    </Dialog>
   );
 }

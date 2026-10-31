@@ -29,6 +29,11 @@ export interface TourStep {
   readonly centred?: true;
   /** Only when the desktop window's bridge exists. */
   readonly desktopOnly?: true;
+  /**
+   * The dimmed page stays usable during this step: its action ends outside the highlighted element (a chat dragged
+   * from the list onto a pane).
+   */
+  readonly throughOverlay?: true;
 }
 
 export interface Tour {
@@ -597,6 +602,37 @@ const SIDE_RAIL_TOUR: Tour = {
   ],
 };
 
+/** The shown tab holds more than one pane. */
+const SPLIT_TAB = "[data-tab][data-split]:not([hidden])";
+
+const ARRANGE_TOUR: Tour = {
+  id: "arrange-2026-10-30",
+  title: "Arrange your windows",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: CHAT_LIST,
+      title: "Drag a chat into a split",
+      text: "Drag a chat from this list onto the chat on the right and let go: on an edge it splits there, in the middle it goes beside it. Where it will land lights up while you drag.",
+      action: { kind: "appears", selector: SPLIT_TAB },
+      throughOverlay: true,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "The side panel is a pane too",
+      text: "Click <b>Usage</b>, or press {sidePanel}: the side panel opens as a pane at the right of your chats.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: SIDE_PANEL,
+      title: "Size it as you like",
+      text: "Drag the line between it and the chat to make it wider or narrower, or drag its title to move it, as with a chat. Each tab keeps its own, also after a reload.",
+      action: next,
+    },
+  ],
+};
+
 /** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
 export const TOURS: readonly Tour[] = [
   PANES,
@@ -613,4 +649,5 @@ export const TOURS: readonly Tour[] = [
   INBOX_TOUR,
   SIDE_RAIL_TOUR,
   MODEL_MENU_TOUR,
+  ARRANGE_TOUR,
 ];

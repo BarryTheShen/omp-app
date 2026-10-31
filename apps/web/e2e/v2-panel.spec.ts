@@ -88,13 +88,14 @@ realTest.describe("new UI side panel", () => {
 
       await page.keyboard.press("Control+Alt+KeyB");
       await expect(panel(page)).toBeVisible();
-      await expect(panel(page).getByRole("heading", { name: "Usage" })).toBeVisible();
+      // A pane of the workspace: its title is in the pane's title bar, and the panel it shows is named.
+      await expect(panel(page).getByRole("tabpanel", { name: "Usage" })).toBeVisible();
       await expect(railButton(page, "Usage")).toHaveAttribute("aria-pressed", "true");
       // The rail's button of the panel shown puts it away; another one shows its own panel.
       await railButton(page, "Usage").click();
       await expect(panel(page)).toHaveCount(0);
       await railButton(page, "Progress").click();
-      await expect(panel(page).getByRole("heading", { name: "Progress" })).toBeVisible();
+      await expect(panel(page).getByRole("tabpanel", { name: "Progress" })).toBeVisible();
       await expect(railButton(page, "Progress")).toHaveAttribute("aria-pressed", "true");
       await expect(railButton(page, "Usage")).toHaveAttribute("aria-pressed", "false");
       await railButton(page, "Progress").click();
@@ -109,8 +110,10 @@ realTest.describe("new UI side panel", () => {
       await expect(panel(page)).toBeVisible();
 
       await page.reload();
-      await expect(panel(page)).toBeVisible({ timeout: 30_000 });
-      await panel(page).getByRole("button", { name: "Close the side panel" }).click();
+      await expect(panel(page).getByRole("tabpanel", { name: "Usage" })).toBeVisible({
+        timeout: 30_000,
+      });
+      await railButton(page, "Usage").click();
       await expect(panel(page)).toHaveCount(0);
 
       expect(realApp.problems).toEqual([]);

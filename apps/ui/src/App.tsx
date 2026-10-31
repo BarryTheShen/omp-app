@@ -8,6 +8,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -29,7 +30,8 @@ import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
 import { PanelRail } from "./panels/PanelRail";
-import { togglePanel, usePanelState } from "./panels/panel-state";
+import { hidePanel, showPanel, togglePanel, usePanelState } from "./panels/panel-state";
+import { SidePaneContext } from "./panels/SidePane";
 import { SidePanel } from "./panels/SidePanel";
 import { traceScrolling } from "./perf/scrollTrace";
 import type { SettingsPlace } from "./settings/SettingsPage";
@@ -63,7 +65,12 @@ function usePhone(): boolean {
   );
 }
 
-const NOTHING_OPEN: WorkspaceView = { focused: null, open: new Set(), waiting: new Map() };
+const NOTHING_OPEN: WorkspaceView = {
+  focused: null,
+  open: new Set(),
+  waiting: new Map(),
+  side: null,
+};
 
 /** Connects with the page's launch link, then shows the app. */
 export function App(): ReactNode {
@@ -226,6 +233,28 @@ function Shell({
   useEffect(() => {
     setFocusedChat(workspace.current?.focused()?.controller ?? null);
   }, [view]);
+  // On a desktop the side panel is a pane of the shown tab. What the rail, the palette, the message box and the key ask
+  // of the panel state goes to the workspace; a pane closed with its ×, or a tab with or without one, comes back to it.
+  // Each acts only when the two differ, so neither undoes the other; neither acts before the workspace has said what its
+  // tabs hold (`NOTHING_OPEN` until then), so the layout a reload brings back decides.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the workspace's side pane is compared, not followed
+  useEffect(() => {
+    if (phone || view === NOTHING_OPEN) return;
+    const wanted = sidePanel.open ? sidePanel.panel : null;
+    if (wanted !== view.side) workspace.current?.side(wanted);
+  }, [phone, sidePanel.open, sidePanel.panel]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the panel state is compared, not followed
+  useEffect(() => {
+    if (phone || view === NOTHING_OPEN) return;
+    const wanted = sidePanel.open ? sidePanel.panel : null;
+    if (view.side === wanted) return;
+    if (view.side === null) hidePanel();
+    else showPanel(view.side);
+  }, [phone, view]);
+  const sidePane = useMemo(
+    () => ({ client, folder, chat: focusedChat, openGoal: setGoalFor }),
+    [client, folder, focusedChat],
+  );
   useHotkeys(
     KEYS.settings.hotkey,
     () => {
@@ -242,10 +271,8 @@ function Shell({
     <div
       className={cn(
         "grid h-full max-sm:grid-cols-1",
-        // The last column is the side panel's rail, at the window's right edge where the panel opens.
-        sidePanel.open && !phone
-          ? "grid-cols-[244px_minmax(0,1fr)_320px_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_300px_40px]"
-          : "grid-cols-[244px_minmax(0,1fr)_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_40px]",
+        // The last column is the side panel's rail, at the window's right edge; the panel opens as a pane.
+        "grid-cols-[244px_minmax(0,1fr)_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_40px]",
       )}
       data-app-root="true"
     >
@@ -283,15 +310,19 @@ function Shell({
             </Button>
           </div>
         )}
-        <Workspace ref={workspace} client={client} folder={folder} phone={phone} onView={setView} />
+        <SidePaneContext value={sidePane}>
+          <Workspace
+            ref={workspace}
+            client={client}
+            folder={folder}
+            phone={phone}
+            onView={setView}
+          />
+        </SidePaneContext>
       </main>
-      <SidePanel
-        client={client}
-        folder={folder}
-        chat={focusedChat}
-        phone={phone}
-        openGoal={setGoalFor}
-      />
+      {phone && (
+        <SidePanel client={client} folder={folder} chat={focusedChat} openGoal={setGoalFor} />
+      )}
       {!phone && <PanelRail />}
       <Palette
         open={palette}
