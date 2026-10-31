@@ -11,6 +11,8 @@ export const CHAT_HOST_METHOD_NAMES = [
   "remove_queued_message",
   "promote_queued_message",
   "abort_and_restore_queue",
+  "pause",
+  "resume",
   "get_available_commands",
   "bash",
   "python",

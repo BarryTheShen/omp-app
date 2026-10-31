@@ -1,9 +1,11 @@
+import type { AppClient } from "@omp-app/client";
 import { AppFailure } from "@omp-app/contracts";
 import type { JobDetail, JobList, JobRow } from "@omp-app/contracts/chat-host";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatController } from "../../chat/controller";
+import { pauseAllChats } from "../../chat/pauseAll";
 import { fmtDuration } from "../../vendor/collab-web/lib/format";
 
 const failureText = (failure: unknown): string =>
@@ -44,15 +46,65 @@ const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 /**
  * The focused chat's background jobs, as omp's jobs sheet lists them: running, then recent. A click opens a job's
  * command and output, with Cancel job for one of the chat's own; a subagent's job opens the Agent Hub on it. omp emits
- * no event for a job, so the tab reads them every second while the page shows.
+ * no event for a job, so the tab reads them every second while the page shows. Above them, Pause all and Resume all
+ * hold or release every running chat (omp's `/pause` in each).
  */
-export function JobsPanel({ chat }: { readonly chat: ChatController | null }): ReactNode {
-  if (chat === null) {
-    return (
-      <p className="px-4 py-3 text-[0.8125rem] text-t3">Open a chat to see its background jobs.</p>
-    );
-  }
-  return <Jobs key={chat.threadId ?? "new"} chat={chat} />;
+export function JobsPanel({
+  client,
+  chat,
+}: {
+  readonly client: AppClient;
+  readonly chat: ChatController | null;
+}): ReactNode {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PauseAll client={client} />
+      {chat === null ? (
+        <p className="px-4 py-3 text-[0.8125rem] text-t3">
+          Open a chat to see its background jobs.
+        </p>
+      ) : (
+        <Jobs key={chat.threadId ?? "new"} chat={chat} />
+      )}
+    </div>
+  );
+}
+
+/** Pause all and Resume all, and what the last one did. */
+function PauseAll({ client }: { readonly client: AppClient }): ReactNode {
+  const [said, setSaid] = useState<{ readonly text: string; readonly failed: boolean } | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+  const run = (paused: boolean): void => {
+    setBusy(true);
+    pauseAllChats(client, paused)
+      .then(
+        (text) => setSaid({ text, failed: false }),
+        (failure: unknown) => setSaid({ text: failureText(failure), failed: true }),
+      )
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex flex-col gap-1 border-b border-l2 px-4 py-2">
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => run(true)}>
+          Pause all chats
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(false)}>
+          Resume all
+        </Button>
+      </div>
+      {said !== null && (
+        <p
+          role={said.failed ? "alert" : "status"}
+          className={said.failed ? "text-xs text-bad-ink" : "text-xs text-t3"}
+        >
+          {said.text}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function Jobs({ chat }: { readonly chat: ChatController }): ReactNode {
@@ -108,7 +160,7 @@ function Jobs({ chat }: { readonly chat: ChatController }): ReactNode {
   const jobs = list === undefined ? [] : [...list.running, ...list.recent];
   const opened = openId === null ? undefined : jobs.find((job) => job.id === openId);
   return (
-    <div data-tour="jobs-panel" className="flex h-full min-h-0 flex-col">
+    <div data-tour="jobs-panel" className="flex min-h-0 flex-1 flex-col">
       {older ? (
         <p className="px-4 py-3 text-[0.8125rem] text-t3">
           This app server cannot list background jobs yet; it needs an update.

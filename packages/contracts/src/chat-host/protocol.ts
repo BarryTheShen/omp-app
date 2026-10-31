@@ -212,6 +212,11 @@ export type EmptyParams = z.infer<typeof EmptyParams>;
 export const EventOptions = z.object({ messageUpdates: z.enum(["full", "delta"]) });
 export type EventOptions = z.infer<typeof EventOptions>;
 
+/** The chat's pause (omp's `agentPauseGate`): when it began, epoch ms, or null while the chat runs. */
+export interface PauseState {
+  readonly pausedAt: number | null;
+}
+
 /**
  * The chat's state, read with `get_state`: omp's own fields, as omp's session reports them. A field omp leaves undefined
  * is absent, as in omp's JSON.
@@ -250,6 +255,8 @@ export interface ChatHostState {
   readonly contextUsage?: NonNullable<ReturnType<Session["getContextUsage"]>>;
   /** null when the chat has no goal. */
   readonly goal: NonNullable<ReturnType<Session["getGoalModeState"]>> | null;
+  /** The app's field, not omp's: when the chat's pause began (epoch ms); absent while it runs. */
+  readonly pausedAt?: number;
 }
 
 export interface ChatHostToolDescriptor {
@@ -633,6 +640,13 @@ export interface ChatHostMethodMap {
     readonly params: EmptyParams;
     readonly result: RestoredQueue;
   };
+  /**
+   * Holds every agent of the chat (main, subagents, advisor) at its next step, as omp's `/pause` does: a model reply or
+   * tool already under way finishes, nothing new starts. Pausing a paused chat keeps the first time.
+   */
+  readonly pause: { readonly params: EmptyParams; readonly result: PauseState };
+  /** Releases the pause: held agents go on, queued messages send. */
+  readonly resume: { readonly params: EmptyParams; readonly result: PauseState };
   readonly get_available_commands: {
     readonly params: EmptyParams;
     readonly result: { readonly commands: readonly ChatHostCommand[] };
@@ -1005,6 +1019,8 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   remove_queued_message: RemoveQueuedMessageParams,
   promote_queued_message: PromoteQueuedMessageParams,
   abort_and_restore_queue: EmptyParams,
+  pause: EmptyParams,
+  resume: EmptyParams,
   get_available_commands: EmptyParams,
   bash: BashParams,
   python: PythonParams,
@@ -1170,6 +1186,13 @@ export interface ConfigUpdateEvent {
   readonly thinkingLevel?: ChatHostState["thinkingLevel"];
 }
 
+/** The chat was paused or resumed (omp's pause gate, by `pause`, `resume` or a typed `/pause`). */
+export interface PauseChangedEvent {
+  readonly type: "pause_changed";
+  /** When the pause began (epoch ms); null once resumed. */
+  readonly pausedAt: number | null;
+}
+
 type MessageEventType = "message_start" | "message_update" | "message_end";
 type MessageEvent = Extract<AgentSessionEvent, { readonly type: MessageEventType }>;
 type MessageUpdate = Extract<AgentSessionEvent, { readonly type: "message_update" }>;
@@ -1206,7 +1229,8 @@ export type ChatEvent =
   | ExtensionErrorEvent
   | LiveEvent
   | BtwDeltaEvent
-  | BtwRecordEvent;
+  | BtwRecordEvent
+  | PauseChangedEvent;
 
 /** omp's `/btw` answering: the next piece of a side question's answer (omp's `btw_delta`). */
 export interface BtwDeltaEvent {

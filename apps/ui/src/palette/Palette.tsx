@@ -1,3 +1,4 @@
+import type { AppClient } from "@omp-app/client";
 import type { FileSearchCandidate } from "@omp-app/contracts";
 import type { ChatHostCommand } from "@omp-app/contracts/chat-host";
 import { CornerDownLeft } from "lucide-react";
@@ -14,6 +15,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { ChatController, ChatTarget } from "../chat/controller";
+import { pauseAllChats } from "../chat/pauseAll";
 import type { ChatModel } from "../chat/store";
 import { mentionText } from "../chat/triggers";
 import {
@@ -69,8 +71,8 @@ const themeOfRow = (key: string): string | null =>
 const FILE_PAUSE_MS = 120;
 
 /**
- * The focused chat's modes: plan mode on or off (where omp offers it), a goal when the chat has none going, and the
- * chat's side questions (omp's `/btw`).
+ * The focused chat's modes: plan mode on or off (where omp offers it), a goal when the chat has none going, the
+ * chat's side questions (omp's `/btw`), and its pause (omp's `/pause`).
  */
 function chatModes(
   controller: ChatController | null,
@@ -78,7 +80,7 @@ function chatModes(
   onSetGoal: (controller: ChatController) => void,
 ): readonly Item[] {
   if (controller === null) return [];
-  const { planMode, goal } = controller.store.getSnapshot();
+  const { planMode, goal, pausedAt } = controller.store.getSnapshot();
   const items: Item[] = [];
   if (planMode?.available === true) {
     const enabled = planMode.enabled;
@@ -100,6 +102,22 @@ function chatModes(
         }),
     });
   }
+  const paused = pausedAt !== null;
+  items.push({
+    key: "chat:pause",
+    group: "Commands",
+    label: paused ? "Resume this chat" : "Pause this chat",
+    detail: paused ? undefined : "Every agent holds at its next step",
+    run: () =>
+      close(() => {
+        (paused ? controller.resume() : controller.pause()).catch((failure: unknown) =>
+          controller.store.toast(
+            `${paused ? "Resume" : "Pause"}: ${failure instanceof Error ? failure.message : String(failure)}`,
+            "error",
+          ),
+        );
+      }),
+  });
   if (goal === null || goal.status === "dropped" || goal.status === "complete") {
     items.push({
       key: "chat:goal",
@@ -172,6 +190,7 @@ function windowServers(
 export function Palette({
   open,
   onOpenChange,
+  client,
   list,
   workspace,
   folder,
@@ -186,6 +205,7 @@ export function Palette({
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  readonly client: AppClient;
   readonly list: ChatList;
   readonly workspace: RefObject<WorkspaceHandle | null>;
   readonly folder: string;
@@ -323,6 +343,23 @@ export function Palette({
         run: () => close(onWhatsNew),
       },
       ...chatModes(controller, close, onSetGoal),
+      ...([true, false] as const).map((paused) => ({
+        key: paused ? "chats:pauseAll" : "chats:resumeAll",
+        group: "Commands" as const,
+        label: paused ? "Pause all chats" : "Resume all chats",
+        detail: paused ? "Every running chat holds at its next step" : undefined,
+        run: () =>
+          close(() => {
+            pauseAllChats(client, paused).then(
+              (said) => controller?.store.toast(said, "info"),
+              (failure: unknown) =>
+                controller?.store.toast(
+                  failure instanceof Error ? failure.message : String(failure),
+                  "error",
+                ),
+            );
+          }),
+      })),
       {
         key: "app:settings",
         group: "Commands",

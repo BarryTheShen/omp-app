@@ -78,6 +78,13 @@ export interface ChatSnapshot {
   readonly activeTools: ReadonlyMap<string, ActiveTool>;
   /** From omp's `agent_start` to its `agent_end`. */
   readonly working: boolean;
+  /** When the chat's pause began (omp's pause gate holds its agents, `/pause`); null while it runs. */
+  readonly pausedAt: number | null;
+  /**
+   * Messages sent while the chat is paused: omp holds them before it shows them (its loop parks before a turn's input),
+   * so the paused row says they wait. Gone once the chat goes on, when omp shows them in the chat.
+   */
+  readonly held: readonly string[];
   readonly phase: ConnectionPhase;
   readonly process: ProcessStatus | null;
   /** Whether the session file holds entries older than the first one shown. */
@@ -122,6 +129,8 @@ const EMPTY: ChatSnapshot = {
   streamDone: false,
   activeTools: new Map(),
   working: false,
+  pausedAt: null,
+  held: [],
   phase: "connecting",
   process: null,
   hasOlder: false,
@@ -246,6 +255,8 @@ export class ChatStore {
   #queue: ChatQueue = NO_QUEUE;
   #workingSince = 0;
   #compacting = false;
+  #pausedAt: number | null = null;
+  #held: readonly string[] = [];
   #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
   #requests: readonly HostDialogRequest[] = [];
   #shell: ChatShellRun | null = null;
@@ -321,18 +332,27 @@ export class ChatStore {
    */
   setState(
     state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages"> &
-      Partial<Pick<ChatHostState, "todoPhases" | "isStreaming" | "isCompacting">>,
+      Partial<Pick<ChatHostState, "todoPhases" | "isStreaming" | "isCompacting" | "pausedAt">>,
     asked: number,
   ): void {
     this.#model = state.model === undefined ? null : toChatModel(state.model);
     this.#thinkingLevel = state.thinkingLevel ?? null;
     this.#queue = takeBackable(state.queuedMessages);
     if (state.todoPhases !== undefined) this.#todos = state.todoPhases;
+    // A full read: no `pausedAt` is a chat that runs.
+    this.#pausedAt = state.pausedAt ?? null;
+    if (this.#pausedAt === null) this.#held = [];
     if (asked === this.#activityMark) {
       if (state.isStreaming === true) this.#startWorking();
       if (state.isStreaming === false) this.#stopWorking();
       if (state.isCompacting !== undefined) this.#setCompacting(state.isCompacting);
     }
+    this.#publish();
+  }
+
+  /** A message was sent while the chat is paused: it waits, and the paused row says so. */
+  holdMessage(text: string): void {
+    this.#held = [...this.#held, text];
     this.#publish();
   }
 
@@ -724,6 +744,10 @@ export class ChatStore {
         });
         return true;
       }
+      case "pause_changed":
+        this.#pausedAt = event.pausedAt;
+        if (event.pausedAt === null) this.#held = [];
+        return false;
       default:
         return false;
     }
@@ -846,6 +870,8 @@ export class ChatStore {
       streamDone: this.#streamDone,
       activeTools: this.#activeTools,
       working: this.#working,
+      pausedAt: this.#pausedAt,
+      held: this.#held,
       phase: this.#phase,
       process: this.#process,
       hasOlder: this.#hasOlder,

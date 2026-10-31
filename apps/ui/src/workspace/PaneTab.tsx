@@ -1,4 +1,5 @@
 import type { IDockviewPanel, IDockviewPanelHeaderProps } from "dockview-react";
+import { Pause } from "lucide-react";
 import { type ReactNode, use, useSyncExternalStore } from "react";
 import { forgetNewChatDraft } from "../chat/drafts";
 import { type ChatPanelParams, mouseClickTakesCaret, PaneHostContext } from "./ChatPanel";
@@ -20,7 +21,8 @@ export function closePaneAsked(panel: IDockviewPanel): void {
 /**
  * A pane's tab in its title bar: dockview's own default tab (its title, and a close button named after it), whose close
  * button closes the pane as asked. dockview's default tab cannot be told to do that, so this one draws the same. A
- * click on the title puts the caret in the pane's message box, so the pane's keys reach the pane it chose.
+ * click on the title puts the caret in the pane's message box, so the pane's keys reach the pane it chose. A paused chat
+ * (omp's `/pause`) has a pause mark before its title.
  */
 export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): ReactNode {
   const host = use(PaneHostContext);
@@ -31,6 +33,11 @@ export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): React
     },
     () => api.title ?? "",
   );
+  const store = host?.controllers.get(api.id)?.store;
+  const paused = useSyncExternalStore(
+    (notify) => store?.subscribe(notify) ?? (() => undefined),
+    () => (store?.getSnapshot().pausedAt ?? null) !== null,
+  );
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click only puts the caret in the message box, as Tab does
     // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the message box with Tab
@@ -40,7 +47,15 @@ export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): React
         if (mouseClickTakesCaret(event)) host?.focus.request(api.id);
       }}
     >
-      <div className="dv-default-tab-content">{title}</div>
+      <div className="dv-default-tab-content">
+        {paused && (
+          <>
+            <Pause aria-hidden="true" className="mr-1 inline size-3 align-[-1px] text-warn-ink" />
+            <span className="sr-only">Paused: </span>
+          </>
+        )}
+        {title}
+      </div>
       <button
         type="button"
         tabIndex={-1}

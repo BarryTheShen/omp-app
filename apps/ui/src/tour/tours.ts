@@ -625,6 +625,35 @@ const JOBS_TOUR: Tour = {
   ],
 };
 
+const PAUSED_ROW = part("paused");
+
+const PAUSE_TOUR: Tour = {
+  id: "pause-2026-10-31",
+  title: "Pause a chat",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Pause a chat",
+      text: "Type <b>/pause</b> here and send it. Every agent of this chat (the main one, its subagents and the advisor) holds at its next step, as omp's /pause does; a reply or tool already under way finishes. While omp works, <b>Pause</b> sits beside “esc to stop”.",
+      action: { kind: "appears", selector: PAUSED_ROW },
+    },
+    {
+      target: PAUSED_ROW,
+      title: "Paused",
+      text: "The clock counts how long. Messages you send now wait. Click <b>Resume</b>, or press Esc, Enter or Space in the empty box, to go on.",
+      action: { kind: "disappears", selector: PAUSED_ROW },
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Every chat at once",
+      text: "<b>Pause all chats</b> is at the top of the side panel's <b>Jobs</b>, and in the palette ({palette}), with <b>Resume all chats</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** The shown tab holds more than one pane. */
 const SPLIT_TAB = "[data-tab][data-split]:not([hidden])";
 
@@ -831,6 +860,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-pause",
+    when: "2026-10-31T17:10:00-05:00",
+    summary:
+      "Pause a chat with /pause or the Pause button: every agent holds at its next step until you resume. Pause all chats in the Jobs tab and the palette.",
+    tours: [PAUSE_TOUR],
+  },
   {
     id: "2026-10-31-phone",
     when: "2026-10-31T12:45:00-05:00",

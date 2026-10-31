@@ -237,6 +237,13 @@ export const ChatSessionEvent = z.discriminatedUnion("kind", [
 ]);
 export type ChatSessionEvent = z.infer<typeof ChatSessionEvent>;
 
+/** Pauses or resumes every chat the server runs (omp's pause gate in each, as `/pause`); ready spare chats are left out. */
+export const PauseAllArgs = z.strictObject({ paused: z.boolean() });
+export type PauseAllArgs = z.infer<typeof PauseAllArgs>;
+/** How many running chats took it (a chat whose omp started before pause existed does not). */
+export const PauseAllResult = z.strictObject({ chats: z.int().min(0) });
+export type PauseAllResult = z.infer<typeof PauseAllResult>;
+
 export const ChatSessionPort = definePort({
   name: "A0.chatSession",
   methods: {
@@ -255,6 +262,7 @@ export const ChatSessionPort = definePort({
       result: SetSubagentSubscriptionResult,
     },
     setEventOptions: { args: SetEventOptionsArgs, result: SetEventOptionsResult },
+    pauseAll: { args: PauseAllArgs, result: PauseAllResult },
   },
   events: { event: { payload: ChatSessionEvent } },
 });

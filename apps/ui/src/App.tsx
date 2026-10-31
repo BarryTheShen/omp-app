@@ -393,6 +393,7 @@ function Shell({
       <Palette
         open={palette}
         onOpenChange={setPalette}
+        client={client}
         list={list}
         workspace={workspace}
         folder={folder}

@@ -66,7 +66,7 @@ export const PANELS: readonly Panel[] = [
     id: "jobs",
     title: "Jobs",
     icon: Layers,
-    render: ({ chat }) => <JobsPanel chat={chat} />,
+    render: ({ client, chat }) => <JobsPanel client={client} chat={chat} />,
   },
   {
     id: "btw",

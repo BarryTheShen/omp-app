@@ -27,6 +27,8 @@ import {
   type ModelChoice,
   type OpenHostRequests,
   type OpenThreadArgs,
+  type PauseAllArgs,
+  type PauseAllResult,
   type PrepareNewChatArgs,
   RequestId,
   SessionFilePath,
@@ -379,6 +381,7 @@ export class ChatSessionPortRuntime {
     setSubagentSubscription: (args, call) =>
       this.setSubagentSubscription(args as SetSubagentSubscriptionArgs, call),
     setEventOptions: (args, call) => this.setEventOptions(args as SetEventOptionsArgs, call),
+    pauseAll: (args) => this.pauseAll(args as PauseAllArgs),
   };
 
   /** A page shows the folder: a new chat is kept ready there, if this server keeps them (#2760). */
@@ -732,6 +735,11 @@ export class ChatSessionPortRuntime {
    * URI scheme registration is merged with every other owner's; only a viewer of the chat may make one.
    */
   async request(args: ChatRequestArgs, call: PortHandlerContext): Promise<unknown> {
+    // A chat that is not running has nothing to hold: pausing or resuming it answers so and starts nothing.
+    if (args.method === "pause" || args.method === "resume") {
+      const held = this.#entryOrUndefined(args.threadId);
+      if (held === undefined || !this.#isRunning(held)) return { pausedAt: null };
+    }
     // A chat no host here serves may still be open in another omp: the request is refused with the sentence that says so.
     if (this.#entryOrUndefined(args.threadId) === undefined) {
       await this.#refuseWhenHeldElsewhere(args.threadId, call.signal);
@@ -961,6 +969,28 @@ export class ChatSessionPortRuntime {
   async restart(args: { threadId: ThreadId }): Promise<null> {
     await this.#startRespawn(this.#entry(args.threadId));
     return null;
+  }
+
+  /** Pauses or resumes every chat this server runs; a chat whose omp started before pause existed stays as it is. */
+  async pauseAll(args: PauseAllArgs): Promise<PauseAllResult> {
+    const method = args.paused ? "pause" : "resume";
+    const answers = await Promise.allSettled(
+      [...this.#entries.values()]
+        .filter((entry) => this.#isRunning(entry))
+        .map((entry) => this.#send(entry, method, {})),
+    );
+    return { chats: answers.filter((answer) => answer.status === "fulfilled").length };
+  }
+
+  /** The chat's process is up, and no restart of it is under way. */
+  #isRunning(entry: ChatEntry): boolean {
+    const status = entry.process.status;
+    return (
+      entry.respawning === undefined &&
+      status !== "exited" &&
+      status !== "error" &&
+      status !== "stopped"
+    );
   }
 
   async close(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {

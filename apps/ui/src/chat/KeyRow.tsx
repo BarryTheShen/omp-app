@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, Keyboard, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Keyboard, Pause, Play, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
  * panel's key (⚡, in the keyboard's place; ⌨ brings the keyboard back), the box's settings (model, thinking, plan mode,
  * goal), then the keys a phone's keyboard lacks: `/` for omp's commands, `@` for files, `!` for the shell, the messages
  * sent before with ↑ and ↓, and ⌄ to put the keyboard away. A key keeps the focus where it is, so the keyboard stays up
- * while one is pressed; the row scrolls sideways where the phone is narrow.
+ * while one is pressed; the row scrolls sideways where the phone is narrow. While omp works or the chat is paused, Pause
+ * or Resume follows ⚡ (omp's `/pause`).
  */
 export function KeyRow({
   settings,
@@ -17,6 +18,7 @@ export function KeyRow({
   onInsert,
   onHistory,
   onHideKeyboard,
+  pause,
 }: {
   /** The box's setting chips, as the box draws them on a desktop. */
   readonly settings: ReactNode;
@@ -31,6 +33,8 @@ export function KeyRow({
   /** Goes back (-1) or forward (1) through the messages sent before. */
   readonly onHistory: (step: -1 | 1) => void;
   readonly onHideKeyboard: () => void;
+  /** Pause or Resume: shown while omp works or the chat is paused. */
+  readonly pause?: { readonly paused: boolean; readonly onPress: () => void };
 }): ReactNode {
   return (
     <div
@@ -50,6 +54,11 @@ export function KeyRow({
       >
         {panelOpen ? <Keyboard /> : <Zap />}
       </Key>
+      {pause !== undefined && (
+        <Key label={pause.paused ? "Resume" : "Pause"} onPress={pause.onPress}>
+          {pause.paused ? <Play /> : <Pause />}
+        </Key>
+      )}
       {settings}
       <span aria-hidden="true" className="mx-0.5 h-6 w-px shrink-0 bg-l2" />
       <Key label="Commands" onPress={() => onInsert("/")}>

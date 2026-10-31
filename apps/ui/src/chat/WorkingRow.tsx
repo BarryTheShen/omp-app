@@ -9,15 +9,18 @@ function elapsed(ms: number): string {
 
 /**
  * What omp is doing, how long it has been at it, and how to stop it: Esc, where there is a key for it (`stopKey`; a
- * phone has none, and its Stop button is beside the box). What it is given (the phone's pills) shares the row.
+ * phone has none, and its Stop button is beside the box). Pause (`onPause`) holds every agent at its next step, as omp's
+ * `/pause`; a phone has it in its key row. What it is given (the phone's pills) shares the row.
  */
 export function WorkingRow({
   activity,
   stopKey = true,
+  onPause,
   children,
 }: {
   readonly activity: ChatActivity;
   readonly stopKey?: boolean;
+  readonly onPause?: () => void;
   readonly children?: ReactNode;
 }): ReactNode {
   const [now, setNow] = useState(() => Date.now());
@@ -38,6 +41,16 @@ export function WorkingRow({
           </span>
         )}
       </span>
+      {onPause !== undefined && (
+        <button
+          type="button"
+          className="shrink-0 rounded-md px-2 py-0.5 text-t2 hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          title="Every agent holds at its next step; a reply or tool under way finishes"
+          onClick={onPause}
+        >
+          Pause
+        </button>
+      )}
       {children}
     </div>
   );

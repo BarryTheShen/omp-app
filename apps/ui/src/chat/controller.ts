@@ -447,6 +447,33 @@ export class ChatController {
     return [...restored.steering, ...restored.followUp].map((message) => message.text);
   }
 
+  /**
+   * Holds every agent of the chat (main, subagents, advisor) at its next step, as omp's `/pause` does: a reply or tool
+   * already under way finishes, nothing new starts. Every viewer hears it (`pause_changed`).
+   */
+  async pause(): Promise<void> {
+    if (this.#threadId === null) return;
+    await this.#pauseOrResume("pause");
+  }
+
+  /** Releases the pause: held agents go on, and queued messages send. */
+  async resume(): Promise<void> {
+    if (this.#threadId === null) return;
+    await this.#pauseOrResume("resume");
+  }
+
+  async #pauseOrResume(method: "pause" | "resume"): Promise<void> {
+    try {
+      await this.#request(method, {});
+    } catch (failure) {
+      // A chat whose omp started before pause existed keeps that omp until it starts again.
+      if (failure instanceof AppFailure && failure.appError.omp?.code === "unknown_method") {
+        throw new Error(OLDER_OMP);
+      }
+      throw failure;
+    }
+  }
+
   /** Takes a queued message back out of its queue; null when omp already delivered it. */
   async takeQueued(message: string, queue: QueueName): Promise<string | null> {
     const result = await this.#request("remove_queued_message", { message, queue });
@@ -954,3 +981,7 @@ function olderServer(failure: unknown, cannot: string): unknown {
     ? new Error(`This app server cannot ${cannot} yet; it needs an update.`)
     : failure;
 }
+
+/** The words for a chat whose omp started before pause existed. */
+const OLDER_OMP =
+  "This chat's omp started before pause was added, so it can't pause until it starts again.";

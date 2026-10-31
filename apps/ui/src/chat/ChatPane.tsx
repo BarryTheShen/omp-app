@@ -209,6 +209,8 @@ export function ChatPane({
       <Composer
         controller={controller}
         working={snapshot.working}
+        pausedAt={snapshot.pausedAt}
+        held={snapshot.held}
         disabled={snapshot.phase !== "live"}
         closed={snapshot.phase === "ended"}
         model={snapshot.model}

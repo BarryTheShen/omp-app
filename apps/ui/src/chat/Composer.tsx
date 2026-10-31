@@ -23,6 +23,7 @@ import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
 import { KeyRow } from "./KeyRow";
 import { ModelPicker } from "./ModelPicker";
+import { PausedRow } from "./PausedRow";
 import { QueuedMessages } from "./QueuedMessages";
 import { QuickPanel } from "./QuickPanel";
 import { RoleTrack } from "./RoleTrack";
@@ -35,6 +36,9 @@ import { WorkingRow } from "./WorkingRow";
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** A typed `/pause` (omp's takes no arguments and ignores any). */
+const PAUSE_TEXT = /^\/pause(?:\s|$)/;
 
 /** What the palette can do with a pane's message box. */
 export interface ComposerHandle {
@@ -61,6 +65,8 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
 export const Composer = memo(function Composer({
   controller,
   working,
+  pausedAt,
+  held,
   disabled,
   closed,
   model,
@@ -87,6 +93,10 @@ export const Composer = memo(function Composer({
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
+  /** When the chat's pause began (omp's `/pause`); null while it runs. */
+  readonly pausedAt: number | null;
+  /** Messages sent while the chat is paused, which omp shows once it goes on. */
+  readonly held: readonly string[];
   readonly disabled: boolean;
   /** The chat could not be opened: the box says so, and nothing typed waits to be sent. */
   readonly closed: boolean;
@@ -208,6 +218,15 @@ export const Composer = memo(function Composer({
   /** Enter pressed before the chat was ready: it is sent once the chat is (a new chat takes typing at once). */
   const [waitingToSend, setWaitingToSend] = useState<"auto" | "followUp" | null>(null);
 
+  const pause = (): void => {
+    setError(null);
+    controller.pause().catch((failure: unknown) => setError(`Not paused: ${errorText(failure)}`));
+  };
+  const resume = (): void => {
+    setError(null);
+    controller.resume().catch((failure: unknown) => setError(`Not resumed: ${errorText(failure)}`));
+  };
+
   const send = (mode: "auto" | "followUp"): void => {
     const sent = textRef.current;
     const value = sent.trim();
@@ -243,6 +262,12 @@ export const Composer = memo(function Composer({
         .finally(() => setSending(false));
       return;
     }
+    // omp's `/pause`, caught here, so a chat that works does not get it as a steer.
+    if (PAUSE_TEXT.test(value)) {
+      update("");
+      pause();
+      return;
+    }
     const run = shellRun(value);
     if (run !== null && run.input === "") return;
     setSending(true);
@@ -256,6 +281,8 @@ export const Composer = memo(function Composer({
       : controller.runShell(run)
     )
       .then(() => {
+        // Held at omp's pause, the message is not in the chat yet: the paused row says it waits.
+        if (run === null && pausedAt !== null) controller.store.holdMessage(value);
         // Only what was sent leaves the box; anything typed or attached since stays.
         const now = textRef.current;
         update(now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now);
@@ -365,6 +392,13 @@ export const Composer = memo(function Composer({
     if (approval !== null && event.key === "Escape") {
       event.preventDefault();
       answerApproval(approval, "deny");
+      return;
+    }
+    // Paused: Esc, Enter or Space in an empty box resume, as on omp's pause screen.
+    const resumes = event.key === "Escape" || event.key === "Enter" || event.key === " ";
+    if (pausedAt !== null && resumes && textRef.current === "" && !modified && !event.altKey) {
+      event.preventDefault();
+      resume();
       return;
     }
     if (event.key === "Escape" && working) {
@@ -518,14 +552,18 @@ export const Composer = memo(function Composer({
       <div className="relative mx-auto max-w-[720px]">
         {toast !== null && <Toast toast={toast} onDone={onToastDone} />}
         {/* On a phone the pills share the working row: one line between the chat and the box. */}
-        {activity !== null && (
-          <WorkingRow activity={activity} stopKey={!phone}>
-            {phone && pills}
-          </WorkingRow>
+        {pausedAt !== null ? (
+          <PausedRow pausedAt={pausedAt} held={held} onResume={resume} resumeKey={!phone} />
+        ) : (
+          activity !== null && (
+            <WorkingRow activity={activity} stopKey={!phone} {...(phone ? {} : { onPause: pause })}>
+              {phone && pills}
+            </WorkingRow>
+          )
         )}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
-        {hasPills && !(phone && activity !== null) && (
+        {hasPills && !(phone && activity !== null && pausedAt === null) && (
           <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">{pills}</div>
         )}
         {phone && status !== null && (
@@ -689,6 +727,11 @@ export const Composer = memo(function Composer({
               browse(step, box);
             }}
             onHideKeyboard={() => boxRef.current?.blur()}
+            {...(working || pausedAt !== null
+              ? {
+                  pause: { paused: pausedAt !== null, onPress: pausedAt !== null ? resume : pause },
+                }
+              : {})}
           />
         )}
         {phone && panel && (

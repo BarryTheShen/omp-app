@@ -12,7 +12,7 @@
  * A prompt is, in omp's order (`rpc-mode.ts:1764-1878`): an extension's `input` hook, then `/skill:<name>`, then a
  * built-in slash command (omp's own executor, shared with its ACP host), then `session.prompt`.
  */
-import { AgentBusyError } from "@oh-my-pi/pi-agent-core";
+import { AgentBusyError, agentPauseGate } from "@oh-my-pi/pi-agent-core";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
@@ -242,8 +242,12 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     builtinCommands.clear();
   };
 
-  const listCommands = async (): Promise<readonly ChatHostCommand[]> =>
-    await buildAvailableSlashCommands(session);
+  // omp lists only commands with a text-mode handler; its `/pause` has the terminal's pause screen only, and the app
+  // serves it here (`pause`, `resume`, a typed `/pause` in `admitPrompt`).
+  const listCommands = async (): Promise<readonly ChatHostCommand[]> => [
+    ...(await buildAvailableSlashCommands(session)),
+    PAUSE_COMMAND,
+  ];
   const emitAvailableCommands = async (): Promise<void> => {
     emit({ type: "available_commands", commands: await listCommands() });
   };
@@ -338,6 +342,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     results.observe(event);
     settle.observe(event);
   });
+  // A pause, whoever engaged it, reaches every viewer. The gate is the process's, and this process serves one chat.
+  const stopPauseEvents = agentPauseGate.onChange(() =>
+    emit({ type: "pause_changed", pausedAt: agentPauseGate.pausedAt ?? null }),
+  );
   // A goal journaled in the session comes back (paused if it was active, as omp's terminal does at start).
   await goal.reconcile();
   await goal.settled();
@@ -410,6 +418,14 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       abortBuiltinCommands();
       await session.abort({ reason: USER_INTERRUPT_LABEL });
       return {};
+    },
+    pause: async () => {
+      agentPauseGate.pause();
+      return { pausedAt: agentPauseGate.pausedAt ?? null };
+    },
+    resume: async () => {
+      agentPauseGate.resume();
+      return { pausedAt: agentPauseGate.pausedAt ?? null };
     },
     get_state: async () => {
       // A goal exit the last turn started restores the tools first.
@@ -809,6 +825,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       gate.enqueue(async () => {
         const message = await readMessage(params, isCurrent);
         if (message.kind !== "message") return {};
+        // A `/pause` sent while omp works (a steer or a follow-up) pauses, as when it starts a prompt.
+        if (PAUSE_TEXT.test(message.text.trim()) && (message.images?.length ?? 0) === 0) {
+          agentPauseGate.pause();
+          return {};
+        }
         if (queue === "steer") await session.steer(message.text, message.images);
         else await session.followUp(message.text, message.images);
         return {};
@@ -924,6 +945,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       return start.admitted ? { kind: "admitted" } : { kind: "failed", error: start.error };
     }
 
+    // omp's `/pause` has only the terminal's pause screen, so omp's text paths would hand it to the model as a message.
+    if (PAUSE_TEXT.test(text.trim())) {
+      agentPauseGate.pause();
+      return { kind: "local" };
+    }
     const command = new AbortController();
     builtinCommands.add(command);
     let backgrounded = false;
@@ -1039,6 +1065,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // built-in work that outlives its prompt stops, and the answers outside the command order drain; the session itself
   // is disposed by the entry.
   stopAttached();
+  stopPauseEvents();
   requests.closeAll("The app closed the chat");
   hostUris.clear();
   // The live call (microphone, socket) ends before the session it hands work to, as in omp.
@@ -1162,8 +1189,18 @@ function readState(session: AgentSession): ChatHostState {
     })),
     ...(contextUsage ? { contextUsage } : {}),
     goal: session.getGoalModeState() ?? null,
+    ...(agentPauseGate.pausedAt !== undefined ? { pausedAt: agentPauseGate.pausedAt } : {}),
   };
 }
+
+/** omp's `/pause` (`slash-commands/builtin-control.ts`), its words as omp lists it. */
+const PAUSE_COMMAND: ChatHostCommand = {
+  name: "pause",
+  description: "Freeze all agents (main, subagents, advisor) until resumed",
+  source: "builtin",
+};
+/** A typed `/pause`; omp's takes no arguments and ignores any. */
+const PAUSE_TEXT = /^\/pause(?:\s|$)/;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
