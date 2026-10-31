@@ -633,21 +633,128 @@ const ARRANGE_TOUR: Tour = {
   ],
 };
 
-/** The tours, in the order the What's new card starts them. A tour is added for each update that changes the app. */
-export const TOURS: readonly Tour[] = [
-  PANES,
-  MESSAGE_BOX_TOUR,
-  INSIDE_A_CHAT,
-  PALETTE_AND_SETTINGS,
-  FOLDERS,
-  MODELS_AND_ROLES,
-  SIDE_QUESTIONS,
-  SIDE_PANEL_TOUR,
-  MODEL_HUB_TOUR,
-  AGENTS_PROGRESS_TOUR,
-  NOTES_TOUR,
-  INBOX_TOUR,
-  SIDE_RAIL_TOUR,
-  MODEL_MENU_TOUR,
-  ARRANGE_TOUR,
+const WHATS_NEW_BUTTON = part("whats-new-button");
+const WHATS_NEW_LIST = part("whats-new-list");
+
+const WHATS_NEW_TOUR: Tour = {
+  id: "whats-new-2026-10-30",
+  title: "Updates and their tours",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: WHATS_NEW_BUTTON,
+      title: "Every update in one place",
+      text: "This button lists each update of the app, newest first, with the tours it brought. Open it.",
+      action: { kind: "appears", selector: WHATS_NEW_LIST },
+    },
+    {
+      target: WHATS_NEW_LIST,
+      title: "Take any tour again",
+      text: "Each update has its date, a line on what it added, and its tours; a tour you took says <b>Taken</b>. After an update, a card at the foot of your chat list names its new tours, and <b>Take the tours</b> shows them one after another.",
+      action: next,
+    },
+  ],
+};
+
+/** An update of the app: when it came, what it added in one line, and the tours that show it. */
+export interface Update {
+  readonly id: string;
+  /** When it came out: an ISO time with its offset, shown in the reader's own time. */
+  readonly when: string;
+  readonly summary: string;
+  readonly tours: readonly Tour[];
+}
+
+/**
+ * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
+ * last looked. Each update that changes the app adds itself at the top, with its tour.
+ */
+export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-30-whats-new",
+    when: "2026-10-30T22:45:00-05:00",
+    summary:
+      "This list of updates and their tours; after an update, its card names the new tours and shows them one after another.",
+    tours: [WHATS_NEW_TOUR],
+  },
+  {
+    id: "2026-10-30-arrange",
+    when: "2026-10-30T21:47:00-05:00",
+    summary:
+      "Drag a chat from the list into a split; the side panel is a pane you size like a chat.",
+    tours: [ARRANGE_TOUR],
+  },
+  {
+    id: "2026-10-30-model-menu",
+    when: "2026-10-30T18:44:00-05:00",
+    summary:
+      "A model menu with Favorites, Recent and each provider's newest models; hide the ones you never use.",
+    tours: [MODEL_MENU_TOUR],
+  },
+  {
+    id: "2026-10-30-side-rail",
+    when: "2026-10-30T14:12:00-05:00",
+    summary: "Side questions stay beside the chat, and a rail at the right edge opens each panel.",
+    tours: [SIDE_RAIL_TOUR],
+  },
+  {
+    id: "2026-10-30-inbox",
+    when: "2026-10-30T10:06:00-05:00",
+    summary: "An inbox: a bell for the chats that need you.",
+    tours: [INBOX_TOUR],
+  },
+  {
+    id: "2026-10-30-notes",
+    when: "2026-10-30T09:30:00-05:00",
+    summary:
+      "omp's short notes show above the message box, and windows open with Tern's short pop.",
+    tours: [NOTES_TOUR],
+  },
+  {
+    id: "2026-10-30-agents-progress",
+    when: "2026-10-30T09:19:00-05:00",
+    summary:
+      "The side panel gains Agents and Progress: the subagents, the goal, the todo list and plan mode.",
+    tours: [AGENTS_PROGRESS_TOUR],
+  },
+  {
+    id: "2026-10-30-model-hub",
+    when: "2026-10-30T09:18:00-05:00",
+    summary: "A model and a thinking level for each of omp's roles.",
+    tours: [MODEL_HUB_TOUR],
+  },
+  {
+    id: "2026-10-30-side-panel",
+    when: "2026-10-30T08:41:00-05:00",
+    summary: "A side panel beside your chats, with Usage first.",
+    tours: [SIDE_PANEL_TOUR],
+  },
+  {
+    id: "2026-10-30-side-questions",
+    when: "2026-10-30T08:37:00-05:00",
+    summary: "Ask omp a side question with /btw, also while it works.",
+    tours: [SIDE_QUESTIONS],
+  },
+  {
+    id: "2026-10-30-roles",
+    when: "2026-10-30T05:02:00-05:00",
+    summary: "Switch the chat to another role's model, as in omp.",
+    tours: [MODELS_AND_ROLES],
+  },
+  {
+    id: "2026-10-30-folders",
+    when: "2026-10-30T03:36:00-05:00",
+    summary: "Switch folders from the top of the chat list.",
+    tours: [FOLDERS],
+  },
+  {
+    id: "2026-10-30-tours",
+    when: "2026-10-30T03:26:00-05:00",
+    summary: "Click-through tours of the basics.",
+    tours: [PANES, MESSAGE_BOX_TOUR, INSIDE_A_CHAT, PALETTE_AND_SETTINGS],
+  },
 ];
+
+/** Every tour, oldest first: the palette's order. */
+export const TOURS: readonly Tour[] = [...UPDATES].reverse().flatMap((update) => update.tours);

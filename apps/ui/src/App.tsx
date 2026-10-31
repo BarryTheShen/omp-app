@@ -37,6 +37,7 @@ import { traceScrolling } from "./perf/scrollTrace";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
+import { WhatsNewList } from "./tour/WhatsNewList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
 
 /** The settings sheet and omp's settings with it load when it first opens. */
@@ -172,6 +173,7 @@ function Shell({
   const phone = usePhone();
   const [palette, setPalette] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  const [whatsNew, setWhatsNew] = useState(false);
   /** The chat the goal dialog sets a goal for, while it is open. */
   const [goalFor, setGoalFor] = useState<ChatController | null>(null);
   const [settings, setSettings] = useState(false);
@@ -212,6 +214,7 @@ function Shell({
     setInboxOpen(true);
   }, []);
   const showShortcuts = useCallback(() => setShortcuts(true), []);
+  const showWhatsNew = useCallback(() => setWhatsNew(true), []);
   const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
   useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
   useHotkeys(KEYS.shortcuts.hotkey, () => setShortcuts((open) => !open), anywhere);
@@ -287,6 +290,7 @@ function Shell({
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
+        onWhatsNew={showWhatsNew}
         workspace={workspace}
         phone={phone}
       />
@@ -337,8 +341,10 @@ function Shell({
         onServers={showServers}
         onNewWindow={newWindow}
         onInbox={showInbox}
+        onWhatsNew={showWhatsNew}
       />
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
+      <WhatsNewList open={whatsNew} onOpenChange={setWhatsNew} workspace={workspace} />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />
       {settingsLoaded && (
         <Suspense fallback={null}>

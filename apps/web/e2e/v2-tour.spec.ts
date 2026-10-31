@@ -68,6 +68,7 @@ realTest.describe("new UI tours", () => {
         /Tour: The side panel on the right/,
         /Tour: Your model menu/,
         /Tour: Arrange your windows/,
+        /Tour: Updates and their tours/,
       ]);
 
       expect(realApp.problems).toEqual([]);
@@ -147,6 +148,106 @@ realTest.describe("new UI tours", () => {
     await expect(heading(page)).toHaveText("Narrow it");
     await page.keyboard.press("Escape");
     await expect(heading(page)).toHaveText("Every key");
+
+    expect(realApp.problems).toEqual([]);
+  });
+
+  const list = (page: Page) => page.getByRole("dialog", { name: "What's new", exact: true });
+  /** Marks every tour offered with the card's Later, then takes `ids` back out: as after an update that brought them. */
+  const afterUpdate = async (page: Page, ids: readonly string[]) => {
+    await card(page).getByRole("button", { name: "Later" }).click();
+    await page.evaluate((brought) => {
+      const kept = JSON.parse(localStorage.getItem("omp-app.ui.tours") ?? "{}") as {
+        offered?: string[];
+        done?: string[];
+      };
+      kept.offered = (kept.offered ?? []).filter((id) => !brought.includes(id));
+      localStorage.setItem("omp-app.ui.tours", JSON.stringify(kept));
+    }, ids);
+    await page.reload();
+    await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
+  };
+
+  realTest(
+    "after updates, the card names their new tours and shows them one after another",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await afterUpdate(page, ["notes-2026-10-30", "inbox-2026-10-30"]);
+      await expect(card(page).getByRole("heading", { name: "New in 2 updates" })).toBeVisible();
+      await expect(card(page).getByRole("listitem")).toHaveText([
+        "Notes above the box",
+        "Your inbox",
+      ]);
+
+      await card(page).getByRole("button", { name: "Take the tours" }).click();
+      await expect(card(page)).toBeHidden();
+      await expect(heading(page)).toHaveText("omp's short notes");
+      await expect(popover(page).locator(".driver-popover-progress-text")).toHaveText(
+        "Tour 1 of 2 · step 1 of 1",
+      );
+      await popover(page).getByRole("button", { name: "Next tour" }).click();
+      await expect(heading(page)).toHaveText("The inbox");
+      await page.getByRole("button", { name: "Inbox" }).click();
+      await expect(heading(page)).toHaveText("Back to a chat");
+      await popover(page).getByRole("button", { name: "Done" }).click();
+      await expect(popover(page)).toHaveCount(0);
+      await expect.poll(() => doneTours(page)).toEqual(["notes-2026-10-30", "inbox-2026-10-30"]);
+
+      // Offered once: a reload shows no card for them.
+      await page.reload();
+      await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
+      await expect(card(page)).toBeHidden();
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "What's new lists every update, newest first, and takes any of its tours again",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await card(page).getByRole("button", { name: "Later" }).click();
+
+      await page.getByRole("button", { name: "What's new", exact: true }).click();
+      await expect(list(page)).toBeVisible();
+      const updates = list(page).getByRole("region");
+      await expect(updates.first()).toContainText("This list of updates and their tours");
+      await expect(updates.last()).toContainText("Click-through tours of the basics.");
+      await expect(updates.last().getByRole("listitem")).toHaveCount(4);
+
+      await list(page).getByRole("button", { name: "Take the tour: Your inbox" }).click();
+      await expect(list(page)).toBeHidden();
+      await expect(heading(page)).toHaveText("The inbox");
+      await page.getByRole("button", { name: "Inbox" }).click();
+      await popover(page).getByRole("button", { name: "Done" }).click();
+      await expect(popover(page)).toHaveCount(0);
+
+      // The palette opens it too, and a tour taken shows as taken.
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Control+k");
+      const search = palette(page).getByRole("combobox", { name: "Search the palette" });
+      await search.fill("What's new");
+      await search.press("Enter");
+      await expect(list(page)).toBeVisible();
+      // A tour's own row, inside its update.
+      const tourRow = (title: string) =>
+        list(page).getByRole("region").getByRole("listitem").filter({ hasText: title });
+      await expect(tourRow("Your inbox")).toContainText("Taken");
+      await expect(tourRow("Your model menu")).not.toContainText("Taken");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest("the What's new tour opens the list from its button", async ({ realApp }) => {
+    const page = await realApp.open({ path: "/" });
+    await startFromPalette(page, "Updates and their tours");
+    await expect(heading(page)).toHaveText("Every update in one place");
+    await page.getByRole("button", { name: "What's new", exact: true }).click();
+    await expect(heading(page)).toHaveText("Take any tour again");
+    await popover(page).getByRole("button", { name: "Done" }).click();
+    await expect(popover(page)).toHaveCount(0);
+    await expect(list(page)).toBeVisible();
 
     expect(realApp.problems).toEqual([]);
   });

@@ -37,6 +37,11 @@ export function unoffered(tours: readonly Tour[]): readonly Tour[] {
   return tours.filter((tour) => !offered.includes(tour.id));
 }
 
+/** Whether the app has offered a tour on this browser before: a first visit has none. */
+export function offeredBefore(): boolean {
+  return read().offered.length > 0;
+}
+
 export function markOffered(ids: readonly string[]): void {
   const seen = read();
   write({ ...seen, offered: [...new Set([...seen.offered, ...ids])] });

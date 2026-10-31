@@ -78,12 +78,21 @@ function watch(action: TourAction, element: Element | null, hit: () => void): ()
   }
 }
 
+/** How a tour runs as one of several in a row: where it stands, whether it opens the sandbox tab, what comes next. */
+interface InRow {
+  readonly index: number;
+  readonly total: number;
+  /** False when an earlier tour of the row opened the sandbox tab already. */
+  readonly sandbox: boolean;
+  readonly onDone: () => void;
+}
+
 /**
  * Runs a tour: each step is drawn by driver.js (a highlight and a popover) and waits for its action. The app is used
  * for real, so every key and click does what it always does; the tour only watches. A second tour ends the first. A
  * sandbox tour opens its own tab with a new chat first.
  */
-export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
+export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): void {
   stopCurrent?.();
 
   let stopped = false;
@@ -184,7 +193,7 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
     });
 
   async function play(): Promise<void> {
-    if (tour.sandbox) {
+    if (tour.sandbox && row?.sandbox !== false) {
       workspace.command("newTab");
       await frames(2);
     }
@@ -198,7 +207,9 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
       // A target that never came leaves the popover centred, and the Next button the way on.
       const action: TourAction =
         step.target !== null && element === null ? { kind: "next" } : step.action;
-      const label = index === steps.length - 1 ? "Done" : action.kind === "next" ? "Next" : "Skip";
+      // The last step ends the tour; in a row of tours, it goes on to the next one.
+      const last = row !== undefined && row.index < row.total - 1 ? "Next tour" : "Done";
+      const label = index === steps.length - 1 ? last : action.kind === "next" ? "Next" : "Skip";
       // A step whose action ends outside its highlighted element leaves the dimmed page usable (tour.css).
       if (step.throughOverlay === true) document.documentElement.dataset.tourThrough = "";
       else delete document.documentElement.dataset.tourThrough;
@@ -212,7 +223,10 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
           showButtons: ["next", "close"],
           showProgress: true,
           // Driver fills in its own {{current}} and {{total}} only for the steps it drives itself.
-          progressText: `Step ${index + 1} of ${steps.length}`,
+          progressText:
+            row === undefined || row.total < 2
+              ? `Step ${index + 1} of ${steps.length}`
+              : `Tour ${row.index + 1} of ${row.total} · step ${index + 1} of ${steps.length}`,
           nextBtnText: label,
           // A step's class replaces the driver's, so a centred one names both.
           ...(step.centred === true ? { popoverClass: "omp-tour omp-tour-centred" } : {}),
@@ -230,10 +244,29 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle): void {
     if (stopped) return;
     markDone(tour.id);
     stop();
+    row?.onDone();
   }
 
   play().catch((failure: unknown) => {
     stop();
     throw failure;
   });
+}
+
+/**
+ * Runs tours one after another: the next starts when one is done, and closing one ends the rest. The first sandbox tour
+ * opens the sandbox tab, and the later ones use it.
+ */
+export function startTours(tours: readonly Tour[], workspace: WorkspaceHandle): void {
+  const run = (index: number, sandboxOpen: boolean): void => {
+    const tour = tours[index];
+    if (tour === undefined) return;
+    startTour(tour, workspace, {
+      index,
+      total: tours.length,
+      sandbox: !sandboxOpen,
+      onDone: () => run(index + 1, sandboxOpen || tour.sandbox),
+    });
+  };
+  run(0, false);
 }

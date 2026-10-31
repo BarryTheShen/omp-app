@@ -8,6 +8,7 @@ import {
   PinOff,
   Search,
   Settings,
+  Sparkles,
   SquarePen,
   Trash2,
 } from "lucide-react";
@@ -75,6 +76,7 @@ export function Sidebar({
   onPrefetch,
   onDeleted,
   onSettings,
+  onWhatsNew,
   workspace,
   phone,
 }: {
@@ -91,6 +93,8 @@ export function Sidebar({
   /** A chat was deleted: the panes that showed it move on. */
   readonly onDeleted: (id: ThreadId) => void;
   readonly onSettings: () => void;
+  /** Opens the What's new list: every update and its tours. */
+  readonly onWhatsNew: () => void;
   /** For the What's new card, which starts a tour in the workspace. */
   readonly workspace: RefObject<WorkspaceHandle | null>;
   /** On a phone, where the side panel has no rail at the window's edge, its button sits here. */
@@ -228,10 +232,27 @@ export function Sidebar({
           {problem}
         </p>
       )}
-      <WhatsNew workspace={workspace} />
+      <WhatsNew workspace={workspace} onAllUpdates={onWhatsNew} />
       <div className="flex items-center justify-between px-1 pt-2">
         <ThemeSwitch />
         <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-tour="whats-new-button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="What's new"
+                  className="text-t3 hover:text-t1"
+                  onClick={onWhatsNew}
+                />
+              }
+            >
+              <Sparkles />
+            </TooltipTrigger>
+            <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
+          </Tooltip>
           <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
           {phone && (
             <Tooltip>

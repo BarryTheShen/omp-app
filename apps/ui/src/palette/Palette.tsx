@@ -184,6 +184,7 @@ export function Palette({
   onServers,
   onNewWindow,
   onInbox,
+  onWhatsNew,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -201,6 +202,8 @@ export function Palette({
   readonly onNewWindow: () => void;
   /** Opens the inbox: the chats waiting for you, and what runs settled with while you were elsewhere. */
   readonly onInbox: () => void;
+  /** Opens the What's new list: every update and its tours. */
+  readonly onWhatsNew: () => void;
 }): ReactNode {
   const [scope, setScope] = useState<Scope>("All");
   const [query, setQuery] = useState("");
@@ -296,6 +299,13 @@ export function Palette({
         label: KEYS.shortcuts.label,
         keys: keycap(KEYS.shortcuts),
         run: () => close(onShortcuts),
+      },
+      {
+        key: "app:whatsNew",
+        group: "Commands",
+        label: "What's new",
+        detail: "Every update and its tours",
+        run: () => close(onWhatsNew),
       },
       ...chatModes(controller, close, onSetGoal),
       {
