@@ -40,14 +40,14 @@ tailscale serve --bg localhost:4317                                # HTTPS on th
 
 Both links stay the same when the app restarts or the computer reboots: the app keeps the secret part (the token after `#token=`) in `~/.local/state/omp-app/launch-token` (or under `$XDG_STATE_HOME`), a file only your account can read. If a link was shared by mistake, `omp-app new-link` makes a new one, which the app prints when it next starts (`systemctl --user restart omp-app` restarts the service); every link printed before then stops working.
 
-The window (`omp-app-desktop`) can open that server from another computer too. Run it once with the link:
+The window (`omp-app-desktop`) can open that server from another computer too. Run it once with the address:
 
 ```bash
-omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net/#token=…'   # keeps the link and opens that server
-omp-app-desktop --local                                                 # back to this computer's own server
+omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net'   # keeps the address and opens that server
+omp-app-desktop --local                                          # back to this computer's own server
 ```
 
-The window keeps the link in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` link with a token is accepted. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
+The window keeps the address in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. The first time, it pairs with that server like any other device (see "Pair a device"); it stays paired across restarts, its key kept with the window's other data in `~/.local/share/omp-app/desktop-window` (or under `$XDG_DATA_HOME`). Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` address is accepted; a link with a token, from before pairing, works too. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
 
 ### Pair a device
 

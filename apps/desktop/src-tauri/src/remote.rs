@@ -1,9 +1,10 @@
 //! The app's server on another computer of the tailnet. The server can serve a browser on another device: it then
-//! runs behind `tailscale serve` with `OMP_APP_REMOTE_ORIGIN`, and logs a link for that device,
-//! `https://<computer>.<tailnet>.ts.net/#token=<token>`. The window opens such a server when it keeps that link:
-//! `omp-app-desktop --remote '<link>'` keeps it, and `omp-app-desktop --local` forgets it, so the window goes back to
-//! this computer's server. The token is the window's login: the link is kept in a file only this account can read,
-//! and it is never logged.
+//! runs behind `tailscale serve` with `OMP_APP_REMOTE_ORIGIN`, at `https://<computer>.<tailnet>.ts.net/`. The window
+//! opens such a server when it keeps its address: `omp-app-desktop --remote '<address>'` keeps it, and
+//! `omp-app-desktop --local` forgets it, so the window goes back to this computer's server. The window pairs with that
+//! server the first time (its key is a cookie in the window's own data folder, see `webdata.rs`). A link with a token,
+//! as the server logged it before pairing, is kept as it is and opens the same way; the address is kept in a file only
+//! this account can read, and it is never logged.
 
 use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
@@ -27,9 +28,8 @@ const LINK_PATHS: [&str; 2] = ["/", "/v2/"];
 /// How long the window waits for the other computer to accept a connection before it shows the error page.
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 /// Why a `--remote` was refused.
-const MISSING_LINK: &str = "--remote needs the server's link";
-pub const LINK_SHAPE: &str =
-    "the link must look like https://<computer>.<tailnet>.ts.net/#token=<token>";
+const MISSING_LINK: &str = "--remote needs the server's address";
+pub const LINK_SHAPE: &str = "the address must look like https://<computer>.<tailnet>.ts.net/";
 
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
@@ -42,8 +42,8 @@ pub enum Choice {
     Unchanged,
 }
 
-/// Reads `--remote <link>` (or `--remote=<link>`) and `--local` from the arguments, the program's name left out. The
-/// last of them counts. A `--remote` whose link is missing or has another shape is refused with the reason.
+/// Reads `--remote <address>` (or `--remote=<address>`) and `--local` from the arguments, the program's name left out.
+/// The last of them counts. A `--remote` whose address is missing or has another shape is refused with the reason.
 pub fn choice(args: &[String]) -> Result<Choice, String> {
     let mut found = Choice::Unchanged;
     let mut args = args.iter();
@@ -60,17 +60,14 @@ pub fn choice(args: &[String]) -> Result<Choice, String> {
     Ok(found)
 }
 
-/// The link of a server on another computer: an https address with a host, at the app's root (or `/v2/`, the new UI's
-/// former place, which the server sends on), whose fragment carries a token. Plain http is refused, since the token
-/// would cross the network unencrypted.
+/// The address of a server on another computer: https, with a host, at the app's root (or `/v2/`, the new UI's former
+/// place, which the server sends on). A link with a token in its fragment, from before pairing, is an address too.
+/// Plain http is refused: the pages, and the key the window pairs with, would cross the network unencrypted.
 pub fn parse_link(text: &str) -> Option<Url> {
     let url = Url::parse(text.trim()).ok()?;
     let has_host = url.host_str().is_some_and(|host| !host.is_empty());
-    let mut pairs = url.fragment().unwrap_or_default().split('&');
-    let token = pairs.find_map(|pair| pair.strip_prefix("token="));
-    let has_token = token.is_some_and(|token| !token.is_empty());
     let shaped = url.scheme() == "https" && LINK_PATHS.contains(&url.path());
-    (shaped && has_host && has_token).then_some(url)
+    (shaped && has_host).then_some(url)
 }
 
 /// The link's origin, `https://<computer>.<tailnet>.ts.net`: the window's own pages while the link is kept.
@@ -178,25 +175,29 @@ mod tests {
     }
 
     #[test]
-    fn the_link_the_server_logs_for_another_device_is_accepted() {
+    fn the_servers_address_is_accepted_and_so_is_a_link_from_before_pairing() {
+        let address = parse_link("  https://devbox.tail1234.ts.net\n").unwrap();
+        assert_eq!(address.as_str(), "https://devbox.tail1234.ts.net/");
+        assert_eq!(origin(&address), "https://devbox.tail1234.ts.net");
+        assert_eq!(host(&address), "devbox.tail1234.ts.net");
         let link = parse_link(&format!("  {LINK}\n")).unwrap();
-        assert_eq!(link.as_str(), LINK);
-        assert_eq!(origin(&link), "https://devbox.tail1234.ts.net");
-        assert_eq!(host(&link), "devbox.tail1234.ts.net");
+        assert_eq!(
+            link.as_str(),
+            LINK,
+            "kept as it is: its token signs the window in until it pairs"
+        );
         let more = "https://devbox.tail1234.ts.net/#token=t&folder=%2Fhome%2Fuser";
         assert!(parse_link(more).is_some(), "other fields may follow");
-        let former = "https://devbox.tail1234.ts.net/v2/#token=t";
+        let former = "https://devbox.tail1234.ts.net/v2/";
         assert!(parse_link(former).is_some(), "the new UI's former page");
     }
 
     #[test]
-    fn links_of_another_shape_are_refused() {
+    fn addresses_of_another_shape_are_refused() {
         let refused = [
-            "http://devbox.tail1234.ts.net/#token=t",
-            "https://devbox.tail1234.ts.net/",
-            "https://devbox.tail1234.ts.net/#token=",
-            "https://devbox.tail1234.ts.net/app#token=t",
-            "devbox.tail1234.ts.net/#token=t",
+            "http://devbox.tail1234.ts.net/",
+            "https://devbox.tail1234.ts.net/app",
+            "devbox.tail1234.ts.net",
             "",
         ];
         for text in refused {

@@ -124,7 +124,7 @@ function WindowServers({
           Connect to another server
         </label>
         <p className="mt-0.5 text-xs text-t3">
-          Paste the link the other computer's omp-app printed for other devices.
+          Type the other computer's address: this window pairs with its app the first time.
         </p>
         <div className="mt-2 flex gap-2">
           <Input
@@ -132,7 +132,7 @@ function WindowServers({
             id="server-link"
             value={link}
             onChange={(event) => setLink(event.target.value)}
-            placeholder="https://<computer>.<tailnet>.ts.net/#token=…"
+            placeholder="https://<computer>.<tailnet>.ts.net"
             spellCheck={false}
             autoComplete="off"
             className="font-mono text-xs"

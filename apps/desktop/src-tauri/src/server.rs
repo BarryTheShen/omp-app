@@ -29,7 +29,7 @@ use std::io;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command as StdCommand, Stdio};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, OnceLock, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -45,6 +45,7 @@ use crate::downloads;
 use crate::gstreamer::RegistryScan;
 use crate::keys;
 use crate::remote;
+use crate::webdata;
 use crate::windows;
 
 /// The sidecar's file name: the bundler installs it next to the window binary under this name.
@@ -581,6 +582,46 @@ pub fn destroyed(app: &AppHandle, label: &str) {
     });
 }
 
+/// The folder of every window's web data (see `webdata.rs`), shared, so the windows share their pages' storage and the
+/// key a server paired the window with. Made at the first window: it copies the pages' storage from where WebKitGTK
+/// kept it before the window had a folder (the first of `webdata::earlier_folders` that holds any); a copy that fails
+/// is only logged. It needs the app's identifier, so it is set from the first window's app handle.
+static WEB_DATA_FOLDER: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+fn web_data_folder(app: &AppHandle) -> Option<PathBuf> {
+    WEB_DATA_FOLDER
+        .get_or_init(|| {
+            let data_home = std::env::var_os("XDG_DATA_HOME");
+            let home = std::env::var_os("HOME");
+            let folder = webdata::folder(data_home.as_deref(), home.as_deref())?;
+            let identifier = app.config().identifier.clone();
+            let program = gtk::glib::prgname().map(|name| name.to_string());
+            let executable = std::env::current_exe().ok().and_then(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+            });
+            let names: Vec<&str> = [
+                Some(identifier.as_str()),
+                program.as_deref(),
+                executable.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let earlier = webdata::earlier_folders(data_home.as_deref(), home.as_deref(), &names);
+            match webdata::adopt(&earlier, &folder) {
+                Ok(Some(from)) => eprintln!(
+                    "omp app: the pages' storage was copied from {}",
+                    from.display()
+                ),
+                Ok(None) => {}
+                Err(error) => eprintln!("omp app: the pages' storage was not copied: {error}"),
+            }
+            Some(folder)
+        })
+        .clone()
+}
+
 fn new_window<'a>(
     app: &'a AppHandle,
     label: &str,
@@ -588,7 +629,7 @@ fn new_window<'a>(
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     let handle = app.clone();
     let owner = label.to_owned();
-    WebviewWindowBuilder::new(app, label, page)
+    let builder = WebviewWindowBuilder::new(app, label, page)
         .title(WINDOW_TITLE)
         .inner_size(1200.0, 800.0)
         .min_inner_size(640.0, 480.0)
@@ -611,7 +652,12 @@ fn new_window<'a>(
                 choose_destination(webview.app_handle(), destination)
             }
             _ => true,
-        })
+        });
+    // Without a folder of its own the window still opens; its cookies then end with it.
+    match web_data_folder(app) {
+        Some(folder) => builder.data_directory(folder),
+        None => builder,
+    }
 }
 
 /// Builds one of the app's windows, named `label`, with its page loads watched (see `watch_page_loads`) and its keys
@@ -634,7 +680,7 @@ pub fn open_window_like(app: &AppHandle, source: &str) -> Result<(), String> {
     let origin = remote_origin_of(app, source);
     let address = match &origin {
         Some(origin) => link_for_origin(origin)
-            .ok_or_else(|| format!("the link of {origin} is not kept any more"))?,
+            .ok_or_else(|| format!("the address of {origin} is not kept any more"))?,
         None => running_server().ok_or("this computer's server does not answer")?,
     };
     let handle = app.clone();

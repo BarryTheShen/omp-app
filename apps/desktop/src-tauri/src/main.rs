@@ -19,6 +19,7 @@ mod keys;
 mod remote;
 mod server;
 mod signals;
+mod webdata;
 mod windows;
 
 use tauri::{Manager, RunEvent, WindowEvent};
