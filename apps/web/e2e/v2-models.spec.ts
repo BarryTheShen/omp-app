@@ -104,4 +104,48 @@ realTest.describe("new UI role models", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "in a split, the pane chosen by a click on its transcript or its title bar takes Ctrl+P and Shift+Tab (#2761)",
+    async ({ realApp }) => {
+      await appendFile(
+        join(realApp.agentDir, "config.yml"),
+        [
+          "",
+          "modelRoles:",
+          "  smol: fake/claude-3-haiku-20240307",
+          "  slow: fake/claude-fable-5",
+          "",
+        ].join("\n"),
+      );
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await box(page).press("Control+Shift+o");
+      const panes = page.locator("[data-chat-pane]");
+      await expect(panes).toHaveCount(2);
+      const [left, right] = [panes.nth(0), panes.nth(1)];
+      const chipIn = (pane: typeof left) => pane.getByRole("button", { name: /^Model: / });
+      const thinkingIn = (pane: typeof left) => pane.getByRole("button", { name: /^Thinking: / });
+      await expect(right.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        { timeout: 120_000 },
+      );
+
+      // The left pane, chosen by a click on its transcript: Ctrl+P switches its model, not the other pane's.
+      await left.getByRole("region", { name: "Transcript" }).click();
+      await page.keyboard.press("Control+p");
+      await expect(chipIn(left)).toHaveAccessibleName("Model: Claude Fable 5 (slow)");
+      await expect(chipIn(right)).toHaveAccessibleName("Model: Fake Model");
+
+      // The right pane, chosen by a click on its title bar: Shift+Tab steps its thinking level.
+      const before = (await thinkingIn(right).getAttribute("aria-label")) ?? "";
+      await page.locator(".dv-default-tab").nth(1).click();
+      await page.keyboard.press("Shift+Tab");
+      await expect(thinkingIn(right)).not.toHaveAccessibleName(before);
+      await expect(chipIn(left)).toHaveAccessibleName("Model: Claude Fable 5 (slow)");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

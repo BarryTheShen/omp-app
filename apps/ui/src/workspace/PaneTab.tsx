@@ -1,7 +1,7 @@
 import type { IDockviewPanel, IDockviewPanelHeaderProps } from "dockview-react";
-import { type ReactNode, useSyncExternalStore } from "react";
+import { type ReactNode, use, useSyncExternalStore } from "react";
 import { forgetNewChatDraft } from "../chat/drafts";
-import type { ChatPanelParams } from "./ChatPanel";
+import { type ChatPanelParams, mouseClickTakesCaret, PaneHostContext } from "./ChatPanel";
 
 /** The chat a pane was given, which names the key its new chat's text is kept under. */
 export const chatOfPane = (params: unknown): string | undefined =>
@@ -19,9 +19,11 @@ export function closePaneAsked(panel: IDockviewPanel): void {
 
 /**
  * A pane's tab in its title bar: dockview's own default tab (its title, and a close button named after it), whose close
- * button closes the pane as asked. dockview's default tab cannot be told to do that, so this one draws the same.
+ * button closes the pane as asked. dockview's default tab cannot be told to do that, so this one draws the same. A
+ * click on the title puts the caret in the pane's message box, so the pane's keys reach the pane it chose.
  */
 export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): ReactNode {
+  const host = use(PaneHostContext);
   const title = useSyncExternalStore(
     (notify) => {
       const subscription = api.onDidTitleChange(notify);
@@ -30,7 +32,14 @@ export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): React
     () => api.title ?? "",
   );
   return (
-    <div className="dv-default-tab">
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click only puts the caret in the message box, as Tab does
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the message box with Tab
+    <div
+      className="dv-default-tab"
+      onClick={(event) => {
+        if (mouseClickTakesCaret(event)) host?.focus.request(api.id);
+      }}
+    >
       <div className="dv-default-tab-content">{title}</div>
       <button
         type="button"

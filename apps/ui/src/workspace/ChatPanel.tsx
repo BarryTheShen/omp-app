@@ -3,6 +3,7 @@ import type { FolderPath } from "@omp-app/contracts";
 import type { DockviewApi, IDockviewPanelProps } from "dockview-react";
 import {
   createContext,
+  type MouseEvent,
   type ReactNode,
   use,
   useCallback,
@@ -23,6 +24,29 @@ export interface ChatPanelParams {
   readonly chat: string;
   readonly target: ChatTarget;
   readonly folder: FolderPath;
+}
+
+/** What takes a click itself: a click there leaves the caret where that puts it. */
+const TAKES_CLICKS =
+  "a, button, input, textarea, select, summary, label, [role='button'], [role='link'], [role='menuitem'], [role='option'], [role='tab'], [role='checkbox'], [role='switch'], [role='dialog'], [role='alertdialog'], [role='menu'], [role='listbox'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
+
+/**
+ * A click that puts the caret in a pane's message box, as omp's terminal types into its editor, so the pane's keys
+ * reach the pane chosen (Ctrl+P, Shift+Tab): a click of the main mouse button that nothing took for itself. Never a
+ * tap, which would bring a phone's keyboard up over the chat.
+ */
+export function mouseClickTakesCaret(event: MouseEvent): boolean {
+  if (event.defaultPrevented || event.button !== 0) return false;
+  if ((event.nativeEvent as PointerEvent).pointerType === "touch") return false;
+  return !window.matchMedia("(pointer: coarse)").matches;
+}
+
+/** A click on a pane (its transcript, its empty space) where nothing in the pane takes it, and that selected no text. */
+function paneClickTakesCaret(event: MouseEvent<HTMLElement>): boolean {
+  if (!mouseClickTakesCaret(event) || !(event.target instanceof Element)) return false;
+  const taker = event.target.closest(TAKES_CLICKS);
+  if (taker !== null && event.currentTarget.contains(taker)) return false;
+  return window.getSelection()?.isCollapsed !== false;
 }
 
 /** How many frames a pane asked for may take to be drawn and shown (about half a second). */
@@ -147,7 +171,16 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   }, [controller, api.id, focus]);
 
   return (
-    <div ref={root} data-chat-pane className="flex h-full min-h-0 flex-col bg-panel">
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click only puts the caret in the message box, as Tab does
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the message box with Tab
+    <div
+      ref={root}
+      data-chat-pane
+      className="flex h-full min-h-0 flex-col bg-panel"
+      onClick={(event) => {
+        if (paneClickTakesCaret(event)) focus.request(api.id);
+      }}
+    >
       {controller !== null && (
         <PaneChat
           key={params.chat}
