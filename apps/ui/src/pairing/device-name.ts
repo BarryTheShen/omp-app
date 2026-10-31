@@ -1,4 +1,5 @@
 import type { DeviceKind } from "@omp-app/contracts";
+import { desktopBridge } from "../desktop/bridge";
 
 /** A device kind in words, as the device lists and the request prompt show it beside a device's name. */
 export const DEVICE_KIND_WORDS: Record<DeviceKind, string> = {
@@ -51,4 +52,15 @@ export function guessDevice(signs: DeviceSigns): DeviceGuess {
   if (signs.desktopWindow) return { name: system, kind: "desktop-window" };
   if (signs.standalone) return { name: system, kind: "home-screen-app" };
   return { name: `${system} · ${browserOf(signs.userAgent)}`, kind: "browser" };
+}
+
+/** This page's guess: its browser, whether it runs from the Home Screen, and whether it is the desktop window. */
+export function guessThisDevice(): DeviceGuess {
+  return guessDevice({
+    userAgent: navigator.userAgent,
+    standalone:
+      ("standalone" in navigator && navigator.standalone === true) ||
+      matchMedia("(display-mode: standalone)").matches,
+    desktopWindow: desktopBridge() !== null,
+  });
 }

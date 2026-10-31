@@ -1,10 +1,12 @@
 /**
- * The pairing routes, called by a page that is not paired yet (it has no connection to the app). A key the server gives
- * comes back as a cookie the page never reads; the next load signs in with it.
+ * The pairing routes, called by a page that is not paired yet (it has no connection to the app), or by a page signed in
+ * with the launch link that becomes a device. A key the server gives comes back as a cookie the page never reads; the
+ * next load signs in with it.
  */
 import {
   type DeviceKind,
   PAIRING_PATHS,
+  PairingAdopted,
   PairingAsked,
   PairingClaimed,
   PairingCodeEntered,
@@ -22,12 +24,17 @@ export type Answer<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly message: string };
 
-async function post<T>(path: string, body: unknown, schema: Checks<T>): Promise<Answer<T>> {
+async function post<T>(
+  path: string,
+  body: unknown,
+  schema: Checks<T>,
+  headers: Record<string, string> = {},
+): Promise<Answer<T>> {
   let response: Response;
   try {
     response = await fetch(path, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
       credentials: "same-origin",
     });
@@ -51,6 +58,17 @@ async function post<T>(path: string, body: unknown, schema: Checks<T>): Promise<
 /** Asks the paired devices to allow this one: the request's secret and the 6 digits to show. */
 export function askToPair(name: string, kind: DeviceKind): Promise<Answer<PairingAsked>> {
   return post(PAIRING_PATHS.ask, { name, kind }, PairingAsked);
+}
+
+/** Makes this page, signed in with the launch link, a paired device; its key comes as a cookie. */
+export function adoptPage(
+  token: string,
+  name: string,
+  kind: DeviceKind,
+): Promise<Answer<PairingAdopted>> {
+  return post(PAIRING_PATHS.adopt, { name, kind }, PairingAdopted, {
+    authorization: `Bearer ${token}`,
+  });
 }
 
 /** Whether the request was answered; when it was allowed, the key comes as a cookie. */

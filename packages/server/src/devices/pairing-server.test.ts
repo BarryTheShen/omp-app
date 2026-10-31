@@ -42,8 +42,9 @@ function post(
   path: string,
   body: unknown,
   from: "page" | "https" | "elsewhere" = "page",
+  extra: Record<string, string> = {},
 ) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = { "content-type": "application/json", ...extra };
   if (from === "page") headers.origin = app.url;
   if (from === "https") {
     headers.origin = REMOTE.origin;
@@ -168,6 +169,39 @@ describe("device pairing on a running server", () => {
     expect(await pairing.store.remove(deviceId)).toBe(true);
     expect(await closed).toEqual({ code: 4401, reason: "not paired" });
     expect(await connect(app, { key })).toMatchObject({ welcome: false, code: 4401 });
+  });
+
+  test("a page with the launch link at the Tailscale address becomes a device once, and then signs in as it", async () => {
+    const { app, pairing } = await serve();
+    const phone = { name: "iPhone", kind: "home-screen-app" };
+    const bearer = { authorization: "Bearer launch-token" };
+    // Pages on this computer keep the link, and a page without the token adopts nothing.
+    expect((await post(app, PAIRING_PATHS.adopt, phone, "page", bearer)).status).toBe(403);
+    expect((await post(app, PAIRING_PATHS.adopt, phone, "https")).status).toBe(401);
+    const wrong = { authorization: "Bearer not-the-token" };
+    expect((await post(app, PAIRING_PATHS.adopt, phone, "https", wrong)).status).toBe(401);
+    expect(pairing.store.list()).toHaveLength(0);
+
+    const adopted = await post(app, PAIRING_PATHS.adopt, phone, "https", bearer);
+    const { deviceId } = (await adopted.json()) as { deviceId: string };
+    expect(adopted.headers.get("set-cookie") ?? "").toContain("Secure");
+    const key = keyOf(adopted);
+    const withKey = { ...bearer, cookie: `${DEVICE_COOKIE}=${key}` };
+    expect(await (await post(app, PAIRING_PATHS.adopt, phone, "https", withKey)).json()).toEqual({
+      deviceId,
+    });
+    expect(pairing.store.list().map((device) => [device.id, device.name])).toEqual([
+      [deviceId, "iPhone"],
+    ]);
+
+    // With its key and the link, the page is the device: removing it closes the page.
+    const open = await connect(app, { key, token: "launch-token" });
+    expect(open.welcome).toBe(true);
+    const closed = new Promise<number>((resolve) => {
+      open.socket.onclose = (event) => resolve(event.code);
+    });
+    expect(await pairing.store.remove(deviceId)).toBe(true);
+    expect(await closed).toBe(4401);
   });
 
   test("the routes take only the app's own pages, and the server's own routes only the launch token from this computer", async () => {

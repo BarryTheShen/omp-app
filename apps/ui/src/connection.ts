@@ -86,6 +86,20 @@ export function readToken(): string | null {
   return fromCookie;
 }
 
+/**
+ * Forgets the launch token this page kept (the tab's copy and, on iOS, the Home Screen's cookie), once the page is a
+ * paired device: its key's cookie signs it in from then on, and removing the device in Settings then sticks.
+ */
+export function forgetToken(): void {
+  renewed = null;
+  try {
+    window.sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Storage may be off: there is nothing kept there.
+  }
+  if (onIos()) document.cookie = `${TOKEN_COOKIE}=; Path=/; Max-Age=0; SameSite=Strict; Secure`;
+}
+
 /** Connects with the launch link's token, or with none: a paired device signs in with its key's cookie. */
 export function connect(token: string | null): AppClient {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

@@ -58,7 +58,7 @@ Each phone, computer or browser that opens the app's address is paired once, and
 
 **Settings → App → Devices** lists the paired devices and when each last connected: **Rename** names one, **Remove** closes its windows (it pairs again to come back). On this computer, `omp-app devices` lists them and `omp-app devices remove <device>` removes one, named or by the start of its id.
 
-A paired device keeps its key in a cookie that only the app's own pages send, renewed while the device uses the app; the app keeps only a hash of each key. The links above keep working too.
+A paired device keeps its key in a cookie that only the app's own pages send, renewed while the device uses the app; the app keeps only a hash of each key. A page opened with the link above from another device pairs itself the first time, under the name it guesses for itself, and forgets the link's token; pages on this computer keep using the link.
 
 ### omp in the terminal, on the same chats
 

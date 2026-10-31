@@ -2,8 +2,7 @@ import { formatPairingCode, normalizePairingCode, type PairingAsked } from "@omp
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { desktopBridge } from "../desktop/bridge";
-import { guessDevice } from "./device-name";
+import { guessThisDevice } from "./device-name";
 import { askToPair, claimPairing, enterPairingCode } from "./pairing-api";
 
 /** How often the screen asks whether its request was answered. */
@@ -18,16 +17,6 @@ type AskState =
 
 /** The digits as shown: "482 913". */
 const spaced = (code: string): string => `${code.slice(0, 3)} ${code.slice(3)}`;
-
-function thisDevice() {
-  return guessDevice({
-    userAgent: navigator.userAgent,
-    standalone:
-      ("standalone" in navigator && navigator.standalone === true) ||
-      matchMedia("(display-mode: standalone)").matches,
-    desktopWindow: desktopBridge() !== null,
-  });
-}
 
 /** Into the app: the address loses the pairing code, and the page loads again, signed in by its new key. */
 function openApp(): void {
@@ -47,7 +36,7 @@ export function PairingScreen({
   /** The one-time code of the QR code this page was opened from, taken out of its address. */
   readonly scannedCode: string | null;
 }): ReactNode {
-  const guess = useRef(thisDevice());
+  const guess = useRef(guessThisDevice());
   const nameId = useId();
   const codeId = useId();
   const [name, setName] = useState(guess.current.name);
