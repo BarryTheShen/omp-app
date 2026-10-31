@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
 /**
@@ -232,6 +232,57 @@ realTest.describe("new UI on a phone", () => {
         await expect(page.getByRole("heading", { level: 1 })).toHaveText("A new name", {
           timeout: 30_000,
         });
+        expect(realApp.problems).toEqual([]);
+        await context.close();
+      },
+    );
+
+    /** A finger on the row's right end, moved `distance` px to the left in steps, then lifted. */
+    async function swipeLeft(row: Locator, distance: number): Promise<void> {
+      const box = await row.boundingBox();
+      if (box === null) throw new Error("the row is not on the page");
+      const touch = {
+        pointerType: "touch",
+        isPrimary: true,
+        pointerId: 7,
+        clientY: box.y + box.height / 2,
+      };
+      const x = box.x + box.width - 24;
+      await row.dispatchEvent("pointerdown", { ...touch, clientX: x });
+      for (let moved = 10; moved <= distance; moved += 10) {
+        await row.dispatchEvent("pointermove", { ...touch, clientX: x - moved });
+      }
+      await row.dispatchEvent("pointerup", { ...touch, clientX: x - distance });
+    }
+
+    realTest(
+      "a row swiped to the left shows Pin and Delete; Delete still asks, and a short swipe shuts again",
+      async ({ realApp, browser }) => {
+        const { page, context } = await phone(realApp, browser);
+        await page.getByRole("button", { name: "Chats", exact: true }).tap();
+        const list = page.getByRole("navigation", { name: "Chats" });
+        const rowOf = (title: string) =>
+          list.getByRole("listitem").filter({ has: page.getByRole("button", { name: title }) });
+
+        await swipeLeft(list.getByRole("button", { name: "Seeded chat 2" }), 140);
+        await rowOf("Seeded chat 2").getByRole("button", { name: "Pin", exact: true }).tap();
+        await expect(
+          list
+            .getByRole("region", { name: "Pinned" })
+            .getByRole("button", { name: "Seeded chat 2" }),
+        ).toBeVisible({ timeout: 30_000 });
+
+        await swipeLeft(list.getByRole("button", { name: "Seeded chat 1" }), 140);
+        await rowOf("Seeded chat 1").getByRole("button", { name: "Delete", exact: true }).tap();
+        const confirm = page.getByRole("alertdialog");
+        await expect(confirm).toContainText("Delete this chat?");
+        await confirm.getByRole("button", { name: "Cancel" }).tap();
+        await expect(confirm).toHaveCount(0);
+
+        // Short of half way, the row shuts again: a tap opens its chat, as on any row.
+        await swipeLeft(list.getByRole("button", { name: "Seeded chat 1" }), 40);
+        await list.getByRole("button", { name: "Seeded chat 1" }).tap();
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText("Seeded chat 1");
         expect(realApp.problems).toEqual([]);
         await context.close();
       },

@@ -12,7 +12,15 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { type DragEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type PointerEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +48,7 @@ import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
 import { useLongPress } from "../longPress";
 import { togglePanel, usePanelState } from "../panels/panel-state";
+import { useSwipe } from "../swipe";
 import { THEME_CHOICES, ThemeSwitch } from "../theme/ThemeSwitch";
 import { setThemeChoice, type ThemeChoice, useThemeChoice } from "../theme/theme";
 import { WhatsNew } from "../tour/WhatsNew";
@@ -111,6 +120,8 @@ export function Sidebar({
   /** The chat the delete dialog asks about; kept while the dialog closes, so its words stay put. */
   const [deleting, setDeleting] = useState<SessionFile | null>(null);
   const [confirming, setConfirming] = useState(false);
+  /** On a phone: the row swiped open, showing Pin and Delete; one at a time. */
+  const [swiped, setSwiped] = useState<ThreadId | null>(null);
   const needle = query.trim().toLowerCase();
   const shown = list.sessions.filter(
     (session) => needle === "" || titleOf(session).toLowerCase().includes(needle),
@@ -165,6 +176,8 @@ export function Sidebar({
       target={{ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }}
       onOpen={onOpen}
       phone={phone}
+      swiped={swiped === session.id}
+      onSwipe={(next) => setSwiped(next ? session.id : null)}
       actions={{
         pinned: list.pinned.has(session.id),
         onPrefetch: () => onPrefetch(session),
@@ -198,7 +211,16 @@ export function Sidebar({
     />
   );
   return (
-    <nav aria-label="Chats" className={cn("flex min-h-0 flex-col p-2", hidden && "hidden")}>
+    <nav
+      aria-label="Chats"
+      className={cn("flex min-h-0 flex-col p-2", hidden && "hidden")}
+      // A finger landing anywhere but on the open row shuts it, as a phone's lists do.
+      onPointerDownCapture={(event) => {
+        if (swiped === null) return;
+        if (event.target instanceof Element && event.target.closest("[data-swiped='true']")) return;
+        setSwiped(null);
+      }}
+    >
       {folderMenu}
       {/* On a phone, New chat is at the foot of the list, in the thumb's reach. */}
       {!phone && (
@@ -400,6 +422,9 @@ function Section({
   );
 }
 
+/** Pin and Delete behind a phone's row swiped to the left, 72 px each. */
+const SWIPE_WIDTH = 144;
+
 /** What a saved chat's row offers besides opening it: reading it ahead, its pin, and its menu's Rename and Delete. */
 interface RowActions {
   readonly pinned: boolean;
@@ -419,6 +444,8 @@ function ChatRow({
   onOpen,
   phone,
   actions,
+  swiped = false,
+  onSwipe,
 }: {
   readonly title: string;
   readonly state: ChatState;
@@ -433,6 +460,9 @@ function ChatRow({
   readonly phone: boolean;
   /** None for a chat whose first reply still runs: it has no file to read ahead, pin, rename or delete yet. */
   readonly actions?: RowActions;
+  /** On a phone: the row is swiped open, showing Pin and Delete. One row at a time: the list keeps which. */
+  readonly swiped?: boolean;
+  readonly onSwipe?: (open: boolean) => void;
 }): ReactNode {
   // A pointer passing over the list reads nothing; one that rests on a row a moment reads that chat ahead.
   const resting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -446,6 +476,9 @@ function ChatRow({
   const hold = useLongPress(() => {
     if (actions !== undefined) setMenuOpen(true);
   });
+  const swipe = useSwipe(SWIPE_WIDTH, swiped, (next) => onSwipe?.(next), hold.onPointerCancel);
+  /** A phone's row with actions slides on a track, its Pin and Delete just past its right edge. */
+  const track = phone && actions !== undefined;
   useEffect(() => {
     if (editing || !refocus.current) return;
     refocus.current = false;
@@ -458,116 +491,179 @@ function ChatRow({
   ].filter((part) => part !== null);
   return (
     <li
-      className="group/row flex items-center rounded-md hover:bg-l1 has-[[aria-current=true]]:bg-l2"
+      className={cn(
+        "group/row flex items-center rounded-md hover:bg-l1 has-[[aria-current=true]]:bg-l2",
+        track && "relative overflow-hidden",
+      )}
+      // The list shuts an open row when a finger lands anywhere else.
+      data-swiped={swiped ? "true" : undefined}
       onPointerEnter={() => {
         if (actions !== undefined)
           resting.current = setTimeout(actions.onPrefetch, PREFETCH_REST_MS);
       }}
       onPointerLeave={() => clearTimeout(resting.current)}
     >
-      {editing ? (
-        <RenameField
-          title={title}
-          onDone={(typed, byKey) => {
-            renaming.current = false;
-            refocus.current = byKey;
-            setEditing(false);
-            if (typed !== null) actions?.onRename(typed);
-          }}
-        />
-      ) : (
-        <button
-          ref={titleButton}
-          type="button"
-          className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-busy:text-t3 aria-[current=true]:text-t1 max-sm:h-11"
-          aria-current={focused ? "true" : undefined}
-          aria-busy={saving ? "true" : undefined}
-          // One phrase for a screen reader: the title, its state, and whether a pane shows it.
-          aria-label={said.join(", ")}
-          onClick={(event) => {
-            if (hold.endsHold()) return;
-            onOpen(target, event.altKey ? "split" : "here");
-          }}
-          {...(phone
-            ? {
-                onPointerDown: hold.onPointerDown,
-                onPointerUp: hold.onPointerUp,
-                onPointerLeave: hold.onPointerLeave,
-                onPointerCancel: hold.onPointerCancel,
-                onContextMenu: hold.onContextMenu,
-              }
-            : {
-                // Dropped on the workspace, the chat opens where it lands (the workspace's drop handling). A phone
-                // has no workspace to drop on, and its touch-and-hold opens the row's menu.
-                draggable: true,
-                onDragStart: (event: DragEvent<HTMLButtonElement>) =>
-                  startChatDrag(event.dataTransfer, target),
-              })}
-        >
-          <span
-            aria-hidden
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              state === "waiting" && "bg-warn",
-              state === "running" && "bg-live",
-            )}
+      <div
+        className={cn(
+          "relative flex min-w-0 flex-1 items-center",
+          track && !swipe.dragging && "transition-transform duration-200 ease-out",
+        )}
+        style={track ? { transform: `translateX(${-swipe.offset}px)` } : undefined}
+      >
+        {editing ? (
+          <RenameField
+            title={title}
+            onDone={(typed, byKey) => {
+              renaming.current = false;
+              refocus.current = byKey;
+              setEditing(false);
+              if (typed !== null) actions?.onRename(typed);
+            }}
           />
-          <span className="min-w-0 flex-1 truncate">{title}</span>
-          {open && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-t3" />}
-        </button>
-      )}
-      {!editing && actions !== undefined && (
-        <>
-          {!phone && (
+        ) : (
+          <button
+            ref={titleButton}
+            type="button"
+            className={cn(
+              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-busy:text-t3 aria-[current=true]:text-t1 max-sm:h-11",
+              // Up and down stay the list's scroll; left and right are the row's swipe.
+              phone && "touch-pan-y",
+            )}
+            aria-current={focused ? "true" : undefined}
+            aria-busy={saving ? "true" : undefined}
+            // One phrase for a screen reader: the title, its state, and whether a pane shows it.
+            aria-label={said.join(", ")}
+            onClick={(event) => {
+              // Both are asked, so neither keeps a skip for a later click.
+              const held = hold.endsHold();
+              const shut = swipe.endsSwipe();
+              if (held || shut) return;
+              onOpen(target, event.altKey ? "split" : "here");
+            }}
+            {...(phone
+              ? {
+                  onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+                    hold.onPointerDown(event);
+                    swipe.onPointerDown(event);
+                  },
+                  onPointerMove: swipe.onPointerMove,
+                  onPointerUp: (event: PointerEvent<HTMLButtonElement>) => {
+                    swipe.onPointerUp();
+                    hold.onPointerUp(event);
+                  },
+                  onPointerLeave: hold.onPointerLeave,
+                  onPointerCancel: () => {
+                    hold.onPointerCancel();
+                    swipe.onPointerCancel();
+                  },
+                  onContextMenu: hold.onContextMenu,
+                }
+              : {
+                  // Dropped on the workspace, the chat opens where it lands (the workspace's drop handling). A phone
+                  // has no workspace to drop on, and its touch-and-hold opens the row's menu.
+                  draggable: true,
+                  onDragStart: (event: DragEvent<HTMLButtonElement>) =>
+                    startChatDrag(event.dataTransfer, target),
+                })}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                state === "waiting" && "bg-warn",
+                state === "running" && "bg-live",
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+            {open && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-t3" />}
+          </button>
+        )}
+        {!editing && actions !== undefined && (
+          <>
+            {!phone && (
+              <button
+                type="button"
+                // In the row of its chat; the chat's title stays the name of the row's own button.
+                aria-label={actions.pinned ? "Unpin" : "Pin"}
+                className={cn(
+                  "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
+                  REVEAL,
+                )}
+                onClick={actions.onPin}
+              >
+                {actions.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+              </button>
+            )}
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger
+                aria-label="More"
+                // On a phone the trigger shows nothing and takes no taps: the menu opens on a touch-and-hold, at the
+                // row's end. A screen reader still finds it.
+                className={cn(
+                  "grid shrink-0 place-items-center rounded-sm text-t3 outline-none hover:bg-l2 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 data-popup-open:text-t1 data-popup-open:opacity-100",
+                  phone ? "pointer-events-none size-px opacity-0" : cn("mr-1 size-6", REVEAL),
+                )}
+              >
+                <Ellipsis className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-auto" finalFocus={() => !renaming.current}>
+                {phone && (
+                  <DropdownMenuItem onClick={actions.onPin}>
+                    {actions.pinned ? <PinOff /> : <Pin />}
+                    {actions.pinned ? "Unpin" : "Pin"}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => {
+                    renaming.current = true;
+                    setEditing(true);
+                  }}
+                >
+                  <PencilLine />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
+                  <Trash2 />
+                  Delete…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+        {track && actions !== undefined && !editing && (
+          // Shut, the actions are hidden (no tap, tab stop or screen reader; the row's menu has them), once the row
+          // has slid shut: the hiding waits out the slide.
+          <div
+            className={cn(
+              "absolute inset-y-0 left-full flex",
+              swiped || swipe.dragging
+                ? "visible"
+                : "invisible transition-[visibility] delay-200 duration-0",
+            )}
+          >
             <button
               type="button"
-              // In the row of its chat; the chat's title stays the name of the row's own button.
-              aria-label={actions.pinned ? "Unpin" : "Pin"}
-              className={cn(
-                "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
-                REVEAL,
-              )}
-              onClick={actions.onPin}
+              className="w-18 bg-l3 font-medium text-t1 text-xs"
+              onClick={() => {
+                onSwipe?.(false);
+                actions.onPin();
+              }}
             >
-              {actions.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+              {actions.pinned ? "Unpin" : "Pin"}
             </button>
-          )}
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger
-              aria-label="More"
-              // On a phone the trigger shows nothing and takes no taps: the menu opens on a touch-and-hold, at the
-              // row's end. A screen reader still finds it.
-              className={cn(
-                "grid shrink-0 place-items-center rounded-sm text-t3 outline-none hover:bg-l2 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 data-popup-open:text-t1 data-popup-open:opacity-100",
-                phone ? "pointer-events-none size-px opacity-0" : cn("mr-1 size-6", REVEAL),
-              )}
+            <button
+              type="button"
+              className="w-18 bg-(--bad-fill) font-medium text-white text-xs"
+              onClick={() => {
+                onSwipe?.(false);
+                actions.onDelete();
+              }}
             >
-              <Ellipsis className="size-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-auto" finalFocus={() => !renaming.current}>
-              {phone && (
-                <DropdownMenuItem onClick={actions.onPin}>
-                  {actions.pinned ? <PinOff /> : <Pin />}
-                  {actions.pinned ? "Unpin" : "Pin"}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                onClick={() => {
-                  renaming.current = true;
-                  setEditing(true);
-                }}
-              >
-                <PencilLine />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
-                <Trash2 />
-                Delete…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      )}
+              Delete
+            </button>
+          </div>
+        )}
+      </div>
     </li>
   );
 }
