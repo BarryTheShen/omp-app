@@ -506,8 +506,13 @@ export class ChatController {
       this.store.toast("Only one role model available", "info");
       return;
     }
-    this.store.setRole(switched.role);
-    if (this.#roleOrder.length > 0) this.store.showRoleTrack(this.#roleOrder, switched.role);
+    // omp's answer names the role's model: the chip shows both at once, never the new role with the old model.
+    this.store.switchRole(
+      this.#roleOrder,
+      switched.role,
+      { provider: switched.provider, id: switched.modelId, name: switched.name },
+      switched.thinkingLevel,
+    );
   }
 
   /** The live model's role and the roles' order (`get_role_models`); a server that predates them gives none. */

@@ -376,9 +376,22 @@ export class ChatStore {
     this.#publish();
   }
 
-  /** After Ctrl+P: the roles in order and the one switched to, until `hideRoleTrack` with its id. */
-  showRoleTrack(order: readonly string[], current: string): void {
-    this.#roleTrack = { order, current, id: (this.#roleTrack?.id ?? 0) + 1 };
+  /**
+   * After Ctrl+P: the role switched to, its model and the thinking level it names (null keeps the level), all at once,
+   * and the roles in order with that one marked until `hideRoleTrack` with its id. The model is not left to omp's later
+   * report, so the chip never names the new role with the old model.
+   */
+  switchRole(
+    order: readonly string[],
+    role: string,
+    model: ChatModel,
+    thinkingLevel: string | null,
+  ): void {
+    this.#role = role;
+    this.#model = model;
+    if (thinkingLevel !== null) this.#thinkingLevel = thinkingLevel;
+    if (order.length > 0)
+      this.#roleTrack = { order, current: role, id: (this.#roleTrack?.id ?? 0) + 1 };
     this.#publish();
   }
 

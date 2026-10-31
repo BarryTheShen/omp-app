@@ -41,9 +41,25 @@ realTest.describe("new UI role models", () => {
       await expect(chip(page)).toHaveAccessibleName("Model: Fake Model");
       await box(page).fill("half a thought");
 
+      // Every name the chip takes from the key on: it goes from the old role's model to the new one's in one step,
+      // never the new role with the old model (#2763).
+      await chip(page).evaluate((element) => {
+        const names: string[] = [];
+        const record = () => {
+          const name = element.getAttribute("aria-label") ?? "";
+          if (names.at(-1) !== name) names.push(name);
+        };
+        record();
+        new MutationObserver(record).observe(element, { attributes: true, subtree: true });
+        (window as unknown as { chipNames: string[] }).chipNames = names;
+      });
       await box(page).press("Control+p");
       await expect(chip(page)).toHaveAccessibleName("Model: Claude Fable 5 (slow)");
       await expect(chip(page)).toHaveText(/slow · Claude Fable 5/);
+      await page.waitForTimeout(1_500);
+      expect(
+        await page.evaluate(() => (window as unknown as { chipNames: string[] }).chipNames),
+      ).toEqual(["Model: Fake Model", "Model: Claude Fable 5 (slow)"]);
       // The roles in omp's order, the one switched to marked; the one without a model is shown, as omp shows it.
       await expect(track(page).getByRole("listitem")).toHaveText([
         "smol",
