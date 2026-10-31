@@ -214,6 +214,16 @@ export class ChatController {
     this.#openFrames = watchFrames(() => {
       if (document.visibilityState === "hidden") this.#hiddenDuringOpen = true;
     });
+    const chat = this.client.port(ChatSessionPort);
+    // The server's open goes out at once, beside the read of the file's window: the chat's omp starts, or the running
+    // one is joined, while its file is read (#2768). The subscription still waits for the window, so live events follow
+    // it. Awaited below; a failure meanwhile is not left unhandled.
+    const opening = chat.open(
+      this.target.kind === "existing"
+        ? { threadId: this.target.threadId }
+        : { folderPath: this.target.folder, start: "new" },
+    );
+    opening.catch(() => undefined);
     if (this.#sessionFile !== null) {
       // A chat opened before shows what this browser kept of it at once; the file's window replaces it when it comes.
       const fromFile = this.#reloadWindow();
@@ -223,15 +233,22 @@ export class ChatController {
         this.store.setWindow(kept.entries, kept.hasOlder);
         this.#mark("kept_window_ms");
       }
-      await fromFile;
+      try {
+        await fromFile;
+      } catch (failure) {
+        // The open went out already: the view it took goes with the failure.
+        opening.then(
+          (opened) => {
+            this.#viewTaken = true;
+            return this.#releaseView(opened.threadId);
+          },
+          () => undefined,
+        );
+        throw failure;
+      }
       this.#mark("file_window_ms");
     }
-    const chat = this.client.port(ChatSessionPort);
-    const opened = await chat.open(
-      this.target.kind === "existing"
-        ? { threadId: this.target.threadId }
-        : { folderPath: this.target.folder, start: "new" },
-    );
+    const opened = await opening;
     this.#viewTaken = true;
     this.#openAnswered = true;
     this.#mark("open_ms");
