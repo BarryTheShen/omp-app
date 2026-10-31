@@ -125,4 +125,42 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "⚡ opens the quick panel in the keyboard's place: a tap sends a prompt, a long press puts it in the box, Sent puts a message back",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const panel = page.getByRole("region", { name: "Quick prompts" });
+      await box(page).tap();
+      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await expect(panel).toBeVisible();
+      await expect(box(page)).not.toBeFocused();
+
+      // A tap sends the prompt as it is.
+      await panel.getByRole("button", { name: "Continue" }).tap();
+      await expect(
+        page.getByRole("region", { name: "Transcript" }).getByText("Continue", { exact: true }),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(box(page)).toHaveValue("");
+
+      // A press held goes in the box instead, to be changed first; the keyboard takes the panel's place.
+      const sure = panel.getByRole("button", { name: "Sure" });
+      await expect(sure).toBeEnabled({ timeout: 60_000 });
+      await sure.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true });
+      await page.waitForTimeout(700);
+      await sure.dispatchEvent("pointerup", { pointerType: "touch", isPrimary: true });
+      await expect(box(page)).toHaveValue("Sure");
+      await expect(box(page)).toBeFocused();
+      await expect(panel).toHaveCount(0);
+
+      // Sent: a message sent before goes back in the box.
+      await box(page).fill("");
+      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await panel.getByRole("tab", { name: "Sent" }).tap();
+      await panel.getByRole("button", { name: "Continue" }).tap();
+      await expect(box(page)).toHaveValue("Continue");
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });

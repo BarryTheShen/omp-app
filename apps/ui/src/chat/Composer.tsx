@@ -24,6 +24,7 @@ import type { ChatController } from "./controller";
 import { KeyRow } from "./KeyRow";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
+import { QuickPanel } from "./QuickPanel";
 import { RoleTrack } from "./RoleTrack";
 import { withRestored } from "./restored";
 import type { ChatActivity, ChatModel, ChatQueue, ChatToast, RoleTrack as Track } from "./store";
@@ -132,6 +133,8 @@ export const Composer = memo(function Composer({
   const [dragging, setDragging] = useState(false);
   /** Whether the box has the focus: on a phone the keyboard is up then, and the key row offers to put it away. */
   const [focused, setFocused] = useState(false);
+  /** Whether the phone's quick panel is open, in the keyboard's place. */
+  const [panel, setPanel] = useState(false);
   const phone = usePhone();
   const draft = controller.draft;
   const menu = useComposerMenu(controller, text, caret);
@@ -499,6 +502,17 @@ export const Composer = memo(function Composer({
     </>
   );
 
+  /** A quick prompt from the phone's panel, sent at once: a steer while omp works, the next message when it is idle. */
+  const sendPrompt = (prompt: string): void => {
+    if (disabled || sending) return;
+    setSending(true);
+    setError(null);
+    controller
+      .send(prompt, "auto", [])
+      .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`))
+      .finally(() => setSending(false));
+  };
+
   return (
     <div className="px-4 pt-2 pb-4 max-sm:px-2 max-sm:pb-2">
       <div className="relative mx-auto max-w-[720px]">
@@ -595,7 +609,11 @@ export const Composer = memo(function Composer({
               }
               value={text}
               rows={phone ? 1 : 2}
-              onFocus={() => setFocused(true)}
+              onFocus={() => {
+                setFocused(true);
+                // The keyboard takes the quick panel's place.
+                setPanel(false);
+              }}
               onBlur={() => setFocused(false)}
               onChange={(event) => {
                 setError(null);
@@ -646,6 +664,17 @@ export const Composer = memo(function Composer({
           <KeyRow
             settings={settings}
             keyboardUp={focused}
+            panelOpen={panel}
+            onPanel={() => {
+              if (panel) {
+                setPanel(false);
+                // Within the tap, so the keyboard comes back up.
+                boxRef.current?.focus({ preventScroll: true });
+              } else {
+                setPanel(true);
+                boxRef.current?.blur();
+              }
+            }}
             onInsert={(character) => {
               // Within the tap, so a phone brings its keyboard up for what follows.
               boxRef.current?.focus({ preventScroll: true });
@@ -660,6 +689,17 @@ export const Composer = memo(function Composer({
               browse(step, box);
             }}
             onHideKeyboard={() => boxRef.current?.blur()}
+          />
+        )}
+        {phone && panel && (
+          <QuickPanel
+            history={history}
+            disabled={disabled || sending}
+            onSend={sendPrompt}
+            onPut={(prompt) => {
+              boxRef.current?.focus({ preventScroll: true });
+              insertRef.current(prompt);
+            }}
           />
         )}
       </div>
