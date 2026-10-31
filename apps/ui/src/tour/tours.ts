@@ -602,6 +602,29 @@ const SIDE_RAIL_TOUR: Tour = {
   ],
 };
 
+const JOBS_PANEL = part("jobs-panel");
+
+const JOBS_TOUR: Tour = {
+  id: "jobs-2026-10-31",
+  title: "Background jobs",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "A Jobs panel",
+      text: "Click <b>Jobs</b> on this rail: the side panel opens on this chat's background jobs.",
+      action: { kind: "appears", selector: JOBS_PANEL },
+    },
+    {
+      target: JOBS_PANEL,
+      title: "What runs in the background",
+      text: "The commands and subagents omp sends to the background, while they run and for a few minutes after. Click a command for its output; <b>Cancel job</b> there stops one of this chat's own. A subagent opens in the Agent Hub.",
+      action: next,
+    },
+  ],
+};
+
 /** The shown tab holds more than one pane. */
 const SPLIT_TAB = "[data-tab][data-split]:not([hidden])";
 
@@ -734,6 +757,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-jobs",
+    when: "2026-10-31T05:20:00-05:00",
+    summary:
+      "A Jobs panel: the commands and subagents omp runs in the background, their output, and Cancel job.",
+    tours: [JOBS_TOUR],
+  },
   {
     id: "2026-10-31-provider-accounts",
     when: "2026-10-31T01:52:00-05:00",

@@ -27,6 +27,8 @@ import {
   type GoalParams,
   type HostDialogAnswer,
   isHostDialogRequest,
+  type JobDetail,
+  type JobList,
   type LoginProvider,
   type ModelHub,
   type PlanFile,
@@ -511,6 +513,21 @@ export class ChatController {
   async cycleThinking(): Promise<void> {
     const result = await this.#request("cycle_thinking_level", {});
     if (result !== null) this.store.setThinkingLevel(result.level);
+  }
+
+  /** The chat's background jobs, running and recent (the Jobs tab); null when omp keeps none for it. */
+  async jobs(): Promise<JobList | null> {
+    return (await this.#request("get_jobs", {})).jobs;
+  }
+
+  /** One background job's command, output and exit code; null once omp no longer keeps it. */
+  async inspectJob(jobId: string): Promise<JobDetail | null> {
+    return (await this.#request("inspect_job", { jobId })).job;
+  }
+
+  /** Cancels one of the chat's own running background jobs; false when it no longer runs. */
+  async cancelJob(jobId: string): Promise<boolean> {
+    return (await this.#request("cancel_job", { jobId })).cancelled;
   }
 
   /**

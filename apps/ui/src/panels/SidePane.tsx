@@ -34,7 +34,7 @@ export const ShownTabContext = createContext<DockviewApi | null>(null);
 export const panelOf = (id: string) => PANELS.find((item) => item.id === id) ?? PANELS[0];
 
 /**
- * The side panel as a pane of the workspace: one panel at a time (Usage, Agents, Progress, BTW history) for the chat of
+ * The side panel as a pane of the workspace: one panel at a time (Usage, Agents, Progress, Jobs, BTW history) for the chat of
  * the pane focused last, resized, moved and closed like a chat's pane. The rail at the window's right edge picks the
  * panel; the side panel's key shows or hides it.
  */

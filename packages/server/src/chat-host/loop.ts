@@ -77,6 +77,7 @@ import { GoalController } from "./goal";
 import { pageMessages, selectEntries } from "./history";
 import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
+import { cancelJob, inspectJob, listJobs } from "./jobs";
 import { LiveVoice } from "./live";
 import { HostMethodError } from "./method-error";
 import { assignModelRole, clearModelRole, findModel, readModelHub } from "./model-hub";
@@ -131,6 +132,10 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "btw_cancel",
   // A server that attached is shown what is live at once, not after a long command (D2).
   "replay_live",
+  // The Jobs tab reads the jobs while long commands run, and a cancel must not wait behind one.
+  "get_jobs",
+  "inspect_job",
+  "cancel_job",
 ]);
 
 /** How often a host asked to hand its chat back checks that the turn it runs has finished. */
@@ -715,6 +720,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       await steerSubagent(subagents, subagentId, message, log);
       return {};
     },
+    get_jobs: async ({ recentLimit }) => ({ jobs: listJobs(session, recentLimit) }),
+    inspect_job: async ({ jobId }) => ({ job: inspectJob(session, jobId) }),
+    cancel_job: async ({ jobId }) => ({ cancelled: cancelJob(session, jobId) }),
     goal: async (params) => goal.handle(params),
     get_plan_mode: async () => plan.status(),
     set_plan_mode: async ({ enabled }) => {

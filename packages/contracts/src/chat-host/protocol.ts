@@ -31,6 +31,7 @@ import {
   type ToolCancelEvent,
   type UriCancelEvent,
 } from "./host-tools";
+import { type JobDetail, JobIdParams, type JobList, JobsParams } from "./jobs";
 import { type LiveEvent, LiveMuteParams, LiveStartParams } from "./live";
 import { CHAT_HOST_METHOD_NAMES, type ChatHostMethodName } from "./method-names";
 import {
@@ -53,6 +54,7 @@ export { CHAT_HOST_CHAT_ARG } from "./args";
 export * from "./dialogs";
 export * from "./host-requests";
 export * from "./host-tools";
+export * from "./jobs";
 export * from "./live";
 export * from "./subagents";
 
@@ -882,6 +884,24 @@ export interface ChatHostMethodMap {
   };
   /** Sends the app's message to a running subagent, answered once it is accepted; runs in the background. */
   readonly steer_subagent: { readonly params: SteerSubagentParams; readonly result: EmptyParams };
+  /**
+   * The chat's background jobs (omp's `getAsyncJobTree`): running and recent, its subagents' too; null when the session
+   * has no job manager.
+   */
+  readonly get_jobs: {
+    readonly params: JobsParams;
+    readonly result: { readonly jobs: JobList | null };
+  };
+  /** One job's command, pids, exit code and output, from omp's job manager (never its widget); null for an unknown one. */
+  readonly inspect_job: {
+    readonly params: JobIdParams;
+    readonly result: { readonly job: JobDetail | null };
+  };
+  /** Cancels one of the chat's own running jobs (omp's `cancelAsyncJob`); false for a subagent's, a settled or an unknown one. */
+  readonly cancel_job: {
+    readonly params: JobIdParams;
+    readonly result: { readonly cancelled: boolean };
+  };
   /** omp's goal mode: read, create, resume, pause or drop the chat's goal. */
   readonly goal: { readonly params: GoalParams; readonly result: GoalAnswer };
   readonly get_plan_mode: { readonly params: EmptyParams; readonly result: PlanModeStatus };
@@ -1034,6 +1054,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_subagent_messages: SubagentMessagesParams,
   cancel_subagent: SubagentIdParams,
   steer_subagent: SteerSubagentParams,
+  get_jobs: JobsParams,
+  inspect_job: JobIdParams,
+  cancel_job: JobIdParams,
   goal: GoalParams,
   get_plan_mode: EmptyParams,
   set_plan_mode: EnabledParams,
