@@ -138,13 +138,16 @@ realTest.describe("new UI reopening and typing ahead", () => {
         },
       });
       const box = page.getByRole("textbox", { name: "Message" });
-      // Its provider's row: the model may be listed under Recent too.
+      // Its provider's row: the model may be listed under Recent too. The menu builds its first rows when it opens,
+      // and a search finds this one in the list it has.
       const fakeModel = page
         .getByRole("group", { name: "fake" })
         .getByRole("option", { name: /Fake Model/ });
+      const findModel = page.getByPlaceholder("Find a model");
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
       await page.getByRole("button", { name: /^Model: / }).click();
+      await findModel.fill("fake model");
       await expect(fakeModel).toBeVisible({ timeout: 30_000 });
       await page.keyboard.press("Escape");
 
@@ -157,6 +160,7 @@ realTest.describe("new UI reopening and typing ahead", () => {
       await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
       await page.getByRole("button", { name: /^Model: / }).click();
+      await findModel.fill("fake model");
       await expect(fakeModel).toBeVisible({ timeout: 1_500 });
       await page.keyboard.press("Escape");
 

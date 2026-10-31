@@ -19,9 +19,37 @@ async function newChat(page: Page): Promise<void> {
   await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 }
 
+/**
+ * The menu builds its rows as its list scrolls (a long catalog lists hundreds): scrolling to the end builds the rest,
+ * as a person scrolling down would.
+ */
+async function buildEveryRow(page: Page): Promise<void> {
+  const list = page.locator("[cmdk-list]");
+  const options = page.getByRole("option");
+  for (;;) {
+    const built = await options.count();
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    // More rows come a frame or two after the scroll; none for a second means every row is built.
+    const grew = await expect
+      .poll(() => options.count(), { timeout: 1_000 })
+      .toBeGreaterThan(built)
+      .then(
+        () => true,
+        () => false,
+      );
+    if (!grew) break;
+  }
+  await list.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+}
+
 async function openMenu(page: Page): Promise<void> {
   await chip(page).click();
-  await expect(group(page, "fake").getByRole("option").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("option").first()).toBeVisible({ timeout: 30_000 });
+  await buildEveryRow(page);
 }
 
 realTest.describe("new UI model menu", () => {
@@ -129,4 +157,55 @@ realTest.describe("new UI model menu", () => {
 
     expect(realApp.problems).toEqual([]);
   });
+});
+
+realTest.describe("new UI model menu, a long catalog", () => {
+  realTest.setTimeout(240_000);
+  // As a real provider such as OpenRouter: hundreds of models under one provider.
+  realTest.use({ serverEnv: { FAKE_EXTRA_MODELS: "300" } });
+
+  realTest(
+    "opens without building every row; the arrow keys, a search and scrolling reach the models further down",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await chip(page).click();
+      const options = page.getByRole("option");
+      await expect(options.first()).toBeVisible({ timeout: 30_000 });
+      // Building every row of hundreds held the page for seconds: the menu builds the first ones.
+      expect(await options.count()).toBeLessThan(100);
+
+      // The arrow keys go on past the rows built when it opened.
+      for (let step = 0; step < 60; step += 1) await page.keyboard.press("ArrowDown");
+      await expect
+        .poll(() =>
+          options.evaluateAll((items) =>
+            items.findIndex((item) => item.getAttribute("aria-selected") === "true"),
+          ),
+        )
+        .toBe(60);
+
+      await search(page).fill("many model 250");
+      await expect(
+        group(page, "many").getByRole("option", { name: /^Many Model 250\s*many-model-250$/ }),
+      ).toBeVisible();
+      await search(page).fill("");
+
+      // Scrolling to the end builds the rest: every model of the long provider, then the Hidden fold, last.
+      await group(page, "many").getByRole("option").first().hover();
+      await page.keyboard.press("Alt+H");
+      const fold = page.getByRole("option", { name: "Show 1 hidden model" });
+      const list = page.locator("[cmdk-list]");
+      await expect(async () => {
+        await list.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await expect(fold).toBeVisible({ timeout: 1_000 });
+      }).toPass({ timeout: 60_000 });
+      await expect(options.last()).toHaveText(/Show 1 hidden model/);
+      await expect(group(page, "many").getByRole("option")).toHaveCount(299);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

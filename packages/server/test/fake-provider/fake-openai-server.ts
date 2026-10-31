@@ -1033,6 +1033,28 @@ const disabledProviders =
   process.env.FAKE_OPENAI_ENABLE_RULES === "1"
     ? ["agents-md", "agents", "claude", "codex", "gemini", "github", "opencode"]
     : ["agents-md", "agents", "native", "claude", "codex", "gemini", "github", "opencode"];
+/**
+ * A long catalog when a test asks for one (`FAKE_EXTRA_MODELS`, through the harness's `serverEnv`): a provider of that
+ * many more models, as a real provider such as OpenRouter lists hundreds.
+ */
+const extraModels = Number(process.env.FAKE_EXTRA_MODELS ?? "0");
+const manyModels: string[] = [];
+if (extraModels > 0) {
+  manyModels.push(
+    "  many:",
+    `    baseUrl: http://127.0.0.1:${server.port}/v1`,
+    "    auth: none",
+    "    api: openai-completions",
+    "    models:",
+  );
+  for (let index = 1; index <= extraModels; index += 1)
+    manyModels.push(
+      `      - id: many-model-${index}`,
+      `        name: Many Model ${index}`,
+      "        contextWindow: 128000",
+    );
+  manyModels.push("");
+}
 await Bun.write(
   path.join(agentDir, "config.yml"),
   [
@@ -1078,6 +1100,7 @@ await Bun.write(
     "        input: [text, image]",
     "        contextWindow: 128000",
     "",
+    ...manyModels,
   ].join("\n"),
 );
 console.log(`READY ${server.port}`);

@@ -2,8 +2,12 @@ import { cn } from "cn";
 import { ChevronDown, ChevronRight, Eye, EyeOff, Star } from "lucide-react";
 import {
   type KeyboardEvent,
+  memo,
   type ReactNode,
+  type RefObject,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -26,6 +30,27 @@ import type { ChatModel } from "./store";
 interface MenuList {
   readonly models: readonly ChatModel[];
   readonly recent: readonly string[];
+}
+
+/**
+ * Rows built when the menu opens or its search changes, and how many more each time the list scrolls near the last
+ * one built: a catalog can list hundreds of models, and building them all at once held the page for seconds.
+ */
+const FIRST_ROWS = 30;
+const MORE_ROWS = 40;
+const NO_SECTIONS: ReturnType<typeof menuSections> = { sections: [], hidden: [] };
+
+/** Whether a fresh read lists the same models, and the same recent ones, as the menu shows. */
+const sameList = (shown: ListState, menu: MenuList): boolean =>
+  shown.kind === "ready" &&
+  JSON.stringify(shown.models) === JSON.stringify(menu.models) &&
+  JSON.stringify(shown.recent) === JSON.stringify(menu.recent);
+
+/** What a row does when used; read through a ref, so a row stays the same while the menu redraws. */
+interface MenuActions {
+  readonly choose: (item: ChatModel) => void;
+  readonly toggleStar: (key: string) => void;
+  readonly toggleHidden: (key: string) => void;
 }
 
 type ListState =
@@ -108,7 +133,9 @@ export function ModelPicker({
       .modelMenu()
       .then((menu) => {
         lastMenu.set(menu);
-        if (active) setList({ kind: "ready", ...menu });
+        // The same list again leaves the rows as they are.
+        if (active)
+          setList((shown) => (sameList(shown, menu) ? shown : { kind: "ready", ...menu }));
       })
       .catch((failure: unknown) => {
         if (active)
@@ -128,17 +155,53 @@ export function ModelPicker({
 
   const saved = preferences.kind === "ready" ? preferences.preferences : null;
   const searching = query.trim() !== "";
-  const { sections, hidden } =
-    list.kind === "ready"
-      ? menuSections({
-          models: list.models,
-          recent: list.recent,
-          favorites: saved?.favorites ?? [],
-          hidden: saved?.hidden ?? [],
-          query,
-        })
-      : { sections: [], hidden: [] };
+  const { sections, hidden } = useMemo(
+    () =>
+      list.kind === "ready"
+        ? menuSections({
+            models: list.models,
+            recent: list.recent,
+            favorites: saved?.favorites ?? [],
+            hidden: saved?.hidden ?? [],
+            query,
+          })
+        : NO_SECTIONS,
+    [list, saved, query],
+  );
   const hiddenShown = showHidden || searching;
+
+  // The rows built so far: the first ones when the menu opens or its search changes, then more each time the list
+  // scrolls near the last one built (`more`, watched by an IntersectionObserver). Showing the hidden models keeps what
+  // is built: their fold is at the end, so the rows above it are all built already.
+  const view = `${open}|${query}`;
+  const [built, setBuilt] = useState({ view, rows: FIRST_ROWS });
+  const rows = built.view === view ? built.rows : FIRST_ROWS;
+  // Closing forgets the rows built, so the next opening builds only the first ones again.
+  useEffect(() => {
+    if (!open) setBuilt({ view: "", rows: FIRST_ROWS });
+  }, [open]);
+  const sectionRows = sections.reduce((sum, section) => sum + section.models.length, 0);
+  const total = sectionRows + (hiddenShown ? hidden.length : 0);
+  // State, not refs: the list and the marker mount with the menu's popup, and the observer starts once both are there.
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
+  const [more, setMore] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open || listElement === null || more === null || rows >= total) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setBuilt({ view, rows: total });
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting))
+          setBuilt({ view, rows: rows + MORE_ROWS });
+      },
+      // Well ahead of the last row, so scrolling or the arrow keys rarely reach the end of what is built.
+      { root: listElement, rootMargin: "0px 0px 320px 0px" },
+    );
+    observer.observe(more);
+    return () => observer.disconnect();
+  }, [open, view, rows, total, listElement, more]);
 
   const change = (key: string, update: { favorite?: boolean; hidden?: boolean }): void => {
     store.change(key, update).catch(onError);
@@ -166,50 +229,43 @@ export function ModelPicker({
     }
   };
 
+  const actions = useRef<MenuActions>({ choose, toggleStar, toggleHidden });
+  actions.current = { choose, toggleStar, toggleHidden };
   const row = (section: string, item: ChatModel, inHidden: boolean): ReactNode => {
+    const value = itemValue(section, item);
     const key = modelKey(item);
-    const starred = saved?.favorites.includes(key) ?? false;
-    const selected = itemValue(section, item) === highlighted;
     return (
-      <div key={itemValue(section, item)} className="group/row relative">
-        <CommandItem
-          value={itemValue(section, item)}
-          data-checked={sameModel(model, item)}
-          className={cn(saved !== null && "pr-16")}
-          onSelect={() => choose(item)}
-        >
-          {/* A hidden model's name is dimmed, but not on the highlighted row, where dim text is too faint to read. */}
-          <span className={cn("min-w-0 flex-1 truncate", inHidden && !selected && "text-t3")}>
-            {item.name}
-          </span>
-          <span className="max-w-32 shrink-0 truncate font-mono text-[11px] text-t3 group-data-selected/command-item:text-t2">
-            {item.id}
-          </span>
-        </CommandItem>
-        {saved !== null && (
-          // Beside the item, not in it: an option holds no buttons, and a click here must not choose the model.
-          <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-            <RowButton
-              label={starred ? `Unstar ${item.name}` : `Star ${item.name}`}
-              pressed={starred}
-              shown={starred || selected}
-              // The tour points at the star of the highlighted row, the one shown.
-              tour={selected ? "model-star" : undefined}
-              onClick={() => toggleStar(key)}
-            >
-              <Star className={cn("size-3.5", starred && "fill-current text-warn")} />
-            </RowButton>
-            <RowButton
-              label={inHidden ? `Show ${item.name}` : `Hide ${item.name}`}
-              shown={selected}
-              onClick={() => toggleHidden(key)}
-            >
-              {inHidden ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-            </RowButton>
-          </div>
-        )}
-      </div>
+      <MenuRow
+        key={value}
+        value={value}
+        item={item}
+        itemKey={key}
+        inHidden={inHidden}
+        selected={value === highlighted}
+        starred={saved?.favorites.includes(key) ?? false}
+        checked={sameModel(model, item)}
+        marks={saved !== null}
+        actions={actions}
+      />
     );
+  };
+  let left = rows;
+  const builtSections = sections.flatMap((section) => {
+    if (left <= 0) return [];
+    const models = section.models.slice(0, left);
+    left -= models.length;
+    return [{ key: section.key, heading: section.heading, models }];
+  });
+  const builtHidden = hiddenShown ? hidden.slice(0, Math.max(0, rows - sectionRows)) : [];
+  // Arrow keys held down can outrun the scroll that builds more rows: within 10 rows of the last one built, ↓ and
+  // PageDown build more at once, before cmdk moves the highlight.
+  const builtValues = builtSections.flatMap((section) =>
+    section.models.map((item) => itemValue(section.key, item)),
+  );
+  const buildAhead = (event: KeyboardEvent): void => {
+    if ((event.key !== "ArrowDown" && event.key !== "PageDown") || rows >= total) return;
+    if (builtValues.indexOf(highlighted) >= builtValues.length - 10)
+      setBuilt({ view, rows: rows + MORE_ROWS });
   };
 
   return (
@@ -244,10 +300,13 @@ export function ModelPicker({
           shouldFilter={false}
           value={highlighted}
           onValueChange={setHighlighted}
-          onKeyDown={onKeyDown}
+          onKeyDown={(event) => {
+            buildAhead(event);
+            onKeyDown(event);
+          }}
         >
           <CommandInput placeholder="Find a model" value={query} onValueChange={setQuery} />
-          <CommandList>
+          <CommandList ref={setListElement}>
             <CommandEmpty>
               {list.kind === "loading"
                 ? "Loading models…"
@@ -255,12 +314,13 @@ export function ModelPicker({
                   ? `Could not list the models: ${list.message}`
                   : "No model matches."}
             </CommandEmpty>
-            {sections.map((section) => (
+            {builtSections.map((section) => (
               <CommandGroup key={section.key} heading={section.heading}>
                 {section.models.map((item) => row(section.key, item, false))}
               </CommandGroup>
             ))}
-            {hidden.length > 0 && (
+            {/* The Hidden fold closes the list: it shows once every row above it is built. */}
+            {hidden.length > 0 && rows >= sectionRows && (
               <CommandGroup heading="Hidden">
                 {!searching && (
                   <CommandItem
@@ -277,9 +337,10 @@ export function ModelPicker({
                     </span>
                   </CommandItem>
                 )}
-                {hiddenShown && hidden.map((item) => row("hidden", item, true))}
+                {builtHidden.map((item) => row("hidden", item, true))}
               </CommandGroup>
             )}
+            {rows < total && <div ref={setMore} aria-hidden="true" className="h-px" />}
           </CommandList>
           <p className="border-t border-l2 px-3 py-1.5 text-xs text-t3">
             {preferences.kind === "unavailable" ? (
@@ -300,6 +361,77 @@ export function ModelPicker({
     </Popover>
   );
 }
+
+/**
+ * One model of the menu, with its star and hide buttons beside it. Memoized: moving the highlight redraws only the row
+ * it leaves and the row it reaches, not every row of a long catalog.
+ */
+const MenuRow = memo(function MenuRow({
+  value,
+  item,
+  itemKey,
+  inHidden,
+  selected,
+  starred,
+  checked,
+  marks,
+  actions,
+}: {
+  /** cmdk's value: the section and the model. */
+  readonly value: string;
+  readonly item: ChatModel;
+  /** The model's key for stars and hides. */
+  readonly itemKey: string;
+  readonly inHidden: boolean;
+  readonly selected: boolean;
+  readonly starred: boolean;
+  /** The chat's model. */
+  readonly checked: boolean;
+  /** Stars and hides can be kept: the server has them. */
+  readonly marks: boolean;
+  readonly actions: RefObject<MenuActions>;
+}): ReactNode {
+  return (
+    <div className="group/row relative">
+      <CommandItem
+        value={value}
+        data-checked={checked}
+        className={cn(marks && "pr-16")}
+        onSelect={() => actions.current.choose(item)}
+      >
+        {/* A hidden model's name is dimmed, but not on the highlighted row, where dim text is too faint to read. */}
+        <span className={cn("min-w-0 flex-1 truncate", inHidden && !selected && "text-t3")}>
+          {item.name}
+        </span>
+        <span className="max-w-32 shrink-0 truncate font-mono text-[11px] text-t3 group-data-selected/command-item:text-t2">
+          {item.id}
+        </span>
+      </CommandItem>
+      {marks && (
+        // Beside the item, not in it: an option holds no buttons, and a click here must not choose the model.
+        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+          <RowButton
+            label={starred ? `Unstar ${item.name}` : `Star ${item.name}`}
+            pressed={starred}
+            shown={starred || selected}
+            // The tour points at the star of the highlighted row, the one shown.
+            tour={selected ? "model-star" : undefined}
+            onClick={() => actions.current.toggleStar(itemKey)}
+          >
+            <Star className={cn("size-3.5", starred && "fill-current text-warn")} />
+          </RowButton>
+          <RowButton
+            label={inHidden ? `Show ${item.name}` : `Hide ${item.name}`}
+            shown={selected}
+            onClick={() => actions.current.toggleHidden(itemKey)}
+          >
+            {inHidden ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+          </RowButton>
+        </div>
+      )}
+    </div>
+  );
+});
 
 /**
  * A star or hide button beside a model: on the highlighted row, the pointed one, and every row of a touch screen; a
