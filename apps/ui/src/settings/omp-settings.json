@@ -2778,8 +2778,7 @@
       "label": "Completion Notification",
       "description": "Notify when the agent finishes a turn",
       "default": "on",
-      "values": ["on", "off"],
-      "terminalOnly": true
+      "values": ["on", "off"]
     },
     {
       "key": "error.notify",
@@ -2789,8 +2788,7 @@
       "label": "Error Notification",
       "description": "Notify when the agent stops with an error",
       "default": "off",
-      "values": ["on", "off"],
-      "terminalOnly": true
+      "values": ["on", "off"]
     },
     {
       "key": "ask.timeout",

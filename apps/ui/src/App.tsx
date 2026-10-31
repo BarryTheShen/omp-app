@@ -20,12 +20,16 @@ import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
-import { useWaitingNotifications } from "./desktop/notify";
+import {
+  useNotifySettings,
+  useSettledNotifications,
+  useWaitingNotifications,
+} from "./desktop/notify";
 import { FolderMenu } from "./folders/FolderMenu";
 import { keepLinkFolder } from "./folders/folder";
 import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
-import { inbox, setInboxOpen } from "./inbox/inbox";
+import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS } from "./keys/table";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
@@ -156,6 +160,8 @@ function Shell({
   const list = useChatList(client, folder);
   const [view, setView] = useState<WorkspaceView>(NOTHING_OPEN);
   useWaitingNotifications(view.waiting);
+  // A turn that ends while the window is in the background, as omp's terminal notifies it (V19b).
+  useSettledNotifications(useInbox(), useNotifySettings(client, folder));
   // How smoothly this page scrolls, measured on a sample of scrolls and kept in the server's debug log.
   useEffect(
     () =>

@@ -1,3 +1,5 @@
+import { appendFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
@@ -283,6 +285,57 @@ realTest.describe("new UI in the desktop window", () => {
       await expect
         .poll(notices)
         .toEqual([["notify", { summary: "ask_user", body: "Waiting for you" }]]);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a turn that ends while the window is in the background raises omp's notice for it, as omp's settings say",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
+      const box = await newChat(page);
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const notices = async () =>
+        (await windowCalls(page)).filter(([command]) => command === "notify");
+      const turn = async (word: string) => {
+        await box.fill(`count_reply ${word}`);
+        await box.press("Enter");
+        await expect(transcript.getByText(new RegExp(`count-\\d+ ${word}`))).toBeVisible({
+          timeout: 90_000,
+        });
+      };
+      const settings = (line: string) =>
+        appendFile(join(realApp.agentDir, "config.yml"), `\n${line}\n`);
+
+      // In the foreground, nothing is raised.
+      await turn("front");
+      await page.waitForTimeout(1_500);
+      expect(await notices()).toEqual([]);
+
+      // In the background, a turn done: omp's "Complete", titled as the chat's pane.
+      await page.evaluate(() => {
+        document.hasFocus = () => false;
+      });
+      const title = (await page.locator(".dv-tab").first().innerText()).trim();
+      await turn("back");
+      await expect.poll(notices).toEqual([["notify", { summary: title, body: "Complete" }]]);
+
+      // completion.notify off: a turn done raises nothing.
+      await settings("completion.notify: off");
+      await page.waitForTimeout(3_000);
+      await turn("quiet");
+      await page.waitForTimeout(2_000);
+      expect(await notices()).toHaveLength(1);
+
+      // error.notify on: a turn stopped by an error raises omp's "Stopped with error".
+      await settings("error.notify: on");
+      await page.waitForTimeout(3_000);
+      await box.fill("provider_failure_long");
+      await box.press("Enter");
+      await expect.poll(notices, { timeout: 90_000 }).toEqual([
+        ["notify", { summary: title, body: "Complete" }],
+        ["notify", { summary: title, body: "Stopped with error" }],
+      ]);
       expect(realApp.problems).toEqual([]);
     },
   );

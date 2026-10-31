@@ -82,14 +82,14 @@ export interface UiSettings {
 
 /**
  * Settings only omp's terminal reads, decided from omp's source (every reader in the terminal's code or behind its
- * flags). The first 74 are the old settings screen's decisions; the `compaction.idle*` keys (read only by
+ * flags). The first 72 are the old settings screen's decisions; the `compaction.idle*` keys (read only by
  * `modes/interactive-mode.ts`) and `branchSummary.enabled` (read only by the terminal's tree selector) were decided
- * at omp 18.12.6.
+ * at omp 18.12.6. `completion.notify` and `error.notify` are not here: omp reads them only in its terminal, and the app
+ * reads them too, for the desktop window's notifications (`apps/ui/src/desktop/notify.ts`).
  */
 const TERMINAL_ONLY: ReadonlySet<string> = new Set([
   "autocompleteMaxVisible",
   "colorBlindMode",
-  "completion.notify",
   "composer.predictions",
   "composer.recallClearedDrafts",
   "composer.shape",
@@ -105,7 +105,6 @@ const TERMINAL_ONLY: ReadonlySet<string> = new Set([
   "display.subagentLivePreview",
   "doubleEscapeAction",
   "emojiAutocomplete",
-  "error.notify",
   "expandThinkingBlocks",
   "git.enabled",
   "goal.statusInFooter",
