@@ -846,6 +846,47 @@ const DEVICES_TOUR: Tour = {
   ],
 };
 
+const THEME_GALLERY = part("theme-gallery");
+
+const THEMES_TOUR: Tour = {
+  id: "themes-2026-10-31",
+  title: "Themes",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The themes are under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: THEME_GALLERY,
+      title: "Every theme",
+      text: "Each card is a small picture of the app in that theme. Point at one and the whole app shows in it; move away and yours comes back. A click keeps it: a dark theme as your dark theme, a light one as your light theme.",
+      action: next,
+    },
+    {
+      target: `${SETTINGS_SHEET} ${part("theme")}`,
+      title: "Light, Dark or the system's",
+      text: "The sun shows your light theme and the moon your dark one; the screen, <b>Match the system</b>, follows your computer's setting.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings. The palette ({palette}) lists every theme too: type <b>Theme</b>, and the one you highlight shows.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -860,6 +901,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-themes",
+    when: "2026-10-31T21:20:00-05:00",
+    summary:
+      "33 themes, each readable throughout: Catppuccin, Tokyo Night, Rosé Pine, Nord, Gruvbox, Dracula, Solarized, Everforest, Kanagawa, One, Ayu and GitHub. Settings → App shows them as cards; point at one to see the app in it.",
+    tours: [THEMES_TOUR],
+  },
   {
     id: "2026-10-31-pause",
     when: "2026-10-31T17:10:00-05:00",

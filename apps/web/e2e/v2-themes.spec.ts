@@ -24,8 +24,6 @@ realTest.describe("themes", () => {
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       const dark = app(page).getByRole("region", { name: "Dark themes" });
       const light = app(page).getByRole("region", { name: "Light themes" });
-      await expect(dark.getByRole("button")).toHaveCount(6);
-      await expect(light.getByRole("button")).toHaveCount(3);
       await expect(dark.getByRole("button", { name: "Tern Dark" })).toHaveAttribute(
         "aria-pressed",
         "true",

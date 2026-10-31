@@ -386,4 +386,940 @@
   --dim: rgb(214 216 223 / 50%);
 }
 
+/* Rosé Pine: https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT), main */
+[data-theme="rose-pine"] {
+  color-scheme: dark;
+
+  --t1: #e0def4;
+  --t2: #9b97b5;
+  --t3: #8d89a6;
+  --t4: #6e6a86;
+  --ink: #e0def4;
+  --l1: rgb(224 222 244 / 7%);
+  --l2: rgb(224 222 244 / 10%);
+  --l3: rgb(224 222 244 / 15%);
+  --l4: rgb(224 222 244 / 24%);
+  --accent: #c4a7e7;
+  --accent-ink: #c4a7e7;
+  --accent-fill: #866aa6;
+  --ok: #9ccfd8;
+  --warn: #f6c177;
+  --bad: #eb6f92;
+  --live: #31748f;
+  --ok-ink: #9ccfd8;
+  --warn-ink: #f6c177;
+  --bad-ink: #f27598;
+  --ok-fill: #4d7e86;
+  --bad-fill: #c34b70;
+  --live-fill: #31748f;
+  --ink-pen: #ebbcba;
+  --ink-pen-fill: #956b6a;
+  --page: #191724;
+  --panel: #1f1d2e;
+  --card: #26233a;
+  --raise: #26233a;
+  --code-bg: #191724;
+  --tbl-head: #1f1d2e;
+  --chip-bg: rgb(224 222 244 / 7%);
+  --pop-bg: #26233a;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Rosé Pine Moon: https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT), moon */
+[data-theme="rose-pine-moon"] {
+  color-scheme: dark;
+
+  --t1: #e0def4;
+  --t2: #a7a3c2;
+  --t3: #a29ebc;
+  --t4: #6e6a86;
+  --ink: #e0def4;
+  --l1: rgb(224 222 244 / 7%);
+  --l2: rgb(224 222 244 / 10%);
+  --l3: rgb(224 222 244 / 15%);
+  --l4: rgb(224 222 244 / 24%);
+  --accent: #c4a7e7;
+  --accent-ink: #ccafef;
+  --accent-fill: #866aa6;
+  --ok: #9ccfd8;
+  --warn: #f6c177;
+  --bad: #eb6f92;
+  --live: #3e8fb0;
+  --ok-ink: #9ccfd8;
+  --warn-ink: #f6c177;
+  --bad-ink: #ff9db5;
+  --ok-fill: #4d7e86;
+  --bad-fill: #c34b70;
+  --live-fill: #2b7e9f;
+  --ink-pen: #ea9a97;
+  --ink-pen-fill: #ab615f;
+  --page: #232136;
+  --panel: #2a273f;
+  --card: #393552;
+  --raise: #393552;
+  --code-bg: #232136;
+  --tbl-head: #2a273f;
+  --chip-bg: rgb(224 222 244 / 7%);
+  --pop-bg: #393552;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Rosé Pine Dawn: https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT), dawn */
+[data-theme="rose-pine-dawn"] {
+  color-scheme: light;
+
+  --t1: #464261;
+  --t2: #615d79;
+  --t3: #6c6778;
+  --t4: #9893a5;
+  --ink: #464261;
+  --l1: rgb(70 66 97 / 6%);
+  --l2: rgb(70 66 97 / 9%);
+  --l3: rgb(70 66 97 / 14%);
+  --l4: rgb(70 66 97 / 22%);
+  --accent: #907aa9;
+  --accent-ink: #68537f;
+  --accent-fill: #836d9b;
+  --ok: #56949f;
+  --warn: #ea9d34;
+  --bad: #b4637a;
+  --live: #286983;
+  --ok-ink: #24656f;
+  --warn-ink: #845200;
+  --bad-ink: #90435b;
+  --ok-fill: #417f8a;
+  --bad-fill: #ad5d74;
+  --live-fill: #286983;
+  --ink-pen: #d7827e;
+  --ink-pen-fill: #b15f5d;
+  --page: #f2e9e1;
+  --panel: #faf4ed;
+  --card: #fffaf3;
+  --raise: #f2e9e1;
+  --code-bg: #f2e9e1;
+  --tbl-head: #f2e9e1;
+  --chip-bg: rgb(70 66 97 / 5.5%);
+  --pop-bg: #fffaf3;
+  --dim: rgb(242 233 225 / 50%);
+}
+
+/* Nord: https://github.com/nordtheme/nord/blob/develop/src/nord.css (v0.2.1, MIT) */
+[data-theme="nord"] {
+  color-scheme: dark;
+
+  --t1: #eceff4;
+  --t2: #d8dee9;
+  --t3: #a3afc6;
+  --t4: #4c566a;
+  --ink: #eceff4;
+  --l1: rgb(236 239 244 / 7%);
+  --l2: rgb(236 239 244 / 10%);
+  --l3: rgb(236 239 244 / 15%);
+  --l4: rgb(236 239 244 / 24%);
+  --accent: #88c0d0;
+  --accent-ink: #99d2e2;
+  --accent-fill: #477e8c;
+  --ok: #a3be8c;
+  --warn: #ebcb8b;
+  --bad: #bf616a;
+  --live: #b48ead;
+  --ok-ink: #b6d19f;
+  --warn-ink: #ebcb8b;
+  --bad-ink: #ffb6ba;
+  --ok-fill: #647d4e;
+  --bad-fill: #b75a63;
+  --live-fill: #8f6a88;
+  --ink-pen: #d08770;
+  --ink-pen-fill: #a9634d;
+  --page: #2e3440;
+  --panel: #2e3440;
+  --card: #3b4252;
+  --raise: #3b4252;
+  --code-bg: #3b4252;
+  --tbl-head: #3b4252;
+  --chip-bg: rgb(236 239 244 / 7%);
+  --pop-bg: #3b4252;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Nord Light: https://github.com/nordtheme/nord/blob/develop/src/nord.css (v0.2.1, MIT); the light theme is the app's, from Nord's own colours */
+[data-theme="nord-light"] {
+  color-scheme: light;
+
+  --t1: #2e3440;
+  --t2: #3b4252;
+  --t3: #4c566a;
+  --t4: #4c566a;
+  --ink: #2e3440;
+  --l1: rgb(46 52 64 / 6%);
+  --l2: rgb(46 52 64 / 9%);
+  --l3: rgb(46 52 64 / 14%);
+  --l4: rgb(46 52 64 / 22%);
+  --accent: #5d80aa;
+  --accent-ink: #36577f;
+  --accent-fill: #5578a3;
+  --ok: #a3be8c;
+  --warn: #ebcb8b;
+  --bad: #bf616a;
+  --live: #b48ead;
+  --ok-ink: #455c2e;
+  --warn-ink: #6c5007;
+  --bad-ink: #8f3642;
+  --ok-fill: #647d4e;
+  --bad-fill: #b75a63;
+  --live-fill: #8f6a88;
+  --ink-pen: #d08770;
+  --ink-pen-fill: #a9634d;
+  --page: #d8dee9;
+  --panel: #eceff4;
+  --card: #eceff4;
+  --raise: #e5e9f0;
+  --code-bg: #e5e9f0;
+  --tbl-head: #e5e9f0;
+  --chip-bg: rgb(46 52 64 / 5.5%);
+  --pop-bg: #eceff4;
+  --dim: rgb(216 222 233 / 50%);
+}
+
+/* Gruvbox Dark: https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim (v2.0.0, MIT) */
+[data-theme="gruvbox-dark"] {
+  color-scheme: dark;
+
+  --t1: #ebdbb2;
+  --t2: #d5c4a1;
+  --t3: #b0a18c;
+  --t4: #928374;
+  --ink: #ebdbb2;
+  --l1: rgb(235 219 178 / 7%);
+  --l2: rgb(235 219 178 / 10%);
+  --l3: rgb(235 219 178 / 15%);
+  --l4: rgb(235 219 178 / 24%);
+  --accent: #83a598;
+  --accent-ink: #a0c3b6;
+  --accent-fill: #5b7c70;
+  --ok: #b8bb26;
+  --warn: #fabd2f;
+  --bad: #fb4934;
+  --live: #d3869b;
+  --ok-ink: #bdc02e;
+  --warn-ink: #fabd2f;
+  --bad-ink: #ffa191;
+  --ok-fill: #787a00;
+  --bad-fill: #e12c19;
+  --live-fill: #a85f74;
+  --ink-pen: #fe8019;
+  --ink-pen-fill: #bd5b00;
+  --page: #1d2021;
+  --panel: #282828;
+  --card: #3c3836;
+  --raise: #3c3836;
+  --code-bg: #1d2021;
+  --tbl-head: #282828;
+  --chip-bg: rgb(235 219 178 / 7%);
+  --pop-bg: #3c3836;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Gruvbox Light: https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim (v2.0.0, MIT) */
+[data-theme="gruvbox-light"] {
+  color-scheme: light;
+
+  --t1: #3c3836;
+  --t2: #504945;
+  --t3: #706459;
+  --t4: #928374;
+  --ink: #3c3836;
+  --l1: rgb(60 56 54 / 6%);
+  --l2: rgb(60 56 54 / 9%);
+  --l3: rgb(60 56 54 / 14%);
+  --l4: rgb(60 56 54 / 22%);
+  --accent: #076678;
+  --accent-ink: #006273;
+  --accent-fill: #076678;
+  --ok: #79740e;
+  --warn: #b57614;
+  --bad: #9d0006;
+  --live: #8f3f71;
+  --ok-ink: #605b00;
+  --warn-ink: #7f5000;
+  --bad-ink: #9d0006;
+  --ok-fill: #79740e;
+  --bad-fill: #9d0006;
+  --live-fill: #8f3f71;
+  --ink-pen: #af3a03;
+  --ink-pen-fill: #af3a03;
+  --page: #f2e5bc;
+  --panel: #fbf1c7;
+  --card: #f9f5d7;
+  --raise: #f2e5bc;
+  --code-bg: #f2e5bc;
+  --tbl-head: #f2e5bc;
+  --chip-bg: rgb(60 56 54 / 5.5%);
+  --pop-bg: #f9f5d7;
+  --dim: rgb(242 229 188 / 50%);
+}
+
+/* Dracula: https://github.com/dracula/dracula-theme/blob/main/README.md, its palette tables (MIT) */
+[data-theme="dracula"] {
+  color-scheme: dark;
+
+  --t1: #f8f8f2;
+  --t2: #a3b5ec;
+  --t3: #a3b5ec;
+  --t4: #6272a4;
+  --ink: #f8f8f2;
+  --l1: rgb(248 248 242 / 7%);
+  --l2: rgb(248 248 242 / 10%);
+  --l3: rgb(248 248 242 / 15%);
+  --l4: rgb(248 248 242 / 24%);
+  --accent: #bd93f9;
+  --accent-ink: #decaff;
+  --accent-fill: #8c62c3;
+  --ok: #50fa7b;
+  --warn: #f1fa8c;
+  --bad: #ff5555;
+  --live: #ff79c6;
+  --ok-ink: #50fa7b;
+  --warn-ink: #f1fa8c;
+  --bad-ink: #ffc7c2;
+  --ok-fill: #008834;
+  --bad-fill: #de333a;
+  --live-fill: #c54492;
+  --ink-pen: #ffb86c;
+  --ink-pen-fill: #a9670b;
+  --page: #282a36;
+  --panel: #282a36;
+  --card: #282a36;
+  --raise: #44475a;
+  --code-bg: #282a36;
+  --tbl-head: #44475a;
+  --chip-bg: rgb(248 248 242 / 7%);
+  --pop-bg: #44475a;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Alucard: https://github.com/dracula/dracula-theme/blob/main/README.md, its palette tables (MIT) */
+[data-theme="alucard"] {
+  color-scheme: light;
+
+  --t1: #1f1f1f;
+  --t2: #5f593f;
+  --t3: #5f593f;
+  --t4: #6c664b;
+  --ink: #1f1f1f;
+  --l1: rgb(31 31 31 / 6%);
+  --l2: rgb(31 31 31 / 9%);
+  --l3: rgb(31 31 31 / 14%);
+  --l4: rgb(31 31 31 / 22%);
+  --accent: #644ac9;
+  --accent-ink: #5233b1;
+  --accent-fill: #644ac9;
+  --ok: #14710a;
+  --warn: #846e15;
+  --bad: #cb3a2a;
+  --live: #a3144d;
+  --ok-ink: #075900;
+  --warn-ink: #5c4b00;
+  --bad-ink: #970900;
+  --ok-fill: #14710a;
+  --bad-fill: #cb3a2a;
+  --live-fill: #a3144d;
+  --ink-pen: #a34d14;
+  --ink-pen-fill: #a34d14;
+  --page: #fffbeb;
+  --panel: #fffbeb;
+  --card: #fffbeb;
+  --raise: #cfcfde;
+  --code-bg: #fffbeb;
+  --tbl-head: #cfcfde;
+  --chip-bg: rgb(31 31 31 / 5.5%);
+  --pop-bg: #fffbeb;
+  --dim: rgb(255 251 235 / 50%);
+}
+
+/* Solarized Dark: https://github.com/altercation/solarized/blob/master/README.md, its palette (MIT) */
+[data-theme="solarized-dark"] {
+  color-scheme: dark;
+
+  --t1: #93a1a1;
+  --t2: #8c9d9f;
+  --t3: #859ca4;
+  --t4: #586e75;
+  --ink: #93a1a1;
+  --l1: rgb(147 161 161 / 7%);
+  --l2: rgb(147 161 161 / 10%);
+  --l3: rgb(147 161 161 / 15%);
+  --l4: rgb(147 161 161 / 24%);
+  --accent: #268bd2;
+  --accent-ink: #59b6ff;
+  --accent-fill: #097cc1;
+  --ok: #859900;
+  --warn: #b58900;
+  --bad: #dc322f;
+  --live: #6c71c4;
+  --ok-ink: #a2b738;
+  --warn-ink: #d2a536;
+  --bad-ink: #ff8376;
+  --ok-fill: #6d7e00;
+  --bad-fill: #dc322f;
+  --live-fill: #696ec1;
+  --ink-pen: #cb4b16;
+  --ink-pen-fill: #cb4b16;
+  --page: #002b36;
+  --panel: #002b36;
+  --card: #073642;
+  --raise: #073642;
+  --code-bg: #073642;
+  --tbl-head: #073642;
+  --chip-bg: rgb(147 161 161 / 7%);
+  --pop-bg: #073642;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Solarized Light: https://github.com/altercation/solarized/blob/master/README.md, its palette (MIT) */
+[data-theme="solarized-light"] {
+  color-scheme: light;
+
+  --t1: #4e646b;
+  --t2: #4e646c;
+  --t3: #5e6b6b;
+  --t4: #93a1a1;
+  --ink: #4e646b;
+  --l1: rgb(78 100 107 / 6%);
+  --l2: rgb(78 100 107 / 9%);
+  --l3: rgb(78 100 107 / 14%);
+  --l4: rgb(78 100 107 / 22%);
+  --accent: #268bd2;
+  --accent-ink: #005f98;
+  --accent-fill: #097cc1;
+  --ok: #859900;
+  --warn: #b58900;
+  --bad: #dc322f;
+  --live: #6c71c4;
+  --ok-ink: #556200;
+  --warn-ink: #745700;
+  --bad-ink: #b30010;
+  --ok-fill: #6d7e00;
+  --bad-fill: #dc322f;
+  --live-fill: #696ec1;
+  --ink-pen: #cb4b16;
+  --ink-pen-fill: #cb4b16;
+  --page: #eee8d5;
+  --panel: #fdf6e3;
+  --card: #fdf6e3;
+  --raise: #eee8d5;
+  --code-bg: #eee8d5;
+  --tbl-head: #eee8d5;
+  --chip-bg: rgb(78 100 107 / 5.5%);
+  --pop-bg: #fdf6e3;
+  --dim: rgb(238 232 213 / 50%);
+}
+
+/* Everforest Dark: https://github.com/sainnhe/everforest/blob/master/palette.md, medium (MIT) */
+[data-theme="everforest-dark"] {
+  color-scheme: dark;
+
+  --t1: #d3c6aa;
+  --t2: #abb7ae;
+  --t3: #aab7ae;
+  --t4: #7a8478;
+  --ink: #d3c6aa;
+  --l1: rgb(211 198 170 / 7%);
+  --l2: rgb(211 198 170 / 10%);
+  --l3: rgb(211 198 170 / 15%);
+  --l4: rgb(211 198 170 / 24%);
+  --accent: #7fbbb3;
+  --accent-ink: #a0ddd5;
+  --accent-fill: #458079;
+  --ok: #a7c080;
+  --warn: #dbbc7f;
+  --bad: #e67e80;
+  --live: #d699b6;
+  --ok-ink: #c0da99;
+  --warn-ink: #eccc8f;
+  --bad-ink: #ffc0bf;
+  --ok-fill: #677d40;
+  --bad-fill: #bb585c;
+  --live-fill: #9d6580;
+  --ink-pen: #e69875;
+  --ink-pen-fill: #ac6341;
+  --page: #232a2e;
+  --panel: #2d353b;
+  --card: #343f44;
+  --raise: #343f44;
+  --code-bg: #232a2e;
+  --tbl-head: #343f44;
+  --chip-bg: rgb(211 198 170 / 7%);
+  --pop-bg: #3d484d;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Everforest Light: https://github.com/sainnhe/everforest/blob/master/palette.md, medium (MIT) */
+[data-theme="everforest-light"] {
+  color-scheme: light;
+
+  --t1: #56646c;
+  --t2: #586657;
+  --t3: #616c5f;
+  --t4: #a6b0a0;
+  --ink: #56646c;
+  --l1: rgb(86 100 108 / 6%);
+  --l2: rgb(86 100 108 / 9%);
+  --l3: rgb(86 100 108 / 14%);
+  --l4: rgb(86 100 108 / 22%);
+  --accent: #338ebe;
+  --accent-ink: #00628c;
+  --accent-fill: #1c7dad;
+  --ok: #8da101;
+  --warn: #dfa000;
+  --bad: #f85552;
+  --live: #df69ba;
+  --ok-ink: #556200;
+  --warn-ink: #7b5700;
+  --bad-ink: #b4001b;
+  --ok-fill: #6e7e00;
+  --bad-fill: #db383a;
+  --live-fill: #bd499b;
+  --ink-pen: #f57d26;
+  --ink-pen-fill: #be5900;
+  --page: #efebd4;
+  --panel: #fdf6e3;
+  --card: #fdf6e3;
+  --raise: #f4f0d9;
+  --code-bg: #f4f0d9;
+  --tbl-head: #f4f0d9;
+  --chip-bg: rgb(86 100 108 / 5.5%);
+  --pop-bg: #fdf6e3;
+  --dim: rgb(239 235 212 / 50%);
+}
+
+/* Kanagawa Wave: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT) */
+[data-theme="kanagawa-wave"] {
+  color-scheme: dark;
+
+  --t1: #dcd7ba;
+  --t2: #c8c093;
+  --t3: #939289;
+  --t4: #54546d;
+  --ink: #dcd7ba;
+  --l1: rgb(220 215 186 / 7%);
+  --l2: rgb(220 215 186 / 10%);
+  --l3: rgb(220 215 186 / 15%);
+  --l4: rgb(220 215 186 / 24%);
+  --accent: #7e9cd8;
+  --accent-ink: #88a7e4;
+  --accent-fill: #5a76af;
+  --ok: #98bb6c;
+  --warn: #e6c384;
+  --bad: #e46876;
+  --live: #957fb8;
+  --ok-ink: #98bb6c;
+  --warn-ink: #e6c384;
+  --bad-ink: #fd7e8b;
+  --ok-fill: #608032;
+  --bad-fill: #c64d5d;
+  --live-fill: #826ca3;
+  --ink-pen: #ffa066;
+  --ink-pen-fill: #b65d1e;
+  --page: #16161d;
+  --panel: #1f1f28;
+  --card: #2a2a37;
+  --raise: #2a2a37;
+  --code-bg: #181820;
+  --tbl-head: #1a1a22;
+  --chip-bg: rgb(220 215 186 / 7%);
+  --pop-bg: #2a2a37;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Kanagawa Dragon: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT) */
+[data-theme="kanagawa-dragon"] {
+  color-scheme: dark;
+
+  --t1: #c5c9c5;
+  --t2: #a6a69c;
+  --t3: #87908f;
+  --t4: #625e5a;
+  --ink: #c5c9c5;
+  --l1: rgb(197 201 197 / 7%);
+  --l2: rgb(197 201 197 / 10%);
+  --l3: rgb(197 201 197 / 15%);
+  --l4: rgb(197 201 197 / 24%);
+  --accent: #8ba4b0;
+  --accent-ink: #8da6b2;
+  --accent-fill: #627a85;
+  --ok: #87a987;
+  --warn: #c4b28a;
+  --bad: #c4746e;
+  --live: #8992a7;
+  --ok-ink: #89ab89;
+  --warn-ink: #c4b28a;
+  --bad-ink: #dd8b84;
+  --ok-fill: #5e7e5e;
+  --bad-fill: #ad5f5a;
+  --live-fill: #6d768a;
+  --ink-pen: #b6927b;
+  --ink-pen-fill: #906e58;
+  --page: #0d0c0c;
+  --panel: #181616;
+  --card: #282727;
+  --raise: #282727;
+  --code-bg: #12120f;
+  --tbl-head: #1d1c19;
+  --chip-bg: rgb(197 201 197 / 7%);
+  --pop-bg: #282727;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Kanagawa Lotus: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT) */
+[data-theme="kanagawa-lotus"] {
+  color-scheme: light;
+
+  --t1: #545464;
+  --t2: #5c594c;
+  --t3: #616058;
+  --t4: #a09cac;
+  --ink: #545464;
+  --l1: rgb(84 84 100 / 6%);
+  --l2: rgb(84 84 100 / 9%);
+  --l3: rgb(84 84 100 / 14%);
+  --l4: rgb(84 84 100 / 22%);
+  --accent: #4d699b;
+  --accent-ink: #395384;
+  --accent-fill: #4d699b;
+  --ok: #6f894e;
+  --warn: #de9800;
+  --bad: #c84053;
+  --live: #766b90;
+  --ok-ink: #425a20;
+  --warn-ink: #714b00;
+  --bad-ink: #a01334;
+  --ok-fill: #657e44;
+  --bad-fill: #c84053;
+  --live-fill: #766b90;
+  --ink-pen: #cc6d00;
+  --ink-pen-fill: #b56000;
+  --page: #e5ddb0;
+  --panel: #f2ecbc;
+  --card: #f2ecbc;
+  --raise: #e7dba0;
+  --code-bg: #e7dba0;
+  --tbl-head: #e7dba0;
+  --chip-bg: rgb(84 84 100 / 5.5%);
+  --pop-bg: #f2ecbc;
+  --dim: rgb(229 221 176 / 50%);
+}
+
+/* One Dark: https://github.com/atom/one-dark-syntax, styles/colors.less and styles/syntax-variables.less, computed as LESS does (v1.8.4, MIT) */
+[data-theme="one-dark"] {
+  color-scheme: dark;
+
+  --t1: #abb2bf;
+  --t2: #aab1c0;
+  --t3: #a9b1bf;
+  --t4: #5c6370;
+  --ink: #abb2bf;
+  --l1: rgb(171 178 191 / 7%);
+  --l2: rgb(171 178 191 / 10%);
+  --l3: rgb(171 178 191 / 15%);
+  --l4: rgb(171 178 191 / 24%);
+  --accent: #61afef;
+  --accent-ink: #9fd3ff;
+  --accent-fill: #297ab7;
+  --ok: #98c379;
+  --warn: #e5c07b;
+  --bad: #e06c75;
+  --live: #c678dd;
+  --ok-ink: #aeda8f;
+  --warn-ink: #ecc681;
+  --bad-ink: #ffbbbd;
+  --ok-fill: #5a813a;
+  --bad-fill: #c1505b;
+  --live-fill: #a356b9;
+  --ink-pen: #d19a66;
+  --ink-pen-fill: #9f6b37;
+  --page: #282c34;
+  --panel: #282c34;
+  --card: #282c34;
+  --raise: #3a3f4b;
+  --code-bg: #282c34;
+  --tbl-head: #3a3f4b;
+  --chip-bg: rgb(171 178 191 / 7%);
+  --pop-bg: #3e4451;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* One Light: https://github.com/atom/one-light-syntax, styles/colors.less and styles/syntax-variables.less, computed as LESS does (v1.8.4, MIT) */
+[data-theme="one-light"] {
+  color-scheme: light;
+
+  --t1: #383a42;
+  --t2: #5a5c67;
+  --t3: #65666b;
+  --t4: #a0a1a7;
+  --ink: #383a42;
+  --l1: rgb(56 58 66 / 6%);
+  --l2: rgb(56 58 66 / 9%);
+  --l3: rgb(56 58 66 / 14%);
+  --l4: rgb(56 58 66 / 22%);
+  --accent: #4078f2;
+  --accent-ink: #1d50c7;
+  --accent-fill: #376ee8;
+  --ok: #50a14f;
+  --warn: #c18401;
+  --bad: #e45649;
+  --live: #a626a4;
+  --ok-ink: #0b6712;
+  --warn-ink: #795100;
+  --bad-ink: #ac1b17;
+  --ok-fill: #338534;
+  --bad-fill: #d2453a;
+  --live-fill: #a626a4;
+  --ink-pen: #986801;
+  --ink-pen-fill: #986801;
+  --page: #e5e5e6;
+  --panel: #fafafa;
+  --card: #fafafa;
+  --raise: #e5e5e6;
+  --code-bg: #e5e5e6;
+  --tbl-head: #e5e5e6;
+  --chip-bg: rgb(56 58 66 / 5.5%);
+  --pop-bg: #fafafa;
+  --dim: rgb(229 229 230 / 50%);
+}
+
+/* Ayu Dark: https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT), dark.yaml */
+[data-theme="ayu-dark"] {
+  color-scheme: dark;
+
+  --t1: #bfbdb6;
+  --t2: #828ca2;
+  --t3: #778391;
+  --t4: #5a6673;
+  --ink: #bfbdb6;
+  --l1: rgb(191 189 182 / 7%);
+  --l2: rgb(191 189 182 / 10%);
+  --l3: rgb(191 189 182 / 15%);
+  --l4: rgb(191 189 182 / 24%);
+  --accent: #e6b450;
+  --accent-ink: #e6b450;
+  --accent-fill: #986e00;
+  --ok: #70bf56;
+  --warn: #ff8f40;
+  --bad: #d95757;
+  --live: #d2a6ff;
+  --ok-ink: #70bf56;
+  --warn-ink: #ff8f40;
+  --bad-ink: #e96564;
+  --ok-fill: #388616;
+  --bad-fill: #cb4a4c;
+  --live-fill: #8d63b6;
+  --ink-pen: #f29668;
+  --ink-pen-fill: #b55f30;
+  --page: #0d1017;
+  --panel: #10141c;
+  --card: #141821;
+  --raise: #161a24;
+  --code-bg: #0d1017;
+  --tbl-head: #141821;
+  --chip-bg: rgb(191 189 182 / 7%);
+  --pop-bg: #0f131a;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Ayu Mirage: https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT), mirage.yaml */
+[data-theme="ayu-mirage"] {
+  color-scheme: dark;
+
+  --t1: #cccac2;
+  --t2: #98a3b6;
+  --t3: #8796a9;
+  --t4: #6e7c8f;
+  --ink: #cccac2;
+  --l1: rgb(204 202 194 / 7%);
+  --l2: rgb(204 202 194 / 10%);
+  --l3: rgb(204 202 194 / 15%);
+  --l4: rgb(204 202 194 / 24%);
+  --accent: #ffcc66;
+  --accent-ink: #ffcc66;
+  --accent-fill: #976e00;
+  --ok: #87d96c;
+  --warn: #ffa659;
+  --bad: #ff6666;
+  --live: #dfbfff;
+  --ok-ink: #87d96c;
+  --warn-ink: #ffa659;
+  --bad-ink: #ff8380;
+  --ok-fill: #378711;
+  --bad-fill: #d63f44;
+  --live-fill: #8769a3;
+  --ink-pen: #f29e74;
+  --ink-pen-fill: #af6138;
+  --page: #1f2430;
+  --panel: #242936;
+  --card: #282e3b;
+  --raise: #282e3b;
+  --code-bg: #1f2430;
+  --tbl-head: #282e3b;
+  --chip-bg: rgb(204 202 194 / 7%);
+  --pop-bg: #1c212c;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* Ayu Light: https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT), light.yaml */
+[data-theme="ayu-light"] {
+  color-scheme: light;
+
+  --t1: #5c6166;
+  --t2: #5f6b7b;
+  --t3: #717274;
+  --t4: #adaeb1;
+  --ink: #5c6166;
+  --l1: rgb(92 97 102 / 6%);
+  --l2: rgb(92 97 102 / 9%);
+  --l3: rgb(92 97 102 / 14%);
+  --l4: rgb(92 97 102 / 22%);
+  --accent: #ce7e00;
+  --accent-ink: #925700;
+  --accent-fill: #a96700;
+  --ok: #6cbf43;
+  --warn: #fa8532;
+  --bad: #e65050;
+  --live: #a37acc;
+  --ok-ink: #327400;
+  --warn-ink: #a34d00;
+  --bad-ink: #bd262e;
+  --ok-fill: #3b8600;
+  --bad-fill: #d43f41;
+  --live-fill: #8c64b4;
+  --ink-pen: #f2a191;
+  --ink-pen-fill: #ac6153;
+  --page: #f8f9fa;
+  --panel: #fcfcfc;
+  --card: #ffffff;
+  --raise: #fafafa;
+  --code-bg: #f8f9fa;
+  --tbl-head: #fafafa;
+  --chip-bg: rgb(92 97 102 / 5.5%);
+  --pop-bg: #ffffff;
+  --dim: rgb(248 249 250 / 50%);
+}
+
+/* GitHub Dark: https://github.com/primer/primitives/tree/main/src/tokens, functional colours over the base scales (v11.10.0, MIT) */
+[data-theme="github-dark"] {
+  color-scheme: dark;
+
+  --t1: #f0f6fc;
+  --t2: #9198a1;
+  --t3: #7c838e;
+  --t4: #656c76;
+  --ink: #f0f6fc;
+  --l1: rgb(240 246 252 / 7%);
+  --l2: rgb(240 246 252 / 10%);
+  --l3: rgb(240 246 252 / 15%);
+  --l4: rgb(240 246 252 / 24%);
+  --accent: #4493f8;
+  --accent-ink: #4493f8;
+  --accent-fill: #2475d7;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --live: #ab7df8;
+  --ok-ink: #3fb950;
+  --warn-ink: #d29922;
+  --bad-ink: #fa534b;
+  --ok-fill: #008a28;
+  --bad-fill: #dd3532;
+  --live-fill: #8b5cd4;
+  --ink-pen: #db6d28;
+  --ink-pen-fill: #c15600;
+  --page: #010409;
+  --panel: #0d1117;
+  --card: #151b23;
+  --raise: #151b23;
+  --code-bg: #151b23;
+  --tbl-head: #151b23;
+  --chip-bg: rgb(240 246 252 / 7%);
+  --pop-bg: #151b23;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* GitHub Dark Dimmed: https://github.com/primer/primitives/tree/main/src/tokens, functional colours over the base scales (v11.10.0, MIT) */
+[data-theme="github-dark-dimmed"] {
+  color-scheme: dark;
+
+  --t1: #d1d7e0;
+  --t2: #9ca3ac;
+  --t3: #8d949f;
+  --t4: #656c76;
+  --ink: #d1d7e0;
+  --l1: rgb(209 215 224 / 7%);
+  --l2: rgb(209 215 224 / 10%);
+  --l3: rgb(209 215 224 / 15%);
+  --l4: rgb(209 215 224 / 24%);
+  --accent: #478be6;
+  --accent-ink: #6baaff;
+  --accent-fill: #3175ce;
+  --ok: #57ab5a;
+  --warn: #c69026;
+  --bad: #e5534b;
+  --live: #986ee2;
+  --ok-ink: #65b968;
+  --warn-ink: #d39c37;
+  --bad-ink: #ff7d72;
+  --ok-fill: #328738;
+  --bad-fill: #d3423c;
+  --live-fill: #895fd1;
+  --ink-pen: #cc6b2c;
+  --ink-pen-fill: #bb5c18;
+  --page: #151b23;
+  --panel: #212830;
+  --card: #262c36;
+  --raise: #262c36;
+  --code-bg: #262c36;
+  --tbl-head: #262c36;
+  --chip-bg: rgb(209 215 224 / 7%);
+  --pop-bg: #262c36;
+  --dim: rgb(0 0 0 / 55%);
+}
+
+/* GitHub Light: https://github.com/primer/primitives/tree/main/src/tokens, functional colours over the base scales (v11.10.0, MIT) */
+[data-theme="github-light"] {
+  color-scheme: light;
+
+  --t1: #1f2328;
+  --t2: #59636e;
+  --t3: #6a7380;
+  --t4: #818b98;
+  --ink: #1f2328;
+  --l1: rgb(31 35 40 / 6%);
+  --l2: rgb(31 35 40 / 9%);
+  --l3: rgb(31 35 40 / 14%);
+  --l4: rgb(31 35 40 / 22%);
+  --accent: #0969da;
+  --accent-ink: #0060cd;
+  --accent-fill: #0969da;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #d1242f;
+  --live: #8250df;
+  --ok-ink: #04742d;
+  --warn-ink: #895b00;
+  --bad-ink: #c30922;
+  --ok-fill: #1a7f37;
+  --bad-fill: #d1242f;
+  --live-fill: #8250df;
+  --ink-pen: #bc4c00;
+  --ink-pen-fill: #bc4c00;
+  --page: #f6f8fa;
+  --panel: #ffffff;
+  --card: #ffffff;
+  --raise: #f6f8fa;
+  --code-bg: #f6f8fa;
+  --tbl-head: #f6f8fa;
+  --chip-bg: rgb(31 35 40 / 5.5%);
+  --pop-bg: #ffffff;
+  --dim: rgb(246 248 250 / 50%);
+}
+
 /* palette themes: end */
