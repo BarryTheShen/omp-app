@@ -117,6 +117,11 @@ export interface CompositionServerOptions {
   readonly homeDir?: string;
   readonly agentDir?: string;
   readonly appDataDir?: string;
+  /**
+   * Keep a new chat ready in the folders new chats were opened in last (#2760). The installed app turns it on; tests leave
+   * it off unless `OMP_APP_NEW_CHATS_READY=1` (a spare is one more omp per folder).
+   */
+  readonly newChatsReady?: boolean;
   /** The version shown to the browser; the installed app passes its release version. */
   readonly serverVersion?: string;
   /**
@@ -195,6 +200,7 @@ export async function createCompositionServer(
   // (each server, real or a test's) has its own folder of host sockets.
   const detachedHosts = env.OMP_APP_DETACHED_HOSTS === "1";
   const hostsDir = hostsFolder(appDataDir, env);
+  const newChatsReady = options.newChatsReady ?? env.OMP_APP_NEW_CHATS_READY === "1";
   const systemdScope = detachedHosts && systemdUserScopes(env);
   const ompCmd =
     options.ompBin === undefined ? ompCommand({ binary: chatHostBinary }) : [options.ompBin];
@@ -401,6 +407,7 @@ export async function createCompositionServer(
   const fileWatch = options.fileWatch ?? new FileWatchRegistry();
   const a0Context: A0PortContext = {
     processRegistry,
+    newChatsReady,
     leaseProbe:
       options.leaseProbe ??
       sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),

@@ -37,6 +37,13 @@ export const OpenThreadArgs = z.union([
 export type OpenThreadArgs = z.infer<typeof OpenThreadArgs>;
 
 /**
+ * The folder a page shows: the server keeps a new chat ready there, so the next "New chat" opens at once (#2760). A
+ * server that does not keep new chats ready ignores it.
+ */
+export const PrepareNewChatArgs = z.strictObject({ folderPath: FolderPath });
+export type PrepareNewChatArgs = z.infer<typeof PrepareNewChatArgs>;
+
+/**
  * A chat's new title, as typed. omp trims it and turns control characters into spaces, so the title
  * the chat then shows can differ; the caller reads the saved title back from the chat's file.
  */
@@ -234,6 +241,7 @@ export const ChatSessionPort = definePort({
   name: "A0.chatSession",
   methods: {
     open: { args: OpenThreadArgs, result: ChatOpenResult },
+    prepareNew: { args: PrepareNewChatArgs, result: z.null() },
     request: { args: ChatRequestArgs, result: z.unknown() },
     subscribe: { args: SubscribeArgs, result: SubscribeResult },
     restart: { args: ThreadRef, result: z.null() },

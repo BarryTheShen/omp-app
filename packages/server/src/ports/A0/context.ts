@@ -25,6 +25,11 @@ export interface ThreadBootstrap {
 /** What A0's ports need from the server: the chats' processes, the replay, the catalog seams and the server's facts. */
 export interface A0PortContext {
   readonly processRegistry: OmpProcessRegistry;
+  /**
+   * Keeps a new chat started ahead in the folders new chats were opened in last, so the next "New chat" there opens at
+   * once (#2760). The app turns it on; absent, every new chat starts its omp when it is opened.
+   */
+  readonly newChatsReady?: boolean;
   /** Whether another omp holds a chat's lease (`active`), asked before an open starts omp for it. Absent: no check. */
   readonly leaseProbe?: (sessionId: string) => Promise<"active" | "inactive" | "unknown">;
   readonly replay: EventReplayHub;

@@ -27,6 +27,7 @@ import {
   type ModelChoice,
   type OpenHostRequests,
   type OpenThreadArgs,
+  type PrepareNewChatArgs,
   RequestId,
   SessionFilePath,
   type SessionRenameArgs,
@@ -118,6 +119,22 @@ interface Preference {
 }
 
 const LEVEL_RANK: Readonly<Record<SubagentLevel, number>> = { off: 0, progress: 1, events: 2 };
+
+/** How many folders keep a new chat ready (#2760): the ones new chats were opened in last. */
+const SPARE_FOLDERS = 2;
+/** A ready new chat older than this is started again when taken: omp reads its settings and extensions as it starts. */
+const SPARE_MAX_AGE_MS = 10 * 60_000;
+
+/**
+ * A new chat started ahead, for the next "New chat" in its folder (#2760): its process and host are up and its id is
+ * known (`ready`, undefined when it failed), but it is in no listing and no browser holds it; its own registry view keeps
+ * it from the idle rule until it is taken or let go.
+ */
+interface Spare {
+  readonly entry: ChatEntry;
+  readonly startedAt: number;
+  readonly ready: Promise<{ threadId: ThreadId; sessionFile: SessionFilePath } | undefined>;
+}
 
 /** The methods that move the chat to another session; omp's own id for the chat changes with them. */
 const SESSION_SWITCH_METHODS: ReadonlySet<ChatHostMethod> = new Set([
@@ -319,6 +336,9 @@ export class ChatSessionPortRuntime {
   readonly #awaitingHello = new Set<ChatEntry>();
   /** Chats whose host, on another protocol, was asked to hand them back as this server started (D2, `handingBack`). */
   readonly #handingBack = new Set<ThreadId>();
+  /** The new chats kept ready, by folder; the folder used last comes last (`#prepareSpare`). */
+  readonly #spares = new Map<FolderPath, Spare>();
+  #closed = false;
 
   constructor(context: A0PortContext) {
     this.#context = context;
@@ -332,6 +352,7 @@ export class ChatSessionPortRuntime {
   readonly handlers: Readonly<Record<string, PortHandler>> = {
     // The dispatcher parses each method's zod args before invoking this boundary.
     open: (args, call) => this.open(args as OpenThreadArgs, call),
+    prepareNew: (args) => this.prepareNew(args as PrepareNewChatArgs),
     request: (args, call) => this.request(args as ChatRequestArgs, call),
     subscribe: (args) => this.subscribe(args as SubscribeArgs),
     restart: (args) => this.restart(args as { threadId: ThreadId }),
@@ -344,6 +365,12 @@ export class ChatSessionPortRuntime {
       this.setSubagentSubscription(args as SetSubagentSubscriptionArgs, call),
     setEventOptions: (args, call) => this.setEventOptions(args as SetEventOptionsArgs, call),
   };
+
+  /** A page shows the folder: a new chat is kept ready there, if this server keeps them (#2760). */
+  prepareNew(args: PrepareNewChatArgs): null {
+    this.#prepareSpare(args.folderPath);
+    return null;
+  }
 
   /** The session file an open chat runs, known before omp writes it (a new chat writes its file after its first reply). */
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined {
@@ -381,6 +408,11 @@ export class ChatSessionPortRuntime {
         message: this.#context.health.detail ?? "omp is unavailable",
         retryable: true,
       });
+    }
+    // A new chat in a folder with one ready takes it: no omp to start, no wait (#2760).
+    if ("start" in args && args.start === "new") {
+      const taken = await this.#takeSpare(args.folderPath, call);
+      if (taken !== undefined) return taken;
     }
     // A chat whose process is stopping keeps its entry with the bootstrap of its first start: the stop is waited for
     // first, so the open resumes the chat's file (issue 2212).
@@ -451,7 +483,97 @@ export class ChatSessionPortRuntime {
       }
       throw failure;
     }
+    // The next new chat in this folder is made ready now.
+    if ("start" in args && args.start === "new") this.#prepareSpare(entry.bootstrap.folderPath);
     return this.#openResult(entry);
+  }
+
+  /** Opens a new chat from the spare ready in the folder, or undefined when none is usable (#2760). */
+  async #takeSpare(
+    folderPath: FolderPath,
+    call: PortHandlerContext,
+  ): Promise<ChatOpenResult | undefined> {
+    const spare = this.#spares.get(folderPath);
+    if (spare === undefined) return undefined;
+    this.#spares.delete(folderPath);
+    const identity = await spare.ready;
+    const { entry } = spare;
+    if (call.signal.aborted && identity !== undefined && entry.process.status === "running") {
+      this.#spares.set(folderPath, spare);
+      throw cancelled("Opening the chat was cancelled.");
+    }
+    if (
+      identity === undefined ||
+      entry.process.status !== "running" ||
+      Date.now() - spare.startedAt > SPARE_MAX_AGE_MS
+    ) {
+      await this.#discardSpare(spare);
+      return undefined;
+    }
+    // The spare's own registry view becomes this open's; its events, held since it started, go out with its id.
+    this.#entries.set(entry.bootstrap.threadId, entry);
+    this.#addViewer(entry, call.connectionId);
+    this.#rekey(entry, undefined, identity);
+    this.#prepareSpare(folderPath);
+    return this.#openResult(entry);
+  }
+
+  /**
+   * Starts a new chat in the folder and keeps it ready for the next "New chat" there (#2760), unless one is; the
+   * folders used least recently, past `SPARE_FOLDERS`, lose theirs.
+   */
+  #prepareSpare(folderPath: FolderPath): void {
+    if (this.#closed || this.#context.newChatsReady !== true) return;
+    const kept = this.#spares.get(folderPath);
+    this.#spares.delete(folderPath);
+    if (kept !== undefined) {
+      this.#spares.set(folderPath, kept);
+      return;
+    }
+    const bootstrap = this.#provisionalBootstrap(folderPath, []);
+    const process = this.#context.processRegistry.acquire(this.#processOptions(bootstrap));
+    const entry = this.#newEntry(bootstrap, process);
+    entry.unsubscribe = this.#listen(entry);
+    this.#spares.set(folderPath, { entry, startedAt: Date.now(), ready: this.#startSpare(entry) });
+    for (const [folder, spare] of this.#spares) {
+      if (this.#spares.size <= SPARE_FOLDERS) break;
+      this.#spares.delete(folder);
+      void this.#discardSpare(spare);
+    }
+  }
+
+  /** Starts a spare as an open starts a new chat: its host's hello, then its id, on a new session of its own. */
+  async #startSpare(
+    entry: ChatEntry,
+  ): Promise<{ threadId: ThreadId; sessionFile: SessionFilePath } | undefined> {
+    try {
+      await this.#start(entry);
+      let identity = await this.#identity(entry);
+      if (identity.messageCount > 0) {
+        // omp's auto-resume restored the folder's newest chat: a new chat never shows it (see `open`).
+        entry.startupEvents.length = 0;
+        const result = await entry.client.request("new_session", {});
+        if (result.cancelled) return undefined;
+        identity = await this.#identity(entry);
+      }
+      return identity;
+    } catch (error) {
+      this.#context.logger?.warn("chat_session.spare_failed", {
+        folder: entry.bootstrap.folderPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
+  /** Lets a spare go: its host is stopped (nobody holds it, and it has no turn). */
+  async #discardSpare(spare: Spare): Promise<void> {
+    const { entry } = spare;
+    entry.unsubscribe();
+    entry.client.dispose();
+    const registry = this.#context.processRegistry;
+    registry.release(entry.bootstrap.threadId);
+    await registry.stopIfUnwatched(entry.bootstrap.threadId, "opened").catch(() => undefined);
   }
 
   /**
@@ -839,6 +961,11 @@ export class ChatSessionPortRuntime {
   }
 
   async dispose(): Promise<void> {
+    // The new chats kept ready hold no chat: they stop, and no server after this one finds them (D2).
+    this.#closed = true;
+    const spares = [...this.#spares.values()];
+    this.#spares.clear();
+    await Promise.all(spares.map((spare) => this.#discardSpare(spare)));
     for (const entry of new Set(this.#entries.values())) {
       entry.unsubscribe();
       entry.client.dispose();

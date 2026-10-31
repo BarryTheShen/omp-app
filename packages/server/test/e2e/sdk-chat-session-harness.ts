@@ -64,6 +64,8 @@ export function chatSessionPorts() {
         readonly realLeases?: boolean;
         /** The registry's wait for a stop reaches its limit at once, so a delete is refused while its stop goes on. */
         readonly stopLimitAtOnce?: boolean;
+        /** Keep a new chat ready in the folder, as the installed app does (#2760). */
+        readonly newChatsReady?: boolean;
       } = {},
     ): Promise<PortSetup> {
       const { home, folder, env } = await chats.prepare(options);
@@ -83,6 +85,7 @@ export function chatSessionPorts() {
       const files = new Map<ThreadId, SessionFilePath>();
       const context: A0PortContext = {
         processRegistry: registry,
+        ...(options.newChatsReady === true ? { newChatsReady: true } : {}),
         replay,
         capabilities: CapabilityMap.parse({}),
         serverInfo: {

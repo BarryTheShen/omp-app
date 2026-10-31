@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import type { FolderPath, ThreadId } from "@omp-app/contracts";
+import { ChatSessionPort, type FolderPath, type ThreadId } from "@omp-app/contracts";
 import {
   type DockviewApi,
   type DockviewGroupPanel,
@@ -532,6 +532,15 @@ export function Workspace({
 
   // A divider's drag resizes the panes without selecting their text (`dividers.ts`).
   useEffect(() => keepDividerDragsFromSelecting(document), []);
+
+  // The folder shown keeps a new chat ready on the server, so "New chat" here opens at once (#2760); an older server
+  // refuses the call, and the page goes on.
+  useEffect(() => {
+    client
+      .port(ChatSessionPort)
+      .prepareNew({ folderPath: folder })
+      .catch(() => undefined);
+  }, [client, folder]);
 
   // A tab coming to the front gets the caret in its focused pane; on a phone, its focused pane fills the screen.
   useEffect(() => {

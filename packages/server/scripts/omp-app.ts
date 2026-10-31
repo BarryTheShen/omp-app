@@ -319,6 +319,7 @@ try {
         staticRoot: webRoot(),
         ...(builtUi === undefined ? {} : { uiRoot: builtUi }),
         chatHostBinary: chatHost,
+        newChatsReady: true,
         cwd: folder,
         env: { PATH: searchPath },
         serverVersion: version,

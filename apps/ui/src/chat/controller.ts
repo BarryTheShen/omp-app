@@ -252,15 +252,26 @@ export class ChatController {
     }
     this.#live = true;
     this.#mark("subscribed_ms");
-    await chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" });
-    this.#mark("event_options_ms");
-    // omp's ask tool then sends all its questions in one request, with their checkboxes and typed answers; without
-    // it, omp asks each question as a plain choice, which still works.
-    await this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined);
-    this.#mark("ask_dialog_ms");
-    await this.#refreshState();
-    this.#mark("state_ms");
-    const open = await chat.openRequests({ threadId: opened.threadId });
+    // The rest of the setup goes out together: no answer needs another, so the chat is live after the slowest, not after
+    // their sum (#2760). omp's ask tool then sends all its questions in one request, with their checkboxes and typed
+    // answers; without the ask dialog, omp asks each question as a plain choice, which still works.
+    const marked = <T>(mark: string, step: Promise<T>): Promise<T> =>
+      step.then((value) => {
+        this.#mark(mark);
+        return value;
+      });
+    const [, , , open] = await Promise.all([
+      marked(
+        "event_options_ms",
+        chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" }),
+      ),
+      marked(
+        "ask_dialog_ms",
+        this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined),
+      ),
+      marked("state_ms", this.#refreshState()),
+      chat.openRequests({ threadId: opened.threadId }),
+    ]);
     if (this.#disposed) return;
     this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
     this.store.setPhase("live");
