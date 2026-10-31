@@ -33,7 +33,9 @@ beforeEach(() => {
     scrollTo: (x: number, y: number) => scrolledTo.push([x, y]),
   });
   vi.stubGlobal("document", {
+    // The layout viewport's height, which the keyboard leaves alone.
     documentElement: {
+      clientHeight: 874,
       style: {
         setProperty: (name: string, value: string) => style.set(name, value),
         removeProperty: (name: string) => style.delete(name),
@@ -64,6 +66,24 @@ describe("followVisualViewport", () => {
     expect(style.has("--app-height")).toBe(false);
     expect(style.has("--app-bottom")).toBe(false);
     stop();
+  });
+
+  test("a Home Screen app that reports the window as short as the visible area still fits the page to it", () => {
+    // An iPhone's Home Screen app (iOS 27) the moment its keyboard opened: the window and the visible area both 478
+    // high, the page 812 high and scrolled 334 to the box.
+    const viewport = visualViewport(812);
+    const page = document.documentElement as unknown as { clientHeight: number };
+    page.clientHeight = 812;
+    followVisualViewport(viewport as unknown as VisualViewport);
+    const view = window as unknown as { innerHeight: number; scrollY: number };
+    view.innerHeight = 478;
+    view.scrollY = 334;
+    viewport.height = 478;
+    viewport.offsetTop = 334;
+    viewport.fire("resize");
+    expect(style.get("--app-height")).toBe("478px");
+    expect(style.get("--app-bottom")).toBe("0px");
+    expect(scrolledTo).toEqual([[0, 0]]);
   });
 
   test("a pinch zoom shrinks the visible area, and the page does not follow it", () => {

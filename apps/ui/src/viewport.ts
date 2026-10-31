@@ -15,7 +15,10 @@ export function followVisualViewport(viewport = window.visualViewport): () => vo
   };
   const update = (): void => {
     if (Math.abs(viewport.scale - 1) > 0.01) return;
-    if (window.innerHeight - viewport.height > 1) {
+    // The keyboard is up while the visual viewport is shorter than the layout viewport, whose height (the root's
+    // `clientHeight`) the keyboard leaves alone. `innerHeight` does not do: a Home Screen app on iOS 27 reports it as
+    // short as the visual viewport (478 of 812) the moment the keyboard opens.
+    if (root.clientHeight - viewport.height > 1) {
       root.style.setProperty("--app-height", `${Math.round(viewport.height)}px`);
       root.style.setProperty("--app-bottom", "0px");
       if (window.scrollY !== 0 || viewport.offsetTop !== 0) window.scrollTo(0, 0);
