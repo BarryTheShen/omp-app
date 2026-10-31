@@ -122,6 +122,11 @@ export interface OpenOptions {
   readonly context?: BrowserContext;
   /** The app's path to open with the launch link: `/` for the new UI (default: the old UI, under `/old/`). */
   readonly path?: string;
+  /**
+   * The address's fragment in place of the launch link's `#token=…`: `""` opens the bare address, as a device that is
+   * not paired does; `#pair=<code>` is what a pairing QR code opens.
+   */
+  readonly hash?: string;
 }
 
 export interface RealApp {
@@ -721,6 +726,7 @@ export const realTest = test.extend<{
         await options.beforeLoad?.(page);
         const address = new URL(url);
         address.pathname = options.path ?? "/old/";
+        if (options.hash !== undefined) address.hash = options.hash;
         await page.goto(address.toString());
         if (options.expectApp !== false) {
           // The app's first paint can take that long while other tests' browsers, servers and omps start.

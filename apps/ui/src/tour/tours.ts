@@ -743,6 +743,47 @@ const PROVIDER_ACCOUNTS_TOUR: Tour = {
   ],
 };
 
+const DEVICES = part("devices");
+
+const DEVICES_TOUR: Tour = {
+  id: "devices-2026-10-31",
+  title: "Paired devices",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The devices are under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: DEVICES,
+      title: "Devices",
+      text: "Each phone, computer or browser that opens the app is paired once, and listed here with when it last connected. <b>Rename</b> it, or <b>Remove</b> one you lost: its windows close, and it pairs again to come back.",
+      action: next,
+    },
+    {
+      target: part("pair-new-device"),
+      title: "A new device",
+      text: "<b>Pair a new device</b> makes a one-time code and its QR code: scan it with the new device's camera, or enter the code there. A new device can also ask: every paired device then shows its request with 6 digits to compare, to allow or deny.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -757,6 +798,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-devices",
+    when: "2026-10-31T05:58:00-05:00",
+    summary:
+      "Pair a phone or another computer with a code or a QR code; Settings → App → Devices lists them and removes one.",
+    tours: [DEVICES_TOUR],
+  },
   {
     id: "2026-10-31-jobs",
     when: "2026-10-31T05:20:00-05:00",

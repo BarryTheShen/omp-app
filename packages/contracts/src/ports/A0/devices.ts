@@ -41,6 +41,14 @@ export function normalizePairingCode(typed: string): string {
   return typed.toUpperCase().replace(/[\s-]/g, "");
 }
 
+/**
+ * What a pairing QR code opens: the app's page with the one-time code in the address's fragment (`#pair=`), which the
+ * browser keeps to itself; the page reads it and pairs.
+ */
+export function pairingLink(address: string, code: string): string {
+  return `${address.replace(/\/+$/, "")}/#pair=${code}`;
+}
+
 export const PairedDevice = z
   .object({
     id: z.string().min(1),

@@ -8,7 +8,9 @@ import {
   type PAIRING_PATHS,
   type PairedDevice,
   type PairingCode,
+  pairingLink,
 } from "@omp-app/contracts";
+import { renderUnicodeCompact } from "uqr";
 
 /** The running app's address and launch token, from the link its instance record keeps. */
 export function serverLink(
@@ -63,12 +65,17 @@ export function devicesText(list: DeviceList): string {
   return ["Paired devices:", ...lines, ...waiting].join("\n");
 }
 
-/** What `omp-app pair` prints: the code, how long it works, and where to enter it. */
+/**
+ * What `omp-app pair` prints: a QR code a phone's camera opens the app with (light modules drawn, for a dark terminal),
+ * then the code, how long it works, and where to enter it.
+ */
 export function pairingCodeText(made: PairingCode): string {
   return [
+    renderUnicodeCompact(pairingLink(made.address, made.code), { ecc: "M", border: 2 }),
+    "",
     `Pairing code: ${formatPairingCode(made.code)}`,
     "",
-    `On the new device, open ${made.address} and enter the code.`,
+    `On the new device, scan the QR code, or open ${made.address} and enter the code.`,
     "It works once, for 10 minutes. Running omp-app pair again makes a new code, and this one stops working.",
   ].join("\n");
 }

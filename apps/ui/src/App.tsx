@@ -31,6 +31,9 @@ import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS } from "./keys/table";
+import { PairingScreen } from "./pairing/PairingScreen";
+import { takePairingCode } from "./pairing/pairing-api";
+import { RequestPrompt } from "./pairing/RequestPrompt";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
 import { PanelRail } from "./panels/PanelRail";
@@ -52,6 +55,7 @@ const SettingsPage = lazy(() =>
 type Connection =
   | { readonly kind: "connecting" }
   | { readonly kind: "no-link" }
+  | { readonly kind: "pairing"; readonly linkRefused: boolean }
   | { readonly kind: "failed"; readonly message: string }
   | { readonly kind: "refused"; readonly refusal: NonNullable<ConnectionStateEvent["refusal"]> }
   | { readonly kind: "ready"; readonly client: AppClient; readonly folder: FolderPath };
@@ -77,33 +81,39 @@ const NOTHING_OPEN: WorkspaceView = {
   side: null,
 };
 
-/** Connects with the page's launch link, then shows the app. */
+/** Connects with the page's launch link, or as a paired device, then shows the app; a device not paired pairs first. */
 export function App(): ReactNode {
   const [connection, setConnection] = useState<Connection>({ kind: "connecting" });
+  // A QR code's one-time code, out of the address at once: a paired device that scans one keeps a clean address.
+  const scannedCode = useRef<string | null>(null);
 
   useEffect(() => {
     keepLinkFolder();
+    scannedCode.current ??= takePairingCode();
     const token = readToken();
-    if (token === null) {
-      setConnection({ kind: "no-link" });
-      return;
-    }
     const client = connect(token);
     let active = true;
-    // A refused link says why in the banner's words, as soon as the server refuses it; before the app is ready, that is
-    // all there is to show.
+    // A refusal shows at once, before the app is ready: a device not paired pairs; a refused link says why.
     const stopWatching = client.onConnectionState(({ refusal }) => {
-      if (active && refusal !== undefined)
-        setConnection((now) => (now.kind === "ready" ? now : { kind: "refused", refusal }));
+      if (!active || refusal === undefined) return;
+      setConnection((now) => {
+        if (now.kind === "ready") return now;
+        if (refusal === "unpaired") return { kind: "pairing", linkRefused: false };
+        // A server from before pairing refuses a page with no link as an invalid one.
+        if (refusal === "invalid" && token === null) return { kind: "no-link" };
+        return { kind: "refused", refusal };
+      });
     });
     void (async () => {
       try {
         const info = await client.port(AppPort).serverInfo({});
         if (active) setConnection({ kind: "ready", client, folder: info.launchFolder });
       } catch (error) {
+        // The call fails when the server refuses the page: the screen the refusal chose (pairing, no link, its words)
+        // stays. A refusal that comes after the failure replaces it (above).
         if (active)
           setConnection((now) =>
-            now.kind === "refused"
+            now.kind === "refused" || now.kind === "pairing" || now.kind === "no-link"
               ? now
               : {
                   kind: "failed",
@@ -129,6 +139,9 @@ export function App(): ReactNode {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  if (connection.kind === "pairing") {
+    return <PairingScreen linkRefused={connection.linkRefused} scannedCode={scannedCode.current} />;
+  }
   if (connection.kind === "no-link") {
     return <Note>Open the app with the link omp-app printed.</Note>;
   }
@@ -136,6 +149,22 @@ export function App(): ReactNode {
     return <Note>Could not reach the app: {connection.message}</Note>;
   }
   if (connection.kind === "refused") {
+    if (connection.refusal === "expired" || connection.refusal === "invalid") {
+      return (
+        <div className="grid h-full place-items-center px-6 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-t3">{REFUSED_WORDS[connection.refusal]}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setConnection({ kind: "pairing", linkRefused: true })}
+            >
+              Pair this device instead
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return <Note>{REFUSED_WORDS[connection.refusal]}</Note>;
   }
   if (connection.kind === "connecting") {
@@ -286,6 +315,7 @@ function Shell({
       data-app-root="true"
     >
       <ConnectionBanner client={client} />
+      <RequestPrompt client={client} />
       <Sidebar
         folderMenu={<FolderMenu client={client} choice={choice} />}
         folder={folder}

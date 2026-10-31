@@ -133,6 +133,7 @@ function SettingsSheet({
         <li>
           <button
             type="button"
+            data-tour="settings-tab-app"
             aria-current={appOpen ? "page" : undefined}
             className={`flex h-8 w-full items-center rounded-md px-2 text-left text-sm ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}
             onClick={() => choose(APP_TAB)}
@@ -235,7 +236,7 @@ function SettingsSheet({
                 layer={layer}
               />
             )}
-            {appOpen && <AppPage focusServerLink={place === "server"} />}
+            {appOpen && <AppPage client={client} focusServerLink={place === "server"} />}
             {data !== null && needle === "" && tab !== null && (
               <TabPage
                 tab={tab}

@@ -86,11 +86,12 @@ export function readToken(): string | null {
   return fromCookie;
 }
 
-export function connect(token: string): AppClient {
+/** Connects with the launch link's token, or with none: a paired device signs in with its key's cookie. */
+export function connect(token: string | null): AppClient {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return createAppClient({
     url: `${protocol}//${window.location.host}/ws`,
-    token,
+    ...(token === null ? {} : { token }),
     clientName: "@omp-app/ui",
   });
 }
