@@ -42,9 +42,8 @@ function post(
   path: string,
   body: unknown,
   from: "page" | "https" | "elsewhere" = "page",
-  extra: Record<string, string> = {},
 ) {
-  const headers: Record<string, string> = { "content-type": "application/json", ...extra };
+  const headers: Record<string, string> = { "content-type": "application/json" };
   if (from === "page") headers.origin = app.url;
   if (from === "https") {
     headers.origin = REMOTE.origin;
@@ -58,12 +57,13 @@ const keyOf = (response: Response): string =>
   (response.headers.get("set-cookie") ?? "").match(new RegExp(`${DEVICE_COOKIE}=([^;]+)`))?.[1] ??
   "";
 
-/** Opens the WebSocket as a page would, and resolves with its welcome or its close. */
+/** Opens the WebSocket as a page would (its own origin, or the Tailscale address), and resolves with its welcome or its close. */
 function connect(
   app: AppServer,
-  options: { readonly key?: string; readonly token?: string },
+  options: { readonly key?: string; readonly token?: string; readonly from?: "page" | "https" },
 ): Promise<{ welcome: boolean; code?: number; reason?: string; socket: WebSocket }> {
-  const headers: Record<string, string> = { origin: app.url };
+  const headers: Record<string, string> =
+    options.from === "https" ? { origin: REMOTE.origin, host: REMOTE.host } : { origin: app.url };
   if (options.key !== undefined) headers.cookie = `${DEVICE_COOKIE}=${options.key}`;
   const url = `${app.url.replace("http", "ws")}/ws${options.token === undefined ? "" : `?token=${options.token}`}`;
   const socket = new WebSocket(url, { headers });
@@ -171,31 +171,27 @@ describe("device pairing on a running server", () => {
     expect(await connect(app, { key })).toMatchObject({ welcome: false, code: 4401 });
   });
 
-  test("a page with the launch link at the Tailscale address becomes a device once, and then signs in as it", async () => {
+  test("the launch link signs in on this computer only: a page at the Tailscale address pairs", async () => {
     const { app, pairing } = await serve();
-    const phone = { name: "iPhone", kind: "home-screen-app" };
-    const bearer = { authorization: "Bearer launch-token" };
-    // Pages on this computer keep the link, and a page without the token adopts nothing.
-    expect((await post(app, PAIRING_PATHS.adopt, phone, "page", bearer)).status).toBe(403);
-    expect((await post(app, PAIRING_PATHS.adopt, phone, "https")).status).toBe(401);
-    const wrong = { authorization: "Bearer not-the-token" };
-    expect((await post(app, PAIRING_PATHS.adopt, phone, "https", wrong)).status).toBe(401);
-    expect(pairing.store.list()).toHaveLength(0);
-
-    const adopted = await post(app, PAIRING_PATHS.adopt, phone, "https", bearer);
-    const { deviceId } = (await adopted.json()) as { deviceId: string };
-    expect(adopted.headers.get("set-cookie") ?? "").toContain("Secure");
-    const key = keyOf(adopted);
-    const withKey = { ...bearer, cookie: `${DEVICE_COOKIE}=${key}` };
-    expect(await (await post(app, PAIRING_PATHS.adopt, phone, "https", withKey)).json()).toEqual({
-      deviceId,
+    const linked = await connect(app, { token: "launch-token" });
+    expect(linked.welcome).toBe(true);
+    linked.socket.close();
+    expect(await connect(app, { token: "launch-token", from: "https" })).toMatchObject({
+      welcome: false,
+      code: 4401,
+      reason: "not paired",
     });
-    expect(pairing.store.list().map((device) => [device.id, device.name])).toEqual([
-      [deviceId, "iPhone"],
-    ]);
 
-    // With its key and the link, the page is the device: removing it closes the page.
-    const open = await connect(app, { key, token: "launch-token" });
+    // Paired, the page there is its device, whatever old token it still sends: removing it closes the page.
+    const { code } = pairing.desk.newCode();
+    const entered = await post(
+      app,
+      PAIRING_PATHS.code,
+      { code, name: "iPhone", kind: "home-screen-app" },
+      "https",
+    );
+    const { deviceId } = (await entered.json()) as { deviceId: string };
+    const open = await connect(app, { key: keyOf(entered), token: "launch-token", from: "https" });
     expect(open.welcome).toBe(true);
     const closed = new Promise<number>((resolve) => {
       open.socket.onclose = (event) => resolve(event.code);

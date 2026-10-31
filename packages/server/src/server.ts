@@ -127,7 +127,8 @@ function forbiddenUpgrade(): Response {
 /**
  * Returns an HTTP rejection for a bad Host, a close decision after upgrade for auth failures, or who was let in: a
  * paired device's key (its cookie), else the launch link's token. The key comes first, so a page that holds both is its
- * device; a wrong or old token beside a paired device's key still lets the device in.
+ * device. A server that pairs devices takes the token from its own computer's pages only (the loopback addresses): a
+ * page at the Tailscale address pairs instead, so one with the token and no key is told it is not paired.
  */
 export function authorizeWebSocketUpgrade(
   request: Request,
@@ -142,10 +143,12 @@ export function authorizeWebSocketUpgrade(
   const key = deviceKeyOf(request);
   const deviceId = key === undefined ? undefined : policy.deviceForKey?.(key);
   if (deviceId !== undefined) return { deviceId };
-  if (candidate !== "" && constantTimeEqual(policy.token, candidate)) return { deviceId: null };
-  if (candidate === "" && policy.deviceForKey !== undefined) {
+  const remotePage =
+    policy.remote !== undefined && request.headers.get("origin") === policy.remote.origin;
+  if (policy.deviceForKey !== undefined && (candidate === "" || remotePage)) {
     return { closeCode: 4401, reason: "not paired" };
   }
+  if (candidate !== "" && constantTimeEqual(policy.token, candidate)) return { deviceId: null };
   const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;
   return { closeCode: 4401, reason: expired ? "expired token" : "invalid token" };
 }
@@ -158,14 +161,6 @@ function fromAppPage(request: Request, policy: UpgradePolicy): boolean {
 /** Whether a request came to the loopback address from no web page: a program on the server's own computer. */
 function fromThisComputer(request: Request, port: number): boolean {
   return hostAllowed(request, { token: "", port }) && request.headers.get("origin") === null;
-}
-
-/** Whether a request came from the app's page at its Tailscale address. */
-function fromRemotePage(request: Request, policy: UpgradePolicy): boolean {
-  const remote = policy.remote?.origin;
-  return (
-    remote !== undefined && hostAllowed(request, policy) && request.headers.get("origin") === remote
-  );
 }
 
 function safeStaticPath(root: string, pathname: string): string | undefined {
@@ -311,11 +306,6 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           pairing: devices,
           fromAppPage: (each) => fromAppPage(each, policy()),
           fromThisComputer: (each) => fromThisComputer(each, bunServer.port ?? port),
-          fromRemotePage: (each) => fromRemotePage(each, policy()),
-          deviceOf: (each) => {
-            const key = deviceKeyOf(each);
-            return key === undefined ? undefined : policy().deviceForKey?.(key);
-          },
           overHttps,
           isLaunchToken: (candidate) => constantTimeEqual(token, candidate),
           address: () => options.remote?.origin ?? `http://127.0.0.1:${bunServer.port ?? port}`,

@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
 import { probeOmp } from "../src/capabilities/omp-version";
-import { keepLaunchToken, launchTokenFile, replaceLaunchToken } from "../src/launch-token";
+import { keepLaunchToken, launchTokenFile } from "../src/launch-token";
 import {
   callPairing,
   devicesText,
@@ -245,23 +245,6 @@ if (args.command === "debug-report") {
   console.log(`Wrote ${target}\n\nAttach this file to your GitHub issue.`);
   process.exit(0);
 }
-if (args.command === "new-link") {
-  try {
-    await replaceLaunchToken(launchTokenFile(logDir));
-  } catch (error) {
-    fail(`could not save a new link: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const running = await readRunningInstance(instanceFile(Bun.env, home), {
-    alive: isAlive,
-    responds,
-  });
-  console.log(
-    running
-      ? "A new link is saved. The app that is running keeps its current link until it restarts: restart it (systemctl --user restart omp-app when it runs as the service, or quit it and run omp-app again). Links printed before then stop working."
-      : "A new link is saved. The app prints it when it next starts, and links printed before then stop working.",
-  );
-  process.exit(0);
-}
 if (args.command === "pair" || args.command === "devices") {
   const running = await readRunningInstance(instanceFile(Bun.env, home), {
     alive: isAlive,
@@ -357,8 +340,9 @@ if (port !== 0 && !(await portIsFree(port))) {
 if (chatHost !== undefined && !existsSync(chatHost)) {
   fail(`the app's chat host is missing (${chatHost}). Reinstall the package.`);
 }
-// The link stays the same from one start to the next (`omp-app new-link` replaces it): the token is kept beside the
-// instance record, so a saved link (a bookmark, the desktop window's link to this computer) survives a restart.
+// The link stays the same from one start to the next: the token is kept beside the instance record, so a link saved on
+// this computer (a bookmark, the desktop window's way to this computer's app) survives a restart. It opens the app on
+// this computer only; every other device pairs.
 const launchToken = await keepLaunchToken(launchTokenFile(logDir));
 if (!launchToken.kept) logger.warn("launch-token.not-saved", { detail: launchToken.reason });
 const builtUi = uiRoot();
@@ -393,7 +377,7 @@ await recordInstance(record, { pid: process.pid, url: address, version });
 console.log(`omp app ${version}\n\n  ${address}\n\nPress Ctrl+C or close this window to quit.`);
 if (server.remoteUrl !== undefined) {
   console.log(
-    `\nFrom another device on your tailnet:\n\n  ${server.remoteUrl}/#token=${encodeURIComponent(server.token)}\n\nThis computer must serve it: tailscale serve --bg localhost:${server.port}`,
+    `\nFrom another device on your tailnet, open ${server.remoteUrl} and pair it: allow it on a device that is already paired, or enter the one-time code omp-app pair prints here.\n\nThis computer must serve it: tailscale serve --bg localhost:${server.port}`,
   );
 }
 if (server.health.status !== "ok") {

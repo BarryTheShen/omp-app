@@ -139,12 +139,6 @@ export const PAIRING_PATHS = {
   devices: "/pair/devices",
   /** POST `{ deviceId }`, the launch token as a bearer, on the server only → `DeviceList` (`omp-app devices remove`). */
   remove: "/pair/remove",
-  /**
-   * POST `PairingAsk`, the launch token as a bearer, from the app's page at its Tailscale address → `PairingAdopted`: a
-   * page signed in with the launch link becomes a paired device (it keeps its key if it is one already); the key comes
-   * as a cookie.
-   */
-  adopt: "/pair/adopt",
 } as const;
 
 export const PairingAsk = z.object({ name: DeviceName, kind: DeviceKind }).strict();
@@ -183,6 +177,3 @@ export const PairingCodeEntered = z.discriminatedUnion("status", [
   z.object({ status: z.literal("expired") }).strict(),
 ]);
 export type PairingCodeEntered = z.infer<typeof PairingCodeEntered>;
-
-export const PairingAdopted = z.object({ deviceId: z.string().min(1) }).strict();
-export type PairingAdopted = z.infer<typeof PairingAdopted>;
