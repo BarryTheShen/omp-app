@@ -48,6 +48,10 @@ realTest.describe("new UI Agent Hub", () => {
       await hub.getByRole("button", { name: /^LongProbe/ }).click();
       const agent = hub.getByRole("region", { name: "LongProbe", exact: true });
       await expect(agent.getByText("running", { exact: true })).toBeVisible();
+      // The model it runs, by its name, with omp's own `provider/id` as the tooltip.
+      const model = agent.locator(".ag-chip--model");
+      await expect(model).toContainText("Fake Model", { timeout: 30_000 });
+      await expect(model).toHaveAttribute("title", /^fake\/fake-model/);
       await expect(hub.getByRole("region", { name: "LongProbe's log" })).toContainText(
         "sleep 60; echo long-probe-done",
         { timeout: 30_000 },

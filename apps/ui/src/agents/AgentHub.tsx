@@ -188,7 +188,7 @@ function AgentLog({
           <span className="ag-drawer-name">{nameOf(agent)}</span>
           <span className={`ag-chip ag-chip--${PANEL_STATUS[agent.status]}`}>{agent.status}</span>
           {p?.resolvedModel !== undefined && (
-            <span className="ag-chip ag-chip--model">{p.resolvedModel}</span>
+            <ModelChip controller={controller} resolved={p.resolvedModel} />
           )}
         </div>
         {running && (
@@ -299,6 +299,49 @@ const NOTHING = (): void => undefined;
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** omp's thinking levels, the suffix of a subagent's `provider/id:level`. */
+const THINKING_SUFFIX = /:(off|minimal|low|medium|high|xhigh|max)$/;
+
+/**
+ * The model a subagent runs, by its readable name and thinking level ("GPT-6 Luna · high"); omp's whole
+ * `provider/id:level` is its tooltip. A chip that cut the raw form short could be misread ("gpt-6-l…" for "gpt-6.1").
+ */
+function ModelChip({
+  controller,
+  resolved,
+}: {
+  readonly controller: ChatController;
+  readonly resolved: string;
+}): ReactNode {
+  const level = THINKING_SUFFIX.exec(resolved)?.[1] ?? null;
+  const path = level === null ? resolved : resolved.slice(0, -(level.length + 1));
+  const slash = path.indexOf("/");
+  const provider = slash > 0 ? path.slice(0, slash) : null;
+  const id = slash > 0 ? path.slice(slash + 1) : path;
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    controller
+      .models()
+      .then((models) => {
+        const found = models.find(
+          (model) => model.id === id && (provider === null || model.provider === provider),
+        );
+        if (alive) setName(found?.name ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [controller, id, provider]);
+  return (
+    <span className="ag-chip ag-chip--model" title={resolved}>
+      {name ?? id}
+      {level !== null && ` · ${level}`}
+    </span>
+  );
+}
 
 /**
  * A subagent's transcript as its file grows: read from where the last read ended, page after page while pages bring
