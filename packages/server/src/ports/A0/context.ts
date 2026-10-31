@@ -10,7 +10,7 @@ import type {
 } from "@omp-app/contracts";
 import type { Logger } from "../../logging";
 import type { FileWatchRegistry } from "../../modules/A1/fs/file-watch-registry";
-import type { ExternalOmpState, OmpProcessRegistry } from "../../process";
+import type { ExternalOmpState, OmpProcessRegistry, ProcessTimer } from "../../process";
 import type { EventReplayHub } from "../../replay";
 
 /** How a chat starts: its id and file (a provisional pair until its host names its own), and omp's launch flags. */
@@ -30,6 +30,8 @@ export interface A0PortContext {
    * once (#2760). The app turns it on; absent, every new chat starts its omp when it is opened.
    */
   readonly newChatsReady?: boolean;
+  /** The timer that replaces a new chat kept ready before it ages out (#2768); the global one when absent. */
+  readonly spareTimer?: ProcessTimer;
   /** Whether another omp holds a chat's lease (`active`), asked before an open starts omp for it. Absent: no check. */
   readonly leaseProbe?: (sessionId: string) => Promise<"active" | "inactive" | "unknown">;
   readonly replay: EventReplayHub;

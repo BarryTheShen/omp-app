@@ -63,7 +63,7 @@ import {
   type CommandSessionEvent,
   withAdmission,
 } from "../../modules/A1/gateway/command-session";
-import type { OmpProcess, OmpProcessOptions } from "../../process";
+import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
@@ -124,16 +124,29 @@ const LEVEL_RANK: Readonly<Record<SubagentLevel, number>> = { off: 0, progress: 
 const SPARE_FOLDERS = 2;
 /** A ready new chat older than this is started again when taken: omp reads its settings and extensions as it starts. */
 const SPARE_MAX_AGE_MS = 10 * 60_000;
+/** A ready new chat is replaced by a fresh one this long after it started, so one within its age always waits (#2768). */
+const SPARE_REFRESH_MS = 9 * 60_000;
+/** The global timer, which does not keep the server running for a spare's refresh alone. */
+const SPARE_TIMER: ProcessTimer = {
+  setTimeout: (handler, delayMs) => {
+    const handle = globalThis.setTimeout(handler, delayMs);
+    handle.unref?.();
+    return handle;
+  },
+  clearTimeout: (handle) => globalThis.clearTimeout(handle as number | Timer),
+};
 
 /**
  * A new chat started ahead, for the next "New chat" in its folder (#2760): its process and host are up and its id is
  * known (`ready`, undefined when it failed), but it is in no listing and no browser holds it; its own registry view keeps
- * it from the idle rule until it is taken or let go.
+ * it from the idle rule until it is taken or let go. `refresh` starts its replacement, until it is taken or let go.
  */
 interface Spare {
   readonly entry: ChatEntry;
   readonly startedAt: number;
   readonly ready: Promise<{ threadId: ThreadId; sessionFile: SessionFilePath } | undefined>;
+  /** The timer's handle for the replacement, while it is due. */
+  refresh: unknown;
 }
 
 /** The methods that move the chat to another session; omp's own id for the chat changes with them. */
@@ -511,6 +524,7 @@ export class ChatSessionPortRuntime {
       return undefined;
     }
     // The spare's own registry view becomes this open's; its events, held since it started, go out with its id.
+    this.#stopRefresh(spare);
     this.#entries.set(entry.bootstrap.threadId, entry);
     this.#addViewer(entry, call.connectionId);
     this.#rekey(entry, undefined, identity);
@@ -530,16 +544,49 @@ export class ChatSessionPortRuntime {
       this.#spares.set(folderPath, kept);
       return;
     }
-    const bootstrap = this.#provisionalBootstrap(folderPath, []);
-    const process = this.#context.processRegistry.acquire(this.#processOptions(bootstrap));
-    const entry = this.#newEntry(bootstrap, process);
-    entry.unsubscribe = this.#listen(entry);
-    this.#spares.set(folderPath, { entry, startedAt: Date.now(), ready: this.#startSpare(entry) });
+    this.#spares.set(folderPath, this.#newSpare(folderPath));
     for (const [folder, spare] of this.#spares) {
       if (this.#spares.size <= SPARE_FOLDERS) break;
       this.#spares.delete(folder);
       void this.#discardSpare(spare);
     }
+  }
+
+  /** Starts a new chat in the folder to keep ready, with its replacement due before it ages out. */
+  #newSpare(folderPath: FolderPath): Spare {
+    const bootstrap = this.#provisionalBootstrap(folderPath, []);
+    const process = this.#context.processRegistry.acquire(this.#processOptions(bootstrap));
+    const entry = this.#newEntry(bootstrap, process);
+    entry.unsubscribe = this.#listen(entry);
+    const spare: Spare = {
+      entry,
+      startedAt: Date.now(),
+      ready: this.#startSpare(entry),
+      refresh: undefined,
+    };
+    spare.refresh = (this.#context.spareTimer ?? SPARE_TIMER).setTimeout(
+      () => void this.#refreshSpare(folderPath, spare),
+      SPARE_REFRESH_MS,
+    );
+    return spare;
+  }
+
+  /**
+   * Replaces the folder's ready new chat with a fresh one before it ages out (#2768): the fresh one takes its place once
+   * it is up, and the old one goes, so a "New chat" never waits for an omp to start. One taken or let go meanwhile is
+   * left alone, and so is the folder's place among the folders used last.
+   */
+  async #refreshSpare(folderPath: FolderPath, old: Spare): Promise<void> {
+    old.refresh = undefined;
+    if (this.#closed || this.#spares.get(folderPath) !== old) return;
+    const fresh = this.#newSpare(folderPath);
+    const identity = await fresh.ready;
+    if (identity === undefined || this.#closed || this.#spares.get(folderPath) !== old) {
+      await this.#discardSpare(fresh);
+      return;
+    }
+    this.#spares.set(folderPath, fresh);
+    await this.#discardSpare(old);
   }
 
   /** Starts a spare as an open starts a new chat: its host's hello, then its id, on a new session of its own. */
@@ -566,8 +613,16 @@ export class ChatSessionPortRuntime {
     }
   }
 
+  /** The spare's replacement is no longer due: it is taken or let go. */
+  #stopRefresh(spare: Spare): void {
+    if (spare.refresh !== undefined)
+      (this.#context.spareTimer ?? SPARE_TIMER).clearTimeout(spare.refresh);
+    spare.refresh = undefined;
+  }
+
   /** Lets a spare go: its host is stopped (nobody holds it, and it has no turn). */
   async #discardSpare(spare: Spare): Promise<void> {
+    this.#stopRefresh(spare);
     const { entry } = spare;
     entry.unsubscribe();
     entry.client.dispose();

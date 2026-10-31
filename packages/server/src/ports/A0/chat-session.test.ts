@@ -2482,3 +2482,50 @@ describe("the chat session runtime: a chat an earlier server left running, on an
     expect(registry.has(spare.threadId)).toBe(true);
   });
 });
+
+describe("the chat session runtime: a new chat kept ready (#2760)", () => {
+  /** A folder shown with new chats kept ready, the refresh's timer driven by the test. */
+  async function readyInFolder() {
+    const created: FakeChatHost[] = [];
+    const timer = firingTimer();
+    const handlers = handlersFor({ ...context(created), newChatsReady: true, spareTimer: timer });
+    await getHandler(handlers, "prepareNew")({ folderPath: folder }, call("one"));
+    await ticks(20);
+    return { created, timer, handlers };
+  }
+
+  test("is replaced by a fresh one before it ages out, and the next new chat opens on the fresh one (#2768)", async () => {
+    const { created, timer, handlers } = await readyInFolder();
+    expect(created).toHaveLength(1);
+    expect(timer.pending()).toBe(1);
+
+    timer.fireAll();
+    await ticks(30);
+    expect(created).toHaveLength(2);
+    expect(created[0]?.status).toBe("stopped");
+    expect(created[1]?.status).toBe("running");
+    expect(timer.pending()).toBe(1);
+
+    // The open takes the fresh one, so no omp starts for it; only the next ready chat does.
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await ticks(20);
+    expect(created).toHaveLength(3);
+    expect(created[1]?.status).toBe("running");
+    expect(created[2]?.status).toBe("running");
+  });
+
+  test("one taken before its refresh is due is not replaced: its refresh is dropped", async () => {
+    const { created, timer, handlers } = await readyInFolder();
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await ticks(20);
+    // The taken one's refresh is cleared; the next ready chat's is the one due.
+    expect(created).toHaveLength(2);
+    expect(timer.pending()).toBe(1);
+    timer.fireAll();
+    await ticks(30);
+    expect(created).toHaveLength(3);
+    expect(created[0]?.status).toBe("running");
+    expect(created[1]?.status).toBe("stopped");
+    expect(created[2]?.status).toBe("running");
+  });
+});
