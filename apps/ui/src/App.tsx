@@ -219,8 +219,8 @@ function Shell({
       }),
     [client],
   );
-  /** On a phone: the list of chats, or the chat. */
-  const [showChat, setShowChat] = useState(false);
+  /** On a phone: the list of chats, or the chat. A phone opens on the chat: the workspace starts it on a new one. */
+  const [showChat, setShowChat] = useState(() => matchMedia(PHONE).matches);
   const workspace = useRef<WorkspaceHandle>(null);
   const phone = usePhone();
   const [palette, setPalette] = useState(false);

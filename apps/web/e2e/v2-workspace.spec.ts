@@ -157,5 +157,34 @@ realTest.describe("new UI workspace", () => {
       await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       expect(realApp.problems).toEqual([]);
     });
+
+    realTest(
+      "a phone opens on a new chat with the list a tap away, and on a new chat again when opened again",
+      async ({ realApp, browser }) => {
+        const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        const page = await realApp.open({ path: "/", context: phone });
+        const welcome = page.getByText("What are we working on?");
+        // The chat, not the list: a new one, ready to type.
+        await expect(chats(page)).toBeHidden();
+        await expect(boxes(page)).toHaveCount(1, { timeout: 60_000 });
+        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(welcome).toBeVisible();
+
+        // The list is a tap away, and a saved chat opens from it.
+        await page.getByRole("button", { name: "Chats", exact: true }).click();
+        await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+        await expect(chats(page)).toBeHidden();
+        await expect(welcome).toBeHidden();
+
+        // Opened again, it starts on a new chat; the saved one is still in the list.
+        await page.reload();
+        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(welcome).toBeVisible();
+        await page.getByRole("button", { name: "Chats", exact: true }).click();
+        await expect(chats(page).getByRole("button", { name: /^Seeded chat 1/ })).toBeVisible();
+        expect(realApp.problems).toEqual([]);
+        await phone.close();
+      },
+    );
   });
 });

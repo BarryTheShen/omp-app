@@ -165,6 +165,8 @@ export function Workspace({
   const phoneZoomed = useRef(false);
   /** Tabs made with Ctrl+Shift+T, which open with a new chat. */
   const freshTabs = useRef(new Set<string>());
+  /** Whether a phone has had its new chat for this page load (a phone opens on a new chat). */
+  const phoneStarted = useRef(false);
   /** Each tab's chat pane focused last, by its dockview: the side pane taking the focus leaves it the chat in use. */
   const lastChat = useRef(new WeakMap<DockviewApi, string>());
   /** A tab's chat pane in use: the focused pane, or while the side pane has the focus, the chat pane focused last. */
@@ -324,6 +326,21 @@ export function Workspace({
       // A tab made with Ctrl+Shift+T opens with a new chat, as kitty's opens with a shell; the first tab waits for a pick.
       if (freshTabs.current.delete(tabId) && api.totalPanels === 0)
         addChat(api, { kind: "new", folder });
+      // A phone opens on a new chat in the shown tab, ready to type, with the list a tap away: going through the list
+      // to start one is slow on a phone. A new chat already in front stays, with the text kept for it.
+      if (phoneRef.current && !phoneStarted.current && tabId === tabsRef.current.active) {
+        phoneStarted.current = true;
+        const panel = chatPaneIn(api);
+        if (panel === undefined) addChat(api, { kind: "new", folder });
+        else if (paramsOf(panel.params)?.target.kind !== "new") {
+          panel.api.updateParameters({
+            chat: crypto.randomUUID(),
+            target: { kind: "new", folder },
+            folder,
+          } satisfies ChatPanelParams);
+          panel.api.setTitle("New chat");
+        }
+      }
       api.onDidLayoutChange(() => {
         if (apis.current.get(tabId) !== api) return;
         syncHeaders(api);
@@ -356,7 +373,7 @@ export function Workspace({
       syncHeaders(api);
       report();
     },
-    [addChat, dropChat, folder, report, syncHeaders, zoomForPhone],
+    [addChat, chatPaneIn, dropChat, folder, report, syncHeaders, zoomForPhone],
   );
 
   const withActive = useCallback((action: (api: DockviewApi) => void): void => {
