@@ -330,4 +330,29 @@ realTest.describe("new UI message box", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "keeps typed text after the tab crashes, before the app's copy is written",
+    async ({ realApp, browserName }, testInfo) => {
+      realTest.skip(
+        browserName !== "chromium",
+        "a tab is crashed through Chromium's DevTools protocol",
+      );
+      testInfo.setTimeout(240_000);
+      const page = await realApp.open({ path: "/" });
+      const context = page.context();
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("typed just before a crash");
+      // The app's copy is written 0.8 s after typing pauses; a crash before then leaves only this browser's copy.
+      await page.waitForTimeout(200);
+      const devtools = await context.newCDPSession(page);
+      // Chromium never answers `Page.crash`: the page dies first. Its crash event says it has.
+      const crashed = page.waitForEvent("crash");
+      void devtools.send("Page.crash").catch(() => undefined);
+      await crashed;
+      const again = await realApp.open({ path: "/", context });
+      await expect(box(again)).toHaveValue("typed just before a crash", { timeout: 60_000 });
+    },
+  );
 });
