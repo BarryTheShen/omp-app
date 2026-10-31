@@ -43,6 +43,7 @@ import { hidePanel, showPanel, togglePanel, usePanelState } from "./panels/panel
 import { SidePaneContext } from "./panels/SidePane";
 import { SidePanel } from "./panels/SidePanel";
 import { traceScrolling } from "./perf/scrollTrace";
+import { traceViewport } from "./perf/viewportTrace";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatList } from "./sidebar/useChatList";
@@ -200,6 +201,17 @@ function Shell({
   useEffect(
     () =>
       traceScrolling((trace) => {
+        client
+          .port(AppPort)
+          .reportClientTrace(trace)
+          .catch(() => undefined);
+      }),
+    [client],
+  );
+  // How a phone's page fits around its keyboard, measured at each change and kept in the server's debug log.
+  useEffect(
+    () =>
+      traceViewport((trace) => {
         client
           .port(AppPort)
           .reportClientTrace(trace)
