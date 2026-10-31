@@ -207,6 +207,16 @@ realTest.describe("new UI settings", () => {
     const signInButton = signIn.getByRole("button", { name: "Sign in", exact: true });
     await expect(signInButton).toBeDisabled();
     await signIn.getByRole("combobox", { name: "Provider to sign in to" }).click();
+    // Every provider's name fits its row, the longest among them too: none runs past the row's edge.
+    await expect(page.getByRole("option", { name: /Codex Subscription/ })).toBeVisible();
+    const cut = await page
+      .getByRole("option")
+      .evaluateAll((options) =>
+        options
+          .filter((option) => option.scrollWidth > option.clientWidth + 1)
+          .map((option) => option.textContent),
+      );
+    expect(cut).toEqual([]);
     await page.getByRole("option").first().click();
     await expect(signInButton).toBeEnabled();
     expect(realApp.problems).toEqual([]);

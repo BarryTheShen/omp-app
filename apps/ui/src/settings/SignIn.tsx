@@ -145,11 +145,14 @@ function Providers({ controller }: { readonly controller: ChatController }): Rea
             >
               <SelectValue placeholder="Sign in to a provider" />
             </SelectTrigger>
-            <SelectContent>
+            {/* As wide as its longest name, up to the room there is; a name longer than that wraps (#2765). */}
+            <SelectContent className="w-max min-w-(--anchor-width) max-w-(--available-width)">
               {choices.map((provider) => (
                 <SelectItem key={provider.id} value={provider.id}>
-                  {provider.name}
-                  {provider.authenticated && <span className="text-t3"> · signed in</span>}
+                  <span className="whitespace-normal">
+                    {provider.name}
+                    {provider.authenticated && <span className="text-t3"> · signed in</span>}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
