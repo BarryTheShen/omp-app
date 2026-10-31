@@ -79,6 +79,11 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
           const followUp = thread(page).getByRole("article", { name: "Follow-up" });
           await expect(followUp).toContainText("Say more.");
           await expect(followUp).toContainText("pong", { timeout: 60_000 });
+          // What you asked and what omp answered are apart, for the eye and for a screen reader (#2759).
+          await expect(followUp.getByRole("region", { name: "Your question" })).toHaveText(
+            "Say more.",
+          );
+          await expect(followUp.getByRole("region", { name: "Answer" })).toHaveText("pong");
           await expect(topics(page).getByRole("option")).toContainText("1 follow-up");
 
           if (engine === "chromium") {

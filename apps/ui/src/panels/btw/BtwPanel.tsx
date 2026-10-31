@@ -114,14 +114,14 @@ function KeyButton({
   );
 }
 
-/** One question of a topic and its answer: the question titles it, the answer follows, as in omp's history. */
+/**
+ * One question of a topic and its answer. The question sits on a card, as your messages do in the chat, under a line
+ * that says when you asked it; the answer follows it as plain text, as omp's replies do.
+ */
 function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number }): ReactNode {
   const answered = turn.answer.trim() !== "";
   return (
     <article className="flex flex-col gap-1.5" aria-label={index === 0 ? "Question" : "Follow-up"}>
-      <div className="font-medium text-t1">
-        <Markdown text={turn.question} />
-      </div>
       <p className="flex items-center gap-1.5 text-xs text-t3">
         <span>
           {index === 0 ? DATE.format(turn.createdAt) : `Follow-up · ${TIME.format(turn.createdAt)}`}
@@ -133,10 +133,16 @@ function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number 
           </>
         )}
       </p>
-      {/* A failed turn with no text says only why it failed. */}
-      {(answered || turn.error === undefined) && (
-        <div className="pt-1">
-          {answered ? (
+      <section
+        aria-label="Your question"
+        className="max-w-full self-start rounded-xl border border-border bg-card px-3.5 py-2 text-t1"
+      >
+        <Markdown text={turn.question} />
+      </section>
+      <section aria-label="Answer" className="flex flex-col gap-1.5 pt-1">
+        {/* A failed turn with no text says only why it failed. */}
+        {(answered || turn.error === undefined) &&
+          (answered ? (
             turn.status === "running" ? (
               <StreamingMarkdown text={turn.answer} />
             ) : (
@@ -144,11 +150,10 @@ function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number 
             )
           ) : (
             <p className="text-t3">{turn.status === "running" ? "Thinking…" : "No answer text."}</p>
-          )}
-        </div>
-      )}
-      {turn.error !== undefined && <p className="text-bad-ink">{turn.error}</p>}
-      {turn.status === "interrupted" && <p className="text-t3">Not resumed in this view.</p>}
+          ))}
+        {turn.error !== undefined && <p className="text-bad-ink">{turn.error}</p>}
+        {turn.status === "interrupted" && <p className="text-t3">Not resumed in this view.</p>}
+      </section>
     </article>
   );
 }
