@@ -4,7 +4,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { setThemeChoice, type ThemeChoice, useThemeChoice } from "./theme";
 
-const CHOICES: readonly { value: ThemeChoice; label: string; icon: ReactNode }[] = [
+/** The themes to choose from, as the switch and a phone's menu offer them. */
+export const THEME_CHOICES: readonly { value: ThemeChoice; label: string; icon: ReactNode }[] = [
   { value: "system", label: "Match the system", icon: <Monitor /> },
   { value: "tern-light", label: "Light", icon: <Sun /> },
   { value: "tern-dark", label: "Dark", icon: <Moon /> },
@@ -22,11 +23,11 @@ export function ThemeSwitch(): ReactNode {
       className="rounded-lg border border-l2 p-0.5"
       value={[choice]}
       onValueChange={(next) => {
-        const picked = CHOICES.find((item) => item.value === next[0]);
+        const picked = THEME_CHOICES.find((item) => item.value === next[0]);
         if (picked !== undefined) setThemeChoice(picked.value);
       }}
     >
-      {CHOICES.map(({ value, label, icon }) => (
+      {THEME_CHOICES.map(({ value, label, icon }) => (
         <Tooltip key={value}>
           <TooltipTrigger
             render={

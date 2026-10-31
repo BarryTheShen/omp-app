@@ -163,4 +163,46 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest.describe("with two saved chats", () => {
+    realTest.use({ seedSessions: 2 });
+
+    realTest(
+      "the list on a phone: rows without buttons, a touch-and-hold opens a row's menu; New chat, the inbox, Settings and the menu at its foot",
+      async ({ realApp, browser }) => {
+        const { page, context } = await phone(realApp, browser);
+        await page.getByRole("button", { name: "Chats", exact: true }).tap();
+        const list = page.getByRole("navigation", { name: "Chats" });
+        const row = list.getByRole("button", { name: "Seeded chat 1" });
+        await expect(row).toBeVisible();
+        await expect(list.getByRole("button", { name: "Pin" })).toHaveCount(0);
+        await expect(list.getByRole("group", { name: "Theme" })).toHaveCount(0);
+        const newChat = list.getByRole("button", { name: "New chat" });
+        await expect(newChat).toHaveCount(1);
+        expect((await newChat.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+        // A touch-and-hold opens the row's menu, and opens no chat.
+        await row.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true });
+        await page.waitForTimeout(700);
+        await row.dispatchEvent("pointerup", { pointerType: "touch", isPrimary: true });
+        const menu = page.getByRole("menu");
+        await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+        await menu.getByRole("menuitem", { name: "Pin" }).tap();
+        await expect(
+          list
+            .getByRole("region", { name: "Pinned" })
+            .getByRole("button", { name: "Seeded chat 1" }),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(list).toBeVisible();
+
+        // The theme is in the menu at the list's foot.
+        await list.getByRole("button", { name: "Menu" }).tap();
+        await page.getByRole("menuitemradio", { name: "Light" }).tap();
+        await list.getByRole("button", { name: "Menu" }).tap();
+        await expect(page.getByRole("menuitemradio", { name: "Light" })).toBeChecked();
+        expect(realApp.problems).toEqual([]);
+        await context.close();
+      },
+    );
+  });
 });

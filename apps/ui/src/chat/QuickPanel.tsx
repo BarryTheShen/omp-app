@@ -1,5 +1,6 @@
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useLongPress } from "../longPress";
 
 /** The prompts a phone sends with one tap: short answers that keep omp going. */
 export const QUICK_PROMPTS = [
@@ -12,9 +13,6 @@ export const QUICK_PROMPTS = [
   "Go ahead",
   "Stop and sum up",
 ] as const;
-
-/** How long a press lasts before it puts the prompt in the box instead of sending it. */
-const HOLD_MS = 450;
 
 /**
  * The phone's quick panel, in the keyboard's place (Termius's side panel on an iPhone): prompts sent with one tap, or
@@ -113,8 +111,8 @@ function PanelTab({
 }
 
 /**
- * A prompt: a tap sends it; a press held for `HOLD_MS` puts it in the box once the finger lifts (a phone brings its
- * keyboard up only for a focus given within a touch).
+ * A prompt: a tap sends it; a touch-and-hold puts it in the box once the finger lifts (a phone brings its keyboard up
+ * only for a focus given within a touch).
  */
 function PromptButton({
   text,
@@ -127,41 +125,16 @@ function PromptButton({
   readonly onSend: (text: string) => void;
   readonly onPut: (text: string) => void;
 }): ReactNode {
-  const timer = useRef<number | undefined>(undefined);
-  const held = useRef(false);
-  const cancel = (): void => {
-    window.clearTimeout(timer.current);
-    timer.current = undefined;
-  };
+  const { endsHold, ...hold } = useLongPress(() => onPut(text));
   return (
     <Button
       type="button"
       variant="secondary"
       disabled={disabled}
       className="min-h-11 w-full justify-start whitespace-normal text-left font-normal text-t1 select-none [-webkit-touch-callout:none]"
-      onPointerDown={() => {
-        held.current = false;
-        cancel();
-        timer.current = window.setTimeout(() => {
-          held.current = true;
-        }, HOLD_MS);
-      }}
-      onPointerUp={() => {
-        cancel();
-        if (held.current) onPut(text);
-      }}
-      onPointerLeave={cancel}
-      onPointerCancel={() => {
-        cancel();
-        held.current = false;
-      }}
-      onContextMenu={(event) => event.preventDefault()}
+      {...hold}
       onClick={() => {
-        if (held.current) {
-          held.current = false;
-          return;
-        }
-        onSend(text);
+        if (!endsHold()) onSend(text);
       }}
     >
       {text}

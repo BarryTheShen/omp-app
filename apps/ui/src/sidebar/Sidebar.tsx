@@ -12,7 +12,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type DragEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +28,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -35,8 +38,10 @@ import type { ChatTarget } from "../chat/controller";
 import { firstPromptOf } from "../chat/firstPrompts";
 import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
+import { useLongPress } from "../longPress";
 import { togglePanel, usePanelState } from "../panels/panel-state";
-import { ThemeSwitch } from "../theme/ThemeSwitch";
+import { THEME_CHOICES, ThemeSwitch } from "../theme/ThemeSwitch";
+import { setThemeChoice, type ThemeChoice, useThemeChoice } from "../theme/theme";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
 import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
@@ -159,6 +164,7 @@ export function Sidebar({
       focused={view.focused === session.id}
       target={{ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }}
       onOpen={onOpen}
+      phone={phone}
       actions={{
         pinned: list.pinned.has(session.id),
         onPrefetch: () => onPrefetch(session),
@@ -188,20 +194,24 @@ export function Sidebar({
       focused={view.focused === chat.id}
       target={{ kind: "existing", threadId: chat.id, sessionFile: null }}
       onOpen={onOpen}
+      phone={phone}
     />
   );
   return (
     <nav aria-label="Chats" className={cn("flex min-h-0 flex-col p-2", hidden && "hidden")}>
       {folderMenu}
-      <Button
-        data-tour="new-chat"
-        variant="ghost"
-        className="justify-start gap-2 px-2 text-t2 hover:text-t1"
-        onClick={() => onOpen({ kind: "new", folder }, "here")}
-      >
-        <SquarePen />
-        New chat
-      </Button>
+      {/* On a phone, New chat is at the foot of the list, in the thumb's reach. */}
+      {!phone && (
+        <Button
+          data-tour="new-chat"
+          variant="ghost"
+          className="justify-start gap-2 px-2 text-t2 hover:text-t1"
+          onClick={() => onOpen({ kind: "new", folder }, "here")}
+        >
+          <SquarePen />
+          New chat
+        </Button>
+      )}
       <label
         data-tour="search-chats"
         className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1"
@@ -231,68 +241,78 @@ export function Sidebar({
         </p>
       )}
       <WhatsNew workspace={workspace} onAllUpdates={onWhatsNew} />
-      <div className="flex items-center justify-between px-1 pt-2">
-        <ThemeSwitch />
-        <div className="flex items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  data-tour="whats-new-button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="What's new"
-                  className="text-t3 hover:text-t1"
-                  onClick={onWhatsNew}
-                />
-              }
-            >
-              <Sparkles />
-            </TooltipTrigger>
-            <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
-          </Tooltip>
+      {phone ? (
+        // A phone's foot: New chat in the thumb's reach, the inbox, settings, and the rest in one menu.
+        <div className="flex items-center gap-1 px-1 pt-2 [&_button]:min-h-11 [&_button]:min-w-11">
+          <Button
+            data-tour="new-chat"
+            variant="secondary"
+            className="flex-1 gap-2"
+            onClick={() => onOpen({ kind: "new", folder }, "here")}
+          >
+            <SquarePen />
+            New chat
+          </Button>
           <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
-          {phone && (
+          <Button
+            data-tour="settings"
+            variant="ghost"
+            size="icon"
+            aria-label="Settings"
+            className="text-t2"
+            onClick={onSettings}
+          >
+            <Settings />
+          </Button>
+          <PhoneMenu
+            sidePanelOpen={sidePanelOpen}
+            onSidePanel={togglePanel}
+            onWhatsNew={onWhatsNew}
+          />
+        </div>
+      ) : (
+        <div className="flex items-center justify-between px-1 pt-2">
+          <ThemeSwitch />
+          <div className="flex items-center gap-0.5">
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
-                    data-tour="side-panel-button"
+                    data-tour="whats-new-button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Side panel"
-                    aria-pressed={sidePanelOpen}
-                    aria-keyshortcuts="Control+Alt+B"
-                    className="text-t3 hover:text-t1 aria-pressed:text-t1"
-                    onClick={togglePanel}
+                    aria-label="What's new"
+                    className="text-t3 hover:text-t1"
+                    onClick={onWhatsNew}
                   />
                 }
               >
-                <PanelRight />
+                <Sparkles />
               </TooltipTrigger>
-              <TooltipContent side="top">Side panel · {keycap(KEYS.sidePanel)}</TooltipContent>
+              <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
             </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  data-tour="settings"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Settings"
-                  aria-keyshortcuts="Control+,"
-                  className="text-t3 hover:text-t1"
-                  onClick={onSettings}
-                />
-              }
-            >
-              <Settings />
-            </TooltipTrigger>
-            <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
-          </Tooltip>
+            <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    data-tour="settings"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Settings"
+                    aria-keyshortcuts="Control+,"
+                    className="text-t3 hover:text-t1"
+                    onClick={onSettings}
+                  />
+                }
+              >
+                <Settings />
+              </TooltipTrigger>
+              <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      )}
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -316,6 +336,52 @@ export function Sidebar({
         </AlertDialogContent>
       </AlertDialog>
     </nav>
+  );
+}
+
+/** A phone's one menu for what a desktop's foot shows as buttons: what's new, the side panel and the theme. */
+function PhoneMenu({
+  sidePanelOpen,
+  onSidePanel,
+  onWhatsNew,
+}: {
+  readonly sidePanelOpen: boolean;
+  readonly onSidePanel: () => void;
+  readonly onWhatsNew: () => void;
+}): ReactNode {
+  const theme = useThemeChoice();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Menu"
+        className="grid place-items-center rounded-lg text-t2 outline-none hover:bg-l2 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2"
+      >
+        <Ellipsis className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="w-60">
+        <DropdownMenuItem data-tour="whats-new-button" onClick={onWhatsNew}>
+          <Sparkles />
+          What's new
+        </DropdownMenuItem>
+        <DropdownMenuItem data-tour="side-panel-button" onClick={onSidePanel}>
+          <PanelRight />
+          {sidePanelOpen ? "Close the side panel" : "Side panel"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup
+          data-tour="theme"
+          value={theme}
+          onValueChange={(value) => setThemeChoice(value as ThemeChoice)}
+        >
+          {THEME_CHOICES.map(({ value, label, icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              {icon}
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -351,6 +417,7 @@ function ChatRow({
   focused,
   target,
   onOpen,
+  phone,
   actions,
 }: {
   readonly title: string;
@@ -362,6 +429,8 @@ function ChatRow({
   /** The chat the row opens, and carries when dragged onto the workspace. */
   readonly target: ChatTarget;
   readonly onOpen: (target: ChatTarget, where: "here" | "split") => void;
+  /** On a phone the row has no buttons: a touch-and-hold opens its menu, Pin there too. */
+  readonly phone: boolean;
   /** None for a chat whose first reply still runs: it has no file to read ahead, pin, rename or delete yet. */
   readonly actions?: RowActions;
 }): ReactNode {
@@ -373,6 +442,10 @@ function ChatRow({
   /** The rename ended with Enter or Esc: the caret goes back to the row. */
   const refocus = useRef(false);
   const titleButton = useRef<HTMLButtonElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const hold = useLongPress(() => {
+    if (actions !== undefined) setMenuOpen(true);
+  });
   useEffect(() => {
     if (editing || !refocus.current) return;
     refocus.current = false;
@@ -411,10 +484,25 @@ function ChatRow({
           aria-busy={saving ? "true" : undefined}
           // One phrase for a screen reader: the title, its state, and whether a pane shows it.
           aria-label={said.join(", ")}
-          onClick={(event) => onOpen(target, event.altKey ? "split" : "here")}
-          // Dropped on the workspace, the chat opens where it lands (the workspace's drop handling).
-          draggable
-          onDragStart={(event) => startChatDrag(event.dataTransfer, target)}
+          onClick={(event) => {
+            if (hold.endsHold()) return;
+            onOpen(target, event.altKey ? "split" : "here");
+          }}
+          {...(phone
+            ? {
+                onPointerDown: hold.onPointerDown,
+                onPointerUp: hold.onPointerUp,
+                onPointerLeave: hold.onPointerLeave,
+                onPointerCancel: hold.onPointerCancel,
+                onContextMenu: hold.onContextMenu,
+              }
+            : {
+                // Dropped on the workspace, the chat opens where it lands (the workspace's drop handling). A phone
+                // has no workspace to drop on, and its touch-and-hold opens the row's menu.
+                draggable: true,
+                onDragStart: (event: DragEvent<HTMLButtonElement>) =>
+                  startChatDrag(event.dataTransfer, target),
+              })}
         >
           <span
             aria-hidden
@@ -430,29 +518,39 @@ function ChatRow({
       )}
       {!editing && actions !== undefined && (
         <>
-          <button
-            type="button"
-            // In the row of its chat; the chat's title stays the name of the row's own button.
-            aria-label={actions.pinned ? "Unpin" : "Pin"}
-            className={cn(
-              "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
-              REVEAL,
-            )}
-            onClick={actions.onPin}
-          >
-            {actions.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-          </button>
-          <DropdownMenu>
+          {!phone && (
+            <button
+              type="button"
+              // In the row of its chat; the chat's title stays the name of the row's own button.
+              aria-label={actions.pinned ? "Unpin" : "Pin"}
+              className={cn(
+                "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
+                REVEAL,
+              )}
+              onClick={actions.onPin}
+            >
+              {actions.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+            </button>
+          )}
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger
               aria-label="More"
+              // On a phone the trigger shows nothing and takes no taps: the menu opens on a touch-and-hold, at the
+              // row's end. A screen reader still finds it.
               className={cn(
-                "mr-1 grid size-6 shrink-0 place-items-center rounded-sm text-t3 outline-none hover:bg-l2 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 data-popup-open:text-t1 data-popup-open:opacity-100",
-                REVEAL,
+                "grid shrink-0 place-items-center rounded-sm text-t3 outline-none hover:bg-l2 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 data-popup-open:text-t1 data-popup-open:opacity-100",
+                phone ? "pointer-events-none size-px opacity-0" : cn("mr-1 size-6", REVEAL),
               )}
             >
               <Ellipsis className="size-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-auto" finalFocus={() => !renaming.current}>
+              {phone && (
+                <DropdownMenuItem onClick={actions.onPin}>
+                  {actions.pinned ? <PinOff /> : <Pin />}
+                  {actions.pinned ? "Unpin" : "Pin"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => {
                   renaming.current = true;
