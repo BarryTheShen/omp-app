@@ -13,6 +13,7 @@ import { btwQuestion } from "../btw/btw";
 import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { showPanel } from "../panels/panel-state";
+import { usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
 import { type Attachment, readImages } from "./attachments";
@@ -20,6 +21,7 @@ import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
+import { KeyRow } from "./KeyRow";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
 import { RoleTrack } from "./RoleTrack";
@@ -52,7 +54,8 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
  * Alt+Enter adds a line; Esc stops omp and brings queued messages back into the box. `/` at the start lists omp's
  * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context).
  * Images pasted or dropped go with the next message. The text is kept as it is typed (`drafts.ts`), and only the text
- * that was sent leaves the box.
+ * that was sent leaves the box. On a phone the return key adds a line and Send sends; the box's settings and the keys a
+ * phone lacks are in the key row under it (`KeyRow`).
  */
 export const Composer = memo(function Composer({
   controller,
@@ -127,6 +130,9 @@ export const Composer = memo(function Composer({
   const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
   const attachmentsRef = useRef(attachments);
   const [dragging, setDragging] = useState(false);
+  /** Whether the box has the focus: on a phone the keyboard is up then, and the key row offers to put it away. */
+  const [focused, setFocused] = useState(false);
+  const phone = usePhone();
   const draft = controller.draft;
   const menu = useComposerMenu(controller, text, caret);
   const shell = shellRun(text);
@@ -402,22 +408,116 @@ export const Composer = memo(function Composer({
       }
     }
     if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
+    // A phone's keyboard has no Ctrl or Shift for a new line: its return key adds one, and the Send button sends.
+    if (phone && !modified) return;
     event.preventDefault();
     send(modified ? "followUp" : "auto");
   };
 
+  /** The box's settings: on a desktop under the text, on a phone in the key row above the keyboard. */
+  const settings = (
+    <>
+      {shell !== null && (
+        <span
+          data-tour="shell-mode"
+          className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1 max-sm:flex max-sm:min-h-11 max-sm:items-center"
+        >
+          {shell.method}
+          {shell.excludeFromContext ? " · not in context" : ""}
+        </span>
+      )}
+      <ModelPicker
+        controller={controller}
+        model={model}
+        role={role}
+        disabled={disabled}
+        open={modelPickerOpen}
+        onOpenChange={onModelPickerOpenChange}
+        onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
+      />
+      {thinkingLevel !== null && (
+        <ThinkingChip
+          controller={controller}
+          level={thinkingLevel}
+          disabled={disabled}
+          onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
+        />
+      )}
+      <PlanChip
+        controller={controller}
+        status={planMode}
+        disabled={disabled}
+        onError={(failure) => setError(`Plan mode: ${errorText(failure)}`)}
+      />
+      <GoalChip controller={controller} goal={goal} />
+    </>
+  );
+  const status =
+    error ?? (waitingToSend !== null && disabled ? "Sends once the chat is open" : null);
+  /** Send, or Stop while omp works; on a phone a full-size target beside the text. */
+  const sendOrStop = working ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="secondary"
+            size={phone ? "icon" : "icon-sm"}
+            className={phone ? "size-11 shrink-0" : undefined}
+            aria-label="Stop"
+            onClick={stop}
+          />
+        }
+      >
+        <Square className="fill-current" />
+      </TooltipTrigger>
+      <TooltipContent>Stop (Esc)</TooltipContent>
+    </Tooltip>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="submit"
+            size={phone ? "icon" : "icon-sm"}
+            className={phone ? "size-11 shrink-0" : undefined}
+            aria-label="Send"
+            disabled={disabled || sending || (text.trim().length === 0 && attachments.length === 0)}
+          />
+        }
+      >
+        <ArrowUp />
+      </TooltipTrigger>
+      <TooltipContent>Send (Enter)</TooltipContent>
+    </Tooltip>
+  );
+  const hasPills = agentsTotal > 0 || todos.some((phase) => phase.tasks.length > 0);
+  const pills = hasPills && (
+    <>
+      <TodoPill phases={todos} />
+      <AgentsPill running={agentsRunning} total={agentsTotal} onOpen={onOpenAgents} />
+    </>
+  );
+
   return (
-    <div className="px-4 pt-2 pb-4">
+    <div className="px-4 pt-2 pb-4 max-sm:px-2 max-sm:pb-2">
       <div className="relative mx-auto max-w-[720px]">
         {toast !== null && <Toast toast={toast} onDone={onToastDone} />}
-        {activity !== null && <WorkingRow activity={activity} />}
+        {/* On a phone the pills share the working row: one line between the chat and the box. */}
+        {activity !== null && (
+          <WorkingRow activity={activity} stopKey={!phone}>
+            {phone && pills}
+          </WorkingRow>
+        )}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
-        {(agentsTotal > 0 || todos.some((phase) => phase.tasks.length > 0)) && (
-          <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">
-            <TodoPill phases={todos} />
-            <AgentsPill running={agentsRunning} total={agentsTotal} onOpen={onOpenAgents} />
-          </div>
+        {hasPills && !(phone && activity !== null) && (
+          <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">{pills}</div>
+        )}
+        {phone && status !== null && (
+          <p className="truncate px-1 pb-1.5 text-xs text-bad-ink" role="status">
+            {status}
+          </p>
         )}
         <form
           data-tour="message-box"
@@ -481,129 +581,87 @@ export const Composer = memo(function Composer({
               ))}
             </ul>
           )}
-          <textarea
-            ref={boxRef}
-            className="block max-h-[12lh] min-h-[2lh] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[0.875rem] leading-normal text-t1 outline-none [field-sizing:content] placeholder:text-t3"
-            aria-label="Message"
-            placeholder={
-              closed
-                ? "This chat could not be opened"
-                : disabled
-                  ? "Opening the chat…"
-                  : "Message omp"
-            }
-            value={text}
-            rows={2}
-            onChange={(event) => {
-              setError(null);
-              // Typing makes what is in the box the text, wherever Up and Down had got to.
-              browsing.current = null;
-              update(event.target.value);
-              setCaret(event.target.selectionStart);
-            }}
-            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-            onKeyDown={onKeyDown}
-            onPaste={(event) => {
-              const files = [...event.clipboardData.files];
-              // Text copied from a page goes in as text, as before.
-              if (event.clipboardData.getData("text/plain") !== "") return;
-              if (files.length > 0) {
-                event.preventDefault();
-                addFiles(files);
-                return;
+          <div className={phone ? "flex items-end gap-1.5 pr-1.5 pb-1.5" : undefined}>
+            <textarea
+              ref={boxRef}
+              className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] py-2.5 text-base leading-snug" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[0.875rem] leading-normal"}`}
+              aria-label="Message"
+              placeholder={
+                closed
+                  ? "This chat could not be opened"
+                  : disabled
+                    ? "Opening the chat…"
+                    : "Message omp"
               }
-              // In the desktop window a copied picture comes as nothing at all: the window reads its clipboard.
-              if (desktopBridge() === null) return;
-              event.preventDefault();
-              readDesktopClipboardPicture(++windowPastes.current)
-                .then((file) => {
-                  if (file !== null) addFiles([file]);
-                })
-                .catch((failure: unknown) =>
-                  setError(`Could not paste the picture: ${errorText(failure)}`),
-                );
-            }}
-          />
-          <div className="flex items-center gap-1 px-2 pb-2">
-            {shell !== null && (
-              <span
-                data-tour="shell-mode"
-                className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1"
-              >
-                {shell.method}
-                {shell.excludeFromContext ? " · not in context" : ""}
-              </span>
-            )}
-            <ModelPicker
-              controller={controller}
-              model={model}
-              role={role}
-              disabled={disabled}
-              open={modelPickerOpen}
-              onOpenChange={onModelPickerOpenChange}
-              onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
+              value={text}
+              rows={phone ? 1 : 2}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              onChange={(event) => {
+                setError(null);
+                // Typing makes what is in the box the text, wherever Up and Down had got to.
+                browsing.current = null;
+                update(event.target.value);
+                setCaret(event.target.selectionStart);
+              }}
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+              onKeyDown={onKeyDown}
+              onPaste={(event) => {
+                const files = [...event.clipboardData.files];
+                // Text copied from a page goes in as text, as before.
+                if (event.clipboardData.getData("text/plain") !== "") return;
+                if (files.length > 0) {
+                  event.preventDefault();
+                  addFiles(files);
+                  return;
+                }
+                // In the desktop window a copied picture comes as nothing at all: the window reads its clipboard.
+                if (desktopBridge() === null) return;
+                event.preventDefault();
+                readDesktopClipboardPicture(++windowPastes.current)
+                  .then((file) => {
+                    if (file !== null) addFiles([file]);
+                  })
+                  .catch((failure: unknown) =>
+                    setError(`Could not paste the picture: ${errorText(failure)}`),
+                  );
+              }}
             />
-            {thinkingLevel !== null && (
-              <ThinkingChip
-                controller={controller}
-                level={thinkingLevel}
-                disabled={disabled}
-                onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
-              />
-            )}
-            <PlanChip
-              controller={controller}
-              status={planMode}
-              disabled={disabled}
-              onError={(failure) => setError(`Plan mode: ${errorText(failure)}`)}
-            />
-            <GoalChip controller={controller} goal={goal} />
-            <span
-              className={`min-w-0 flex-1 truncate px-1 text-right text-xs ${error === null ? "text-t3" : "text-bad-ink"}`}
-              role="status"
-            >
-              {error ?? (waitingToSend !== null && disabled ? "Sends once the chat is open" : null)}
-            </span>
-            {working ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon-sm"
-                      aria-label="Stop"
-                      onClick={stop}
-                    />
-                  }
-                >
-                  <Square className="fill-current" />
-                </TooltipTrigger>
-                <TooltipContent>Stop (Esc)</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="submit"
-                      size="icon-sm"
-                      aria-label="Send"
-                      disabled={
-                        disabled ||
-                        sending ||
-                        (text.trim().length === 0 && attachments.length === 0)
-                      }
-                    />
-                  }
-                >
-                  <ArrowUp />
-                </TooltipTrigger>
-                <TooltipContent>Send (Enter)</TooltipContent>
-              </Tooltip>
-            )}
+            {phone && sendOrStop}
           </div>
+          {!phone && (
+            <div className="flex items-center gap-1 px-2 pb-2">
+              {settings}
+              <span
+                className={`min-w-0 flex-1 truncate px-1 text-right text-xs ${error === null ? "text-t3" : "text-bad-ink"}`}
+                role="status"
+              >
+                {status}
+              </span>
+              {sendOrStop}
+            </div>
+          )}
         </form>
+        {phone && (
+          <KeyRow
+            settings={settings}
+            keyboardUp={focused}
+            onInsert={(character) => {
+              // Within the tap, so a phone brings its keyboard up for what follows.
+              boxRef.current?.focus({ preventScroll: true });
+              insertRef.current(character);
+            }}
+            onHistory={(step) => {
+              const box = boxRef.current;
+              if (box === null) return;
+              // The key goes through the sent messages wherever the caret is, as the arrows do from the box's edge.
+              const edge = step < 0 ? 0 : box.value.length;
+              box.setSelectionRange(edge, edge);
+              browse(step, box);
+            }}
+            onHideKeyboard={() => boxRef.current?.blur()}
+          />
+        )}
       </div>
     </div>
   );

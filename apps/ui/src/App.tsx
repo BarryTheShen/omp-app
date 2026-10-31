@@ -1,7 +1,7 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
-import { AppPort, type FolderPath } from "@omp-app/contracts";
+import { AppPort, type FolderPath, type ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, SquarePen } from "lucide-react";
 import {
   lazy,
   type ReactNode,
@@ -11,12 +11,12 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import { ConnectionBanner, REFUSED_WORDS } from "./ConnectionBanner";
 import type { ChatController, ChatTarget } from "./chat/controller";
+import { firstPromptOf } from "./chat/firstPrompts";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
@@ -44,9 +44,11 @@ import { SidePaneContext } from "./panels/SidePane";
 import { SidePanel } from "./panels/SidePanel";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
+import { isPhone, usePhone } from "./phone";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
-import { useChatList } from "./sidebar/useChatList";
+import { titleOf } from "./sidebar/title";
+import { type ChatList, useChatList } from "./sidebar/useChatList";
 import { WhatsNewList } from "./tour/WhatsNewList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
 
@@ -63,26 +65,22 @@ type Connection =
   | { readonly kind: "refused"; readonly refusal: NonNullable<ConnectionStateEvent["refusal"]> }
   | { readonly kind: "ready"; readonly client: AppClient; readonly folder: FolderPath };
 
-/** Tailwind's `sm` breakpoint: below it, one pane. */
-const PHONE = "(max-width: 639px)";
-
-function usePhone(): boolean {
-  return useSyncExternalStore(
-    (notify) => {
-      const query = matchMedia(PHONE);
-      query.addEventListener("change", notify);
-      return () => query.removeEventListener("change", notify);
-    },
-    () => matchMedia(PHONE).matches,
-  );
-}
-
 const NOTHING_OPEN: WorkspaceView = {
   focused: null,
   open: new Set(),
   waiting: new Map(),
   side: null,
 };
+
+/**
+ * The phone's top bar's name for the chat shown: a saved chat's name as the list has it, a chat's first message while
+ * its first reply runs (it has no file to name it yet), else "New chat".
+ */
+function shownTitle(list: ChatList, focused: ThreadId | null): string {
+  if (focused === null) return "New chat";
+  const saved = list.sessions.find((session) => session.id === focused);
+  return saved !== undefined ? titleOf(saved) : (firstPromptOf(focused) ?? "New chat");
+}
 
 /** Connects with the page's launch link, or as a paired device, then shows the app; a device not paired pairs first. */
 export function App(): ReactNode {
@@ -220,7 +218,7 @@ function Shell({
     [client],
   );
   /** On a phone: the list of chats, or the chat. A phone opens on the chat: the workspace starts it on a new one. */
-  const [showChat, setShowChat] = useState(() => matchMedia(PHONE).matches);
+  const [showChat, setShowChat] = useState(isPhone);
   const workspace = useRef<WorkspaceHandle>(null);
   const phone = usePhone();
   const [palette, setPalette] = useState(false);
@@ -355,15 +353,32 @@ function Shell({
         )}
       >
         {phone && (
-          <div className="flex px-2 pt-2">
+          // The phone's top bar: back to the list (marked while a chat waits on you), the chat's name, a new chat.
+          <div className="flex h-11 shrink-0 items-center gap-1 px-1">
             <Button
               variant="ghost"
               size="sm"
-              className="text-t2"
+              className="h-11 shrink-0 text-t2"
+              aria-label={view.waiting.size > 0 ? "Chats, one waiting on you" : "Chats"}
               onClick={() => setShowChat(false)}
             >
               <ChevronLeft />
               Chats
+              {view.waiting.size > 0 && (
+                <span className="size-1.5 rounded-full bg-live" aria-hidden="true" />
+              )}
+            </Button>
+            <h1 className="min-w-0 flex-1 truncate text-center text-sm font-medium text-t1">
+              {shownTitle(list, view.focused)}
+            </h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-11 shrink-0 text-t2"
+              aria-label="New chat"
+              onClick={() => openChat({ kind: "new", folder }, "here")}
+            >
+              <SquarePen />
             </Button>
           </div>
         )}

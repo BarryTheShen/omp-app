@@ -40,15 +40,13 @@ import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
 import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
+import { titleOf } from "./title";
 import type { ChatList } from "./useChatList";
 
 /** How long the pointer rests on a chat before it is read ahead. */
 const PREFETCH_REST_MS = 120;
 
 type ChatState = "waiting" | "running" | null;
-
-const titleOf = (session: SessionFile): string =>
-  session.displayTitle ?? session.title ?? session.firstPrompt ?? "Untitled chat";
 
 /** A chat whose first reply still runs has no file to title it yet: the first message this page sent in it names it. */
 const startingTitleOf = (id: ThreadId): string => firstPromptOf(id) ?? "New chat";

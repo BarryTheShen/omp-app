@@ -11,6 +11,7 @@ import {
   useRef,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { usePhone } from "../phone";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import {
   AssistantBody,
@@ -249,14 +250,16 @@ export function TranscriptList({
       </section>
       {empty && welcome !== null && <Welcome folder={welcome.folder} />}
       {!empty && !virtualizer.isAtEnd() && (
+        // On a phone a round button in the corner, clear of the text being read.
         <Button
           variant="secondary"
           size="sm"
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border-l2 px-3 shadow-md"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border-l2 px-3 shadow-md max-sm:right-3 max-sm:left-auto max-sm:size-11 max-sm:translate-x-0 max-sm:px-0"
+          aria-label="Jump to latest"
           onClick={() => virtualizer.scrollToEnd({ behavior: "smooth" })}
         >
           <ArrowDown />
-          Jump to latest
+          <span className="max-sm:sr-only">Jump to latest</span>
         </Button>
       )}
     </div>
@@ -269,13 +272,14 @@ function folderTail(folder: string): string {
   return parts.length <= 2 ? folder : `…/${parts.slice(-2).join("/")}`;
 }
 
-/** A new chat's first screen: where omp will work, and the keys of the message box. */
+/** A new chat's first screen: where omp will work, and the keys of the message box (a phone's return key adds a line). */
 function Welcome({ folder }: { readonly folder: string }): ReactNode {
+  const phone = usePhone();
   const keys: readonly (readonly [string, string])[] = [
     ["/", "commands"],
     ["@", "files"],
     ["!", "shell"],
-    ["Enter", "send"],
+    ...(phone ? [] : ([["Enter", "send"]] as const)),
   ];
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
