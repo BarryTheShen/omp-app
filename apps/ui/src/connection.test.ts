@@ -23,6 +23,7 @@ function cookieJar() {
 function page(options: { hash: string; ios: boolean; cookies: ReturnType<typeof cookieJar> }) {
   const session = new Map<string, string>();
   let address = `/${options.hash}`;
+  const shown: (() => void)[] = [];
   vi.stubGlobal("window", {
     location: { hash: options.hash, pathname: "/", search: "" },
     sessionStorage: {
@@ -36,8 +37,19 @@ function page(options: { hash: string; ios: boolean; cookies: ReturnType<typeof 
     },
     navigator: options.ios ? { standalone: false } : {},
   });
-  vi.stubGlobal("document", options.cookies);
-  return { address: () => address };
+  // The page's document: the site's cookies, and the page coming back to the front.
+  const document = Object.create(options.cookies);
+  document.visibilityState = "visible";
+  document.addEventListener = (type: string, listener: () => void) => {
+    if (type === "visibilitychange") shown.push(listener);
+  };
+  vi.stubGlobal("document", document);
+  return {
+    address: () => address,
+    comeBack: () => {
+      for (const listener of shown) listener();
+    },
+  };
 }
 
 async function readToken(): Promise<string | null> {
@@ -68,6 +80,17 @@ describe("readToken", () => {
     page({ hash: "#token=new", ios: true, cookies });
     expect(await readToken()).toBe("new");
     expect(cookies.values.get("omp-app-token")).toBe("new");
+  });
+
+  test("on iOS the kept token is written again at each start and each return to the front: WebKit keeps a script's cookie only 7 days", async () => {
+    const cookies = cookieJar();
+    cookies.values.set("omp-app-token", "abc");
+    const line = "omp-app-token=abc; Path=/; Max-Age=34560000; SameSite=Strict; Secure";
+    const app = page({ hash: "", ios: true, cookies });
+    expect(await readToken()).toBe("abc");
+    expect(cookies.written).toEqual([line]);
+    app.comeBack();
+    expect(cookies.written).toEqual([line, line]);
   });
 
   test("elsewhere the token lasts as long as the tab", async () => {

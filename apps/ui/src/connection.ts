@@ -31,6 +31,24 @@ function tokenFromCookie(): string | null {
   return null;
 }
 
+/** The token the page uses, written again on iOS each time the page comes back to the front. */
+let renewed: string | null = null;
+
+/**
+ * WebKit keeps a cookie a script writes 7 days at most, also in a Home Screen app (WebKit bug 237350), so on iOS the
+ * token's cookie is written again whenever the page starts and whenever it comes back to the front: an app opened at
+ * least once a week stays signed in.
+ */
+function keepFresh(token: string): void {
+  if (!onIos()) return;
+  if (renewed === null)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && renewed !== null) keepForHomeScreen(renewed);
+    });
+  renewed = token;
+  keepForHomeScreen(token);
+}
+
 /**
  * The launch token: from the address (`#token=…`), which then loses it, or the one this tab kept, or on iOS the one
  * kept for the Home Screen. Null when the app was opened without its link.
@@ -44,7 +62,7 @@ export function readToken(): string | null {
     } catch {
       // Storage may be off; the token still works for this page.
     }
-    keepForHomeScreen(fromAddress);
+    keepFresh(fromAddress);
     params.delete("token");
     const rest = params.toString();
     window.history.replaceState(
@@ -56,11 +74,16 @@ export function readToken(): string | null {
   }
   try {
     const kept = window.sessionStorage.getItem(TOKEN_KEY);
-    if (kept !== null) return kept;
+    if (kept !== null) {
+      keepFresh(kept);
+      return kept;
+    }
   } catch {
     // Storage may be off: the Home Screen's cookie is all there is.
   }
-  return tokenFromCookie();
+  const fromCookie = tokenFromCookie();
+  if (fromCookie !== null) keepFresh(fromCookie);
+  return fromCookie;
 }
 
 export function connect(token: string): AppClient {
