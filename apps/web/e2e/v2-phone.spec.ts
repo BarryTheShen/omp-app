@@ -154,7 +154,13 @@ realTest.describe("new UI on a phone", () => {
       await expect(panel).toHaveCount(0);
 
       // Sent: a message sent before goes back in the box.
+      // The box puts its caret after an insert a frame later. A clear before that frame selects all, then the caret
+      // lands at the end before the Delete, which leaves the text: wait for the frame (2 runs in 20 did).
+      await page.evaluate(
+        () => new Promise((done) => requestAnimationFrame(() => done(undefined))),
+      );
       await box(page).fill("");
+      await expect(box(page)).toHaveValue("");
       await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
       await panel.getByRole("tab", { name: "Sent" }).tap();
       await panel.getByRole("button", { name: "Continue" }).tap();
