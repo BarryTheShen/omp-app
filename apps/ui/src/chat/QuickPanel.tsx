@@ -1,23 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useLongPress } from "../longPress";
-
-/** The prompts a phone sends with one tap: short answers that keep omp going. */
-export const QUICK_PROMPTS = [
-  "Continue",
-  "Sure",
-  "Yes",
-  "No",
-  "Idk, need to think about this",
-  "Explain that",
-  "Go ahead",
-  "Stop and sum up",
-] as const;
+import { useQuickPrompts } from "./quickPrompts";
 
 /**
- * The phone's quick panel, in the keyboard's place (Termius's side panel on an iPhone): prompts sent with one tap, or
- * put in the box with a long press to be changed first, and the messages sent before in this chat, put in the box with
- * a tap.
+ * The phone's quick panel, in the keyboard's place (Termius's side panel on an iPhone): this phone's prompts (Settings
+ * → App), sent with one tap or put in the box with a long press to be changed first, and the messages sent before in
+ * this chat, put in the box with a tap.
  */
 export function QuickPanel({
   history,
@@ -35,6 +24,7 @@ export function QuickPanel({
   readonly onPut: (text: string) => void;
 }): ReactNode {
   const [tab, setTab] = useState<"prompts" | "sent">("prompts");
+  const prompts = useQuickPrompts();
   return (
     <section
       data-tour="quick-panel"
@@ -52,7 +42,7 @@ export function QuickPanel({
       <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
         {tab === "prompts" ? (
           <ul className="grid grid-cols-2 gap-2">
-            {QUICK_PROMPTS.map((prompt) => (
+            {prompts.map((prompt) => (
               <li key={prompt}>
                 <PromptButton text={prompt} disabled={disabled} onSend={onSend} onPut={onPut} />
               </li>
@@ -81,7 +71,9 @@ export function QuickPanel({
         )}
       </div>
       <p className="px-3 pb-2 text-xs text-t3">
-        {tab === "prompts" ? "Tap to send · hold to change it first" : "Tap to put it in the box"}
+        {tab === "prompts"
+          ? "Tap to send · hold to change it first · Settings → App changes the list"
+          : "Tap to put it in the box"}
       </p>
     </section>
   );

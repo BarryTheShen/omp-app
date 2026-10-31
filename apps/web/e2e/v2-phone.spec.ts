@@ -240,4 +240,42 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "Settings → App changes this phone's quick prompts, and the starting set comes back",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const list = page.getByRole("navigation", { name: "Chats" });
+      const field = page.getByRole("textbox", { name: "Quick prompts" });
+      const openAppSettings = async () => {
+        await page.getByRole("button", { name: "Chats", exact: true }).tap();
+        await list.getByRole("button", { name: "Settings" }).tap();
+        await page
+          .getByRole("navigation", { name: "Settings sections" })
+          .getByRole("button", { name: "App", exact: true })
+          .tap();
+      };
+      await openAppSettings();
+      // One a line; empty lines and repeats are dropped when it is saved.
+      await field.fill("Ship it\n\nLooks good\nShip it");
+      await page.getByRole("button", { name: "Save" }).tap();
+      await expect(field).toHaveValue("Ship it\nLooks good");
+      await page.keyboard.press("Escape");
+      await list.getByRole("button", { name: "New chat" }).tap();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      const panel = page.getByRole("region", { name: "Quick prompts" });
+      await expect(panel.getByRole("listitem")).toHaveText(["Ship it", "Looks good"]);
+
+      await openAppSettings();
+      await page.getByRole("button", { name: "Use the starting set" }).tap();
+      await expect(field).toHaveValue(/^Continue\nSure\n/);
+      await page.keyboard.press("Escape");
+      await list.getByRole("button", { name: "New chat" }).tap();
+      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await expect(panel.getByRole("listitem").first()).toHaveText("Continue");
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });
