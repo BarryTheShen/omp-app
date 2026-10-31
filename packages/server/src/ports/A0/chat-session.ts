@@ -126,6 +126,8 @@ const SPARE_FOLDERS = 2;
 const SPARE_MAX_AGE_MS = 10 * 60_000;
 /** A ready new chat is replaced by a fresh one this long after it started, so one within its age always waits (#2768). */
 const SPARE_REFRESH_MS = 9 * 60_000;
+/** An open at least this long logs when each of its steps ended (`chat_session.open_steps`, #2768). */
+const SLOW_OPEN_MS = 1_000;
 /** The global timer, which does not keep the server running for a spare's refresh alone. */
 const SPARE_TIMER: ProcessTimer = {
   setTimeout: (handler, delayMs) => {
@@ -415,6 +417,22 @@ export class ChatSessionPortRuntime {
 
   async open(args: OpenThreadArgs, call: PortHandlerContext): Promise<ChatOpenResult> {
     const registry = this.#context.processRegistry;
+    // A slow open says where its time went (#2768): when each step ended, from the open's start.
+    const began = Date.now();
+    const steps: Record<string, number> = {};
+    const step = (name: string): void => {
+      steps[`${name}_ms`] = Date.now() - began;
+    };
+    const slow = (how: "spare" | "joined" | "started", threadId: ThreadId): void => {
+      const total = Date.now() - began;
+      if (total >= SLOW_OPEN_MS)
+        this.#context.logger?.info("chat_session.open_steps", {
+          threadId,
+          how,
+          total_ms: total,
+          ...steps,
+        });
+    };
     if (this.#context.health.status !== "ok") {
       throw new AppFailure({
         code: "unavailable",
@@ -425,13 +443,20 @@ export class ChatSessionPortRuntime {
     // A new chat in a folder with one ready takes it: no omp to start, no wait (#2760).
     if ("start" in args && args.start === "new") {
       const taken = await this.#takeSpare(args.folderPath, call);
-      if (taken !== undefined) return taken;
+      if (taken !== undefined) {
+        slow("spare", taken.threadId);
+        return taken;
+      }
+      step("spare");
     }
     // A chat whose process is stopping keeps its entry with the bootstrap of its first start: the stop is waited for
     // first, so the open resumes the chat's file (issue 2212).
     if ("threadId" in args) await registry.whenGone(args.threadId, "opened");
+    step("stopped");
     const bootstrap = await this.#resolveBootstrap(args, call.signal);
+    step("resolved");
     await registry.whenGone(bootstrap.threadId, "opened");
+    step("gone");
     // A connection that closed while this open waited released its views before this one was added; nothing awaits
     // between this check and the view, so an open that passes it is released by its connection's close.
     if (call.signal.aborted) throw cancelled("Opening the chat was cancelled.");
@@ -446,10 +471,12 @@ export class ChatSessionPortRuntime {
       }
       registry.acquire(this.#processOptions(bootstrap));
       this.#addViewer(existing, call.connectionId);
+      slow("joined", bootstrap.threadId);
       return this.#openResult(existing);
     }
 
     await this.#refuseChatHeldElsewhere(bootstrap);
+    step("lease");
     const process = registry.acquire(this.#processOptions(bootstrap));
     const entry = this.#newEntry(bootstrap, process);
     entry.unsubscribe = this.#listen(entry);
@@ -457,6 +484,7 @@ export class ChatSessionPortRuntime {
     this.#addViewer(entry, call.connectionId);
     try {
       await this.#start(entry);
+      step("started");
       // A newer pick superseded this open while the chat started: the open ends here, and the catch lets its view go.
       if (call.signal.aborted) throw cancelled("Opening the chat was cancelled.");
       let identity = await this.#identity(entry);
@@ -469,6 +497,7 @@ export class ChatSessionPortRuntime {
         identity = await this.#identity(entry);
       }
       this.#rekey(entry, "threadId" in args ? args.threadId : undefined, identity);
+      step("identified");
     } catch (error) {
       // A cancelled open leaves a chat another view still watches running: only this open's view goes.
       const otherViews = [...entry.viewers].reduce(
@@ -498,6 +527,7 @@ export class ChatSessionPortRuntime {
     }
     // The next new chat in this folder is made ready now.
     if ("start" in args && args.start === "new") this.#prepareSpare(entry.bootstrap.folderPath);
+    slow("started", entry.bootstrap.threadId);
     return this.#openResult(entry);
   }
 
