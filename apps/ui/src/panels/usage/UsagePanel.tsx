@@ -99,7 +99,13 @@ function Bar({
 
 const count = (value: number): string => value.toLocaleString();
 
-/** The focused chat's numbers, read when it opens, when a turn ends and when its model changes. */
+/** How often a chat's numbers are read again while its turn runs: omp's counts grow with each finished message. */
+const DURING_TURN_EVERY_MS = 10_000;
+
+/**
+ * The focused chat's numbers: read when it shows, every 10 s while a turn runs, when a turn ends and when its model
+ * changes. A busy chat would otherwise show nothing until its turn ends.
+ */
 function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNode {
   const working = useSyncExternalStore(
     chat.store.subscribe,
@@ -121,26 +127,41 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
   const [problem, setProblem] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a changed model is read again too
   useEffect(() => {
-    if (!live || working) return;
+    if (!live) return;
     let alive = true;
-    chat
-      .usage()
-      .then((usage) => {
-        if (chat.threadId !== null) keptUsage(chat.threadId).set(usage);
-        if (!alive) return;
-        setRead({ chat, usage });
-        setProblem(null);
-      })
-      .catch(
-        (failure: unknown) =>
-          alive && setProblem(`Could not read this chat's usage: ${failureText(failure)}`),
-      );
+    let reading = false;
+    const read = () => {
+      if (reading) return;
+      reading = true;
+      chat
+        .usage()
+        .then((usage) => {
+          if (chat.threadId !== null) keptUsage(chat.threadId).set(usage);
+          if (!alive) return;
+          setRead({ chat, usage });
+          setProblem(null);
+        })
+        .catch(
+          (failure: unknown) =>
+            alive && setProblem(`Could not read this chat's usage: ${failureText(failure)}`),
+        )
+        .finally(() => {
+          reading = false;
+        });
+    };
+    read();
+    const timer = working
+      ? window.setInterval(() => {
+          if (document.visibilityState === "visible") read();
+        }, DURING_TURN_EVERY_MS)
+      : undefined;
     return () => {
       alive = false;
+      window.clearInterval(timer);
     };
   }, [chat, live, working, model]);
 
-  // Until this chat's numbers are read, the ones it showed last (during a turn they are not read).
+  // Until this chat's numbers are read, the ones this page showed last.
   const usage =
     read?.chat === chat
       ? read.usage

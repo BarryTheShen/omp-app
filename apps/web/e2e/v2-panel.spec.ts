@@ -176,6 +176,30 @@ realTest.describe("new UI side panel", () => {
   );
 
   realTest(
+    "a chat in the middle of a turn shows its numbers without waiting for the turn to end",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
+        timeout: 120_000,
+      });
+      // The fake model streams this reply for about a minute.
+      await boxes(page).first().fill("stream_steady");
+      await boxes(page).first().press("Enter");
+      const stop = page.getByRole("button", { name: "Stop" });
+      await expect(stop).toBeVisible({ timeout: 60_000 });
+
+      // Usage opened during the turn, on a page that never read this chat: its numbers come within a read.
+      await page.keyboard.press("Control+Alt+KeyB");
+      const user = numbers(page, "Messages").getByRole("definition").first();
+      await expect(user).toHaveText("1", { timeout: 20_000 });
+      await expect(stop).toBeVisible();
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "Progress shows the todo list, sets and pauses a goal and turns plan mode on; Agents lists a subagent and opens the Agent Hub on it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
