@@ -1,7 +1,7 @@
 import type { Token } from "@oh-my-pi/pi-utils/marked";
 import { Marked } from "@oh-my-pi/pi-utils/marked";
 import { listMayContinueAt } from "@oh-my-pi/pi-utils/marked-list";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { memo, useMemo, useRef } from "react";
 import { escapeHtml } from "../../lib/format";
 import { mathExtension } from "./math";
@@ -73,6 +73,13 @@ const md = new Marked({
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
 		},
+		// A code block, with a Copy button that `copyCode` handles.
+		code({ text, lang, escaped }) {
+			const language = (lang ?? "").match(/^\S*/)?.[0] ?? "";
+			const body = `${text.replace(/\n$/, "")}\n`;
+			const languageClass = language === "" ? "" : ` class="language-${escapeHtml(language)}"`;
+			return `<div class="tr-code"><button type="button" class="tr-code-copy" data-copy-code aria-label="Copy code">Copy</button><pre><code${languageClass}>${escaped ? body : escapeHtml(body)}</code></pre></div>\n`;
+		},
 	},
 	breaks: true,
 });
@@ -86,9 +93,32 @@ function renderMarkdown(text: string): string {
 	}
 }
 
+/**
+ * A click on a code block's Copy button copies the block's text, and the button says so for a moment. One handler on
+ * the rendered Markdown serves every block, since the blocks are HTML, not React elements.
+ */
+function copyCode(event: MouseEvent<HTMLDivElement>): void {
+	const button = event.target instanceof Element ? event.target.closest("button[data-copy-code]") : null;
+	if (!(button instanceof HTMLButtonElement)) return;
+	const text = button.parentElement?.querySelector("code")?.textContent ?? "";
+	void navigator.clipboard.writeText(text.replace(/\n$/, "")).then(
+		() => sayForAMoment(button, "Copied"),
+		() => sayForAMoment(button, "Couldn't copy"),
+	);
+}
+
+function sayForAMoment(button: HTMLButtonElement, said: string): void {
+	button.textContent = said;
+	window.setTimeout(() => {
+		button.textContent = "Copy";
+	}, 1500);
+}
+
 export const Markdown = memo(function Markdown({ text }: { text: string }): ReactNode {
 	const html = useMemo(() => renderMarkdown(text), [text]);
-	return <div className="tr-md" dangerouslySetInnerHTML={{ __html: html }} />;
+	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on the code blocks' Copy buttons, which take the keyboard themselves
+	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
+	return <div className="tr-md" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 /**
@@ -200,5 +230,7 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { tex
 		prefixRef.current = rendered.prefix;
 		return rendered.html;
 	}, [text]);
-	return <div className="tr-md" dangerouslySetInnerHTML={{ __html: html }} />;
+	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on the code blocks' Copy buttons, which take the keyboard themselves
+	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
+	return <div className="tr-md" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
 });

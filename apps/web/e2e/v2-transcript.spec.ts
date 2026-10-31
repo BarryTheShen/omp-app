@@ -68,4 +68,41 @@ realTest.describe("new UI transcript", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a code block in a reply shows Copy under the pointer, and it copies the code alone",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+      const box = page.getByRole("textbox", { name: "Message" });
+      await box.fill("stream_code");
+      await box.press("Enter");
+
+      const block = page.locator("pre").filter({ hasText: "export const answer" });
+      await expect(block).toBeVisible({ timeout: 60_000 });
+      // The block is drawn again, as a settled reply, when the turn ends; the Copy button to press is that one.
+      await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 60_000 });
+      const copy = page.getByRole("button", { name: "Copy code" });
+      await expect(copy).toHaveCSS("opacity", "0");
+      await block.hover();
+      await expect(copy).toHaveCSS("opacity", "1");
+      await copy.click();
+      await expect(copy).toHaveText("Copied");
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+        [
+          "export function sum(values: number[]): number {",
+          "  let total = 0;",
+          "  for (const value of values) {",
+          "    total += value;",
+          "  }",
+          "  return total;",
+          "}",
+          "",
+          "export const answer = sum([1, 2, 3]);",
+        ].join("\n"),
+      );
+      await expect(copy).toHaveText("Copy", { timeout: 5_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

@@ -430,6 +430,53 @@
 	line-height: 1.5;
 }
 
+/* A code block and its Copy button, in the block's top right corner: shown while the pointer is over the block or the
+   button has the keyboard, and always on a touch screen, which has no hover. */
+.tr-md .tr-code {
+	position: relative;
+	margin: 10px 0;
+}
+
+.tr-md .tr-code > pre {
+	margin: 0;
+}
+
+.tr-md .tr-code-copy {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	padding: 3px 8px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--bg-raised);
+	color: var(--fg-muted);
+	font: 500 11px/1.4 var(--font-ui);
+	cursor: pointer;
+	user-select: none;
+	opacity: 0;
+	transition: opacity 120ms var(--ease-out);
+}
+
+.tr-md .tr-code:hover .tr-code-copy,
+.tr-md .tr-code-copy:focus-visible {
+	opacity: 1;
+}
+
+.tr-md .tr-code-copy:hover {
+	color: var(--fg);
+}
+
+/* Shown all the time, the button gets a strip of its own above the code, so it never covers the first line. */
+@media (hover: none) {
+	.tr-md .tr-code-copy {
+		opacity: 1;
+	}
+
+	.tr-md .tr-code > pre {
+		padding-top: 36px;
+	}
+}
+
 .tr-md blockquote {
 	margin: 8px 0;
 	padding: 2px 12px;
