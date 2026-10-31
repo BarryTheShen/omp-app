@@ -201,10 +201,9 @@ realTest.describe("new UI settings", () => {
     await openSettings(page);
     await tab(page, "Providers").click();
     // The test environment gives omp an Anthropic key: signed in; the others are one choice away.
-    await expect(signIn.getByRole("listitem").filter({ hasText: "Anthropic" })).toContainText(
-      "Signed in",
-      { timeout: 30_000 },
-    );
+    await expect(signIn.getByRole("listitem", { name: "Anthropic" })).toContainText("Signed in", {
+      timeout: 30_000,
+    });
     const signInButton = signIn.getByRole("button", { name: "Sign in", exact: true });
     await expect(signInButton).toBeDisabled();
     await signIn.getByRole("combobox", { name: "Provider to sign in to" }).click();

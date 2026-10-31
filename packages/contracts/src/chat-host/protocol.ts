@@ -440,6 +440,41 @@ export interface LoginProvider {
   readonly authenticated: boolean;
 }
 
+export const LogoutAccountParams = z.object({
+  providerId: z.string().min(1),
+  credentialId: z.number().int(),
+});
+export type LogoutAccountParams = z.infer<typeof LogoutAccountParams>;
+
+/** One account omp stores for a provider, as omp's `/logout` lists it. */
+export interface ProviderAccount {
+  /** omp's number for the stored credential, which signing out names. */
+  readonly credentialId: number;
+  /** Who it is: the account's email, account id or project, with its organization when two share one email. */
+  readonly label: string;
+  /** omp's longer line: the email, account and project, and the credential's number. */
+  readonly detail: string;
+  readonly kind: "oauth" | "api_key";
+  /** The account this chat's requests use now. */
+  readonly active: boolean;
+}
+
+/**
+ * Where a provider's sign-in comes from when no stored account gives it: omp's `--api-key`, a key in omp's
+ * models.yml, or an environment variable (`envVar`, when one variable holds it).
+ */
+export interface ProviderAuthSource {
+  readonly kind: "runtime" | "config" | "env";
+  readonly envVar?: string;
+}
+
+/** A provider's stored accounts, the one in use first, and another source of its sign-in when there is one. */
+export interface ProviderAccounts {
+  readonly providerId: string;
+  readonly accounts: readonly ProviderAccount[];
+  readonly otherSource?: ProviderAuthSource;
+}
+
 /** omp's todo statuses (`TodoStatus`); as with the levels, a status omp adds or drops fails the typecheck here. */
 const TODO_STATUSES: { readonly [Status in TodoStatus]: Status } = {
   pending: "pending",
@@ -784,6 +819,19 @@ export interface ChatHostMethodMap {
     readonly params: LoginParams;
     readonly result: { readonly providerId: string };
   };
+  /** The accounts omp stores for a provider (omp's `/logout` list). */
+  readonly get_provider_accounts: {
+    readonly params: LoginParams;
+    readonly result: ProviderAccounts;
+  };
+  /**
+   * Signs one stored account out (omp's `/logout`) and reads the provider's models again; answers whether it was
+   * still stored, and the provider's accounts after.
+   */
+  readonly logout_account: {
+    readonly params: LogoutAccountParams;
+    readonly result: ProviderAccounts & { readonly removed: boolean };
+  };
   /** Replaces the app's tools in the session; answers the names omp registered. */
   readonly set_host_tools: {
     readonly params: SetHostToolsParams;
@@ -974,6 +1022,8 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_ask_dialog: EnabledParams,
   get_login_providers: EmptyParams,
   login: LoginParams,
+  get_provider_accounts: LoginParams,
+  logout_account: LogoutAccountParams,
   set_host_tools: SetHostToolsParams,
   set_host_uri_schemes: SetHostUriSchemesParams,
   host_tool_update: HostToolUpdateParams,

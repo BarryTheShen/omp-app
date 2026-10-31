@@ -41,6 +41,10 @@ import {
 } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { executeAcpBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/acp-builtins";
 import { buildAvailableSlashCommands } from "@oh-my-pi/pi-coding-agent/slash-commands/available-commands";
+import {
+  listLogoutAccounts,
+  logoutCredential,
+} from "@oh-my-pi/pi-coding-agent/slash-commands/helpers/logout";
 import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "@oh-my-pi/pi-coding-agent/tools/todo";
 import { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
@@ -59,6 +63,7 @@ import {
   isChatHostMethod,
   type PromptAnswer,
   type PromptParams,
+  type ProviderAccounts,
   parseChatHostParams,
   parseServerLine,
   type QueuedInputParams,
@@ -115,6 +120,8 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "bash",
   "python",
   "login",
+  // Signing out reads the provider's models again from its servers.
+  "logout_account",
   "host_tool_update",
   // A subagent's answer to a message can take a step; omp answers it outside the command order too.
   "steer_subagent",
@@ -128,6 +135,39 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
 
 /** How often a host asked to hand its chat back checks that the turn it runs has finished. */
 const HAND_BACK_CHECK_MS = 500;
+
+/**
+ * A provider's stored accounts as omp's `/logout` lists them (`slash-commands/helpers/logout.ts`: the store read again,
+ * the one this session uses first), and where its sign-in comes from when no stored account gives it.
+ */
+async function readProviderAccounts(
+  session: AgentSession,
+  providerId: string,
+): Promise<ProviderAccounts> {
+  const provider = getOAuthProviders().find((candidate) => candidate.id === providerId);
+  if (!provider) throw new Error(`Unknown OAuth provider: ${providerId}`);
+  const { authStorage } = session.modelRegistry;
+  const accounts = await listLogoutAccounts(authStorage, providerId, session.sessionId);
+  const source = authStorage.keys.source(provider.storeCredentialsAs ?? provider.id);
+  return {
+    providerId,
+    accounts: accounts.map(({ credentialId, label, detail, type, active }) => ({
+      credentialId,
+      label,
+      detail,
+      kind: type,
+      active,
+    })),
+    ...(source === undefined || source.kind === "oauth" || source.kind === "api_key"
+      ? {}
+      : {
+          otherSource: {
+            kind: source.kind,
+            ...(source.envVar === undefined ? {} : { envVar: source.envVar }),
+          },
+        }),
+  };
+}
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
 export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
@@ -619,6 +659,18 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         "online",
       );
       return { providerId };
+    },
+    get_provider_accounts: async ({ providerId }) => readProviderAccounts(session, providerId),
+    logout_account: async ({ providerId, credentialId }) => {
+      if (!getOAuthProviders().some((candidate) => candidate.id === providerId))
+        throw new Error(`Unknown OAuth provider: ${providerId}`);
+      const { removed } = await logoutCredential(
+        session.modelRegistry,
+        providerId,
+        credentialId,
+        session.sessionId,
+      );
+      return { removed, ...(await readProviderAccounts(session, providerId)) };
     },
     set_host_tools: async ({ tools }) => {
       const definitions = checkHostTools(tools);

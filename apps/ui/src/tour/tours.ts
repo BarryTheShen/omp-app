@@ -679,6 +679,47 @@ const IPHONE_TOUR: Tour = {
   ],
 };
 
+const PROVIDER_ACCOUNTS = part("provider-accounts");
+
+const PROVIDER_ACCOUNTS_TOUR: Tour = {
+  id: "provider-accounts-2026-10-31",
+  title: "Your provider accounts",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-providers"),
+      title: "Providers",
+      text: "Your sign-ins are at the top of <b>Providers</b>. Open it.",
+      action: { kind: "appears", selector: part("provider-sign-in") },
+    },
+    {
+      target: PROVIDER_ACCOUNTS,
+      title: "Your accounts",
+      text: "Each provider you are signed in to lists the accounts omp keeps for it, and which one this chat uses. <b>Sign out</b> removes one account; the others stay.",
+      action: next,
+    },
+    {
+      target: part("provider-sign-in"),
+      title: "Another account",
+      text: "Sign in here to any provider, also one you use already: that adds another account. <b>Add another account</b> beside a provider does the same.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -694,8 +735,15 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-10-31-provider-accounts",
+    when: "2026-10-31T01:52:00-05:00",
+    summary:
+      "Several accounts for one provider in Settings → Providers: add another, sign one out.",
+    tours: [PROVIDER_ACCOUNTS_TOUR],
+  },
+  {
     id: "2026-10-30-iphone",
-    when: "2026-10-30T23:31:00-05:00",
+    when: "2026-10-30T23:30:00-05:00",
     summary:
       "omp on an iPhone: add it to the Home Screen, clear of the notch and the home bar, the message box above the keyboard.",
     tours: [IPHONE_TOUR],

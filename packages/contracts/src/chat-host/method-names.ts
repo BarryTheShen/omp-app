@@ -48,6 +48,8 @@ export const CHAT_HOST_METHOD_NAMES = [
   "set_ask_dialog",
   "get_login_providers",
   "login",
+  "get_provider_accounts",
+  "logout_account",
   "set_host_tools",
   "set_host_uri_schemes",
   "host_tool_update",

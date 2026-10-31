@@ -7,7 +7,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { HostRequest } from "@omp-app/contracts/chat-host";
 import { chatHostChats, PROGRAMS, realTest } from "./sdk-chat-host-harness";
 
-/** `test-login` opens a page and asks for a code; `test-secret` asks for a secret. */
+/**
+ * `test-login` opens a page and asks for a code; `test-secret` asks for a secret; `test-accounts` signs in the account
+ * whose email is pasted, so two sign-ins store two accounts.
+ */
 const EXTENSION = `
 export default function (pi) {
   pi.registerProvider("test-login", {
@@ -31,13 +34,24 @@ export default function (pi) {
       },
     },
   });
+  pi.registerProvider("test-accounts", {
+    oauth: {
+      name: "Test Accounts",
+      async login(callbacks) {
+        callbacks.onAuth({ url: "https://login.example.invalid/accounts" });
+        const email = await callbacks.onPrompt({ message: "Your email" });
+        return { access: "access-" + email, refresh: "refresh-" + email, expires: Date.now() + 3_600_000, email };
+      },
+    },
+  });
 }
 `;
 
 const chats = chatHostChats();
 afterEach(() => chats.stopAll(), 60_000);
 
-async function chatWithSignIn(command: readonly string[], code: string) {
+/** A chat with the test providers; each question a sign-in asks gets the next of `codes`, the last one again after. */
+async function chatWithSignIn(command: readonly string[], ...codes: readonly string[]) {
   const chat = await chats.start(command, {
     agentFiles: { "extensions/sign-in.ts": EXTENSION },
     nativeDiscovery: true,
@@ -45,7 +59,7 @@ async function chatWithSignIn(command: readonly string[], code: string) {
   const asked: HostRequest[] = [];
   chat.client.onRequest(async (request) => {
     asked.push(request);
-    return { value: code };
+    return { value: codes[Math.min(asked.length, codes.length) - 1] };
   });
   await chat.client.hello;
   return { chat, asked };
@@ -134,6 +148,78 @@ describe("the chat host's sign-in", () => {
         expect(asked).toEqual([]);
       },
       60_000,
+    );
+
+    programTest(
+      `${program.name}: two sign-ins store two accounts, and signing one out leaves the other`,
+      async () => {
+        const { chat } = await chatWithSignIn(command, "ada@example.com", "bo@example.com");
+        await chat.client.request("login", { providerId: "test-accounts" });
+        await chat.client.request("login", { providerId: "test-accounts" });
+        const before = await chat.client.request("get_provider_accounts", {
+          providerId: "test-accounts",
+        });
+        expect(before.providerId).toBe("test-accounts");
+        expect(before.otherSource).toBeUndefined();
+        expect(
+          before.accounts
+            .map(({ label, kind }) => ({ label, kind }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        ).toEqual([
+          { label: "ada@example.com", kind: "oauth" },
+          { label: "bo@example.com", kind: "oauth" },
+        ]);
+        const ada = before.accounts.find((account) => account.label === "ada@example.com");
+        if (ada === undefined) throw new Error("ada@example.com is not listed");
+
+        const after = await chat.client.request("logout_account", {
+          providerId: "test-accounts",
+          credentialId: ada.credentialId,
+        });
+        expect(after.removed).toBe(true);
+        expect(after.accounts.map((account) => account.label)).toEqual(["bo@example.com"]);
+        const { providers } = await chat.client.request("get_login_providers", {});
+        expect(providers.find((provider) => provider.id === "test-accounts")?.authenticated).toBe(
+          true,
+        );
+
+        // Signing out an account that is gone already removes nothing.
+        const again = await chat.client.request("logout_account", {
+          providerId: "test-accounts",
+          credentialId: ada.credentialId,
+        });
+        expect(again.removed).toBe(false);
+        expect(again.accounts.map((account) => account.label)).toEqual(["bo@example.com"]);
+      },
+      90_000,
+    );
+
+    programTest(
+      `${program.name}: the last account signed out leaves the provider signed out; unknown providers are refused`,
+      async () => {
+        const { chat } = await chatWithSignIn(command, "ada@example.com");
+        await chat.client.request("login", { providerId: "test-accounts" });
+        const [only] = (
+          await chat.client.request("get_provider_accounts", { providerId: "test-accounts" })
+        ).accounts;
+        if (only === undefined) throw new Error("the account is not listed");
+        const after = await chat.client.request("logout_account", {
+          providerId: "test-accounts",
+          credentialId: only.credentialId,
+        });
+        expect(after).toEqual({ providerId: "test-accounts", accounts: [], removed: true });
+        const { providers } = await chat.client.request("get_login_providers", {});
+        expect(providers.find((provider) => provider.id === "test-accounts")?.authenticated).toBe(
+          false,
+        );
+        await expect(
+          chat.client.request("get_provider_accounts", { providerId: "nope" }),
+        ).rejects.toMatchObject({ message: "Unknown OAuth provider: nope" });
+        await expect(
+          chat.client.request("logout_account", { providerId: "nope", credentialId: 1 }),
+        ).rejects.toMatchObject({ message: "Unknown OAuth provider: nope" });
+      },
+      90_000,
     );
   }
 });

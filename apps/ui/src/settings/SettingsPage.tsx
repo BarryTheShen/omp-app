@@ -152,6 +152,7 @@ function SettingsSheet({
                 type="button"
                 aria-current={current ? "page" : undefined}
                 aria-label={count > 0 ? `${each.label}, ${count} changed` : each.label}
+                data-tour={`settings-tab-${each.id}`}
                 className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}
                 onClick={() => choose(each.id)}
               >

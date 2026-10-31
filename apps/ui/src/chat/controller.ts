@@ -30,6 +30,7 @@ import {
   type LoginProvider,
   type ModelHub,
   type PlanFile,
+  type ProviderAccounts,
   type QueueName,
   type SubagentSnapshot,
 } from "@omp-app/contracts/chat-host";
@@ -483,6 +484,19 @@ export class ChatController {
     } finally {
       this.store.clearSignIn();
     }
+  }
+
+  /** The accounts omp stores for a provider, and another source of its sign-in when there is one. */
+  async providerAccounts(providerId: string): Promise<ProviderAccounts> {
+    return await this.#request("get_provider_accounts", { providerId });
+  }
+
+  /** Signs one stored account out of omp; answers whether it was still stored, and the provider's accounts after. */
+  async logoutAccount(
+    providerId: string,
+    credentialId: number,
+  ): Promise<ProviderAccounts & { readonly removed: boolean }> {
+    return await this.#request("logout_account", { providerId, credentialId });
   }
 
   async setModel(model: ChatModel): Promise<void> {
