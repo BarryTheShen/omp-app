@@ -99,6 +99,11 @@ export interface ChatLoopOptions {
   readonly log: (message: string) => void;
   /** Ends the server's lines: an extension asked the chat to shut down. */
   readonly stopInput: () => void;
+  /**
+   * Tells the loop each time another server attaches to the running chat (D2, a host on a socket): the loop sends its
+   * hello again, then what is live. Returns the function that stops telling.
+   */
+  readonly onServerAttached?: (listener: () => void) => () => void;
 }
 
 /**
@@ -117,7 +122,12 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "live_start",
   // omp's cancel of a side question is synchronous and must overtake a `btw` still starting or a long command.
   "btw_cancel",
+  // A server that attached is shown what is live at once, not after a long command (D2).
+  "replay_live",
 ]);
+
+/** How often a host asked to hand its chat back checks that the turn it runs has finished. */
+const HAND_BACK_CHECK_MS = 500;
 
 /** Runs the chat until the server's lines end (or an extension shuts the chat down). */
 export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
@@ -199,7 +209,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     await emitAvailableCommands();
   };
 
-  const hello: ChatHostHello = {
+  /** The hello, as the session is now: a later server must learn the chat's current id and file. */
+  const helloNow = (): ChatHostHello => ({
     kind: "hello",
     protocol: CHAT_HOST_PROTOCOL_VERSION,
     ompVersion: options.ompVersion,
@@ -209,8 +220,13 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       file: session.sessionFile ?? null,
       cwd: session.sessionManager.getCwd(),
     },
-  };
-  writeMessage(hello);
+    pid: process.pid,
+  });
+  writeMessage(helloNow());
+  // A server that attaches later learns the chat from a new hello. What is live it asks for when its chat is opened
+  // (`replay_live`): until then it reads nothing, so what is sent before would reach nobody.
+  const stopAttached =
+    options.onServerAttached?.(() => writeMessage(helloNow())) ?? (() => undefined);
 
   // omp's persistence surface (`registerRpcPersistenceSurface`): a store failure and a session move, mirrored on
   // stderr. Kept through the session's dispose, when a failure latched in its close still needs reporting.
@@ -619,6 +635,25 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       return { level: subagents.level };
     },
     get_subagents: async () => ({ subagents: subagents.list() }),
+    hand_back: async () => {
+      // The answer goes first. A turn that runs is finished first, as when the host hands back on its own
+      // (`handback.ts`); then the link closes and the chat ends as when the server's input ends.
+      setImmediate(() => {
+        void (async () => {
+          while (!isSessionSettled(session)) await Bun.sleep(HAND_BACK_CHECK_MS);
+          await writer.flush().catch(() => undefined);
+          options.stopInput();
+        })();
+      });
+      return { handedBack: true as const };
+    },
+    replay_live: async () => {
+      if (session.isStreaming) emit({ type: "agent_start" });
+      for (const event of events.live()) emit(event);
+      for (const event of ui.shown()) emit(event);
+      requests.resend();
+      return {};
+    },
     get_subagent_messages: async (selector) =>
       readSubagentTranscript(subagents.transcriptFile(selector), selector.fromByte),
     cancel_subagent: async ({ subagentId }) => ({
@@ -943,6 +978,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // calls fail instead of holding omp, and the app's schemes leave omp's process-wide router. Then accepted work drains,
   // built-in work that outlives its prompt stops, and the answers outside the command order drain; the session itself
   // is disposed by the entry.
+  stopAttached();
   requests.closeAll("The app closed the chat");
   hostUris.clear();
   // The live call (microphone, socket) ends before the session it hands work to, as in omp.

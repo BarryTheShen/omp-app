@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { arch, cpus, homedir, platform, release, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { VERSION as OMP_VERSION } from "@oh-my-pi/pi-utils/dirs";
 import {
   AppFailure,
   CapabilityMap,
@@ -9,6 +10,7 @@ import {
   SessionFilePath,
   ThreadId,
 } from "@omp-app/contracts";
+import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
 import serverPackage from "../package.json";
 import {
   type CapabilityProbeResult,
@@ -75,12 +77,16 @@ import {
   writeProbeCache,
 } from "../src/probe-cache";
 import {
+  adoptRunningHosts,
   findExternalOmp,
+  hostsFolder,
   logOmpProcess,
   OmpProcessRegistry,
   ompSessionOwnersDir,
   sessionLeaseProbe,
+  spawnDetachedOmpProcess,
   spawnOmpProcess,
+  systemdUserScopes,
 } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
@@ -185,6 +191,11 @@ export async function createCompositionServer(
   // protocol (SDK plan H5.4a) and the check of what a chat answers (H5.6a). Never an omp installed on the computer.
   const chatHostBinary = options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN;
   const chats = chatHostCommand({ binary: chatHostBinary, wrapper: options.chatWrapper });
+  // D2: chats in hosts that outlive the server, when `OMP_APP_DETACHED_HOSTS=1` (off by default). Each app data folder
+  // (each server, real or a test's) has its own folder of host sockets.
+  const detachedHosts = env.OMP_APP_DETACHED_HOSTS === "1";
+  const hostsDir = hostsFolder(appDataDir, env);
+  const systemdScope = detachedHosts && systemdUserScopes(env);
   const ompCmd =
     options.ompBin === undefined ? ompCommand({ binary: chatHostBinary }) : [options.ompBin];
   logger.info("start", {
@@ -351,16 +362,20 @@ export async function createCompositionServer(
   const omp = health.status === "ok" && probe.version !== null ? { version: probe.version } : null;
   const processRegistry = new OmpProcessRegistry({
     ...(options.idleCloseMs === undefined ? {} : { idleCloseMs: options.idleCloseMs }),
-    createProcess: (processOptions) =>
-      logOmpProcess(
-        spawnOmpProcess({
-          ...processOptions,
-          chatCommand: chats,
-          args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
-          env: { ...env, ...processOptions.env },
-        }),
+    createProcess: (processOptions) => {
+      const spawnOptions = {
+        ...processOptions,
+        chatCommand: chats,
+        args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
+        env: { ...env, ...processOptions.env },
+      };
+      return logOmpProcess(
+        detachedHosts
+          ? spawnDetachedOmpProcess({ ...spawnOptions, hostsDir, systemdScope })
+          : spawnOmpProcess(spawnOptions),
         logger,
-      ),
+      );
+    },
   });
   const replay = new EventReplayHub();
 
@@ -431,6 +446,26 @@ export async function createCompositionServer(
         }),
   };
   const a0Runtime = createA0Runtime(a0Context);
+  // D2: the hosts an earlier server left running are taken over before any browser is taken, so a chat that kept running
+  // through the restart goes on here. A host on another omp is restarted on this one between turns; one on another
+  // protocol finishes its turn and hands its chat back.
+  if (detachedHosts) {
+    const found = await adoptRunningHosts({
+      hostsDir,
+      protocol: CHAT_HOST_PROTOCOL_VERSION,
+      adopt: (process, hello) =>
+        a0Runtime.adopt(logOmpProcess(process, logger), hello, {
+          restartWhenSettled: hello.ompVersion !== OMP_VERSION,
+        }),
+      handingBack: (threadId) => a0Runtime.handingBack(threadId),
+      onFailed: (threadId, error) =>
+        logger.warn("omp.host_adopt_failed", {
+          threadId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    });
+    if (found.adopted + found.handedBack > 0) logger.info("omp.hosts_found", found);
+  }
   const sessionFileStore = createServerSessionFileStore({
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,

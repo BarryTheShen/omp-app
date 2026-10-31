@@ -37,6 +37,7 @@ import {
   stateDirectory,
 } from "../src/logging";
 import { ompCommand } from "../src/omp-host/chat-command";
+import { appDataFolder, handBackHosts, hostsFolder } from "../src/process";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { type CompositionServer, createCompositionServer } from "./dev";
 
@@ -170,6 +171,21 @@ if (args.command === "tui") {
     console.log(
       `omp is already open on ${folder}, so this goes back to it. The options after -- apply when it starts: quit it (/exit) and run this again to use them.`,
     );
+  }
+  if (!running) {
+    // D2: chats that the app's hosts keep running with no app server holding them are taken back first, so omp opens
+    // them here and not a copy. A reply still being written is finished first.
+    const taken = await handBackHosts({
+      hostsDir: hostsFolder(appDataFolder(Bun.env, home), Bun.env),
+      waitMs: 10_000,
+      onAsked: (count) =>
+        console.log(`Taking ${count === 1 ? "a chat" : `${count} chats`} back from the app…`),
+    });
+    if (taken.finishing > 0) {
+      console.log(
+        `${taken.finishing === 1 ? "A chat is" : `${taken.finishing} chats are`} still finishing a reply; each comes back when its reply ends. Opened here before then, omp works on a copy of it.`,
+      );
+    }
   }
   const commands = tuiCommands({
     tmux,

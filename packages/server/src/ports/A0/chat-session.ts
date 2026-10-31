@@ -22,7 +22,7 @@ import {
   type ChatSessionEvent,
   ChatSessionPort,
   chatSessionEventStream,
-  type FolderPath,
+  FolderPath,
   isUiStateEvent,
   type ModelChoice,
   type OpenHostRequests,
@@ -42,6 +42,7 @@ import {
 } from "@omp-app/contracts";
 import {
   type ChatEvent,
+  type ChatHostHello,
   type ChatHostMethod,
   type ChatHostMethodMap,
   HOST_METHOD_ANSWERS,
@@ -104,6 +105,8 @@ interface ChatEntry {
   arbitration: Promise<void>;
   /** What the server itself watches on the chat's stream (the A1 gateway's commands): told every payload published. */
   readonly payloadListeners: Set<(payload: ChatSessionEvent) => void>;
+  /** A host an earlier server left running on another omp (D2): restarted on this server's omp once the chat settles. */
+  restartWhenSettled?: boolean;
 }
 
 type SubagentLevel = SetSubagentSubscriptionArgs["level"];
@@ -314,6 +317,8 @@ export class ChatSessionPortRuntime {
   readonly #renames = new Map<ThreadId, Promise<void>>();
   /** Chats whose process is starting and whose host has not said hello yet: an exit now is a failed start. */
   readonly #awaitingHello = new Set<ChatEntry>();
+  /** Chats whose host, on another protocol, was asked to hand them back as this server started (D2, `handingBack`). */
+  readonly #handingBack = new Set<ThreadId>();
 
   constructor(context: A0PortContext) {
     this.#context = context;
@@ -401,27 +406,7 @@ export class ChatSessionPortRuntime {
 
     await this.#refuseChatHeldElsewhere(bootstrap);
     const process = registry.acquire(this.#processOptions(bootstrap));
-    const entry: ChatEntry = {
-      bootstrap,
-      process,
-      client: new ChatHostClient(process),
-      stream: chatSessionEventStream(bootstrap.threadId),
-      unsubscribe: () => undefined,
-      viewers: new Map(),
-      startupEvents: [],
-      rekeyed: false,
-      methods: [],
-      startedAt: Date.now(),
-      openRequests: new Map(),
-      uiState: new Map(),
-      hostTools: new Map(),
-      hostUriSchemes: new Map(),
-      hostRegistrations: Promise.resolve(),
-      askDialogOptedIn: false,
-      preferences: new Map(),
-      arbitration: Promise.resolve(),
-      payloadListeners: new Set(),
-    };
+    const entry = this.#newEntry(bootstrap, process);
     entry.unsubscribe = this.#listen(entry);
     this.#entries.set(bootstrap.threadId, entry);
     this.#addViewer(entry, call.connectionId);
@@ -467,6 +452,72 @@ export class ChatSessionPortRuntime {
       throw failure;
     }
     return this.#openResult(entry);
+  }
+
+  /**
+   * Takes over a chat whose host an earlier server left running (D2), as this server starts: the chat is served here
+   * before any browser opens it again, so a turn under way runs on, the idle rule asks its host whether it has settled,
+   * and a browser that opens it adds a view. The chat is registered at once; its host is asked for what is live and who
+   * it is after (`#takeOver`), so a host busy with a long command holds up only its own chat. A host on another omp is
+   * restarted on this server's once the chat settles, between turns, never during one.
+   */
+  adopt(
+    process: OmpProcess,
+    hello: ChatHostHello,
+    options: { readonly restartWhenSettled: boolean },
+  ): void {
+    const threadId = ThreadId.parse(hello.session.id);
+    const registry = this.#context.processRegistry;
+    if (hello.session.file === null || this.#entries.has(threadId) || registry.has(threadId)) {
+      void process.release?.();
+      return;
+    }
+    const sessionFile = SessionFilePath.parse(hello.session.file);
+    const bootstrap: ThreadBootstrap = {
+      threadId,
+      folderPath: FolderPath.parse(hello.session.cwd),
+      sessionFile,
+      args: ["--resume", sessionFile],
+    };
+    registry.adopt(threadId, hello.session.cwd, process);
+    const entry = this.#newEntry(bootstrap, process);
+    entry.unsubscribe = this.#listen(entry);
+    this.#entries.set(threadId, entry);
+    void this.#takeOver(entry, options);
+  }
+
+  async #takeOver(
+    entry: ChatEntry,
+    options: { readonly restartWhenSettled: boolean },
+  ): Promise<void> {
+    const { threadId } = entry.bootstrap;
+    try {
+      await this.#start(entry, { replayLive: true });
+      this.#rekey(entry, threadId, await this.#identity(entry));
+    } catch (error) {
+      this.#context.logger?.warn("chat_session.adopt_failed", {
+        threadId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      entry.client.dispose();
+      this.#forget(entry);
+      await this.#context.processRegistry
+        .stopIfUnwatched(threadId, "opened")
+        .catch(() => undefined);
+      return;
+    }
+    if (options.restartWhenSettled) {
+      entry.restartWhenSettled = true;
+      await this.#restartIfSettled(entry);
+    }
+  }
+
+  /**
+   * Notes a chat whose host, on a protocol this server does not speak, was asked to hand it back (D2): it finishes the
+   * turn it runs, then ends. Until then the chat is held, and an open says why in those words.
+   */
+  handingBack(threadId: ThreadId): void {
+    this.#handingBack.add(threadId);
   }
 
   /**
@@ -797,8 +848,37 @@ export class ChatSessionPortRuntime {
     await this.#context.processRegistry.closeAll();
   }
 
-  /** Starts the chat's process and waits for its host's hello. */
-  async #start(entry: ChatEntry): Promise<void> {
+  /** A chat's entry, before its process starts: nothing viewed, nothing registered, nothing open. */
+  #newEntry(bootstrap: ThreadBootstrap, process: OmpProcess): ChatEntry {
+    return {
+      bootstrap,
+      process,
+      client: new ChatHostClient(process),
+      stream: chatSessionEventStream(bootstrap.threadId),
+      unsubscribe: () => undefined,
+      viewers: new Map(),
+      startupEvents: [],
+      rekeyed: false,
+      methods: [],
+      startedAt: Date.now(),
+      openRequests: new Map(),
+      uiState: new Map(),
+      hostTools: new Map(),
+      hostUriSchemes: new Map(),
+      hostRegistrations: Promise.resolve(),
+      askDialogOptedIn: false,
+      preferences: new Map(),
+      arbitration: Promise.resolve(),
+      payloadListeners: new Set(),
+    };
+  }
+
+  /**
+   * Starts the chat's process and waits for its host's hello. A host that was running before this server (D2,
+   * `replayLive`) is then asked for what is live: a run under way, the messages being written, the tools that run and
+   * the questions waiting, which reach this chat's handlers, set before it starts (`#listen`).
+   */
+  async #start(entry: ChatEntry, options: { readonly replayLive?: boolean } = {}): Promise<void> {
     this.#awaitingHello.add(entry);
     let hello: Awaited<ChatHostClient["hello"]>;
     try {
@@ -812,7 +892,23 @@ export class ChatSessionPortRuntime {
       this.#awaitingHello.delete(entry);
     }
     entry.methods = hello.methods;
+    if (options.replayLive === true) await entry.client.request("replay_live", {});
     this.#receive(entry, { kind: "process", status: "ready", startedAt: entry.startedAt });
+  }
+
+  /** Restarts the chat on this server's omp once it has settled (`restartWhenSettled`); checked again when it settles. */
+  async #restartIfSettled(entry: ChatEntry): Promise<void> {
+    if (entry.restartWhenSettled !== true) return;
+    if (!(await this.#isSettled(entry.bootstrap.threadId).catch(() => false))) return;
+    if (entry.restartWhenSettled !== true || this.#entries.get(entry.bootstrap.threadId) !== entry)
+      return;
+    entry.restartWhenSettled = false;
+    await this.#startRespawn(entry).catch((error: unknown) =>
+      this.#context.logger?.warn("chat_session.restart_failed", {
+        threadId: entry.bootstrap.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
 
   /** The host's events, its requests and the process's life, into the chat's stream. */
@@ -871,6 +967,8 @@ export class ChatSessionPortRuntime {
     } else if (isUiStateEvent(event)) {
       if (clearsUiState(event)) entry.uiState.delete(uiStateKey(event));
       else entry.uiState.set(uiStateKey(event), { seq, event });
+    } else if (event.type === "session_settled" && entry.restartWhenSettled === true) {
+      void this.#restartIfSettled(entry);
     }
   }
 
@@ -1007,7 +1105,19 @@ export class ChatSessionPortRuntime {
         return;
       }
     }
-    if ((await this.#context.leaseProbe?.(bootstrap.threadId)) !== "active") return;
+    if ((await this.#context.leaseProbe?.(bootstrap.threadId)) !== "active") {
+      this.#handingBack.delete(bootstrap.threadId);
+      return;
+    }
+    if (this.#handingBack.has(bootstrap.threadId)) {
+      throw new AppFailure({
+        code: "conflict",
+        message:
+          "This chat is finishing a reply it started before the app was updated. It opens here once that reply is done.",
+        retryable: true,
+        conflictReason: "held_elsewhere",
+      });
+    }
     throw new AppFailure({
       code: "conflict",
       message:

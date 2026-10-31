@@ -98,3 +98,34 @@ describe("the ask dialog", () => {
     });
   });
 });
+
+describe("what is on show, for a server that attaches later", () => {
+  test("each key keeps its last status, widget or title; a cleared one is gone, also when cleared by empty text or lines", () => {
+    const { ui, events } = harness();
+    ui.setStatus("plan", "Planning");
+    ui.setStatus("plan", "Plan ready");
+    ui.setStatus("lint", "Linting");
+    ui.setStatus("lint", "");
+    ui.setStatus("build", "Building");
+    ui.setStatus("build", undefined);
+    ui.setWidget("todo", ["one", "two"], { placement: "belowEditor" });
+    ui.setWidget("old", ["gone soon"]);
+    ui.setWidget("old", []);
+    ui.setWidget("component", { render: () => [] });
+    ui.setTitle("First title");
+    ui.setTitle("Second title");
+
+    expect(ui.shown()).toEqual([
+      { type: "ui_status", statusKey: "plan", statusText: "Plan ready" },
+      {
+        type: "ui_widget",
+        widgetKey: "todo",
+        widgetLines: ["one", "two"],
+        widgetPlacement: "belowEditor",
+      },
+      { type: "ui_title", title: "Second title" },
+    ]);
+    // Every change still reached the server attached then; a component widget stays terminal-only.
+    expect(events.length).toBe(11);
+  });
+});

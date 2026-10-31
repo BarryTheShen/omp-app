@@ -93,6 +93,11 @@ export interface OmpProcess extends LineDuplex {
   start(): Promise<void>;
   /** Terminates the child (SIGTERM, then SIGKILL after the grace period) and marks this terminal. */
   stop(): Promise<void>;
+  /**
+   * Lets go of the chat without ending it, for a server that shuts down: a host that outlives the server (D2,
+   * `detached-process.ts`) keeps its chat. A piped host has none: the server stops it.
+   */
+  release?(): Promise<void>;
   onEvent(listener: OmpProcessListener): () => void;
 }
 
@@ -406,31 +411,12 @@ class SpawnedOmpProcess implements OmpProcess {
     }
   }
 
-  async #buildEnv(): Promise<Record<string, string>> {
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(Bun.env)) {
-      if (value !== undefined) env[key] = value;
-    }
-    for (const [key, value] of Object.entries(this.#envOverrides)) {
-      if (value === undefined) delete env[key];
-      else env[key] = value;
-    }
-    const appData = await ensureAppDataDir({
-      env,
+  #buildEnv(): Promise<Record<string, string>> {
+    return buildChatEnv({
+      overrides: this.#envOverrides,
       homeDir: this.#homeDir,
-      cwd: this.folder,
+      folder: this.folder,
     });
-    const policyPath = join(appData, USAGE_RESET_POLICY_FILE);
-    let current: string | undefined;
-    try {
-      current = await readFile(policyPath, "utf8");
-    } catch {
-      // A missing policy is written below; other failures are reported by the atomic write.
-    }
-    if (current !== USAGE_RESET_POLICY) await writeFileAtomic(policyPath, USAGE_RESET_POLICY);
-    const configuredFiles = env.PI_CONFIG_FILES?.split(delimiter).filter(Boolean) ?? [];
-    env.PI_CONFIG_FILES = [...configuredFiles, policyPath].join(delimiter);
-    return env;
   }
 
   #setStatus(status: ProcessStatus): void {
@@ -450,6 +436,37 @@ class SpawnedOmpProcess implements OmpProcess {
   #notifyClose(cause: unknown): void {
     for (const listener of [...this.#closeListeners]) listener(cause);
   }
+}
+
+/**
+ * The environment a chat starts with: the server's, the chat's overrides on top (a key set to `undefined` is removed),
+ * and the app's usage-reset policy added to omp's config files.
+ */
+export async function buildChatEnv(options: {
+  readonly overrides: Readonly<Record<string, string | undefined>>;
+  readonly homeDir: string;
+  readonly folder: string;
+}): Promise<Record<string, string>> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(Bun.env)) {
+    if (value !== undefined) env[key] = value;
+  }
+  for (const [key, value] of Object.entries(options.overrides)) {
+    if (value === undefined) delete env[key];
+    else env[key] = value;
+  }
+  const appData = await ensureAppDataDir({ env, homeDir: options.homeDir, cwd: options.folder });
+  const policyPath = join(appData, USAGE_RESET_POLICY_FILE);
+  let current: string | undefined;
+  try {
+    current = await readFile(policyPath, "utf8");
+  } catch {
+    // A missing policy is written below; other failures are reported by the atomic write.
+  }
+  if (current !== USAGE_RESET_POLICY) await writeFileAtomic(policyPath, USAGE_RESET_POLICY);
+  const configuredFiles = env.PI_CONFIG_FILES?.split(delimiter).filter(Boolean) ?? [];
+  env.PI_CONFIG_FILES = [...configuredFiles, policyPath].join(delimiter);
+  return env;
 }
 
 /** Spawns a fresh chat process: the chat command, then the chat's arguments. */

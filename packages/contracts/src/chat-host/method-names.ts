@@ -53,6 +53,8 @@ export const CHAT_HOST_METHOD_NAMES = [
   "host_tool_update",
   "set_subagent_subscription",
   "get_subagents",
+  "hand_back",
+  "replay_live",
   "get_subagent_messages",
   "cancel_subagent",
   "steer_subagent",

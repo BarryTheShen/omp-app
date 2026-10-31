@@ -33,6 +33,8 @@ import {
 
 interface PendingRequest {
   readonly method: ChatHostHostMethod;
+  /** What was asked, to ask a server that attaches later again. */
+  readonly params: unknown;
   readonly resolve: (answer: unknown) => void;
   readonly reject: (error: Error) => void;
 }
@@ -60,7 +62,12 @@ export class HostRequests {
       reject(this.#closed);
       return { id, answer: promise };
     }
-    this.#pending.set(id, { method, resolve: resolve as (answer: unknown) => void, reject });
+    this.#pending.set(id, {
+      method,
+      params,
+      resolve: resolve as (answer: unknown) => void,
+      reject,
+    });
     if (!this.#write({ kind: "request", id, method, params })) {
       this.#pending.delete(id);
       reject(new Error("The server's line is closed"));
@@ -71,6 +78,16 @@ export class HostRequests {
   /** Forgets a request omp closed itself, so a late answer finds nothing. */
   forget(id: string): void {
     this.#pending.delete(id);
+  }
+
+  /**
+   * For a server that attaches to the running chat (D2): each request still waiting for an answer goes to it again,
+   * under its own id, so the question shows there and its answer reaches omp.
+   */
+  resend(): void {
+    for (const [id, pending] of this.#pending) {
+      this.#write({ kind: "request", id, method: pending.method, params: pending.params });
+    }
   }
 
   /** Settles the request a response answers; false when none waits for it. */
@@ -225,10 +242,24 @@ export class HostUIContext implements ExtensionUIContext {
   askDialogEnabled = false;
   readonly #requests: HostRequests;
   readonly #emit: (event: UiEvent) => void;
+  /** The statuses, widgets and title on show, by key, for a server that attaches later (`shown`, D2). */
+  readonly #shown = new Map<string, UiEvent>();
 
   constructor(requests: HostRequests, emit: (event: UiEvent) => void) {
     this.#requests = requests;
     this.#emit = emit;
+  }
+
+  /** What extensions put on show and did not clear: statuses, widgets, the title, as their last events said. */
+  shown(): readonly UiEvent[] {
+    return [...this.#shown.values()];
+  }
+
+  /** Emits a UI state event and keeps it on show under `key`, or forgets the key when the event clears it. */
+  #show(key: string, event: UiEvent, cleared: boolean): void {
+    if (cleared) this.#shown.delete(key);
+    else this.#shown.set(key, event);
+    this.#emit(event);
   }
 
   get askDialog(): ExtensionUIContext["askDialog"] {
@@ -374,26 +405,31 @@ export class HostUIContext implements ExtensionUIContext {
   }
 
   setStatus(key: string, text: string | undefined): void {
-    this.#emit({
-      type: "ui_status",
-      statusKey: key,
-      ...(text !== undefined ? { statusText: text } : {}),
-    });
+    this.#show(
+      `status:${key}`,
+      { type: "ui_status", statusKey: key, ...(text !== undefined ? { statusText: text } : {}) },
+      !text,
+    );
   }
 
   /** Lines only; a widget that is a component stays terminal-only, as in omp's RPC mode. */
   setWidget(key: string, content: unknown, options?: ExtensionWidgetOptions): void {
     if (content !== undefined && !Array.isArray(content)) return;
-    this.#emit({
-      type: "ui_widget",
-      widgetKey: key,
-      ...(content !== undefined ? { widgetLines: content as string[] } : {}),
-      ...(options?.placement !== undefined ? { widgetPlacement: options.placement } : {}),
-    });
+    const lines = content as string[] | undefined;
+    this.#show(
+      `widget:${key}`,
+      {
+        type: "ui_widget",
+        widgetKey: key,
+        ...(lines !== undefined ? { widgetLines: lines } : {}),
+        ...(options?.placement !== undefined ? { widgetPlacement: options.placement } : {}),
+      },
+      !lines?.length,
+    );
   }
 
   setTitle(title: string): void {
-    this.#emit({ type: "ui_title", title });
+    this.#show("title", { type: "ui_title", title }, false);
   }
 
   setEditorText(text: string): void {

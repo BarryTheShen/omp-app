@@ -1,5 +1,7 @@
 import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
+import type { ChatHostHello } from "@omp-app/contracts/chat-host";
 import type { CommandSession } from "../../modules/A1/gateway/command-session";
+import type { OmpProcess } from "../../process";
 import type { PortRegistration } from "../../registry/ports";
 import { createAppPortRegistration } from "./app";
 import { type ChatSessionPortRegistration, createChatSessionPortRuntime } from "./chat-session";
@@ -29,6 +31,14 @@ export interface A0Runtime {
     /** Gives the connection back the views a delete's stop took, joined to the chat's running omp (see the rpc runtime). */
     restoreViews(threadId: ThreadId, connectionId: string, count: number): void;
   };
+  /** Takes over a chat whose host an earlier server left running (D2), as this server starts (see the chat runtime). */
+  adopt(
+    process: OmpProcess,
+    hello: ChatHostHello,
+    options: { readonly restartWhenSettled: boolean },
+  ): void;
+  /** Notes a chat whose host, on another protocol, was asked to hand it back (D2). */
+  handingBack(threadId: ThreadId): void;
 }
 
 /** The chat session port on the chat hosts (SDK plan H5.3, the app's runtime since H5.4a) and AppPort. */
@@ -53,6 +63,8 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
       restoreViews: (threadId, connectionId, count) =>
         chat.runtime.restoreViews(threadId, connectionId, count),
     },
+    adopt: (process, hello, options) => chat.runtime.adopt(process, hello, options),
+    handingBack: (threadId) => chat.runtime.handingBack(threadId),
   };
 }
 

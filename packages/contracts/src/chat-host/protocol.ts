@@ -95,6 +95,8 @@ export const ChatHostHello = z.object({
   /** The methods this host answers; a method not listed gets `unknown_method`. */
   methods: z.array(z.string()),
   session: z.object({ id: z.string(), file: z.string().nullable(), cwd: z.string() }),
+  /** The host's process id: a server that attached to a running host (D2) can end it when it does not hand back. */
+  pid: z.int().optional(),
 });
 export type ChatHostHello = z.infer<typeof ChatHostHello>;
 
@@ -806,6 +808,21 @@ export interface ChatHostMethodMap {
     readonly params: EmptyParams;
     readonly result: { readonly subagents: readonly SubagentSnapshot[] };
   };
+  /**
+   * Ends the chat in this host the clean way, so another omp (the terminal) can open it: the host answers, finishes a
+   * turn that runs, closes its link and exits (D2, a host on a socket; on pipes the host ends as when its input closes).
+   */
+  readonly hand_back: {
+    readonly params: EmptyParams;
+    readonly result: { readonly handedBack: true };
+  };
+  /**
+   * For a server that attached to the host after it started (D2): sends, before its answer, what is live now: a run
+   * under way (`agent_start`), each unfinished message as a `message_start` holding what it has so far, each running
+   * tool's start, the statuses, widgets and title on show, and each question still waiting for an answer, under its
+   * own id.
+   */
+  readonly replay_live: { readonly params: EmptyParams; readonly result: EmptyParams };
   readonly get_subagent_messages: {
     readonly params: SubagentMessagesParams;
     readonly result: SubagentTranscript;
@@ -962,6 +979,8 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   host_tool_update: HostToolUpdateParams,
   set_subagent_subscription: SubagentSubscriptionParams,
   get_subagents: EmptyParams,
+  hand_back: EmptyParams,
+  replay_live: EmptyParams,
   get_subagent_messages: SubagentMessagesParams,
   cancel_subagent: SubagentIdParams,
   steer_subagent: SteerSubagentParams,

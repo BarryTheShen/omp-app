@@ -72,4 +72,44 @@ describe("the chat's event stream", () => {
     stream.forward(end());
     expect(idsOf(sent)).toEqual(["msg-1", undefined, "msg-2", "msg-2", "msg-2"]);
   });
+
+  test("what is live: a message being written, with what omp has so far, until it ends", () => {
+    const { stream } = streamOf();
+    stream.setOptions({ messageUpdates: "delta" });
+    stream.forward(start({ role: "assistant", content: [] }));
+    const soFar = { role: "assistant", content: [{ type: "text", text: "Hel" }] };
+    stream.forward(
+      event({
+        type: "message_update",
+        message: soFar,
+        assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "l", partial: soFar },
+      }),
+    );
+    // A new server starts the message with its text so far; the next deltas add to it.
+    expect(stream.live()).toEqual([
+      { type: "message_start", message: soFar, messageId: "msg-1" } as unknown as ChatEvent,
+    ]);
+    stream.forward(end(soFar));
+    expect(stream.live()).toEqual([]);
+  });
+
+  test("what is live: a tool that runs, until it ends or the run does", () => {
+    const { stream } = streamOf();
+    const running = event({
+      type: "tool_execution_start",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: {},
+    });
+    stream.forward(running);
+    stream.forward(
+      event({ type: "tool_execution_start", toolCallId: "call-2", toolName: "read", args: {} }),
+    );
+    stream.forward(
+      event({ type: "tool_execution_end", toolCallId: "call-2", toolName: "read", result: {} }),
+    );
+    expect(stream.live()).toEqual([running as ChatEvent]);
+    stream.forward(event({ type: "agent_end", messages: [] }));
+    expect(stream.live()).toEqual([]);
+  });
 });

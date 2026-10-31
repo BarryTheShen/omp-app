@@ -10,6 +10,7 @@ import {
   type FileSearchCandidate,
   FileSearchPort,
   type FolderPath,
+  type SessionEntryWindow,
   SessionFilePath,
   SessionFileStore,
   type SubagentReadResult,
@@ -805,11 +806,23 @@ export class ChatController {
       this.store.setWindow([], false);
       return;
     }
-    const window = await this.client.port(SessionFileStore).readEntryWindow({
-      sessionFile,
-      ...(this.#leaf === undefined ? {} : { leafId: this.#leaf as EntryId }),
-      byteBudget: FIRST_WINDOW_BYTES,
-    });
+    let window: SessionEntryWindow;
+    try {
+      window = await this.client.port(SessionFileStore).readEntryWindow({
+        sessionFile,
+        ...(this.#leaf === undefined ? {} : { leafId: this.#leaf as EntryId }),
+        byteBudget: FIRST_WINDOW_BYTES,
+      });
+    } catch (failure) {
+      // omp writes a new chat's file once its first reply is done. Opened again before then (a reload, or the server
+      // restarting while it replies) it has no entries yet, and what is live comes with its events; a chat that is gone
+      // is said by its open.
+      if (!(failure instanceof AppFailure && failure.appError.code === "not_found")) throw failure;
+      if (this.#disposed) return;
+      this.store.setWindow([], false);
+      this.#windowRead = true;
+      return;
+    }
     if (this.#disposed) return;
     const entries = window.entries as unknown as SessionEntry[];
     this.store.setWindow(entries, window.hasOlder);

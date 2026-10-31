@@ -166,6 +166,35 @@ export class OmpProcessRegistry {
   }
 
   /**
+   * Registers the process of a chat that was already running when this server started (D2: a host an earlier server
+   * left running), under the chat's own thread id. Nobody watches it yet, so the idle rule applies (its chat's runtime
+   * says whether the chat has settled) until a browser opens the chat, whose `acquire` then finds it here.
+   */
+  adopt(threadId: ThreadId, folder: string, process: OmpProcess): void {
+    if (this.#entries.has(threadId)) {
+      throw new AppFailure({
+        code: "conflict",
+        message: `Thread ${threadId} already has a process`,
+        retryable: false,
+      });
+    }
+    const entry: Entry = {
+      key: threadId,
+      process,
+      folder,
+      watchers: 0,
+      busy: false,
+      commands: 0,
+      idleTimer: undefined,
+      idleOrder: undefined,
+      unsubscribe: () => undefined,
+    };
+    entry.unsubscribe = this.#forgetWhenStopped(entry);
+    this.#entries.set(threadId, entry);
+    this.#scheduleIdleIfNeeded(entry);
+  }
+
+  /**
    * Replaces the process of a thread whose omp stopped on its own with a new one built from `options`
    * (the caller gives the arguments that resume the chat). The thread keeps its viewers and its idle state. A turn
    * the dead process was running ends with it; the dead process is stopped without the registry forgetting the thread.
@@ -396,7 +425,10 @@ export class OmpProcessRegistry {
     return entry.process;
   }
 
-  /** Stops every registered process; for server shutdown. */
+  /**
+   * For server shutdown: stops every registered process, but lets a host that outlives the server (D2) go without
+   * ending it, so its chat keeps running.
+   */
   async closeAll(): Promise<void> {
     const entries = [...this.#entries.values()];
     this.#entries.clear();
@@ -404,7 +436,7 @@ export class OmpProcessRegistry {
       entries.map((entry) => {
         this.#cancelIdle(entry);
         entry.unsubscribe();
-        return entry.process.stop();
+        return entry.process.release?.() ?? entry.process.stop();
       }),
     );
   }
