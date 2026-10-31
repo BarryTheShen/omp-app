@@ -49,6 +49,17 @@ omp-app-desktop --local                                                 # back t
 
 The window keeps the link in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` link with a token is accepted. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
 
+### Pair a device
+
+Each phone, computer or browser that opens the app's address is paired once, and stays paired until you remove it. Open the address on the new device (`https://<computer>.<tailnet>.ts.net`, above); it shows **Pair this device**:
+
+- **Ask to pair:** the new device shows 6 digits, and every paired device shows its request with the same 6 digits. Check that they match, then click **Allow**.
+- **Or a one-time code:** **Settings → App → Devices → Pair a new device** on a paired device, or `omp-app pair` on this computer, shows a code (`K7F3-QX9M`) and its QR code. Scan the QR code with the new device's camera, or type the code there. A code works once, for 10 minutes; making a new one stops the one before.
+
+**Settings → App → Devices** lists the paired devices and when each last connected: **Rename** names one, **Remove** closes its windows (it pairs again to come back). On this computer, `omp-app devices` lists them and `omp-app devices remove <device>` removes one, named or by the start of its id.
+
+A paired device keeps its key in a cookie that only the app's own pages send, renewed while the device uses the app; the app keeps only a hash of each key. The links above keep working too.
+
 ### omp in the terminal, on the same chats
 
 `omp-app tui [folder]` opens omp's own terminal app in that folder (default: the current one), on the app's chats: it is the chat host the package holds, started as omp's terminal app, so a chat started in either one goes on in the other. It runs in a tmux session for the folder, which keeps running when you leave it (Ctrl+B, then D) or lose an SSH connection, with its turn still going; `omp-app tui` in that folder again goes back to it. It needs tmux (`sudo apt install tmux`, which the package recommends) and a terminal (over SSH: `ssh -t`). omp's own options go after `--`:
