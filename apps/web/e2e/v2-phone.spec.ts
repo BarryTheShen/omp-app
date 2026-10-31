@@ -204,6 +204,38 @@ realTest.describe("new UI on a phone", () => {
         await context.close();
       },
     );
+
+    realTest(
+      "an open chat's name in the top bar opens Pin and Rename, as holding its row in the list does",
+      async ({ realApp, browser }) => {
+        const { page, context } = await phone(realApp, browser);
+        const list = page.getByRole("navigation", { name: "Chats" });
+        await page.getByRole("button", { name: "Chats", exact: true }).tap();
+        await list.getByRole("button", { name: "Seeded chat 1" }).tap();
+        const name = page.getByRole("heading", { level: 1 }).getByRole("button", {
+          name: "Seeded chat 1",
+        });
+        await name.tap();
+        await page.getByRole("menuitem", { name: "Pin" }).tap();
+        await page.getByRole("button", { name: "Chats", exact: true }).tap();
+        await expect(
+          list
+            .getByRole("region", { name: "Pinned" })
+            .getByRole("button", { name: "Seeded chat 1" }),
+        ).toBeVisible({ timeout: 30_000 });
+
+        await list.getByRole("button", { name: "Seeded chat 1" }).tap();
+        await name.tap();
+        await page.getByRole("menuitem", { name: "Rename…" }).tap();
+        await page.getByRole("textbox", { name: "Chat title" }).fill("A new name");
+        await page.getByRole("button", { name: "Rename", exact: true }).tap();
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText("A new name", {
+          timeout: 30_000,
+        });
+        expect(realApp.problems).toEqual([]);
+        await context.close();
+      },
+    );
   });
 
   realTest(

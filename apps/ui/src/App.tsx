@@ -1,5 +1,5 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
-import { AppPort, type FolderPath, type ThreadId } from "@omp-app/contracts";
+import { AppPort, type FolderPath } from "@omp-app/contracts";
 import { cn } from "cn";
 import { ChevronLeft, SquarePen } from "lucide-react";
 import {
@@ -16,7 +16,6 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import { ConnectionBanner, REFUSED_WORDS } from "./ConnectionBanner";
 import type { ChatController, ChatTarget } from "./chat/controller";
-import { firstPromptOf } from "./chat/firstPrompts";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
@@ -47,8 +46,8 @@ import { traceViewport } from "./perf/viewportTrace";
 import { isPhone, usePhone } from "./phone";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
-import { titleOf } from "./sidebar/title";
-import { type ChatList, useChatList } from "./sidebar/useChatList";
+import { TitleMenu } from "./sidebar/TitleMenu";
+import { useChatList } from "./sidebar/useChatList";
 import { WhatsNewList } from "./tour/WhatsNewList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
 
@@ -71,16 +70,6 @@ const NOTHING_OPEN: WorkspaceView = {
   waiting: new Map(),
   side: null,
 };
-
-/**
- * The phone's top bar's name for the chat shown: a saved chat's name as the list has it, a chat's first message while
- * its first reply runs (it has no file to name it yet), else "New chat".
- */
-function shownTitle(list: ChatList, focused: ThreadId | null): string {
-  if (focused === null) return "New chat";
-  const saved = list.sessions.find((session) => session.id === focused);
-  return saved !== undefined ? titleOf(saved) : (firstPromptOf(focused) ?? "New chat");
-}
 
 /** Connects with the page's launch link, or as a paired device, then shows the app; a device not paired pairs first. */
 export function App(): ReactNode {
@@ -370,9 +359,11 @@ function Shell({
                 <span className="size-1.5 rounded-full bg-live" aria-hidden="true" />
               )}
             </Button>
-            <h1 className="min-w-0 flex-1 truncate text-center text-sm font-medium text-t1">
-              {shownTitle(list, view.focused)}
-            </h1>
+            <TitleMenu
+              list={list}
+              focused={view.focused}
+              onDeleted={(id) => workspace.current?.forget(id)}
+            />
             <Button
               variant="ghost"
               size="icon"
