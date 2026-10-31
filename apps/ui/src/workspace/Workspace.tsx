@@ -46,6 +46,7 @@ import {
 } from "./ChatPanel";
 import { chatCache } from "./chatCache";
 import { carriesChat, droppedChat } from "./chatDrag";
+import { keepDividerDragsFromSelecting } from "./dividers";
 import { equalized, swappedWithNext } from "./layout";
 import { TabStrip } from "./TabStrip";
 import {
@@ -507,6 +508,9 @@ export function Workspace({
       zoomForPhone,
     ],
   );
+
+  // A divider's drag resizes the panes without selecting their text (`dividers.ts`).
+  useEffect(() => keepDividerDragsFromSelecting(document), []);
 
   // A tab coming to the front gets the caret in its focused pane; on a phone, its focused pane fills the screen.
   useEffect(() => {
