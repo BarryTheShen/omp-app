@@ -6,6 +6,7 @@ import {
   WelcomeFrame as WelcomeFrameSchema,
 } from "@omp-app/contracts";
 
+import { type DevicePairing, deviceCookie, deviceKeyOf, pairingRoute } from "./devices";
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
 import { launchTokenDigest } from "./launch-history";
 import { newLaunchToken } from "./launch-token";
@@ -46,6 +47,8 @@ export interface AppServerOptions {
   readonly logger?: Logger;
   /** Digests (`launchTokenDigest`) of the launch tokens earlier starts printed: a link with one of them reads as expired, not as never printed. */
   readonly earlierLaunchTokens?: ReadonlySet<string>;
+  /** Device pairing: a paired device signs in with its key's cookie, and `/pair/*` pairs new ones. */
+  readonly devices?: DevicePairing;
 }
 
 export interface AppServer {
@@ -60,7 +63,12 @@ export interface AppServer {
 
 export interface UpgradeClose {
   readonly closeCode: 4401 | 4403;
-  readonly reason: "invalid token" | "expired token" | "origin not allowed";
+  readonly reason: "invalid token" | "expired token" | "origin not allowed" | "not paired";
+}
+
+/** A connection let in: with the launch link (no device), or as a paired device. */
+export interface UpgradeAccepted {
+  readonly deviceId: string | null;
 }
 
 export interface UpgradePolicy {
@@ -70,6 +78,8 @@ export interface UpgradePolicy {
   readonly earlierLaunchTokens?: ReadonlySet<string>;
   /** The Tailscale address allowed besides the loopback ones. */
   readonly remote?: RemoteOrigin;
+  /** The paired device a key belongs to; absent when the server pairs no devices. */
+  readonly deviceForKey?: (key: string) => string | undefined;
 }
 
 function requestedPort(options: AppServerOptions): number {
@@ -108,22 +118,40 @@ function forbiddenUpgrade(): Response {
   return new Response(null, { status: 403 });
 }
 
-/** Returns an HTTP rejection for a bad Host, or a close decision after upgrade for auth failures. */
+/**
+ * Returns an HTTP rejection for a bad Host, a close decision after upgrade for auth failures, or who was let in: the
+ * launch link's token, else a paired device's key (its cookie). A wrong token with a paired device's key still lets the
+ * device in, so a page that kept an old link keeps working once its device is paired.
+ */
 export function authorizeWebSocketUpgrade(
   request: Request,
   policy: UpgradePolicy,
-): Response | UpgradeClose | undefined {
+): Response | UpgradeClose | UpgradeAccepted {
   const url = new URL(request.url);
   const candidate = url.searchParams.get("token") ?? "";
   if (!hostAllowed(request, policy)) return forbiddenUpgrade();
   if (!originAllowed(request.headers.get("origin"), policy)) {
     return { closeCode: 4403, reason: "origin not allowed" };
   }
-  if (!constantTimeEqual(policy.token, candidate)) {
-    const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;
-    return { closeCode: 4401, reason: expired ? "expired token" : "invalid token" };
+  if (candidate !== "" && constantTimeEqual(policy.token, candidate)) return { deviceId: null };
+  const key = deviceKeyOf(request);
+  const deviceId = key === undefined ? undefined : policy.deviceForKey?.(key);
+  if (deviceId !== undefined) return { deviceId };
+  if (candidate === "" && policy.deviceForKey !== undefined) {
+    return { closeCode: 4401, reason: "not paired" };
   }
-  return undefined;
+  const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;
+  return { closeCode: 4401, reason: expired ? "expired token" : "invalid token" };
+}
+
+/** Whether a request's Host and Origin are one of the app's own pages (the WebSocket's check, for `/pair/*`). */
+function fromAppPage(request: Request, policy: UpgradePolicy): boolean {
+  return hostAllowed(request, policy) && originAllowed(request.headers.get("origin"), policy);
+}
+
+/** Whether a request came to the loopback address from no web page: a program on the server's own computer. */
+function fromThisComputer(request: Request, port: number): boolean {
+  return hostAllowed(request, { token: "", port }) && request.headers.get("origin") === null;
 }
 
 function safeStaticPath(root: string, pathname: string): string | undefined {
@@ -224,10 +252,35 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   const uiRoot = options.uiRoot ?? `${process.cwd()}/apps/ui/dist`;
   const port = requestedPort(options);
   const origins = options.origins;
+  const devices = options.devices;
+  const policy = (): UpgradePolicy => ({
+    token,
+    origins,
+    port: bunServer.port ?? port,
+    earlierLaunchTokens: options.earlierLaunchTokens,
+    ...(options.remote === undefined ? {} : { remote: options.remote }),
+    ...(devices === undefined
+      ? {}
+      : { deviceForKey: (key: string) => devices.store.deviceForKey(key)?.id }),
+  });
+  /** Whether a request came over HTTPS: through `tailscale serve`, which passes the browser's Host on. */
+  const overHttps = (request: Request): boolean =>
+    options.remote !== undefined &&
+    request.headers.get("host")?.toLowerCase() === options.remote.host;
+  /** The page a paired device loads sets its key's cookie again, so it lasts while the device is used. */
+  const renewed = (request: Request, page: Response): Response => {
+    if (devices === undefined || page.status !== 200) return page;
+    const key = deviceKeyOf(request);
+    if (key === undefined || devices.store.deviceForKey(key) === undefined) return page;
+    page.headers.append("Set-Cookie", deviceCookie(key, overHttps(request)));
+    return page;
+  };
 
   interface SocketData {
     readonly id: string;
     readonly authFailure?: UpgradeClose;
+    /** The paired device signed in; null with the launch link. */
+    readonly deviceId: string | null;
     /** The client's user agent, for the log. */
     readonly client: string;
     session?: DispatcherSession;
@@ -239,14 +292,20 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     port,
     fetch: async (request, server) => {
       const url = new URL(request.url);
-      if (url.pathname === "/ws") {
-        const authorization = authorizeWebSocketUpgrade(request, {
-          token,
-          origins,
-          port: bunServer.port ?? port,
-          earlierLaunchTokens: options.earlierLaunchTokens,
-          ...(options.remote === undefined ? {} : { remote: options.remote }),
+      if (devices !== undefined) {
+        const answer = await pairingRoute(request, url, {
+          pairing: devices,
+          fromAppPage: (each) => fromAppPage(each, policy()),
+          fromThisComputer: (each) => fromThisComputer(each, bunServer.port ?? port),
+          overHttps,
+          isLaunchToken: (candidate) => constantTimeEqual(token, candidate),
+          address: () => options.remote?.origin ?? `http://127.0.0.1:${bunServer.port ?? port}`,
+          ...(options.logger === undefined ? {} : { logger: options.logger }),
         });
+        if (answer !== undefined) return answer;
+      }
+      if (url.pathname === "/ws") {
+        const authorization = authorizeWebSocketUpgrade(request, policy());
         if (authorization instanceof Response) {
           options.logger?.warn("connection.rejected", {
             reason: "host",
@@ -258,7 +317,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           data: {
             id: randomId(),
             client: (request.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
-            ...(authorization ? { authFailure: authorization } : {}),
+            ...("closeCode" in authorization
+              ? { authFailure: authorization, deviceId: null }
+              : { deviceId: authorization.deviceId }),
           },
         });
         return upgraded ? undefined : new Response("WebSocket upgrade required", { status: 426 });
@@ -275,7 +336,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       }
       // The new UI first; a file it does not have may be one of the old UI's own pages or files, served as before.
       const page = await serveStatic(uiRoot, url.pathname, request);
-      return page.status === 404 ? serveStatic(staticRoot, url.pathname, request) : page;
+      if (page.status === 404) return serveStatic(staticRoot, url.pathname, request);
+      return url.pathname === "/" || url.pathname === "/index.html" ? renewed(request, page) : page;
     },
     websocket: {
       open: (socket) => {
@@ -296,12 +358,20 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           isOpen: () => socket.readyState === 1,
         };
         socket.data.session = dispatcher.open(dispatcherSocket, socket.data.client);
+        const deviceId = socket.data.deviceId;
+        if (devices !== undefined && deviceId !== null) {
+          devices.connections.add(socket.data.id, deviceId, (code, reason) =>
+            socket.close(code, reason),
+          );
+          devices.store.seen(deviceId);
+        }
       },
       message: (socket, message) => {
         socket.data.session?.receive(message);
       },
       close: (socket) => {
         if (socket.data.session !== undefined) dispatcher.close(socket.data.session);
+        devices?.connections.remove(socket.data.id);
       },
     },
   });

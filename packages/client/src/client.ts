@@ -43,8 +43,11 @@ export interface ConnectionStateEvent {
   readonly state: ConnectionState;
   readonly attempt: number;
   readonly error?: AppError;
-  /** Why the server refused this connection: an expired/invalid launch link or an unallowed page address. */
-  readonly refusal?: "expired" | "invalid" | "origin";
+  /**
+   * Why the server refused this connection: an expired or invalid launch link, a device that is not paired (or was
+   * removed), or a page address it does not allow.
+   */
+  readonly refusal?: "expired" | "invalid" | "unpaired" | "origin";
 }
 
 export type ResyncReason =
@@ -74,7 +77,8 @@ export interface ReconnectOptions {
 
 export interface CreateAppClientOptions {
   readonly url: string;
-  readonly token: string;
+  /** The launch link's token; omitted for a paired device, which signs in with its key's cookie. */
+  readonly token?: string;
   readonly reconnect?: ReconnectOptions;
   /** Injected only for isomorphic tests; browsers use their standard WebSocket global. */
   readonly webSocketFactory?: WebSocketFactory;
@@ -408,7 +412,10 @@ class AppClientImpl implements AppClient {
 
   private connectNow(): void {
     if (this.disposed || this.terminal) return;
-    const url = withToken(this.options.url, this.options.token);
+    const url =
+      this.options.token === undefined
+        ? this.options.url
+        : withToken(this.options.url, this.options.token);
     let socket: WebSocketLike;
     try {
       socket = this.factory(url);
@@ -455,9 +462,19 @@ class AppClientImpl implements AppClient {
         let refusal: ConnectionStateEvent["refusal"];
         let message = "This page address is not allowed to reach omp-app";
         if (code === 4401) {
-          const expired = closeReason(event) === "expired token";
-          refusal = expired ? "expired" : "invalid";
-          message = expired ? "Launch link has expired" : "Launch token is not valid";
+          const reason = closeReason(event);
+          refusal =
+            reason === "expired token"
+              ? "expired"
+              : reason === "not paired"
+                ? "unpaired"
+                : "invalid";
+          message =
+            refusal === "expired"
+              ? "Launch link has expired"
+              : refusal === "unpaired"
+                ? "This device is not paired with the app"
+                : "Launch token is not valid";
         } else {
           refusal = "origin";
         }
@@ -932,8 +949,8 @@ class AppClientImpl implements AppClient {
 }
 
 export function createAppClient(options: CreateAppClientOptions): AppClient {
-  if (options.url.length === 0 || options.token.length === 0) {
-    throw appFailure("invalid_args", "url and token are required", false);
+  if (options.url.length === 0 || options.token?.length === 0) {
+    throw appFailure("invalid_args", "url is required, and a token when one is given", false);
   }
   return new AppClientImpl(options);
 }

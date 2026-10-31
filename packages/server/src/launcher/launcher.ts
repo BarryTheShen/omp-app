@@ -14,6 +14,8 @@ export const DEFAULT_PORT = 4317;
 
 export const USAGE = `Usage: omp-app [folder] [options]
        omp-app tui [folder] [-- omp's options]
+       omp-app pair
+       omp-app devices [remove <device>]
        omp-app logs [--lines <n>]
        omp-app debug-report
        omp-app new-link
@@ -32,6 +34,13 @@ omp in the terminal, on the same chats:
                  when you leave it (Ctrl+B, then D) or lose the connection; run it again to go back.
                  omp's own options go after --, for example: omp-app tui -- --resume <chat id>
 
+Each device that opens the app pairs once, and stays paired until it is removed:
+  pair           print a one-time code for a new device: open the app's address on it and enter
+                 the code (it works once, for 10 minutes). A device already paired can also allow
+                 a new one, or make a code in Settings → Devices.
+  devices        list the paired devices; devices remove <device> removes one, by its id (or the
+                 start of it) or its name: its key stops working and its open windows close
+
 The app's link (the address with #token=) stays the same when the app restarts:
   new-link       make a new link, for example when the old one was shared by mistake: the app
                  prints it when it next starts, and links printed before then stop working
@@ -43,7 +52,16 @@ Problems? The app keeps a log of what it does (never your prompts, files or keys
 `;
 
 export type LauncherArgs = {
-  readonly command: "run" | "help" | "version" | "tui" | "logs" | "debug-report" | "new-link";
+  readonly command:
+    | "run"
+    | "help"
+    | "version"
+    | "tui"
+    | "pair"
+    | "devices"
+    | "logs"
+    | "debug-report"
+    | "new-link";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
@@ -51,6 +69,8 @@ export type LauncherArgs = {
   readonly lines: number | undefined;
   /** For `tui`: omp's own options, everything after `--`. */
   readonly ompArgs: readonly string[];
+  /** For `devices remove <device>`: the device, by its id, the start of its id, or its name. */
+  readonly removeDevice: string | undefined;
 };
 
 export type ParsedArgs =
@@ -64,6 +84,19 @@ function parsePort(text: string): number | undefined {
 }
 
 export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
+  // `pair` and `devices` take nothing else: `devices remove <device>` names one device.
+  if (argv[0] === "pair") {
+    return argv.length === 1
+      ? { ok: true, args: { ...NO_ARGS, command: "pair" } }
+      : { ok: false, message: "The pair command takes no folder or options." };
+  }
+  if (argv[0] === "devices") {
+    if (argv.length === 1) return { ok: true, args: { ...NO_ARGS, command: "devices" } };
+    const device = argv[2] ?? "";
+    return argv[1] === "remove" && argv.length === 3 && device !== ""
+      ? { ok: true, args: { ...NO_ARGS, command: "devices", removeDevice: device } }
+      : { ok: false, message: "Use omp-app devices, or omp-app devices remove <device>." };
+  }
   let command: LauncherArgs["command"] = "run";
   let folder: string | undefined;
   let port: number | undefined;
@@ -124,8 +157,21 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
   ) {
     return { ok: false, message: "The new-link command takes no folder or options." };
   }
-  return { ok: true, args: { command, folder, port, open, lines, ompArgs } };
+  return {
+    ok: true,
+    args: { command, folder, port, open, lines, ompArgs, removeDevice: undefined },
+  };
 }
+
+/** The arguments of a command that takes none. */
+const NO_ARGS: Omit<LauncherArgs, "command"> = {
+  folder: undefined,
+  port: undefined,
+  open: true,
+  lines: undefined,
+  ompArgs: [],
+  removeDevice: undefined,
+};
 
 const InstanceSchema = z.object({
   pid: z.number().int().positive(),

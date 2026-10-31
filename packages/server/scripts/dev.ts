@@ -27,6 +27,7 @@ import {
   probeOmpPatiently,
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
+import { openDevicePairing } from "../src/devices";
 import { openLaunchHistory } from "../src/launch-history";
 import {
   buildDebugReport,
@@ -68,7 +69,11 @@ import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
 import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
-import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
+import {
+  type A0PortContext,
+  createA0Runtime,
+  createDevicesPortRegistration,
+} from "../src/ports/A0";
 import {
   type ProbeCacheHit,
   type ProbeCacheIdentity,
@@ -631,8 +636,17 @@ export async function createCompositionServer(
     openSessionFile: (threadId) => a0Runtime.sessionFileOf(threadId),
     logger,
   };
+  // Device pairing: each device has a key of its own; the address a new device opens is known once the server listens.
+  const devices = await openDevicePairing({ appDataDir, logger });
+  let appAddress = "";
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
+    createDevicesPortRegistration({
+      pairing: devices,
+      publish,
+      address: () => appAddress,
+      logger,
+    }),
     ...createA1PortRegistrations(a1Context),
   ]);
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
@@ -652,7 +666,9 @@ export async function createCompositionServer(
     logger,
     earlierLaunchTokens: launchHistory.earlier,
     ...(remote === undefined ? {} : { remote }),
+    devices,
   });
+  appAddress = remote?.origin ?? server.url;
   await launchHistory.remember(server.token);
   launchToken = server.token;
   logger.addSecret(server.token);
@@ -690,6 +706,7 @@ export async function createCompositionServer(
           draftStore.dispose();
           sessionPinStore.dispose();
           memoryStore.dispose();
+          devices.desk.dispose();
         }
       }
     },

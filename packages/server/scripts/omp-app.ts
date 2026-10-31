@@ -7,8 +7,16 @@
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
 import { probeOmp } from "../src/capabilities/omp-version";
 import { keepLaunchToken, launchTokenFile, replaceLaunchToken } from "../src/launch-token";
+import {
+  callPairing,
+  devicesText,
+  findDevice,
+  pairingCodeText,
+  serverLink,
+} from "../src/launcher/devices-cli";
 import {
   clearInstance,
   DEFAULT_PORT,
@@ -252,6 +260,51 @@ if (args.command === "new-link") {
       ? "A new link is saved. The app that is running keeps its current link until it restarts: restart it (systemctl --user restart omp-app when it runs as the service, or quit it and run omp-app again). Links printed before then stop working."
       : "A new link is saved. The app prints it when it next starts, and links printed before then stop working.",
   );
+  process.exit(0);
+}
+if (args.command === "pair" || args.command === "devices") {
+  const running = await readRunningInstance(instanceFile(Bun.env, home), {
+    alive: isAlive,
+    responds,
+  });
+  const link = running === null ? undefined : serverLink(running.url);
+  if (link === undefined) {
+    fail(
+      "the app is not running, and only the running app can pair or list devices. Start it first (systemctl --user start omp-app when it runs as the service, or omp-app).",
+    );
+  }
+  try {
+    if (args.command === "pair") {
+      const made = PairingCode.parse(
+        await callPairing(link, PAIRING_PATHS.newCode, { method: "POST" }),
+      );
+      console.log(pairingCodeText(made));
+    } else {
+      const list = DeviceList.parse(
+        await callPairing(link, PAIRING_PATHS.devices, { method: "GET" }),
+      );
+      if (args.removeDevice === undefined) {
+        console.log(devicesText(list));
+      } else {
+        const found = findDevice(list.devices, args.removeDevice);
+        if (found === "none")
+          fail(`no paired device is named "${args.removeDevice}". omp-app devices lists them.`);
+        if (found === "several")
+          fail(`several paired devices match "${args.removeDevice}": give more of the id.`);
+        const after = DeviceList.parse(
+          await callPairing(link, PAIRING_PATHS.remove, {
+            method: "POST",
+            body: { deviceId: found.id },
+          }),
+        );
+        console.log(
+          `Removed ${found.name}: its key stops working and its open windows close.\n\n${devicesText(after)}`,
+        );
+      }
+    }
+  } catch (error) {
+    fail(`could not reach the app: ${error instanceof Error ? error.message : String(error)}`);
+  }
   process.exit(0);
 }
 

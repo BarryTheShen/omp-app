@@ -7,6 +7,7 @@ export const REFUSED_WORDS: Record<NonNullable<ConnectionStateEvent["refusal"]>,
   expired:
     "This link has expired. Open the app with the link omp-app printed when it last started.",
   invalid: "This link is not valid. Open the app with the link omp-app printed.",
+  unpaired: "This device is not paired with the app. Reload the page to pair it.",
   origin: "The app does not accept connections from this page's address.",
 };
 

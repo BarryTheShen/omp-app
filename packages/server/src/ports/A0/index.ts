@@ -10,6 +10,7 @@ import type { A0PortContext, ThreadBootstrap } from "./context";
 export * from "./app";
 export * from "./chat-session";
 export * from "./context";
+export * from "./devices";
 
 /**
  * Main's registry composition seam. Add the returned registrations to `createPortRegistry([...])`

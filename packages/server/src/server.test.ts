@@ -365,7 +365,7 @@ describe("A0.6 upgrade and static serving", () => {
         origins: ["http://allowed.test"],
         port: 4317,
       }),
-    ).toBeUndefined();
+    ).toEqual({ deviceId: null });
   });
 
   test("with a remote origin, accepts that Tailscale host and origin besides loopback, and nothing else", () => {
@@ -380,11 +380,11 @@ describe("A0.6 upgrade and static serving", () => {
         request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
         policy,
       ),
-    ).toBeUndefined();
+    ).toEqual({ deviceId: null });
     // The loopback page still works.
     expect(
       authorizeWebSocketUpgrade(request("http://127.0.0.1:4317", "127.0.0.1:4317"), policy),
-    ).toBeUndefined();
+    ).toEqual({ deviceId: null });
     // Another tailnet name, plain HTTP for the same name, or a page on another site are turned away.
     expect(
       authorizeWebSocketUpgrade(
@@ -432,7 +432,7 @@ describe("A0.6 upgrade and static serving", () => {
       closeCode: 4401,
       reason: "invalid token",
     });
-    expect(authorizeWebSocketUpgrade(request("right"), policy)).toBeUndefined();
+    expect(authorizeWebSocketUpgrade(request("right"), policy)).toEqual({ deviceId: null });
   });
 
   test("binds loopback, serves the static root and exposes a random token", async () => {

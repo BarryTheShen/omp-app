@@ -39,6 +39,7 @@ describe("parseLauncherArgs", () => {
         open: true,
         lines: undefined,
         ompArgs: [],
+        removeDevice: undefined,
       },
     });
   });
@@ -53,6 +54,7 @@ describe("parseLauncherArgs", () => {
         open: false,
         lines: undefined,
         ompArgs: [],
+        removeDevice: undefined,
       },
     });
     expect(parseLauncherArgs(["--port=0"])).toMatchObject({ ok: true, args: { port: 0 } });
@@ -134,6 +136,7 @@ describe("parseLauncherArgs", () => {
           open: true,
           lines: undefined,
           ompArgs: ["--resume", "abc", "--port", "1"],
+          removeDevice: undefined,
         },
       },
     );
@@ -149,6 +152,26 @@ describe("parseLauncherArgs", () => {
     // A folder that is really called tui is written ./tui.
     expect(parseLauncherArgs(["./tui"])).toMatchObject({
       args: { command: "run", folder: "./tui" },
+    });
+  });
+
+  test("pair takes nothing; devices lists, and devices remove names one device, nothing more", () => {
+    expect(parseLauncherArgs(["pair"])).toMatchObject({ ok: true, args: { command: "pair" } });
+    expect(parseLauncherArgs(["pair", "/work/app"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["devices"])).toMatchObject({
+      ok: true,
+      args: { command: "devices", removeDevice: undefined },
+    });
+    expect(parseLauncherArgs(["devices", "remove", "iPhone · Home Screen app"])).toMatchObject({
+      ok: true,
+      args: { command: "devices", removeDevice: "iPhone · Home Screen app" },
+    });
+    expect(parseLauncherArgs(["devices", "remove"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["devices", "remove", "a", "b"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["devices", "--port", "4400"])).toMatchObject({ ok: false });
+    // A folder that is really named devices or pair is opened with ./ in front, as for logs.
+    expect(parseLauncherArgs(["./devices"])).toMatchObject({
+      args: { command: "run", folder: "./devices" },
     });
   });
 });
