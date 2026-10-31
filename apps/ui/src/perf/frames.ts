@@ -62,6 +62,46 @@ export function scrollMoves(tops: readonly number[]): ScrollMoves {
   };
 }
 
+/**
+ * One frame of a scroll as the page drew it: the element's position and scroll height, and how far the content under
+ * the middle of the view moved on screen since the frame before (up positive, as the position; null when unknown).
+ */
+export interface ScrollFrame {
+  readonly top: number;
+  readonly height: number;
+  readonly seen: number | null;
+}
+
+/**
+ * A frame in which the position changed: by how much (down positive), how far the content on screen moved, and how much
+ * the scrolled content grew in that frame. A position change the screen did not show (`seenPx` near 0, the content
+ * grown by about as much) is a correction for content added or measured above; one it showed is the view jumping.
+ */
+export interface ScrollJump {
+  readonly frame: number;
+  readonly movedPx: number;
+  readonly seenPx: number | null;
+  readonly grewPx: number;
+}
+
+/** The `count` frames whose position changed most, largest first. */
+export function biggestJumps(frames: readonly ScrollFrame[], count: number): readonly ScrollJump[] {
+  const jumps: ScrollJump[] = [];
+  frames.forEach((frame, index) => {
+    const before = frames[index - 1];
+    if (before === undefined || frame.top === before.top) return;
+    jumps.push({
+      frame: index,
+      movedPx: Math.round(frame.top - before.top),
+      seenPx: frame.seen === null ? null : Math.round(frame.seen),
+      grewPx: Math.round(frame.height - before.height),
+    });
+  });
+  return jumps
+    .sort((a, b) => Math.abs(b.movedPx) - Math.abs(a.movedPx) || a.frame - b.frame)
+    .slice(0, count);
+}
+
 /** Records the time of every frame, and runs `onFrame` in each, until `stop`. */
 export function watchFrames(onFrame?: () => void): { readonly stop: () => FrameStats } {
   const times: number[] = [];

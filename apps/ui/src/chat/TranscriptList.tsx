@@ -230,6 +230,8 @@ export function TranscriptList({
                 key={item.key}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
+                // The row's own key, which a prepend does not shift: the scroll trace follows a row by it.
+                data-key={String(item.key)}
                 className="tl-item group/msg absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >

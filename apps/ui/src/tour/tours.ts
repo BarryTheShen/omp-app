@@ -673,7 +673,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-10-30-whats-new",
-    when: "2026-10-30T22:45:00-05:00",
+    when: "2026-10-30T22:40:00-05:00",
     summary:
       "This list of updates and their tours; after an update, its card names the new tours and shows them one after another.",
     tours: [WHATS_NEW_TOUR],

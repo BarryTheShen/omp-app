@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { frameStats, scrollMoves } from "./frames";
+import { biggestJumps, frameStats, type ScrollFrame, scrollMoves } from "./frames";
 
 describe("frameStats", () => {
   test("steady frames: the median and worst are one frame's length, none is long", () => {
@@ -43,5 +43,42 @@ describe("scrollMoves", () => {
 
   test("frames before the first move and after the last are not counted as still", () => {
     expect(scrollMoves([10, 10, 10, 50, 10, 10]).stillFrames).toBe(0);
+  });
+});
+
+describe("biggestJumps", () => {
+  /** Frames from a list of [position, scroll height, on-screen move]. */
+  const frames = (rows: readonly (readonly [number, number, number | null])[]): ScrollFrame[] =>
+    rows.map(([top, height, seen]) => ({ top, height, seen }));
+
+  test("a frame's change sits with that frame's on-screen move and growth, largest first", () => {
+    const scrolled = frames([
+      [5000, 20000, null],
+      [4880, 20000, -120],
+      // Older content added above: the position follows it and the screen does not move.
+      [16400, 31520, 0],
+      // The view jumps: the screen shows it.
+      [14000, 31520, -2400],
+      [14000, 31520, 0],
+    ]);
+    expect(biggestJumps(scrolled, 3)).toEqual([
+      { frame: 2, movedPx: 11520, seenPx: 0, grewPx: 11520 },
+      { frame: 3, movedPx: -2400, seenPx: -2400, grewPx: 0 },
+      { frame: 1, movedPx: -120, seenPx: -120, grewPx: 0 },
+    ]);
+  });
+
+  test("frames that did not move are no jumps, and at most `count` are kept", () => {
+    const scrolled = frames([
+      [0, 1000, null],
+      [0, 1000, 0],
+      [40, 1000, 40],
+      [100, 1000, null],
+      [130, 1000, 30],
+    ]);
+    expect(biggestJumps(scrolled, 2)).toEqual([
+      { frame: 3, movedPx: 60, seenPx: null, grewPx: 0 },
+      { frame: 2, movedPx: 40, seenPx: 40, grewPx: 0 },
+    ]);
   });
 });
