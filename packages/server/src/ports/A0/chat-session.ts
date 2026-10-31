@@ -1023,16 +1023,30 @@ export class ChatSessionPortRuntime {
     this.#receive(entry, { kind: "process", status: "ready", startedAt: entry.startedAt });
   }
 
-  /** Restarts the chat on this server's omp once it has settled (`restartWhenSettled`); checked again when it settles. */
+  /**
+   * Restarts the chat on this server's omp once it has settled (`restartWhenSettled`); checked again when it settles.
+   * omp writes a chat's file only once it has a reply, so a chat with none (a spare an earlier server kept ready for a
+   * new chat) has nothing a restart could resume: nobody holding it, its host is stopped instead, and this server makes
+   * spares of its own on its own build; one a page holds keeps running as it is.
+   */
   async #restartIfSettled(entry: ChatEntry): Promise<void> {
     if (entry.restartWhenSettled !== true) return;
     if (!(await this.#isSettled(entry.bootstrap.threadId).catch(() => false))) return;
     if (entry.restartWhenSettled !== true || this.#entries.get(entry.bootstrap.threadId) !== entry)
       return;
     entry.restartWhenSettled = false;
+    const { threadId, sessionFile } = entry.bootstrap;
+    if (!(await this.#hasSessionFile(sessionFile))) {
+      const registry = this.#context.processRegistry;
+      if (registry.watched(threadId)) return;
+      this.#context.logger?.info("chat_session.unsaved_host_stopped", { threadId });
+      this.#forget(entry);
+      await registry.stopIfUnwatched(threadId, "opened").catch(() => undefined);
+      return;
+    }
     await this.#startRespawn(entry).catch((error: unknown) =>
       this.#context.logger?.warn("chat_session.restart_failed", {
-        threadId: entry.bootstrap.threadId,
+        threadId,
         error: error instanceof Error ? error.message : String(error),
       }),
     );

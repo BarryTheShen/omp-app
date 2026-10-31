@@ -2436,3 +2436,49 @@ describe("the chat session runtime: renames, whether or not the chat is open", (
     expect(runtimeContext.processRegistry.has(authorityThread)).toBe(false);
   });
 });
+
+describe("the chat session runtime: a chat an earlier server left running, on another omp (D2)", () => {
+  const spare: FakeIdentity = {
+    threadId: ThreadId.parse("omp-session-left-running"),
+    sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/left-running.jsonl"),
+  };
+
+  /** This server starts and finds the chat's host running, on an omp of its own: restarted once it settles. */
+  function adoptLeftRunning(saved: boolean) {
+    const created: FakeChatHost[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created, spare),
+      sessionFileExists: async () => saved,
+    };
+    const left = new FakeChatHost({ threadId: spare.threadId, folder, args: [] }, spare);
+    createA0Runtime(runtimeContext).adopt(
+      left,
+      {
+        kind: "hello",
+        protocol: 1,
+        ompVersion: "18.12.5",
+        methods: [...CHAT_HOST_METHODS],
+        session: { id: spare.threadId, file: spare.sessionFile, cwd: folder },
+      },
+      { restartWhenSettled: true },
+    );
+    return { created, left, registry: runtimeContext.processRegistry };
+  }
+
+  test("one omp never saved (a spare kept ready for a new chat) is stopped once settled, not restarted", async () => {
+    const { created, left, registry } = adoptLeftRunning(false);
+    await ticks(30);
+    expect(left.status).toBe("stopped");
+    expect(created).toHaveLength(0);
+    expect(registry.has(spare.threadId)).toBe(false);
+  });
+
+  test("a saved one is restarted on this server's omp once settled", async () => {
+    const { created, left, registry } = adoptLeftRunning(true);
+    await ticks(30);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.args).toEqual(["--resume", spare.sessionFile]);
+    expect(left.status).toBe("stopped");
+    expect(registry.has(spare.threadId)).toBe(true);
+  });
+});
