@@ -7,8 +7,10 @@ import "./styles/index.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { App } from "./App";
 import { startTheme } from "./theme/theme";
+import { followVisualViewport } from "./viewport";
 
 startTheme();
+followVisualViewport();
 const root = document.getElementById("root");
 if (root === null) throw new Error("The page has no #root element.");
 createRoot(root).render(

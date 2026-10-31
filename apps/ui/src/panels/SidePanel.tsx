@@ -103,7 +103,7 @@ export function SidePanel({
         showCloseButton={false}
         // The sheet opens on its header, not its close button, whose tooltip would take the first Esc.
         initialFocus={headerRef}
-        className="top-0 right-0 left-auto flex h-dvh w-[min(360px,92vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-none"
+        className="top-0 right-0 left-auto flex h-dvh max-h-none w-[min(360px,92vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 pt-(--safe-top) pb-(--safe-bottom) sm:max-w-none"
       >
         <DialogTitle className="sr-only">Side panel: {chosen.title}</DialogTitle>
         {body}

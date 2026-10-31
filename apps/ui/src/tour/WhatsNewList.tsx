@@ -50,7 +50,9 @@ export function WhatsNewList({
           {UPDATES.map((update) => (
             <li key={update.id} className="border-b border-l2 px-5 py-3 last:border-b-0">
               <section aria-label={timeOf(update.when)}>
-                <h3 className="text-xs font-medium text-t3">{timeOf(update.when)}</h3>
+                <h3 className="text-xs font-medium text-t3">
+                  <time dateTime={update.when}>{timeOf(update.when)}</time>
+                </h3>
                 <p className="mt-0.5 text-[0.8125rem] text-pretty text-t1">{update.summary}</p>
                 <ul className="mt-1.5 flex flex-col gap-1">
                   {update.tours.map((tour) => {

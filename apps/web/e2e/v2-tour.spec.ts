@@ -14,6 +14,7 @@ realTest.describe("new UI tours", () => {
   const card = (page: Page) => page.getByRole("region", { name: "What's new" });
   const palette = (page: Page) => page.getByRole("dialog", { name: "Palette", exact: true });
   const popover = (page: Page) => page.locator(".driver-popover");
+  const list = (page: Page) => page.getByRole("dialog", { name: "What's new", exact: true });
   const heading = (page: Page) => popover(page).locator(".driver-popover-title");
   const opened = async (page: Page, count: number) => {
     await expect(shown(page)).toHaveCount(count, { timeout: 60_000 });
@@ -49,27 +50,28 @@ realTest.describe("new UI tours", () => {
       await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
       await expect(card(page)).toBeHidden();
 
+      // The palette offers every tour, oldest first: the What's new list's updates from the bottom, each with its tours.
+      await page.getByRole("button", { name: "What's new", exact: true }).click();
+      await expect(list(page)).toBeVisible();
+      const listed: string[] = [];
+      for (const update of (await list(page).getByRole("region").all()).reverse()) {
+        const labels = await update
+          .getByRole("button", { name: /^Take the tour: / })
+          .evaluateAll((buttons) =>
+            buttons.map((button) => button.getAttribute("aria-label") ?? ""),
+          );
+        listed.push(...labels.map((label) => label.replace(/^Take the tour: /, "")));
+      }
+      await page.keyboard.press("Escape");
+      await expect(list(page)).toBeHidden();
       await page.keyboard.press("Control+k");
       const search = palette(page).getByRole("combobox", { name: "Search the palette" });
       await search.fill("Tour:");
-      await expect(palette(page).getByRole("option")).toHaveText([
-        /Tour: Your chats, tabs and panes/,
-        /Tour: The message box/,
-        /Tour: Inside a chat/,
-        /Tour: Palette, keys and settings/,
-        /Tour: Folders/,
-        /Tour: Models and roles/,
-        /Tour: Side questions/,
-        /Tour: Side panel and usage/,
-        /Tour: A model for each role/,
-        /Tour: Agents and progress/,
-        /Tour: Notes above the box/,
-        /Tour: Your inbox/,
-        /Tour: The side panel on the right/,
-        /Tour: Your model menu/,
-        /Tour: Arrange your windows/,
-        /Tour: Updates and their tours/,
-      ]);
+      const offered = palette(page).getByRole("option");
+      await expect(offered).toHaveCount(listed.length);
+      expect(
+        (await offered.allTextContents()).map((text) => /Tour: (.+?)\s*\d+ min/.exec(text)?.[1]),
+      ).toEqual(listed);
 
       expect(realApp.problems).toEqual([]);
     },
@@ -152,7 +154,6 @@ realTest.describe("new UI tours", () => {
     expect(realApp.problems).toEqual([]);
   });
 
-  const list = (page: Page) => page.getByRole("dialog", { name: "What's new", exact: true });
   /** Marks every tour offered with the card's Later, then takes `ids` back out: as after an update that brought them. */
   const afterUpdate = async (page: Page, ids: readonly string[]) => {
     await card(page).getByRole("button", { name: "Later" }).click();
@@ -210,10 +211,17 @@ realTest.describe("new UI tours", () => {
 
       await page.getByRole("button", { name: "What's new", exact: true }).click();
       await expect(list(page)).toBeVisible();
-      const updates = list(page).getByRole("region");
-      await expect(updates.first()).toContainText("This list of updates and their tours");
-      await expect(updates.last()).toContainText("Click-through tours of the basics.");
-      await expect(updates.last().getByRole("listitem")).toHaveCount(4);
+      // Newest first, by the time each update came.
+      const came = await list(page)
+        .getByRole("region")
+        .locator("time")
+        .evaluateAll((times) =>
+          times.map((time) => Date.parse(time.getAttribute("datetime") ?? "")),
+        );
+      expect(came.length).toBeGreaterThan(1);
+      expect(came.every((when, index) => index === 0 || when <= (came[index - 1] ?? when))).toBe(
+        true,
+      );
 
       await list(page).getByRole("button", { name: "Take the tour: Your inbox" }).click();
       await expect(list(page)).toBeHidden();

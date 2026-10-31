@@ -657,6 +657,28 @@ const WHATS_NEW_TOUR: Tour = {
   ],
 };
 
+const IPHONE_TOUR: Tour = {
+  id: "iphone-2026-10-30",
+  title: "omp on your iPhone",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "On your Home Screen",
+      text: "On an iPhone, open the app's link in Safari, tap <b>Share</b>, then <b>Add to Home Screen</b>. omp then opens from its icon, full screen and already connected, and keeps clear of the notch and the home bar.",
+      action: next,
+    },
+    {
+      target: MESSAGE_BOX,
+      title: "Typing on a phone",
+      text: "The message box stays above the keyboard while you type, and the page no longer zooms in when you tap a field.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -671,6 +693,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-30-iphone",
+    when: "2026-10-30T23:31:00-05:00",
+    summary:
+      "omp on an iPhone: add it to the Home Screen, clear of the notch and the home bar, the message box above the keyboard.",
+    tours: [IPHONE_TOUR],
+  },
   {
     id: "2026-10-30-whats-new",
     when: "2026-10-30T22:40:00-05:00",
