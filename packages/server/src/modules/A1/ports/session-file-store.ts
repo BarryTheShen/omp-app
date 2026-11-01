@@ -6,6 +6,7 @@ import {
   SessionFileChanged,
   SessionFilePath,
   SessionFileStore,
+  SessionPauseChanged,
   SessionRunningChanged,
   ThreadId,
 } from "@omp-app/contracts";
@@ -111,6 +112,22 @@ function sessionTurnBindings(context: A1PortContext): readonly A1EventBinding[] 
             .catch((error: unknown) => {
               context.logger?.warn("session.turn_unreadable", { message: String(error) });
             });
+        }),
+    },
+  ];
+}
+
+/** A chat's pause starting or ending (omp's `/pause`, or its omp gone) changes the mark its row shows. */
+function sessionPauseBindings(context: A1PortContext): readonly A1EventBinding[] {
+  const pause = context.processPause;
+  if (pause === undefined) return [];
+  return [
+    {
+      event: "pauseChanged",
+      subscribe: (listener) =>
+        pause.onPauseChange((threadId, folder, pausedAt) => {
+          const payload = SessionPauseChanged.safeParse({ folder, id: threadId, pausedAt });
+          if (payload.success) listener(payload.data);
         }),
     },
   ];
@@ -249,9 +266,18 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
           removed: true,
         });
       },
+      listPaused: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return { chats: [...(context.processPause?.pausedIn(args.folder) ?? [])] };
+      },
     },
     context.publish,
-    [...sessionTurnBindings(context), removalBinding(removals), refreshBinding(context)],
+    [
+      ...sessionTurnBindings(context),
+      ...sessionPauseBindings(context),
+      removalBinding(removals),
+      refreshBinding(context),
+    ],
     context.watchStreamActivity,
   );
 }

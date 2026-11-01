@@ -30,6 +30,16 @@ describe("pausing a chat on the chat host", () => {
         );
         // Pausing again keeps the first time.
         expect(await chat.client.request("pause", {})).toEqual({ pausedAt: paused.pausedAt });
+        // A server that takes the chat over (D2) hears the pause from the replay of what is live.
+        const beforeReplay = chat.events.length;
+        await chat.client.request("replay_live", {});
+        expect(
+          chat.events
+            .slice(beforeReplay)
+            .some(
+              ({ event }) => event.type === "pause_changed" && event.pausedAt === paused.pausedAt,
+            ),
+        ).toBe(true);
 
         const sent = chat.client.request("prompt", { text: "say hello" });
         await Bun.sleep(HELD_MS);

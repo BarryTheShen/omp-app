@@ -71,6 +71,8 @@ interface Entry {
   unsubscribe: () => void;
   watchers: number;
   busy: boolean;
+  /** When omp's `/pause` paused the thread (epoch ms), as its host reports it; null while it is not paused. */
+  pausedAt: number | null;
   /** `!` commands running in this thread's omp, each holding it up (see `holdCommand`). */
   commands: number;
   idleTimer: unknown;
@@ -103,6 +105,9 @@ export class OmpProcessRegistry {
   readonly #refusedDeletes = new Set<ThreadId>();
   #idleHooks: OmpProcessIdleHooks | undefined;
   readonly #busyListeners = new Set<(threadId: ThreadId, busy: boolean) => void>();
+  readonly #pauseListeners = new Set<
+    (threadId: ThreadId, folder: string, pausedAt: number | null) => void
+  >();
 
   constructor(options: OmpProcessRegistryOptions) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
@@ -155,6 +160,7 @@ export class OmpProcessRegistry {
       folder: options.folder,
       watchers: 1,
       busy: false,
+      pausedAt: null,
       commands: 0,
       idleTimer: undefined,
       idleOrder: undefined,
@@ -184,6 +190,7 @@ export class OmpProcessRegistry {
       folder,
       watchers: 0,
       busy: false,
+      pausedAt: null,
       commands: 0,
       idleTimer: undefined,
       idleOrder: undefined,
@@ -210,8 +217,10 @@ export class OmpProcessRegistry {
     }
     const dead = entry.process;
     entry.unsubscribe();
-    // The old process's end is no longer heard from here, so a turn it was still running ends now.
+    // The old process's end is no longer heard from here, so a turn it was still running ends now, and so does its pause:
+    // omp's pause gate lives in its process.
     this.#endTurn(entry);
+    this.#endPause(entry);
     const process = this.#createProcess(options);
     entry.process = process;
     entry.unsubscribe = this.#forgetWhenStopped(entry);
@@ -227,6 +236,7 @@ export class OmpProcessRegistry {
       // A process that exits, fails or is stopped ends the turn it was running: omp sends no more of it.
       if (event.status === "exited" || event.status === "error" || event.status === "stopped") {
         this.#endTurn(entry);
+        this.#endPause(entry);
       }
       if (event.status !== "stopped") return;
       if (this.#entries.get(entry.key) !== entry) return;
@@ -348,6 +358,38 @@ export class OmpProcessRegistry {
   }
 
   /**
+   * Records whether the thread's omp is paused (omp's `/pause`; `pausedAt` in epoch ms) or not (`null`), as its host
+   * reports it. The mark goes with the process: an exit, a stop or a respawn clears it. Listeners hear each change.
+   */
+  setPaused(threadId: ThreadId, pausedAt: number | null): void {
+    const entry = this.#entries.get(threadId);
+    if (entry === undefined || entry.pausedAt === pausedAt) return;
+    entry.pausedAt = pausedAt;
+    this.#notifyPause(threadId, entry.folder, pausedAt);
+  }
+
+  /** The paused threads in a folder, each with when it was paused. */
+  pausedIn(folder: string): readonly { readonly id: ThreadId; readonly pausedAt: number }[] {
+    const paused: { id: ThreadId; pausedAt: number }[] = [];
+    for (const entry of this.#entries.values()) {
+      if (entry.folder === folder && entry.pausedAt !== null) {
+        paused.push({ id: entry.key, pausedAt: entry.pausedAt });
+      }
+    }
+    return paused;
+  }
+
+  /** Calls `listener` each time a thread's pause changes, with the thread's folder; the returned function stops it. */
+  onPauseChange(
+    listener: (threadId: ThreadId, folder: string, pausedAt: number | null) => void,
+  ): () => void {
+    this.#pauseListeners.add(listener);
+    return () => {
+      this.#pauseListeners.delete(listener);
+    };
+  }
+
+  /**
    * Clears the busy mark of a process that exited or failed: its turn is lost with it. No idle close is scheduled,
    * so a crashed process stays registered for `respawn()`.
    */
@@ -355,6 +397,23 @@ export class OmpProcessRegistry {
     if (!entry.busy || this.#entries.get(entry.key) !== entry) return;
     entry.busy = false;
     this.#notifyBusy(entry.key, false);
+  }
+
+  /** Clears the pause of a thread whose process is gone or replaced: omp's pause gate lives in its process. */
+  #endPause(entry: Entry): void {
+    if (entry.pausedAt === null) return;
+    entry.pausedAt = null;
+    this.#notifyPause(entry.key, entry.folder, null);
+  }
+
+  #notifyPause(threadId: ThreadId, folder: string, pausedAt: number | null): void {
+    for (const listener of this.#pauseListeners) {
+      try {
+        listener(threadId, folder, pausedAt);
+      } catch {
+        // A pause observer must not break process lifecycle updates or other observers.
+      }
+    }
   }
 
   #notifyBusy(threadId: ThreadId, busy: boolean): void {
@@ -422,6 +481,11 @@ export class OmpProcessRegistry {
     this.#entries.delete(from);
     entry.key = to;
     this.#entries.set(to, entry);
+    // A paused chat's mark moves with it to omp's own id.
+    if (entry.pausedAt !== null) {
+      this.#notifyPause(from, entry.folder, null);
+      this.#notifyPause(to, entry.folder, entry.pausedAt);
+    }
     return entry.process;
   }
 
@@ -506,6 +570,8 @@ export class OmpProcessRegistry {
       }
     }
     const threadId = entry.key;
+    // The stop takes omp's pause gate with the process.
+    this.#endPause(entry);
     this.#entries.delete(threadId);
     entry.unsubscribe();
     this.#closing.set(threadId, entry);

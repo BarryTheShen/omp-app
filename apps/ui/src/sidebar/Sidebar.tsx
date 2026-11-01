@@ -3,6 +3,7 @@ import { cn } from "cn";
 import {
   Ellipsis,
   PanelRight,
+  Pause,
   PencilLine,
   Pin,
   PinOff,
@@ -60,7 +61,8 @@ import type { ChatList } from "./useChatList";
 /** How long the pointer rests on a chat before it is read ahead. */
 const PREFETCH_REST_MS = 120;
 
-type ChatState = "waiting" | "running" | null;
+/** What a row's mark says: omp waits for an answer, the chat is paused (omp's `/pause`), or a turn runs. */
+type ChatState = "waiting" | "paused" | "running" | null;
 
 /** A chat whose first reply still runs has no file to title it yet: the first message this page sent in it names it. */
 const startingTitleOf = (id: ThreadId): string => firstPromptOf(id) ?? "New chat";
@@ -140,7 +142,13 @@ export function Sidebar({
       (needle === "" || startingTitleOf(chat.id).toLowerCase().includes(needle)),
   );
   const stateOf = (id: ThreadId): ChatState =>
-    view.waiting.has(id) ? "waiting" : list.running.has(id) ? "running" : null;
+    view.waiting.has(id)
+      ? "waiting"
+      : list.paused.has(id)
+        ? "paused"
+        : list.running.has(id)
+          ? "running"
+          : null;
   const rename = (session: SessionFile, typed: string): void => {
     const name = typed.trim();
     if (name === "" || name === titleOf(session)) return;
@@ -486,7 +494,13 @@ function ChatRow({
   }, [editing]);
   const said = [
     title,
-    state === "waiting" ? "waiting for you" : state === "running" ? "running" : null,
+    state === "waiting"
+      ? "waiting for you"
+      : state === "paused"
+        ? "paused"
+        : state === "running"
+          ? "running"
+          : null,
     open ? "open in a pane" : null,
   ].filter((part) => part !== null);
   return (
@@ -566,14 +580,19 @@ function ChatRow({
                     startChatDrag(event.dataTransfer, target),
                 })}
           >
-            <span
-              aria-hidden
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                state === "waiting" && "bg-warn",
-                state === "running" && "bg-live",
-              )}
-            />
+            {state === "paused" ? (
+              // The tab's mark too: a paused turn is still a turn, and the pause is what matters.
+              <Pause aria-hidden="true" className="size-3 shrink-0 text-warn-ink" />
+            ) : (
+              <span
+                aria-hidden
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  state === "waiting" && "bg-warn",
+                  state === "running" && "bg-live",
+                )}
+              />
+            )}
             <span className="min-w-0 flex-1 truncate">{title}</span>
             {open && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-t3" />}
           </button>

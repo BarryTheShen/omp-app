@@ -55,6 +55,13 @@ export interface A1PortContext {
     onBusyChange(listener: (threadId: ThreadId, busy: boolean) => void): () => void;
     folderOf: (threadId: ThreadId) => string | undefined;
   };
+  /** The paused chats (omp's `/pause`) of this server's omps by folder, and each change of one, with the chat's folder. */
+  readonly processPause?: {
+    onPauseChange(
+      listener: (threadId: ThreadId, folder: string, pausedAt: number | null) => void,
+    ): () => void;
+    pausedIn(folder: string): readonly { readonly id: ThreadId; readonly pausedAt: number }[];
+  };
   /** The session file of a chat that is open now. A new chat's file is named before omp writes it to disk. */
   readonly openSessionFile: (threadId: ThreadId) => SessionFilePath | undefined;
   /** The app's debug log; absent in tests and embeddings. */

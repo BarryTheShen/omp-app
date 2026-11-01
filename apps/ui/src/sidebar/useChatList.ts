@@ -43,6 +43,8 @@ export interface ChatList {
    */
   readonly starting: readonly RunningSession[];
   readonly running: ReadonlySet<ThreadId>;
+  /** The chats paused now (omp's `/pause`), wherever they are open. */
+  readonly paused: ReadonlySet<ThreadId>;
   readonly pinned: ReadonlySet<ThreadId>;
   readonly setPinned: (id: ThreadId, pinned: boolean) => Promise<void>;
   /** Renames a chat, open or not; the list then shows the title omp saved (it trims and cleans what was typed). */
@@ -60,6 +62,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   );
   const [starting, setStarting] = useState<readonly RunningSession[]>([]);
   const [running, setRunning] = useState<ReadonlySet<ThreadId>>(new Set());
+  const [paused, setPaused] = useState<ReadonlySet<ThreadId>>(new Set());
   const [pins, setPins] = useState<{
     readonly ids: ReadonlySet<ThreadId>;
     readonly revision: string | null;
@@ -73,7 +76,13 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Another folder: its list from last time until it is read.
     setSessions(keptChats(folder).get() ?? []);
+    // The paused chats; a server older than the pause list has none to give, and the list reads on without them.
+    const readPaused = async (): Promise<void> => {
+      const listed = await client.port(SessionFileStore).listPaused({ folder });
+      if (active) setPaused(new Set(listed.chats.map((chat) => chat.id)));
+    };
     const read = async (): Promise<void> => {
+      void readPaused().catch(() => undefined);
       const listed = await client.port(SessionFileStore).listSessions({ folder, limit: LIMIT });
       if (!active) return;
       keptChats(folder).set(listed.sessions.map((session) => ({ ...session, subagents: [] })));
@@ -108,6 +117,15 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
         });
         // A turn's start or end can come with a file omp has just written.
         soon();
+      }),
+      follow(client.subscribe(SessionFileStore, "pauseChanged"), (change) => {
+        if (change.folder !== folder) return;
+        setPaused((current) => {
+          const next = new Set(current);
+          if (change.pausedAt === null) next.delete(change.id);
+          else next.add(change.id);
+          return next;
+        });
       }),
     ];
     return () => {
@@ -177,5 +195,5 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     [client],
   );
 
-  return { sessions, starting, running, pinned: pins.ids, setPinned, rename, remove };
+  return { sessions, starting, running, paused, pinned: pins.ids, setPinned, rename, remove };
 }

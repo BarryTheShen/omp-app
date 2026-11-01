@@ -120,3 +120,50 @@ describe("the session file port publishes turn and running-list changes", () => 
     expect(published).toEqual([]);
   });
 });
+
+type PauseListener = (threadId: ThreadId, folder: string, pausedAt: number | null) => void;
+
+describe("the session file port publishes pauses and lists the paused chats", () => {
+  test("each pause change publishes with the chat's folder, and the list answers the folder's paused chats", async () => {
+    const threadId = ThreadId.parse("chat-paused");
+    const hooks: PauseListener[] = [];
+    const published: unknown[] = [];
+    const context = {
+      sessionFileStore: { onBackground: () => () => undefined },
+      processPause: {
+        onPauseChange: (listener: PauseListener) => {
+          hooks.push(listener);
+          return () => undefined;
+        },
+        pausedIn: (folder: string) =>
+          folder === "/workspace/app" ? [{ id: threadId, pausedAt: 5_000 }] : [],
+      },
+      publish: (_stream: unknown, payload: unknown) => {
+        published.push(payload);
+        return undefined;
+      },
+      watchStreamActivity: () => () => undefined,
+    } as unknown as A1PortContext;
+    const registration = createSessionFileStoreRegistration(context);
+
+    for (const listener of hooks) listener(threadId, "/workspace/app", 5_000);
+    for (const listener of hooks) listener(threadId, "/workspace/app", null);
+    expect(published).toEqual([
+      { folder: "/workspace/app", id: threadId, pausedAt: 5_000 },
+      { folder: "/workspace/app", id: threadId, pausedAt: null },
+    ]);
+
+    const list = registration.handlers.listPaused;
+    if (list === undefined) throw new Error("the port has no listPaused handler");
+    const handlerContext = {
+      signal: new AbortController().signal,
+      connectionId: "c",
+      requestId: "r",
+      portContext: undefined,
+    } as never;
+    expect(await list({ folder: "/workspace/app" }, handlerContext)).toEqual({
+      chats: [{ id: threadId, pausedAt: 5_000 }],
+    });
+    expect(await list({ folder: "/workspace/other" }, handlerContext)).toEqual({ chats: [] });
+  });
+});

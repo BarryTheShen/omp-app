@@ -192,6 +192,22 @@ export const SessionRunningChanged = z.strictObject({
 });
 export type SessionRunningChanged = z.infer<typeof SessionRunningChanged>;
 
+/** A chat this server runs was paused (omp's `/pause`; `pausedAt`, epoch ms) or resumed, or its omp stopped (`null`). */
+export const SessionPauseChanged = z.strictObject({
+  folder: FolderPath,
+  id: ThreadId,
+  pausedAt: z.int().nonnegative().nullable(),
+});
+export type SessionPauseChanged = z.infer<typeof SessionPauseChanged>;
+
+/** The chats this server runs in a folder that are paused now, each with when it was paused (epoch ms). */
+export const SessionPausedArgs = z.strictObject({ folder: FolderPath });
+export type SessionPausedArgs = z.infer<typeof SessionPausedArgs>;
+export const SessionPausedResult = z.strictObject({
+  chats: z.array(z.strictObject({ id: ThreadId, pausedAt: z.int().nonnegative() })),
+});
+export type SessionPausedResult = z.infer<typeof SessionPausedResult>;
+
 /**
  * Deletes one chat: its session file and the artifacts directory beside it. `folder` is the chat's folder, and only a
  * file that this folder's listing returns can be deleted. The server refuses (conflict) a chat omp holds or runs a turn
@@ -258,6 +274,11 @@ export const SessionFileStore = definePort({
       result: SessionDeleteResult,
       capability: "host.session-files",
     },
+    listPaused: {
+      args: SessionPausedArgs,
+      result: SessionPausedResult,
+      capability: "host.session-files",
+    },
   },
   events: {
     changed: {
@@ -266,6 +287,10 @@ export const SessionFileStore = definePort({
     },
     runningChanged: {
       payload: SessionRunningChanged,
+      capability: "host.session-files",
+    },
+    pauseChanged: {
+      payload: SessionPauseChanged,
       capability: "host.session-files",
     },
   },

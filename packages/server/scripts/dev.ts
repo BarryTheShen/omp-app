@@ -619,6 +619,7 @@ export async function createCompositionServer(
   const a1Context: A1PortContext = {
     sessionFileStore,
     processBusy: processRegistry,
+    processPause: processRegistry,
     configStore,
     checkpointStore,
     draftStore,

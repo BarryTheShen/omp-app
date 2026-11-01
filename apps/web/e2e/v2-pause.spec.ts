@@ -103,4 +103,37 @@ realTest.describe("pausing a chat", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "the chat list in another window marks a paused chat, and the mark goes when it resumes",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const box = page.getByRole("textbox", { name: "Message" });
+      // A reply first, so the chat is saved and listed.
+      await box.fill("say hello");
+      await box.press("Enter");
+      await expect(
+        page.getByRole("region", { name: "Transcript" }).getByText("pong", { exact: true }),
+      ).toBeVisible({ timeout: 60_000 });
+      await box.fill("stream_held");
+      await box.press("Enter");
+      await expect(page.getByRole("status").filter({ hasText: "to stop" })).toBeVisible({
+        timeout: 60_000,
+      });
+      await page.getByRole("button", { name: "Pause", exact: true }).click();
+      await expect(paused(page)).toBeVisible();
+
+      const other = await realApp.open({ path: "/" });
+      const rows = other.getByRole("navigation", { name: "Chats" });
+      const pausedRow = rows.getByRole("button", { name: /, paused(,|$)/ });
+      await expect(pausedRow).toHaveCount(1, { timeout: 30_000 });
+
+      await paused(page).getByRole("button", { name: "Resume" }).click();
+      await expect(pausedRow).toHaveCount(0, { timeout: 30_000 });
+
+      await writeFile(join(realApp.agentDir, "release-held-reply"), "");
+      await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 60_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

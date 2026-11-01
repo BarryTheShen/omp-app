@@ -1254,7 +1254,8 @@ export class ChatSessionPortRuntime {
 
   /**
    * Keeps the registry's busy mark in step with the chat: busy from `agent_start` until the session settles
-   * (`session_settled`, or a `prompt_result` that reports it settled). A yielded run is not a settled session.
+   * (`session_settled`, or a `prompt_result` that reports it settled). A yielded run is not a settled session. The
+   * registry also keeps the chat's pause (omp's `/pause`), as the host reports it, for the chat list.
    */
   #trackTurn(threadId: ThreadId, event: ChatEvent): void {
     if (event.type === "agent_start") {
@@ -1264,6 +1265,8 @@ export class ChatSessionPortRuntime {
       (event.type === "prompt_result" && event.sessionSettled)
     ) {
       this.#context.processRegistry.setBusy(threadId, false);
+    } else if (event.type === "pause_changed") {
+      this.#context.processRegistry.setPaused(threadId, event.pausedAt);
     }
   }
 

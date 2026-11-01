@@ -654,6 +654,21 @@ const PAUSE_TOUR: Tour = {
   ],
 };
 
+const PAUSE_LIST_TOUR: Tour = {
+  id: "pause-list-2026-10-31",
+  title: "Paused chats in the list",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: CHAT_LIST,
+      title: "Paused chats",
+      text: "A paused chat has a pause mark before its title here, in every window that shows the list, also when the chat is open somewhere else. Pause a chat with <b>/pause</b>, or <b>Pause</b> beside “esc to stop”.",
+      action: next,
+    },
+  ],
+};
+
 /** The shown tab holds more than one pane. */
 const SPLIT_TAB = "[data-tab][data-split]:not([hidden])";
 
@@ -902,8 +917,14 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-10-31-pause-list",
+    when: "2026-10-31T21:40:00-05:00",
+    summary: "The chat list marks a paused chat, in every window, wherever the chat is open.",
+    tours: [PAUSE_LIST_TOUR],
+  },
+  {
     id: "2026-10-31-themes",
-    when: "2026-10-31T21:20:00-05:00",
+    when: "2026-10-31T21:10:00-05:00",
     summary:
       "33 themes, each readable throughout: Catppuccin, Tokyo Night, Rosé Pine, Nord, Gruvbox, Dracula, Solarized, Everforest, Kanagawa, One, Ayu and GitHub. Settings → App shows them as cards; point at one to see the app in it.",
     tours: [THEMES_TOUR],

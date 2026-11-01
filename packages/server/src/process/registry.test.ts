@@ -328,6 +328,75 @@ describe("OmpProcessRegistry", () => {
     expect(heard).toEqual([true, false]);
   });
 
+  test("keeps each thread's pause with its folder, lists the paused ones by folder, and an exit clears it", () => {
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const one = ThreadId.parse("thread-paused-one");
+    const two = ThreadId.parse("thread-paused-two");
+    registry.acquire(options(one, "/workspace/paused"));
+    registry.acquire(options(two, "/workspace/paused"));
+    const heard: string[] = [];
+    registry.onPauseChange((id, folder, pausedAt) => heard.push(`${id} ${folder} ${pausedAt}`));
+
+    registry.setPaused(one, 1_000);
+    registry.setPaused(one, 1_000);
+    registry.setPaused(two, 2_000);
+    expect(registry.pausedIn("/workspace/paused")).toEqual([
+      { id: one, pausedAt: 1_000 },
+      { id: two, pausedAt: 2_000 },
+    ]);
+    expect(registry.pausedIn("/workspace/other")).toEqual([]);
+
+    registry.setPaused(two, null);
+    // omp's pause gate lives in its process: one that exits is no longer paused.
+    const process = createdAt(created, 0);
+    process.emit({ status: "exited", processId: process.processId });
+    expect(registry.pausedIn("/workspace/paused")).toEqual([]);
+    expect(heard).toEqual([
+      `${one} /workspace/paused 1000`,
+      `${two} /workspace/paused 2000`,
+      `${two} /workspace/paused null`,
+      `${one} /workspace/paused null`,
+    ]);
+  });
+
+  test("a paused thread that is stopped is heard as no longer paused, with its folder", async () => {
+    const registry = new OmpProcessRegistry({
+      timer: new ManualTimer(),
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+    const thread = ThreadId.parse("thread-paused-stop");
+    registry.acquire(options(thread, "/workspace/paused-stop"));
+    registry.setPaused(thread, 3_000);
+    const heard: Array<[string, number | null]> = [];
+    registry.onPauseChange((_threadId, folder, pausedAt) => heard.push([folder, pausedAt]));
+
+    registry.release(thread);
+    await registry.stopIfUnwatched(thread, "deleted");
+
+    expect(registry.has(thread)).toBe(false);
+    expect(heard).toEqual([["/workspace/paused-stop", null]]);
+  });
+
+  test("respawn ends a pause: the new process starts unpaused", async () => {
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+    const thread = ThreadId.parse("thread-respawn-paused");
+    registry.acquire(options(thread, "/workspace/respawn-paused"));
+    registry.setPaused(thread, 4_000);
+
+    await registry.respawn(options(thread, "/workspace/respawn-paused"));
+
+    expect(registry.pausedIn("/workspace/respawn-paused")).toEqual([]);
+  });
+
   test("a respawned process that is stopped on purpose is forgotten like any other", async () => {
     const created: StubProcess[] = [];
     const registry = new OmpProcessRegistry({

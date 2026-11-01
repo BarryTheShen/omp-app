@@ -622,6 +622,23 @@ describe("the chat session runtime: opening a chat", () => {
     await runtimeContext.processRegistry.closeAll();
   });
 
+  test("a chat's pause, as its host reports it, is kept by the registry for the chat list", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake host");
+    const paused = () => runtimeContext.processRegistry.pausedIn(folder);
+    expect(paused()).toEqual([]);
+
+    process.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    expect(paused()).toEqual([{ id: authorityThread, pausedAt: 1_000 }]);
+    process.emitEvent({ type: "pause_changed", pausedAt: null });
+    expect(paused()).toEqual([]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
   describe("a `!` run in the chat's host", () => {
     /** Opens a chat, so the shell events it publishes can be read from its replay. */
     async function openChat() {

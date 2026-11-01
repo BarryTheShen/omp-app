@@ -722,6 +722,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     },
     replay_live: async () => {
       if (session.isStreaming) emit({ type: "agent_start" });
+      // A pause outlives the server that saw it start (D2): the server that takes the chat over hears it too.
+      if (agentPauseGate.pausedAt !== undefined) {
+        emit({ type: "pause_changed", pausedAt: agentPauseGate.pausedAt });
+      }
       for (const event of events.live()) emit(event);
       for (const event of ui.shown()) emit(event);
       requests.resend();
