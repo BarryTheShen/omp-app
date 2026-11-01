@@ -177,7 +177,7 @@ function Providers({ controller }: { readonly controller: ChatController }): Rea
             <>
               Open{" "}
               <a
-                href={signIn.launchUrl ?? signIn.url}
+                href={signIn.url}
                 target="_blank"
                 rel="noreferrer"
                 className="text-accent-ink underline underline-offset-2"

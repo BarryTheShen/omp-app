@@ -580,7 +580,7 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().goal).toBeNull();
   });
 
-  test("a sign-in's page to open is kept until the sign-in ends; the latest page wins", () => {
+  test("a sign-in's page to open is kept until the sign-in ends, without omp's local link; the latest page wins", () => {
     const store = new ChatStore();
     store.apply(event({ type: "ui_open_url", url: "https://example.test/auth?state=1" }));
     expect(store.getSnapshot().signIn).toEqual({ url: "https://example.test/auth?state=1" });
@@ -594,7 +594,6 @@ describe("ChatStore", () => {
     );
     expect(store.getSnapshot().signIn).toEqual({
       url: "https://example.test/auth?state=2",
-      launchUrl: "http://127.0.0.1:1455/start",
       instructions: "Paste the code it shows.",
     });
     store.clearSignIn();

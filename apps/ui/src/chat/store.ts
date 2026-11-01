@@ -123,8 +123,11 @@ export interface ChatSnapshot {
   readonly roleTrack: RoleTrack | null;
 }
 
-/** A sign-in's page to open: its address, a short local link to it when omp runs one, and omp's instructions. */
-export type SignInPage = Omit<UiOpenUrlEvent, "type">;
+/**
+ * A sign-in's page to open: its address and omp's instructions. omp's short link to it (`launchUrl`) is left out: it is a
+ * page of omp's own computer (`localhost`), which the device in use cannot open when that is another one.
+ */
+export type SignInPage = Omit<UiOpenUrlEvent, "type" | "launchUrl">;
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
 
@@ -715,7 +718,6 @@ export class ChatStore {
       case "ui_open_url":
         this.#signIn = {
           url: event.url,
-          ...(event.launchUrl === undefined ? {} : { launchUrl: event.launchUrl }),
           ...(event.instructions === undefined ? {} : { instructions: event.instructions }),
         };
         return false;

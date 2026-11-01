@@ -441,6 +441,23 @@ export type ExportHtmlParams = z.infer<typeof ExportHtmlParams>;
 export const LoginParams = z.object({ providerId: z.string().min(1) });
 export type LoginParams = z.infer<typeof LoginParams>;
 
+/** `mcp_reauth`: an MCP server to sign in to again, by its name in omp's MCP config (#2779 D6.2). */
+export const McpReauthParams = z.object({ name: z.string().min(1).max(100) });
+export type McpReauthParams = z.infer<typeof McpReauthParams>;
+
+/** What `mcp_reauth` answers: the server's connection once it is signed in again; null when omp runs no such server. */
+export interface McpReauthResult {
+  readonly name: string;
+  readonly status: "connected" | "connecting" | "disconnected" | null;
+}
+
+/**
+ * The question `mcp_reauth` asks while signing in: omp waits for the sign-in's answer on its own computer, which the
+ * device's browser cannot reach, so the address that browser ends on is pasted back. Settings finds it by this title.
+ */
+export const MCP_REAUTH_ADDRESS_PROMPT =
+  "After you sign in, your browser shows a page that cannot load. Paste its address here.";
+
 /** One of omp's sign-in providers, and whether a sign-in for it is stored. */
 export interface LoginProvider {
   readonly id: string;
@@ -835,6 +852,15 @@ export interface ChatHostMethodMap {
     readonly params: LoginParams;
     readonly result: { readonly providerId: string };
   };
+  /**
+   * omp's `/mcp reauth <name>`, from the device in use: the server's sign-in page opens there (`ui_open_url`), and the
+   * address the browser ends on is pasted back (a `ui.input`), since omp listens for the callback on its own computer.
+   * Runs in the background like `login`; answers the server's connection once it is signed in.
+   */
+  readonly mcp_reauth: {
+    readonly params: McpReauthParams;
+    readonly result: McpReauthResult;
+  };
   /** The accounts omp stores for a provider (omp's `/logout` list). */
   readonly get_provider_accounts: {
     readonly params: LoginParams;
@@ -1058,6 +1084,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_ask_dialog: EnabledParams,
   get_login_providers: EmptyParams,
   login: LoginParams,
+  mcp_reauth: McpReauthParams,
   get_provider_accounts: LoginParams,
   logout_account: LogoutAccountParams,
   set_host_tools: SetHostToolsParams,

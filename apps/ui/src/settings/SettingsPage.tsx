@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ChatController } from "../chat/controller";
 import { AppPage } from "./AppPage";
 import { loadSettingsData, type SettingDef, type SettingsData, type SettingsTab } from "./data";
+import { McpServers } from "./McpServers";
 import { changedHere, type Entries, inForce, matches, sections, shown, valueText } from "./model";
 import { SettingControl, wide } from "./SettingControl";
 import { SignIn } from "./SignIn";
@@ -300,7 +301,13 @@ function SettingsSheet({
                 defs={visible.filter((def) => def.tab === tab.id)}
                 config={config}
                 layer={layer}
-                first={tab.id === "providers" ? <SignIn controller={controller} /> : null}
+                first={
+                  tab.id === "providers" ? (
+                    <SignIn controller={controller} />
+                  ) : tab.id === "tools" ? (
+                    <McpServers controller={controller} />
+                  ) : null
+                }
               />
             )}
           </div>

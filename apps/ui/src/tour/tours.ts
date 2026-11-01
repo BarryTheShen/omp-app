@@ -1056,6 +1056,40 @@ const USAGE_CONTINUE_TOUR: Tour = {
   ],
 };
 
+/** #2779 D6.2: signing in to an MCP server again from the device in use, in Settings → Tools. */
+const MCP_SIGN_IN_TOUR: Tour = {
+  id: "mcp-sign-in-2026-11-01",
+  title: "Signing in to an MCP server",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Try it.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "MCP servers",
+      text: "Under <b>Tools</b>, <b>MCP servers</b> lists omp's servers. <b>Sign in again</b>, beside a server reached over the network, opens its sign-in page on this device, wherever the server runs.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Finish here",
+      text: "After you sign in, your browser shows a page that cannot load. Paste its address into the box that appears under the list, then <b>Finish sign-in</b>.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1070,6 +1104,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-01-mcp-sign-in",
+    when: "2026-11-01T15:14:00-06:00",
+    summary:
+      "Settings → Tools → MCP servers: Sign in again signs in to an MCP server from the device you use, its page opening there and the address your browser ends on pasted in place; a provider's sign-in page now opens on another device too.",
+    tours: [MCP_SIGN_IN_TOUR],
+  },
   {
     id: "2026-11-01-drag-guides",
     when: "2026-11-01T15:04:00-06:00",

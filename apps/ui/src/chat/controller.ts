@@ -10,6 +10,8 @@ import {
   type FileSearchCandidate,
   FileSearchPort,
   type FolderPath,
+  type McpCommandServerSummary,
+  McpCommandsPort,
   type SessionEntryWindow,
   SessionFilePath,
   SessionFileStore,
@@ -30,6 +32,7 @@ import {
   type JobDetail,
   type JobList,
   type LoginProvider,
+  type McpReauthResult,
   type ModelHub,
   type PlanFile,
   type ProviderAccounts,
@@ -563,6 +566,25 @@ export class ChatController {
   async login(providerId: string): Promise<void> {
     try {
       await this.#request("login", { providerId });
+    } finally {
+      this.store.clearSignIn();
+    }
+  }
+
+  /** omp's MCP servers as this chat's omp lists them (its `/mcp list`); none before the chat is open. */
+  async mcpServers(): Promise<readonly McpCommandServerSummary[]> {
+    const threadId = this.#threadId;
+    if (threadId === null) return [];
+    return (await this.client.port(McpCommandsPort).servers({ threadId })).servers;
+  }
+
+  /**
+   * Signs in to an MCP server again through this chat's omp (#2779 D6.2): the server's page opens on this device (the
+   * store's `signIn`), and the address the browser ends on is asked for as one of the chat's questions.
+   */
+  async mcpReauth(name: string): Promise<McpReauthResult> {
+    try {
+      return await this.#request("mcp_reauth", { name });
     } finally {
       this.store.clearSignIn();
     }

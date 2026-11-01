@@ -25,7 +25,12 @@ import {
   buildSkillPromptMessage,
   parseSkillInvocation,
 } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
-import { reconnectMcpManagerServer } from "@oh-my-pi/pi-coding-agent/mcp/oauth-reauth";
+import {
+  findMcpServerForAuth,
+  reauthorizeMcpServer,
+  reconnectMcpManagerServer,
+} from "@oh-my-pi/pi-coding-agent/mcp/oauth-reauth";
+import { cfgMcpEnableProjectConfig } from "@oh-my-pi/pi-coding-agent/mcp/settings";
 import {
   formatPersistenceFailure,
   formatPersistenceNotice,
@@ -61,6 +66,7 @@ import {
   type ChatHostState,
   type ConfigUpdateEvent,
   isChatHostMethod,
+  MCP_REAUTH_ADDRESS_PROMPT,
   type PromptAnswer,
   type PromptParams,
   type ProviderAccounts,
@@ -121,6 +127,7 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "bash",
   "python",
   "login",
+  "mcp_reauth",
   // Signing out reads the provider's models again from its servers.
   "logout_account",
   "host_tool_update",
@@ -680,6 +687,55 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         "online",
       );
       return { providerId };
+    },
+    mcp_reauth: async ({ name }) => {
+      // omp's `/mcp reauth <name>` (`mcp-command-controller.ts`, `#handleReauth`), from the device in use (#2779 D6.2):
+      // the sign-in page opens there, and as omp listens for the provider's callback on this computer, which that
+      // device's browser cannot reach, the address the browser ends on is pasted back (omp takes a code or an address).
+      const manager = chat.mcpManager;
+      const cwd = session.sessionManager.getCwd();
+      const found = await findMcpServerForAuth(name, cwd, manager, {
+        preferManager: true,
+        enableProjectConfig: cfgMcpEnableProjectConfig.get(session.settings),
+      });
+      if (!found) throw new Error(`Server "${name}" not found.`);
+      if (found.config.enabled === false) {
+        throw new Error(`Server "${name}" is disabled. Run /mcp enable ${name} first.`);
+      }
+      const outcome = await reauthorizeMcpServer(name, found, {
+        authStorage: session.modelRegistry.authStorage,
+        ...(manager === undefined ? {} : { mcpManager: manager }),
+        cwd,
+        onAuth: ({ url, launchUrl, instructions }) =>
+          emit({
+            type: "ui_open_url",
+            url,
+            ...(launchUrl !== undefined ? { launchUrl } : {}),
+            ...(instructions !== undefined ? { instructions } : {}),
+          }),
+        onProgress: (message) => ui.notify(message, "info"),
+        // A browser on omp's own computer answers by itself; then omp ends the question (`signal`).
+        onManualCodeInput: async (signal) =>
+          (await ui.input(MCP_REAUTH_ADDRESS_PROMPT, "http://localhost:…", {
+            timeout: 600_000,
+            ...(signal === undefined ? {} : { signal }),
+          })) ?? "",
+      });
+      // The server connects again with its new sign-in, and later prompts see its tools. One this chat's omp does not run
+      // (set up after the chat started, or never found) is connected alone, as omp's `/mcp enable` does.
+      let status = await reconnectMcpManagerServer(manager, name, outcome.config);
+      if (
+        status === undefined &&
+        manager !== undefined &&
+        manager.getConnectionStatus(name) === "disconnected"
+      ) {
+        await manager.connectServers({ [name]: outcome.config }, {});
+        status = manager.getConnectionStatus(name);
+      }
+      if (status !== undefined && manager !== undefined) {
+        await session.refreshMCPTools(manager.getTools());
+      }
+      return { name, status: status ?? null };
     },
     get_provider_accounts: async ({ providerId }) => readProviderAccounts(session, providerId),
     logout_account: async ({ providerId, credentialId }) => {
