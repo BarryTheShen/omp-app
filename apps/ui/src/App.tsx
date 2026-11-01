@@ -42,6 +42,7 @@ import { PanelRail } from "./panels/PanelRail";
 import { hidePanel, showPanel, togglePanel, usePanelState } from "./panels/panel-state";
 import { SidePaneContext } from "./panels/SidePane";
 import { SidePanel } from "./panels/SidePanel";
+import { traceFollow } from "./perf/followTrace";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
 import { isPhone, usePhone } from "./phone";
@@ -200,6 +201,17 @@ function Shell({
   useEffect(
     () =>
       traceViewport((trace) => {
+        client
+          .port(AppPort)
+          .reportClientTrace(trace)
+          .catch(() => undefined);
+      }),
+    [client],
+  );
+  // A transcript that leaves its end with nothing from the reader to explain it (#2778), kept in the server's debug log.
+  useEffect(
+    () =>
+      traceFollow((trace) => {
         client
           .port(AppPort)
           .reportClientTrace(trace)

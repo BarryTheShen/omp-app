@@ -11,6 +11,7 @@ import {
   useRef,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { useFollowTrace } from "../perf/followTrace";
 import { usePhone } from "../phone";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import {
@@ -79,8 +80,10 @@ const NO_SCROLL_MS = 150;
 function useHoldCorrectionsWhileReading(
   scrollRef: RefObject<HTMLDivElement | null>,
   instance: Virtualizer<HTMLDivElement, Element>,
-): void {
+): RefObject<boolean> {
   const [, render] = useReducer((count: number) => count + 1, 0);
+  /** The hold, as the follow trace reads it. */
+  const holding = useRef(false);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
@@ -94,16 +97,20 @@ function useHoldCorrectionsWhileReading(
     }
     /** The reader's wheel or key started a scroll that has not ended yet. */
     let reading = false;
+    const setReading = (value: boolean): void => {
+      reading = value;
+      holding.current = value;
+    };
     /** The element scrolled since that wheel or key. */
     let moved = false;
     let idle = 0;
     const input = (): void => {
-      reading = true;
+      setReading(true);
       moved = false;
       window.clearTimeout(idle);
       idle = window.setTimeout(() => {
         if (!reading || moved) return;
-        reading = false;
+        setReading(false);
         render();
       }, NO_SCROLL_MS);
     };
@@ -124,17 +131,19 @@ function useHoldCorrectionsWhileReading(
     element.addEventListener("scroll", onScroll, { passive: true });
     // TanStack asks before every correction and flush; a scroll that moved and then ended ends the hold.
     internals._canWriteScroll = () => {
-      if (reading && moved && !instance.isScrolling) reading = false;
+      if (reading && moved && !instance.isScrolling) setReading(false);
       return canWrite() && !reading;
     };
     return () => {
       window.clearTimeout(idle);
+      setReading(false);
       element.removeEventListener("wheel", input);
       element.removeEventListener("keydown", onKey);
       element.removeEventListener("scroll", onScroll);
       internals._canWriteScroll = canWrite;
     };
   }, [scrollRef, instance]);
+  return holding;
 }
 
 /**
@@ -204,8 +213,10 @@ export function TranscriptList({
     paddingEnd: 16,
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
-  useHoldCorrectionsWhileReading(scrollRef, virtualizer);
+  const holding = useHoldCorrectionsWhileReading(scrollRef, virtualizer);
   useStayAtEndWhenShorter(scrollRef, virtualizer);
+  const atEnd = virtualizer.isAtEnd();
+  useFollowTrace(scrollRef, virtualizer, { atEnd, rows: rows.length, working, holding });
 
   // Start at the latest entry once the first window is there.
   const empty = rows.length === 0;
@@ -249,7 +260,7 @@ export function TranscriptList({
         </div>
       </section>
       {empty && welcome !== null && <Welcome folder={welcome.folder} />}
-      {!empty && !virtualizer.isAtEnd() && (
+      {!empty && !atEnd && (
         // On a phone a round button in the corner, clear of the text being read.
         <Button
           variant="secondary"
