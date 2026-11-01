@@ -3,6 +3,7 @@ import type { FolderPath } from "@omp-app/contracts";
 import type { DockviewApi, IDockviewPanelProps } from "dockview-react";
 import { createContext, type ReactNode, use, useEffect } from "react";
 import type { ChatController } from "../chat/controller";
+import { PaneModeOutline } from "../workspace/paneMode";
 import { PANELS } from "./registry";
 
 /** The side pane's id: at most one in each workspace tab. */
@@ -56,11 +57,12 @@ export function SidePane({
     <aside
       data-tour="side-panel"
       aria-label="Side panel"
-      className="flex h-full min-h-0 flex-col bg-panel"
+      className="relative flex h-full min-h-0 flex-col bg-panel"
     >
       <div role="tabpanel" aria-label={chosen.title} className="min-h-0 flex-1 overflow-y-auto">
         {shown && chosen.render(host)}
       </div>
+      <PaneModeOutline api={api} />
     </aside>
   );
 }

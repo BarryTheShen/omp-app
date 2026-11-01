@@ -59,6 +59,48 @@ realTest.describe("new UI workspace", () => {
   );
 
   realTest(
+    "pane mode: Ctrl+Shift+Space, then the arrows go between panes, Shift+arrows resize, = shares the space, ] goes on; Esc or 3 s end it",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await opened(page, 1);
+      await boxes(page).first().click();
+      await page.keyboard.press("Control+Shift+O");
+      await opened(page, 2);
+      await expect(boxes(page).nth(1)).toBeFocused();
+      const mode = page.getByRole("status").filter({ hasText: "Pane mode" });
+      const width = async (index: number) =>
+        Math.round((await boxes(page).nth(index).boundingBox())?.width ?? 0);
+
+      await page.keyboard.press("Control+Shift+Space");
+      await expect(mode).toBeVisible();
+      await expect(boxes(page).nth(1)).toHaveValue("");
+      await page.keyboard.press("ArrowLeft");
+      await expect(boxes(page).nth(0)).toBeFocused();
+
+      const before = await width(0);
+      await page.keyboard.press("Shift+ArrowRight");
+      await expect.poll(() => width(0)).toBeGreaterThan(before + 20);
+      await page.keyboard.press("=");
+      await expect.poll(async () => Math.abs((await width(0)) - (await width(1)))).toBeLessThan(4);
+      await page.keyboard.press("]");
+      await expect(boxes(page).nth(1)).toBeFocused();
+      await expect(boxes(page).nth(1)).toHaveValue("");
+
+      await page.keyboard.press("Escape");
+      await expect(mode).toHaveCount(0);
+      await page.keyboard.type("x");
+      await expect(boxes(page).nth(1)).toHaveValue("x");
+
+      await page.keyboard.press("Control+Shift+Space");
+      await expect(mode).toBeVisible();
+      await expect(mode).toHaveCount(0, { timeout: 5_000 });
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "tabs: a new tab with a new chat, rename, move, next and close; the tabs come back after a reload",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
@@ -167,7 +209,9 @@ realTest.describe("new UI workspace", () => {
         // The chat, not the list: a new one, ready to type.
         await expect(chats(page)).toBeHidden();
         await expect(boxes(page)).toHaveCount(1, { timeout: 60_000 });
-        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", {
+          timeout: 120_000,
+        });
         await expect(welcome).toBeVisible();
 
         // The list is a tap away, and a saved chat opens from it.
@@ -178,7 +222,9 @@ realTest.describe("new UI workspace", () => {
 
         // Opened again, it starts on a new chat; the saved one is still in the list.
         await page.reload();
-        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", {
+          timeout: 120_000,
+        });
         await expect(welcome).toBeVisible();
         await page.getByRole("button", { name: "Chats", exact: true }).click();
         await expect(chats(page).getByRole("button", { name: /^Seeded chat 1/ })).toBeVisible();

@@ -925,6 +925,36 @@ const ZOOM_TOUR: Tour = {
   ],
 };
 
+const PANE_MODE_TOUR: Tour = {
+  id: "pane-mode-2026-10-31",
+  title: "Pane mode",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "A second pane",
+      text: "Pane mode works on panes, so first press {splitRight} to open a new chat to the right.",
+      action: keys("splitRight"),
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "Pane mode",
+      text: "Press {paneMode}. Until it ends, plain keys work on the panes, in any browser and on any keyboard: no Super key needed.",
+      action: keys("paneMode"),
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "Go, resize, share",
+      text: "← → ↑ ↓ go to the pane in that direction, with Shift they make it larger or smaller, = shares the space and [ ] go to the previous or next pane. Esc ends it, as do 3 seconds without a key; {paneMode} starts it again.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -939,6 +969,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-pane-mode",
+    when: "2026-10-31T22:25:00-05:00",
+    summary:
+      "Pane mode, without Super: Ctrl+Shift+Space, then the arrows go between panes, Shift+arrows resize, = shares the space and [ ] cycle.",
+    tours: [PANE_MODE_TOUR],
+  },
   {
     id: "2026-10-31-zoom",
     when: "2026-10-31T21:50:00-05:00",

@@ -57,6 +57,7 @@ const WORKSPACE_COMMANDS: readonly WorkspaceCommand[] = [
   "closePane",
   "swapPane",
   "equalize",
+  "paneMode",
   "newTab",
   "nextTab",
   "previousTab",

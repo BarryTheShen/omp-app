@@ -50,6 +50,7 @@ import { carriesChat, droppedChat } from "./chatDrag";
 import { keepDividerDragsFromSelecting } from "./dividers";
 import { equalized, swappedWithNext } from "./layout";
 import { chatOfPane, closePaneAsked, PaneTab } from "./PaneTab";
+import { PaneModeContext } from "./paneMode";
 import { TabStrip } from "./TabStrip";
 import {
   activateTab,
@@ -69,6 +70,24 @@ const THEME: DockviewTheme = { name: "omp", className: "dockview-theme-omp" };
 const COMPONENTS = { chat: ChatPanel, side: SidePane };
 /** How much one resize key widens, narrows, heightens or shortens the focused pane. */
 const RESIZE_STEP_PX = 48;
+/** Pane mode ends after this long without a key. */
+const PANE_MODE_MS = 3_000;
+/** Pane mode's keys, as its strip shows them. */
+const PANE_MODE_KEYS: readonly { readonly keys: readonly string[]; readonly does: string }[] = [
+  { keys: ["← → ↑ ↓"], does: "go" },
+  { keys: ["Shift + arrow"], does: "resize" },
+  { keys: ["="], does: "share the space" },
+  { keys: ["[", "]"], does: "previous, next" },
+  { keys: ["Esc"], does: "done" },
+];
+
+type Direction = "left" | "right" | "up" | "down";
+
+/** An arrow key's direction, by react-hotkeys-hook's name (`left`, `arrowleft`) or a key event's (`ArrowLeft`). */
+function directionOf(key: string | undefined): Direction | undefined {
+  const name = key?.toLowerCase().replace("arrow", "");
+  return name === "left" || name === "right" || name === "up" || name === "down" ? name : undefined;
+}
 
 /** The workspace's commands the palette offers (kitty's keys run them too). */
 export type WorkspaceCommand =
@@ -78,6 +97,7 @@ export type WorkspaceCommand =
   | "closePane"
   | "swapPane"
   | "equalize"
+  | "paneMode"
   | "newTab"
   | "nextTab"
   | "previousTab"
@@ -394,6 +414,48 @@ export function Workspace({
     if (api !== undefined) action(api);
   }, []);
 
+  /** Goes to the pane in `direction` from the focused one. */
+  const goToPane = useCallback(
+    (direction: Direction) =>
+      withActive((api) => {
+        const group = api.activeGroup;
+        if (group === undefined) return;
+        const next = api.adjacentGroupInDirection(group, direction);
+        if (next === undefined) return;
+        next.api.setActive();
+        focusPane(api);
+      }),
+    [withActive, focusPane],
+  );
+
+  /** Goes to the next pane, or the previous one. */
+  const cyclePane = useCallback(
+    (forward: boolean) =>
+      withActive((api) => {
+        if (forward) api.activateNext();
+        else api.activatePrevious();
+        focusPane(api);
+      }),
+    [withActive, focusPane],
+  );
+
+  /** Makes the focused pane wider (right), narrower (left), taller (up) or shorter (down) by a step, as kitty's resize. */
+  const resizePane = useCallback(
+    (direction: Direction) =>
+      withActive((api) => {
+        const group = api.activeGroup;
+        if (group === undefined) return;
+        const step = direction === "right" || direction === "up" ? RESIZE_STEP_PX : -RESIZE_STEP_PX;
+        if (direction === "left" || direction === "right")
+          group.api.setSize({ width: group.api.width + step });
+        else group.api.setSize({ height: group.api.height + step });
+      }),
+    [withActive],
+  );
+
+  /** Pane mode: plain keys act on the panes, for keyboards and browsers where the Super keys do not reach the app. */
+  const [paneMode, setPaneMode] = useState(false);
+
   /**
    * Closes a tab the person asked to close: each chat pane in it goes as if closed itself, so its new chat's kept text
    * goes too. The panes come from the tab's dockview when it is mounted, else from its saved layout.
@@ -445,6 +507,7 @@ export function Workspace({
           api.fromJSON(equalized(api.toJSON()), { reuseExistingPanels: true });
           focusPane(api);
         }),
+      paneMode: () => setPaneMode(true),
       newTab: () =>
         setTabs((state) => {
           const next = addTab(state);
@@ -599,48 +662,72 @@ export function Workspace({
   useHotkeys(KEYS.renameTab.hotkey, commands.renameTab, keys);
   useHotkeys(KEYS.moveTabRight.hotkey, commands.moveTabRight, keys);
   useHotkeys(KEYS.moveTabLeft.hotkey, commands.moveTabLeft, keys);
+  useHotkeys(KEYS.paneMode.hotkey, commands.paneMode, keys);
   useHotkeys(
     KEYS.focusPane.hotkey,
-    (_event, handler) =>
-      withActive((api) => {
-        const group = api.activeGroup;
-        const direction = handler.keys?.[0];
-        if (group === undefined || direction === undefined) return;
-        const next = api.adjacentGroupInDirection(
-          group,
-          direction.replace("arrow", "") as "left" | "right" | "up" | "down",
-        );
-        if (next === undefined) return;
-        next.api.setActive();
-        focusPane(api);
-      }),
+    (_event, handler) => {
+      const direction = directionOf(handler.keys?.[0]);
+      if (direction !== undefined) goToPane(direction);
+    },
     keys,
   );
   useHotkeys(
     KEYS.cyclePane.hotkey,
-    (_event, handler) =>
-      withActive((api) => {
-        if (handler.keys?.[0] === "bracketright") api.activateNext();
-        else api.activatePrevious();
-        focusPane(api);
-      }),
+    (_event, handler) => cyclePane(handler.keys?.[0] === "bracketright"),
     keys,
   );
   useHotkeys(
     KEYS.resizePane.hotkey,
-    (_event, handler) =>
-      withActive((api) => {
-        const group = api.activeGroup;
-        const key = handler.keys?.[0];
-        if (group === undefined || key === undefined) return;
-        // Wider, narrower, taller, shorter by a step, as kitty's resize.
-        const step = RESIZE_STEP_PX;
-        if (key === "arrowleft" || key === "arrowright")
-          group.api.setSize({ width: group.api.width + (key === "arrowright" ? step : -step) });
-        else group.api.setSize({ height: group.api.height + (key === "arrowup" ? step : -step) });
-      }),
+    (_event, handler) => {
+      const direction = directionOf(handler.keys?.[0]);
+      if (direction !== undefined) resizePane(direction);
+    },
     keys,
   );
+
+  // Pane mode: arrows go, Shift+arrows resize, = shares the space, [ and ] cycle. Esc, Enter, its own key again, any
+  // other key or `PANE_MODE_MS` without a key end it. Read before anything else (capture), so the message box with the
+  // caret never gets these keys; a key that ends it otherwise goes on to do what it does.
+  useEffect(() => {
+    if (!paneMode) return;
+    const end = (): void => setPaneMode(false);
+    let idle = window.setTimeout(end, PANE_MODE_MS);
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Shift") return;
+      const take = (): void => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      if (event.ctrlKey || event.altKey || event.metaKey) {
+        if (event.ctrlKey && event.shiftKey && event.code === "Space") take();
+        end();
+        return;
+      }
+      const direction = directionOf(event.key);
+      if (direction !== undefined) {
+        take();
+        if (event.shiftKey) resizePane(direction);
+        else goToPane(direction);
+      } else if (event.key === "=") {
+        take();
+        commands.equalize();
+      } else if (event.key === "[" || event.key === "]") {
+        take();
+        cyclePane(event.key === "]");
+      } else {
+        if (event.key === "Escape" || event.key === "Enter") take();
+        end();
+        return;
+      }
+      window.clearTimeout(idle);
+      idle = window.setTimeout(end, PANE_MODE_MS);
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => {
+      window.clearTimeout(idle);
+      window.removeEventListener("keydown", onKey, { capture: true });
+    };
+  }, [paneMode, goToPane, cyclePane, resizePane, commands]);
 
   const host = useMemo<PaneHost>(
     () => ({
@@ -666,45 +753,72 @@ export function Workspace({
 
   return (
     <PaneHostContext value={host}>
-      <ShownTabContext value={apis.current.get(tabs.active) ?? null}>
-        <div className="flex min-h-0 flex-1 flex-col">
-          {tabs.tabs.length > 1 && !phone && (
-            <TabStrip
-              tabs={tabs.tabs}
-              active={tabs.active}
-              labels={labels}
-              renaming={renaming}
-              onActivate={(id) => setTabs((state) => activateTab(state, id))}
-              onClose={closeTabAsked}
-              onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
-              onRenaming={setRenaming}
-            />
-          )}
-          <div className="relative min-h-0 flex-1">
-            {tabs.tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className="absolute inset-0"
-                hidden={tab.id !== tabs.active}
-                data-tab={tab.id}
-                // Several panes side by side or stacked: the tour that has you drag a chat into a split waits for it.
-                data-split={(apis.current.get(tab.id)?.totalPanels ?? 0) > 1 ? "" : undefined}
-              >
-                <DockviewReact
-                  components={COMPONENTS}
-                  theme={THEME}
-                  onReady={(event) => ready(tab.id, event)}
-                  defaultRenderer="always"
-                  disableFloatingGroups
-                  singleTabMode="fullwidth"
-                  defaultTabComponent={PaneTab}
-                  watermarkComponent={EmptyTab}
-                />
-              </div>
-            ))}
+      <PaneModeContext value={paneMode}>
+        <ShownTabContext value={apis.current.get(tabs.active) ?? null}>
+          <div className="flex min-h-0 flex-1 flex-col">
+            {tabs.tabs.length > 1 && !phone && (
+              <TabStrip
+                tabs={tabs.tabs}
+                active={tabs.active}
+                labels={labels}
+                renaming={renaming}
+                onActivate={(id) => setTabs((state) => activateTab(state, id))}
+                onClose={closeTabAsked}
+                onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
+                onRenaming={setRenaming}
+              />
+            )}
+            <div className="relative min-h-0 flex-1">
+              {tabs.tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className="absolute inset-0"
+                  hidden={tab.id !== tabs.active}
+                  data-tab={tab.id}
+                  // Several panes side by side or stacked: the tour that has you drag a chat into a split waits for it.
+                  data-split={(apis.current.get(tab.id)?.totalPanels ?? 0) > 1 ? "" : undefined}
+                >
+                  <DockviewReact
+                    components={COMPONENTS}
+                    theme={THEME}
+                    onReady={(event) => ready(tab.id, event)}
+                    defaultRenderer="always"
+                    disableFloatingGroups
+                    singleTabMode="fullwidth"
+                    defaultTabComponent={PaneTab}
+                    watermarkComponent={EmptyTab}
+                  />
+                </div>
+              ))}
+              {paneMode && (
+                // Above dockview's dividers and drop overlay, below the panes' titles, clear of the message boxes.
+                <div
+                  role="status"
+                  data-tour="pane-mode"
+                  className="pointer-events-none absolute inset-x-0 top-12 z-[1000] flex justify-center px-3"
+                >
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-l2 bg-popover px-3 py-2 text-xs text-t1 shadow-md">
+                    <span className="font-medium">Pane mode</span>
+                    {PANE_MODE_KEYS.map(({ keys, does }) => (
+                      <span key={does} className="flex items-center gap-1 text-t2">
+                        {keys.map((key) => (
+                          <kbd
+                            key={key}
+                            className="rounded-sm border border-l2 px-1 font-mono text-[11px] text-t1"
+                          >
+                            {key}
+                          </kbd>
+                        ))}
+                        {does}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </ShownTabContext>
+        </ShownTabContext>
+      </PaneModeContext>
     </PaneHostContext>
   );
 }

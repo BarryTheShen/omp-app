@@ -61,6 +61,13 @@ export const KEYS = {
     group: "Panes",
     label: "Share the space equally",
   },
+  paneMode: {
+    hotkey: "ctrl+shift+space",
+    scope: "workspace",
+    group: "Panes",
+    label:
+      "Pane mode, without Super: arrows go, Shift+arrows resize, = shares, [ ] cycle, Esc ends",
+  },
   swapPane: {
     hotkey: "ctrl+shift+f8",
     scope: "workspace",
@@ -317,6 +324,7 @@ const SHOWN: Record<string, string> = {
   slash: "/",
   equal: "=",
   minus: "-",
+  space: "Space",
 };
 
 /** How a binding's first alternative reads on a keycap: `Ctrl+Shift+O`. */

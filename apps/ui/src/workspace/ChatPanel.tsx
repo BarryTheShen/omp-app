@@ -18,6 +18,7 @@ import { ChatController, type ChatTarget } from "../chat/controller";
 import { userText } from "../chat/MessageActions";
 import { inbox } from "../inbox/inbox";
 import { chatCache } from "./chatCache";
+import { PaneModeOutline } from "./paneMode";
 
 /** A pane's chat: `chat` names this pane's chat, so a new chat that gets its id keeps its controller. */
 export interface ChatPanelParams {
@@ -176,7 +177,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     <div
       ref={root}
       data-chat-pane
-      className="flex h-full min-h-0 flex-col bg-panel"
+      className="relative flex h-full min-h-0 flex-col bg-panel"
       onClick={(event) => {
         if (paneClickTakesCaret(event)) focus.request(api.id);
       }}
@@ -192,6 +193,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
           inView={paneInView}
         />
       )}
+      <PaneModeOutline api={api} />
     </div>
   );
 }
