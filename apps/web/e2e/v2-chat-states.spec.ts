@@ -39,8 +39,9 @@ realTest.describe("new UI chat states", () => {
       await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible({
         timeout: 60_000,
       });
-      // The expired link's refusal is reported by the page; it is the case under test.
-      realApp.allowProblem(/WebSocket|401|403|expired/i);
+      // The expired link's refusal is reported by the page; it is the case under test. While the server is down for the
+      // restart, the page's lazy loads (a font face, the icon) are refused as well.
+      realApp.allowProblem(/WebSocket|401|403|expired|ERR_CONNECTION_REFUSED/i);
 
       // The harness's restart prints a new link with a new token, so the page's link expires.
       const link = await realApp.restartServer();
