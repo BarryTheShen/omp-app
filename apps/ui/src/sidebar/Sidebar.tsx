@@ -36,9 +36,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -48,8 +45,7 @@ import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
 import { useLongPress } from "../longPress";
 import { useSwipe } from "../swipe";
-import { THEME_CHOICES, ThemeSwitch } from "../theme/ThemeSwitch";
-import { setThemeMode, type ThemeMode, useThemeMode } from "../theme/theme";
+import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
 import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
@@ -269,7 +265,7 @@ export function Sidebar({
       )}
       <WhatsNew workspace={workspace} onAllUpdates={onWhatsNew} />
       {phone ? (
-        // A phone's foot: New chat in the thumb's reach, the inbox, settings, and the rest in one menu.
+        // A phone's foot: New chat in the thumb's reach, the inbox and Settings (What's new and the theme are there).
         <div className="flex items-center gap-1 px-1 pt-2 [&_button]:min-h-11 [&_button]:min-w-11">
           <Button
             data-tour="new-chat"
@@ -291,7 +287,6 @@ export function Sidebar({
           >
             <Settings />
           </Button>
-          <PhoneMenu onWhatsNew={onWhatsNew} />
         </div>
       ) : (
         <div className="flex items-center justify-between px-1 pt-2">
@@ -359,43 +354,6 @@ export function Sidebar({
         </AlertDialogContent>
       </AlertDialog>
     </nav>
-  );
-}
-
-/**
- * A phone's one menu for what a desktop's foot shows as buttons: what's new and the theme. A chat's details (the side
- * panel's panels) open from the chat's own top bar.
- */
-function PhoneMenu({ onWhatsNew }: { readonly onWhatsNew: () => void }): ReactNode {
-  const theme = useThemeMode();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label="Menu"
-        className="grid place-items-center rounded-lg text-t2 outline-none hover:bg-l2 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2"
-      >
-        <Ellipsis className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" className="w-60">
-        <DropdownMenuItem data-tour="whats-new-button" onClick={onWhatsNew}>
-          <Sparkles />
-          What's new
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup
-          data-tour="theme"
-          value={theme}
-          onValueChange={(value) => setThemeMode(value as ThemeMode)}
-        >
-          {THEME_CHOICES.map(({ value, label, icon }) => (
-            <DropdownMenuRadioItem key={value} value={value}>
-              {icon}
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

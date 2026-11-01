@@ -950,6 +950,29 @@ const CHAT_DETAILS_TOUR: Tour = {
   ],
 };
 
+const PHONE_SETTINGS_TOUR: Tour = {
+  id: "phone-settings-2026-10-31",
+  title: "Settings on the phone",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "On a phone, Settings fill the screen, as your phone's own do. Tap the gear.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+      phoneOnly: true,
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "One section at a time",
+      text: "Each section opens a screen of its own; ‹ Settings goes back, Done closes them. The App section holds the theme and What's new. Tap App.",
+      action: { kind: "click" },
+      phoneOnly: true,
+    },
+  ],
+};
+
 const PANE_MODE_TOUR: Tour = {
   id: "pane-mode-2026-10-31",
   title: "Pane mode",
@@ -994,6 +1017,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-phone-settings",
+    when: "2026-10-31T22:50:00-05:00",
+    summary:
+      "On a phone, Settings fill the screen: the sections as rows with ›, each a screen with ‹ Settings and Done; the theme and What's new moved there from the list's ⋯ menu, which is gone.",
+    tours: [PHONE_SETTINGS_TOUR],
+  },
   {
     id: "2026-10-31-chat-details",
     when: "2026-10-31T22:40:00-05:00",

@@ -478,6 +478,10 @@ function Shell({
             place={settingsPlace}
             open={settings}
             onOpenChange={setSettings}
+            onWhatsNew={() => {
+              setSettings(false);
+              showWhatsNew();
+            }}
           />
         </Suspense>
       )}

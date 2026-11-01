@@ -170,11 +170,58 @@ realTest.describe("new UI on a phone", () => {
     },
   );
 
+  realTest(
+    "Settings on a phone fill the screen: sections as rows with ›, a section opens with ‹ Settings and Done; the theme and What's new are on the App page",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "Settings" })
+        .tap();
+      const sheet = page.getByRole("dialog", { name: "Settings" });
+      await expect(sheet).toBeVisible();
+      const area = await sheet.boundingBox();
+      expect(Math.round(area?.width ?? 0)).toBe(390);
+      expect(Math.round(area?.height ?? 0)).toBe(844);
+      const sections = sheet.getByRole("navigation", { name: "Settings sections" });
+      const heights = await sections
+        .getByRole("button")
+        .evaluateAll((all) => all.map((row) => row.getBoundingClientRect().height));
+      expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+
+      await sections.getByRole("button", { name: "App", exact: true }).tap();
+      await expect(sheet.getByRole("region", { name: "App settings" })).toBeVisible();
+      await expect(sections).toHaveCount(0);
+      const light = sheet
+        .getByRole("group", { name: "Theme" })
+        .getByRole("button", { name: "Light" });
+      await light.tap();
+      await expect(light).toHaveAttribute("aria-pressed", "true");
+      await sheet.getByRole("button", { name: "Settings", exact: true }).tap();
+      await expect(sections).toBeVisible();
+      await sheet.getByRole("button", { name: "Done" }).tap();
+      await expect(sheet).toBeHidden();
+
+      // What's new opens from the App page: the list has no menu for it.
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "Settings" })
+        .tap();
+      await sheet.getByRole("button", { name: "App", exact: true }).tap();
+      await sheet.getByRole("button", { name: "What's new" }).tap();
+      await expect(sheet).toBeHidden();
+      await expect(page.getByRole("dialog", { name: "What's new" })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
   realTest.describe("with two saved chats", () => {
     realTest.use({ seedSessions: 2 });
 
     realTest(
-      "the list on a phone: rows without buttons, a touch-and-hold opens a row's menu; New chat, the inbox, Settings and the menu at its foot",
+      "the list on a phone: rows without buttons, a touch-and-hold opens a row's menu; New chat, the inbox and Settings at its foot",
       async ({ realApp, browser }) => {
         const { page, context } = await phone(realApp, browser);
         await page.getByRole("button", { name: "Chats", exact: true }).tap();
@@ -201,11 +248,8 @@ realTest.describe("new UI on a phone", () => {
         ).toBeVisible({ timeout: 30_000 });
         await expect(list).toBeVisible();
 
-        // The theme is in the menu at the list's foot.
-        await list.getByRole("button", { name: "Menu" }).tap();
-        await page.getByRole("menuitemradio", { name: "Light" }).tap();
-        await list.getByRole("button", { name: "Menu" }).tap();
-        await expect(page.getByRole("menuitemradio", { name: "Light" })).toBeChecked();
+        // No menu at the list's foot: the theme and What's new are in Settings.
+        await expect(list.getByRole("button", { name: "Menu" })).toHaveCount(0);
         expect(realApp.problems).toEqual([]);
         await context.close();
       },
@@ -303,8 +347,15 @@ realTest.describe("new UI on a phone", () => {
       const heading = popover.locator(".driver-popover-title");
       await page.getByRole("button", { name: "Chats", exact: true }).tap();
       const list = page.getByRole("navigation", { name: "Chats" });
-      await list.getByRole("button", { name: "Menu" }).tap();
-      await page.getByRole("menuitem", { name: "What's new" }).tap();
+      await list.getByRole("button", { name: "Settings" }).tap();
+      await page
+        .getByRole("navigation", { name: "Settings sections" })
+        .getByRole("button", { name: "App", exact: true })
+        .tap();
+      await page
+        .getByRole("dialog", { name: "Settings" })
+        .getByRole("button", { name: "What's new" })
+        .tap();
       await page
         .getByRole("dialog", { name: "What's new", exact: true })
         .getByRole("button", { name: "Take the tour: Your phone's controls" })

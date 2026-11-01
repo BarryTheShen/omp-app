@@ -1,6 +1,6 @@
 import type { AppClient } from "@omp-app/client";
 import type { ConfigWriteLayer, ConfigWriteValue, FolderPath } from "@omp-app/contracts";
-import { ChevronLeft, Search, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, TriangleAlert } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -22,7 +22,10 @@ const words = (failure: unknown): string =>
 /** Where the settings open: the app's tab, or its Server section with the cursor in the link field. */
 export type SettingsPlace = "app" | "server";
 
-/** omp's settings in one sheet, as Tern's prefs page: tabs with what changed, search, and each row's Reset. */
+/**
+ * omp's settings in one sheet, as Tern's prefs page: tabs with what changed, search, and each row's Reset. On a phone it
+ * fills the screen as iOS Settings does: the sections as rows with ›, each opening a screen of its own with ‹ back.
+ */
 export function SettingsPage({
   client,
   folder,
@@ -31,6 +34,7 @@ export function SettingsPage({
   place,
   open,
   onOpenChange,
+  onWhatsNew,
 }: {
   readonly client: AppClient;
   /** The open folder, whose own settings the scope switch reaches. */
@@ -41,6 +45,8 @@ export function SettingsPage({
   readonly place: SettingsPlace;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /** Opens What's new: on a phone the App page has its row, as the list has no menu for it. */
+  readonly onWhatsNew: () => void;
 }): ReactNode {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,6 +57,8 @@ export function SettingsPage({
           controller={controller}
           phone={phone}
           place={place}
+          onClose={() => onOpenChange(false)}
+          onWhatsNew={onWhatsNew}
         />
       )}
     </Dialog>
@@ -63,12 +71,16 @@ function SettingsSheet({
   controller,
   phone,
   place,
+  onClose,
+  onWhatsNew,
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly controller: ChatController | null;
   readonly phone: boolean;
   readonly place: SettingsPlace;
+  readonly onClose: () => void;
+  readonly onWhatsNew: () => void;
 }): ReactNode {
   const [data, setData] = useState<SettingsData | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -110,13 +122,28 @@ function SettingsSheet({
     setTabId(id);
   };
 
+  /** A phone's Done, 44 px, where a desktop has the sheet's ×. */
+  const done = (
+    <Button variant="ghost" className="h-11 shrink-0 px-3 text-t1" onClick={onClose}>
+      Done
+    </Button>
+  );
   const nav = (
     <nav
       aria-label="Settings sections"
-      className={`flex min-h-0 flex-col gap-2 border-l2 p-3 ${phone ? "flex-1" : "w-56 shrink-0 border-r"}`}
+      className={`flex min-h-0 flex-col gap-2 border-l2 ${phone ? "flex-1 px-3 pt-1 pb-3" : "w-56 shrink-0 border-r p-3"}`}
     >
-      <p className="px-1 text-sm font-medium text-t1">Settings</p>
-      <label className="flex h-8 items-center gap-2 rounded-md border border-l2 px-2 text-t3 focus-within:border-ring">
+      {phone ? (
+        <div className="flex h-11 items-center">
+          <p className="min-w-0 flex-1 px-1 text-base font-semibold text-t1">Settings</p>
+          {done}
+        </div>
+      ) : (
+        <p className="px-1 text-sm font-medium text-t1">Settings</p>
+      )}
+      <label
+        className={`flex items-center gap-2 rounded-md border border-l2 px-2 text-t3 focus-within:border-ring ${phone ? "h-11" : "h-8"}`}
+      >
         <Search className="size-3.5 shrink-0" />
         <input
           type="search"
@@ -135,10 +162,11 @@ function SettingsSheet({
             type="button"
             data-tour="settings-tab-app"
             aria-current={appOpen ? "page" : undefined}
-            className={`flex h-8 w-full items-center rounded-md px-2 text-left text-sm ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}
+            className={`flex w-full items-center rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
             onClick={() => choose(APP_TAB)}
           >
-            App
+            <span className="min-w-0 flex-1 truncate">App</span>
+            {phone && <ChevronRight aria-hidden="true" className="size-4 text-t3" />}
           </button>
         </li>
         <li aria-hidden className="px-2 pt-3 pb-1 text-xs text-t3">
@@ -154,11 +182,12 @@ function SettingsSheet({
                 aria-current={current ? "page" : undefined}
                 aria-label={count > 0 ? `${each.label}, ${count} changed` : each.label}
                 data-tour={`settings-tab-${each.id}`}
-                className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}
+                className={`flex w-full items-center gap-2 rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
                 onClick={() => choose(each.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{each.label}</span>
                 {count > 0 && <span className="text-xs text-accent-ink">{count} changed</span>}
+                {phone && <ChevronRight aria-hidden="true" className="size-4 text-t3" />}
               </button>
             </li>
           );
@@ -171,57 +200,78 @@ function SettingsSheet({
   return (
     <DialogContent
       data-tour="settings-sheet"
-      className="flex h-[min(780px,94dvh)] w-[min(1080px,96vw)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+      showCloseButton={!phone}
+      className={
+        phone
+          ? // The whole screen, inside the safe areas, as a phone's own Settings.
+            "top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-row gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pb-(--safe-bottom) ring-0 sm:max-w-none"
+          : "flex h-[min(780px,94dvh)] w-[min(1080px,96vw)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+      }
     >
       <DialogTitle className="sr-only">Settings</DialogTitle>
       {(!phone || !showPage) && nav}
       {showPage && (
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex flex-wrap items-center gap-2 border-b border-l2 px-5 py-2.5 pr-12">
+          <header
+            className={
+              phone
+                ? "flex flex-col gap-2 border-b border-l2 px-3 pt-1 pb-3"
+                : "flex flex-wrap items-center gap-2 border-b border-l2 px-5 py-2.5 pr-12"
+            }
+          >
             {phone && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="-ml-2"
-                onClick={() => {
-                  setQuery("");
-                  setTabId(null);
-                }}
-              >
-                <ChevronLeft />
-                Settings
-              </Button>
+              <div className="flex h-11 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  className="-ml-2 h-11 shrink-0 text-t2"
+                  onClick={() => {
+                    setQuery("");
+                    setTabId(null);
+                  }}
+                >
+                  <ChevronLeft />
+                  Settings
+                </Button>
+                {/* The page's own heading names it, as iOS Settings' large titles do. */}
+                <span className="flex-1" />
+                {done}
+              </div>
             )}
-            <ToggleGroup
-              aria-label="Whose settings"
-              size="sm"
-              spacing={0.5}
-              className="rounded-lg border border-l2 p-0.5"
-              value={[thisFolder ? "folder" : "every"]}
-              onValueChange={(next: string[]) => {
-                if (next[0] !== undefined) setThisFolder(next[0] === "folder");
-              }}
-            >
-              <ToggleGroupItem
-                value="every"
-                className="h-6 px-2 text-xs text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1"
-              >
-                Every folder
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="folder"
-                className="h-6 px-2 text-xs text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1"
-              >
-                This folder
-              </ToggleGroupItem>
-            </ToggleGroup>
-            <span className="min-w-0 truncate text-xs text-t3">
-              {thisFolder
-                ? `Saved in ${folder.split("/").filter(Boolean).at(-1) ?? folder}/.omp, for this folder only`
-                : "Saved in omp's settings file, for every folder"}
-            </span>
+            {/* omp's settings only: on a phone the App page, whose settings this browser keeps, has no scope. */}
+            {!(phone && appOpen) && (
+              <>
+                <ToggleGroup
+                  aria-label="Whose settings"
+                  size="sm"
+                  spacing={0.5}
+                  className={`rounded-lg border border-l2 p-0.5 ${phone ? "w-full" : ""}`}
+                  value={[thisFolder ? "folder" : "every"]}
+                  onValueChange={(next: string[]) => {
+                    if (next[0] !== undefined) setThisFolder(next[0] === "folder");
+                  }}
+                >
+                  <ToggleGroupItem
+                    value="every"
+                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs"}`}
+                  >
+                    Every folder
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="folder"
+                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs"}`}
+                  >
+                    This folder
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <span className={`min-w-0 text-xs text-t3 ${phone ? "px-1" : "truncate"}`}>
+                  {thisFolder
+                    ? `Saved in ${folder.split("/").filter(Boolean).at(-1) ?? folder}/.omp, for this folder only`
+                    : "Saved in omp's settings file, for every folder"}
+                </span>
+              </>
+            )}
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">
+          <div className={`min-h-0 flex-1 overflow-y-auto pb-8 ${phone ? "px-3" : "px-5"}`}>
             {(problem ?? config.problem) !== null && (
               <p role="alert" className="pt-4 text-sm text-bad-ink">
                 {problem ?? `The settings could not be read: ${config.problem}`}
@@ -236,7 +286,13 @@ function SettingsSheet({
                 layer={layer}
               />
             )}
-            {appOpen && <AppPage client={client} focusServerLink={place === "server"} />}
+            {appOpen && (
+              <AppPage
+                client={client}
+                focusServerLink={place === "server"}
+                onWhatsNew={onWhatsNew}
+              />
+            )}
             {data !== null && needle === "" && tab !== null && (
               <TabPage
                 tab={tab}
