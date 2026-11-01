@@ -266,17 +266,37 @@ realTest.describe("new UI side panel", () => {
     },
   );
 
-  realTest("on a phone the panel is a sheet", async ({ realApp }) => {
-    const page = await realApp.open({ path: "/" });
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
-    await page.keyboard.press("Control+Alt+KeyB");
-    const sheet = page.getByRole("dialog", { name: "Side panel: Usage" });
-    await expect(sheet).toBeVisible();
-    await expect(sheet.getByRole("region", { name: "Your accounts" })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(sheet).toBeHidden();
+  realTest(
+    "on a phone a chat's details open from its top bar as a screen of their own, with named tabs, and ‹ Chat goes back",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      const box = page.getByRole("textbox", { name: "Message" });
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
-    expect(realApp.problems).toEqual([]);
-  });
+      await page.getByRole("button", { name: "Details" }).tap();
+      const details = page.getByRole("region", { name: "Chat details" });
+      await expect(details).toBeVisible();
+      await expect(box).toBeHidden();
+      const tabs = details.getByRole("tab");
+      await expect(tabs).toHaveText(["Usage", "Agents", "Progress", "Jobs", "BTW history"]);
+      const heights = await tabs.evaluateAll((all) =>
+        all.map((tab) => tab.getBoundingClientRect().height),
+      );
+      expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+      await expect(details.getByRole("region", { name: "Your accounts" })).toBeVisible();
+      await details.getByRole("tab", { name: "Jobs" }).tap();
+      await expect(details.getByRole("tabpanel", { name: "Jobs" })).toBeVisible();
+
+      await details.getByRole("button", { name: "Chat", exact: true }).tap();
+      await expect(details).toHaveCount(0);
+      await expect(box).toBeVisible();
+
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });

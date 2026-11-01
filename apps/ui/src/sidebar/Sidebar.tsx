@@ -2,7 +2,6 @@ import type { FolderPath, RunningSession, SessionFile, ThreadId } from "@omp-app
 import { cn } from "cn";
 import {
   Ellipsis,
-  PanelRight,
   Pause,
   PencilLine,
   Pin,
@@ -48,7 +47,6 @@ import { firstPromptOf } from "../chat/firstPrompts";
 import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
 import { useLongPress } from "../longPress";
-import { togglePanel, usePanelState } from "../panels/panel-state";
 import { useSwipe } from "../swipe";
 import { THEME_CHOICES, ThemeSwitch } from "../theme/ThemeSwitch";
 import { setThemeMode, type ThemeMode, useThemeMode } from "../theme/theme";
@@ -115,7 +113,6 @@ export function Sidebar({
   readonly phone: boolean;
 }): ReactNode {
   const [query, setQuery] = useState("");
-  const sidePanelOpen = usePanelState().open;
   const [problem, setProblem] = useState<string | null>(null);
   /** Titles typed into a rename that omp has not saved yet. */
   const [renamed, setRenamed] = useState<ReadonlyMap<ThreadId, string>>(new Map());
@@ -294,11 +291,7 @@ export function Sidebar({
           >
             <Settings />
           </Button>
-          <PhoneMenu
-            sidePanelOpen={sidePanelOpen}
-            onSidePanel={togglePanel}
-            onWhatsNew={onWhatsNew}
-          />
+          <PhoneMenu onWhatsNew={onWhatsNew} />
         </div>
       ) : (
         <div className="flex items-center justify-between px-1 pt-2">
@@ -369,16 +362,11 @@ export function Sidebar({
   );
 }
 
-/** A phone's one menu for what a desktop's foot shows as buttons: what's new, the side panel and the theme. */
-function PhoneMenu({
-  sidePanelOpen,
-  onSidePanel,
-  onWhatsNew,
-}: {
-  readonly sidePanelOpen: boolean;
-  readonly onSidePanel: () => void;
-  readonly onWhatsNew: () => void;
-}): ReactNode {
+/**
+ * A phone's one menu for what a desktop's foot shows as buttons: what's new and the theme. A chat's details (the side
+ * panel's panels) open from the chat's own top bar.
+ */
+function PhoneMenu({ onWhatsNew }: { readonly onWhatsNew: () => void }): ReactNode {
   const theme = useThemeMode();
   return (
     <DropdownMenu>
@@ -392,10 +380,6 @@ function PhoneMenu({
         <DropdownMenuItem data-tour="whats-new-button" onClick={onWhatsNew}>
           <Sparkles />
           What's new
-        </DropdownMenuItem>
-        <DropdownMenuItem data-tour="side-panel-button" onClick={onSidePanel}>
-          <PanelRight />
-          {sidePanelOpen ? "Close the side panel" : "Side panel"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup

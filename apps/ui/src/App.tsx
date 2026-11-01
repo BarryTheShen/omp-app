@@ -1,7 +1,7 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { AppPort, type FolderPath } from "@omp-app/contracts";
 import { cn } from "cn";
-import { ChevronLeft, SquarePen } from "lucide-react";
+import { ChevronLeft, Info, SquarePen } from "lucide-react";
 import {
   lazy,
   type ReactNode,
@@ -38,10 +38,10 @@ import { takePairingCode } from "./pairing/pairing-api";
 import { RequestPrompt } from "./pairing/RequestPrompt";
 import { Palette } from "./palette/Palette";
 import { Shortcuts } from "./palette/Shortcuts";
+import { ChatDetails } from "./panels/ChatDetails";
 import { PanelRail } from "./panels/PanelRail";
 import { hidePanel, showPanel, togglePanel, usePanelState } from "./panels/panel-state";
 import { SidePaneContext } from "./panels/SidePane";
-import { SidePanel } from "./panels/SidePanel";
 import { traceFollow } from "./perf/followTrace";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
@@ -301,6 +301,12 @@ function Shell({
   useHotkeys(KEYS.zoomReset.hotkey, () => zoomTo(() => 1), desktopKeys);
   useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
   const sidePanel = usePanelState();
+  /** On a phone the shown chat's details fill the screen in its place (`ChatDetails`), from the panel state. */
+  const details = phone && sidePanel.open;
+  // A phone starts on its chat, never on details a closed page left open.
+  useEffect(() => {
+    if (isPhone()) hidePanel();
+  }, []);
   /** The focused pane's chat, for the side panel; read again whenever the workspace's view changes. */
   const [focusedChat, setFocusedChat] = useState<ChatController | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the view says when the focused pane changed
@@ -370,11 +376,12 @@ function Shell({
         data-tour="workspace"
         className={cn(
           "my-1.5 mr-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-l2 bg-panel max-sm:m-0 max-sm:rounded-none max-sm:border-0",
-          phone && !showChat && "hidden",
+          phone && !showChat && !details && "hidden",
         )}
       >
-        {phone && (
-          // The phone's top bar: back to the list (marked while a chat waits on you), the chat's name, a new chat.
+        {phone && !details && (
+          // The phone's top bar: back to the list (marked while a chat waits on you), the chat's name, its details, a
+          // new chat.
           <div data-tour="phone-top-bar" className="flex h-11 shrink-0 items-center gap-1 px-1">
             <Button
               variant="ghost"
@@ -398,6 +405,16 @@ function Shell({
               variant="ghost"
               size="icon"
               className="size-11 shrink-0 text-t2"
+              aria-label="Details"
+              data-tour="chat-details-button"
+              onClick={() => showPanel(sidePanel.panel)}
+            >
+              <Info />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-11 shrink-0 text-t2"
               aria-label="New chat"
               onClick={() => openChat({ kind: "new", folder }, "here")}
             >
@@ -405,20 +422,32 @@ function Shell({
             </Button>
           </div>
         )}
-        <SidePaneContext value={sidePane}>
-          <Workspace
-            ref={workspace}
+        {details && (
+          <ChatDetails
             client={client}
             folder={folder}
-            phone={phone}
-            onView={setView}
-            onShown={showChatView}
+            chat={focusedChat}
+            openGoal={setGoalFor}
+            onBack={() => {
+              hidePanel();
+              setShowChat(true);
+            }}
           />
-        </SidePaneContext>
+        )}
+        {/* Kept while the details show, hidden, so the chat is as it was when they close. */}
+        <div className={cn("flex min-h-0 flex-1 flex-col", details && "hidden")}>
+          <SidePaneContext value={sidePane}>
+            <Workspace
+              ref={workspace}
+              client={client}
+              folder={folder}
+              phone={phone}
+              onView={setView}
+              onShown={showChatView}
+            />
+          </SidePaneContext>
+        </div>
       </main>
-      {phone && (
-        <SidePanel client={client} folder={folder} chat={focusedChat} openGoal={setGoalFor} />
-      )}
       {!phone && <PanelRail />}
       <Palette
         open={palette}

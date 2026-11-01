@@ -2,6 +2,7 @@ import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import { desktopBridge } from "../desktop/bridge";
 import { KEYS, keycap } from "../keys/table";
+import { isPhone } from "../phone";
 import type { WorkspaceHandle } from "../workspace/Workspace";
 import { matchesHotkey } from "./keys";
 import { markDone } from "./seen";
@@ -205,7 +206,9 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
       await frames(2);
     }
     const steps = tour.steps.filter(
-      (step) => step.desktopOnly !== true || desktopBridge() !== null,
+      (step) =>
+        (step.desktopOnly !== true || desktopBridge() !== null) &&
+        (step.phoneOnly !== true || isPhone()),
     );
     for (const [index, step] of steps.entries()) {
       if (stopped) return;

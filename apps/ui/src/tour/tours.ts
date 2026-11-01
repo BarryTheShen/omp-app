@@ -29,6 +29,8 @@ export interface TourStep {
   readonly centred?: true;
   /** Only when the desktop window's bridge exists. */
   readonly desktopOnly?: true;
+  /** Only on a phone's layout (`isPhone`). */
+  readonly phoneOnly?: true;
   /**
    * The dimmed page stays usable during this step: its action ends outside the highlighted element (a chat dragged
    * from the list onto a pane).
@@ -925,6 +927,29 @@ const ZOOM_TOUR: Tour = {
   ],
 };
 
+const CHAT_DETAILS_TOUR: Tour = {
+  id: "chat-details-2026-10-31",
+  title: "A chat's details on the phone",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("chat-details-button"),
+      title: "This chat's details",
+      text: "On a phone, ⓘ opens this chat's usage, agents, progress, jobs and side questions as a screen of their own. Tap it.",
+      action: { kind: "click" },
+      phoneOnly: true,
+    },
+    {
+      target: SIDE_PANEL,
+      title: "One screen, named tabs",
+      text: "The tabs at the top switch between them; ‹ Chat brings you back to the chat as you left it.",
+      action: next,
+      phoneOnly: true,
+    },
+  ],
+};
+
 const PANE_MODE_TOUR: Tour = {
   id: "pane-mode-2026-10-31",
   title: "Pane mode",
@@ -969,6 +994,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-chat-details",
+    when: "2026-10-31T22:40:00-05:00",
+    summary:
+      "On a phone, a chat's details (usage, agents, progress, jobs, side questions) open from ⓘ in its top bar as a screen of their own, with named tabs; the list's ⋯ menu no longer holds them.",
+    tours: [CHAT_DETAILS_TOUR],
+  },
   {
     id: "2026-10-31-pane-mode",
     when: "2026-10-31T22:25:00-05:00",
