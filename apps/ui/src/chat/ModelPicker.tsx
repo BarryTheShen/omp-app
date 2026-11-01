@@ -396,7 +396,7 @@ const MenuRow = memo(function MenuRow({
       <CommandItem
         value={value}
         data-checked={checked}
-        className={cn(marks && "pr-16")}
+        className={cn(marks && "pr-16 max-sm:pr-24")}
         onSelect={() => actions.current.choose(item)}
       >
         {/* A hidden model's name is dimmed, but not on the highlighted row, where dim text is too faint to read. */}
@@ -462,7 +462,7 @@ function RowButton({
       // Alt+S and Alt+H do this from the keyboard; a Tab stop on every row would make the list a long way round.
       tabIndex={-1}
       className={cn(
-        "grid size-6 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
+        "grid size-6 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1 max-sm:size-11",
         !shown && "opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100",
       )}
       // The search keeps the caret, so typing and the arrows go on working after a click here.

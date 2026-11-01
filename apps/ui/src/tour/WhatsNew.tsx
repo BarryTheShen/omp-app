@@ -1,5 +1,6 @@
 import { type ReactNode, type RefObject, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { usePhone } from "../phone";
 import type { WorkspaceHandle } from "../workspace/Workspace";
 import { startTours } from "./runner";
 import { markOffered, offeredBefore, unoffered } from "./seen";
@@ -21,27 +22,50 @@ export function WhatsNew({
   /** Opens the What's new list. */
   readonly onAllUpdates: () => void;
 }): ReactNode {
+  const phone = usePhone();
   const [pending, setPending] = useState<readonly Tour[]>(() => unoffered(TOURS));
   const [firstVisit] = useState(() => !offeredBefore());
   if (pending.length === 0) return null;
   const updates = UPDATES.filter((update) => update.tours.some((tour) => pending.includes(tour)));
   // A first visit takes the basics, the first tour; the list keeps the rest.
   const shown = firstVisit ? pending.slice(0, 1) : pending;
+  const heading = firstVisit
+    ? "New: guided tours"
+    : updates.length > 1
+      ? `New in ${updates.length} updates`
+      : "New in this update";
+  const take = shown.length > 1 ? "Take the tours" : "Take the tour";
 
   const dismiss = (): void => {
     markOffered(pending.map((tour) => tour.id));
     setPending([]);
   };
+  const start = (): void => {
+    dismiss();
+    if (workspace.current !== null) startTours(shown, workspace.current);
+  };
+
+  if (phone) {
+    // On a phone one line under the list, its buttons full-size (#2770); the updates are in Settings → App → What's new.
+    return (
+      <section
+        aria-label="What's new"
+        className="mx-2 mb-2 flex items-center gap-1 rounded-xl border border-l2 bg-panel py-1 pr-1 pl-3"
+      >
+        <h2 className="min-w-0 flex-1 truncate font-medium text-t1">{heading}</h2>
+        <Button variant="ghost" className="h-11" onClick={dismiss}>
+          Later
+        </Button>
+        <Button className="h-11" onClick={start}>
+          {take}
+        </Button>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="What's new" className="mx-2 mb-2 rounded-xl border border-l2 bg-panel p-3">
-      <h2 className="font-medium text-t1">
-        {firstVisit
-          ? "New: guided tours"
-          : updates.length > 1
-            ? `New in ${updates.length} updates`
-            : "New in this update"}
-      </h2>
+      <h2 className="font-medium text-t1">{heading}</h2>
       {firstVisit ? (
         <p className="mt-1 text-xs text-t2">Learn what's here by doing it, a step at a time.</p>
       ) : (
@@ -66,14 +90,8 @@ export function WhatsNew({
         <Button variant="ghost" size="sm" onClick={dismiss}>
           Later
         </Button>
-        <Button
-          size="sm"
-          onClick={() => {
-            dismiss();
-            if (workspace.current !== null) startTours(shown, workspace.current);
-          }}
-        >
-          {shown.length > 1 ? "Take the tours" : "Take the tour"}
+        <Button size="sm" onClick={start}>
+          {take}
         </Button>
       </div>
     </section>

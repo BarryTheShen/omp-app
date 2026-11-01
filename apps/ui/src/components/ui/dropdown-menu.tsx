@@ -2,6 +2,7 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { cn } from "cn";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
+import { closeSheet, SHEET_BACKDROP } from "./sheet";
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
@@ -24,9 +25,15 @@ function DropdownMenuContent({
   ...props
 }: MenuPrimitive.Popup.Props &
   Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
+  // A submenu is this content too (`DropdownMenuSubContent`), named by its `data-slot`: it opens over its sheet.
+  const submenu =
+    (props as { readonly "data-slot"?: string })["data-slot"] === "dropdown-menu-sub-content";
   return (
     <MenuPrimitive.Portal>
+      {/* On a phone a menu is a bottom sheet over the page dimmed; a tap there closes it (`sheet.ts`). */}
+      {!submenu && <MenuPrimitive.Backdrop className={SHEET_BACKDROP} onClick={closeSheet} />}
       <MenuPrimitive.Positioner
+        data-slot="dropdown-menu-positioner"
         className="isolate z-50 outline-none"
         align={align}
         alignOffset={alignOffset}

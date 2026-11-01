@@ -1090,6 +1090,30 @@ const MCP_SIGN_IN_TOUR: Tour = {
   ],
 };
 
+/** #2770 D1 part 3: on the phone, menus come up from the foot of the screen, and a held message offers Copy and Edit. */
+const PHONE_TOUCH_TOUR: Tour = {
+  id: "phone-touch-2026-11-01",
+  title: "Menus and messages on the phone",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Menus from the foot of the screen",
+      text: "On a phone every menu comes up from the foot of the screen, its rows a thumb's size: the model menu, a chat's menu, a setting's choices. A tap above one closes it.",
+      action: next,
+      phoneOnly: true,
+    },
+    {
+      target: null,
+      title: "Hold a message",
+      text: "Touch and hold one of your messages for <b>Copy</b> and <b>Edit</b>. A reply's thinking and its tools open with a tap.",
+      action: next,
+      phoneOnly: true,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1104,6 +1128,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-01-phone-touch",
+    when: "2026-11-01T18:30:00-06:00",
+    summary:
+      "On a phone, menus come up from the foot of the screen with rows a thumb's size, and a tap above one closes it; hold one of your messages for Copy and Edit; a reply's thinking and tool rows and the tours card are full-size too.",
+    tours: [PHONE_TOUCH_TOUR],
+  },
   {
     id: "2026-11-01-mcp-sign-in",
     when: "2026-11-01T15:14:00-06:00",

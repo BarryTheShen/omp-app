@@ -1,9 +1,13 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "cn";
 import type * as React from "react";
+import { usePhone } from "../../phone";
+import { closeSheet, SHEET_BACKDROP } from "./sheet";
 
-function Popover({ ...props }: PopoverPrimitive.Root.Props) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />;
+/** On a phone a popover is a bottom sheet, and modal, as menus and selects are: the page under it takes no tap. */
+function Popover({ modal, ...props }: PopoverPrimitive.Root.Props) {
+  const phone = usePhone();
+  return <PopoverPrimitive.Root data-slot="popover" modal={phone ? true : modal} {...props} />;
 }
 
 function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
@@ -21,7 +25,10 @@ function PopoverContent({
   Pick<PopoverPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
   return (
     <PopoverPrimitive.Portal>
+      {/* On a phone a popover is a bottom sheet over the page dimmed; a tap there closes it (`sheet.ts`). */}
+      <PopoverPrimitive.Backdrop className={SHEET_BACKDROP} onClick={closeSheet} />
       <PopoverPrimitive.Positioner
+        data-slot="popover-positioner"
         align={align}
         alignOffset={alignOffset}
         side={side}

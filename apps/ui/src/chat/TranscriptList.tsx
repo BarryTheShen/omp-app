@@ -434,13 +434,13 @@ function RowView({
       // A message read from the stream has no id of omp's until the file is read back after the turn.
       const editable = actions.canEdit && !row.entry.id.startsWith("live-");
       const { id } = row.entry;
-      return (
-        <>
-          <EntryRow entry={row.entry} results={results} active={active} host={host} />
-          {text !== null && (
-            <MessageActions text={text} onEdit={editable ? () => actions.onEdit(id) : null} />
-          )}
-        </>
+      const message = <EntryRow entry={row.entry} results={results} active={active} host={host} />;
+      return text === null ? (
+        message
+      ) : (
+        <MessageActions text={text} onEdit={editable ? () => actions.onEdit(id) : null}>
+          {message}
+        </MessageActions>
       );
     }
     case "failure":

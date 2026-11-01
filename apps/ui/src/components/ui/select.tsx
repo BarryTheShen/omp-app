@@ -4,6 +4,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cn } from "cn";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import type * as React from "react";
+import { closeSheet, SHEET_BACKDROP } from "./sheet";
 
 const Select = SelectPrimitive.Root;
 
@@ -69,7 +70,10 @@ function SelectContent({
   >) {
   return (
     <SelectPrimitive.Portal>
+      {/* On a phone a select's list is a bottom sheet over the page dimmed; a tap there closes it (`sheet.ts`). */}
+      <SelectPrimitive.Backdrop className={SHEET_BACKDROP} onClick={closeSheet} />
       <SelectPrimitive.Positioner
+        data-slot="select-positioner"
         side={side}
         sideOffset={sideOffset}
         align={align}

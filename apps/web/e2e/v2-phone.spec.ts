@@ -10,6 +10,13 @@ realTest.describe("new UI on a phone", () => {
   realTest.setTimeout(240_000);
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
   const keys = (page: Page) => page.getByRole("toolbar", { name: "Keys" });
+  /** A sheet's place: its left edge, its width and its bottom edge, in a 390×844 phone. */
+  const place = async (sheet: Locator) => {
+    const bounds = await sheet.boundingBox();
+    return bounds === null
+      ? null
+      : [Math.round(bounds.x), Math.round(bounds.width), Math.round(bounds.y + bounds.height)];
+  };
 
   async function phone(
     realApp: { open: (options: { path: string; context: BrowserContext }) => Promise<Page> },
@@ -56,6 +63,44 @@ realTest.describe("new UI on a phone", () => {
       await hide.tap();
       await expect(box(page)).not.toBeFocused();
       await expect(hide).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "menus are sheets across the foot of the screen, closed by a tap above them; a reply's thinking and tool rows are full-size (#2770)",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const details = await page.getByRole("button", { name: "Details" }).boundingBox();
+      if (details === null) throw new Error("no Details button");
+
+      // The model menu, a popover on a computer, is a sheet across the foot of the screen.
+      await keys(page)
+        .getByRole("button", { name: /^Model: / })
+        .tap();
+      const sheet = page.locator("[data-slot='popover-content']");
+      await expect.poll(() => place(sheet)).toEqual([0, 390, 844]);
+      // Its models are full-size rows, and so are their Star and Hide.
+      const model = sheet.getByRole("option").first();
+      await expect(model).toBeVisible({ timeout: 60_000 });
+      expect((await model.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      const star = sheet.getByRole("button", { name: /^(Star|Unstar) / }).first();
+      expect((await star.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      // A tap above it closes it, and reaches nothing under it: here the top bar's Details.
+      await page.touchscreen.tap(details.x + details.width / 2, details.y + details.height / 2);
+      await expect(sheet).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "Chat details" })).toHaveCount(0);
+
+      // A reply's thinking and its tool open with a tap: rows 44 px tall or more.
+      await box(page).fill("run_bash");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const tool = page.locator(".tr-root .tv-head").first();
+      await expect(tool).toBeVisible({ timeout: 60_000 });
+      expect((await tool.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      const thinking = page.locator(".tr-root .tr-think-head").first();
+      await expect(thinking).toBeVisible();
+      expect((await thinking.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
@@ -240,6 +285,11 @@ realTest.describe("new UI on a phone", () => {
         await row.dispatchEvent("pointerup", { pointerType: "touch", isPrimary: true });
         const menu = page.getByRole("menu");
         await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+        // The menu is a sheet across the foot of the screen, its rows full-size (#2770).
+        await expect.poll(() => place(menu)).toEqual([0, 390, 844]);
+        for (const item of await menu.getByRole("menuitem").all()) {
+          expect((await item.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+        }
         await menu.getByRole("menuitem", { name: "Pin" }).tap();
         await expect(
           list
@@ -250,6 +300,44 @@ realTest.describe("new UI on a phone", () => {
 
         // No menu at the list's foot: the theme and What's new are in Settings.
         await expect(list.getByRole("button", { name: "Menu" })).toHaveCount(0);
+        // The tours card is one line under the list, its buttons full-size (#2770).
+        const card = page.getByRole("region", { name: "What's new" });
+        expect((await card.boundingBox())?.height ?? 999).toBeLessThanOrEqual(56);
+        expect(
+          (await card.getByRole("button", { name: /^Take the tour/ }).boundingBox())?.height ?? 0,
+        ).toBeGreaterThanOrEqual(44);
+        expect(realApp.problems).toEqual([]);
+        await context.close();
+      },
+    );
+
+    realTest(
+      "a touch-and-hold on one of your messages opens Copy and Edit; Copy copies it (#2770)",
+      async ({ realApp, browser }) => {
+        const { page, context } = await phone(realApp, browser);
+        await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+        await page.getByRole("button", { name: "Chats", exact: true }).tap();
+        await page
+          .getByRole("navigation", { name: "Chats" })
+          .getByRole("button", { name: "Seeded chat 1" })
+          .tap();
+        const message = page
+          .getByRole("region", { name: "Transcript" })
+          .getByText("Seeded chat 1", { exact: true });
+        await expect(message).toBeVisible({ timeout: 60_000 });
+        // Edit is offered once the chat's omp is ready and idle.
+        await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        // No small buttons under it on a phone.
+        await expect(page.getByRole("button", { name: "Copy this message" })).toHaveCount(0);
+        await message.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true });
+        await page.waitForTimeout(700);
+        await message.dispatchEvent("pointerup", { pointerType: "touch", isPrimary: true });
+        const menu = page.getByRole("menu");
+        await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+        await menu.getByRole("menuitem", { name: "Copy" }).tap();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe("Seeded chat 1");
         expect(realApp.problems).toEqual([]);
         await context.close();
       },
