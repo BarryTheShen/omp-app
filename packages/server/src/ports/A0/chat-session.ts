@@ -70,6 +70,7 @@ import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
+import { type ResumeOutcome, UsageResume, usageResumeFile } from "./usage-resume";
 
 interface ChatEntry {
   bootstrap: ThreadBootstrap;
@@ -130,7 +131,7 @@ const SPARE_MAX_AGE_MS = 10 * 60_000;
 const SPARE_REFRESH_MS = 9 * 60_000;
 /** An open at least this long logs when each of its steps ended (`chat_session.open_steps`, #2768). */
 const SLOW_OPEN_MS = 1_000;
-/** The global timer, which does not keep the server running for a spare's refresh alone. */
+/** The global timer, which does not keep the server running by itself: a spare's refresh, a continue after a limit. */
 const SPARE_TIMER: ProcessTimer = {
   setTimeout: (handler, delayMs) => {
     const handle = globalThis.setTimeout(handler, delayMs);
@@ -356,11 +357,26 @@ export class ChatSessionPortRuntime {
   /** The new chats kept ready, by folder; the folder used last comes last (`#prepareSpare`). */
   readonly #spares = new Map<FolderPath, Spare>();
   #closed = false;
+  /** The app's own continue after a usage limit (#2781); absent without its file. */
+  readonly #usageResume: UsageResume | undefined;
 
   constructor(context: A0PortContext) {
     this.#context = context;
+    this.#usageResume =
+      context.usageResumeFile === undefined
+        ? undefined
+        : new UsageResume({
+            now: context.usageResumeClock?.now ?? Date.now,
+            timer: context.usageResumeClock?.timer ?? SPARE_TIMER,
+            ...usageResumeFile(context.usageResumeFile),
+            resume: (threadId) => this.#continueAfterLimit(threadId),
+            ...(context.logger === undefined ? {} : { logger: context.logger }),
+          });
+    void this.#usageResume?.restore();
     context.processRegistry.setIdleHooks({
-      isSettled: (threadId) => this.#isSettled(threadId),
+      // A chat the app continues after a usage limit keeps its omp until then, watched or not (#2781).
+      isSettled: async (threadId) =>
+        this.#usageResume?.isWaiting(threadId) !== true && (await this.#isSettled(threadId)),
       stopped: (threadId, process, refusedDelete) =>
         this.#forgetStopped(threadId, process, refusedDelete),
     });
@@ -382,6 +398,7 @@ export class ChatSessionPortRuntime {
       this.setSubagentSubscription(args as SetSubagentSubscriptionArgs, call),
     setEventOptions: (args, call) => this.setEventOptions(args as SetEventOptionsArgs, call),
     pauseAll: (args) => this.pauseAll(args as PauseAllArgs),
+    cancelContinue: (args) => this.cancelContinue(args as { threadId: ThreadId }),
   };
 
   /** A page shows the folder: a new chat is kept ready there, if this server keeps them (#2760). */
@@ -389,6 +406,34 @@ export class ChatSessionPortRuntime {
     this.#prepareSpare(args.folderPath);
     return null;
   }
+
+  /** "Don't continue": the app does not continue the chat after its usage limit (#2781). */
+  cancelContinue(args: { threadId: ThreadId }): null {
+    this.#usageResume?.cancel(args.threadId);
+    return null;
+  }
+
+  /** The chats the app continues after a usage limit, by folder, and each change with the chat's folder (#2781). */
+  readonly continuing = {
+    continuingIn: (
+      folder: string,
+    ): readonly { readonly id: ThreadId; readonly continuesAt: number }[] => {
+      const registry = this.#context.processRegistry;
+      return [...(this.#usageResume?.due() ?? [])]
+        .filter(([threadId]) => registry.folderOf(threadId) === folder)
+        .map(([id, continuesAt]) => ({ id, continuesAt }));
+    },
+    onContinueChange: (
+      listener: (
+        threadId: ThreadId,
+        folder: string | undefined,
+        continuesAt: number | null,
+      ) => void,
+    ): (() => void) =>
+      this.#usageResume?.onChange((threadId, continuesAt) =>
+        listener(threadId, this.#context.processRegistry.folderOf(threadId), continuesAt),
+      ) ?? (() => undefined),
+  };
 
   /** The session file an open chat runs, known before omp writes it (a new chat writes its file after its first reply). */
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined {
@@ -745,6 +790,10 @@ export class ChatSessionPortRuntime {
    * URI scheme registration is merged with every other owner's; only a viewer of the chat may make one.
    */
   async request(args: ChatRequestArgs, call: PortHandlerContext): Promise<unknown> {
+    // Stop also stops the app's own continue after a usage limit (#2781).
+    if (args.method === "abort" || args.method === "abort_and_restore_queue") {
+      this.#usageResume?.cancel(args.threadId);
+    }
     // A chat that is not running has nothing to hold: pausing or resuming it answers so and starts nothing.
     if (args.method === "pause" || args.method === "resume") {
       const held = this.#entryOrUndefined(args.threadId);
@@ -1088,6 +1137,7 @@ export class ChatSessionPortRuntime {
   async dispose(): Promise<void> {
     // The new chats kept ready hold no chat: they stop, and no server after this one finds them (D2).
     this.#closed = true;
+    this.#usageResume?.close();
     const spares = [...this.#spares.values()];
     this.#spares.clear();
     await Promise.all(spares.map((spare) => this.#discardSpare(spare)));
@@ -1265,9 +1315,11 @@ export class ChatSessionPortRuntime {
   /**
    * Keeps the registry's busy mark in step with the chat: busy from `agent_start` until the session settles
    * (`session_settled`, or a `prompt_result` that reports it settled). A yielded run is not a settled session. The
-   * registry also keeps the chat's pause (omp's `/pause`), as the host reports it, for the chat list.
+   * registry also keeps the chat's pause (omp's `/pause`), as the host reports it, for the chat list, and the app's own
+   * continue after a usage limit hears what the chat does (#2781).
    */
   #trackTurn(threadId: ThreadId, event: ChatEvent): void {
+    this.#usageResume?.onEvent(threadId, event);
     if (event.type === "agent_start") {
       this.#context.processRegistry.setBusy(threadId, true);
     } else if (
@@ -1458,6 +1510,27 @@ export class ChatSessionPortRuntime {
     const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined) return true;
     return (await entry.client.request("get_state", {})).isSettled;
+  }
+
+  /**
+   * Runs a chat's turn that a usage limit stopped again, as its Retry does (omp's `/retry`), once the app's continue is
+   * due (#2781). Only a chat this server still serves under that id, idle and not paused, is continued.
+   */
+  async #continueAfterLimit(threadId: ThreadId): Promise<ResumeOutcome> {
+    const registry = this.#context.processRegistry;
+    const entry = this.#entryOrUndefined(threadId);
+    if (
+      entry === undefined ||
+      entry.bootstrap.threadId !== threadId ||
+      registry.isStopping(threadId)
+    ) {
+      return "gone";
+    }
+    if (registry.busyOf(threadId) === true) return "busy";
+    if ((registry.pausedOf(threadId) ?? null) !== null) return "paused";
+    await this.#ensureRunning(entry);
+    await entry.client.send("prompt", { text: "/retry" }).answer;
+    return "sent";
   }
 
   /**

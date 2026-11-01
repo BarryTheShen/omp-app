@@ -399,11 +399,15 @@ function Welcome({ folder }: { readonly folder: string }): ReactNode {
 }
 
 /**
- * What rows offer: a failed request's Retry and Switch model, stopping a `!` command, dismissing a notice, and Edit on
- * your messages (only while omp is idle).
+ * What rows offer: a failed request's Retry, Switch model and the app's own continue after a usage limit, stopping a `!`
+ * command, dismissing a notice, and Edit on your messages (only while omp is idle).
  */
 export interface RowActions {
   readonly onRetry: () => Promise<void>;
+  /** When the app continues the chat by itself after a usage limit (#2781); null when it will not. */
+  readonly continuesAt: number | null;
+  /** "Don't continue": the chat stays stopped after its usage limit. */
+  readonly onDontContinue: () => Promise<void>;
   readonly onSwitchModel: () => void;
   readonly onStopShell: () => Promise<void>;
   readonly onDismissNotice: (id: number) => void;
@@ -445,8 +449,10 @@ function RowView({
           <FailureRow
             error={row.error}
             latest={row.latest}
+            continuesAt={actions.continuesAt}
             onRetry={actions.onRetry}
             onSwitchModel={actions.onSwitchModel}
+            onDontContinue={actions.onDontContinue}
           />
         </Row>
       );

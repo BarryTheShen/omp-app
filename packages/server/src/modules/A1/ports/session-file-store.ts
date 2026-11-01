@@ -1,6 +1,7 @@
 import {
   type SessionFile as ContractSessionFile,
   type SubagentTranscript as ContractSubagentTranscript,
+  SessionContinueChanged,
   SessionDeleteResult,
   SessionFile,
   SessionFileChanged,
@@ -127,6 +128,22 @@ function sessionPauseBindings(context: A1PortContext): readonly A1EventBinding[]
       subscribe: (listener) =>
         pause.onPauseChange((threadId, folder, pausedAt) => {
           const payload = SessionPauseChanged.safeParse({ folder, id: threadId, pausedAt });
+          if (payload.success) listener(payload.data);
+        }),
+    },
+  ];
+}
+
+/** A chat the app will continue after its usage limit, or no longer will (#2781), changes the time its row shows. */
+function sessionContinueBindings(context: A1PortContext): readonly A1EventBinding[] {
+  const continuing = context.processContinue;
+  if (continuing === undefined) return [];
+  return [
+    {
+      event: "continueChanged",
+      subscribe: (listener) =>
+        continuing.onContinueChange((threadId, folder, continuesAt) => {
+          const payload = SessionContinueChanged.safeParse({ folder, id: threadId, continuesAt });
           if (payload.success) listener(payload.data);
         }),
     },
@@ -270,11 +287,16 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
         assertNotAborted(handlerContext);
         return { chats: [...(context.processPause?.pausedIn(args.folder) ?? [])] };
       },
+      listContinuing: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return { chats: [...(context.processContinue?.continuingIn(args.folder) ?? [])] };
+      },
     },
     context.publish,
     [
       ...sessionTurnBindings(context),
       ...sessionPauseBindings(context),
+      ...sessionContinueBindings(context),
       removalBinding(removals),
       refreshBinding(context),
     ],

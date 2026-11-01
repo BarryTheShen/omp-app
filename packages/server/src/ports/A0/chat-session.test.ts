@@ -3,7 +3,9 @@
  * and renames, case by case. The same cases ran against A0's RPC runtime until H5.6b deleted it; the real chat host runs
  * them end to end in `test/e2e/sdk-chat-session-*.test.ts`.
  */
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import {
   AppFailure,
   chatSessionEventStream,
@@ -2562,5 +2564,124 @@ describe("the chat session runtime: a new chat kept ready (#2760)", () => {
     expect(created[0]?.status).toBe("running");
     expect(created[1]?.status).toBe("stopped");
     expect(created[2]?.status).toBe("running");
+  });
+});
+
+describe("the chat session runtime: the app's own continue after a usage limit (#2781)", () => {
+  const scratch = join(globalThis.process.cwd(), ".data", `usage-resume-${crypto.randomUUID()}`);
+  afterAll(async () => {
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  /** A runtime whose continues run on a clock and a timer the test moves; `idleCloseMs` stops unwatched chats. */
+  function continuing(created: FakeChatHost[], idleCloseMs?: number) {
+    const timer = firingTimer();
+    const clock = { now: 1_790_000_000_000 };
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      ...(idleCloseMs === undefined
+        ? {}
+        : {
+            processRegistry: new OmpProcessRegistry({
+              idleCloseMs,
+              createProcess: fakeHost(created),
+            }),
+          }),
+      usageResumeFile: join(scratch, crypto.randomUUID(), "usage-resume.json"),
+      usageResumeClock: { now: () => clock.now, timer },
+    };
+    const runtime = createA0Runtime(runtimeContext);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet;
+    return { runtimeContext, runtime, handlers, timer, clock };
+  }
+
+  /** omp's events for a turn a usage limit refused: its retry says it waits `waitMs`, then gives up at once. */
+  function refusedTurn(host: FakeChatHost, waitMs: number): void {
+    host.emitEvent({ type: "agent_start" });
+    host.emitEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: waitMs,
+      errorMessage: "429 rate_limit_error",
+    });
+    host.emitEvent({ type: "auto_retry_end", success: false, attempt: 1, finalError: "429" });
+    host.emitEvent({ type: "agent_end", messages: [] });
+    host.emitEvent({ type: "session_settled" });
+  }
+
+  test("a chat a usage limit stopped is retried as its Retry does once the wait is over, and the list hears when", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers, timer, clock } = continuing(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    const heard: unknown[] = [];
+    const stop = runtime.continuing.onContinueChange((id, where, at) =>
+      heard.push([id, where, at]),
+    );
+
+    refusedTurn(host, 9_385_000);
+    await ticks();
+    const due = clock.now + 9_385_000 + 60_000;
+    expect(runtime.continuing.continuingIn(folder)).toEqual([
+      { id: authorityThread, continuesAt: due },
+    ]);
+    expect(heard).toEqual([[authorityThread, folder, due]]);
+    expect(paramsOf(host, "prompt")).toEqual([]);
+
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([{ text: "/retry" }]);
+    expect(runtime.continuing.continuingIn(folder)).toEqual([]);
+    expect(heard.at(-1)).toEqual([authorityThread, folder, null]);
+    stop();
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("Stop and Don't continue drop it, and a paused chat is not retried", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers, timer } = continuing(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    const due = () => runtime.continuing.continuingIn(folder).length;
+
+    refusedTurn(host, 3_600_000);
+    await ticks();
+    expect(due()).toBe(1);
+    await getHandler(handlers, "request")(request(authorityThread, "abort"), call("one"));
+    expect(due()).toBe(0);
+
+    refusedTurn(host, 3_600_000);
+    await ticks();
+    expect(due()).toBe(1);
+    await getHandler(handlers, "cancelContinue")({ threadId: authorityThread }, call("one"));
+    expect(due()).toBe(0);
+
+    refusedTurn(host, 3_600_000);
+    host.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a chat waiting to be continued keeps its omp with nobody watching it", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers } = continuing(created, 20);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    refusedTurn(host, 3_600_000);
+    await ticks();
+
+    await runtime.views.releaseViews(authorityThread, "one");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await ticks();
+    // Still held: `busyOf` is undefined once the registry stopped the chat's omp.
+    expect(runtimeContext.processRegistry.busyOf(authorityThread)).toBe(false);
+    await runtimeContext.processRegistry.closeAll();
   });
 });

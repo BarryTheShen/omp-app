@@ -45,6 +45,8 @@ export interface ChatList {
   readonly running: ReadonlySet<ThreadId>;
   /** The chats paused now (omp's `/pause`), wherever they are open. */
   readonly paused: ReadonlySet<ThreadId>;
+  /** The chats the app continues by itself once their usage limit resets (#2781). */
+  readonly continuing: ReadonlySet<ThreadId>;
   readonly pinned: ReadonlySet<ThreadId>;
   readonly setPinned: (id: ThreadId, pinned: boolean) => Promise<void>;
   /** Renames a chat, open or not; the list then shows the title omp saved (it trims and cleans what was typed). */
@@ -63,6 +65,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   const [starting, setStarting] = useState<readonly RunningSession[]>([]);
   const [running, setRunning] = useState<ReadonlySet<ThreadId>>(new Set());
   const [paused, setPaused] = useState<ReadonlySet<ThreadId>>(new Set());
+  const [continuing, setContinuing] = useState<ReadonlySet<ThreadId>>(new Set());
   const [pins, setPins] = useState<{
     readonly ids: ReadonlySet<ThreadId>;
     readonly revision: string | null;
@@ -81,8 +84,14 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       const listed = await client.port(SessionFileStore).listPaused({ folder });
       if (active) setPaused(new Set(listed.chats.map((chat) => chat.id)));
     };
+    // The chats the app continues after their usage limit; a server older than that list has none to give.
+    const readContinuing = async (): Promise<void> => {
+      const listed = await client.port(SessionFileStore).listContinuing({ folder });
+      if (active) setContinuing(new Set(listed.chats.map((chat) => chat.id)));
+    };
     const read = async (): Promise<void> => {
       void readPaused().catch(() => undefined);
+      void readContinuing().catch(() => undefined);
       const listed = await client.port(SessionFileStore).listSessions({ folder, limit: LIMIT });
       if (!active) return;
       keptChats(folder).set(listed.sessions.map((session) => ({ ...session, subagents: [] })));
@@ -123,6 +132,15 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
         setPaused((current) => {
           const next = new Set(current);
           if (change.pausedAt === null) next.delete(change.id);
+          else next.add(change.id);
+          return next;
+        });
+      }),
+      follow(client.subscribe(SessionFileStore, "continueChanged"), (change) => {
+        if (change.folder !== folder) return;
+        setContinuing((current) => {
+          const next = new Set(current);
+          if (change.continuesAt === null) next.delete(change.id);
           else next.add(change.id);
           return next;
         });
@@ -195,5 +213,15 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     [client],
   );
 
-  return { sessions, starting, running, paused, pinned: pins.ids, setPinned, rename, remove };
+  return {
+    sessions,
+    starting,
+    running,
+    paused,
+    continuing,
+    pinned: pins.ids,
+    setPinned,
+    rename,
+    remove,
+  };
 }

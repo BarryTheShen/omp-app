@@ -209,6 +209,25 @@ export const SessionPausedResult = z.strictObject({
 export type SessionPausedResult = z.infer<typeof SessionPausedResult>;
 
 /**
+ * A chat that a usage limit stopped is continued by the app at `continuesAt` (epoch ms, #2781), or no longer is (`null`:
+ * it was continued, stopped, told not to, or it ran again meanwhile).
+ */
+export const SessionContinueChanged = z.strictObject({
+  folder: FolderPath,
+  id: ThreadId,
+  continuesAt: z.int().nonnegative().nullable(),
+});
+export type SessionContinueChanged = z.infer<typeof SessionContinueChanged>;
+
+/** The chats in a folder that the app continues after their usage limit, each with when (epoch ms). */
+export const SessionContinuingArgs = z.strictObject({ folder: FolderPath });
+export type SessionContinuingArgs = z.infer<typeof SessionContinuingArgs>;
+export const SessionContinuingResult = z.strictObject({
+  chats: z.array(z.strictObject({ id: ThreadId, continuesAt: z.int().nonnegative() })),
+});
+export type SessionContinuingResult = z.infer<typeof SessionContinuingResult>;
+
+/**
  * Deletes one chat: its session file and the artifacts directory beside it. `folder` is the chat's folder, and only a
  * file that this folder's listing returns can be deleted. The server refuses (conflict) a chat omp holds or runs a turn
  * in, so close the chat first.
@@ -279,6 +298,11 @@ export const SessionFileStore = definePort({
       result: SessionPausedResult,
       capability: "host.session-files",
     },
+    listContinuing: {
+      args: SessionContinuingArgs,
+      result: SessionContinuingResult,
+      capability: "host.session-files",
+    },
   },
   events: {
     changed: {
@@ -291,6 +315,10 @@ export const SessionFileStore = definePort({
     },
     pauseChanged: {
       payload: SessionPauseChanged,
+      capability: "host.session-files",
+    },
+    continueChanged: {
+      payload: SessionContinueChanged,
       capability: "host.session-files",
     },
   },

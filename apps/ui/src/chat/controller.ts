@@ -38,6 +38,7 @@ import {
 } from "@omp-app/contracts/chat-host";
 import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
+import { follow } from "../follow";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
@@ -145,6 +146,8 @@ export class ChatController {
   /** The server answers no role methods (it predates them): Ctrl+P says so instead of failing. */
   #noRoles = false;
   readonly #stopResync: () => void;
+  /** Stops following when the app continues this chat after a usage limit (#2781). */
+  #stopContinue: (() => void) | null = null;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
   /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
@@ -307,6 +310,7 @@ export class ChatController {
     this.#followAgents(opened.threadId).catch(unshown("This chat's subagents are not shown"));
     this.#readModes().catch(unshown("Plan mode and the goal are not shown"));
     this.#refreshRole().catch(() => undefined);
+    this.#followContinue();
   }
 
   /** omp's plan mode and the chat's goal, as they are when the chat opens. */
@@ -319,6 +323,38 @@ export class ChatController {
     if (this.#disposed) return;
     if (switches === this.#planSwitches) this.store.setPlanMode(plan);
     this.store.setGoal(goal.goal);
+  }
+
+  /**
+   * When the app continues this chat by itself after a usage limit (#2781): read once, then followed. A change heard
+   * before the read answers is newer than it. A server older than this has neither, and the row offers Retry alone.
+   */
+  #followContinue(): void {
+    let heard = false;
+    this.#stopContinue = follow(
+      this.client.subscribe(SessionFileStore, "continueChanged"),
+      (change) => {
+        if (change.id !== this.#threadId) return;
+        heard = true;
+        this.store.setContinuesAt(change.continuesAt);
+      },
+    );
+    this.client
+      .port(SessionFileStore)
+      .listContinuing({ folder: this.folder })
+      .then((listed) => {
+        if (this.#disposed || heard) return;
+        const mine = listed.chats.find((chat) => chat.id === this.#threadId);
+        this.store.setContinuesAt(mine?.continuesAt ?? null);
+      })
+      .catch(() => undefined);
+  }
+
+  /** "Don't continue": the app leaves this chat stopped after its usage limit (#2781). */
+  async cancelContinue(): Promise<void> {
+    const threadId = this.#threadId;
+    if (threadId === null) return;
+    await this.client.port(ChatSessionPort).cancelContinue({ threadId });
   }
 
   #mark(step: string): void {
@@ -928,6 +964,7 @@ export class ChatController {
     this.#openFrames?.stop();
     this.#openFrames = null;
     this.#stopResync();
+    this.#stopContinue?.();
     this.#draft.dispose();
     this.store.dispose();
     // A stream that ended with its chat (a deleted chat) has nothing left to unsubscribe.

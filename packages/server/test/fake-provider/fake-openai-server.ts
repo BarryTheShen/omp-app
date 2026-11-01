@@ -223,6 +223,9 @@ function contentDeltas(content: string, inPieces: boolean): string[] {
 /** `count_reply` turns are counted across the whole fake server, so an answer given again is visibly new. */
 let countedReplies = 0;
 
+/** `usage_limit_after_job <tag>` (#2781): the tags whose job result's turn was refused once, as a usage limit does. */
+const usageLimitRefused = new Set<string>();
+
 /** How many background jobs a prompt starts: `run_background_pair` two, `run_background_job` one, else none. */
 function backgroundJobCountOf(prompt: string): number {
   if (prompt.includes("run_background_pair")) return 2;
@@ -293,6 +296,7 @@ function streamProbeReply(messages: readonly Message[]): Reply | undefined {
 /**
  * `run_quick_background` starts one job that ends after two seconds, so its result is delivered while the chat is open.
  * `run_second_background` starts one long job with a call id of its own, for a second job in the same chat.
+ * `usage_limit_after_job <tag>` starts a two-second job whose result's turn the provider refuses once (#2781).
  */
 function namedBackgroundStart(prompt: string): Reply | undefined {
   if (prompt.includes("run_quick_background"))
@@ -306,6 +310,13 @@ function namedBackgroundStart(prompt: string): Reply | undefined {
       tool: "bash",
       args: { command: "sleep 120; echo second-job", async: true },
       id: "call_second_background",
+    };
+  const usageJob = /usage_limit_after_job (\w+)/.exec(prompt);
+  if (usageJob?.[1] !== undefined)
+    return {
+      tool: "bash",
+      args: { command: `sleep 2; echo usage-limit-job-done-${usageJob[1]}`, async: true },
+      id: `call_usage_limit_${usageJob[1]}`,
     };
   return undefined;
 }
@@ -441,6 +452,16 @@ function reply(request: Request): Reply {
   const toolProbe = /call_tool\s+(\S+)\s+(\{.*\})/.exec(prompt);
   if (toolProbe?.[1] !== undefined && toolProbe[2] !== undefined) {
     return { tool: toolProbe[1], args: JSON.parse(toolProbe[2]) as Record<string, unknown> };
+  }
+  // The turn a `usage_limit_after_job` result starts (#2781) is refused once, with the provider's wait in the error, and
+  // answered after. A plain 400, so omp does not retry it itself: what continues the chat is the app.
+  const usageLimitResult = /usage-limit-job-done-(\w+)/.exec(prompt);
+  if (usageLimitResult?.[1] !== undefined) {
+    if (!usageLimitRefused.has(usageLimitResult[1])) {
+      usageLimitRefused.add(usageLimitResult[1]);
+      return { failure: "The fake provider refused this request for now. retry-after-ms=61000" };
+    }
+    return { text: "Answered after the usage limit reset." };
   }
   if (prompt.includes("retry_failure_probe"))
     return { retryableFailure: "fake provider retry failure" };

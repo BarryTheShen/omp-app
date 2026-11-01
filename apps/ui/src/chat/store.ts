@@ -85,6 +85,11 @@ export interface ChatSnapshot {
    * so the paused row says they wait. Gone once the chat goes on, when omp shows them in the chat.
    */
   readonly held: readonly string[];
+  /**
+   * When the app continues this chat by itself after a usage limit stopped it (epoch ms, #2781), as the server says; null
+   * when it will not. The failed request's row says when.
+   */
+  readonly continuesAt: number | null;
   readonly phase: ConnectionPhase;
   readonly process: ProcessStatus | null;
   /** Whether the session file holds entries older than the first one shown. */
@@ -131,6 +136,7 @@ const EMPTY: ChatSnapshot = {
   working: false,
   pausedAt: null,
   held: [],
+  continuesAt: null,
   phase: "connecting",
   process: null,
   hasOlder: false,
@@ -257,6 +263,7 @@ export class ChatStore {
   #compacting = false;
   #pausedAt: number | null = null;
   #held: readonly string[] = [];
+  #continuesAt: number | null = null;
   #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
   #requests: readonly HostDialogRequest[] = [];
   #shell: ChatShellRun | null = null;
@@ -314,6 +321,13 @@ export class ChatStore {
   setPhase(phase: ConnectionPhase): void {
     if (this.#phase === phase) return;
     this.#phase = phase;
+    this.#publish();
+  }
+
+  /** When the app continues this chat after its usage limit (#2781); null when it will not. */
+  setContinuesAt(continuesAt: number | null): void {
+    if (this.#continuesAt === continuesAt) return;
+    this.#continuesAt = continuesAt;
     this.#publish();
   }
 
@@ -909,6 +923,7 @@ export class ChatStore {
       working: this.#working,
       pausedAt: this.#pausedAt,
       held: this.#held,
+      continuesAt: this.#continuesAt,
       phase: this.#phase,
       process: this.#process,
       hasOlder: this.#hasOlder,

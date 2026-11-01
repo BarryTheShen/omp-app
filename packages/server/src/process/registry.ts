@@ -379,6 +379,11 @@ export class OmpProcessRegistry {
     return paused;
   }
 
+  /** When the thread's omp was paused (epoch ms), `null` while it runs; `undefined` when no process is held for it. */
+  pausedOf(threadId: ThreadId): number | null | undefined {
+    return this.#entries.get(threadId)?.pausedAt;
+  }
+
   /** Calls `listener` each time a thread's pause changes, with the thread's folder; the returned function stops it. */
   onPauseChange(
     listener: (threadId: ThreadId, folder: string, pausedAt: number | null) => void,

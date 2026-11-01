@@ -62,6 +62,19 @@ export interface A1PortContext {
     ): () => void;
     pausedIn(folder: string): readonly { readonly id: ThreadId; readonly pausedAt: number }[];
   };
+  /** The chats the app continues after a usage limit (#2781) by folder, and each change, with the chat's folder if known. */
+  readonly processContinue?: {
+    onContinueChange(
+      listener: (
+        threadId: ThreadId,
+        folder: string | undefined,
+        continuesAt: number | null,
+      ) => void,
+    ): () => void;
+    continuingIn(
+      folder: string,
+    ): readonly { readonly id: ThreadId; readonly continuesAt: number }[];
+  };
   /** The session file of a chat that is open now. A new chat's file is named before omp writes it to disk. */
   readonly openSessionFile: (threadId: ThreadId) => SessionFilePath | undefined;
   /** The app's debug log; absent in tests and embeddings. */

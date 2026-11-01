@@ -414,6 +414,7 @@ export async function createCompositionServer(
   const a0Context: A0PortContext = {
     processRegistry,
     newChatsReady,
+    usageResumeFile: join(appDataDir, "usage-resume.json"),
     leaseProbe:
       options.leaseProbe ??
       sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
@@ -620,6 +621,7 @@ export async function createCompositionServer(
     sessionFileStore,
     processBusy: processRegistry,
     processPause: processRegistry,
+    processContinue: a0Runtime.continuing,
     configStore,
     checkpointStore,
     draftStore,

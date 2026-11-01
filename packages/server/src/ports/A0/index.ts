@@ -40,6 +40,19 @@ export interface A0Runtime {
   ): void;
   /** Notes a chat whose host, on another protocol, was asked to hand it back (D2). */
   handingBack(threadId: ThreadId): void;
+  /** The chats the app continues after a usage limit, for the chat list (#2781; see the chat runtime). */
+  readonly continuing: {
+    continuingIn(
+      folder: string,
+    ): readonly { readonly id: ThreadId; readonly continuesAt: number }[];
+    onContinueChange(
+      listener: (
+        threadId: ThreadId,
+        folder: string | undefined,
+        continuesAt: number | null,
+      ) => void,
+    ): () => void;
+  };
 }
 
 /** The chat session port on the chat hosts (SDK plan H5.3, the app's runtime since H5.4a) and AppPort. */
@@ -66,6 +79,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     },
     adopt: (process, hello, options) => chat.runtime.adopt(process, hello, options),
     handingBack: (threadId) => chat.runtime.handingBack(threadId),
+    continuing: chat.runtime.continuing,
   };
 }
 

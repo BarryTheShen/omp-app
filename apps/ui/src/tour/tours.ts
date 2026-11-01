@@ -1003,6 +1003,28 @@ const PANE_MODE_TOUR: Tour = {
   ],
 };
 
+/** #2781: the app continues a chat a usage limit stopped. Nothing to try on demand, so the steps tell it. */
+const USAGE_CONTINUE_TOUR: Tour = {
+  id: "usage-continue-2026-11-01",
+  title: "Continuing after a usage limit",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "When a usage limit stops a chat",
+      text: "The app now continues the chat by itself a minute after the limit resets, even with every window closed. The failed request says when: <b>Continues by itself at</b> and the time.",
+      action: next,
+    },
+    {
+      target: null,
+      title: "Continue now, or not",
+      text: "<b>Continue now</b> tries again at once. <b>Don't continue</b> leaves the chat stopped, and so do Stop and a pause. In the chat list such a chat has a clock for its mark.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1017,6 +1039,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-01-usage-continue",
+    when: "2026-11-01T10:42:00-06:00",
+    summary:
+      "A chat a usage limit stopped now continues by itself a minute after the limit resets, even with every window closed: the failed request says when, with Continue now and Don't continue, and the chat list marks it with a clock.",
+    tours: [USAGE_CONTINUE_TOUR],
+  },
   {
     id: "2026-10-31-phone-settings",
     when: "2026-10-31T22:50:00-05:00",

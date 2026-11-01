@@ -1,6 +1,7 @@
 import type { FolderPath, RunningSession, SessionFile, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
 import {
+  Clock,
   Ellipsis,
   Pause,
   PencilLine,
@@ -55,8 +56,11 @@ import type { ChatList } from "./useChatList";
 /** How long the pointer rests on a chat before it is read ahead. */
 const PREFETCH_REST_MS = 120;
 
-/** What a row's mark says: omp waits for an answer, the chat is paused (omp's `/pause`), or a turn runs. */
-type ChatState = "waiting" | "paused" | "running" | null;
+/**
+ * What a row's mark says: omp waits for an answer, the chat is paused (omp's `/pause`), a turn runs, or the app continues
+ * the chat once its usage limit resets (#2781).
+ */
+type ChatState = "waiting" | "paused" | "running" | "continuing" | null;
 
 /** A chat whose first reply still runs has no file to title it yet: the first message this page sent in it names it. */
 const startingTitleOf = (id: ThreadId): string => firstPromptOf(id) ?? "New chat";
@@ -141,7 +145,9 @@ export function Sidebar({
         ? "paused"
         : list.running.has(id)
           ? "running"
-          : null;
+          : list.continuing.has(id)
+            ? "continuing"
+            : null;
   const rename = (session: SessionFile, typed: string): void => {
     const name = typed.trim();
     if (name === "" || name === titleOf(session)) return;
@@ -442,7 +448,9 @@ function ChatRow({
         ? "paused"
         : state === "running"
           ? "running"
-          : null,
+          : state === "continuing"
+            ? "continues after its usage limit"
+            : null,
     open ? "open in a pane" : null,
   ].filter((part) => part !== null);
   return (
@@ -525,6 +533,8 @@ function ChatRow({
             {state === "paused" ? (
               // The tab's mark too: a paused turn is still a turn, and the pause is what matters.
               <Pause aria-hidden="true" className="size-3 shrink-0 text-warn-ink" />
+            ) : state === "continuing" ? (
+              <Clock aria-hidden="true" className="size-3 shrink-0 text-t2" />
             ) : (
               <span
                 aria-hidden

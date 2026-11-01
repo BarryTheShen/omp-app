@@ -81,4 +81,11 @@ export interface A0PortContext {
   readonly debugReport?: () => Promise<{ readonly fileName: string; readonly text: string }>;
   /** Lists the models omp can use now (`omp models --json`), for the picker that opens a chat omp cannot restore. */
   readonly usableModels?: () => Promise<readonly UsableModel[]>;
+  /**
+   * Where the app keeps the chats it continues itself after a usage limit (#2781; `<app data>/usage-resume.json`).
+   * Absent: continuing is left to omp's own retry.
+   */
+  readonly usageResumeFile?: string;
+  /** The clock and timer of those continues; the real ones when absent (tests move them by hand). */
+  readonly usageResumeClock?: { readonly now: () => number; readonly timer: ProcessTimer };
 }

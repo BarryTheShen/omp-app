@@ -263,6 +263,8 @@ export const ChatSessionPort = definePort({
     },
     setEventOptions: { args: SetEventOptionsArgs, result: SetEventOptionsResult },
     pauseAll: { args: PauseAllArgs, result: PauseAllResult },
+    /** "Don't continue": the app does not continue the chat after its usage limit (#2781). */
+    cancelContinue: { args: ThreadRef, result: z.null() },
   },
   events: { event: { payload: ChatSessionEvent } },
 });

@@ -19,6 +19,8 @@ const NO_LIFECYCLE: ReadonlyMap<string, SubagentLifecyclePayload> = new Map();
 /** A subagent's log only shows: nothing in it can be retried, edited or stopped from here. */
 const READ_ONLY: RowActions = {
   onRetry: async () => undefined,
+  continuesAt: null,
+  onDontContinue: async () => undefined,
   onSwitchModel: () => undefined,
   onStopShell: async () => undefined,
   onDismissNotice: () => undefined,

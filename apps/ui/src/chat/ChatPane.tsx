@@ -94,6 +94,8 @@ export function ChatPane({
     () => ({
       // omp's own `/retry`: the last failed turn, again.
       onRetry: () => controller.send("/retry"),
+      continuesAt: snapshot.continuesAt,
+      onDontContinue: () => controller.cancelContinue(),
       onSwitchModel: () => setModelPickerOpen(true),
       onStopShell: () => controller.stopShell(),
       onDismissNotice: (id) => controller.store.dismissNotice(id),
@@ -119,7 +121,7 @@ export function ChatPane({
       },
       canEdit,
     }),
-    [controller, canEdit],
+    [controller, canEdit, snapshot.continuesAt],
   );
   const welcome = useMemo(
     () => (controller.isNew ? { folder: controller.folder } : null),
