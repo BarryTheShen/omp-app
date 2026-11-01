@@ -2444,11 +2444,11 @@ describe("the chat session runtime: a chat an earlier server left running, on an
   };
 
   /** This server starts and finds the chat's host running, on an omp of its own: restarted once it settles. */
-  function adoptLeftRunning(saved: boolean) {
+  function adoptLeftRunning(saved: () => boolean) {
     const created: FakeChatHost[] = [];
     const runtimeContext: A0PortContext = {
       ...context(created, spare),
-      sessionFileExists: async () => saved,
+      sessionFileExists: async () => saved(),
     };
     const left = new FakeChatHost({ threadId: spare.threadId, folder, args: [] }, spare);
     createA0Runtime(runtimeContext).adopt(
@@ -2466,7 +2466,7 @@ describe("the chat session runtime: a chat an earlier server left running, on an
   }
 
   test("one omp never saved (a spare kept ready for a new chat) is stopped once settled, not restarted", async () => {
-    const { created, left, registry } = adoptLeftRunning(false);
+    const { created, left, registry } = adoptLeftRunning(() => false);
     await ticks(30);
     expect(left.status).toBe("stopped");
     expect(created).toHaveLength(0);
@@ -2474,12 +2474,30 @@ describe("the chat session runtime: a chat an earlier server left running, on an
   });
 
   test("a saved one is restarted on this server's omp once settled", async () => {
-    const { created, left, registry } = adoptLeftRunning(true);
+    const { created, left, registry } = adoptLeftRunning(() => true);
     await ticks(30);
     expect(created).toHaveLength(1);
     expect(created[0]?.args).toEqual(["--resume", spare.sessionFile]);
     expect(left.status).toBe("stopped");
     expect(registry.has(spare.threadId)).toBe(true);
+  });
+
+  test("one a page holds before its first reply keeps running, and is restarted once that reply is saved and settled", async () => {
+    let saved = false;
+    const { created, left, registry } = adoptLeftRunning(() => saved);
+    // A page holds the new chat before this server has checked it.
+    registry.acquire({ threadId: spare.threadId, folder });
+    await ticks(30);
+    expect(left.status).not.toBe("stopped");
+    expect(created).toHaveLength(0);
+
+    // Its first reply: omp saves the chat, and the host says it has settled.
+    saved = true;
+    left.emitEvent({ type: "session_settled" });
+    await ticks(30);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.args).toEqual(["--resume", spare.sessionFile]);
+    expect(left.status).toBe("stopped");
   });
 });
 

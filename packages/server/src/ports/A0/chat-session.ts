@@ -1142,7 +1142,8 @@ export class ChatSessionPortRuntime {
    * Restarts the chat on this server's omp once it has settled (`restartWhenSettled`); checked again when it settles.
    * omp writes a chat's file only once it has a reply, so a chat with none (a spare an earlier server kept ready for a
    * new chat) has nothing a restart could resume: nobody holding it, its host is stopped instead, and this server makes
-   * spares of its own on its own build; one a page holds keeps running as it is.
+   * spares of its own on its own build. One a page holds keeps running until its first reply is saved, and is restarted
+   * once that reply has settled.
    */
   async #restartIfSettled(entry: ChatEntry): Promise<void> {
     if (entry.restartWhenSettled !== true) return;
@@ -1153,7 +1154,10 @@ export class ChatSessionPortRuntime {
     const { threadId, sessionFile } = entry.bootstrap;
     if (!(await this.#hasSessionFile(sessionFile))) {
       const registry = this.#context.processRegistry;
-      if (registry.watched(threadId)) return;
+      if (registry.watched(threadId)) {
+        entry.restartWhenSettled = true;
+        return;
+      }
       this.#context.logger?.info("chat_session.unsaved_host_stopped", { threadId });
       this.#forget(entry);
       await registry.stopIfUnwatched(threadId, "opened").catch(() => undefined);

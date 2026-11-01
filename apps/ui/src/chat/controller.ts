@@ -466,7 +466,7 @@ export class ChatController {
     try {
       await this.#request(method, {});
     } catch (failure) {
-      // A chat whose omp started before pause existed keeps that omp until it starts again.
+      // A chat still on an omp from before pause (one an update found running) moves to the new omp once its reply ends.
       if (failure instanceof AppFailure && failure.appError.omp?.code === "unknown_method") {
         throw new Error(OLDER_OMP);
       }
@@ -982,6 +982,6 @@ function olderServer(failure: unknown, cannot: string): unknown {
     : failure;
 }
 
-/** The words for a chat whose omp started before pause existed. */
+/** The words for a chat still on an omp from before pause: the server moves it to the new omp once its reply ends. */
 const OLDER_OMP =
-  "This chat's omp started before pause was added, so it can't pause until it starts again.";
+  "This chat still runs the omp from before the update. It moves to the new one once this reply ends; Stop ends the reply now.";

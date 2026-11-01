@@ -566,8 +566,9 @@ export const Composer = memo(function Composer({
         {hasPills && !(phone && activity !== null && pausedAt === null) && (
           <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">{pills}</div>
         )}
-        {phone && status !== null && (
-          <p className="truncate px-1 pb-1.5 text-xs text-bad-ink" role="status">
+        {/* An error has a line of its own, as wide as the box and wrapping: a cut one can't be read. */}
+        {status !== null && (phone || error !== null) && (
+          <p className="px-1 pb-1.5 text-xs text-pretty break-words text-bad-ink" role="status">
             {status}
           </p>
         )}
@@ -689,10 +690,10 @@ export const Composer = memo(function Composer({
             <div className="flex items-center gap-1 px-2 pb-2">
               {settings}
               <span
-                className={`min-w-0 flex-1 truncate px-1 text-right text-xs ${error === null ? "text-t3" : "text-bad-ink"}`}
+                className="min-w-0 flex-1 truncate px-1 text-right text-xs text-t3"
                 role="status"
               >
-                {status}
+                {error === null ? status : null}
               </span>
               {sendOrStop}
             </div>
