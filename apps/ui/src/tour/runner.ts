@@ -11,6 +11,11 @@ import "./tour.css";
 const POLL_MS = 100;
 /** How long a step waits for its target to be on the page before it shows centred. */
 const TARGET_WAIT_MS = 3000;
+/**
+ * How long a step reached with Skip waits for its target: the skipped action is what would have brought it, so it seldom
+ * comes, and the longer wait left the last step's popover and the dimmed page unanswering for three seconds (#2774).
+ */
+const AFTER_SKIP_WAIT_MS = 300;
 
 /** Stops the tour that is running, if one is. */
 let stopCurrent: (() => void) | null = null;
@@ -100,6 +105,8 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
   const waits = new Set<() => void>();
   /** The Next, Skip or Done button of the step shown: advances it. */
   let advance: (() => void) | null = null;
+  /** The step shown was left with Skip, its action not done. */
+  let skipped = false;
   /** The last focused element outside the popover, which gets the focus back when driver takes it for the popover. */
   let lastFocus: Element | null = null;
 
@@ -178,14 +185,14 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
       return () => cancelAnimationFrame(frame);
     });
 
-  /** The step's element, polled for; null when it did not come. */
-  const find = (selector: string): Promise<Element | null> =>
+  /** The step's element, polled for up to `waitMs`; null when it did not come. */
+  const find = (selector: string, waitMs: number): Promise<Element | null> =>
     until<Element | null>(null, (done) => {
       const since = Date.now();
       const look = (): void => {
         const element = pick(selector);
         if (element !== null) done(element);
-        else if (Date.now() - since >= TARGET_WAIT_MS) done(null);
+        else if (Date.now() - since >= waitMs) done(null);
       };
       look();
       const timer = setInterval(look, POLL_MS);
@@ -202,7 +209,9 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
     );
     for (const [index, step] of steps.entries()) {
       if (stopped) return;
-      const element = step.target === null ? null : await find(step.target);
+      const waitMs = skipped ? AFTER_SKIP_WAIT_MS : TARGET_WAIT_MS;
+      skipped = false;
+      const element = step.target === null ? null : await find(step.target, waitMs);
       if (stopped) return;
       // A target that never came leaves the popover centred, and the Next button the way on.
       const action: TourAction =
@@ -233,7 +242,12 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
         },
       });
       await until<void>(undefined, (done) => {
-        advance = done;
+        advance = () => {
+          // The step's own action, not the one shown: a step whose target never came offers Next in place of its
+          // action, and what that action would have brought is still missing.
+          skipped = step.action.kind !== "next";
+          done();
+        };
         const unwatch = watch(action, element, done);
         return () => {
           advance = null;

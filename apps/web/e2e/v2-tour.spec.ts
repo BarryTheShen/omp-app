@@ -140,6 +140,21 @@ realTest.describe("new UI tours", () => {
     expect(realApp.problems).toEqual([]);
   });
 
+  realTest(
+    "Skip shows the next step at once, even when the skipped step's action would have brought its target",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startFromPalette(page, "Themes");
+      // Skipped, Settings stays shut, so the next step's tab never comes: the step shows centred, at once (#2774).
+      await expect(heading(page)).toHaveText("Settings");
+      await popover(page).getByRole("button", { name: "Skip" }).click();
+      await expect(heading(page)).toHaveText("App", { timeout: 1_500 });
+      await popover(page).getByRole("button", { name: "Next" }).click();
+      await expect(heading(page)).toHaveText("Every theme", { timeout: 1_500 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest("a tour started from the palette waits for it to be opened", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
     await startFromPalette(page, "Palette, keys and settings");
