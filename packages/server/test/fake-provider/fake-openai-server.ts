@@ -225,6 +225,8 @@ let countedReplies = 0;
 
 /** `usage_limit_after_job <tag>` (#2781): the tags whose job result's turn was refused once, as a usage limit does. */
 const usageLimitRefused = new Set<string>();
+/** `usage_limit_twice <tag>` (#2781): the refusals each tag has had, `start:<tag>` and `result:<tag>`. */
+const usageTwiceRefused = new Set<string>();
 
 /** How many background jobs a prompt starts: `run_background_pair` two, `run_background_job` one, else none. */
 function backgroundJobCountOf(prompt: string): number {
@@ -297,6 +299,8 @@ function streamProbeReply(messages: readonly Message[]): Reply | undefined {
  * `run_quick_background` starts one job that ends after two seconds, so its result is delivered while the chat is open.
  * `run_second_background` starts one long job with a call id of its own, for a second job in the same chat.
  * `usage_limit_after_job <tag>` starts a two-second job whose result's turn the provider refuses once (#2781).
+ * `usage_limit_twice <tag>` starts a four-second job; the turn that started it is refused once with a wait of 61 s, then
+ * the turn the job's result starts once with a wait of 5 s: a refusal after a refusal (#2781).
  */
 function namedBackgroundStart(prompt: string): Reply | undefined {
   if (prompt.includes("run_quick_background"))
@@ -317,6 +321,13 @@ function namedBackgroundStart(prompt: string): Reply | undefined {
       tool: "bash",
       args: { command: `sleep 2; echo usage-limit-job-done-${usageJob[1]}`, async: true },
       id: `call_usage_limit_${usageJob[1]}`,
+    };
+  const twiceJob = /usage_limit_twice (\w+)/.exec(prompt);
+  if (twiceJob?.[1] !== undefined)
+    return {
+      tool: "bash",
+      args: { command: `sleep 4; echo usage-limit-twice-done-${twiceJob[1]}`, async: true },
+      id: `call_usage_twice_${twiceJob[1]}`,
     };
   return undefined;
 }
@@ -392,6 +403,11 @@ function reply(request: Request): Reply {
   if (named !== undefined) {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
     if (done === 0) return named;
+    const twice = /usage_limit_twice (\w+)/.exec(text(messages[lastUser]?.content))?.[1];
+    if (twice !== undefined && !usageTwiceRefused.has(`start:${twice}`)) {
+      usageTwiceRefused.add(`start:${twice}`);
+      return { failure: "The fake provider refused this request for now. retry-after-ms=61000" };
+    }
     return { text: "background job started" };
   }
   // A worker the parent collects with `wait` (issue 2535): the task, then the wait that collects it, then a short answer.
@@ -460,6 +476,14 @@ function reply(request: Request): Reply {
     if (!usageLimitRefused.has(usageLimitResult[1])) {
       usageLimitRefused.add(usageLimitResult[1]);
       return { failure: "The fake provider refused this request for now. retry-after-ms=61000" };
+    }
+    return { text: "Answered after the usage limit reset." };
+  }
+  const twiceResult = /usage-limit-twice-done-(\w+)/.exec(prompt);
+  if (twiceResult?.[1] !== undefined) {
+    if (!usageTwiceRefused.has(`result:${twiceResult[1]}`)) {
+      usageTwiceRefused.add(`result:${twiceResult[1]}`);
+      return { failure: "The fake provider refused this request for now. retry-after-ms=5000" };
     }
     return { text: "Answered after the usage limit reset." };
   }

@@ -10,8 +10,6 @@ import type { ProcessTimer } from "../../process/omp-process";
  * backstop for the one omp drops (#2781: its wait woke on time and skipped its own continue).
  */
 export const RESUME_GRACE_MS = 60_000;
-/** Shorter waits are omp's backoff between quick retries, which omp finishes itself; a usage limit waits for hours. */
-export const RESUME_MIN_WAIT_MS = 60_000;
 /** The app's retries in a row for one chat before it leaves the chat stopped: an error that outlives every reset. */
 export const RESUME_MOST_IN_ROW = 3;
 /** A resume due while the server was down runs this long after the server is back, once the chats' hosts reconnected. */
@@ -38,11 +36,15 @@ const RETRY_AFTER = /\bretry-after-ms=(\d+)\b/;
 export type UsageResumeListener = (threadId: ThreadId, continuesAt: number | null) => void;
 
 /**
- * The app's own retry after a usage limit (#2781). When omp waits out a limit (`auto_retry_start`), or a turn ends
- * refused with the provider's wait in its error, the app keeps "retry this chat at the end of the wait, plus
- * `RESUME_GRACE_MS`", on disk. Any new run of the chat (`agent_start`: omp's own retry worked, or someone sent a message)
- * drops it. When it comes due, a chat that is idle and not paused is retried once, as its Retry button does. An idle chat
- * with a retry due is not stopped (`isWaiting`).
+ * The app's own retry after a usage or rate limit (#2781). Each time omp waits out a limit (`auto_retry_start`), or a
+ * turn ends refused with the provider's wait in its error, the app keeps "retry this chat at the end of the wait, plus
+ * `RESUME_GRACE_MS`", on disk, whatever the wait: omp can skip its own continue after a short one too. A later refusal
+ * moves it later, never earlier, so a short wait does not cut a long one. Only an answer drops it (an assistant message
+ * that ends without an error: omp's own retry worked, or another turn did), or the reader stopping the chat or saying not
+ * to continue it; a run starting is no answer, as the turn a job's result or a message starts can be refused too (#2781:
+ * a job's result started a turn, the limit refused it, and nothing was left to continue the chat). When it comes due, a
+ * chat that is idle and not paused is retried once, as its Retry button does. An idle chat with a retry due is not
+ * stopped (`isWaiting`).
  */
 export class UsageResume {
   readonly #deps: UsageResumeDeps;
@@ -67,31 +69,27 @@ export class UsageResume {
     for (const [threadId, at] of kept) this.#schedule(threadId, Math.max(at, earliest), false);
   }
 
-  /** Follows a chat's events: what omp waits for, and every new run. */
+  /** Follows a chat's events: what omp waits for, each turn refused with the provider's wait, and each answer. */
   onEvent(threadId: ThreadId, event: ChatEvent): void {
-    if (event.type === "agent_start") {
-      this.#drop(threadId);
-    } else if (event.type === "auto_retry_start") {
-      if (event.delayMs >= RESUME_MIN_WAIT_MS) {
-        this.#schedule(threadId, this.#deps.now() + event.delayMs + RESUME_GRACE_MS, true);
-      }
+    if (event.type === "auto_retry_start") {
+      this.#later(threadId, this.#deps.now() + event.delayMs + RESUME_GRACE_MS);
     } else if (event.type === "message_end" && event.message.role === "assistant") {
       const message = event.message;
       if (message.stopReason !== "error") {
         this.#inRow.delete(threadId);
+        this.#drop(threadId, "answered");
         return;
       }
-      if (this.#due.has(threadId)) return;
       const waitMs = Number(RETRY_AFTER.exec(message.errorMessage ?? "")?.[1] ?? Number.NaN);
-      if (Number.isFinite(waitMs) && waitMs >= RESUME_MIN_WAIT_MS) {
-        this.#schedule(threadId, this.#deps.now() + waitMs + RESUME_GRACE_MS, true);
+      if (Number.isFinite(waitMs)) {
+        this.#later(threadId, this.#deps.now() + waitMs + RESUME_GRACE_MS);
       }
     }
   }
 
   /** The reader stopped the chat, or said not to continue it: no retry of the app's either. */
   cancel(threadId: ThreadId): void {
-    this.#drop(threadId);
+    this.#drop(threadId, "cancelled");
   }
 
   /** Whether the chat has a retry due: its omp is kept up until then. */
@@ -139,11 +137,19 @@ export class UsageResume {
     this.#notify(threadId, at);
   }
 
-  #drop(threadId: ThreadId): void {
+  /** Keeps the chat's retry at `when`, or at the time kept already when that is later. */
+  #later(threadId: ThreadId, when: number): void {
+    const kept = this.#due.get(threadId);
+    if (kept !== undefined && kept.at >= Math.round(when)) return;
+    this.#schedule(threadId, when, true);
+  }
+
+  #drop(threadId: ThreadId, reason: "answered" | "cancelled"): void {
     const due = this.#due.get(threadId);
     if (due === undefined) return;
     this.#deps.timer.clearTimeout(due.handle);
     this.#due.delete(threadId);
+    this.#deps.logger?.info("usage_resume.dropped", { threadId, reason });
     this.#keep();
     this.#notify(threadId, null);
   }

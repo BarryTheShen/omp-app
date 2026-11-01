@@ -100,21 +100,57 @@ describe("the app's own retry after a usage limit (#2781)", () => {
     expect(resumed).toEqual([CHAT]);
   });
 
-  test("a run before then (omp's own retry, or a message sent) takes the place of the app's retry", async () => {
+  test("a new run keeps the app's retry, as it can be refused too; the chat answering drops it", async () => {
     const { timer, resume, resumed } = setup();
     resume.onEvent(CHAT, waitStart(2 * HOURS));
     await timer.advance(2 * HOURS);
+    // omp's own retry, or a message sent, starts a run: no answer yet.
     resume.onEvent(CHAT, run);
+    expect(resume.isWaiting(CHAT)).toBe(true);
+    resume.onEvent(CHAT, reply("stop"));
+    expect(resume.isWaiting(CHAT)).toBe(false);
     await timer.advance(RESUME_GRACE_MS + HOURS);
     expect(resumed).toEqual([]);
   });
 
-  test("omp's quick retries, under a minute apart, are omp's alone", async () => {
+  test("a short wait is kept too: omp can skip its own continue after one", async () => {
     const { timer, resume, resumed } = setup();
-    resume.onEvent(CHAT, waitStart(8_000));
-    expect(resume.isWaiting(CHAT)).toBe(false);
-    await timer.advance(HOURS);
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=55000"));
+    expect(resume.isWaiting(CHAT)).toBe(true);
+    await timer.advance(55_000 + RESUME_GRACE_MS - 1);
     expect(resumed).toEqual([]);
+    await timer.advance(1);
+    expect(resumed).toEqual([CHAT]);
+  });
+
+  test("a job's result refused while a retry is kept (as reported on #2781) keeps it, at the later of the two times", async () => {
+    const { timer, resume, resumed } = setup();
+    // Refused, the provider's wait 128 s.
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=128000"));
+    const kept = timer.now + 128_000 + RESUME_GRACE_MS;
+    // 72 s later a background job's result starts a turn, refused too, with a wait of 55 s.
+    await timer.advance(72_000);
+    resume.onEvent(CHAT, run);
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=55000"));
+    expect(resume.due().get(CHAT)).toBe(kept);
+    await timer.advance(kept - timer.now - 1);
+    expect(resumed).toEqual([]);
+    await timer.advance(1);
+    expect(resumed).toEqual([CHAT]);
+  });
+
+  test("a longer wait moves the retry later; a shorter one after it does not bring it back", async () => {
+    const { timer, resume, resumed } = setup();
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=60000"));
+    resume.onEvent(CHAT, waitStart(2 * HOURS));
+    const at = timer.now + 2 * HOURS + RESUME_GRACE_MS;
+    expect(resume.due().get(CHAT)).toBe(at);
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=5000"));
+    expect(resume.due().get(CHAT)).toBe(at);
+    await timer.advance(2 * HOURS);
+    expect(resumed).toEqual([]);
+    await timer.advance(RESUME_GRACE_MS);
+    expect(resumed).toEqual([CHAT]);
   });
 
   test("a turn refused with the provider's wait in its error, and no retry of omp's, is retried after that wait", async () => {
