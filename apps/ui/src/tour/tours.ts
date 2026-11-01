@@ -683,7 +683,7 @@ const ARRANGE_TOUR: Tour = {
     {
       target: CHAT_LIST,
       title: "Drag a chat into a split",
-      text: "Drag a chat from this list onto the chat on the right and let go: on an edge it splits there, in the middle it goes beside it. Where it will land lights up while you drag.",
+      text: "Drag a chat from this list onto the chat on the right: guides appear in its middle. Let go on an arrow and it opens on that side; on the middle guide it takes that chat's place. The guide it will take lights up while you drag.",
       action: { kind: "appears", selector: SPLIT_TAB },
       throughOverlay: true,
     },
@@ -1003,6 +1003,37 @@ const PANE_MODE_TOUR: Tour = {
   ],
 };
 
+/** #2771: the docking guides. A second pane first, so there is a pane to move and one to drop on. */
+const DRAG_GUIDES_TOUR: Tour = {
+  id: "drag-guides-2026-11-01",
+  title: "Docking guides",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "A second pane",
+      text: "Press {splitRight} to open a new chat to the right, so there is a pane to move.",
+      action: keys("splitRight"),
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "Take a pane by its grip",
+      text: "Each pane's title starts with a grip ⠿: drag a pane by it, or drag a chat from the list. The pane under the pointer shows five guides in its middle, and the window four at its edges.",
+      action: next,
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "Let go on a guide",
+      text: "An arrow splits that pane on its side; an edge guide of the window makes a column or row the whole length of that side; the middle guide, for a chat from the list, shows it in that pane's place. Let go anywhere else and nothing moves.",
+      action: next,
+    },
+  ],
+};
+
 /** #2781: the app continues a chat a usage limit stopped. Nothing to try on demand, so the steps tell it. */
 const USAGE_CONTINUE_TOUR: Tour = {
   id: "usage-continue-2026-11-01",
@@ -1039,6 +1070,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-01-drag-guides",
+    when: "2026-11-01T15:04:00-06:00",
+    summary:
+      "Docking guides: dragging a pane by its grip ⠿, or a chat from the list, shows five guides in the middle of the pane under the pointer and four at the window's edges; a drop counts only on a guide, and the lit guide shows where it lands.",
+    tours: [DRAG_GUIDES_TOUR],
+  },
   {
     id: "2026-11-01-usage-continue",
     when: "2026-11-01T10:42:00-06:00",

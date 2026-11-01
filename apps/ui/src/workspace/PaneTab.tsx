@@ -1,5 +1,5 @@
 import type { IDockviewPanel, IDockviewPanelHeaderProps } from "dockview-react";
-import { Pause } from "lucide-react";
+import { GripVertical, Pause } from "lucide-react";
 import { type ReactNode, use, useSyncExternalStore } from "react";
 import { forgetNewChatDraft } from "../chat/drafts";
 import { type ChatPanelParams, mouseClickTakesCaret, PaneHostContext } from "./ChatPanel";
@@ -21,8 +21,9 @@ export function closePaneAsked(panel: IDockviewPanel): void {
 /**
  * A pane's tab in its title bar: dockview's own default tab (its title, and a close button named after it), whose close
  * button closes the pane as asked. dockview's default tab cannot be told to do that, so this one draws the same. A
- * click on the title puts the caret in the pane's message box, so the pane's keys reach the pane it chose. A paused chat
- * (omp's `/pause`) has a pause mark before its title.
+ * click on the title puts the caret in the pane's message box, so the pane's keys reach the pane it chose. A grip (⠿)
+ * starts the title: the tab is where a pane is taken to move it, onto the docking guides (#2771). A paused chat (omp's
+ * `/pause`) has a pause mark before its title.
  */
 export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): ReactNode {
   const host = use(PaneHostContext);
@@ -48,6 +49,10 @@ export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): React
       }}
     >
       <div className="dv-default-tab-content">
+        <GripVertical
+          aria-hidden="true"
+          className="mr-1 inline size-3.5 cursor-grab align-[-2px] text-t3"
+        />
         {paused && (
           <>
             <Pause aria-hidden="true" className="mr-1 inline size-3 align-[-1px] text-warn-ink" />

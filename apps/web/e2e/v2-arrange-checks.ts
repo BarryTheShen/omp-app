@@ -2,10 +2,11 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
 /**
- * Arranging the new UI's windows on real omp: a chat dragged from the list splits where it is dropped (a pane's edge,
- * its middle, its message box), and a chat open already moves there; the side panel is a pane at the right of the
- * chats, its divider resizes it and a reload keeps its width. In Chromium and in WebKit, the desktop window's engine,
- * where a drop on the message box was lost.
+ * Arranging the new UI's windows on real omp: a chat dragged from the list lands on the docking guide it is dropped on
+ * (#2771: a pane's arrow splits it on that side, its middle guide shows the chat in its place, the window's edge guide
+ * makes a column the whole height of the window, for a pane dragged by its title too), nowhere else, and a chat open
+ * already moves there; the side panel is a pane at the right of the chats, its divider resizes it and a reload keeps its
+ * width. In Chromium and in WebKit, the desktop window's engine.
  */
 const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
 const row = (page: Page, n: number) =>
@@ -18,14 +19,18 @@ const sidePanel = (page: Page) => page.getByRole("complementary", { name: "Side 
 const railButton = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "Side panel" }).getByRole("button", { name });
 
-/** Drags with the pointer from a chat's row to a point of an element, as a person would. */
-async function dragOnto(page: Page, source: Locator, target: Locator, fx: number, fy: number) {
-  const box = await target.boundingBox();
-  if (box === null) throw new Error("the drop target has no box");
+/** Drags with the pointer from a chat's row to a point, as a person would. */
+async function dragTo(page: Page, source: Locator, point: { x: number; y: number }) {
   await source.hover();
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy, { steps: 15 });
+  await page.mouse.move(point.x, point.y, { steps: 15 });
   await page.mouse.up();
+}
+
+/** Drags with the pointer from a chat's row to a point of an element, given as fractions of its box. */
+async function dragOnto(page: Page, source: Locator, target: Locator, fx: number, fy: number) {
+  const box = await place(target);
+  await dragTo(page, source, { x: box.x + box.width * fx, y: box.y + box.height * fy });
 }
 
 const place = async (locator: Locator) => {
@@ -34,18 +39,25 @@ const place = async (locator: Locator) => {
   return box;
 };
 
-/** The message box drawn over a pane: dockview draws a pane's content in an overlay, outside the pane's element. */
-async function messageBoxOver(page: Page, title: string): Promise<Locator> {
-  const area = await place(pane(page, title));
-  const all = boxes(page);
-  for (let index = 0; index < (await all.count()); index += 1) {
-    const box = await place(all.nth(index));
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    if (x > area.x && x < area.x + area.width && y > area.y && y < area.y + area.height)
-      return all.nth(index);
-  }
-  throw new Error(`no message box over the pane of ${title}`);
+/** The tab shown now: dockview's whole layout, whose edges hold the window's guides. */
+const shownTab = (page: Page) => page.locator("[data-tab]:not([hidden])");
+
+/** A pane's guide: around the middle of its content (where dockview takes a drop on it), one guide step (40 px) apart. */
+async function guide(target: Locator, side: "top" | "bottom" | "left" | "right" | "center") {
+  const area = await place(target.locator(".dv-content-container"));
+  const dx = side === "right" ? 40 : side === "left" ? -40 : 0;
+  const dy = side === "bottom" ? 40 : side === "top" ? -40 : 0;
+  return { x: area.x + area.width / 2 + dx, y: area.y + area.height / 2 + dy };
+}
+
+/** One of the window's side guides: 12 px in from that edge, half way down. */
+async function edgeGuide(page: Page, side: "left" | "right") {
+  const tab = await place(shownTab(page));
+  const inset = 12 + 18;
+  return {
+    x: side === "left" ? tab.x + inset : tab.x + tab.width - inset,
+    y: tab.y + tab.height / 2,
+  };
 }
 
 /** The arranging checks in one engine: Chromium, or WebKit (the desktop window's), each from its own spec file. */
@@ -57,7 +69,7 @@ export function defineArrangeChecks(engine: "chromium" | "webkit"): void {
       realTest.use({ seedSessions: 4 });
 
       realTest(
-        "a chat dragged from the list splits where it is dropped, and one open already moves there",
+        "a chat dragged from the list lands on the guide it is dropped on, nowhere else, and one open already moves there",
         async ({ realApp }) => {
           const page = await realApp.open({ path: "/" });
           await row(page, 1).click();
@@ -65,35 +77,77 @@ export function defineArrangeChecks(engine: "chromium" | "webkit"): void {
             timeout: 120_000,
           });
 
-          // A pane's right edge: the chat opens at the right of it.
-          await dragOnto(page, row(page, 2), page.locator(".dv-groupview").first(), 0.95, 0.5);
+          // A pane's right arrow, lit while the chat is over it: the chat opens at the right of it.
+          await row(page, 2).hover();
+          await page.mouse.down();
+          const right = await guide(pane(page, "Seeded chat 1"), "right");
+          await page.mouse.move(right.x, right.y, { steps: 15 });
+          await expect(page.locator('[data-drop-guide="pane-right"][data-lit]')).toBeVisible();
+          await page.mouse.up();
           await expect(boxes(page)).toHaveCount(2, { timeout: 30_000 });
           await expect
             .poll(async () => (await place(pane(page, "Seeded chat 2"))).x)
             .toBeGreaterThan((await place(pane(page, "Seeded chat 1"))).x);
 
-          // Its middle: beside it, between it and the next pane.
-          await dragOnto(page, row(page, 3), pane(page, "Seeded chat 1"), 0.5, 0.5);
+          // Its bottom arrow: below it.
+          await dragTo(page, row(page, 3), await guide(pane(page, "Seeded chat 1"), "bottom"));
           await expect(boxes(page)).toHaveCount(3, { timeout: 30_000 });
           await expect
-            .poll(async () => (await place(pane(page, "Seeded chat 3"))).x)
-            .toBeGreaterThan((await place(pane(page, "Seeded chat 1"))).x);
-          expect((await place(pane(page, "Seeded chat 3"))).x).toBeLessThan(
-            (await place(pane(page, "Seeded chat 2"))).x,
-          );
-
-          // Its message box, at the bottom of the pane: the chat opens below it.
-          await dragOnto(page, row(page, 4), await messageBoxOver(page, "Seeded chat 1"), 0.5, 0.5);
-          await expect(boxes(page)).toHaveCount(4, { timeout: 30_000 });
-          await expect
-            .poll(async () => (await place(pane(page, "Seeded chat 4"))).y)
+            .poll(async () => (await place(pane(page, "Seeded chat 3"))).y)
             .toBeGreaterThan((await place(pane(page, "Seeded chat 1"))).y);
 
+          // A pane's middle guide: the chat takes that pane's place.
+          const third = await place(pane(page, "Seeded chat 3"));
+          await dragTo(page, row(page, 4), await guide(pane(page, "Seeded chat 3"), "center"));
+          await expect(pane(page, "Seeded chat 4")).toHaveCount(1, { timeout: 30_000 });
+          await expect(pane(page, "Seeded chat 3")).toHaveCount(0);
+          await expect(boxes(page)).toHaveCount(3);
+          const fourth = await place(pane(page, "Seeded chat 4"));
+          expect([Math.round(fourth.x), Math.round(fourth.y)]).toEqual([
+            Math.round(third.x),
+            Math.round(third.y),
+          ]);
+
           // A chat open already moves to where it is dropped: no second pane of it.
-          await dragOnto(page, row(page, 2), pane(page, "Seeded chat 4"), 0.95, 0.5);
+          await dragTo(page, row(page, 2), await guide(pane(page, "Seeded chat 4"), "right"));
           await expect
             .poll(async () => (await place(pane(page, "Seeded chat 2"))).y)
             .toBe((await place(pane(page, "Seeded chat 4"))).y);
+          await expect(boxes(page)).toHaveCount(3);
+
+          // Off the guides nothing happens: a pane's old edge zone is no target now.
+          await dragOnto(page, row(page, 3), pane(page, "Seeded chat 1"), 0.95, 0.5);
+          await page.waitForTimeout(500);
+          await expect(boxes(page)).toHaveCount(3);
+          await expect(pane(page, "Seeded chat 3")).toHaveCount(0);
+
+          // The window's left guide, lit with the strip it gives shaded while the chat is over it: a column the whole
+          // height of the window, at its left. (Here it falls on the divider between the two rows.)
+          await row(page, 3).hover();
+          await page.mouse.down();
+          const left = await edgeGuide(page, "left");
+          await page.mouse.move(left.x, left.y, { steps: 15 });
+          await expect(page.locator('[data-drop-guide="edge-left"][data-lit]')).toBeVisible();
+          await expect(page.locator('[data-drop-shade="left"]')).toBeVisible();
+          await page.mouse.up();
+          await expect(boxes(page)).toHaveCount(4, { timeout: 30_000 });
+          const whole = await place(shownTab(page));
+          const column = await place(pane(page, "Seeded chat 3"));
+          expect(Math.round(column.x)).toBe(Math.round(whole.x));
+          expect(Math.abs(column.height - whole.height)).toBeLessThan(6);
+
+          // A pane dragged by its title onto the window's right guide: a column the whole height of the window, at its right.
+          await dragTo(
+            page,
+            pane(page, "Seeded chat 2").locator(".dv-tab"),
+            await edgeGuide(page, "right"),
+          );
+          await expect
+            .poll(async () => {
+              const moved = await place(pane(page, "Seeded chat 2"));
+              return [Math.round(moved.x + moved.width), Math.abs(moved.height - whole.height) < 6];
+            })
+            .toEqual([Math.round(whole.x + whole.width), true]);
           await expect(boxes(page)).toHaveCount(4);
 
           expect(realApp.problems).toEqual([]);

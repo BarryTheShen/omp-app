@@ -6,9 +6,11 @@ import {
   DockviewReact,
   type DockviewReadyEvent,
   type DockviewTheme,
+  getPanelData,
   type IDockviewPanel,
   type IWatermarkPanelProps,
   type Position,
+  type PositionResolver,
   type SerializedDockview,
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
@@ -47,7 +49,9 @@ import {
 } from "./ChatPanel";
 import { chatCache } from "./chatCache";
 import { carriesChat, droppedChat } from "./chatDrag";
+import { DropGuides } from "./DropGuides";
 import { keepDividerDragsFromSelecting } from "./dividers";
+import { guideResolver } from "./guideCells";
 import { equalized, swappedWithNext } from "./layout";
 import { chatOfPane, closePaneAsked, PaneTab } from "./PaneTab";
 import { PaneModeContext } from "./paneMode";
@@ -183,6 +187,24 @@ export function Workspace({
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
   const apis = useRef(new Map<string, DockviewApi>());
+  /** Each tab's drop resolver for the docking guides (#2771), made once: dockview reads it at every drag-over. */
+  const resolvers = useRef(new Map<string, PositionResolver>());
+  const resolverFor = (tabId: string): PositionResolver => {
+    let resolver = resolvers.current.get(tabId);
+    if (resolver === undefined) {
+      resolver = guideResolver(() => {
+        const api = apis.current.get(tabId);
+        const box = document
+          .querySelector(`[data-tab="${CSS.escape(tabId)}"]`)
+          ?.getBoundingClientRect();
+        return api === undefined || box === undefined
+          ? null
+          : { width: box.width, height: box.height, panes: api.groups.length };
+      }, carriesChat);
+      resolvers.current.set(tabId, resolver);
+    }
+    return resolver;
+  };
   /**
    * Counts the tabs' dockviews as they become ready: the shown tab's, read from `apis` while drawing, is known only then,
    * and a side pane restored with the tab's layout draws once it knows its tab is the one shown (#2773).
@@ -292,9 +314,10 @@ export function Workspace({
   );
 
   /**
-   * A chat dropped from the list opens where it lands: on a pane's edge it splits there, on its middle it goes beside
-   * it, on the workspace's own edge it runs along that side. A chat a pane shows already moves there, from another tab
-   * too, so one pane still shows each chat; dropped on its own pane, it only takes the caret.
+   * A chat dropped from the list opens where it lands (#2771): on a pane's arrow guide it splits that pane there, on the
+   * pane's middle guide it takes that pane's place, on one of the window's edge guides it runs along that side. A chat a
+   * pane shows already moves there, from another tab too, so one pane still shows each chat; dropped on its own pane,
+   * it only takes the caret.
    */
   const dropChat = useCallback(
     (
@@ -313,6 +336,23 @@ export function Workspace({
           });
           if (panel !== undefined) shown = { api: other, panel };
         }
+      // The middle guide: the chat takes that pane's place. The side panel is not a chat's pane: beside it, as before.
+      const replaced = position === "center" ? group?.activePanel : undefined;
+      if (replaced !== undefined && replaced.id !== SIDE_PANE) {
+        if (shown?.panel === replaced) {
+          focus.request(replaced.id);
+          return;
+        }
+        if (shown !== undefined) shown.api.removePanel(shown.panel);
+        replaced.api.updateParameters({
+          chat: crypto.randomUUID(),
+          target,
+          folder,
+        } satisfies ChatPanelParams);
+        replaced.api.setTitle("New chat");
+        focus.request(replaced.id);
+        return;
+      }
       if (shown?.api === api) {
         // Its own pane, or the only pane of this tab: removing it would close the tab under the drop.
         if (shown.panel.group === group || api.totalPanels === 1) {
@@ -338,6 +378,35 @@ export function Workspace({
       focus.request(id);
     },
     [folder, focus],
+  );
+
+  /**
+   * A drop on one of the window's edge guides (#2771), which take their drops themselves (`DropGuides`): the chat from
+   * the list, or the pane dragged by its title, runs the whole length of that side of the window.
+   */
+  const dropOnEdge = useCallback(
+    (tabId: string, position: Position, event: DragEvent) => {
+      const api = apis.current.get(tabId);
+      if (api === undefined || position === "center") return;
+      const chat = droppedChat(event);
+      if (chat !== null) {
+        dropChat(api, chat, undefined, position);
+        return;
+      }
+      const dragged = getPanelData();
+      if (dragged === undefined || dragged.viewId !== api.id) return;
+      const panel =
+        dragged.panelId === null
+          ? api.getGroup(dragged.groupId)?.activePanel
+          : api.getPanel(dragged.panelId);
+      if (panel === undefined) return;
+      const group = api.addGroup({
+        direction: position === "top" ? "above" : position === "bottom" ? "below" : position,
+      });
+      panel.api.moveTo({ group, position: "center" });
+      focus.request(panel.id);
+    },
+    [dropChat, focus],
   );
 
   const ready = useCallback(
@@ -787,6 +856,12 @@ export function Workspace({
                     singleTabMode="fullwidth"
                     defaultTabComponent={PaneTab}
                     watermarkComponent={EmptyTab}
+                    dropPositionResolver={resolverFor(tab.id)}
+                    dndEdges={EDGE_SHADE}
+                  />
+                  <DropGuides
+                    api={apis.current.get(tab.id)}
+                    onEdgeDrop={(position, event) => dropOnEdge(tab.id, position, event)}
                   />
                 </div>
               ))}
@@ -822,6 +897,15 @@ export function Workspace({
     </PaneHostContext>
   );
 }
+
+/**
+ * How much of the window dockview shades when its whole layout takes a drop on one side (the arrows of a lone pane): the
+ * column or row it will be; the window's own edge guides shade the same share themselves (`DropGuides`).
+ */
+const EDGE_SHADE = {
+  size: { type: "percentage", value: 30 },
+  activationSize: { type: "pixels", value: 10 },
+} as const;
 
 /** The keys that reach everything else, on an empty tab. */
 const START_KEYS = [KEYS.palette, KEYS.shortcuts, KEYS.settings] as const;
