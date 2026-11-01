@@ -60,8 +60,10 @@ const STARTING_PAGE: &str = "starting.html";
 const ERROR_PAGE: &str = "error.html";
 /// The page for "the server on another computer did not answer", served from apps/desktop/ui.
 const REMOTE_ERROR_PAGE: &str = "remote-error.html";
-/// The window's commands a page may call (see `clipboard.rs`, `commands.rs` and `capabilities/default.json`).
-const PAGE_PERMISSIONS: [&str; 7] = [
+/// The window's commands a page may call (see `clipboard.rs`, `commands.rs` and `capabilities/default.json`): this
+/// computer's server has them from that file, a server on another computer from `grant_page_commands`, so the two lists
+/// are the same (a test checks it).
+const PAGE_PERMISSIONS: [&str; 8] = [
     "allow-read-clipboard-png",
     "allow-servers",
     "allow-connect-server",
@@ -69,6 +71,7 @@ const PAGE_PERMISSIONS: [&str; 7] = [
     "allow-use-this-computer",
     "allow-notify",
     "allow-new-window",
+    "core:webview:allow-set-webview-zoom",
 ];
 const WINDOW_TITLE: &str = "omp app";
 /// How long a server that was started has to record itself and answer. The server answers only after its omp checks,
@@ -958,6 +961,23 @@ mod tests {
 
     fn url(text: &str) -> Url {
         Url::parse(text).expect("the test address parses")
+    }
+
+    #[test]
+    fn a_server_on_another_computer_gets_the_same_commands_as_this_computers_server() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("the capability file parses");
+        let mut local: Vec<&str> = capability["permissions"]
+            .as_array()
+            .expect("the capability lists its permissions")
+            .iter()
+            .map(|permission| permission.as_str().expect("each permission is a name"))
+            .collect();
+        let mut remote = PAGE_PERMISSIONS.to_vec();
+        local.sort_unstable();
+        remote.sort_unstable();
+        assert_eq!(remote, local);
     }
 
     #[test]
