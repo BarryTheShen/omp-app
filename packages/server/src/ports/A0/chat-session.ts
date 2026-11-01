@@ -426,6 +426,10 @@ export class ChatSessionPortRuntime {
     const step = (name: string): void => {
       steps[`${name}_ms`] = Date.now() - began;
     };
+    /** A count a slow open logs beside its steps' times. */
+    const count = (name: string, value: number): void => {
+      steps[name] = value;
+    };
     const slow = (how: "spare" | "joined" | "started", threadId: ThreadId): void => {
       const total = Date.now() - began;
       if (total >= SLOW_OPEN_MS)
@@ -445,7 +449,7 @@ export class ChatSessionPortRuntime {
     }
     // A new chat in a folder with one ready takes it: no omp to start, no wait (#2760).
     if ("start" in args && args.start === "new") {
-      const taken = await this.#takeSpare(args.folderPath, call);
+      const taken = await this.#takeSpare(args.folderPath, call, step, count);
       if (taken !== undefined) {
         slow("spare", taken.threadId);
         return taken;
@@ -538,11 +542,14 @@ export class ChatSessionPortRuntime {
   async #takeSpare(
     folderPath: FolderPath,
     call: PortHandlerContext,
+    step: (name: string) => void,
+    count: (name: string, value: number) => void,
   ): Promise<ChatOpenResult | undefined> {
     const spare = this.#spares.get(folderPath);
     if (spare === undefined) return undefined;
     this.#spares.delete(folderPath);
     const identity = await spare.ready;
+    step("spare_ready");
     const { entry } = spare;
     if (call.signal.aborted && identity !== undefined && entry.process.status === "running") {
       this.#spares.set(folderPath, spare);
@@ -560,8 +567,11 @@ export class ChatSessionPortRuntime {
     this.#stopRefresh(spare);
     this.#entries.set(entry.bootstrap.threadId, entry);
     this.#addViewer(entry, call.connectionId);
+    count("spare_held_events", entry.startupEvents.length);
     this.#rekey(entry, undefined, identity);
+    step("spare_rekey");
     this.#prepareSpare(folderPath);
+    step("spare_next");
     return this.#openResult(entry);
   }
 
