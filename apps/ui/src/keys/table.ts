@@ -141,6 +141,27 @@ export const KEYS = {
     label: "New window",
     desktopOnly: true,
   },
+  zoomIn: {
+    hotkey: "ctrl+equal, ctrl+shift+equal, ctrl+add",
+    scope: "workspace",
+    group: "App",
+    label: "Zoom the window in",
+    desktopOnly: true,
+  },
+  zoomOut: {
+    hotkey: "ctrl+minus, ctrl+subtract",
+    scope: "workspace",
+    group: "App",
+    label: "Zoom the window out",
+    desktopOnly: true,
+  },
+  zoomReset: {
+    hotkey: "ctrl+0",
+    scope: "workspace",
+    group: "App",
+    label: "The window at 100%",
+    desktopOnly: true,
+  },
 
   foldTools: {
     hotkey: "ctrl+o",
@@ -295,6 +316,7 @@ const SHOWN: Record<string, string> = {
   comma: ",",
   slash: "/",
   equal: "=",
+  minus: "-",
 };
 
 /** How a binding's first alternative reads on a keycap: `Ctrl+Shift+O`. */

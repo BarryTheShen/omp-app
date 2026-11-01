@@ -24,6 +24,7 @@ import {
   useSettledNotifications,
   useWaitingNotifications,
 } from "./desktop/notify";
+import { keptZoom, setDesktopZoom, stepZoom } from "./desktop/zoom";
 import { FolderMenu } from "./folders/FolderMenu";
 import { keepLinkFolder } from "./folders/folder";
 import { useFolder } from "./folders/useFolder";
@@ -269,6 +270,23 @@ function Shell({
     );
   }, []);
   useHotkeys(KEYS.newWindow.hotkey, newWindow, { ...anywhere, enabled: desktopBridge() !== null });
+  // The desktop window's zoom, kept for the next start (#2776); a browser zooms its own pages.
+  const zoomTo = useCallback((next: (current: number) => number) => {
+    const bridge = desktopBridge();
+    if (bridge === null) return;
+    setDesktopZoom(bridge, next(keptZoom())).catch((failure: unknown) =>
+      workspace.current?.focused()?.controller.store.toast(refusalText(failure), "error"),
+    );
+  }, []);
+  useEffect(() => {
+    const bridge = desktopBridge();
+    const kept = keptZoom();
+    if (bridge !== null && kept !== 1) void setDesktopZoom(bridge, kept).catch(() => undefined);
+  }, []);
+  const desktopKeys = { ...anywhere, enabled: desktopBridge() !== null };
+  useHotkeys(KEYS.zoomIn.hotkey, () => zoomTo((level) => stepZoom(level, 1)), desktopKeys);
+  useHotkeys(KEYS.zoomOut.hotkey, () => zoomTo((level) => stepZoom(level, -1)), desktopKeys);
+  useHotkeys(KEYS.zoomReset.hotkey, () => zoomTo(() => 1), desktopKeys);
   useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
   const sidePanel = usePanelState();
   /** The focused pane's chat, for the side panel; read again whenever the workspace's view changes. */

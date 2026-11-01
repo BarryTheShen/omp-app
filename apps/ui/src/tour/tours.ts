@@ -902,6 +902,29 @@ const THEMES_TOUR: Tour = {
   ],
 };
 
+const ZOOM_TOUR: Tour = {
+  id: "zoom-2026-10-31",
+  title: "Zoom the window",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Larger or smaller",
+      text: "{zoomIn} draws the whole window larger, as a browser's zoom does, and {zoomOut} smaller. Press {zoomIn}.",
+      action: keys("zoomIn"),
+      desktopOnly: true,
+    },
+    {
+      target: null,
+      title: "Back to 100%",
+      text: "{zoomReset} brings it back to 100%. The window keeps the zoom you leave it at for the next start. Press {zoomReset}.",
+      action: keys("zoomReset"),
+      desktopOnly: true,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -916,6 +939,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-10-31-zoom",
+    when: "2026-10-31T21:50:00-05:00",
+    summary:
+      "In the desktop window, Ctrl + and Ctrl − zoom the whole window and Ctrl 0 brings it back to 100%; the window keeps its zoom for the next start.",
+    tours: [ZOOM_TOUR],
+  },
   {
     id: "2026-10-31-pause-list",
     when: "2026-10-31T21:40:00-05:00",
