@@ -83,6 +83,40 @@ function scrollTop(page: Page): Promise<number> {
 }
 
 /**
+ * Waits until a wheel step's animation has ended: once the transcript has moved, its position the same over 4
+ * animation frames in a row. Headless WebKit now and then stops drawing frames for over half a second in the middle of
+ * a step, the page's timers running on, and the animation finishes once frames come back; a fixed wait read such a
+ * step half done. A step that never moves (no room above) is read after 1 s; 3 s at most, frames or not.
+ */
+function settled(page: Page): Promise<void> {
+  return page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
+        if (root === null) {
+          resolve();
+          return;
+        }
+        const start = performance.now();
+        setTimeout(resolve, 3000);
+        const from = root.scrollTop;
+        let last = from;
+        let still = 0;
+        let moved = false;
+        const frame = (): void => {
+          const top = root.scrollTop;
+          if (top !== from) moved = true;
+          still = top === last ? still + 1 : 0;
+          last = top;
+          if ((moved && still >= 4) || (!moved && performance.now() - start >= 1000)) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+}
+
+/**
  * Where the row whose text starts with `text` is, from the transcript's top edge, and its place in the list (it grows
  * when older entries load above); null when the row is not drawn.
  */
@@ -150,13 +184,15 @@ export function defineScrollChecks(engine: string): void {
         const step = async (label: string): Promise<boolean> => {
           const before = await topRow(page);
           const was = before === null ? null : await rowPlace(page, before.text);
+          // The room above when the step starts: older entries that load above during it add room, not movement.
+          const room = await scrollTop(page);
           await page.mouse.wheel(0, -300);
-          // WebKit animates a wheel step; it has ended well within this.
-          await page.waitForTimeout(500);
+          // WebKit animates a wheel step: read it once it has ended.
+          await settled(page);
           const now = before === null ? null : await rowPlace(page, before.text);
           const moved = now === null || was === null ? null : Math.round(now.top - was.top);
-          // At the very top a step moves only as far as there is room.
-          if ((moved === null || Math.abs(moved - 300) > 4) && (await scrollTop(page)) > 0)
+          // A step moves as far as it asks; near the very top, at least as far as there was room.
+          if (moved === null ? room > 0 : moved > 304 || moved < Math.min(300, room) - 4)
             short.push(`${label}: ${moved} px`);
           return now !== null && was !== null && now.index > was.index;
         };
