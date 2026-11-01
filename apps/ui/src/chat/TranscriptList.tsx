@@ -169,6 +169,83 @@ function useStayAtEndWhenShorter(
   }, [scrollRef, instance]);
 }
 
+/** How long after the reader's wheel, touch, scroll key or scrollbar press a scroll still counts as the reader's. */
+const READER_SCROLL_MS = 1_000;
+
+/**
+ * Keeps a reader who follows the latest output at the end (#2778). Following is the reader's own choice: it changes
+ * only with a scroll the reader makes (a wheel, a touch, a scroll key, the scrollbar), off when it leaves the end and on
+ * when it comes back, and with Jump to latest. TanStack's own following decides from how far the view is from the end
+ * at the moment output arrives, and that distance is wrong while rows grew and their new height is not measured yet: in
+ * the desktop window, without the focus, the view was left 100 to 240 px short for good, with no input. So after every
+ * render, a reader who follows and is not at the end is taken there, unless the reader's own scroll or a smooth jump is
+ * under way. Returns `follow`, which starts following (Jump to latest), and whether the reader follows, for the trace.
+ */
+function useFollowLatest(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  instance: Virtualizer<HTMLDivElement, Element>,
+): { readonly follow: () => void; readonly following: RefObject<boolean> } {
+  const following = useRef(true);
+  const lastReader = useRef(Number.NEGATIVE_INFINITY);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const input = (): void => {
+      lastReader.current = performance.now();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest("input, textarea") !== null)
+      )
+        return;
+      if (SCROLL_KEYS.has(event.key)) input();
+    };
+    // A press on the scrollbar (outside the content box) can drag the view; a press on the content cannot.
+    const onPointer = (event: PointerEvent): void => {
+      if (event.offsetX > element.clientWidth || event.offsetY > element.clientHeight) input();
+    };
+    // A scroll soon after the reader's input is the reader's, and so is the rest of that scroll (a fling glides on).
+    const onScroll = (): void => {
+      if (performance.now() - lastReader.current > READER_SCROLL_MS) return;
+      lastReader.current = performance.now();
+      following.current =
+        element.scrollHeight - element.scrollTop - element.clientHeight <= AT_END_PX;
+    };
+    const passive = { passive: true } as const;
+    element.addEventListener("wheel", input, passive);
+    element.addEventListener("touchstart", input, passive);
+    element.addEventListener("touchmove", input, passive);
+    element.addEventListener("keydown", onKey);
+    element.addEventListener("pointerdown", onPointer, passive);
+    element.addEventListener("scroll", onScroll, passive);
+    return () => {
+      element.removeEventListener("wheel", input);
+      element.removeEventListener("touchstart", input);
+      element.removeEventListener("touchmove", input);
+      element.removeEventListener("keydown", onKey);
+      element.removeEventListener("pointerdown", onPointer);
+      element.removeEventListener("scroll", onScroll);
+    };
+  }, [scrollRef]);
+
+  // After every render: rows added or measured, the box resized, a scroll ended.
+  useLayoutEffect(() => {
+    if (!following.current || instance.isAtEnd()) return;
+    if (performance.now() - lastReader.current < READER_SCROLL_MS) return;
+    const state = (instance as unknown as { scrollState?: { behavior?: string } | null })
+      .scrollState;
+    if (state?.behavior === "smooth") return;
+    instance.scrollToEnd();
+  });
+
+  const follow = (): void => {
+    following.current = true;
+  };
+  return { follow, following };
+}
+
 /**
  * The transcript as a virtual list in TanStack Virtual's chat mode (https://tanstack.com/virtual/latest/docs/chat.md):
  * anchored to the end, it follows new output only while the reader is at the end, keeps the reader's place when older
@@ -215,8 +292,15 @@ export function TranscriptList({
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
   const holding = useHoldCorrectionsWhileReading(scrollRef, virtualizer);
   useStayAtEndWhenShorter(scrollRef, virtualizer);
+  const { follow, following } = useFollowLatest(scrollRef, virtualizer);
   const atEnd = virtualizer.isAtEnd();
-  useFollowTrace(scrollRef, virtualizer, { atEnd, rows: rows.length, working, holding });
+  useFollowTrace(scrollRef, virtualizer, {
+    atEnd,
+    rows: rows.length,
+    working,
+    holding,
+    following,
+  });
 
   // Start at the latest entry once the first window is there.
   const empty = rows.length === 0;
@@ -267,7 +351,10 @@ export function TranscriptList({
           size="sm"
           className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border-l2 px-3 shadow-md max-sm:right-3 max-sm:left-auto max-sm:size-11 max-sm:translate-x-0 max-sm:px-0"
           aria-label="Jump to latest"
-          onClick={() => virtualizer.scrollToEnd({ behavior: "smooth" })}
+          onClick={() => {
+            follow();
+            virtualizer.scrollToEnd({ behavior: "smooth" });
+          }}
         >
           <ArrowDown />
           <span className="max-sm:sr-only">Jump to latest</span>

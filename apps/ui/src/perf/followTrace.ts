@@ -104,6 +104,8 @@ export function useFollowTrace(
     readonly working: boolean;
     /** The reader's wheel or key holds the list's corrections (`useHoldCorrectionsWhileReading`). */
     readonly holding: RefObject<boolean>;
+    /** The reader follows the latest output (`useFollowLatest`): a lost end with this on was not the reader's doing. */
+    readonly following: RefObject<boolean>;
   },
 ): void {
   const lastInput = useRef(Number.NEGATIVE_INFINITY);
@@ -146,7 +148,7 @@ export function useFollowTrace(
     };
   }, []);
 
-  const { atEnd, holding, rows } = state;
+  const { atEnd, holding, following, rows } = state;
   const rowCount = useRef(rows);
   useEffect(() => {
     if (rowCount.current === rows) return;
@@ -167,6 +169,7 @@ export function useFollowTrace(
     const context = {
       working: working.current ? 1 : 0,
       holding: holding.current ? 1 : 0,
+      following: following.current ? 1 : 0,
       hidden: document.hidden ? 1 : 0,
       focused: document.hasFocus() ? 1 : 0,
       since_append_ms: since(lastAppend.current),
@@ -192,5 +195,5 @@ export function useFollowTrace(
       });
     }, SETTLE_MS);
     return () => window.clearTimeout(check);
-  }, [atEnd, scrollRef, instance, holding]);
+  }, [atEnd, scrollRef, instance, holding, following]);
 }
