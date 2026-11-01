@@ -1,6 +1,7 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ChatSessionEvent } from "@omp-app/contracts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { toolResults } from "./rows";
 import { applyDelta, ChatStore } from "./store";
 
 const T = 1_790_000_000_000;
@@ -139,6 +140,68 @@ describe("ChatStore", () => {
     store.apply(event({ type: "agent_end", messages: [] }));
     expect(store.getSnapshot().activeTools.size).toBe(0);
     expect(store.getSnapshot().working).toBe(false);
+  });
+
+  test("a retried tool batch drops its stopped result and the stop after it, so the call shows as running again", () => {
+    const store = new ChatStore();
+    const earlier = {
+      role: "toolResult",
+      toolCallId: "c0",
+      toolName: "read",
+      content: [{ type: "text", text: "ok" }],
+      isError: false,
+      timestamp: T - 2,
+    };
+    const user = { role: "user", content: [{ type: "text", text: "go" }], timestamp: T - 1 };
+    const calls = {
+      ...assistant([
+        { type: "toolCall", id: "c1", name: "bash", arguments: { command: "sleep 30" } },
+      ]),
+      stopReason: "toolUse",
+    };
+    const stopped = {
+      role: "toolResult",
+      toolCallId: "c1",
+      toolName: "bash",
+      content: [{ type: "text", text: "aborted" }],
+      isError: true,
+      timestamp: T + 1,
+    };
+    const stop = {
+      ...assistant([], T + 2),
+      stopReason: "aborted",
+      errorMessage: "Interrupted by user",
+    };
+    store.setWindow(
+      [
+        fileEntry("r0", earlier),
+        fileEntry("u1", user),
+        fileEntry("a1", calls),
+        fileEntry("r1", stopped),
+        fileEntry("x1", stop),
+      ],
+      false,
+    );
+    const ids = () => store.getSnapshot().entries.map((entry) => entry.id);
+
+    store.apply(event({ type: "agent_start" }));
+    expect(ids()).toEqual(["r0", "u1", "a1", "r1", "x1"]);
+
+    store.apply(event({ type: "agent_start", resumedToolCallIds: ["c1"] }));
+    expect(ids()).toEqual(["r0", "u1", "a1"]);
+    store.apply(
+      event({
+        type: "message_end",
+        messageId: "r2",
+        message: {
+          ...stopped,
+          content: [{ type: "text", text: "done" }],
+          isError: false,
+          timestamp: T + 9,
+        },
+      }),
+    );
+    expect(toolResults(store.getSnapshot().entries).get("c1")?.isError).toBe(false);
   });
 
   test("older entries go in front without repeating the ones already shown", () => {

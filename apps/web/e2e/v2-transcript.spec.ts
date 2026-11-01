@@ -70,6 +70,36 @@ realTest.describe("new UI transcript", () => {
   );
 
   realTest(
+    "a tool call stopped and retried shows as running again, not as aborted, then its new result",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const box = page.getByRole("textbox", { name: "Message" });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const stopped = transcript.getByText("Interrupted by user");
+      await box.fill("slow_tool 8");
+      await box.press("Enter");
+      const call = transcript.getByText("sleep 8; echo slow-tool-done").first();
+      await expect(call).toBeVisible({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Stop" }).first().click();
+      await expect(stopped).toBeVisible({ timeout: 30_000 });
+
+      // omp's retry runs the stopped call again (its tool replay): meanwhile the stop and its result are gone.
+      await box.click();
+      await page.keyboard.press("Alt+R");
+      await expect(page.getByText("Running bash")).toBeVisible({ timeout: 30_000 });
+      await expect(stopped).toHaveCount(0);
+
+      // The rerun's result came back: the model's reply quotes it, and the stop stays gone.
+      await expect(transcript.getByText("tool said: slow-tool-done")).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(stopped).toHaveCount(0);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "a code block in a reply shows Copy under the pointer, and it copies the code alone",
     async ({ realApp }) => {
       const page = await newChat(realApp);

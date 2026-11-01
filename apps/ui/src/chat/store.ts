@@ -648,6 +648,9 @@ export class ChatStore {
         this.#activityMark += 1;
         this.#working = true;
         this.#workingSince = Date.now();
+        // A retried tool batch (omp's tool replay): the calls run again, so their old results go.
+        if (event.resumedToolCallIds !== undefined && event.resumedToolCallIds.length > 0)
+          this.#dropReplayed(new Set(event.resumedToolCallIds));
         return false;
       case "agent_end":
         this.#activityMark += 1;
@@ -772,6 +775,40 @@ export class ChatStore {
       this.#keys.add(key);
     }
     this.#entries = [...this.#entries, entry];
+  }
+
+  /**
+   * Drops what omp drops when it retries a tool batch (its turn recovery's `toolReplayStart`): after the assistant
+   * message that made the calls, their failed results and the aborted end that followed them (an assistant message
+   * without calls of its own, which a stop leaves). omp then runs the calls again, so they show as running, not as
+   * aborted, and their new results take the old ones' place.
+   */
+  #dropReplayed(calls: ReadonlySet<string>): void {
+    const anchor = this.#entries.findLastIndex(
+      (entry) =>
+        entry.type === "message" &&
+        entry.message.role === "assistant" &&
+        entry.message.content.some((block) => block.type === "toolCall" && calls.has(block.id)),
+    );
+    if (anchor < 0) return;
+    const dropped = (entry: SessionEntry): boolean => {
+      if (entry.type !== "message") return false;
+      const message = entry.message;
+      if (message.role === "toolResult") return calls.has(message.toolCallId);
+      return (
+        message.role === "assistant" &&
+        (message.stopReason === "aborted" || message.stopReason === "error") &&
+        !message.content.some((block) => block.type === "toolCall")
+      );
+    };
+    const kept = this.#entries.filter((entry, index) => index <= anchor || !dropped(entry));
+    if (kept.length === this.#entries.length) return;
+    for (const entry of this.#entries.slice(anchor + 1)) {
+      if (!dropped(entry)) continue;
+      const key = messageKey(entry);
+      if (key !== null) this.#keys.delete(key);
+    }
+    this.#entries = kept;
   }
 
   /**
