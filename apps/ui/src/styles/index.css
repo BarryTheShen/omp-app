@@ -98,13 +98,18 @@
     --safe-left: env(safe-area-inset-left, 0px);
   }
 
-  /* `--app-height`: the visible height while an on-screen keyboard covers the page (`src/viewport.ts`). */
+  /*
+   * `--app-height`: the visible height while an on-screen keyboard covers the page (`src/viewport.ts`). Otherwise
+   * `--app-base-height`: `100vh` in a Home Screen app (`index.html`), where iOS reports `100%` short by the status bar's
+   * inset and the page ended above a band of nothing; the page's own `100%` elsewhere.
+   */
   html,
   body,
   #root {
-    height: var(--app-height, 100%);
+    height: var(--app-height, var(--app-base-height, 100%));
   }
 
+  /* The page never scrolls as a whole: its panes do. A Home Screen app's page can be taller than iOS reports. */
   html,
   body {
     overscroll-behavior: none;
@@ -112,6 +117,7 @@
 
   body {
     @apply bg-page font-sans text-sm text-foreground antialiased;
+    overflow: hidden;
   }
 
   /* With the keyboard up, the home indicator is under it: `--app-bottom` is 0 then (`src/viewport.ts`). */

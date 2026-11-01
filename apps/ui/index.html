@@ -38,6 +38,13 @@
         document.documentElement.classList.toggle("dark", dark);
       })();
     </script>
+    <script>
+      // A Home Screen app on iOS reports its height (`100%`, `100dvh`, `innerHeight`) short by the status bar's inset,
+      // which left a band under the page; `100vh` is the whole screen there, as there is no browser bar
+      // (styles/index.css). `navigator.standalone` is iOS's own flag; the media query covers other installed apps.
+      if (navigator.standalone === true || matchMedia("(display-mode: standalone)").matches)
+        document.documentElement.style.setProperty("--app-base-height", "100vh");
+    </script>
   </head>
   <body>
     <div id="root"></div>
