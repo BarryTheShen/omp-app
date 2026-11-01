@@ -113,6 +113,8 @@ realTest.describe("new UI side panel", () => {
       await expect(panel(page).getByRole("tabpanel", { name: "Usage" })).toBeVisible({
         timeout: 30_000,
       });
+      // The panel kept from before the reload draws its content at once, not only its title (#2773).
+      await expect(accounts(page)).toBeVisible();
       await railButton(page, "Usage").click();
       await expect(panel(page)).toHaveCount(0);
 

@@ -44,7 +44,9 @@ export function SidePane({
   containerApi,
 }: IDockviewPanelProps<SidePaneParams>): ReactNode {
   const host = use(SidePaneContext);
-  const shown = use(ShownTabContext) === containerApi;
+  // By the dockview's id, not its api object: a pane restored from a saved layout is given an api object of its own
+  // (dockview's deserializer), so after a start or a reload the objects never match and the panel drew nothing (#2773).
+  const shown = use(ShownTabContext)?.id === containerApi.id;
   const chosen = panelOf(params.panel);
   useEffect(() => {
     if (chosen !== undefined) api.setTitle(chosen.title);

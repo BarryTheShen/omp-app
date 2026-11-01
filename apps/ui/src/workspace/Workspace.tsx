@@ -163,6 +163,11 @@ export function Workspace({
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
   const apis = useRef(new Map<string, DockviewApi>());
+  /**
+   * Counts the tabs' dockviews as they become ready: the shown tab's, read from `apis` while drawing, is known only then,
+   * and a side pane restored with the tab's layout draws once it knows its tab is the one shown (#2773).
+   */
+  const [, setReadyApis] = useState(0);
   const focus = useMemo(() => new PaneFocus(), []);
   const controllers = useMemo(() => new Map<string, ChatController>(), []);
   const composers = useMemo(() => new Map<string, ComposerHandle>(), []);
@@ -319,6 +324,7 @@ export function Workspace({
     (tabId: string, event: DockviewReadyEvent) => {
       const { api } = event;
       apis.current.set(tabId, api);
+      setReadyApis((count) => count + 1);
       const layout = tabsRef.current.tabs.find((tab) => tab.id === tabId)?.layout;
       if (layout !== null && layout !== undefined) {
         try {
