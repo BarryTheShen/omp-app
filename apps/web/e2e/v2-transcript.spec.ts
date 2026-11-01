@@ -105,4 +105,42 @@ realTest.describe("new UI transcript", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a table keeps its words whole in a narrow column, and a table wider than the chat scrolls inside itself",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      await page.setViewportSize({ width: 1000, height: 800 });
+      const box = page.getByRole("textbox", { name: "Message" });
+      await box.fill("table_probe");
+      await box.press("Enter");
+      const tables = page.locator(".tr-md table");
+      await expect(tables).toHaveCount(2, { timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 60_000 });
+
+      // Each one-word cell of the short column is drawn on one line, not broken letter by letter (#2777).
+      const lines = await tables
+        .first()
+        .locator("tbody td:first-child")
+        .evaluateAll((cells) =>
+          cells.map((cell) => {
+            const range = document.createRange();
+            range.selectNodeContents(cell);
+            return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+          }),
+        );
+      expect(lines).toEqual([1, 1, 1]);
+
+      // The table with a long address is wider than the chat: it scrolls inside itself and stays within its column.
+      const wide = await tables.nth(1).evaluate((table) => ({
+        scrolls: table.scrollWidth > table.clientWidth,
+        overflowX: getComputedStyle(table).overflowX,
+        within:
+          table.getBoundingClientRect().width <=
+          (table.parentElement?.getBoundingClientRect().width ?? 0) + 1,
+      }));
+      expect(wide).toEqual({ scrolls: true, overflowX: "auto", within: true });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

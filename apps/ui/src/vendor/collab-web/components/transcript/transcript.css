@@ -484,19 +484,26 @@
 	color: var(--fg-muted);
 }
 
+/* A table as wide as its content, up to the transcript's width; a wider one (a long address in a cell) scrolls
+ * sideways inside itself, as GitHub's do, instead of running past the transcript's clipped edge. */
 .tr-md table {
+	display: block;
+	width: max-content;
+	max-width: 100%;
+	overflow-x: auto;
 	margin: 8px 0;
 	border-collapse: collapse;
 	font-size: 12.5px;
 }
 
-/* Table cells need `anywhere` so long URLs/identifiers contribute a shrinkable
- * intrinsic width instead of expanding under the transcript's clipped overflow. */
+/* Words stay whole: with `anywhere`, any letter could end a line, so a narrow column next to a long one was squeezed to
+ * one or two letters ("Ba / cku / ps", #2777). A word wider than the chat (a long address) widens its table instead,
+ * which then scrolls. */
 .tr-md th,
 .tr-md td {
 	padding: 3px 8px;
 	border: 1px solid var(--border);
-	overflow-wrap: anywhere;
+	overflow-wrap: break-word;
 	text-align: left;
 	word-break: keep-all;
 }

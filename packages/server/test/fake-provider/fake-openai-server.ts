@@ -837,6 +837,22 @@ function reply(request: Request): Reply {
       text: `Read this: [${"x".repeat(label)}.example.test](https://other.example.net/login/page/one) is the page to use.`,
     };
   }
+  // Two tables (issue 2777): one with a column of short words beside a column of long sentences, as a decision table
+  // is, and one with an address too long for any column, which makes the table wider than the chat.
+  if (prompt.includes("table_probe"))
+    return {
+      text: [
+        "| Area | Decision |",
+        "| --- | --- |",
+        "| Backups | Every hour, keeping 24 hourly, 14 daily and 8 weekly copies on the second disk, and later on the file server too; notes keep their own history every minute. |",
+        "| Failover | You start the standby by hand and unlock it with a passphrase; a witness stops it from taking over while the main machine is still alive, and up to a minute of work may be lost. |",
+        "| Security | A machine's access is never above the access of the machine that hosts it, so the host is guarded like the laptop is. |",
+        "",
+        "| Link | Note |",
+        "| --- | --- |",
+        `| https://example.com/${"a1b2c3d4e5".repeat(20)} | a long address |`,
+      ].join("\n"),
+    };
   return { text: "pong", thinking: "I will answer pong." };
 }
 
