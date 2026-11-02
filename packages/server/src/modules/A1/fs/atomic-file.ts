@@ -20,6 +20,11 @@ import { type AppError, AppFailure } from "@omp-app/contracts";
 
 const ATOMIC_TEMP_FILE_PATTERN = /^\.omp-atomic-[a-f0-9]{32}\.tmp$/;
 const ATOMIC_LOCK_FILE_PATTERN = /^\.omp-atomic-lock-[a-f0-9]{32}\.lock$/;
+
+/** A temp or lock file of this writer's, beside the file it writes: not the person's file (the Files panel hides it). */
+export function isAtomicWriteArtifact(name: string): boolean {
+  return ATOMIC_TEMP_FILE_PATTERN.test(name) || ATOMIC_LOCK_FILE_PATTERN.test(name);
+}
 const SELF_WRITE_RETENTION_MS = 5_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_WAIT_TIMEOUT_MS = 15_000;

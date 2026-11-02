@@ -34,6 +34,7 @@ import {
   ThreadId,
   UrlCatalogPort,
   UsageLimitStore,
+  WorkspaceFilesPort,
   WorkspaceStatePort,
 } from "@omp-app/contracts";
 import { DEFAULT_HOST_CAPABILITIES } from "../../../capabilities";
@@ -332,6 +333,14 @@ function createContext(
     pasteFileStore: {
       save: async () => ({ name: "paste-1.md", reference: "local://paste-1.md" }),
     },
+    workspaceFiles: {
+      deviceOf: (connectionId: string) => connectionId,
+      watches: {
+        onChange: () => () => undefined,
+        set: async () => undefined,
+        dropConnection: () => undefined,
+      },
+    },
     watchStreamActivity: () => () => undefined,
   };
   return context as unknown as A1PortContext;
@@ -439,6 +448,7 @@ describe("A1.9 port registrations", () => {
       SessionFileStore,
       SessionImportPort,
       SessionPinStore,
+      WorkspaceFilesPort,
       WorkspaceStatePort,
       UrlCatalogPort,
       UsageLimitStore,

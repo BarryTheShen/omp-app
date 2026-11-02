@@ -17,9 +17,10 @@ const CANDIDATE_CACHE_TTL_MS = 30_000;
 const CANDIDATE_CACHE_FOLDERS = 8;
 /**
  * Names a walk skips, entry and all: dependency, cache and repository metadata, and `.worktrees`, where git worktrees keep
- * whole copies of a repository. Those copies would fill the results with duplicates of the same files.
+ * whole copies of a repository. Those copies would fill the results with duplicates of the same files. The Files panel
+ * marks the same names `ignored` (#2782).
  */
-const WALK_SKIPPED_NAMES: ReadonlySet<string> = new Set([
+export const WALK_SKIPPED_NAMES: ReadonlySet<string> = new Set([
   ".git",
   "node_modules",
   ".venv",

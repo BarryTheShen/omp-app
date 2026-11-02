@@ -71,6 +71,7 @@ export const DEFAULT_HOST_CAPABILITIES = [
   "host.session-pins",
   "host.url-catalog",
   "host.usage-limits",
+  "host.workspace-files",
   "host.workspace-state",
 ] as const satisfies readonly CapabilityKey[];
 

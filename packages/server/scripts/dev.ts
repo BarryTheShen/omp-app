@@ -68,6 +68,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
+import { createWorkspaceFiles } from "../src/modules/A1/workspace-files";
 import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
 import {
   type A0PortContext,
@@ -617,6 +618,14 @@ export async function createCompositionServer(
   const publish = replay.publish.bind(replay);
   const watchStreamActivity = replay.registerStreamActivity.bind(replay);
   const pasteFileStore = createPasteFileStore();
+  // The Files panel (#2782): its uploads and trash under app data; the log names each change's device, known once
+  // device pairing below is open (a handler runs only after that).
+  const workspaceFiles = createWorkspaceFiles({
+    appDataDir,
+    fileWatch,
+    logger,
+    deviceOf: (connectionId) => devices.connections.deviceOf(connectionId),
+  });
   const a1Context: A1PortContext = {
     sessionFileStore,
     processBusy: processRegistry,
@@ -637,6 +646,7 @@ export async function createCompositionServer(
     sessionImportStore,
     attachmentStore,
     pasteFileStore,
+    workspaceFiles,
     githubRefs,
     urlCatalog,
     planDocumentStore,

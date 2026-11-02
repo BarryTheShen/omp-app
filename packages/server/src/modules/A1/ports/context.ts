@@ -22,6 +22,7 @@ import type { SessionImportStoreService } from "../session-import";
 import type { SessionFileStore } from "../sessions";
 import type { UrlCatalogService } from "../url-catalog";
 import type { UsageLimitStoreService } from "../usage-limits";
+import type { WorkspaceFilesService } from "../workspace-files";
 import type { A1EventPublisher, A1StreamActivity } from "./helper";
 /** Stores and host seams composed by the main server; A1 handlers never create parallel stores. */
 export interface A1PortContext {
@@ -45,6 +46,8 @@ export interface A1PortContext {
   readonly urlCatalog: UrlCatalogService;
   readonly planDocumentStore: PlanDocumentStoreService;
   readonly pasteFileStore: PasteFileStoreService;
+  /** The Files panel's writes, trash and watches (#2782). */
+  readonly workspaceFiles: WorkspaceFilesService;
   readonly readWorkspaceState?: typeof readWorkspaceState;
   readonly searchWorkspaceFiles?: typeof searchWorkspaceFiles;
   readonly readHostMetadata?: typeof readHostMetadata;

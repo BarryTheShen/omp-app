@@ -23,4 +23,5 @@ export * from "./shared";
 export * from "./tools-availability";
 export * from "./url-catalog";
 export * from "./usage-limits";
+export * from "./workspace-files";
 export * from "./workspace-state";
