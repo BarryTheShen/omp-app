@@ -42,9 +42,14 @@ export function mouseClickTakesCaret(event: MouseEvent): boolean {
   return !window.matchMedia("(pointer: coarse)").matches;
 }
 
-/** A click on a pane (its transcript, its empty space) where nothing in the pane takes it, and that selected no text. */
+/**
+ * A click on a pane (its transcript, its empty space) where nothing in the pane takes it, and that selected no text. A
+ * click in a menu or popover opened from the pane (the model menu's star, a thinking level) reaches the pane's handler
+ * through React from outside the pane's elements: it is no click on the pane, and leaves the caret where it is.
+ */
 function paneClickTakesCaret(event: MouseEvent<HTMLElement>): boolean {
   if (!mouseClickTakesCaret(event) || !(event.target instanceof Element)) return false;
+  if (!event.currentTarget.contains(event.target)) return false;
   const taker = event.target.closest(TAKES_CLICKS);
   if (taker !== null && event.currentTarget.contains(taker)) return false;
   return window.getSelection()?.isCollapsed !== false;
