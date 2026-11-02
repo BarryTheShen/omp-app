@@ -197,4 +197,38 @@ try {
       expect(realApp.problems.filter((problem) => !problem.includes("WebSocket"))).toEqual([]);
     },
   );
+
+  realTest(
+    "after a reload the panel shows the folder as it listed it last, at once, while the new listing is still on its way (#2785)",
+    async ({ realApp }) => {
+      await writeFile(join(realApp.folder, "kept-list.txt"), "listed\n");
+      // Once set, the page's listing calls never leave it, as on a connection where they wait behind a chat's history.
+      let holdListings = false;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (target) => {
+          await target.routeWebSocket(/\/ws\?/, (socket) => {
+            const server = socket.connectToServer();
+            server.onMessage((message) => socket.send(message));
+            socket.onMessage((message) => {
+              const text = typeof message === "string" ? message : message.toString("utf8");
+              const listing =
+                text.includes('"A1.workspaceFiles"') && text.includes('"method":"list"');
+              if (holdListings && listing) return;
+              server.send(message);
+            });
+          });
+        },
+      });
+      await openFiles(page);
+      await expect(row(page, "kept-list.txt")).toBeVisible({ timeout: 30_000 });
+
+      holdListings = true;
+      await page.reload();
+      await expect(panel(page)).toBeVisible({ timeout: 60_000 });
+      await expect(row(page, "kept-list.txt")).toBeVisible({ timeout: 10_000 });
+      await expect(panel(page).getByText("Listing the folder…")).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

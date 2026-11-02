@@ -44,9 +44,11 @@ import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { follow } from "../follow";
 import { type Attention, AttentionTracker } from "../inbox/attention";
+import { lastSeen } from "../lastSeen";
 import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
 import { clientTags, frameMarks, watchFrames } from "../perf/frames";
+import { isPhone } from "../phone";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
@@ -54,7 +56,20 @@ import type { ShellRun } from "./triggers";
 import { cachedWindow, keepWindow } from "./windowCache";
 
 /** The first window read from a session file: enough for the newest screens, small enough to parse at once. */
-export const FIRST_WINDOW_BYTES = 512 * 1024;
+const FIRST_WINDOW_BYTES = 512 * 1024;
+/**
+ * A phone's first window: a phone shows a dozen messages, older ones load as the reader scrolls up, and its connection is
+ * often slow and relayed, where the window is most of what an open waits for (#2785).
+ */
+const PHONE_FIRST_WINDOW_BYTES = 128 * 1024;
+
+/** How much of a chat's file its first window reads on this device. */
+export function firstWindowBytes(): number {
+  return isPhone() ? PHONE_FIRST_WINDOW_BYTES : FIRST_WINDOW_BYTES;
+}
+
+/** A chat's side questions as the panel showed them last, for this page: shown at once while omp's are read (#2785). */
+const keptBtw = (threadId: string) => lastSeen<readonly BtwRecord[]>(`btw:${threadId}`);
 const OLDER_WINDOW_BYTES = 1024 * 1024;
 
 /** A chat's usage for the side panel: omp's session statistics (its `/session` numbers) and the last reply's speed. */
@@ -825,9 +840,14 @@ export class ChatController {
 
   /** Reads the chat's side questions again, as omp keeps them (omp's terminal may have asked some). */
   async loadBtw(): Promise<void> {
+    const threadId = this.#threadId;
+    const last = threadId === null ? undefined : keptBtw(threadId).get();
+    if (last !== undefined && this.btw.getSnapshot().records === null) this.btw.setRecords(last);
     try {
       const { records } = await this.#request("get_btw_history", {});
-      if (!this.#disposed) this.btw.setRecords(records);
+      if (this.#disposed) return;
+      this.btw.setRecords(records);
+      if (threadId !== null) keptBtw(threadId).set(records);
     } catch (failure) {
       throw olderServer(failure, "answer side questions");
     }
@@ -1022,7 +1042,7 @@ export class ChatController {
       window = await this.client.port(SessionFileStore).readEntryWindow({
         sessionFile,
         ...(this.#leaf === undefined ? {} : { leafId: this.#leaf as EntryId }),
-        byteBudget: FIRST_WINDOW_BYTES,
+        byteBudget: firstWindowBytes(),
       });
     } catch (failure) {
       // omp writes a new chat's file once its first reply is done. Opened again before then (a reload, or the server

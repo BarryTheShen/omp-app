@@ -29,6 +29,23 @@ export interface JobList {
   readonly recent: readonly JobRow[];
 }
 
+const JobRowSchema = z.object({
+  id: z.string(),
+  type: z.enum(["bash", "task", "eval"]),
+  status: z.enum(["running", "completed", "failed", "cancelled"]),
+  label: z.string(),
+  startTime: z.number(),
+  endTime: z.number().optional(),
+  agentId: z.string().optional(),
+  own: z.boolean(),
+});
+
+/** A jobs list as a page keeps it to show at once next time; what a browser kept is checked against this first. */
+export const JobListSchema = z.object({
+  running: z.array(JobRowSchema),
+  recent: z.array(JobRowSchema),
+});
+
 /** What the most of a job's output a detail carries: its last 64 KiB. */
 export const JOB_OUTPUT_MAX_CHARS = 64 * 1024;
 

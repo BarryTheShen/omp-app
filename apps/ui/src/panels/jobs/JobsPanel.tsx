@@ -1,11 +1,17 @@
 import type { AppClient } from "@omp-app/client";
 import { AppFailure } from "@omp-app/contracts";
-import type { JobDetail, JobList, JobRow } from "@omp-app/contracts/chat-host";
+import {
+  type JobDetail,
+  type JobList,
+  JobListSchema,
+  type JobRow,
+} from "@omp-app/contracts/chat-host";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatController } from "../../chat/controller";
 import { pauseAllChats } from "../../chat/pauseAll";
+import { lastSeen } from "../../lastSeen";
 import { fmtDuration } from "../../vendor/collab-web/lib/format";
 
 const failureText = (failure: unknown): string =>
@@ -19,6 +25,16 @@ const isOlderServer = (failure: unknown): boolean =>
 const READ_EVERY_MS = 1_000;
 
 const NO_JOBS: JobList = { running: [], recent: [] };
+
+/**
+ * The chat's jobs as the tab showed them last, also after a reload: shown at once, marked as updating, while the tab
+ * reads them again. On a slow, relayed connection that read can wait many seconds behind the chat's history (#2785).
+ */
+const keptJobs = (threadId: string) =>
+  lastSeen<JobList>(`jobs:${threadId}`, (stored) => {
+    const parsed = JobListSchema.safeParse(stored);
+    return parsed.success ? parsed.data : undefined;
+  });
 
 /** omp's word and colour for each of a job's states (its jobs sheet). */
 const STATUS = {
@@ -108,7 +124,11 @@ function PauseAll({ client }: { readonly client: AppClient }): ReactNode {
 }
 
 function Jobs({ chat }: { readonly chat: ChatController }): ReactNode {
-  const [list, setList] = useState<JobList | undefined>(undefined);
+  const [list, setList] = useState<JobList | undefined>(() =>
+    chat.threadId === null ? undefined : keptJobs(chat.threadId).get(),
+  );
+  /** Whether `list` is this tab's own read, not the one kept from before. */
+  const [current, setCurrent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [older, setOlder] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -131,7 +151,10 @@ function Jobs({ chat }: { readonly chat: ChatController }): ReactNode {
         .then(
           (next) => {
             if (!alive) return;
-            setList(next ?? NO_JOBS);
+            const shown = next ?? NO_JOBS;
+            setList(shown);
+            setCurrent(true);
+            if (chat.threadId !== null) keptJobs(chat.threadId).set(shown);
             setProblem(null);
             setNow(Date.now());
           },
@@ -189,7 +212,10 @@ function Jobs({ chat }: { readonly chat: ChatController }): ReactNode {
             </div>
           ) : (
             <>
-              <p className="px-4 pb-1 text-xs text-t3">{summaryOf(list)}</p>
+              <p className="px-4 pb-1 text-xs text-t3">
+                {summaryOf(list)}
+                {!current && " · updating…"}
+              </p>
               <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto px-2">
                 {jobs.map((job) => (
                   <JobItem

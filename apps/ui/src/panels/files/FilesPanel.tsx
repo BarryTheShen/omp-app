@@ -6,6 +6,7 @@ import {
   type WorkspaceEntry,
   type WorkspaceFileChanged,
   WorkspaceFilesPort,
+  WorkspaceListResult,
   type WorkspaceRelativePath,
 } from "@omp-app/contracts";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -52,6 +53,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { ChatController } from "../../chat/controller";
+import { lastSeen } from "../../lastSeen";
 import { usePhone } from "../../phone";
 import { type DiskChange, FileViewer } from "./FileViewer";
 import { baseName, childPath, keepBothName, parentOf } from "./names";
@@ -75,6 +77,42 @@ const BADGE: Readonly<Record<string, string>> = {
 interface Listing {
   readonly entries: readonly WorkspaceEntry[];
   readonly truncated: boolean;
+}
+
+/**
+ * What the panel listed last, per folder: every directory for this page, and the folder's top level in this browser's
+ * storage too. A folder shows them at once, after a reload too, while it lists them anew; on a slow, relayed
+ * connection a listing can wait many seconds behind a chat's history (#2785).
+ */
+const shownListings = new Map<string, ReadonlyMap<string, Listing>>();
+const listingsKey = (folder: string, showIgnored: boolean) =>
+  `${showIgnored ? "all" : "shown"}:${folder}`;
+const keptTop = (folder: string, showIgnored: boolean) =>
+  lastSeen<Listing>(`files:${listingsKey(folder, showIgnored)}`, (stored) => {
+    const parsed = WorkspaceListResult.safeParse(stored);
+    return parsed.success ? parsed.data : undefined;
+  });
+
+function lastListings(folder: string, showIgnored: boolean): ReadonlyMap<string, Listing> {
+  const shown = shownListings.get(listingsKey(folder, showIgnored));
+  if (shown !== undefined) return shown;
+  const top = keptTop(folder, showIgnored).get();
+  return new Map(top === undefined ? [] : [["", top]]);
+}
+
+/** Keeps a directory's new listing, or (`undefined`) forgets one that is gone. */
+function keepListing(
+  folder: string,
+  showIgnored: boolean,
+  directory: string,
+  listing: Listing | undefined,
+): void {
+  const key = listingsKey(folder, showIgnored);
+  const next = new Map(shownListings.get(key) ?? []);
+  if (listing === undefined) next.delete(directory);
+  else next.set(directory, listing);
+  shownListings.set(key, next);
+  if (directory === "" && listing !== undefined) keptTop(folder, showIgnored).set(listing);
 }
 
 interface Row {
@@ -116,7 +154,9 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
   const files = useMemo(() => client.port(WorkspaceFilesPort), [client]);
   const phone = usePhone();
   const [showIgnored, setShowIgnored] = useState(false);
-  const [listings, setListings] = useState<ReadonlyMap<string, Listing>>(new Map());
+  const [listings, setListings] = useState<ReadonlyMap<string, Listing>>(() =>
+    lastListings(folder, false),
+  );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<WorkspaceRelativePath | null>(null);
   const [open, setOpen] = useState<WorkspaceRelativePath | null>(null);
@@ -156,8 +196,10 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
           showIgnored,
         });
         setListings((now) => new Map(now).set(directory, result));
+        keepListing(folder, showIgnored, directory, result);
       } catch (error) {
         if (failureCode(error) === "not_found" && directory !== "") {
+          keepListing(folder, showIgnored, directory, undefined);
           setListings((now) => {
             const next = new Map(now);
             next.delete(directory);
@@ -192,7 +234,7 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
   // A folder opens with the directories it had open last time.
   useEffect(() => {
     let active = true;
-    setListings(new Map());
+    setListings(lastListings(folder, showIgnored));
     setOpen(null);
     setSelected(null);
     void get<string[]>(folder, expandedStore)
@@ -208,7 +250,7 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
     return () => {
       active = false;
     };
-  }, [folder, list, readGit]);
+  }, [folder, list, readGit, showIgnored]);
 
   useEffect(() => {
     void set(folder, [...expanded], expandedStore).catch(() => undefined);

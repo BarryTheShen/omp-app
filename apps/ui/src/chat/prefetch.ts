@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { AppClient } from "@omp-app/client";
 import { type SessionFilePath, SessionFileStore, type ThreadId } from "@omp-app/contracts";
-import { FIRST_WINDOW_BYTES } from "./controller";
+import { firstWindowBytes } from "./controller";
 import { keepWindow } from "./windowCache";
 
 /** A chat read ahead in the last half minute is not read again. */
@@ -22,7 +22,7 @@ export function prefetchWindow(
   readAt.set(threadId, now);
   client
     .port(SessionFileStore)
-    .readEntryWindow({ sessionFile, byteBudget: FIRST_WINDOW_BYTES })
+    .readEntryWindow({ sessionFile, byteBudget: firstWindowBytes() })
     .then((window) =>
       keepWindow(threadId, {
         entries: window.entries as unknown as SessionEntry[],
