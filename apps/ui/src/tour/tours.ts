@@ -1198,6 +1198,29 @@ const TABLET_TOUCH_TOUR: Tour = {
   ],
 };
 
+/** #2775: on an Apple device's keyboard ⌘ does what Ctrl does, and the keys read ⌘. */
+const COMMAND_KEYS_TOUR: Tour = {
+  id: "command-keys-2026-11-02",
+  title: "⌘ on an iPad or a Mac",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "⌘ does what Ctrl does",
+      text: "With an iPad's keyboard or on a Mac, every Ctrl key works with ⌘ too: ⌘⇧T opens a tab, ⌘P switches the model's role. {shortcuts} lists every key, shown with ⌘ there. Try it.",
+      action: { kind: "appears", selector: KEY_LIST },
+    },
+    {
+      target: KEY_LIST,
+      title: "Close the list",
+      text: "{stop} closes it.",
+      action: { kind: "disappears", selector: KEY_LIST },
+    },
+  ],
+};
+
 const ATTACH_IMAGES = part("attach-images");
 
 /** #2783: a picture from the device's picker, on a phone or a tablet. */
@@ -1230,6 +1253,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-command-keys",
+    when: "2026-11-02T10:12:00-06:00",
+    summary:
+      "With an iPad's keyboard or on a Mac, every Ctrl key works with ⌘ too, and the app lists its keys with ⌘.",
+    tours: [COMMAND_KEYS_TOUR],
+  },
   {
     id: "2026-11-02-sign-in-page",
     when: "2026-11-02T03:03:00-06:00",

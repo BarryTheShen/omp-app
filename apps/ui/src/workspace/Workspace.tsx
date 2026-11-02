@@ -42,6 +42,7 @@ import {
   SidePane,
   type SidePaneParams,
 } from "../panels/SidePane";
+import { matchesHotkey } from "../tour/keys";
 import {
   ChatPanel,
   type ChatPanelParams,
@@ -793,7 +794,7 @@ export function Workspace({
         event.stopPropagation();
       };
       if (event.ctrlKey || event.altKey || event.metaKey) {
-        if (event.ctrlKey && event.shiftKey && event.code === "Space") take();
+        if (matchesHotkey(event, KEYS.paneMode.hotkey)) take();
         end();
         return;
       }

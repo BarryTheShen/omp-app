@@ -18,7 +18,16 @@ export interface KeyBinding {
   readonly desktopOnly?: true;
 }
 
-export const KEYS = {
+/**
+ * Whether this is Apple's device (a Mac, an iPad, an iPhone with a keyboard): there ⌘ does what Ctrl does (#2775).
+ * iPadOS's Safari reports a Mac, which is right here too.
+ */
+export const APPLE =
+  typeof navigator !== "undefined" &&
+  (/Mac|iPhone|iPad|iPod/.test(navigator.platform) ||
+    /Macintosh|iPhone|iPad|iPod/.test(navigator.userAgent));
+
+const TABLE = {
   splitRight: {
     hotkey: "ctrl+shift+o",
     scope: "workspace",
@@ -271,12 +280,26 @@ export const KEYS = {
   },
 } as const satisfies Record<string, Omit<KeyBinding, "id">>;
 
-export type KeyId = keyof typeof KEYS;
+export type KeyId = keyof typeof TABLE;
 
-export const BINDINGS: readonly KeyBinding[] = Object.entries(KEYS).map(([id, binding]) => ({
-  id,
-  ...binding,
-}));
+/**
+ * A hotkey with ⌘ beside each of its Ctrl chords, for an Apple device (#2775): `ctrl+shift+o` gains `meta+shift+o`. A
+ * chord that holds ⌘ already (the pane keys hold Super) stays as it is, and one listed with ⌘ already is not repeated.
+ */
+export function withCommand(hotkey: string): string {
+  const alternatives = hotkey.split(",").map((chord) => chord.trim());
+  const listed = new Set(alternatives.map(normalize));
+  const added = alternatives.flatMap((chord) => {
+    const parts = chord.split("+");
+    const named = parts.map((part) => ALIASES[part.toLowerCase()] ?? part.toLowerCase());
+    if (!named.includes("ctrl") || named.includes("meta")) return [];
+    const command = parts.map((part, index) => (named[index] === "ctrl" ? "meta" : part)).join("+");
+    if (listed.has(normalize(command))) return [];
+    listed.add(normalize(command));
+    return [command];
+  });
+  return [...alternatives, ...added].join(", ");
+}
 
 const MODIFIERS = ["meta", "ctrl", "alt", "shift"] as const;
 const ALIASES: Record<string, string> = {
@@ -305,6 +328,21 @@ export function normalize(chord: string): string {
 export const chords = (binding: Pick<KeyBinding, "hotkey">): readonly string[] =>
   binding.hotkey.split(",").map(normalize);
 
+/** Every key of the app as this device takes it: on an Apple device each Ctrl chord also with ⌘. */
+export const KEYS: { readonly [Id in KeyId]: Omit<KeyBinding, "id"> } = APPLE
+  ? (Object.fromEntries(
+      Object.entries(TABLE).map(([id, binding]) => [
+        id,
+        { ...binding, hotkey: withCommand(binding.hotkey) },
+      ]),
+    ) as { readonly [Id in KeyId]: Omit<KeyBinding, "id"> })
+  : TABLE;
+
+export const BINDINGS: readonly KeyBinding[] = Object.entries(KEYS).map(([id, binding]) => ({
+  id,
+  ...binding,
+}));
+
 const SHOWN: Record<string, string> = {
   meta: "Super",
   ctrl: "Ctrl",
@@ -327,13 +365,28 @@ const SHOWN: Record<string, string> = {
   space: "Space",
 };
 
-/** How a binding's first alternative reads on a keycap: `Ctrl+Shift+O`. */
-export function keycap(binding: Pick<KeyBinding, "hotkey">): string {
-  const [first] = chords(binding);
-  return (first ?? "")
+/** On an Apple keyboard, the keycaps' own signs. */
+const SHOWN_APPLE: Record<string, string> = {
+  meta: "⌘",
+  ctrl: "⌃",
+  alt: "⌥",
+  shift: "⇧",
+  enter: "↩",
+  tab: "⇥",
+};
+
+/**
+ * How a binding reads on a keycap: its first alternative, `Ctrl+Shift+O`. On an Apple device its first alternative with
+ * ⌘, in Apple's signs: `⌘⇧O`.
+ */
+export function keycap(binding: Pick<KeyBinding, "hotkey">, apple = APPLE): string {
+  const all = chords(binding);
+  const shown =
+    (apple ? all.find((chord) => chord.split("+").includes("meta")) : undefined) ?? all[0] ?? "";
+  return shown
     .split("+")
-    .map((part) => SHOWN[part] ?? part.toUpperCase())
-    .join("+");
+    .map((part) => (apple ? SHOWN_APPLE[part] : undefined) ?? SHOWN[part] ?? part.toUpperCase())
+    .join(apple ? "" : "+");
 }
 
 /** Which scopes act together: a workspace key acts in a pane and in its box too, a pane's key in its box. */

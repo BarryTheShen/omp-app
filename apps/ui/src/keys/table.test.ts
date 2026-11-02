@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { BINDINGS, collisions, keycap, normalize } from "./table";
+import { BINDINGS, collisions, keycap, normalize, withCommand } from "./table";
 
 describe("the app's keys", () => {
   test("no two bindings that act at once share a key", () => {
@@ -46,5 +46,25 @@ describe("the app's keys", () => {
     expect(keycap({ hotkey: "meta+ctrl+bracketleft, meta+ctrl+bracketright" })).toBe(
       "Super+Ctrl+[",
     );
+  });
+
+  test("on an Apple device each Ctrl chord is also a ⌘ chord, and no two keys collide then either (#2775)", () => {
+    expect(withCommand("ctrl+shift+o")).toBe("ctrl+shift+o, meta+shift+o");
+    expect(withCommand("ctrl+tab, ctrl+shift+right")).toBe(
+      "ctrl+tab, ctrl+shift+right, meta+tab, meta+shift+right",
+    );
+    // The pane keys hold Super (⌘) already, and a key listed with ⌘ is not listed twice.
+    expect(withCommand("meta+ctrl+left, meta+ctrl+right")).toBe("meta+ctrl+left, meta+ctrl+right");
+    expect(withCommand("ctrl+k, meta+k")).toBe("ctrl+k, meta+k");
+    expect(withCommand("alt+p")).toBe("alt+p");
+    const apple = BINDINGS.map((binding) => ({ ...binding, hotkey: withCommand(binding.hotkey) }));
+    expect(collisions(apple)).toEqual([]);
+  });
+
+  test("on an Apple device a keycap shows the ⌘ chord in Apple's signs", () => {
+    expect(keycap({ hotkey: withCommand("ctrl+shift+o") }, true)).toBe("⌘⇧O");
+    expect(keycap({ hotkey: "meta+ctrl+bracketleft, meta+ctrl+bracketright" }, true)).toBe("⌘⌃[");
+    expect(keycap({ hotkey: "alt+p" }, true)).toBe("⌥P");
+    expect(keycap({ hotkey: withCommand("ctrl+enter") }, true)).toBe("⌘↩");
   });
 });

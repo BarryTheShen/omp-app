@@ -9,8 +9,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AgentHub } from "../agents/AgentHub";
+import { KEYS } from "../keys/table";
 import { ModelHub } from "../models/ModelHub";
 import { PlanReview } from "../plan/PlanReview";
+import { matchesHotkey } from "../tour/keys";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -173,11 +175,17 @@ export function ChatPane({
         );
       return;
     }
-    // omp's Ctrl+P and Shift+Ctrl+P: the next or previous role's model (smol, default, slow, as omp's roles are set).
-    if (event.ctrlKey && !event.altKey && !event.metaKey && event.code === "KeyP") {
+    // omp's Ctrl+P and Shift+Ctrl+P (⌘ too on an Apple device): the next or previous role's model (smol, default, slow,
+    // as omp's roles are set), as the key table has them.
+    const role = matchesHotkey(event.nativeEvent, KEYS.nextRole.hotkey)
+      ? "forward"
+      : matchesHotkey(event.nativeEvent, KEYS.previousRole.hotkey)
+        ? "backward"
+        : null;
+    if (role !== null) {
       event.preventDefault();
       controller
-        .cycleRole(event.shiftKey ? "backward" : "forward")
+        .cycleRole(role)
         .catch((failure: unknown) =>
           controller.store.toast(
             `Could not switch the model: ${failure instanceof Error ? failure.message : String(failure)}`,
