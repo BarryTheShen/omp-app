@@ -2684,4 +2684,53 @@ describe("the chat session runtime: the app's own continue after a usage limit (
     expect(runtimeContext.processRegistry.busyOf(authorityThread)).toBe(false);
     await runtimeContext.processRegistry.closeAll();
   });
+
+  test("a refusal while a background job keeps the session unsettled is still retried once due: the host says no turn runs", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, handlers, timer } = continuing(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    // As on 2026-11-01 at 18:32: a job runs on, so omp never reports the session settled after the refused turn.
+    host.emitEvent({ type: "agent_start" });
+    host.emitEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 3_600_000,
+      errorMessage: "429 rate_limit_error",
+    });
+    host.emitEvent({ type: "auto_retry_end", success: false, attempt: 1, finalError: "429" });
+    host.emitEvent({ type: "agent_end", messages: [] });
+    await ticks();
+    expect(runtimeContext.processRegistry.busyOf(authorityThread)).toBe(true);
+
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([{ text: "/retry" }]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a turn running when it comes due is looked at again a minute later, and retried once none runs", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers, timer } = continuing(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    refusedTurn(host, 3_600_000);
+    await ticks();
+
+    host.extraState = { ...host.extraState, isStreaming: true };
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([]);
+    expect(runtime.continuing.continuingIn(folder)).toHaveLength(1);
+
+    host.extraState = { ...host.extraState, isStreaming: false };
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([{ text: "/retry" }]);
+    expect(runtime.continuing.continuingIn(folder)).toEqual([]);
+    await runtimeContext.processRegistry.closeAll();
+  });
 });

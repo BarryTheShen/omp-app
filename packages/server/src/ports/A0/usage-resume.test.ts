@@ -8,6 +8,7 @@ import {
   RESUME_AFTER_START_MS,
   RESUME_GRACE_MS,
   RESUME_MOST_IN_ROW,
+  RESUME_RECHECK_MS,
   type ResumeOutcome,
   UsageResume,
   usageResumeFile,
@@ -46,10 +47,15 @@ class FakeTimer implements ProcessTimer {
   }
 }
 
-function setup(outcome: ResumeOutcome = "sent", kept = new Map<ThreadId, number>()) {
+/** `outcome`: what each retry finds, in turn; the last one again after the list ends. */
+function setup(
+  outcome: ResumeOutcome | readonly ResumeOutcome[] = "sent",
+  kept = new Map<ThreadId, number>(),
+) {
   const timer = new FakeTimer();
   const resumed: ThreadId[] = [];
   const saved: Map<ThreadId, number>[] = [];
+  const outcomes = typeof outcome === "string" ? [outcome] : outcome;
   const resume = new UsageResume({
     now: () => timer.now,
     timer,
@@ -59,7 +65,7 @@ function setup(outcome: ResumeOutcome = "sent", kept = new Map<ThreadId, number>
     },
     resume: async (threadId) => {
       resumed.push(threadId);
-      return outcome;
+      return outcomes[Math.min(resumed.length, outcomes.length) - 1] ?? "sent";
     },
   });
   return { timer, resume, resumed, saved };
@@ -181,6 +187,34 @@ describe("the app's own retry after a usage limit (#2781)", () => {
     resume.onEvent(CHAT, waitStart(HOURS));
     await timer.advance(HOURS + RESUME_GRACE_MS);
     expect(resumed).toHaveLength(RESUME_MOST_IN_ROW + 1);
+  });
+
+  test("a chat whose turn is running when its retry comes due is looked at again a minute later, and retried once it is not", async () => {
+    const { timer, resume, resumed } = setup(["busy", "busy", "sent"]);
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=3600000"));
+    await timer.advance(HOURS + RESUME_GRACE_MS);
+    expect(resumed).toEqual([CHAT]);
+    expect(resume.isWaiting(CHAT)).toBe(true);
+    await timer.advance(RESUME_RECHECK_MS);
+    expect(resumed).toEqual([CHAT, CHAT]);
+    await timer.advance(RESUME_RECHECK_MS);
+    expect(resumed).toEqual([CHAT, CHAT, CHAT]);
+    expect(resume.isWaiting(CHAT)).toBe(false);
+  });
+
+  test("looks that found a turn running are no tries; that turn ending well drops the retry", async () => {
+    const { timer, resume, resumed } = setup("busy");
+    resume.onEvent(CHAT, reply("error", "429 {} retry-after-ms=60000"));
+    await timer.advance(60_000 + RESUME_GRACE_MS);
+    for (let look = 1; look <= RESUME_MOST_IN_ROW + 1; look += 1) {
+      await timer.advance(RESUME_RECHECK_MS);
+    }
+    expect(resumed).toHaveLength(RESUME_MOST_IN_ROW + 2);
+    expect(resume.isWaiting(CHAT)).toBe(true);
+    resume.onEvent(CHAT, reply("stop"));
+    expect(resume.isWaiting(CHAT)).toBe(false);
+    await timer.advance(HOURS);
+    expect(resumed).toHaveLength(RESUME_MOST_IN_ROW + 2);
   });
 
   test("the schedule outlives a restart: one still ahead runs on time, one already due runs shortly after the start", async () => {

@@ -14,6 +14,11 @@ export const RESUME_GRACE_MS = 60_000;
 export const RESUME_MOST_IN_ROW = 3;
 /** A resume due while the server was down runs this long after the server is back, once the chats' hosts reconnected. */
 export const RESUME_AFTER_START_MS = 30_000;
+/**
+ * A chat whose turn is running when its retry comes due (omp's own retry, or a message sent) is looked at again this
+ * long after; that turn ending well drops the retry, so only a turn that fails again leaves it to run.
+ */
+export const RESUME_RECHECK_MS = 60_000;
 
 /** What the app's retry found: sent, or why it sent nothing. */
 export type ResumeOutcome = "sent" | "busy" | "paused" | "gone";
@@ -43,8 +48,8 @@ export type UsageResumeListener = (threadId: ThreadId, continuesAt: number | nul
  * that ends without an error: omp's own retry worked, or another turn did), or the reader stopping the chat or saying not
  * to continue it; a run starting is no answer, as the turn a job's result or a message starts can be refused too (#2781:
  * a job's result started a turn, the limit refused it, and nothing was left to continue the chat). When it comes due, a
- * chat that is idle and not paused is retried once, as its Retry button does. An idle chat with a retry due is not
- * stopped (`isWaiting`).
+ * chat with no turn running and not paused is retried once, as its Retry button does; one whose turn is running is looked
+ * at again `RESUME_RECHECK_MS` later. An idle chat with a retry due is not stopped (`isWaiting`).
  */
 export class UsageResume {
   readonly #deps: UsageResumeDeps;
@@ -159,12 +164,17 @@ export class UsageResume {
     this.#due.delete(threadId);
     this.#keep();
     this.#notify(threadId, null);
-    this.#inRow.set(threadId, (this.#inRow.get(threadId) ?? 0) + 1);
+    const tries = this.#inRow.get(threadId) ?? 0;
+    this.#inRow.set(threadId, tries + 1);
     const outcome = await this.#deps.resume(threadId).catch((failure: unknown) => {
       this.#deps.logger?.warn("usage_resume.failed", { threadId, error: String(failure) });
       return undefined;
     });
     if (outcome !== undefined) this.#deps.logger?.info("usage_resume.fired", { threadId, outcome });
+    // Only a retry sent is a try of the three in a row.
+    if (outcome !== "sent") this.#inRow.set(threadId, tries);
+    // A turn runs now: look again; it ending well drops the retry (#2781, 2026-11-01 19:31: dropped as busy, lost).
+    if (outcome === "busy") this.#schedule(threadId, this.#deps.now() + RESUME_RECHECK_MS, true);
   }
 
   #notify(threadId: ThreadId, continuesAt: number | null): void {

@@ -301,6 +301,9 @@ function streamProbeReply(messages: readonly Message[]): Reply | undefined {
  * `usage_limit_after_job <tag>` starts a two-second job whose result's turn the provider refuses once (#2781).
  * `usage_limit_twice <tag>` starts a four-second job; the turn that started it is refused once with a wait of 61 s, then
  * the turn the job's result starts once with a wait of 5 s: a refusal after a refusal (#2781).
+ * `usage_limit_job_running <tag>` starts a fifteen-minute job and a two-second one; the turn the short job's result
+ * starts is refused once with a wait of 61 s while the long job runs on, so the session never settles (#2781, as the
+ * chat that lost its continue on 2026-11-01 had a job running).
  */
 function namedBackgroundStart(prompt: string): Reply | undefined {
   if (prompt.includes("run_quick_background"))
@@ -328,6 +331,22 @@ function namedBackgroundStart(prompt: string): Reply | undefined {
       tool: "bash",
       args: { command: `sleep 4; echo usage-limit-twice-done-${twiceJob[1]}`, async: true },
       id: `call_usage_twice_${twiceJob[1]}`,
+    };
+  const runningJob = /usage_limit_job_running (\w+)/.exec(prompt);
+  if (runningJob?.[1] !== undefined)
+    return {
+      tools: [
+        {
+          tool: "bash",
+          args: { command: `sleep 900; echo long-job-${runningJob[1]}`, async: true },
+          id: `call_usage_running_long_${runningJob[1]}`,
+        },
+        {
+          tool: "bash",
+          args: { command: `sleep 2; echo usage-limit-running-done-${runningJob[1]}`, async: true },
+          id: `call_usage_running_short_${runningJob[1]}`,
+        },
+      ],
     };
   return undefined;
 }
@@ -484,6 +503,14 @@ function reply(request: Request): Reply {
     if (!usageTwiceRefused.has(`result:${twiceResult[1]}`)) {
       usageTwiceRefused.add(`result:${twiceResult[1]}`);
       return { failure: "The fake provider refused this request for now. retry-after-ms=5000" };
+    }
+    return { text: "Answered after the usage limit reset." };
+  }
+  const runningResult = /usage-limit-running-done-(\w+)/.exec(prompt);
+  if (runningResult?.[1] !== undefined) {
+    if (!usageLimitRefused.has(`running:${runningResult[1]}`)) {
+      usageLimitRefused.add(`running:${runningResult[1]}`);
+      return { failure: "The fake provider refused this request for now. retry-after-ms=61000" };
     }
     return { text: "Answered after the usage limit reset." };
   }

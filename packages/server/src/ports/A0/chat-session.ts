@@ -1514,7 +1514,10 @@ export class ChatSessionPortRuntime {
 
   /**
    * Runs a chat's turn that a usage limit stopped again, as its Retry does (omp's `/retry`), once the app's continue is
-   * due (#2781). Only a chat this server still serves under that id, idle and not paused, is continued.
+   * due (#2781). Only a chat this server still serves under that id, with no turn running and not paused, is continued.
+   * Whether a turn runs is the chat's host's answer now, not the registry's busy mark: that lasts until the session
+   * settles, and a background job still running holds that off for as long as it runs (2026-11-01 19:31: a continue
+   * read the mark, found the chat busy and was lost).
    */
   async #continueAfterLimit(threadId: ThreadId): Promise<ResumeOutcome> {
     const registry = this.#context.processRegistry;
@@ -1526,9 +1529,10 @@ export class ChatSessionPortRuntime {
     ) {
       return "gone";
     }
-    if (registry.busyOf(threadId) === true) return "busy";
     if ((registry.pausedOf(threadId) ?? null) !== null) return "paused";
     await this.#ensureRunning(entry);
+    const state = await entry.client.request("get_state", {});
+    if (state.isStreaming || state.isCompacting) return "busy";
     await entry.client.send("prompt", { text: "/retry" }).answer;
     return "sent";
   }

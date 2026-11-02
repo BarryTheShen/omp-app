@@ -69,4 +69,29 @@ realTest.describe("new UI: continuing after a usage limit", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a turn refused while a background job runs on (the chat never settles) still goes on by itself after the wait",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      const list = page.getByRole("navigation", { name: "Chats" });
+      await list.getByRole("button", { name: "New chat" }).click();
+      const box = page.getByRole("textbox", { name: "Message" });
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box.fill(`usage_limit_job_running t${Date.now().toString(36)}`);
+      await box.press("Enter");
+
+      // Two jobs start; the short one's result starts a turn, refused (61 s), while the long one runs on.
+      const failure = page.getByRole("alert").filter({ hasText: "The request failed" });
+      await expect(failure).toHaveCount(1, { timeout: 60_000 });
+      await expect(failure.getByText(/Continues by itself at /)).toBeVisible({ timeout: 30_000 });
+
+      // A minute after the wait the chat goes on by itself, the long job still running.
+      await expect(page.getByText("Answered after the usage limit reset.")).toBeVisible({
+        timeout: 200_000,
+      });
+      await expect(page.getByText(/Continues by itself at /)).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
