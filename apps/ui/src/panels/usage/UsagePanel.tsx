@@ -2,6 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import { UsageLimitStore, UsageLimitsResult, type UsageLimitWindow } from "@omp-app/contracts";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import type { ChatController, ChatUsage } from "../../chat/controller";
+import { follow } from "../../follow";
 import { lastSeen } from "../../lastSeen";
 import { barPercent, type LimitTone, limitTone, resetAtWords, resetsInWords } from "./usage-words";
 
@@ -25,8 +26,11 @@ const FILL: Record<LimitTone, string> = {
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
-/** How often the accounts' limits are read again while the panel is open: omp's report is cached by the server. */
-const ACCOUNTS_EVERY_MS = 60_000;
+/**
+ * How often the panel's "resets in" words move on. The limits themselves come from the server, which reads them every
+ * 5 minutes and every minute near a limit, and sends each read (`changed`, #2781).
+ */
+const CLOCK_EVERY_MS = 60_000;
 
 function Section({
   title,
@@ -272,26 +276,26 @@ function AccountsSection({ client }: { readonly client: AppClient }): ReactNode 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     let alive = true;
-    const read = (): void => {
-      client
-        .port(UsageLimitStore)
-        .read({})
-        .then((found) => {
-          lastAccounts.set(found);
-          if (!alive) return;
-          setResult(found);
-          setProblem(null);
-          setNow(new Date());
-        })
-        .catch(
-          (failure: unknown) =>
-            alive && setProblem(`Could not read your accounts' usage: ${failureText(failure)}`),
-        );
+    const show = (found: UsageLimitsResult): void => {
+      lastAccounts.set(found);
+      if (!alive) return;
+      setResult(found);
+      setProblem(null);
+      setNow(new Date());
     };
-    read();
-    const timer = setInterval(read, ACCOUNTS_EVERY_MS);
+    const stop = follow(client.subscribe(UsageLimitStore, "changed"), show);
+    client
+      .port(UsageLimitStore)
+      .read({})
+      .then(show)
+      .catch(
+        (failure: unknown) =>
+          alive && setProblem(`Could not read your accounts' usage: ${failureText(failure)}`),
+      );
+    const timer = setInterval(() => setNow(new Date()), CLOCK_EVERY_MS);
     return () => {
       alive = false;
+      stop();
       clearInterval(timer);
     };
   }, [client]);

@@ -238,6 +238,7 @@ function createContext(
     },
     usageLimitStore: {
       read: async () => ({ state: "unavailable" as const, reason: "Not read in this test." }),
+      subscribe: () => () => undefined,
     },
     providerAccountStore: {
       listProviders: async () => {

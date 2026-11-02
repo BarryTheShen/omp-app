@@ -34,7 +34,10 @@ export const UsageLimitsResult = z.discriminatedUnion("state", [
 ]);
 export type UsageLimitsResult = z.infer<typeof UsageLimitsResult>;
 
-/** The provider usage limits omp reports for the signed-in accounts (read-only; cached by the host). */
+/**
+ * The provider usage limits omp reports for the signed-in accounts (read-only; cached by the host). The host reads them
+ * by itself too, and every fresh read goes to every page as `changed` (#2781).
+ */
 export const UsageLimitStore = definePort({
   name: "A1.usageLimitStore",
   methods: {
@@ -44,5 +47,11 @@ export const UsageLimitStore = definePort({
       capability: "host.usage-limits",
     },
   },
-  events: {},
+  events: {
+    /** The limits after each fresh read, a page's or the host's own. */
+    changed: {
+      payload: UsageLimitsResult,
+      capability: "host.usage-limits",
+    },
+  },
 });

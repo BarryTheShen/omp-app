@@ -192,4 +192,66 @@ describe("the provider usage limits omp reports", () => {
 
     await expect(service.read()).resolves.toMatchObject({ state: "unavailable" });
   });
+
+  test("a page's fresh read goes to every subscriber; a reused one does not (#2781)", async () => {
+    const service = new UsageLimitStoreService({
+      command: [await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`)],
+      env: { PATH },
+      now: () => 1_000,
+    });
+    const told: unknown[] = [];
+    service.subscribe((result) => told.push(result));
+    const read = await service.read();
+    await service.read();
+    expect(told).toEqual([read]);
+    service.dispose();
+  });
+
+  test("watching, the server reads by itself, every minute near a limit and every 5 minutes else; disposed, it stops (#2781)", async () => {
+    // omp's report with one window at 20%: far from any limit. The fixture above has one at 125%.
+    const farJson = JSON.stringify({
+      generatedAt: 1_000,
+      reports: [
+        {
+          provider: "anthropic",
+          fetchedAt: 1_000,
+          limits: [
+            {
+              id: "anthropic:5h",
+              label: "5 Hour",
+              window: { id: "5h", label: "5 Hour" },
+              amount: { usedFraction: 0.2 },
+            },
+          ],
+        },
+      ],
+    });
+    const watched = async (json: string) => {
+      const service = new UsageLimitStoreService({
+        command: [await fakeOmp(`cat <<'EOF'\n${json}\nEOF`)],
+        env: { PATH },
+        // The test's minutes: 150 ms for the usual pace, 10 ms near a limit.
+        watchMs: 150,
+        nearWatchMs: 10,
+      });
+      let reads = 0;
+      service.subscribe(() => {
+        reads++;
+      });
+      service.watch();
+      return { service, reads: () => reads };
+    };
+    const near = await watched(usageJson);
+    const far = await watched(farJson);
+    await Bun.sleep(500);
+    near.service.dispose();
+    far.service.dispose();
+    // Far: at 150, 300 and 450 ms at most; near: after 150 ms, about every 10 ms plus omp's run.
+    expect(far.reads()).toBeGreaterThanOrEqual(1);
+    expect(far.reads()).toBeLessThanOrEqual(3);
+    expect(near.reads()).toBeGreaterThanOrEqual(6);
+    const stopped = near.reads();
+    await Bun.sleep(200);
+    expect(near.reads()).toBe(stopped);
+  });
 });

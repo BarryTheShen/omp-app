@@ -5,6 +5,12 @@ import { z } from "zod";
 export const USAGE_LIMITS_CACHE_MS = 60_000;
 /** The longest one `omp usage` read may take; past it the popover says omp did not answer in time. */
 export const USAGE_LIMITS_TIMEOUT_MS = 45_000;
+/** How often the server reads the limits by itself (#2781), so every page follows them without asking. */
+export const USAGE_LIMITS_WATCH_MS = 5 * 60_000;
+/** How often once a window is near its limit. */
+export const USAGE_LIMITS_NEAR_WATCH_MS = 60_000;
+/** A window this full, in percent, or fuller is near its limit. */
+export const USAGE_LIMITS_NEAR_PERCENT = 85;
 
 export interface UsageLimitStoreOptions {
   /** omp's command line (`ompCommand()`: the program and its leading arguments), or a test's stand-in. */
@@ -14,6 +20,19 @@ export interface UsageLimitStoreOptions {
   readonly timeoutMs?: number;
   readonly cacheMs?: number;
   readonly now?: () => number;
+  /** The watch's pace, `USAGE_LIMITS_WATCH_MS` and `USAGE_LIMITS_NEAR_WATCH_MS` unless a test sets them. */
+  readonly watchMs?: number;
+  readonly nearWatchMs?: number;
+}
+
+/** Whether any window of the result is near its limit (`USAGE_LIMITS_NEAR_PERCENT`). */
+export function nearLimit(result: UsageLimitsResult): boolean {
+  return (
+    result.state === "ready" &&
+    result.providers.some((provider) =>
+      provider.windows.some((window) => window.usedPercent >= USAGE_LIMITS_NEAR_PERCENT),
+    )
+  );
 }
 
 type OmpRun =
@@ -206,7 +225,8 @@ function environmentFor(env: Record<string, string | undefined>): Record<string,
 /**
  * The provider usage limits omp reports, read with `omp usage --json --redact`. Each read is cached for a minute and
  * concurrent reads share one omp run. The result carries provider ids, window labels, percentages and reset times
- * only: no account names, emails or ids.
+ * only: no account names, emails or ids. Once watching, the server reads them by itself, every 5 minutes and every
+ * minute once a window is near its limit, and every fresh read goes to the subscribers (#2781).
  */
 export class UsageLimitStoreService {
   readonly #command: readonly string[];
@@ -214,8 +234,13 @@ export class UsageLimitStoreService {
   readonly #timeoutMs: number;
   readonly #cacheMs: number;
   readonly #now: () => number;
+  readonly #watchMs: number;
+  readonly #nearWatchMs: number;
+  readonly #listeners = new Set<(result: UsageLimitsResult) => void>();
   #cache: { readonly at: number; readonly result: UsageLimitsResult } | undefined;
   #pending: Promise<UsageLimitsResult> | undefined;
+  #timer: ReturnType<typeof setTimeout> | undefined;
+  #disposed = false;
 
   constructor(options: UsageLimitStoreOptions) {
     this.#command = options.command;
@@ -223,6 +248,8 @@ export class UsageLimitStoreService {
     this.#timeoutMs = options.timeoutMs ?? USAGE_LIMITS_TIMEOUT_MS;
     this.#cacheMs = options.cacheMs ?? USAGE_LIMITS_CACHE_MS;
     this.#now = options.now ?? Date.now;
+    this.#watchMs = options.watchMs ?? USAGE_LIMITS_WATCH_MS;
+    this.#nearWatchMs = options.nearWatchMs ?? USAGE_LIMITS_NEAR_WATCH_MS;
   }
 
   /** The limits omp reports now, or the plain reason they could not be read. Never rejects. */
@@ -230,6 +257,43 @@ export class UsageLimitStoreService {
     if (this.#cache !== undefined && this.#now() - this.#cache.at < this.#cacheMs) {
       return Promise.resolve(this.#cache.result);
     }
+    return this.#fresh();
+  }
+
+  /** Each fresh read's result, whoever asked for it: a page, or the server's own watch. */
+  subscribe(listener: (result: UsageLimitsResult) => void): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+
+  /** Reads the limits by itself from now on, the first time one watch interval from now, until disposed. */
+  watch(): void {
+    if (this.#timer !== undefined || this.#disposed) return;
+    this.#schedule(this.#watchMs);
+  }
+
+  dispose(): void {
+    this.#disposed = true;
+    clearTimeout(this.#timer);
+    this.#timer = undefined;
+    this.#listeners.clear();
+  }
+
+  #schedule(ms: number): void {
+    const timer = setTimeout(() => {
+      this.#timer = undefined;
+      void this.#fresh().then((result) => {
+        if (!this.#disposed) this.#schedule(nearLimit(result) ? this.#nearWatchMs : this.#watchMs);
+      });
+    }, ms);
+    // The watch alone keeps no process alive.
+    timer.unref?.();
+    this.#timer = timer;
+  }
+
+  #fresh(): Promise<UsageLimitsResult> {
     this.#pending ??= this.#load().finally(() => {
       this.#pending = undefined;
     });
@@ -241,6 +305,7 @@ export class UsageLimitStoreService {
     const result =
       run.kind === "failed" ? unavailable(run.reason) : parseUsageOutput(run.text, this.#now());
     this.#cache = { at: this.#now(), result };
+    if (!this.#disposed) for (const listener of this.#listeners) listener(result);
     return result;
   }
 }

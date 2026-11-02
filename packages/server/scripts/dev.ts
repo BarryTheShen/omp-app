@@ -560,6 +560,8 @@ export async function createCompositionServer(
   const modelPreferenceStore = new ModelPreferenceStoreService({ appDataDir });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
   const usageLimitStore = createUsageLimitStore({ env, command: ompCmd });
+  // The limits are read by the server itself from now on, so every page follows them (#2781).
+  usageLimitStore.watch();
   const extensionCatalog = createExtensionCatalog({
     env,
     homeDir,
@@ -729,6 +731,7 @@ export async function createCompositionServer(
           sessionPinStore.dispose();
           memoryStore.dispose();
           devices.desk.dispose();
+          usageLimitStore.dispose();
         }
       }
     },

@@ -3,6 +3,7 @@ import type { PortRegistration } from "../../../registry/ports";
 import type { A1PortContext } from "./context";
 import { assertNotAborted, createA1PortRegistration } from "./helper";
 
+/** The usage limits omp reports; every fresh read, a page's or the server's own watch, goes to every page as `changed`. */
 export function createUsageLimitStoreRegistration(context: A1PortContext): PortRegistration {
   return createA1PortRegistration(
     UsageLimitStore,
@@ -13,7 +14,12 @@ export function createUsageLimitStoreRegistration(context: A1PortContext): PortR
       },
     },
     context.publish,
-    [],
+    [
+      {
+        event: "changed",
+        subscribe: (listener) => context.usageLimitStore.subscribe(listener),
+      },
+    ],
     context.watchStreamActivity,
   );
 }
