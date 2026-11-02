@@ -19,12 +19,6 @@ import { EventReplayHub } from "./replay";
 const DEFAULT_PORT = 4317;
 const DEFAULT_SERVER_VERSION = "0.0.0";
 const DEFAULT_REPLAY_LIMIT = 256;
-/**
- * Frames this long or longer go compressed to a browser that takes `permessage-deflate` (#2768): a chat's window or
- * replay is mostly JSON text and shrinks several times over, which a phone on a relayed link feels most. A shorter frame
- * would only grow.
- */
-const COMPRESS_FROM_CHARACTERS = 1024;
 /** The most `stop()` waits for Bun to finish closing connections. */
 const STOP_WAIT_MS = 1_000;
 /** How often connections whose socket closed unheard are looked for (`Dispatcher.sweep`). */
@@ -348,9 +342,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       if (page.status === 404) return serveStatic(staticRoot, url.pathname, request);
       return url.pathname === "/" || url.pathname === "/index.html" ? renewed(request, page) : page;
     },
-    // Compression is offered; whether a frame is compressed is decided per frame (`COMPRESS_FROM_CHARACTERS`).
     websocket: {
-      perMessageDeflate: true,
       open: (socket) => {
         if (socket.data.authFailure) {
           options.logger?.warn("connection.rejected", { reason: socket.data.authFailure.reason });
@@ -360,9 +352,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const dispatcherSocket = {
           id: socket.data.id,
           send: (frame: ServerFrame) => {
-            const text = JSON.stringify(ServerFrameSchema.parse(frame));
             // Bun drops what is sent on a closed connection (status 0): the session ends as the socket's close would end it.
-            if (socket.send(text, text.length >= COMPRESS_FROM_CHARACTERS) === 0) {
+            if (socket.send(JSON.stringify(ServerFrameSchema.parse(frame))) === 0) {
               throw new Error("The connection has closed.");
             }
           },
