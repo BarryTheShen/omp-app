@@ -160,8 +160,13 @@ realTest.describe("new UI in the desktop window", () => {
 
       const browser = await realApp.open({ path: "/" });
       await search(browser);
+      // Only the window's server options: a tour's title can name a server ("Tour: Signing in to an MCP server").
       await expect(
-        browser.getByRole("dialog", { name: "Palette" }).getByRole("option", { name: /server/i }),
+        browser
+          .getByRole("dialog", { name: "Palette" })
+          .getByRole("option", {
+            name: /^(Connect to another server|Use this computer's server|Open the server on )/,
+          }),
       ).toHaveCount(0);
       await browser.keyboard.press("Escape");
       await settingsButton(browser).click();
