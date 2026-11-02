@@ -4,12 +4,13 @@
  * throwaway agent folder. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import type { HostRequest } from "@omp-app/contracts/chat-host";
+import { type HostRequest, SIGN_IN_ADDRESS_PROMPT } from "@omp-app/contracts/chat-host";
 import { chatHostChats, PROGRAMS, realTest } from "./sdk-chat-host-harness";
 
 /**
  * `test-login` opens a page and asks for a code; `test-secret` asks for a secret; `test-accounts` signs in the account
- * whose email is pasted, so two sign-ins store two accounts.
+ * whose email is pasted, so two sign-ins store two accounts; `test-callback` waits for omp's callback on its own computer,
+ * so the app asks for the address the browser ends on; `test-hang` opens its page and never ends, deaf to omp's stop.
  */
 const EXTENSION = `
 export default function (pi) {
@@ -44,14 +45,37 @@ export default function (pi) {
       },
     },
   });
+  pi.registerProvider("test-callback", {
+    oauth: {
+      name: "Test Callback",
+      async login(callbacks) {
+        callbacks.onAuth({ url: "https://login.example.invalid/callback" });
+        const address = await callbacks.onManualCodeInput(callbacks.signal);
+        if (new URL(address).searchParams.get("code") !== "good-code") throw new Error("No good code");
+        return "callback-test-key";
+      },
+    },
+  });
+  pi.registerProvider("test-hang", {
+    oauth: {
+      name: "Test Hang",
+      async login(callbacks) {
+        callbacks.onAuth({ url: "https://login.example.invalid/hang" });
+        return await new Promise(() => {});
+      },
+    },
+  });
 }
 `;
 
 const chats = chatHostChats();
 afterEach(() => chats.stopAll(), 60_000);
 
-/** A chat with the test providers; each question a sign-in asks gets the next of `codes`, the last one again after. */
-async function chatWithSignIn(command: readonly string[], ...codes: readonly string[]) {
+/**
+ * A chat with the test providers; each question a sign-in asks gets the next of `answers` (null cancels it), the last one
+ * again after.
+ */
+async function chatWithSignIn(command: readonly string[], ...answers: readonly (string | null)[]) {
   const chat = await chats.start(command, {
     agentFiles: { "extensions/sign-in.ts": EXTENSION },
     nativeDiscovery: true,
@@ -59,7 +83,8 @@ async function chatWithSignIn(command: readonly string[], ...codes: readonly str
   const asked: HostRequest[] = [];
   chat.client.onRequest(async (request) => {
     asked.push(request);
-    return { value: codes[Math.min(asked.length, codes.length) - 1] };
+    const answer = answers[Math.min(asked.length, answers.length) - 1];
+    return answer === null || answer === undefined ? { cancelled: true } : { value: answer };
   });
   await chat.client.hello;
   return { chat, asked };
@@ -94,6 +119,7 @@ describe("the chat host's sign-in", () => {
         const { chat, asked } = await chatWithSignIn(command, "good-code");
         expect(await chat.client.request("login", { providerId: "test-login" })).toEqual({
           providerId: "test-login",
+          cancelled: false,
         });
         expect(await chat.next((event) => event.type === "ui_open_url")).toEqual({
           type: "ui_open_url",
@@ -105,10 +131,16 @@ describe("the chat host's sign-in", () => {
             (event) => event.type === "ui_notify" && event.message === "Waiting for the code",
           ),
         ).toMatchObject({ notifyType: "info" });
+        // The question carries the page, so it can be opened or copied wherever it is answered.
         expect(asked.map(({ method, params }) => ({ method, params }))).toEqual([
           {
             method: "ui.input",
-            params: { title: "Paste the code", placeholder: "code", timeout: 600_000 },
+            params: {
+              title: "Paste the code",
+              placeholder: "code",
+              timeout: 600_000,
+              signIn: { url: "https://login.example.invalid/authorize", name: "Test Login" },
+            },
           },
         ]);
         const { providers } = await chat.client.request("get_login_providers", {});
@@ -132,6 +164,68 @@ describe("the chat host's sign-in", () => {
         expect(providers.find((provider) => provider.id === "test-login")?.authenticated).toBe(
           false,
         );
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a provider that returns to omp's own computer is finished with the address the browser ends on`,
+      async () => {
+        const { chat, asked } = await chatWithSignIn(
+          command,
+          "http://localhost:1455/callback?code=good-code&state=s",
+        );
+        expect(await chat.client.request("login", { providerId: "test-callback" })).toEqual({
+          providerId: "test-callback",
+          cancelled: false,
+        });
+        expect(asked.map(({ method, params }) => ({ method, params }))).toEqual([
+          {
+            method: "ui.input",
+            params: {
+              title: SIGN_IN_ADDRESS_PROMPT,
+              placeholder: "http://localhost:…",
+              timeout: 600_000,
+              signIn: { url: "https://login.example.invalid/callback", name: "Test Callback" },
+            },
+          },
+        ]);
+        const { providers } = await chat.client.request("get_login_providers", {});
+        expect(providers.find((provider) => provider.id === "test-callback")?.authenticated).toBe(
+          true,
+        );
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a cancelled question stops the sign-in: it answers cancelled, and nothing is stored`,
+      async () => {
+        const { chat, asked } = await chatWithSignIn(command, null);
+        expect(await chat.client.request("login", { providerId: "test-login" })).toEqual({
+          providerId: "test-login",
+          cancelled: true,
+        });
+        expect(asked).toHaveLength(1);
+        const { providers } = await chat.client.request("get_login_providers", {});
+        expect(providers.find((provider) => provider.id === "test-login")?.authenticated).toBe(
+          false,
+        );
+        // Nothing runs any more.
+        expect(await chat.client.request("cancel_sign_in", {})).toEqual({ cancelled: false });
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: cancel_sign_in stops a sign-in at once, even one whose provider does not stop by itself`,
+      async () => {
+        const { chat } = await chatWithSignIn(command);
+        const login = chat.client.request("login", { providerId: "test-hang" });
+        await chat.next((event) => event.type === "ui_open_url");
+        expect(await chat.client.request("cancel_sign_in", {})).toEqual({ cancelled: true });
+        expect(await login).toEqual({ providerId: "test-hang", cancelled: true });
+        expect(await chat.client.request("cancel_sign_in", {})).toEqual({ cancelled: false });
       },
       60_000,
     );

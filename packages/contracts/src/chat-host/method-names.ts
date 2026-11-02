@@ -50,6 +50,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "set_ask_dialog",
   "get_login_providers",
   "login",
+  "cancel_sign_in",
   "mcp_reauth",
   "get_provider_accounts",
   "logout_account",

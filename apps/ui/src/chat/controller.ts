@@ -32,6 +32,7 @@ import {
   type JobDetail,
   type JobList,
   type LoginProvider,
+  type LoginResult,
   type McpReauthResult,
   type ModelHub,
   type PlanFile,
@@ -574,14 +575,19 @@ export class ChatController {
 
   /**
    * Signs in to a provider through this chat's omp. omp sends the page to open (the store's `signIn`) and may ask for
-   * a code as one of its questions; this ends when the sign-in does.
+   * a code as one of its questions; this ends when the sign-in does, and answers whether it was cancelled.
    */
-  async login(providerId: string): Promise<void> {
+  async login(providerId: string): Promise<LoginResult> {
     try {
-      await this.#request("login", { providerId });
+      return await this.#request("login", { providerId });
     } finally {
       this.store.clearSignIn();
     }
+  }
+
+  /** Stops the sign-in running in this chat, a provider's or an MCP server's (#2784); answers whether one ran. */
+  async cancelSignIn(): Promise<boolean> {
+    return (await this.#request("cancel_sign_in", {})).cancelled;
   }
 
   /** omp's MCP servers as this chat's omp lists them (its `/mcp list`); none before the chat is open. */

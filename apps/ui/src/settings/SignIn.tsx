@@ -4,7 +4,7 @@ import type {
   ProviderAccounts,
   ProviderAuthSource,
 } from "@omp-app/contracts/chat-host";
-import { type ReactNode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import type { ChatController } from "../chat/controller";
 import { lastSeen } from "../lastSeen";
+import { SignInProgress } from "./SignInProgress";
 
 const words = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -48,7 +49,8 @@ function sourceWords(source: ProviderAuthSource): string {
 
 /**
  * Sign-in to omp's providers, at the top of the Providers tab. omp signs in inside a chat, so this goes through the
- * focused chat: its page to open shows here, and a code it asks for comes as one of the chat's questions.
+ * focused chat: its page to open or copy shows here, a code or an address it asks for is answered here (or in the
+ * chat, where the same question shows with the page), and Cancel sign-in stops it (#2784).
  */
 export function SignIn({ controller }: { readonly controller: ChatController | null }): ReactNode {
   return (
@@ -64,11 +66,12 @@ export function SignIn({ controller }: { readonly controller: ChatController | n
 }
 
 function Providers({ controller }: { readonly controller: ChatController }): ReactNode {
-  const { signIn } = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const [providers, setProviders] = useState<readonly LoginProvider[] | null>(
     () => lastProviders.get() ?? null,
   );
   const [problem, setProblem] = useState<string | null>(null);
+  /** How the last sign-in ended, when it was cancelled. */
+  const [ended, setEnded] = useState<string | null>(null);
   /** The provider being signed in to. */
   const [busy, setBusy] = useState<LoginProvider | null>(null);
   /** The provider chosen to sign in to next. */
@@ -100,9 +103,13 @@ function Providers({ controller }: { readonly controller: ChatController }): Rea
   const login = (provider: LoginProvider): void => {
     setBusy(provider);
     setProblem(null);
+    setEnded(null);
     controller
       .login(provider.id)
-      .then(changed)
+      .then(({ cancelled }) => {
+        if (cancelled) setEnded(`Sign-in to ${provider.name} cancelled.`);
+        else changed();
+      })
       .catch((failure: unknown) =>
         setProblem(`Could not sign in to ${provider.name}: ${words(failure)}`),
       )
@@ -169,24 +176,10 @@ function Providers({ controller }: { readonly controller: ChatController }): Rea
           </Button>
         </div>
       )}
-      {busy !== null && (
+      {busy !== null && <SignInProgress controller={controller} name={busy.name} />}
+      {ended !== null && busy === null && (
         <p role="status" className="mt-2 text-sm text-t2">
-          {signIn === null ? (
-            `Starting the sign-in to ${busy.name}…`
-          ) : (
-            <>
-              Open{" "}
-              <a
-                href={signIn.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent-ink underline underline-offset-2"
-              >
-                {busy.name}'s sign-in page
-              </a>
-              {signIn.instructions === undefined ? "." : `. ${signIn.instructions}`}
-            </>
-          )}
+          {ended}
         </p>
       )}
       {problem !== null && (

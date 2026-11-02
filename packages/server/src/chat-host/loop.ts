@@ -15,6 +15,7 @@
 import { AgentBusyError, agentPauseGate } from "@oh-my-pi/pi-agent-core";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
+import { PASTE_CODE_LOGIN_PROVIDERS } from "@oh-my-pi/pi-ai/registry";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import { cfgCycleOrder } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import {
@@ -66,7 +67,6 @@ import {
   type ChatHostState,
   type ConfigUpdateEvent,
   isChatHostMethod,
-  MCP_REAUTH_ADDRESS_PROMPT,
   type PromptAnswer,
   type PromptParams,
   type ProviderAccounts,
@@ -76,6 +76,7 @@ import {
   type QueuedMessage,
   type RoleModel,
   type ShellRunResult,
+  SIGN_IN_ADDRESS_PROMPT,
 } from "@omp-app/contracts/chat-host";
 import { BtwController } from "./btw";
 import { SessionEventStream } from "./events";
@@ -98,6 +99,7 @@ import {
 } from "./prompt-results";
 import type { ChatSession } from "./session-factory";
 import { isSessionSettled, SettleWatcher } from "./settle";
+import { SignIn } from "./sign-in";
 import { cancelSubagent, readSubagentTranscript, SubagentRoster, steerSubagent } from "./subagents";
 import { HostRequests, HostUIContext } from "./ui-context";
 
@@ -413,6 +415,18 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     }
   };
 
+  /** The sign-in running in this chat, a provider's or an MCP server's; a new one stops it (#2784). */
+  let signingIn: SignIn | null = null;
+  const startSignIn = (name: string): SignIn => {
+    signingIn?.cancel();
+    const started = new SignIn(ui, name);
+    signingIn = started;
+    return started;
+  };
+  const endSignIn = (ended: SignIn): void => {
+    if (signingIn === ended) signingIn = null;
+  };
+
   const handlers: {
     readonly [M in Exclude<ChatHostMethod, "prompt" | "steer" | "follow_up">]: (
       params: ChatHostMethodMap[M]["params"],
@@ -652,41 +666,65 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     }),
     login: async ({ providerId }) => {
       // omp's RPC sign-in (`rpc-mode.ts:2533-2590`): the page opens without an answer, progress is a notice, and a
-      // pasted code is an input. A secret, or a question before any page, needs omp's terminal.
+      // pasted code is an input. A secret, or a question before any page, needs omp's terminal. Its questions carry
+      // the page, and a cancelled one, or `cancel_sign_in`, stops it (#2784).
       const provider = getOAuthProviders().find((candidate) => candidate.id === providerId);
       if (!provider) throw new Error(`Unknown OAuth provider: ${providerId}`);
-      let pageOpened = false;
-      await session.modelRegistry.authStorage.oauth.login(providerId, {
-        onAuth: ({ url, launchUrl, instructions }) => {
-          pageOpened = true;
-          emit({
-            type: "ui_open_url",
-            url,
-            ...(launchUrl !== undefined ? { launchUrl } : {}),
-            ...(instructions !== undefined ? { instructions } : {}),
-          });
-        },
-        onProgress: (message) => ui.notify(message, "info"),
-        onPrompt: async (prompt) => {
-          if (prompt.secret) {
-            throw new Error(
-              `Provider '${providerId}' asks for secret input, which the app cannot hide. Sign in from omp's terminal.`,
-            );
-          }
-          if (!pageOpened) {
-            throw new Error(
-              `Provider '${providerId}' asks questions before its sign-in page, which the app does not support. Sign in from omp's terminal.`,
-            );
-          }
-          return (await ui.input(prompt.message, prompt.placeholder, { timeout: 600_000 })) ?? "";
-        },
-      });
+      const signIn = startSignIn(provider.name);
+      try {
+        const { cancelled } = await signIn.run(
+          session.modelRegistry.authStorage.oauth.login(providerId, {
+            signal: signIn.signal,
+            onAuth: ({ url, launchUrl, instructions }) => {
+              signIn.opened(url);
+              emit({
+                type: "ui_open_url",
+                url,
+                ...(launchUrl !== undefined ? { launchUrl } : {}),
+                ...(instructions !== undefined ? { instructions } : {}),
+              });
+            },
+            onProgress: (message) => ui.notify(message, "info"),
+            onPrompt: async (prompt) => {
+              if (prompt.secret) {
+                throw new Error(
+                  `Provider '${providerId}' asks for secret input, which the app cannot hide. Sign in from omp's terminal.`,
+                );
+              }
+              if (!signIn.pageOpened) {
+                throw new Error(
+                  `Provider '${providerId}' asks questions before its sign-in page, which the app does not support. Sign in from omp's terminal.`,
+                );
+              }
+              return await signIn.ask(prompt.message, prompt.placeholder);
+            },
+            // A provider that returns to `localhost` returns to omp's computer, which another device's browser cannot
+            // reach: the address that browser ends on is pasted instead, and omp ends the question when its own browser
+            // answered first. A paste-code provider keeps omp's own question, for the code its page shows.
+            ...(PASTE_CODE_LOGIN_PROVIDERS.has(providerId)
+              ? {}
+              : {
+                  onManualCodeInput: (signal?: AbortSignal) =>
+                    signIn.ask(SIGN_IN_ADDRESS_PROMPT, "http://localhost:…", signal),
+                }),
+          }),
+        );
+        if (cancelled) return { providerId, cancelled: true };
+      } finally {
+        endSignIn(signIn);
+      }
       // The stored sign-in runs the provider's model discovery again instead of reusing the cached list (omp #5780).
       await session.modelRegistry.refreshProvider(
         provider.storeCredentialsAs ?? provider.id,
         "online",
       );
-      return { providerId };
+      return { providerId, cancelled: false };
+    },
+    cancel_sign_in: async () => {
+      const running = signingIn;
+      if (running === null) return { cancelled: false };
+      running.cancel();
+      return { cancelled: true };
     },
     mcp_reauth: async ({ name }) => {
       // omp's `/mcp reauth <name>` (`mcp-command-controller.ts`, `#handleReauth`), from the device in use (#2779 D6.2):
@@ -702,25 +740,34 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       if (found.config.enabled === false) {
         throw new Error(`Server "${name}" is disabled. Run /mcp enable ${name} first.`);
       }
-      const outcome = await reauthorizeMcpServer(name, found, {
-        authStorage: session.modelRegistry.authStorage,
-        ...(manager === undefined ? {} : { mcpManager: manager }),
-        cwd,
-        onAuth: ({ url, launchUrl, instructions }) =>
-          emit({
-            type: "ui_open_url",
-            url,
-            ...(launchUrl !== undefined ? { launchUrl } : {}),
-            ...(instructions !== undefined ? { instructions } : {}),
-          }),
-        onProgress: (message) => ui.notify(message, "info"),
-        // A browser on omp's own computer answers by itself; then omp ends the question (`signal`).
-        onManualCodeInput: async (signal) =>
-          (await ui.input(MCP_REAUTH_ADDRESS_PROMPT, "http://localhost:…", {
-            timeout: 600_000,
-            ...(signal === undefined ? {} : { signal }),
-          })) ?? "",
-      });
+      const signIn = startSignIn(name);
+      let outcome: Awaited<ReturnType<typeof reauthorizeMcpServer>>;
+      try {
+        const reauth = reauthorizeMcpServer(name, found, {
+          authStorage: session.modelRegistry.authStorage,
+          ...(manager === undefined ? {} : { mcpManager: manager }),
+          cwd,
+          signal: signIn.signal,
+          onAuth: ({ url, launchUrl, instructions }) => {
+            signIn.opened(url);
+            emit({
+              type: "ui_open_url",
+              url,
+              ...(launchUrl !== undefined ? { launchUrl } : {}),
+              ...(instructions !== undefined ? { instructions } : {}),
+            });
+          },
+          onProgress: (message) => ui.notify(message, "info"),
+          // A browser on omp's own computer answers by itself; then omp ends the question (`signal`).
+          onManualCodeInput: (signal) =>
+            signIn.ask(SIGN_IN_ADDRESS_PROMPT, "http://localhost:…", signal),
+        });
+        const { cancelled } = await signIn.run(reauth);
+        if (cancelled) return { name, status: null, cancelled: true };
+        outcome = await reauth;
+      } finally {
+        endSignIn(signIn);
+      }
       // The server connects again with its new sign-in, and later prompts see its tools. One this chat's omp does not run
       // (set up after the chat started, or never found) is connected alone, as omp's `/mcp enable` does.
       let status = await reconnectMcpManagerServer(manager, name, outcome.config);
@@ -735,7 +782,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       if (status !== undefined && manager !== undefined) {
         await session.refreshMCPTools(manager.getTools());
       }
-      return { name, status: status ?? null };
+      return { name, status: status ?? null, cancelled: false };
     },
     get_provider_accounts: async ({ providerId }) => readProviderAccounts(session, providerId),
     logout_account: async ({ providerId, credentialId }) => {

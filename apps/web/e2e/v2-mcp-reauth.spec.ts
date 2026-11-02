@@ -191,7 +191,7 @@ realTest.describe("new UI: signing in to an MCP server again", () => {
         ended.searchParams.set("code", "fake-code");
         ended.searchParams.set("state", authorize.searchParams.get("state") ?? "");
         await servers(page)
-          .getByRole("textbox", { name: "The address your browser ended on" })
+          .getByRole("textbox", { name: "Paste its address here" })
           .fill(ended.toString());
         await servers(page).getByRole("button", { name: "Finish sign-in" }).click();
 

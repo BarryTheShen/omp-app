@@ -441,21 +441,31 @@ export type ExportHtmlParams = z.infer<typeof ExportHtmlParams>;
 export const LoginParams = z.object({ providerId: z.string().min(1) });
 export type LoginParams = z.infer<typeof LoginParams>;
 
+/** What `login` answers: the provider, and whether the sign-in was cancelled (its question, or `cancel_sign_in`). */
+export interface LoginResult {
+  readonly providerId: string;
+  readonly cancelled: boolean;
+}
+
 /** `mcp_reauth`: an MCP server to sign in to again, by its name in omp's MCP config (#2779 D6.2). */
 export const McpReauthParams = z.object({ name: z.string().min(1).max(100) });
 export type McpReauthParams = z.infer<typeof McpReauthParams>;
 
-/** What `mcp_reauth` answers: the server's connection once it is signed in again; null when omp runs no such server. */
+/**
+ * What `mcp_reauth` answers: the server's connection once it is signed in again (null when omp runs no such server, or
+ * the sign-in was cancelled), and whether it was cancelled.
+ */
 export interface McpReauthResult {
   readonly name: string;
   readonly status: "connected" | "connecting" | "disconnected" | null;
+  readonly cancelled: boolean;
 }
 
 /**
- * The question `mcp_reauth` asks while signing in: omp waits for the sign-in's answer on its own computer, which the
- * device's browser cannot reach, so the address that browser ends on is pasted back. Settings finds it by this title.
+ * The question a sign-in asks when omp waits for its answer on its own computer, which the device's browser cannot
+ * reach (an MCP server's, and a provider's that returns to `localhost`): the address that browser ends on is pasted back.
  */
-export const MCP_REAUTH_ADDRESS_PROMPT =
+export const SIGN_IN_ADDRESS_PROMPT =
   "After you sign in, your browser shows a page that cannot load. Paste its address here.";
 
 /** One of omp's sign-in providers, and whether a sign-in for it is stored. */
@@ -850,7 +860,12 @@ export interface ChatHostMethodMap {
   /** omp's sign-in; runs in the background, so other requests do not wait for the browser. */
   readonly login: {
     readonly params: LoginParams;
-    readonly result: { readonly providerId: string };
+    readonly result: LoginResult;
+  };
+  /** Stops the sign-in running in this chat, a provider's or an MCP server's (#2784); answers whether one ran. */
+  readonly cancel_sign_in: {
+    readonly params: EmptyParams;
+    readonly result: { readonly cancelled: boolean };
   };
   /**
    * omp's `/mcp reauth <name>`, from the device in use: the server's sign-in page opens there (`ui_open_url`), and the
@@ -1084,6 +1099,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   set_ask_dialog: EnabledParams,
   get_login_providers: EmptyParams,
   login: LoginParams,
+  cancel_sign_in: EmptyParams,
   mcp_reauth: McpReauthParams,
   get_provider_accounts: LoginParams,
   logout_account: LogoutAccountParams,

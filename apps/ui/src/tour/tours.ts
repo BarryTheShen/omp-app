@@ -848,6 +848,40 @@ const PROVIDER_ACCOUNTS_TOUR: Tour = {
   ],
 };
 
+/** #2784: a sign-in shows its page to open or copy, takes its code or address in Settings or the chat, and can stop. */
+const SIGN_IN_PAGE_TOUR: Tour = {
+  id: "sign-in-page-2026-11-02",
+  title: "Signing in from any device",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-providers"),
+      title: "Providers",
+      text: "Sign-in is at the top of <b>Providers</b>. Open it.",
+      action: { kind: "appears", selector: part("provider-sign-in") },
+    },
+    {
+      target: part("provider-sign-in"),
+      title: "Sign in",
+      text: "Pick a provider and <b>Sign in</b>. Its page shows here with <b>Open</b> and <b>Copy link</b>, for any browser on any device. When the provider asks for a code, or for the address your browser ends on, paste it here, or in the chat, where the same question shows with the page. <b>Cancel sign-in</b> stops it.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 const DEVICES = part("devices");
 
 const DEVICES_TOUR: Tour = {
@@ -1196,6 +1230,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-sign-in-page",
+    when: "2026-11-02T03:03:00-06:00",
+    summary:
+      "A sign-in shows its page with Open and Copy link, takes the code or address it asks for in Settings or in the chat, and Cancel sign-in stops it.",
+    tours: [SIGN_IN_PAGE_TOUR],
+  },
   {
     id: "2026-11-02-attach-images",
     when: "2026-11-02T02:45:00-06:00",

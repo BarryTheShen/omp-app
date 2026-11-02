@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatController } from "./controller";
+import { SignInPage } from "./SignInPage";
 
 type Answer = (answer: HostDialogAnswer) => void;
 
@@ -110,13 +111,17 @@ function RequestCard({
     case "ui.input":
       title = request.params.title;
       body = (
-        <TextAnswer
-          initial=""
-          placeholder={request.params.placeholder}
-          multiline={false}
-          busy={busy}
-          onAnswer={answer}
-        />
+        <>
+          {/* A sign-in's question (#2784): its page to open or copy; Cancel stops the sign-in. */}
+          {request.params.signIn !== undefined && <SignInPage link={request.params.signIn} />}
+          <TextAnswer
+            initial=""
+            placeholder={request.params.placeholder}
+            multiline={false}
+            busy={busy}
+            onAnswer={answer}
+          />
+        </>
       );
       break;
     case "ui.editor":

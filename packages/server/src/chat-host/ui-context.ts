@@ -27,6 +27,7 @@ import {
   type ChatHostResponse,
   HOST_METHOD_ANSWERS,
   type SelectDialog,
+  type SignInLink,
   type UiEvent,
   type ValueAnswer,
 } from "@omp-app/contracts/chat-host";
@@ -319,16 +320,23 @@ export class HostUIContext implements ExtensionUIContext {
     );
   }
 
+  /** omp's text question; `extra.signIn` is the app's own: a sign-in's page, shown with the question (#2784). */
   input(
     title: string,
     placeholder?: string,
     dialogOptions?: ExtensionUIDialogOptions,
+    extra?: { readonly signIn?: SignInLink },
   ): Promise<string | undefined> {
     return openDialog(
       this.#requests,
       this.#emit,
       "ui.input",
-      { title, ...(placeholder !== undefined ? { placeholder } : {}), ...timeoutOf(dialogOptions) },
+      {
+        title,
+        ...(placeholder !== undefined ? { placeholder } : {}),
+        ...timeoutOf(dialogOptions),
+        ...(extra?.signIn !== undefined ? { signIn: extra.signIn } : {}),
+      },
       dialogOptions,
       undefined,
       readValue(dialogOptions),

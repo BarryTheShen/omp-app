@@ -1,13 +1,9 @@
 import type { McpCommandServerSummary } from "@omp-app/contracts";
-import {
-  type HostDialogRequest,
-  MCP_REAUTH_ADDRESS_PROMPT,
-  type McpReauthResult,
-} from "@omp-app/contracts/chat-host";
-import { type ReactNode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import type { McpReauthResult } from "@omp-app/contracts/chat-host";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { ChatController } from "../chat/controller";
+import { SignInProgress } from "./SignInProgress";
 
 const words = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -35,8 +31,8 @@ function signedInWords(name: string, status: McpReauthResult["status"]): string 
  * omp's MCP servers, at the top of the Tools tab (#2779 D6.2): each one, and Sign in again for an enabled server reached
  * over the network (HTTP or SSE), the kind that signs in through a page; for one that needs no sign-in omp says so. omp
  * signs in inside a chat, so this goes through the focused chat: the page opens here, on the device in use, and as omp
- * waits for the sign-in's answer on its own computer, the address the browser ends on is asked for as one of the chat's
- * questions.
+ * waits for the sign-in's answer on its own computer, the address the browser ends on is asked for here and in the chat;
+ * Cancel sign-in stops it (#2784).
  */
 export function McpServers({
   controller,
@@ -58,10 +54,6 @@ export function McpServers({
 }
 
 function Servers({ controller }: { readonly controller: ChatController }): ReactNode {
-  const { signIn, requests } = useSyncExternalStore(
-    controller.store.subscribe,
-    controller.store.getSnapshot,
-  );
   const [servers, setServers] = useState<readonly McpCommandServerSummary[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   /** How the last sign-in ended, when it ended well. */
@@ -87,7 +79,9 @@ function Servers({ controller }: { readonly controller: ChatController }): React
     controller
       .mcpReauth(name)
       .then((result) => {
-        if (result.status === "disconnected") {
+        if (result.cancelled) {
+          setDone(`Sign-in to ${name} cancelled.`);
+        } else if (result.status === "disconnected") {
           setProblem(`Signed in to ${name} again, but it did not connect.`);
         } else {
           setDone(signedInWords(name, result.status));
@@ -127,36 +121,7 @@ function Servers({ controller }: { readonly controller: ChatController }): React
           ))}
         </ul>
       )}
-      {busy !== null && (
-        <div role="status" className="mt-2 text-sm text-t2">
-          {signIn === null ? (
-            `Starting the sign-in to ${busy}…`
-          ) : (
-            <>
-              Open{" "}
-              <a
-                href={signIn.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent-ink underline underline-offset-2"
-              >
-                {busy}'s sign-in page
-              </a>
-              . After you sign in, your browser shows a page that cannot load: paste its address
-              here.
-            </>
-          )}
-        </div>
-      )}
-      {busy !== null && (
-        <AddressQuestion
-          controller={controller}
-          request={requests.find(
-            (request) =>
-              request.method === "ui.input" && request.params.title === MCP_REAUTH_ADDRESS_PROMPT,
-          )}
-        />
-      )}
+      {busy !== null && <SignInProgress controller={controller} name={busy} />}
       {done !== null && busy === null && (
         <p role="status" className="mt-2 text-sm text-t2">
           {done}
@@ -168,60 +133,5 @@ function Servers({ controller }: { readonly controller: ChatController }): React
         </p>
       )}
     </>
-  );
-}
-
-/**
- * omp's question for the address the browser ends on, answered here as well as in the chat (it is the chat's own
- * question, behind Settings): a sign-in from Settings finishes in Settings.
- */
-function AddressQuestion({
-  controller,
-  request,
-}: {
-  readonly controller: ChatController;
-  readonly request: HostDialogRequest | undefined;
-}): ReactNode {
-  const [address, setAddress] = useState("");
-  const [sending, setSending] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  if (request === undefined) return null;
-  const answer = (value: { readonly value: string } | { readonly cancelled: true }): void => {
-    setSending(true);
-    setProblem(null);
-    controller
-      .answer(request.id, value)
-      .catch((failure: unknown) => setProblem(`Not sent: ${words(failure)}`))
-      .finally(() => setSending(false));
-  };
-  return (
-    <form
-      className="mt-2 flex flex-wrap items-center gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        answer({ value: address.trim() });
-      }}
-    >
-      <Input
-        aria-label="The address your browser ended on"
-        placeholder="http://localhost:…"
-        className="min-w-64 flex-1"
-        value={address}
-        onChange={(event) => setAddress(event.target.value)}
-      />
-      <Button type="submit" size="sm" disabled={sending || address.trim() === ""}>
-        Finish sign-in
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        disabled={sending}
-        onClick={() => answer({ cancelled: true })}
-      >
-        Cancel
-      </Button>
-      {problem !== null && <p className="w-full text-xs text-bad-ink">{problem}</p>}
-    </form>
   );
 }

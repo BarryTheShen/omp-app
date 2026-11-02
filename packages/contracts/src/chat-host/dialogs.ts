@@ -61,9 +61,20 @@ export interface ConfirmDialog extends Timed {
   readonly message: string;
 }
 
+/** The page a sign-in waits on, and what is signed in to: an omp provider's name, or an MCP server's. */
+export interface SignInLink {
+  readonly url: string;
+  readonly name: string;
+}
+
 export interface InputDialog extends Timed {
   readonly title: string;
   readonly placeholder?: string;
+  /**
+   * Set when the question is a sign-in's (#2784): its page, shown with the question to open or copy wherever the
+   * question is answered, and how Settings finds the question. A cancelled answer stops the sign-in.
+   */
+  readonly signIn?: SignInLink;
 }
 
 export interface EditorDialog {
