@@ -923,45 +923,6 @@ const DEVICES_TOUR: Tour = {
   ],
 };
 
-const PAIRED_ONLY_TOUR: Tour = {
-  id: "paired-only-2026-11-02",
-  title: "Only paired devices",
-  minutes: 1,
-  sandbox: false,
-  steps: [
-    {
-      target: part("settings"),
-      title: "Settings",
-      text: "{settings} or this gear opens settings. Open them.",
-      action: { kind: "appears", selector: SETTINGS_SHEET },
-    },
-    {
-      target: part("settings-tab-app"),
-      title: "App",
-      text: "The devices are under <b>App</b>. Click it.",
-      action: { kind: "click" },
-    },
-    {
-      target: DEVICES,
-      title: "Only these get in",
-      text: "Only the devices listed here reach the app. Its link with the key in it opens the app on the server's own computer only; any other phone, computer or browser opens the app's address and pairs once. <b>Remove</b> a device and it stays out until it pairs again.",
-      action: next,
-    },
-    {
-      target: part("pair-new-device"),
-      title: "Pairing a device",
-      text: "<b>Pair a new device</b> shows a one-time code and its QR code for the new device. Or the new device asks, and a paired device allows it after comparing 6 digits.",
-      action: next,
-    },
-    {
-      target: SETTINGS_SHEET,
-      title: "Close settings",
-      text: "{stop} closes settings.",
-      action: { kind: "disappears", selector: SETTINGS_SHEET },
-    },
-  ],
-};
-
 const THEME_GALLERY = part("theme-gallery");
 
 const THEMES_TOUR: Tour = {
@@ -1292,13 +1253,6 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
-  {
-    id: "2026-11-02-paired-only",
-    when: "2026-11-02T10:43:00-06:00",
-    summary:
-      "Only paired devices reach the app: its link opens it on the server's own computer only, and every other device pairs once with a code.",
-    tours: [PAIRED_ONLY_TOUR],
-  },
   {
     id: "2026-11-02-command-keys",
     when: "2026-11-02T10:12:00-06:00",
