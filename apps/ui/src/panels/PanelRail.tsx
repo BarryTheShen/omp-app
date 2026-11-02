@@ -28,7 +28,7 @@ export function PanelRail(): ReactNode {
                   size="icon-sm"
                   aria-label={item.title}
                   aria-pressed={shown}
-                  className="text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1"
+                  className="text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 tablet:size-11"
                   onClick={() => (shown ? hidePanel() : showPanel(item.id))}
                 />
               }

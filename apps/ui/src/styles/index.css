@@ -4,6 +4,8 @@
 @import "./themes.css";
 
 @custom-variant dark (&:is(.dark *));
+/* A tablet: a touch screen as the main pointer, wider than a phone (#2779 D1 part 4). Its targets are a finger's size. */
+@custom-variant tablet (@media (pointer: coarse) and (min-width: 640px));
 
 /*
  * shadcn's roles, taken from the theme's Tern tokens. They are set on :root so they resolve there once. shadcn's
@@ -335,7 +337,13 @@
     padding-top: 0.5rem;
     padding-inline: 0.75rem;
   }
+}
 
+/*
+ * Full-size targets on a phone and on a touch screen (#2770 D1 part 3, #2779 D1 part 4): menu, select and command rows,
+ * and a chat's tool, thinking and job rows, which open with a tap (27 and 19 px before).
+ */
+@media (max-width: 639px), (pointer: coarse) {
   [data-slot="dropdown-menu-item"],
   [data-slot="dropdown-menu-checkbox-item"],
   [data-slot="dropdown-menu-radio-item"],
@@ -345,7 +353,6 @@
     min-height: 44px;
   }
 
-  /* A chat's tool, thinking and job rows open with a tap: full-size targets (#2770, D1 part 3c; 27 and 19 px before). */
   .tr-root :is(.tv-head, .tr-think-head, .tr-job-head) {
     min-height: 44px;
   }

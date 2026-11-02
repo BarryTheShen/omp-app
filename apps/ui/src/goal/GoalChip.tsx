@@ -28,7 +28,7 @@ export function GoalChip({
             type="button"
             variant="ghost"
             size="sm"
-            className="max-w-56 min-w-0 shrink gap-1.5 text-t2 hover:text-t1"
+            className="max-w-56 min-w-0 shrink gap-1.5 text-t2 hover:text-t1 tablet:h-11"
             aria-label={`Goal: ${goal.objective} (${GOAL_SAID[goal.status]})`}
           />
         }

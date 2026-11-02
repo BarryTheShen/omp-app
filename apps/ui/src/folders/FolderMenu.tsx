@@ -62,7 +62,7 @@ export function FolderMenu({
               variant="ghost"
               data-tour="folder"
               aria-label={`Folder: ${shownFolder(folder, home)}`}
-              className="justify-start gap-2 px-2 text-t2 hover:text-t1"
+              className="justify-start gap-2 px-2 text-t2 hover:text-t1 tablet:h-11"
             />
           }
         >

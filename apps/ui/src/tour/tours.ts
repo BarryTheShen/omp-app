@@ -31,6 +31,8 @@ export interface TourStep {
   readonly desktopOnly?: true;
   /** Only on a phone's layout (`isPhone`). */
   readonly phoneOnly?: true;
+  /** Only on a tablet (`isTablet`): a touch screen wider than a phone. */
+  readonly tabletOnly?: true;
   /**
    * The dimmed page stays usable during this step: its action ends outside the highlighted element (a chat dragged
    * from the list onto a pane).
@@ -1114,6 +1116,30 @@ const PHONE_TOUCH_TOUR: Tour = {
   ],
 };
 
+/** #2779 D1 part 4: on a tablet, the controls a finger takes are full-size and a pane's divider is easy to take. */
+const TABLET_TOUCH_TOUR: Tour = {
+  id: "tablet-touch-2026-11-01",
+  title: "On a tablet",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Full-size controls",
+      text: "On a tablet the chat list's rows, the message box's buttons, the panes' title bars and Settings are a finger's size, and the buttons that show on pointing are always shown.",
+      action: next,
+      tabletOnly: true,
+    },
+    {
+      target: null,
+      title: "Resize the panes",
+      text: "Drag the line between two panes to resize them: a touch anywhere close to it takes it.",
+      action: next,
+      tabletOnly: true,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1128,6 +1154,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-01-tablet-touch",
+    when: "2026-11-01T22:32:00-06:00",
+    summary:
+      "On a tablet the chat list, the message box, the panes' title bars, the side panels and Settings have controls a finger's size, and a pane's divider can be dragged from close to its line.",
+    tours: [TABLET_TOUCH_TOUR],
+  },
   {
     id: "2026-11-01-phone-touch",
     when: "2026-11-01T18:30:00-06:00",

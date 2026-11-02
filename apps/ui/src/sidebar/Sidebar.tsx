@@ -234,7 +234,7 @@ export function Sidebar({
         <Button
           data-tour="new-chat"
           variant="ghost"
-          className="justify-start gap-2 px-2 text-t2 hover:text-t1"
+          className="justify-start gap-2 px-2 text-t2 hover:text-t1 tablet:h-11"
           onClick={() => onOpen({ kind: "new", folder }, "here")}
         >
           <SquarePen />
@@ -243,14 +243,14 @@ export function Sidebar({
       )}
       <label
         data-tour="search-chats"
-        className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1"
+        className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1 tablet:h-11"
       >
         <Search className="size-3.5 shrink-0" />
         <input
           type="search"
           aria-label="Search chats"
           placeholder="Search"
-          className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-t1 outline-none placeholder:text-t3"
+          className="min-w-0 flex-1 self-stretch bg-transparent text-[0.8125rem] text-t1 outline-none placeholder:text-t3"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -295,7 +295,8 @@ export function Sidebar({
           </Button>
         </div>
       ) : (
-        <div className="flex items-center justify-between px-1 pt-2">
+        // On a tablet the full-size buttons go on a row of their own under the theme switch: one row is too narrow.
+        <div className="flex items-center justify-between px-1 pt-2 tablet:flex-wrap tablet:gap-y-1">
           <ThemeSwitch />
           <div className="flex items-center gap-0.5">
             <Tooltip>
@@ -306,7 +307,7 @@ export function Sidebar({
                     variant="ghost"
                     size="icon-sm"
                     aria-label="What's new"
-                    className="text-t3 hover:text-t1"
+                    className="text-t3 hover:text-t1 tablet:size-11"
                     onClick={onWhatsNew}
                   />
                 }
@@ -325,7 +326,7 @@ export function Sidebar({
                     size="icon-sm"
                     aria-label="Settings"
                     aria-keyshortcuts="Control+,"
-                    className="text-t3 hover:text-t1"
+                    className="text-t3 hover:text-t1 tablet:size-11"
                     onClick={onSettings}
                   />
                 }
@@ -489,7 +490,7 @@ function ChatRow({
             ref={titleButton}
             type="button"
             className={cn(
-              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-busy:text-t3 aria-[current=true]:text-t1 max-sm:h-11",
+              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-busy:text-t3 aria-[current=true]:text-t1 max-sm:h-11 tablet:h-11",
               // Up and down stay the list's scroll; left and right are the row's swipe.
               phone && "touch-pan-y",
             )}
@@ -557,7 +558,7 @@ function ChatRow({
                 // In the row of its chat; the chat's title stays the name of the row's own button.
                 aria-label={actions.pinned ? "Unpin" : "Pin"}
                 className={cn(
-                  "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1",
+                  "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1 tablet:size-11",
                   REVEAL,
                 )}
                 onClick={actions.onPin}
@@ -572,7 +573,9 @@ function ChatRow({
                 // row's end. A screen reader still finds it.
                 className={cn(
                   "grid shrink-0 place-items-center rounded-sm text-t3 outline-none hover:bg-l2 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 data-popup-open:text-t1 data-popup-open:opacity-100",
-                  phone ? "pointer-events-none size-px opacity-0" : cn("mr-1 size-6", REVEAL),
+                  phone
+                    ? "pointer-events-none size-px opacity-0"
+                    : cn("mr-1 size-6 tablet:size-11", REVEAL),
                 )}
               >
                 <Ellipsis className="size-3.5" />
@@ -675,7 +678,7 @@ function RenameField({
       }}
       onBlur={(event) => finish(event.currentTarget.value, false)}
       // The title stays where the row draws it (after the state dot), and the row keeps its height.
-      className="h-8 min-w-0 flex-1 rounded-md bg-l1 pr-2 pl-[22px] text-[0.8125rem] text-t1 outline-none ring-1 ring-ring ring-inset max-sm:h-11"
+      className="h-8 min-w-0 flex-1 rounded-md bg-l1 pr-2 pl-[22px] text-[0.8125rem] text-t1 outline-none ring-1 ring-ring ring-inset max-sm:h-11 tablet:h-11"
     />
   );
 }

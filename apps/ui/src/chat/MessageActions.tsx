@@ -83,7 +83,7 @@ export function MessageActions({
           <Button
             variant="ghost"
             size="icon-xs"
-            className="text-t3 hover:text-t1"
+            className="text-t3 hover:text-t1 tablet:size-11"
             aria-label={copied ? "Copied" : "Copy this message"}
             onClick={copy}
           >
@@ -93,7 +93,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-t3 hover:text-t1"
+              className="text-t3 hover:text-t1 tablet:size-11"
               aria-label="Edit this message"
               onClick={onEdit}
             >

@@ -500,7 +500,7 @@ export const Composer = memo(function Composer({
             type="button"
             variant="secondary"
             size={phone ? "icon" : "icon-sm"}
-            className={phone ? "size-11 shrink-0" : undefined}
+            className={phone ? "size-11 shrink-0" : "tablet:size-11"}
             aria-label="Stop"
             onClick={stop}
           />
@@ -517,7 +517,7 @@ export const Composer = memo(function Composer({
           <Button
             type="submit"
             size={phone ? "icon" : "icon-sm"}
-            className={phone ? "size-11 shrink-0" : undefined}
+            className={phone ? "size-11 shrink-0" : "tablet:size-11"}
             aria-label="Send"
             disabled={disabled || sending || (text.trim().length === 0 && attachments.length === 0)}
           />
@@ -772,7 +772,7 @@ function ThinkingChip({
             type="button"
             variant="ghost"
             size="sm"
-            className="gap-1.5 text-t2 hover:text-t1"
+            className="gap-1.5 text-t2 hover:text-t1 tablet:h-11"
             aria-label={`Thinking: ${level}`}
             disabled={disabled}
             onClick={() => void controller.cycleThinking().catch(onError)}

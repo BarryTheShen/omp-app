@@ -8,6 +8,14 @@ export function isPhone(): boolean {
   return matchMedia(PHONE).matches;
 }
 
+/** A tablet: a touch screen as the main pointer, wider than a phone; the CSS `tablet:` variant is the same query. */
+export const TABLET = "(pointer: coarse) and (min-width: 640px)";
+
+/** Whether the page is on a tablet now. */
+export function isTablet(): boolean {
+  return matchMedia(TABLET).matches;
+}
+
 /** Whether the page has the phone's layout, following the window's width. */
 export function usePhone(): boolean {
   return useSyncExternalStore((notify) => {

@@ -81,16 +81,16 @@ export function WhatsNew({
       <Button
         variant="link"
         size="sm"
-        className="mt-1 h-auto px-0 text-xs text-t3"
+        className="mt-1 h-auto px-0 text-xs text-t3 tablet:h-11"
         onClick={onAllUpdates}
       >
         All updates
       </Button>
       <div className="mt-2 flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={dismiss}>
+        <Button variant="ghost" size="sm" className="tablet:h-11" onClick={dismiss}>
           Later
         </Button>
-        <Button size="sm" onClick={start}>
+        <Button size="sm" className="tablet:h-11" onClick={start}>
           {take}
         </Button>
       </div>

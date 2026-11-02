@@ -278,7 +278,7 @@ export function ModelPicker({
             variant="ghost"
             size="sm"
             // The chip gives way first on a narrow box, so Send stays in it.
-            className="max-w-56 min-w-0 shrink gap-1 text-t2 hover:text-t1"
+            className="max-w-56 min-w-0 shrink gap-1 text-t2 hover:text-t1 tablet:h-11"
             aria-label={`Model: ${model?.name ?? "none"}${named === null ? "" : ` (${named})`}`}
             disabled={disabled}
           />
@@ -396,7 +396,7 @@ const MenuRow = memo(function MenuRow({
       <CommandItem
         value={value}
         data-checked={checked}
-        className={cn(marks && "pr-16 max-sm:pr-24")}
+        className={cn(marks && "pr-16 max-sm:pr-24 tablet:pr-24")}
         onSelect={() => actions.current.choose(item)}
       >
         {/* A hidden model's name is dimmed, but not on the highlighted row, where dim text is too faint to read. */}
@@ -462,7 +462,7 @@ function RowButton({
       // Alt+S and Alt+H do this from the keyboard; a Tab stop on every row would make the list a long way round.
       tabIndex={-1}
       className={cn(
-        "grid size-6 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1 max-sm:size-11",
+        "grid size-6 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1 max-sm:size-11 tablet:size-11",
         !shown && "opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100",
       )}
       // The search keeps the caret, so typing and the arrows go on working after a click here.

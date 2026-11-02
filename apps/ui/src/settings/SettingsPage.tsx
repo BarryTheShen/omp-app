@@ -143,7 +143,7 @@ function SettingsSheet({
         <p className="px-1 text-sm font-medium text-t1">Settings</p>
       )}
       <label
-        className={`flex items-center gap-2 rounded-md border border-l2 px-2 text-t3 focus-within:border-ring ${phone ? "h-11" : "h-8"}`}
+        className={`flex shrink-0 items-center gap-2 rounded-md border border-l2 px-2 text-t3 focus-within:border-ring ${phone ? "h-11" : "h-8 tablet:h-11"}`}
       >
         <Search className="size-3.5 shrink-0" />
         <input
@@ -153,7 +153,7 @@ function SettingsSheet({
           // biome-ignore lint/a11y/noAutofocus: the sheet opens to find a setting
           autoFocus={!phone}
           value={query}
-          className="min-w-0 flex-1 bg-transparent text-sm text-t1 outline-none placeholder:text-t3"
+          className="min-w-0 flex-1 self-stretch bg-transparent text-sm text-t1 outline-none placeholder:text-t3"
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
@@ -163,7 +163,7 @@ function SettingsSheet({
             type="button"
             data-tour="settings-tab-app"
             aria-current={appOpen ? "page" : undefined}
-            className={`flex w-full items-center rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
+            className={`flex w-full items-center rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm tablet:h-11 ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
             onClick={() => choose(APP_TAB)}
           >
             <span className="min-w-0 flex-1 truncate">App</span>
@@ -183,7 +183,7 @@ function SettingsSheet({
                 aria-current={current ? "page" : undefined}
                 aria-label={count > 0 ? `${each.label}, ${count} changed` : each.label}
                 data-tour={`settings-tab-${each.id}`}
-                className={`flex w-full items-center gap-2 rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
+                className={`flex w-full items-center gap-2 rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm tablet:h-11 ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
                 onClick={() => choose(each.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{each.label}</span>
@@ -253,13 +253,13 @@ function SettingsSheet({
                 >
                   <ToggleGroupItem
                     value="every"
-                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs"}`}
+                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs tablet:h-11"}`}
                   >
                     Every folder
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="folder"
-                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs"}`}
+                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs tablet:h-11"}`}
                   >
                     This folder
                   </ToggleGroupItem>
@@ -486,6 +486,7 @@ function SettingRow({
           <Button
             size="sm"
             variant="ghost"
+            className="tablet:h-11"
             aria-label={`Reset ${def.label}`}
             onClick={() => write("unset")}
           >

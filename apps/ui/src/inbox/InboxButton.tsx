@@ -55,7 +55,7 @@ export function InboxButton({
             size="icon-sm"
             aria-label={entries.length === 0 ? "Inbox" : `Inbox: ${entries.length}`}
             className={cn(
-              "relative text-t3 hover:text-t1 data-popup-open:text-t1",
+              "relative text-t3 hover:text-t1 data-popup-open:text-t1 tablet:size-11",
               waiting && "text-warn-ink",
             )}
           />
@@ -74,7 +74,13 @@ export function InboxButton({
       <PopoverContent data-tour="inbox" side="top" align="start" className="w-80 gap-1 p-1.5">
         <div className="flex items-center justify-between gap-2 py-0.5 pr-0.5 pl-1.5">
           <PopoverTitle className="text-sm text-t1">Inbox</PopoverTitle>
-          <Button variant="ghost" size="sm" disabled={!settled} onClick={() => inbox.clear()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="tablet:h-11"
+            disabled={!settled}
+            onClick={() => inbox.clear()}
+          >
             Clear
           </Button>
         </div>

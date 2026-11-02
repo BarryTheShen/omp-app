@@ -28,7 +28,10 @@ export function PlanChip({
             type="button"
             variant="ghost"
             size="sm"
-            className={cn("gap-1.5 text-t2 hover:text-t1", status.enabled && "bg-l2 text-t1")}
+            className={cn(
+              "gap-1.5 text-t2 hover:text-t1 tablet:h-11",
+              status.enabled && "bg-l2 text-t1",
+            )}
             aria-pressed={status.enabled}
             aria-keyshortcuts="Alt+Shift+P"
             disabled={disabled}

@@ -94,3 +94,34 @@
 :root[data-chat-drag] .dockview-theme-omp .dv-content-container * {
   pointer-events: none;
 }
+
+/*
+ * A tablet (#2779 D1 part 4): a pane's title is 44 px tall (the bar is 1 px more, its line under it) and its close
+ * button 44 px square. Its dividers are drawn and placed 4 px wide by dockview; a finger takes one anywhere in the 36 px
+ * around its line, which stays as drawn.
+ */
+@media (pointer: coarse) and (min-width: 640px) {
+  .dockview-theme-omp {
+    --dv-tabs-and-actions-container-height: 45px;
+  }
+  .dockview-theme-omp .dv-tab .dv-default-tab .dv-default-tab-action {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .dockview-theme-omp .dv-split-view-container > .dv-sash-container > .dv-sash.dv-enabled::before {
+    content: "";
+    position: absolute;
+  }
+  .dockview-theme-omp
+    .dv-split-view-container.dv-horizontal
+    > .dv-sash-container
+    > .dv-sash.dv-enabled::before {
+    inset: 0 -16px;
+  }
+  .dockview-theme-omp
+    .dv-split-view-container.dv-vertical
+    > .dv-sash-container
+    > .dv-sash.dv-enabled::before {
+    inset: -16px 0;
+  }
+}
