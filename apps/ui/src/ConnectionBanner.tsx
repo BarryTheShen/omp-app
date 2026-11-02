@@ -1,6 +1,7 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useAppUpdated } from "./update";
 
 /** What a refused link means, in the words a person acts on. */
 export const REFUSED_WORDS: Record<NonNullable<ConnectionStateEvent["refusal"]>, string> = {
@@ -11,11 +12,29 @@ export const REFUSED_WORDS: Record<NonNullable<ConnectionStateEvent["refusal"]>,
   origin: "The app does not accept connections from this page's address.",
 };
 
-/** One banner while the link to the app's server is lost: reconnecting, refused, or closed. */
+/**
+ * One banner while the link to the app's server is lost (reconnecting, refused, or closed), or, while it is fine, once
+ * the app was updated after this page loaded (#2787): the page runs its own build until it reloads.
+ */
 export function ConnectionBanner({ client }: { readonly client: AppClient }): ReactNode {
   const [state, setState] = useState<ConnectionStateEvent | null>(null);
   useEffect(() => client.onConnectionState(setState), [client]);
-  if (state === null || state.state === "open" || state.state === "connecting") return null;
+  const updated = useAppUpdated(client);
+  if (state === null || state.state === "open" || state.state === "connecting") {
+    if (!updated) return null;
+    return (
+      <div
+        role="status"
+        className="fixed top-3 left-1/2 z-50 flex max-w-[min(90vw,560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg"
+      >
+        <span className="size-1.5 shrink-0 rounded-full bg-accent-ink" />
+        <span className="min-w-0">The app was updated. Reload to use the new version.</span>
+        <Button size="xs" variant="secondary" onClick={() => window.location.reload()}>
+          Reload
+        </Button>
+      </div>
+    );
+  }
   const reconnecting = state.state === "reconnecting";
   return (
     <div

@@ -554,7 +554,14 @@ class AppClientImpl implements AppClient {
     }
     const result = pending.result.safeParse(frame.value);
     if (!result.success) {
-      pending.deferred.reject(appFailure("internal", "Server returned an invalid result", false));
+      // Most often the page is older than the app server: an update added to an answer what this page doesn't know.
+      pending.deferred.reject(
+        appFailure(
+          "internal",
+          "Server returned an invalid result. If the app was updated, reload this page.",
+          false,
+        ),
+      );
       return;
     }
     pending.deferred.resolve(result.data);
