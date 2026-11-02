@@ -161,5 +161,15 @@ export function frameMarks(stats: FrameStats): Record<string, number> {
     // The screen the engine puts the window on: a different one can have another pace.
     screen_w: window.screen.width,
     screen_h: window.screen.height,
+    // The desktop window switches between 144 and 60 Hz from one scroll to the next: whether it had the focus, and
+    // how many animations ran, as the report was made.
+    focused: document.hasFocus() ? 1 : 0,
+    animations: runningAnimations(),
   };
+}
+
+/** Animations and transitions running in the page now (0 where the engine can't list them). */
+export function runningAnimations(): number {
+  if (typeof document.getAnimations !== "function") return 0;
+  return document.getAnimations().filter((animation) => animation.playState === "running").length;
 }

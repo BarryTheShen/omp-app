@@ -3,6 +3,7 @@ import {
   biggestJumps,
   clientTags,
   frameMarks,
+  runningAnimations,
   type ScrollFrame,
   scrollMoves,
   watchFrames,
@@ -39,6 +40,8 @@ interface Gesture {
   readonly started: number;
   readonly frames: ScrollFrame[];
   readonly watch: ReturnType<typeof watchFrames>;
+  /** Animations running when the gesture began. */
+  readonly animationsAtStart: number;
   quiet: ReturnType<typeof setTimeout> | undefined;
 }
 
@@ -105,6 +108,7 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
       marks: {
         ...frameMarks(stats),
         scroll_ms: Math.round(performance.now() - ended.started),
+        animations_start: ended.animationsAtStart,
         moved_px: moves.movedPx,
         max_jump_px: moves.maxJumpPx,
         still_frames: moves.stillFrames,
@@ -149,6 +153,7 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
           frames.push({ top: target.scrollTop, height: target.scrollHeight, seen });
           if (inTranscript) anchor = middleRow(target);
         }),
+        animationsAtStart: runningAnimations(),
         quiet: undefined,
       };
     }
