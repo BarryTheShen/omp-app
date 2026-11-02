@@ -34,6 +34,8 @@ import { chooseViewer, decodeText, TEXT_EDIT_BYTES, type ViewerChoice } from "./
 /** CodeMirror and its merge view load only when a text viewer opens (#2782: the main script stays small). */
 const CodeEditor = lazy(() => import("./CodeEditor"));
 const MergeCompare = lazy(() => import("./MergeCompare"));
+/** PDF.js loads only when a PDF is shown (#2785). */
+const PdfView = lazy(() => import("./PdfView"));
 
 /**
  * Unsaved edits, per folder and path, kept every 2 seconds: they come back after a reload or a crash. A database of its
@@ -73,14 +75,6 @@ function sizeText(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** iOS Safari shows no PDF inside the page: it gets Open and Download instead. */
-function inlinePdf(): boolean {
-  const ios =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  return !ios;
 }
 
 export interface FileViewerProps {
@@ -132,6 +126,8 @@ export function FileViewer({
   const [merged, setMerged] = useState("");
   const [confirmRecreate, setConfirmRecreate] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Why PDF.js could not draw this PDF; the viewer offers Open and Download instead. */
+  const [pdfFailure, setPdfFailure] = useState<string | null>(null);
   const dirty = shown.state === "ready" && mine !== baseText;
 
   const load = useCallback(
@@ -495,17 +491,22 @@ export function FileViewer({
             />
           </div>
         )}
-        {ready !== null && kind === "pdf" && url !== null && inlinePdf() && (
-          <iframe title={name} src={url} className="h-full w-full" />
+        {ready !== null && kind === "pdf" && pdfFailure === null && (
+          <Suspense fallback={<p className="p-3 text-sm text-t3">Drawing the PDF…</p>}>
+            <PdfView bytes={ready.bytes} name={name} onFailed={setPdfFailure} />
+          </Suspense>
         )}
-        {ready !== null && kind === "pdf" && url !== null && !inlinePdf() && (
-          <div className="flex gap-2 p-3">
-            <Button variant="secondary" onClick={() => window.open(url, "_blank", "noopener")}>
-              <ExternalLink /> Open
-            </Button>
-            <Button variant="ghost" onClick={() => void download()}>
-              <Download /> Download
-            </Button>
+        {ready !== null && kind === "pdf" && url !== null && pdfFailure !== null && (
+          <div className="flex flex-col gap-2 p-3">
+            <p className="text-sm text-t3">This PDF can't be drawn here: {pdfFailure}</p>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => window.open(url, "_blank", "noopener")}>
+                <ExternalLink /> Open
+              </Button>
+              <Button variant="ghost" onClick={() => void download()}>
+                <Download /> Download
+              </Button>
+            </div>
           </div>
         )}
         {ready !== null && kind === "audio" && url !== null && (
