@@ -798,6 +798,12 @@ export class ChatSessionPortRuntime {
     if (args.method === "pause" || args.method === "resume") {
       const held = this.#entryOrUndefined(args.threadId);
       if (held === undefined || !this.#isRunning(held)) return { pausedAt: null };
+      // Who asked: a hold that stops a chat for no visible reason can be traced to its page (`pause_changed` says when).
+      this.#context.logger?.info("chat_session.pause_asked", {
+        threadId: args.threadId,
+        method: args.method,
+        connection: call.connectionId,
+      });
     }
     // A chat no host here serves may still be open in another omp: the request is refused with the sentence that says so.
     if (this.#entryOrUndefined(args.threadId) === undefined) {
@@ -1033,6 +1039,7 @@ export class ChatSessionPortRuntime {
   /** Pauses or resumes every chat this server runs; a chat whose omp started before pause existed stays as it is. */
   async pauseAll(args: PauseAllArgs): Promise<PauseAllResult> {
     const method = args.paused ? "pause" : "resume";
+    this.#context.logger?.info("chat_session.pause_all_asked", { method });
     const answers = await Promise.allSettled(
       [...this.#entries.values()]
         .filter((entry) => this.#isRunning(entry))
@@ -1329,6 +1336,12 @@ export class ChatSessionPortRuntime {
       this.#context.processRegistry.setBusy(threadId, false);
     } else if (event.type === "pause_changed") {
       this.#context.processRegistry.setPaused(threadId, event.pausedAt);
+      // Every hold of a chat's agents and its end, whatever asked for it (a page, a typed `/pause`, omp itself): a turn
+      // that stops for no visible reason can be checked against these (Nov 1, a 2 h 27 min hold nothing logged).
+      this.#context.logger?.info("chat_session.pause_changed", {
+        threadId,
+        paused: event.pausedAt !== null,
+      });
     }
   }
 
