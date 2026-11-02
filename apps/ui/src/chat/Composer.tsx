@@ -170,6 +170,8 @@ export const Composer = memo(function Composer({
     onHandle({ insert: (inserted) => insertRef.current(inserted) });
     return () => onHandle(null);
   }, [onHandle]);
+  // Text asked into this chat from elsewhere (the Files panel's Mention in chat) goes in at the caret, as `@` does.
+  useEffect(() => controller.onInsertText((inserted) => insertRef.current(inserted)), [controller]);
 
   const attach = (next: readonly Attachment[]): void => {
     attachmentsRef.current = next;

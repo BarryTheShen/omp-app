@@ -629,6 +629,30 @@ const JOBS_TOUR: Tour = {
   ],
 };
 
+const FILES_PANEL = part("files-panel");
+
+/** #2782: the chat folder's files in the side panel. */
+const FILES_TOUR: Tour = {
+  id: "files-2026-11-01",
+  title: "Files",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "A Files panel",
+      text: "Click <b>Files</b> on this rail: the side panel opens on the chat folder's files, from any device.",
+      action: { kind: "appears", selector: FILES_PANEL },
+    },
+    {
+      target: FILES_PANEL,
+      title: "See, change and hand over files",
+      text: "Click a file to see it below the list; text has <b>Edit</b> and <b>Save</b>, and a file changed on disk since you opened it is never overwritten without asking. Drop files here to upload them. A row's menu makes, renames, deletes (with Undo), downloads, and puts a file's name in your chat.",
+      action: next,
+    },
+  ],
+};
+
 const PAUSED_ROW = part("paused");
 
 const PAUSE_TOUR: Tour = {
@@ -1154,6 +1178,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-files",
+    when: "2026-11-02T02:40:00-06:00",
+    summary:
+      "A Files panel in the side panel: the chat folder's files from any device, with previews, an editor whose saves stop and ask when the file changed on disk, uploads, downloads, and deletes you can undo.",
+    tours: [FILES_TOUR],
+  },
   {
     id: "2026-11-01-tablet-touch",
     when: "2026-11-01T22:32:00-06:00",

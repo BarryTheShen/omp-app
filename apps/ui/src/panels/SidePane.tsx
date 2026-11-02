@@ -1,9 +1,12 @@
 import type { AppClient } from "@omp-app/client";
-import type { FolderPath } from "@omp-app/contracts";
+import type { FolderPath, WorkspaceRelativePath } from "@omp-app/contracts";
 import type { DockviewApi, IDockviewPanelProps } from "dockview-react";
 import { createContext, type ReactNode, use, useEffect } from "react";
 import type { ChatController } from "../chat/controller";
+import { usePhone } from "../phone";
 import { PaneModeOutline } from "../workspace/paneMode";
+import { FILE_PANE_COMPONENT, type FilePaneParams, filePaneId } from "./files/filePaneParams";
+import { baseName } from "./files/names";
 import { PANELS } from "./registry";
 
 /** The side pane's id: at most one in each workspace tab. */
@@ -49,10 +52,27 @@ export function SidePane({
   // (dockview's deserializer), so after a start or a reload the objects never match and the panel drew nothing (#2773).
   const shown = use(ShownTabContext)?.id === containerApi.id;
   const chosen = panelOf(params.panel);
+  const phone = usePhone();
   useEffect(() => {
     if (chosen !== undefined) api.setTitle(chosen.title);
   }, [api, chosen]);
   if (host === null || chosen === undefined) return null;
+  /** A file of the folder as a pane left of this one, or the one already showing it brought forward. */
+  const openFileTab = (path: WorkspaceRelativePath): void => {
+    const id = filePaneId(host.folder, path);
+    const existing = containerApi.getPanel(id);
+    if (existing !== undefined) {
+      existing.api.setActive();
+      return;
+    }
+    containerApi.addPanel({
+      id,
+      component: FILE_PANE_COMPONENT,
+      title: baseName(path),
+      params: { kind: "file", folder: host.folder, path } satisfies FilePaneParams,
+      position: { referencePanel: api.id, direction: "left" },
+    });
+  };
   return (
     <aside
       data-tour="side-panel"
@@ -60,7 +80,7 @@ export function SidePane({
       className="relative flex h-full min-h-0 flex-col bg-panel"
     >
       <div role="tabpanel" aria-label={chosen.title} className="min-h-0 flex-1 overflow-y-auto">
-        {shown && chosen.render(host)}
+        {shown && chosen.render(phone ? host : { ...host, openFileTab })}
       </div>
       <PaneModeOutline api={api} />
     </aside>

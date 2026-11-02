@@ -282,7 +282,14 @@ realTest.describe("new UI side panel", () => {
       await expect(details).toBeVisible();
       await expect(box).toBeHidden();
       const tabs = details.getByRole("tab");
-      await expect(tabs).toHaveText(["Usage", "Agents", "Progress", "Jobs", "BTW history"]);
+      await expect(tabs).toHaveText([
+        "Usage",
+        "Agents",
+        "Progress",
+        "Jobs",
+        "BTW history",
+        "Files",
+      ]);
       const heights = await tabs.evaluateAll((all) =>
         all.map((tab) => tab.getBoundingClientRect().height),
       );

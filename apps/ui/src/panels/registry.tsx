@@ -1,7 +1,8 @@
 import type { AppClient } from "@omp-app/client";
-import type { FolderPath } from "@omp-app/contracts";
+import type { FolderPath, WorkspaceRelativePath } from "@omp-app/contracts";
 import {
   Bot,
+  FolderTree,
   Gauge,
   Layers,
   ListChecks,
@@ -12,6 +13,7 @@ import type { ReactNode } from "react";
 import type { ChatController } from "../chat/controller";
 import { AgentsPanel } from "./agents/AgentsPanel";
 import { BtwPanel } from "./btw/BtwPanel";
+import { FilesPanel } from "./files/FilesPanel";
 import { JobsPanel } from "./jobs/JobsPanel";
 import { ProgressPanel } from "./progress/ProgressPanel";
 import { UsagePanel } from "./usage/UsagePanel";
@@ -26,6 +28,8 @@ export interface PanelContext {
   readonly chat: ChatController | null;
   /** Opens the goal dialog for a chat (the palette's "Set a goal for this chat…"). */
   readonly openGoal: (chat: ChatController) => void;
+  /** Opens a file of the folder as a pane beside the chats (the Files panel's Open as tab); none on a phone. */
+  readonly openFileTab?: (path: WorkspaceRelativePath) => void;
 }
 
 /**
@@ -73,5 +77,18 @@ export const PANELS: readonly Panel[] = [
     title: "BTW history",
     icon: MessageCircleQuestion,
     render: ({ chat }) => <BtwPanel chat={chat} />,
+  },
+  {
+    id: "files",
+    title: "Files",
+    icon: FolderTree,
+    render: ({ client, folder, chat, openFileTab }) => (
+      <FilesPanel
+        client={client}
+        folder={folder}
+        chat={chat}
+        {...(openFileTab === undefined ? {} : { openFileTab })}
+      />
+    ),
   },
 ];

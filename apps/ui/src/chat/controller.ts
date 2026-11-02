@@ -180,6 +180,19 @@ export class ChatController {
     return this.#draft;
   }
 
+  readonly #insertListeners = new Set<(text: string) => void>();
+
+  /** Puts `text` into the chat's message box at its caret (the Files panel's Mention in chat, #2782). */
+  insertText(text: string): void {
+    for (const listener of this.#insertListeners) listener(text);
+  }
+
+  /** The message box hears text asked into it; returns the stop. */
+  onInsertText(listener: (text: string) => void): () => void {
+    this.#insertListeners.add(listener);
+    return () => this.#insertListeners.delete(listener);
+  }
+
   get threadId(): ThreadId | null {
     return this.#threadId;
   }

@@ -33,6 +33,8 @@ import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
 import { forgetNewChatDraft } from "../chat/drafts";
 import { KEYS, keycap } from "../keys/table";
+import { FilePane } from "../panels/files/FilePane";
+import { isFilePane } from "../panels/files/filePaneParams";
 import {
   panelOf,
   ShownTabContext,
@@ -71,7 +73,8 @@ import {
 } from "./tabs";
 
 const THEME: DockviewTheme = { name: "omp", className: "dockview-theme-omp" };
-const COMPONENTS = { chat: ChatPanel, side: SidePane };
+/** A chat's pane, the side panel, and a file opened from the Files panel (#2782). */
+const COMPONENTS = { chat: ChatPanel, side: SidePane, file: FilePane };
 /** How much one resize key widens, narrows, heightens or shortens the focused pane. */
 const RESIZE_STEP_PX = 48;
 /** Pane mode ends after this long without a key. */
@@ -141,8 +144,13 @@ export interface WorkspaceView {
   readonly side: string | null;
 }
 
+/** A chat pane's parameters; none for the side pane's or a file pane's, which show no chat. */
 const paramsOf = (params: unknown): ChatPanelParams | undefined =>
-  params as ChatPanelParams | undefined;
+  isFilePane(params) ? undefined : (params as ChatPanelParams | undefined);
+
+/** A pane that shows a chat: not the side panel, not a file. */
+const isChatPane = (panel: IDockviewPanel): boolean =>
+  panel.id !== SIDE_PANE && !isFilePane(panel.params);
 
 /** A layout as kept: on a phone the one pane shown is zoomed, which is not kept. */
 function keptLayout(layout: SerializedDockview, phone: boolean): SerializedDockview {
@@ -225,12 +233,9 @@ export function Workspace({
   const chatPaneIn = useCallback((api: DockviewApi | undefined): IDockviewPanel | undefined => {
     if (api === undefined) return undefined;
     const active = api.activePanel;
-    if (active !== undefined && active.id !== SIDE_PANE) return active;
+    if (active !== undefined && isChatPane(active)) return active;
     const last = lastChat.current.get(api);
-    return (
-      (last === undefined ? undefined : api.getPanel(last)) ??
-      api.panels.find((panel) => panel.id !== SIDE_PANE)
-    );
+    return (last === undefined ? undefined : api.getPanel(last)) ?? api.panels.find(isChatPane);
   }, []);
 
   useEffect(() => layoutStorage().setItem(TABS_KEY, JSON.stringify(tabs)), [tabs]);
@@ -336,9 +341,10 @@ export function Workspace({
           });
           if (panel !== undefined) shown = { api: other, panel };
         }
-      // The middle guide: the chat takes that pane's place. The side panel is not a chat's pane: beside it, as before.
+      // The middle guide: the chat takes that pane's place. The side panel and a file are not a chat's pane: beside
+      // them, as before.
       const replaced = position === "center" ? group?.activePanel : undefined;
-      if (replaced !== undefined && replaced.id !== SIDE_PANE) {
+      if (replaced !== undefined && isChatPane(replaced)) {
         if (shown?.panel === replaced) {
           focus.request(replaced.id);
           return;
@@ -452,7 +458,7 @@ export function Workspace({
       api.onDidActivePanelChange(() => {
         if (apis.current.get(tabId) !== api) return;
         const active = api.activePanel;
-        if (active !== undefined && active.id !== SIDE_PANE) lastChat.current.set(api, active.id);
+        if (active !== undefined && isChatPane(active)) lastChat.current.set(api, active.id);
         zoomForPhone(api);
         report();
       });
