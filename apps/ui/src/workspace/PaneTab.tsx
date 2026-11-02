@@ -22,8 +22,8 @@ export function closePaneAsked(panel: IDockviewPanel): void {
  * A pane's tab in its title bar: dockview's own default tab (its title, and a close button named after it), whose close
  * button closes the pane as asked. dockview's default tab cannot be told to do that, so this one draws the same. A
  * click on the title puts the caret in the pane's message box, so the pane's keys reach the pane it chose. A grip (⠿)
- * starts the title: the tab is where a pane is taken to move it, onto the docking guides (#2771). A paused chat (omp's
- * `/pause`) has a pause mark before its title.
+ * starts the title: the tab is where a pane is taken to move it, onto another pane or the window's edge (#2790). A
+ * paused chat (omp's `/pause`) has a pause mark before its title.
  */
 export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): ReactNode {
   const host = use(PaneHostContext);

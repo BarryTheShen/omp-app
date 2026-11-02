@@ -54,7 +54,7 @@ import { chatCache } from "./chatCache";
 import { carriesChat, droppedChat } from "./chatDrag";
 import { DropGuides } from "./DropGuides";
 import { keepDividerDragsFromSelecting } from "./dividers";
-import { guideResolver } from "./guideCells";
+import { regionResolver } from "./dropRegions";
 import { equalized, swappedWithNext } from "./layout";
 import { OpenGate } from "./openGate";
 import { chatOfPane, closePaneAsked, PaneTab } from "./PaneTab";
@@ -197,19 +197,25 @@ export function Workspace({
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
   const apis = useRef(new Map<string, DockviewApi>());
-  /** Each tab's drop resolver for the docking guides (#2771), made once: dockview reads it at every drag-over. */
+  /** Each tab's drop resolver (#2790), made once: dockview reads it at every drag-over. */
   const resolvers = useRef(new Map<string, PositionResolver>());
   const resolverFor = (tabId: string): PositionResolver => {
     let resolver = resolvers.current.get(tabId);
     if (resolver === undefined) {
-      resolver = guideResolver(() => {
+      resolver = regionResolver(() => {
         const api = apis.current.get(tabId);
         const box = document
           .querySelector(`[data-tab="${CSS.escape(tabId)}"]`)
           ?.getBoundingClientRect();
         return api === undefined || box === undefined
           ? null
-          : { width: box.width, height: box.height, panes: api.groups.length };
+          : {
+              left: box.left,
+              top: box.top,
+              width: box.width,
+              height: box.height,
+              panes: api.groups.length,
+            };
       }, carriesChat);
       resolvers.current.set(tabId, resolver);
     }
@@ -400,8 +406,8 @@ export function Workspace({
   );
 
   /**
-   * A drop on one of the window's edge guides (#2771), which take their drops themselves (`DropGuides`): the chat from
-   * the list, or the pane dragged by its title, runs the whole length of that side of the window.
+   * A drop in the band along the window's edges (#2790), which takes its drops itself (`DropGuides`): the chat from the
+   * list, or the pane dragged by its title, runs the whole length of that side of the window.
    */
   const dropOnEdge = useCallback(
     (tabId: string, position: Position, event: DragEvent) => {
@@ -926,8 +932,8 @@ export function Workspace({
 }
 
 /**
- * How much of the window dockview shades when its whole layout takes a drop on one side (the arrows of a lone pane): the
- * column or row it will be; the window's own edge guides shade the same share themselves (`DropGuides`).
+ * How much of the window dockview shades when a lone pane's whole layout takes a drop on one side: the column or row it
+ * will be; the band along the window's edges shades the same share itself (`DropGuides`).
  */
 const EDGE_SHADE = {
   size: { type: "percentage", value: 30 },

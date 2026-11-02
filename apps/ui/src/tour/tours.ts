@@ -1123,10 +1123,10 @@ const PANE_MODE_TOUR: Tour = {
   ],
 };
 
-/** #2771: the docking guides. A second pane first, so there is a pane to move and one to drop on. */
-const DRAG_GUIDES_TOUR: Tour = {
-  id: "drag-guides-2026-11-01",
-  title: "Docking guides",
+/** #2790: dropping where you let go. A second pane first, so there is a pane to move and one to drop on. */
+const DROP_TOUR: Tour = {
+  id: "drop-2026-11-02",
+  title: "Dropping chats and panes",
   minutes: 1,
   sandbox: true,
   steps: [
@@ -1140,15 +1140,15 @@ const DRAG_GUIDES_TOUR: Tour = {
     {
       target: WORKSPACE,
       centred: true,
-      title: "Take a pane by its grip",
-      text: "Each pane's title starts with a grip ⠿: drag a pane by it, or drag a chat from the list. The pane under the pointer shows five guides in its middle, and the window four at its edges.",
+      title: "Drag a chat or a pane",
+      text: "Drag a chat from the list, or a pane by the grip ⠿ at the start of its title, and let go anywhere on a pane. A label where it will land says what the drop does.",
       action: next,
     },
     {
       target: WORKSPACE,
       centred: true,
-      title: "Let go on a guide",
-      text: "An arrow splits that pane on its side; an edge guide of the window makes a column or row the whole length of that side; the middle guide, for a chat from the list, shows it in that pane's place. Let go anywhere else and nothing moves.",
+      title: "Where it lands",
+      text: "Near a pane's edge it splits that pane on that side; in its middle, a chat from the list takes its place. Along the window's own edges it makes a column or row the whole length of that side.",
       action: next,
     },
   ],
@@ -1342,6 +1342,13 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-02-drop",
+    when: "2026-11-02T15:25:00-06:00",
+    summary:
+      "Dragging lands where you let go again, without the arrows: near a pane's edge it splits there, in its middle a chat takes its place, along the window's edges it runs the whole side, and a label says which.",
+    tours: [DROP_TOUR],
+  },
+  {
     id: "2026-11-02-connection",
     when: "2026-11-02T15:10:00-06:00",
     summary:
@@ -1410,13 +1417,6 @@ export const UPDATES: readonly Update[] = [
     summary:
       "Settings → Tools → MCP servers: Sign in again signs in to an MCP server from the device you use, its page opening there and the address your browser ends on pasted in place; a provider's sign-in page now opens on another device too.",
     tours: [MCP_SIGN_IN_TOUR],
-  },
-  {
-    id: "2026-11-01-drag-guides",
-    when: "2026-11-01T15:04:00-06:00",
-    summary:
-      "Docking guides: dragging a pane by its grip ⠿, or a chat from the list, shows five guides in the middle of the pane under the pointer and four at the window's edges; a drop counts only on a guide, and the lit guide shows where it lands.",
-    tours: [DRAG_GUIDES_TOUR],
   },
   {
     id: "2026-11-01-usage-continue",
