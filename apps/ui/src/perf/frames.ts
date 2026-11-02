@@ -4,6 +4,8 @@ import { desktopBridge } from "../desktop/bridge";
 const LONG_FRAME_MS = 50;
 /** The most long-frame gaps one report carries (the server takes 200 numbers). */
 const MAX_GAPS = 100;
+/** Frames up to this long count toward the steady mean: one or two frames of any screen, not a stall. */
+const STEADY_FRAME_MS = 25;
 
 /** How the page drew frames over a span: from the time of each frame as `requestAnimationFrame` ran it. */
 export interface FrameStats {
@@ -17,6 +19,11 @@ export interface FrameStats {
   readonly blockedMs: number;
   /** Each long frame's length, in the order they came. */
   readonly longGaps: readonly number[];
+  /**
+   * The mean time between frames, stalls left out (up to STEADY_FRAME_MS), to 0.01 ms. A screen's own pace shows: 6.94 at
+   * 144 Hz, 16.67 at 60 Hz; WebKitGTK's fallback timer sleeps 16 ms a frame, about 16.1 to 16.3 with its work.
+   */
+  readonly steadyMean: number;
 }
 
 const round = (value: number): number => Math.round(value * 10) / 10;
@@ -39,7 +46,13 @@ export function frameStats(times: readonly number[]): FrameStats {
     longFrames: long.length,
     blockedMs: Math.round(long.reduce((sum, gap) => sum + gap - 1000 / 60, 0)),
     longGaps: long.slice(0, MAX_GAPS).map(Math.round),
+    steadyMean: meanOf(gaps.filter((gap) => gap <= STEADY_FRAME_MS)),
   };
+}
+
+function meanOf(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100;
 }
 
 /** How far a scrolled element moved between frames, from its `scrollTop` at each frame. */
@@ -144,5 +157,9 @@ export function frameMarks(stats: FrameStats): Record<string, number> {
     window_w: window.innerWidth,
     window_h: window.innerHeight,
     dpr_x100: Math.round(window.devicePixelRatio * 100),
+    frame_mean_x100: Math.round(stats.steadyMean * 100),
+    // The screen the engine puts the window on: a different one can have another pace.
+    screen_w: window.screen.width,
+    screen_h: window.screen.height,
   };
 }

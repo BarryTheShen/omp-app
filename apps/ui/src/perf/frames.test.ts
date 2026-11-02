@@ -24,6 +24,20 @@ describe("frameStats", () => {
     expect(stats.p50).toBeCloseTo(16.7, 1);
   });
 
+  test("the steady mean leaves stalls out, and tells a 16 ms timer from a 60 Hz screen that whole-millisecond times hide", () => {
+    // rAF times as WebKitGTK gives them, whole milliseconds: a 16.2 ms timer and a 16.67 ms screen, each with one stall.
+    const paced = (step: number) => {
+      const times = Array.from({ length: 120 }, (_, index) => Math.round(index * step));
+      return [...times, (times.at(-1) ?? 0) + 90];
+    };
+    const timer = frameStats(paced(16.2));
+    const screen = frameStats(paced(1000 / 60));
+    expect(timer.p50).toBe(16);
+    expect(screen.p50).toBe(17);
+    expect(timer.steadyMean).toBeCloseTo(16.2, 1);
+    expect(screen.steadyMean).toBeCloseTo(16.67, 1);
+  });
+
   test("no frames, or one, is no statistics", () => {
     expect(frameStats([]).frames).toBe(0);
     expect(frameStats([5]).max).toBe(0);
