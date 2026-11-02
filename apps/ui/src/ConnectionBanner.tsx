@@ -49,6 +49,11 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
             ? REFUSED_WORDS[state.refusal]
             : "The connection to the app has closed."}
       </span>
+      {reconnecting && (
+        <Button size="xs" variant="secondary" onClick={() => client.reconnectNow()}>
+          Reconnect now
+        </Button>
+      )}
       {!reconnecting && state.refusal === undefined && (
         <Button size="xs" variant="secondary" onClick={() => window.location.reload()}>
           Reload

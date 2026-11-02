@@ -105,6 +105,11 @@ export interface AppClient {
     event: E,
     options?: SubscribeOptions<PortEventValue<P, E>>,
   ): Promise<AppClientSubscription<PortEventValue<P, E>>>;
+  /**
+   * Connects again now: a reconnect waiting for its next try starts at once, and an open link that may be dead (one that
+   * stopped answering) is dropped and opened again. Does nothing after the server refused this page: that stays.
+   */
+  reconnectNow(): void;
   dispose(): void;
 }
 
@@ -276,6 +281,8 @@ class AppClientImpl implements AppClient {
   private requestCounter = 0;
   private readonly timers: TimerScheduler;
   private reconnectAttempt = 0;
+  /** Whether the link was ever open: every try after that is a reconnect, also one whose own socket never opened. */
+  private everOpen = false;
   private reconnectTimer: TimerHandle | undefined;
   private _connectionState: ConnectionState = "connecting";
   private _instanceId: string | undefined;
@@ -378,6 +385,29 @@ class AppClientImpl implements AppClient {
     }
   }
 
+  reconnectNow(): void {
+    if (this.disposed || this.terminal) return;
+    if (this.reconnectTimer !== undefined) {
+      this.timers.clearTimeout?.(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnectAttempt = 0;
+    const socket = this.socket;
+    if (socket !== undefined) {
+      // Dropped as if it had closed: once it is not the current socket, its own late close is ignored.
+      this.socket = undefined;
+      this.welcomeReceived = false;
+      try {
+        socket.close(4000, "reconnect");
+      } catch {
+        // A socket that is already closed has nothing more to close.
+      }
+      this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
+      this.setConnectionState(this.everOpen ? "reconnecting" : "connecting");
+    }
+    this.connectNow();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -453,7 +483,6 @@ class AppClientImpl implements AppClient {
     };
     socket.onclose = (event) => {
       if (!this.isCurrent(socket, generation)) return;
-      const wasOpen = this.welcomeReceived;
       this.socket = undefined;
       this.welcomeReceived = false;
       const code = closeCode(event);
@@ -486,7 +515,7 @@ class AppClientImpl implements AppClient {
         return;
       }
       this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
-      if (!this.disposed) this.scheduleReconnect(wasOpen);
+      if (!this.disposed) this.scheduleReconnect();
     };
   }
 
@@ -524,6 +553,7 @@ class AppClientImpl implements AppClient {
       previousInstanceId !== undefined && previousInstanceId !== frame.instanceId;
     this._instanceId = frame.instanceId;
     this.welcomeReceived = true;
+    this.everOpen = true;
     this.reconnectAttempt = 0;
     this.setConnectionState("open");
     this.resolveOpenWaiters();
@@ -930,7 +960,7 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  private scheduleReconnect(wasOpen = this.welcomeReceived): void {
+  private scheduleReconnect(): void {
     if (this.disposed || this.terminal || this.reconnectTimer !== undefined) return;
     const nextAttempt = this.reconnectAttempt + 1;
     if (this.reconnect.maxAttempts !== undefined && nextAttempt > this.reconnect.maxAttempts) {
@@ -941,7 +971,7 @@ class AppClientImpl implements AppClient {
       return;
     }
     this.reconnectAttempt = nextAttempt;
-    this.setConnectionState(wasOpen ? "reconnecting" : "connecting");
+    this.setConnectionState(this.everOpen ? "reconnecting" : "connecting");
     const exponent = Math.max(0, nextAttempt - 1);
     const delay = Math.min(this.reconnect.maxDelayMs, this.reconnect.baseDelayMs * 2 ** exponent);
     if (!this.timers.setTimeout) {

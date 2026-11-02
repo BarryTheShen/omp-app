@@ -15,6 +15,7 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import { ConnectionBanner, REFUSED_WORDS } from "./ConnectionBanner";
+import { ConnectionDot } from "./ConnectionDot";
 import type { ChatController, ChatTarget } from "./chat/controller";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
@@ -31,6 +32,7 @@ import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS } from "./keys/table";
+import { watchLink } from "./linkCheck";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
 import { RequestPrompt } from "./pairing/RequestPrompt";
@@ -181,6 +183,8 @@ function Shell({
   useWaitingNotifications(view.waiting);
   // A turn that ends while the window is in the background, as omp's terminal notifies it (V19b).
   useSettledNotifications(useInbox(), useNotifySettings(client, folder));
+  // A link that stopped answering shows as such and is opened again (#2789).
+  useEffect(() => watchLink(client), [client]);
   // How smoothly this page scrolls, measured on a sample of scrolls and kept in the server's debug log.
   useEffect(
     () =>
@@ -366,6 +370,7 @@ function Shell({
         onWhatsNew={showWhatsNew}
         workspace={workspace}
         phone={phone}
+        connection={<ConnectionDot client={client} line={!phone} />}
       />
       <main
         data-tour="workspace"

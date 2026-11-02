@@ -923,6 +923,27 @@ const DEVICES_TOUR: Tour = {
   ],
 };
 
+const CONNECTION_TOUR: Tour = {
+  id: "connection-2026-11-02",
+  title: "The connection",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("connection"),
+      title: "Connected or not",
+      text: "This shows the link to the app's server: a green dot and <b>Connected</b>; amber and <b>Reconnecting…</b> while it comes back; red and <b>Disconnected</b> when the server turned this page away. Click it to reconnect at once.",
+      action: next,
+    },
+    {
+      target: part("connection"),
+      title: "A link that went quiet",
+      text: "A link can die without closing, after a phone sleeps for example. The app asks the server every 30 seconds, and at once when you come back to it; when no answer comes, it drops the link and opens a new one.",
+      action: next,
+    },
+  ],
+};
+
 const PAIRED_ONLY_TOUR: Tour = {
   id: "paired-only-2026-11-02",
   title: "Only paired devices",
@@ -1320,6 +1341,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-connection",
+    when: "2026-11-02T15:10:00-06:00",
+    summary:
+      "The foot of the chat list shows whether the app is connected, reconnecting or disconnected, and a click reconnects at once. A link that stops answering is noticed and opened again.",
+    tours: [CONNECTION_TOUR],
+  },
   {
     id: "2026-11-02-paired-only",
     when: "2026-11-02T11:38:00-06:00",

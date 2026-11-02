@@ -91,6 +91,7 @@ export function Sidebar({
   onWhatsNew,
   workspace,
   phone,
+  connection,
 }: {
   /** The folder at the top, with its menu to switch it. */
   readonly folderMenu: ReactNode;
@@ -111,6 +112,8 @@ export function Sidebar({
   readonly workspace: RefObject<WorkspaceHandle | null>;
   /** On a phone, where the side panel has no rail at the window's edge, its button sits here. */
   readonly phone: boolean;
+  /** The link to the app's server, in the foot beside Settings (#2789). */
+  readonly connection: ReactNode;
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -282,6 +285,7 @@ export function Sidebar({
             <SquarePen />
             New chat
           </Button>
+          {connection}
           <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
           <Button
             data-tour="settings"
@@ -295,46 +299,49 @@ export function Sidebar({
           </Button>
         </div>
       ) : (
-        // On a tablet the full-size buttons go on a row of their own under the theme switch: one row is too narrow.
-        <div className="flex items-center justify-between px-1 pt-2 tablet:flex-wrap tablet:gap-y-1">
-          <ThemeSwitch />
-          <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    data-tour="whats-new-button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="What's new"
-                    className="text-t3 hover:text-t1 tablet:size-11"
-                    onClick={onWhatsNew}
-                  />
-                }
-              >
-                <Sparkles />
-              </TooltipTrigger>
-              <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
-            </Tooltip>
-            <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    data-tour="settings"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Settings"
-                    aria-keyshortcuts="Control+,"
-                    className="text-t3 hover:text-t1 tablet:size-11"
-                    onClick={onSettings}
-                  />
-                }
-              >
-                <Settings />
-              </TooltipTrigger>
-              <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
-            </Tooltip>
+        <div className="px-1 pt-2">
+          {connection}
+          {/* On a tablet the full-size buttons go on a row of their own under the theme switch: one row is too narrow. */}
+          <div className="flex items-center justify-between pt-1 tablet:flex-wrap tablet:gap-y-1">
+            <ThemeSwitch />
+            <div className="flex items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      data-tour="whats-new-button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="What's new"
+                      className="text-t3 hover:text-t1 tablet:size-11"
+                      onClick={onWhatsNew}
+                    />
+                  }
+                >
+                  <Sparkles />
+                </TooltipTrigger>
+                <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
+              </Tooltip>
+              <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      data-tour="settings"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Settings"
+                      aria-keyshortcuts="Control+,"
+                      className="text-t3 hover:text-t1 tablet:size-11"
+                      onClick={onSettings}
+                    />
+                  }
+                >
+                  <Settings />
+                </TooltipTrigger>
+                <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </div>
       )}

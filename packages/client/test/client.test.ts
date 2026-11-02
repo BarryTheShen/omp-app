@@ -644,6 +644,88 @@ describe("createAppClient", () => {
     expect(client.connectionState).toBe("closed");
     expect(states).toContain("reconnecting");
   });
+
+  test("reconnectNow starts a reconnect that waits for its next try at once", async () => {
+    const server = new FakeServer();
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      token: "test-token",
+      webSocketFactory: server.connectFactory(),
+      // The next try waits a minute: only reconnectNow can start it within the test.
+      timers: { setTimeout: (handler) => handler, clearTimeout() {} },
+      reconnect: { baseDelayMs: 60_000, maxDelayMs: 60_000 },
+    });
+    await eventually(() => client.connectionState === "open");
+    server.closeCurrent();
+    await eventually(() => client.connectionState === "reconnecting");
+    expect(server.connections).toHaveLength(1);
+    client.reconnectNow();
+    await eventually(() => client.connectionState === "open");
+    expect(server.connections).toHaveLength(2);
+    client.dispose();
+  });
+
+  test("reconnectNow drops an open link for a new one, and the old link's close starts nothing more", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const states: string[] = [];
+    client.onConnectionState((event) => states.push(event.state));
+    const first = server.current().socket;
+    const waiting = settle(client.port(AppPort).capabilities({}));
+    await eventually(() => server.callIds.length === 1);
+    client.reconnectNow();
+    expect(first.closed).toBe(true);
+    await eventually(() => client.connectionState === "open" && server.connections.length === 2);
+    await eventually(() => waiting.settled);
+    expect(waiting.error).toMatchObject({ appError: { code: "unavailable" } });
+    for (let turn = 0; turn < 20; turn += 1)
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(server.connections).toHaveLength(2);
+    expect(states).toEqual(["open", "reconnecting", "open"]);
+    client.dispose();
+  });
+
+  test("reconnectNow leaves a page the server refused closed", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    server.current().socket.onclose?.({ code: 4401, reason: "not paired" });
+    await eventually(() => client.connectionState === "closed");
+    client.reconnectNow();
+    for (let turn = 0; turn < 20; turn += 1)
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(server.connections).toHaveLength(1);
+    expect(client.connectionState).toBe("closed");
+    client.dispose();
+  });
+
+  test("after a drop, tries that fail still say reconnecting until the link is back", async () => {
+    const server = new FakeServer();
+    const factory = server.connectFactory();
+    let failures = 0;
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      token: "test-token",
+      webSocketFactory: (url) => {
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error("refused");
+        }
+        return factory(url);
+      },
+      timers: immediateTimers,
+      reconnect: { baseDelayMs: 0, maxDelayMs: 0 },
+    });
+    await eventually(() => client.connectionState === "open");
+    const states: string[] = [];
+    client.onConnectionState((event) => states.push(event.state));
+    failures = 2;
+    server.closeCurrent();
+    await eventually(() => server.connections.length === 2 && client.connectionState === "open");
+    expect(failures).toBe(0);
+    expect(states).toEqual(["open", "reconnecting", "open"]);
+    client.dispose();
+  });
+
   test("treats unauthorized close codes as terminal permission failures", async () => {
     const server = new FakeServer();
     const client = await openClient(server);
