@@ -9,6 +9,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { useFollowTrace } from "../perf/followTrace";
@@ -307,12 +308,22 @@ export function TranscriptList({
   useLayoutEffect(() => {
     if (!empty) virtualizer.scrollToEnd();
   }, [virtualizer, empty]);
+  // The render that first shows a window is drawn from the top, before the list has moved to the latest entry: its
+  // first rows are not the reader near the top, and taking them so read 1 MB of older entries on every open (#2768). One
+  // frame on, the move's scroll event has come (a frame's scroll events run before its animation frames).
+  const [positioned, setPositioned] = useState(false);
+  useEffect(() => {
+    if (empty) return;
+    const frame = requestAnimationFrame(() => setPositioned(true));
+    return () => cancelAnimationFrame(frame);
+  }, [empty]);
 
   const items = virtualizer.getVirtualItems();
   const firstIndex = items[0]?.index;
   useEffect(() => {
-    if (firstIndex !== undefined && firstIndex < 3 && hasOlder) onNearTop();
-  }, [firstIndex, hasOlder, onNearTop]);
+    // A window shorter than the screen stays at the top once positioned, so it fills the screen from older entries.
+    if (positioned && firstIndex !== undefined && firstIndex < 3 && hasOlder) onNearTop();
+  }, [positioned, firstIndex, hasOlder, onNearTop]);
 
   return (
     <div className="relative min-h-0 flex-1">

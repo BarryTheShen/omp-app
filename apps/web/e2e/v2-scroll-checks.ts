@@ -214,6 +214,36 @@ export function defineScrollChecks(engine: string): void {
     );
 
     realTest(
+      "opening a long chat reads none of its older entries until the reader scrolls up",
+      async ({ realApp }) => {
+        let olderReads = 0;
+        const page = await realApp.open({
+          path: "/",
+          beforeLoad: async (opened) => {
+            opened.on("websocket", (socket) =>
+              socket.on("framesent", (frame) => {
+                const text = typeof frame.payload === "string" ? frame.payload : "";
+                if (text.includes('"method":"readEntryWindow"') && text.includes('"before"'))
+                  olderReads += 1;
+              }),
+            );
+          },
+        });
+        await openLongChat(page);
+        await page.waitForTimeout(2_000);
+        // An open reads the newest window only: older entries cost a phone's slow link a megabyte before it was live
+        // (#2768).
+        expect(olderReads).toBe(0);
+        await page.evaluate(() => {
+          const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
+          if (root !== null) root.scrollTop = 0;
+        });
+        await expect.poll(() => olderReads, { timeout: 15_000 }).toBeGreaterThan(0);
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
       "older entries loading above keep the line being read where it is",
       async ({ realApp }) => {
         // The older entries are held back until the line read is taken, as over a slow link: they then land above a
