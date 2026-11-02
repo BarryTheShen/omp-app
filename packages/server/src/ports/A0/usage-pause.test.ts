@@ -1,0 +1,310 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ThreadId, UsageLimitsResult, UsagePauseHold } from "@omp-app/contracts";
+import type { ProcessTimer } from "../../process/omp-process";
+import {
+  USAGE_PAUSE_AFTER_START_MS,
+  USAGE_PAUSE_RESUME_GRACE_MS,
+  USAGE_PAUSE_WINDOW_MS,
+  UsagePause,
+  type UsagePauseKept,
+  usagePauseFile,
+} from "./usage-pause";
+
+const A = "01a18633-f642-75c0-b0bd-ad38cbbf851a" as ThreadId;
+const B = "01a18633-f642-75c0-b0bd-ad38cbbf851b" as ThreadId;
+const FOLDER = "/work/project";
+const HOUR = 3_600_000;
+
+/** A clock and timers the test moves by hand. */
+class FakeTimer implements ProcessTimer {
+  now = 1_790_000_000_000;
+  #next = 1;
+  readonly timers = new Map<number, { at: number; handler: () => void }>();
+  setTimeout(handler: () => void, delayMs: number): unknown {
+    const id = this.#next++;
+    this.timers.set(id, { at: this.now + delayMs, handler });
+    return id;
+  }
+  clearTimeout(handle: unknown): void {
+    this.timers.delete(handle as number);
+  }
+  /** Moves the clock on by `ms`, running each timer that comes due, in order, and what it awaits. */
+  async advance(ms: number): Promise<void> {
+    const end = this.now + ms;
+    for (;;) {
+      const due = [...this.timers]
+        .filter(([, timer]) => timer.at <= end)
+        .sort((a, b) => a[1].at - b[1].at)[0];
+      if (due === undefined) break;
+      this.timers.delete(due[0]);
+      this.now = due[1].at;
+      due[1].handler();
+      await settle();
+    }
+    this.now = end;
+  }
+}
+
+async function settle(): Promise<void> {
+  for (let round = 0; round < 5; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** The chats that run (and on which provider), which are paused, and every pause and resume sent, in order. */
+function setup(kept: UsagePauseKept = { marks: new Map(), holds: new Map() }) {
+  const timer = new FakeTimer();
+  const running = new Map<ThreadId, string>();
+  const paused = new Set<ThreadId>();
+  const sent: string[] = [];
+  const saved: UsagePauseKept[] = [];
+  const changes: [ThreadId, number | null, UsagePauseHold | null][] = [];
+  const rule = new UsagePause({
+    now: () => timer.now,
+    timer,
+    load: async () => kept,
+    save: async (next) => {
+      saved.push(next);
+    },
+    providerOf: async (threadId) => running.get(threadId) ?? null,
+    pause: async (threadId) => {
+      if (!running.has(threadId)) return false;
+      paused.add(threadId);
+      sent.push(`pause ${threadId === A ? "A" : "B"}`);
+      return true;
+    },
+    resume: async (threadId) => {
+      if (!running.has(threadId)) return false;
+      paused.delete(threadId);
+      sent.push(`resume ${threadId === A ? "A" : "B"}`);
+      return true;
+    },
+    isPaused: (threadId) => paused.has(threadId),
+  });
+  rule.onChange((threadId, _folder, percent, hold) => changes.push([threadId, percent, hold]));
+  return { timer, running, paused, sent, saved, changes, rule };
+}
+
+/** A usage read: each provider's 5-hour window (and, if given, its weekly one) at a share, resetting at `resetsAt`. */
+function usage(
+  providers: Record<
+    string,
+    { readonly fiveHour: number; readonly weekly?: number; readonly resetsAt?: number | null }
+  >,
+): UsageLimitsResult {
+  return {
+    state: "ready",
+    fetchedAt: new Date(0).toISOString(),
+    providers: Object.entries(providers).map(([providerId, read]) => {
+      const resetsAt =
+        read.resetsAt === undefined || read.resetsAt === null
+          ? null
+          : new Date(read.resetsAt).toISOString();
+      return {
+        providerId,
+        windows: [
+          {
+            label: "5 Hour",
+            usedPercent: read.fiveHour,
+            resetsAt,
+            accounts: 1,
+            durationMs: USAGE_PAUSE_WINDOW_MS,
+          },
+          ...(read.weekly === undefined
+            ? []
+            : [
+                {
+                  label: "7 Day",
+                  usedPercent: read.weekly,
+                  resetsAt,
+                  accounts: 1,
+                  durationMs: 7 * 24 * HOUR,
+                },
+              ]),
+        ],
+      };
+    }),
+  };
+}
+
+describe("usage pause (#2781 part 3)", () => {
+  test("a marked chat pauses at its limit and resumes a minute after its window resets", async () => {
+    const { timer, running, sent, rule } = setup();
+    running.set(A, "anthropic");
+    await rule.setMark(A, FOLDER, 95);
+    const reset = timer.now + 2 * HOUR;
+
+    await rule.onUsage(usage({ anthropic: { fiveHour: 94.9, resetsAt: reset } }));
+    expect(sent).toEqual([]);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+    expect(rule.marksIn(FOLDER)).toEqual([
+      {
+        id: A,
+        percent: 95,
+        hold: { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS },
+      },
+    ]);
+
+    // Still at the limit before the reset: nothing more.
+    await rule.onUsage(usage({ anthropic: { fiveHour: 99, resetsAt: reset } }));
+    await timer.advance(2 * HOUR);
+    expect(sent).toEqual(["pause A"]);
+    await timer.advance(USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A", "resume A"]);
+    expect(rule.marksIn(FOLDER)).toEqual([{ id: A, percent: 95, hold: null }]);
+  });
+
+  test("only marked chats pause, each at its own limit, on its own provider's 5-hour window", async () => {
+    const { running, sent, rule } = setup();
+    running.set(A, "anthropic");
+    running.set(B, "openai-codex");
+    await rule.setMark(A, FOLDER, 80);
+
+    // B is not marked: it runs on at 100%. The weekly window at 99% never pauses anything.
+    await rule.onUsage(
+      usage({ anthropic: { fiveHour: 79, weekly: 99 }, "openai-codex": { fiveHour: 100 } }),
+    );
+    expect(sent).toEqual([]);
+
+    // Anthropic at 97% holds A (80%); B, marked at 95% after this read, runs on OpenAI at 90% and is left running.
+    await rule.onUsage(usage({ anthropic: { fiveHour: 97 }, "openai-codex": { fiveHour: 90 } }));
+    await rule.setMark(B, FOLDER, 95);
+    expect(sent).toEqual(["pause A"]);
+    // OpenAI reaching 96% passes B's own 95%.
+    await rule.onUsage(usage({ anthropic: { fiveHour: 97 }, "openai-codex": { fiveHour: 96 } }));
+    expect(sent).toEqual(["pause A", "pause B"]);
+  });
+
+  test("a chat the reader paused or resumed stays as the reader left it", async () => {
+    const { timer, running, paused, sent, rule } = setup();
+    running.set(A, "anthropic");
+    running.set(B, "anthropic");
+    await rule.setMark(A, FOLDER, 90);
+    await rule.setMark(B, FOLDER, 90);
+    paused.add(B);
+    const reset = timer.now + HOUR;
+
+    await rule.onUsage(usage({ anthropic: { fiveHour: 92, resetsAt: reset } }));
+    // B was paused already: no hold on it, so the reset doesn't resume it either.
+    expect(sent).toEqual(["pause A"]);
+
+    // The reader resumes A before the reset: the rule lets it run, and the reset sends nothing.
+    paused.delete(A);
+    rule.onPauseChanged(A, null);
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A"]);
+    expect(paused.has(B)).toBe(true);
+  });
+
+  test("a read under the chat's limit again ends a hold that has no reset time", async () => {
+    const { running, sent, rule } = setup();
+    running.set(A, "anthropic");
+    await rule.setMark(A, FOLDER, 95);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 97, resetsAt: null } }));
+    expect(rule.marksIn(FOLDER)[0]?.hold).toEqual({ providerId: "anthropic", until: null });
+
+    await rule.onUsage(usage({ anthropic: { fiveHour: 96 } }));
+    expect(sent).toEqual(["pause A"]);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 3 } }));
+    expect(sent).toEqual(["pause A", "resume A"]);
+  });
+
+  test("a changed limit is judged at once against the last read; unmarking a held chat resumes it", async () => {
+    const { running, sent, rule } = setup();
+    running.set(A, "anthropic");
+    await rule.setMark(A, FOLDER, 95);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 90 } }));
+    expect(sent).toEqual([]);
+
+    await rule.setMark(A, FOLDER, 85);
+    expect(sent).toEqual(["pause A"]);
+    await rule.setMark(A, FOLDER, 99);
+    expect(sent).toEqual(["pause A", "resume A"]);
+
+    await rule.setMark(A, FOLDER, 50);
+    expect(sent).toEqual(["pause A", "resume A", "pause A"]);
+    await rule.setMark(A, FOLDER, null);
+    expect(sent).toEqual(["pause A", "resume A", "pause A", "resume A"]);
+    expect(rule.marksIn(FOLDER)).toEqual([]);
+  });
+
+  test("a chat whose omp is not running is not held; it pauses at the first read after it starts", async () => {
+    const { running, sent, rule } = setup();
+    await rule.setMark(A, FOLDER, 95);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 98 } }));
+    expect(sent).toEqual([]);
+    expect(rule.marksIn(FOLDER)[0]?.hold).toBeNull();
+
+    running.set(A, "anthropic");
+    await rule.onUsage(usage({ anthropic: { fiveHour: 98 } }));
+    expect(sent).toEqual(["pause A"]);
+  });
+
+  test("a chat moved to its new id keeps its mark and its hold", async () => {
+    const { timer, running, sent, changes, rule } = setup();
+    running.set(A, "anthropic");
+    await rule.setMark(A, FOLDER, 90);
+    const reset = timer.now + HOUR;
+    await rule.onUsage(usage({ anthropic: { fiveHour: 91, resetsAt: reset } }));
+
+    running.delete(A);
+    running.set(B, "anthropic");
+    rule.move(A, B);
+    expect(rule.marksIn(FOLDER)).toEqual([
+      {
+        id: B,
+        percent: 90,
+        hold: { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS },
+      },
+    ]);
+    expect(changes.slice(-2)).toEqual([
+      [A, null, null],
+      [B, 90, { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS }],
+    ]);
+    // The moved chat is not paused in this fake: the reset sends nothing for it.
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A"]);
+  });
+
+  test("marks and holds outlive a restart; a resume that fell due meanwhile runs once the hosts are back", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "usage-pause-"));
+    try {
+      const file = usagePauseFile(join(directory, "usage-pause.json"));
+      const first = setup();
+      first.running.set(A, "anthropic");
+      first.running.set(B, "anthropic");
+      await first.rule.setMark(A, FOLDER, 90);
+      await first.rule.setMark(B, FOLDER, 95);
+      const reset = first.timer.now + HOUR;
+      await first.rule.onUsage(usage({ anthropic: { fiveHour: 92, resetsAt: reset } }));
+      expect(first.sent).toEqual(["pause A"]);
+      const last = first.saved.at(-1);
+      if (last === undefined) throw new Error("nothing was saved");
+      await file.save(last);
+      first.rule.close();
+
+      const text = await readFile(join(directory, "usage-pause.json"), "utf8");
+      expect(JSON.parse(text)).toEqual({
+        version: 1,
+        marks: { [A]: { percent: 90, folder: FOLDER }, [B]: { percent: 95, folder: FOLDER } },
+        holds: { [A]: { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS } },
+      });
+
+      // The server is back two hours later: A's resume fell due while it was down.
+      const second = setup(await file.load());
+      second.timer.now = first.timer.now + 2 * HOUR;
+      second.running.set(A, "anthropic");
+      second.paused.add(A);
+      await second.rule.restore();
+      expect(second.rule.marksIn(FOLDER).map((mark) => mark.id)).toEqual([A, B]);
+      await second.timer.advance(USAGE_PAUSE_AFTER_START_MS - 1);
+      expect(second.sent).toEqual([]);
+      await second.timer.advance(1);
+      expect(second.sent).toEqual(["resume A"]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});

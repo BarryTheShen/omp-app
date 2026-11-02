@@ -37,11 +37,13 @@ import {
   type SetEventOptionsResult,
   type SetSubagentSubscriptionArgs,
   type SetSubagentSubscriptionResult,
+  type SetUsagePauseArgs,
   type StreamKey,
   type SubscribeArgs,
   ThreadId,
   type UiState,
   type UiStateEvent,
+  type UsagePauseHold,
 } from "@omp-app/contracts";
 import {
   type ChatEvent,
@@ -70,6 +72,7 @@ import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
+import { UsagePause, usagePauseFile } from "./usage-pause";
 import { type ResumeOutcome, UsageResume, usageResumeFile } from "./usage-resume";
 
 interface ChatEntry {
@@ -359,6 +362,10 @@ export class ChatSessionPortRuntime {
   #closed = false;
   /** The app's own continue after a usage limit (#2781); absent without its file. */
   readonly #usageResume: UsageResume | undefined;
+  /** The usage pause of the chats marked for it (#2781 part 3); absent without its file. */
+  readonly #usagePause: UsagePause | undefined;
+  /** Stops following the usage watch. */
+  readonly #stopUsageWatch: () => void;
 
   constructor(context: A0PortContext) {
     this.#context = context;
@@ -373,6 +380,28 @@ export class ChatSessionPortRuntime {
             ...(context.logger === undefined ? {} : { logger: context.logger }),
           });
     void this.#usageResume?.restore();
+    this.#usagePause =
+      context.usagePauseFile === undefined
+        ? undefined
+        : new UsagePause({
+            now: context.usageResumeClock?.now ?? Date.now,
+            timer: context.usageResumeClock?.timer ?? SPARE_TIMER,
+            ...usagePauseFile(context.usagePauseFile),
+            providerOf: (threadId) => this.#providerOf(threadId),
+            pause: (threadId) => this.#holdAgents(threadId, "pause"),
+            resume: (threadId) => this.#holdAgents(threadId, "resume"),
+            isPaused: (threadId) => (context.processRegistry.pausedOf(threadId) ?? null) !== null,
+            ...(context.logger === undefined ? {} : { logger: context.logger }),
+          });
+    const usagePause = this.#usagePause;
+    const restored = usagePause?.restore() ?? Promise.resolve();
+    // The usage reads are judged once the kept marks and holds are back.
+    this.#stopUsageWatch =
+      usagePause === undefined || context.usageLimits === undefined
+        ? () => undefined
+        : context.usageLimits.subscribe((result) => {
+            void restored.then(() => usagePause.onUsage(result));
+          });
     context.processRegistry.setIdleHooks({
       // A chat the app continues after a usage limit keeps its omp until then, watched or not (#2781).
       isSettled: async (threadId) =>
@@ -399,6 +428,7 @@ export class ChatSessionPortRuntime {
     setEventOptions: (args, call) => this.setEventOptions(args as SetEventOptionsArgs, call),
     pauseAll: (args) => this.pauseAll(args as PauseAllArgs),
     cancelContinue: (args) => this.cancelContinue(args as { threadId: ThreadId }),
+    setUsagePause: (args) => this.setUsagePause(args as SetUsagePauseArgs),
   };
 
   /** A page shows the folder: a new chat is kept ready there, if this server keeps them (#2760). */
@@ -411,6 +441,55 @@ export class ChatSessionPortRuntime {
   cancelContinue(args: { threadId: ThreadId }): null {
     this.#usageResume?.cancel(args.threadId);
     return null;
+  }
+
+  /** Marks the chat to pause at its share of its provider's 5-hour limit, or unmarks it (#2781 part 3). */
+  async setUsagePause(args: SetUsagePauseArgs): Promise<null> {
+    const usagePause = this.#usagePause;
+    if (usagePause === undefined) {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "This app server can't pause chats at a usage limit.",
+        retryable: false,
+      });
+    }
+    const threadId = this.#aliases.get(args.threadId) ?? args.threadId;
+    const folder = this.#context.processRegistry.folderOf(threadId);
+    if (folder === undefined) throw notFound("Open the chat, then set its usage pause.");
+    await usagePause.setMark(threadId, folder, args.percent);
+    return null;
+  }
+
+  /** The chats marked to pause at their usage limit, by folder, and each change with the chat's folder (#2781). */
+  readonly usagePauses = {
+    usagePausesIn: (folder: string) => this.#usagePause?.marksIn(folder) ?? [],
+    onUsagePauseChange: (
+      listener: (
+        threadId: ThreadId,
+        folder: string,
+        percent: number | null,
+        hold: UsagePauseHold | null,
+      ) => void,
+    ): (() => void) => this.#usagePause?.onChange(listener) ?? (() => undefined),
+  };
+
+  /** The provider of the model a running chat uses now; null when its omp is not running. */
+  async #providerOf(threadId: ThreadId): Promise<string | null> {
+    const entry = this.#entryOrUndefined(threadId);
+    if (entry === undefined || entry.bootstrap.threadId !== threadId || !this.#isRunning(entry)) {
+      return null;
+    }
+    return (await entry.client.request("get_state", {})).model?.provider ?? null;
+  }
+
+  /** Pauses or resumes a running chat's agents as omp's `/pause` does; false when its omp is not running. */
+  async #holdAgents(threadId: ThreadId, method: "pause" | "resume"): Promise<boolean> {
+    const entry = this.#entryOrUndefined(threadId);
+    if (entry === undefined || entry.bootstrap.threadId !== threadId || !this.#isRunning(entry)) {
+      return false;
+    }
+    await this.#send(entry, method, {});
+    return true;
   }
 
   /** The chats the app continues after a usage limit, by folder, and each change with the chat's folder (#2781). */
@@ -1145,6 +1224,8 @@ export class ChatSessionPortRuntime {
     // The new chats kept ready hold no chat: they stop, and no server after this one finds them (D2).
     this.#closed = true;
     this.#usageResume?.close();
+    this.#stopUsageWatch();
+    this.#usagePause?.close();
     const spares = [...this.#spares.values()];
     this.#spares.clear();
     await Promise.all(spares.map((spare) => this.#discardSpare(spare)));
@@ -1336,6 +1417,7 @@ export class ChatSessionPortRuntime {
       this.#context.processRegistry.setBusy(threadId, false);
     } else if (event.type === "pause_changed") {
       this.#context.processRegistry.setPaused(threadId, event.pausedAt);
+      this.#usagePause?.onPauseChanged(threadId, event.pausedAt);
       // Every hold of a chat's agents and its end, whatever asked for it (a page, a typed `/pause`, omp itself): a turn
       // that stops for no visible reason can be checked against these (Nov 1, a 2 h 27 min hold nothing logged).
       this.#context.logger?.info("chat_session.pause_changed", {
@@ -1961,6 +2043,7 @@ export class ChatSessionPortRuntime {
     }
     // The registry's rekey can refuse; it runs first, so a refusal leaves the stream and the process as they were.
     this.#moveProcess(current, identity.threadId);
+    this.#usagePause?.move(current, identity.threadId);
     this.#publish(entry, {
       kind: "moved",
       threadId: identity.threadId,

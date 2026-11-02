@@ -228,6 +228,40 @@ export const SessionContinuingResult = z.strictObject({
 export type SessionContinuingResult = z.infer<typeof SessionContinuingResult>;
 
 /**
+ * The usage pause holding a chat (#2781): the provider whose 5-hour window reached the chat's limit, and until when
+ * (epoch ms: the window's reset plus a minute; null when omp gave no reset time, so the chat resumes at the first read
+ * below its limit).
+ */
+export const UsagePauseHold = z.strictObject({
+  providerId: z.string().min(1).max(128),
+  until: z.int().nonnegative().nullable(),
+});
+export type UsagePauseHold = z.infer<typeof UsagePauseHold>;
+
+/** A chat marked to pause at `percent` of its provider's 5-hour window, and the hold while the rule pauses it (#2781). */
+export const SessionUsagePause = z.strictObject({
+  id: ThreadId,
+  percent: z.int().min(1).max(100),
+  hold: UsagePauseHold.nullable(),
+});
+export type SessionUsagePause = z.infer<typeof SessionUsagePause>;
+
+/** A chat's usage pause changed: marked or its limit changed, held or resumed; `percent: null` unmarked it. */
+export const SessionUsagePauseChanged = z.strictObject({
+  folder: FolderPath,
+  id: ThreadId,
+  percent: z.int().min(1).max(100).nullable(),
+  hold: UsagePauseHold.nullable(),
+});
+export type SessionUsagePauseChanged = z.infer<typeof SessionUsagePauseChanged>;
+
+/** The chats in a folder marked to pause at their usage limit (#2781). */
+export const SessionUsagePausesArgs = z.strictObject({ folder: FolderPath });
+export type SessionUsagePausesArgs = z.infer<typeof SessionUsagePausesArgs>;
+export const SessionUsagePausesResult = z.strictObject({ chats: z.array(SessionUsagePause) });
+export type SessionUsagePausesResult = z.infer<typeof SessionUsagePausesResult>;
+
+/**
  * Deletes one chat: its session file and the artifacts directory beside it. `folder` is the chat's folder, and only a
  * file that this folder's listing returns can be deleted. The server refuses (conflict) a chat omp holds or runs a turn
  * in, so close the chat first.
@@ -303,6 +337,11 @@ export const SessionFileStore = definePort({
       result: SessionContinuingResult,
       capability: "host.session-files",
     },
+    listUsagePauses: {
+      args: SessionUsagePausesArgs,
+      result: SessionUsagePausesResult,
+      capability: "host.session-files",
+    },
   },
   events: {
     changed: {
@@ -319,6 +358,10 @@ export const SessionFileStore = definePort({
     },
     continueChanged: {
       payload: SessionContinueChanged,
+      capability: "host.session-files",
+    },
+    usagePauseChanged: {
+      payload: SessionUsagePauseChanged,
       capability: "host.session-files",
     },
   },

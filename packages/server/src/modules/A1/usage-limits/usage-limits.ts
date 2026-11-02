@@ -46,7 +46,9 @@ const AmountInput = z.looseObject({
   limit: z.number().optional(),
 });
 const WindowInput = z.looseObject({
+  id: z.string().optional(),
   label: z.string().min(1),
+  durationMs: z.number().optional(),
   resetsAt: z.number().optional(),
 });
 const LimitInput = z.looseObject({
@@ -64,7 +66,20 @@ const UsageInput = z.looseObject({
 interface WindowSummary {
   usedPercent: number;
   resetsAt: number | undefined;
+  durationMs: number | undefined;
   accounts: number;
+}
+
+/** omp's stable window ids that say their length ("5h", "7d"); "monthly" and the like do not. */
+const WINDOW_ID_LENGTH = /^(\d+)([hd])$/;
+
+/** A window's length: omp's `durationMs` when it gives one, else what its stable id says (pi-ai `UsageWindow`). */
+function durationOf(window: z.infer<typeof WindowInput>): number | undefined {
+  if (window.durationMs !== undefined && window.durationMs > 0)
+    return Math.round(window.durationMs);
+  const parsed = WINDOW_ID_LENGTH.exec(window.id ?? "");
+  if (parsed === null) return undefined;
+  return Number(parsed[1]) * (parsed[2] === "h" ? 3_600_000 : 86_400_000);
 }
 
 /**
@@ -98,10 +113,11 @@ function summarize(reports: readonly unknown[]): UsageLimitProvider[] {
       const fraction = usedFractionOf(limit.data.amount);
       if (fraction === undefined) continue;
       const { label, resetsAt } = limit.data.window;
+      const durationMs = durationOf(limit.data.window);
       const usedPercent = fraction * 100;
       const current = windows.get(label);
       if (current === undefined) {
-        windows.set(label, { usedPercent, resetsAt, accounts: 1 });
+        windows.set(label, { usedPercent, resetsAt, durationMs, accounts: 1 });
         countedInReport.add(label);
         continue;
       }
@@ -124,6 +140,7 @@ function summarize(reports: readonly unknown[]): UsageLimitProvider[] {
         usedPercent: Math.round(summary.usedPercent * 10) / 10,
         resetsAt: summary.resetsAt === undefined ? null : new Date(summary.resetsAt).toISOString(),
         accounts: summary.accounts,
+        durationMs: summary.durationMs ?? null,
       })),
     }));
 }

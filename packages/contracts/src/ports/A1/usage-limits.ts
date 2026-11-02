@@ -10,6 +10,11 @@ export const UsageLimitWindow = z.strictObject({
   usedPercent: z.number().min(0).max(10_000),
   resetsAt: z.string().max(64).nullable(),
   accounts: z.number().int().min(1).max(1_000),
+  /**
+   * The window's length (ms) as omp reports it, or from omp's stable window id ("5h"); absent when neither tells. The
+   * usage pause acts on the 5-hour window by this, as providers label it differently ("5 Hour", "5 hours").
+   */
+  durationMs: z.number().int().positive().nullable().optional(),
 });
 export type UsageLimitWindow = z.infer<typeof UsageLimitWindow>;
 

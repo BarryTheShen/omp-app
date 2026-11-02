@@ -244,6 +244,18 @@ export type PauseAllArgs = z.infer<typeof PauseAllArgs>;
 export const PauseAllResult = z.strictObject({ chats: z.int().min(0) });
 export type PauseAllResult = z.infer<typeof PauseAllResult>;
 
+/** The usage pause's default limit: a marked chat pauses at 95% of its provider's 5-hour window (#2781). */
+export const USAGE_PAUSE_DEFAULT_PERCENT = 95;
+/**
+ * Marks a chat to pause when its provider's 5-hour usage window reaches `percent`, or (`null`) unmarks it (#2781). Only
+ * marked chats pause, each at its own limit; what the rule paused it resumes at the window's reset.
+ */
+export const SetUsagePauseArgs = z.strictObject({
+  threadId: ThreadId,
+  percent: z.int().min(1).max(100).nullable(),
+});
+export type SetUsagePauseArgs = z.infer<typeof SetUsagePauseArgs>;
+
 export const ChatSessionPort = definePort({
   name: "A0.chatSession",
   methods: {
@@ -265,6 +277,8 @@ export const ChatSessionPort = definePort({
     pauseAll: { args: PauseAllArgs, result: PauseAllResult },
     /** "Don't continue": the app does not continue the chat after its usage limit (#2781). */
     cancelContinue: { args: ThreadRef, result: z.null() },
+    /** Marks a chat to pause at its own share of its provider's 5-hour limit, or unmarks it (#2781). */
+    setUsagePause: { args: SetUsagePauseArgs, result: z.null() },
   },
   events: { event: { payload: ChatSessionEvent } },
 });

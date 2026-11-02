@@ -67,8 +67,26 @@ const usageJson = JSON.stringify({
         {
           id: "openai-codex:7d",
           label: "7 Day",
-          window: { id: "7d", label: "7 Day", resetsAt: Date.parse("2026-10-14T00:00:00.000Z") },
+          // A length omp gives itself counts before what the id says.
+          window: {
+            id: "weekly",
+            label: "7 Day",
+            durationMs: 604_800_000,
+            resetsAt: Date.parse("2026-10-14T00:00:00.000Z"),
+          },
           amount: { usedFraction: 1.25 },
+        },
+      ],
+    },
+    {
+      provider: "cursor",
+      fetchedAt: 1_000,
+      limits: [
+        {
+          id: "cursor:monthly",
+          label: "Monthly",
+          window: { id: "monthly", label: "Monthly" },
+          amount: { usedFraction: 0.5 },
         },
       ],
     },
@@ -77,7 +95,7 @@ const usageJson = JSON.stringify({
 });
 
 describe("the provider usage limits omp reports", () => {
-  test("summarises each provider's windows: the fullest account's share and reset, and how many accounts report it, with no identity", async () => {
+  test("summarises each provider's windows: the fullest account's share and reset, how many accounts report it, and its length, with no identity", async () => {
     const service = new UsageLimitStoreService({
       command: [await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`)],
       env: { PATH },
@@ -93,14 +111,38 @@ describe("the provider usage limits omp reports", () => {
         {
           providerId: "anthropic",
           windows: [
-            { label: "5 Hour", usedPercent: 60, resetsAt: "2026-10-10T09:00:00.000Z", accounts: 2 },
-            { label: "7 Day", usedPercent: 20, resetsAt: null, accounts: 1 },
+            {
+              label: "5 Hour",
+              usedPercent: 60,
+              resetsAt: "2026-10-10T09:00:00.000Z",
+              accounts: 2,
+              durationMs: 18_000_000,
+            },
+            {
+              label: "7 Day",
+              usedPercent: 20,
+              resetsAt: null,
+              accounts: 1,
+              durationMs: 604_800_000,
+            },
+          ],
+        },
+        {
+          providerId: "cursor",
+          windows: [
+            { label: "Monthly", usedPercent: 50, resetsAt: null, accounts: 1, durationMs: null },
           ],
         },
         {
           providerId: "openai-codex",
           windows: [
-            { label: "7 Day", usedPercent: 125, resetsAt: "2026-10-14T00:00:00.000Z", accounts: 1 },
+            {
+              label: "7 Day",
+              usedPercent: 125,
+              resetsAt: "2026-10-14T00:00:00.000Z",
+              accounts: 1,
+              durationMs: 604_800_000,
+            },
           ],
         },
       ],

@@ -412,10 +412,15 @@ export async function createCompositionServer(
   };
   let launchToken = "";
   const fileWatch = options.fileWatch ?? new FileWatchRegistry();
+  const usageLimitStore = createUsageLimitStore({ env, command: ompCmd });
+  // The server reads the limits itself, so every page follows them and the usage pause judges them (#2781).
+  usageLimitStore.watch();
   const a0Context: A0PortContext = {
     processRegistry,
     newChatsReady,
     usageResumeFile: join(appDataDir, "usage-resume.json"),
+    usagePauseFile: join(appDataDir, "usage-pause.json"),
+    usageLimits: usageLimitStore,
     leaseProbe:
       options.leaseProbe ??
       sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
@@ -559,9 +564,6 @@ export async function createCompositionServer(
   });
   const modelPreferenceStore = new ModelPreferenceStoreService({ appDataDir });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
-  const usageLimitStore = createUsageLimitStore({ env, command: ompCmd });
-  // The limits are read by the server itself from now on, so every page follows them (#2781).
-  usageLimitStore.watch();
   const extensionCatalog = createExtensionCatalog({
     env,
     homeDir,
@@ -633,6 +635,7 @@ export async function createCompositionServer(
     processBusy: processRegistry,
     processPause: processRegistry,
     processContinue: a0Runtime.continuing,
+    processUsagePause: a0Runtime.usagePauses,
     configStore,
     checkpointStore,
     draftStore,

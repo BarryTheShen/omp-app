@@ -9,6 +9,7 @@ import {
   SessionFileStore,
   SessionPauseChanged,
   SessionRunningChanged,
+  SessionUsagePauseChanged,
   ThreadId,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
@@ -144,6 +145,27 @@ function sessionContinueBindings(context: A1PortContext): readonly A1EventBindin
       subscribe: (listener) =>
         continuing.onContinueChange((threadId, folder, continuesAt) => {
           const payload = SessionContinueChanged.safeParse({ folder, id: threadId, continuesAt });
+          if (payload.success) listener(payload.data);
+        }),
+    },
+  ];
+}
+
+/** A chat marked or unmarked for the usage pause, or held or released by it (#2781 part 3), changes what its row shows. */
+function sessionUsagePauseBindings(context: A1PortContext): readonly A1EventBinding[] {
+  const usagePause = context.processUsagePause;
+  if (usagePause === undefined) return [];
+  return [
+    {
+      event: "usagePauseChanged",
+      subscribe: (listener) =>
+        usagePause.onUsagePauseChange((threadId, folder, percent, hold) => {
+          const payload = SessionUsagePauseChanged.safeParse({
+            folder,
+            id: threadId,
+            percent,
+            hold,
+          });
           if (payload.success) listener(payload.data);
         }),
     },
@@ -291,12 +313,17 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
         assertNotAborted(handlerContext);
         return { chats: [...(context.processContinue?.continuingIn(args.folder) ?? [])] };
       },
+      listUsagePauses: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return { chats: [...(context.processUsagePause?.usagePausesIn(args.folder) ?? [])] };
+      },
     },
     context.publish,
     [
       ...sessionTurnBindings(context),
       ...sessionPauseBindings(context),
       ...sessionContinueBindings(context),
+      ...sessionUsagePauseBindings(context),
       removalBinding(removals),
       refreshBinding(context),
     ],

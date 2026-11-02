@@ -5,7 +5,15 @@ import type {
   PlanModeStatus,
 } from "@omp-app/contracts/chat-host";
 import { ArrowUp, Brain, ImagePlus, Square, X } from "lucide-react";
-import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  memo,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentsPill } from "../agents/AgentsPill";
@@ -31,6 +39,7 @@ import { withRestored } from "./restored";
 import type { ChatActivity, ChatModel, ChatQueue, ChatToast, RoleTrack as Track } from "./store";
 import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
+import { holdReason } from "./usagePause";
 import { useComposerMenu } from "./useComposerMenu";
 import { WorkingRow } from "./WorkingRow";
 
@@ -147,6 +156,11 @@ export const Composer = memo(function Composer({
   /** Whether the phone's quick panel is open, in the keyboard's place. */
   const [panel, setPanel] = useState(false);
   const phone = usePhone();
+  // Paused by its usage pause (#2781 part 3): the paused row says at which limit and when the chat goes on.
+  const pauseReason = useSyncExternalStore(controller.store.subscribe, () => {
+    const usagePause = controller.store.getSnapshot().usagePause;
+    return usagePause?.hold == null ? undefined : holdReason(usagePause.percent, usagePause.hold);
+  });
   /** A tablet: a touch screen wider than a phone, where a picture is not pasted or dropped either. */
   const touch = !phone && isTablet();
   const draft = controller.draft;
@@ -591,7 +605,13 @@ export const Composer = memo(function Composer({
         {toast !== null && <Toast toast={toast} onDone={onToastDone} />}
         {/* On a phone the pills share the working row: one line between the chat and the box. */}
         {pausedAt !== null ? (
-          <PausedRow pausedAt={pausedAt} held={held} onResume={resume} resumeKey={!phone} />
+          <PausedRow
+            pausedAt={pausedAt}
+            held={held}
+            {...(pauseReason === undefined ? {} : { reason: pauseReason })}
+            onResume={resume}
+            resumeKey={!phone}
+          />
         ) : (
           activity !== null && (
             <WorkingRow activity={activity} stopKey={!phone} {...(phone ? {} : { onPause: pause })}>

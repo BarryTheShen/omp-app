@@ -1,4 +1,4 @@
-import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
+import type { SessionFilePath, ThreadId, UsagePauseHold } from "@omp-app/contracts";
 import type { ChatHostHello } from "@omp-app/contracts/chat-host";
 import type { CommandSession } from "../../modules/A1/gateway/command-session";
 import type { OmpProcess } from "../../process";
@@ -53,6 +53,24 @@ export interface A0Runtime {
       ) => void,
     ): () => void;
   };
+  /** The chats marked to pause at their usage limit, for the chat list (#2781 part 3; see the chat runtime). */
+  readonly usagePauses: {
+    usagePausesIn(
+      folder: string,
+    ): readonly {
+      readonly id: ThreadId;
+      readonly percent: number;
+      readonly hold: UsagePauseHold | null;
+    }[];
+    onUsagePauseChange(
+      listener: (
+        threadId: ThreadId,
+        folder: string,
+        percent: number | null,
+        hold: UsagePauseHold | null,
+      ) => void,
+    ): () => void;
+  };
 }
 
 /** The chat session port on the chat hosts (SDK plan H5.3, the app's runtime since H5.4a) and AppPort. */
@@ -80,6 +98,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     adopt: (process, hello, options) => chat.runtime.adopt(process, hello, options),
     handingBack: (threadId) => chat.runtime.handingBack(threadId),
     continuing: chat.runtime.continuing,
+    usagePauses: chat.runtime.usagePauses,
   };
 }
 

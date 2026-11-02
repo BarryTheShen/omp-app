@@ -1116,6 +1116,34 @@ const USAGE_CONTINUE_TOUR: Tour = {
   ],
 };
 
+/** #2781 part 3: a marked chat pauses at its share of its provider's 5-hour window and goes on at the reset. */
+const USAGE_PAUSE_TOUR: Tour = {
+  id: "usage-pause-2026-11-02",
+  title: "Pausing chats at a usage limit",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Usage",
+      text: "Click <b>Usage</b>, the first button on this rail.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: part("usage-pause"),
+      title: "Pause at the limit",
+      text: "Mark a chat here, and it pauses as <b>/pause</b> does once its provider's 5-hour window reaches this percent: 95 unless you type another. When the window resets, it goes on by itself. Only the chats you mark pause, each at its own percent, and a paused chat says why and when it goes on.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Hide it",
+      text: "Click <b>Usage</b> again to hide the side panel.",
+      action: { kind: "disappears", selector: SIDE_PANEL },
+    },
+  ],
+};
+
 /** #2779 D6.2: signing in to an MCP server again from the device in use, in Settings → Tools. */
 const MCP_SIGN_IN_TOUR: Tour = {
   id: "mcp-sign-in-2026-11-01",
@@ -1253,6 +1281,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-usage-pause",
+    when: "2026-11-02T11:14:00-06:00",
+    summary:
+      "Mark a chat in Usage to pause it when its provider's 5-hour window reaches its own percent (95 unless you change it); it goes on when the window resets.",
+    tours: [USAGE_PAUSE_TOUR],
+  },
   {
     id: "2026-11-02-command-keys",
     when: "2026-11-02T10:12:00-06:00",

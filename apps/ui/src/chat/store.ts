@@ -1,5 +1,5 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
-import type { ChatSessionEvent, ProcessStatus } from "@omp-app/contracts";
+import type { ChatSessionEvent, ProcessStatus, UsagePauseHold } from "@omp-app/contracts";
 import type {
   ChatEvent,
   ChatHostState,
@@ -10,6 +10,18 @@ import type {
   UiOpenUrlEvent,
 } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
+
+/** A chat's usage pause (#2781 part 3): the share of its provider's 5-hour window it pauses at, and the rule's hold. */
+export interface ChatUsagePause {
+  readonly percent: number;
+  readonly hold: UsagePauseHold | null;
+}
+
+function usagePauseKey(usagePause: ChatUsagePause | null): string {
+  if (usagePause === null) return "";
+  const { percent, hold } = usagePause;
+  return hold === null ? `${percent}` : `${percent}:${hold.providerId}:${hold.until ?? "-"}`;
+}
 
 /** The chat's model, as the message box names it. */
 export interface ChatModel {
@@ -90,6 +102,11 @@ export interface ChatSnapshot {
    * when it will not. The failed request's row says when.
    */
   readonly continuesAt: number | null;
+  /**
+   * The chat's usage pause (#2781 part 3), as the server says: it pauses at `percent` of its provider's 5-hour window,
+   * and `hold` is set while that rule holds it paused. null when the chat is not marked.
+   */
+  readonly usagePause: ChatUsagePause | null;
   readonly phase: ConnectionPhase;
   readonly process: ProcessStatus | null;
   /** Whether the session file holds entries older than the first one shown. */
@@ -140,6 +157,7 @@ const EMPTY: ChatSnapshot = {
   pausedAt: null,
   held: [],
   continuesAt: null,
+  usagePause: null,
   phase: "connecting",
   process: null,
   hasOlder: false,
@@ -267,6 +285,7 @@ export class ChatStore {
   #pausedAt: number | null = null;
   #held: readonly string[] = [];
   #continuesAt: number | null = null;
+  #usagePause: ChatUsagePause | null = null;
   #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
   #requests: readonly HostDialogRequest[] = [];
   #shell: ChatShellRun | null = null;
@@ -331,6 +350,13 @@ export class ChatStore {
   setContinuesAt(continuesAt: number | null): void {
     if (this.#continuesAt === continuesAt) return;
     this.#continuesAt = continuesAt;
+    this.#publish();
+  }
+
+  /** The chat's usage pause as the server has it now (#2781 part 3); null when the chat is not marked. */
+  setUsagePause(usagePause: ChatUsagePause | null): void {
+    if (usagePauseKey(this.#usagePause) === usagePauseKey(usagePause)) return;
+    this.#usagePause = usagePause;
     this.#publish();
   }
 
@@ -926,6 +952,7 @@ export class ChatStore {
       pausedAt: this.#pausedAt,
       held: this.#held,
       continuesAt: this.#continuesAt,
+      usagePause: this.#usagePause,
       phase: this.#phase,
       process: this.#process,
       hasOlder: this.#hasOlder,

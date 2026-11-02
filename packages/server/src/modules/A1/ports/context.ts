@@ -1,4 +1,4 @@
-import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
+import type { SessionFilePath, ThreadId, UsagePauseHold } from "@omp-app/contracts";
 import type { Logger } from "../../../logging";
 import type { ProviderAccountStoreService } from "../accounts";
 import type { AttachmentStoreService } from "../attachments";
@@ -77,6 +77,24 @@ export interface A1PortContext {
     continuingIn(
       folder: string,
     ): readonly { readonly id: ThreadId; readonly continuesAt: number }[];
+  };
+  /** The chats marked to pause at their usage limit (#2781 part 3) by folder, and each change, with the chat's folder. */
+  readonly processUsagePause?: {
+    onUsagePauseChange(
+      listener: (
+        threadId: ThreadId,
+        folder: string,
+        percent: number | null,
+        hold: UsagePauseHold | null,
+      ) => void,
+    ): () => void;
+    usagePausesIn(
+      folder: string,
+    ): readonly {
+      readonly id: ThreadId;
+      readonly percent: number;
+      readonly hold: UsagePauseHold | null;
+    }[];
   };
   /** The session file of a chat that is open now. A new chat's file is named before omp writes it to disk. */
   readonly openSessionFile: (threadId: ThreadId) => SessionFilePath | undefined;

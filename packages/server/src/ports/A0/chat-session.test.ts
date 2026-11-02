@@ -16,6 +16,7 @@ import {
   SessionFilePath,
   type StreamKey,
   ThreadId,
+  type UsageLimitsResult,
 } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import {
@@ -2732,5 +2733,111 @@ describe("the chat session runtime: the app's own continue after a usage limit (
     expect(paramsOf(host, "prompt")).toEqual([{ text: "/retry" }]);
     expect(runtime.continuing.continuingIn(folder)).toEqual([]);
     await runtimeContext.processRegistry.closeAll();
+  });
+});
+
+describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
+  const scratch = join(globalThis.process.cwd(), ".data", `usage-pause-${crypto.randomUUID()}`);
+  afterAll(async () => {
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  /** One provider's 5-hour window at `usedPercent`, resetting at `resetsAt` (epoch ms). */
+  function fiveHour(providerId: string, usedPercent: number, resetsAt: number): UsageLimitsResult {
+    return {
+      state: "ready",
+      fetchedAt: new Date(0).toISOString(),
+      providers: [
+        {
+          providerId,
+          windows: [
+            {
+              label: "5 Hour",
+              usedPercent,
+              resetsAt: new Date(resetsAt).toISOString(),
+              accounts: 1,
+              durationMs: 5 * 3_600_000,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  test("a chat marked through the port pauses at its limit on its model's provider, resumes at the reset, and the list hears each change", async () => {
+    const created: FakeChatHost[] = [];
+    const timer = firingTimer();
+    const clock = { now: 1_790_000_000_000 };
+    let read: (result: UsageLimitsResult) => void = () => undefined;
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      usageResumeClock: { now: () => clock.now, timer },
+      usagePauseFile: join(scratch, crypto.randomUUID(), "usage-pause.json"),
+      usageLimits: {
+        subscribe: (listener) => {
+          read = listener;
+          return () => {
+            read = () => undefined;
+          };
+        },
+      },
+    };
+    const runtime = createA0Runtime(runtimeContext);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet;
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    host.extraState = { model: { provider: "anthropic", id: "claude-sonnet" } };
+    const heard: unknown[] = [];
+    runtime.usagePauses.onUsagePauseChange((id, where, percent, hold) =>
+      heard.push([id, where, percent, hold]),
+    );
+
+    await getHandler(handlers, "setUsagePause")(
+      { threadId: authorityThread, percent: 90 },
+      call("one"),
+    );
+    expect(runtime.usagePauses.usagePausesIn(folder)).toEqual([
+      { id: authorityThread, percent: 90, hold: null },
+    ]);
+
+    const reset = clock.now + 3_600_000;
+    read(fiveHour("anthropic", 89, reset));
+    // Another provider past the limit is not this chat's.
+    read(fiveHour("openai-codex", 99, reset));
+    await ticks();
+    expect(paramsOf(host, "pause")).toEqual([]);
+
+    read(fiveHour("anthropic", 91, reset));
+    await ticks();
+    expect(paramsOf(host, "pause")).toEqual([{}]);
+    host.emitEvent({ type: "pause_changed", pausedAt: clock.now });
+    await ticks();
+    const hold = { providerId: "anthropic", until: reset + 60_000 };
+    expect(runtime.usagePauses.usagePausesIn(folder)).toEqual([
+      { id: authorityThread, percent: 90, hold },
+    ]);
+
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "resume")).toEqual([{}]);
+    expect(heard).toEqual([
+      [authorityThread, folder, 90, null],
+      [authorityThread, folder, 90, hold],
+      [authorityThread, folder, 90, null],
+    ]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a chat that is not open can't be marked, and says so", async () => {
+    const created: FakeChatHost[] = [];
+    const runtime = createA0Runtime({
+      ...context(created),
+      usagePauseFile: join(scratch, crypto.randomUUID(), "usage-pause.json"),
+    });
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet;
+    await expect(
+      getHandler(handlers, "setUsagePause")({ threadId: authorityThread, percent: 90 }, call("one")),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
   });
 });

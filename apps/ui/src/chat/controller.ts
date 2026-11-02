@@ -152,6 +152,8 @@ export class ChatController {
   readonly #stopResync: () => void;
   /** Stops following when the app continues this chat after a usage limit (#2781). */
   #stopContinue: (() => void) | null = null;
+  /** Stops following this chat's usage pause (#2781 part 3). */
+  #stopUsagePause: (() => void) | null = null;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
   /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
@@ -328,6 +330,7 @@ export class ChatController {
     this.#readModes().catch(unshown("Plan mode and the goal are not shown"));
     this.#refreshRole().catch(() => undefined);
     this.#followContinue();
+    this.#followUsagePause();
   }
 
   /** omp's plan mode and the chat's goal, as they are when the chat opens. */
@@ -367,11 +370,51 @@ export class ChatController {
       .catch(() => undefined);
   }
 
+  /**
+   * This chat's usage pause (#2781 part 3): read once, then followed, as the continue above. A server older than this has
+   * neither, and the chat's menu does not offer it.
+   */
+  #followUsagePause(): void {
+    let heard = false;
+    this.#stopUsagePause = follow(
+      this.client.subscribe(SessionFileStore, "usagePauseChanged"),
+      (change) => {
+        if (change.id !== this.#threadId) return;
+        heard = true;
+        this.store.setUsagePause(
+          change.percent === null ? null : { percent: change.percent, hold: change.hold },
+        );
+      },
+    );
+    this.client
+      .port(SessionFileStore)
+      .listUsagePauses({ folder: this.folder })
+      .then((listed) => {
+        if (this.#disposed || heard) return;
+        const mine = listed.chats.find((chat) => chat.id === this.#threadId);
+        this.store.setUsagePause(
+          mine === undefined ? null : { percent: mine.percent, hold: mine.hold },
+        );
+      })
+      .catch(() => undefined);
+  }
+
   /** "Don't continue": the app leaves this chat stopped after its usage limit (#2781). */
   async cancelContinue(): Promise<void> {
     const threadId = this.#threadId;
     if (threadId === null) return;
     await this.client.port(ChatSessionPort).cancelContinue({ threadId });
+  }
+
+  /**
+   * Marks this chat to pause when its provider's 5-hour usage reaches `percent`, or unmarks it (`null`) (#2781 part 3).
+   * The server keeps the mark, so every device sees it.
+   */
+  async setUsagePause(percent: number | null): Promise<void> {
+    const threadId = this.#threadId;
+    if (threadId === null)
+      throw new Error("Send a first message, then set the chat's usage pause.");
+    await this.client.port(ChatSessionPort).setUsagePause({ threadId, percent });
   }
 
   #mark(step: string): void {
@@ -1006,6 +1049,7 @@ export class ChatController {
     this.#openFrames = null;
     this.#stopResync();
     this.#stopContinue?.();
+    this.#stopUsagePause?.();
     this.#draft.dispose();
     this.store.dispose();
     // A stream that ended with its chat (a deleted chat) has nothing left to unsubscribe.

@@ -1,9 +1,18 @@
 import type { AppClient } from "@omp-app/client";
-import { UsageLimitStore, UsageLimitsResult, type UsageLimitWindow } from "@omp-app/contracts";
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  USAGE_PAUSE_DEFAULT_PERCENT,
+  UsageLimitStore,
+  UsageLimitsResult,
+  type UsageLimitWindow,
+} from "@omp-app/contracts";
+import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type { ChatController, ChatUsage } from "../../chat/controller";
+import { holdLimitWords, holdResumeWords } from "../../chat/usagePause";
 import { follow } from "../../follow";
 import { lastSeen } from "../../lastSeen";
+import { usePhone } from "../../phone";
 import { barPercent, type LimitTone, limitTone, resetAtWords, resetsInWords } from "./usage-words";
 
 const failureText = (failure: unknown): string =>
@@ -330,7 +339,115 @@ function AccountsSection({ client }: { readonly client: AppClient }): ReactNode 
   );
 }
 
-/** Usage, the side column's first panel: the focused chat's numbers, and your accounts' limits. */
+/** A limit as typed: a whole percent from 1 to 100, or null. */
+function percentOf(text: string): number | null {
+  const value = Number(text.trim());
+  return Number.isInteger(value) && value >= 1 && value <= 100 ? value : null;
+}
+
+/**
+ * The chat's usage pause (#2781 part 3). Marked, the chat pauses as omp's `/pause` does when its provider's 5-hour
+ * window reaches its limit, and resumes when the window resets. The server keeps the mark, so each device shows it.
+ */
+function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNode {
+  const phone = usePhone();
+  const fieldId = useId();
+  const usagePause = useSyncExternalStore(
+    chat.store.subscribe,
+    () => chat.store.getSnapshot().usagePause,
+  );
+  const saved = useSyncExternalStore(chat.store.subscribe, () => chat.threadId !== null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const shown = draft ?? String(usagePause?.percent ?? USAGE_PAUSE_DEFAULT_PERCENT);
+
+  const set = (percent: number | null): void => {
+    setBusy(true);
+    setProblem(null);
+    chat
+      .setUsagePause(percent)
+      .then(
+        () => setDraft(null),
+        (failure: unknown) => setProblem(`Not set: ${failureText(failure)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+  /** A typed limit counts once the field is left or Enter is pressed; an unmarked chat keeps it for the switch. */
+  const commit = (): void => {
+    if (draft === null) return;
+    const percent = percentOf(draft);
+    if (percent === null) {
+      setProblem("Type a whole number from 1 to 100.");
+      return;
+    }
+    if (usagePause !== null && percent !== usagePause.percent) set(percent);
+    else if (usagePause !== null) setDraft(null);
+  };
+
+  return (
+    <div data-tour="usage-pause" className="flex flex-col gap-2">
+      <label
+        htmlFor={fieldId}
+        className={`flex items-center justify-between gap-3 text-[0.8125rem] text-t1 ${phone ? "min-h-11" : "tablet:min-h-11"}`}
+      >
+        Pause this chat at its usage limit
+        <Switch
+          id={fieldId}
+          checked={usagePause !== null}
+          disabled={!saved || busy}
+          onCheckedChange={(on) => {
+            if (!on) {
+              set(null);
+              return;
+            }
+            const percent = percentOf(shown);
+            if (percent === null) setProblem("Type a whole number from 1 to 100.");
+            else set(percent);
+          }}
+        />
+      </label>
+      <div className="flex items-center gap-2 text-[0.8125rem] text-t2">
+        At
+        <Input
+          aria-label="Pause at this percent"
+          value={shown}
+          inputMode="numeric"
+          disabled={!saved || busy}
+          aria-invalid={problem !== null && draft !== null}
+          className={`dark:bg-transparent text-right ${phone ? "h-11 w-20" : "h-8 w-16 tablet:h-11"}`}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setProblem(null);
+          }}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            commit();
+          }}
+        />
+        % of its provider's 5-hour window
+      </div>
+      <p className="text-xs text-t3">
+        There, its agents hold at their next step, as with /pause, and the chat goes on when the
+        window resets.
+      </p>
+      {usagePause?.hold != null && (
+        <p role="status" className="text-xs text-warn-ink">
+          Paused {holdLimitWords(usagePause.percent, usagePause.hold)} ·{" "}
+          {holdResumeWords(usagePause.percent, usagePause.hold)}
+        </p>
+      )}
+      {!saved && (
+        <p className="text-xs text-t3">Send a first message, then this chat can be marked.</p>
+      )}
+      {problem !== null && <p className="text-xs text-bad-ink">{problem}</p>}
+    </div>
+  );
+}
+
+/** Usage, the side column's first panel: the focused chat's numbers and usage pause, and your accounts' limits. */
 export function UsagePanel({
   client,
   chat,
@@ -347,6 +464,11 @@ export function UsagePanel({
           <ChatUsageSection key={chat.threadId ?? "new"} chat={chat} />
         )}
       </Section>
+      {chat !== null && (
+        <Section title="Pause at the limit">
+          <UsagePauseSection key={chat.threadId ?? "new"} chat={chat} />
+        </Section>
+      )}
       <Section title="Your accounts">
         <AccountsSection client={client} />
       </Section>

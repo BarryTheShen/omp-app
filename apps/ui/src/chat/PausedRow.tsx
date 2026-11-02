@@ -18,17 +18,21 @@ const PAUSE_WORDS =
 
 /**
  * The chat is paused (omp's `/pause`): how long, and how to go on. Resume, or Esc, Enter or Space in the empty box, as
- * in omp (`resumeKey`; a phone has no such keys, and its key row has Resume).
+ * in omp (`resumeKey`; a phone has no such keys, and its key row has Resume). A chat its usage pause holds says why and
+ * when it goes on (`reason`, #2781 part 3).
  */
 export function PausedRow({
   pausedAt,
   held = [],
+  reason,
   onResume,
   resumeKey = true,
 }: {
   readonly pausedAt: number;
   /** Messages sent while paused, which omp shows once the chat goes on. */
   readonly held?: readonly string[];
+  /** Why the chat is paused, when the app paused it: "At 95% of anthropic's 5-hour limit · resumes at 14:01". */
+  readonly reason?: string;
   readonly onResume: () => void;
   readonly resumeKey?: boolean;
 }): ReactNode {
@@ -43,12 +47,15 @@ export function PausedRow({
         <Pause className="size-3.5 shrink-0 text-warn-ink" aria-hidden="true" />
         <span className="shrink-0 font-medium text-t1">Paused</span>
         <span className="shrink-0 tabular-nums">{pauseClock(now - pausedAt)}</span>
+        {reason !== undefined && <span className="min-w-0 truncate">{reason}</span>}
         {held.length > 0 ? (
           <span className="min-w-0 truncate" title={held.join("\n")}>
             {held.length === 1 ? "1 message waits" : `${held.length} messages wait`}
           </span>
         ) : (
-          <span className="min-w-0 truncate">Every agent holds at its next step</span>
+          reason === undefined && (
+            <span className="min-w-0 truncate">Every agent holds at its next step</span>
+          )
         )}
       </span>
       <button
