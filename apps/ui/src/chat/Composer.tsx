@@ -4,7 +4,7 @@ import type {
   GoalAnswer,
   PlanModeStatus,
 } from "@omp-app/contracts/chat-host";
-import { ArrowUp, Brain, Square, X } from "lucide-react";
+import { ArrowUp, Brain, ImagePlus, Square, X } from "lucide-react";
 import { type KeyboardEvent, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,10 +13,10 @@ import { btwQuestion } from "../btw/btw";
 import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { showPanel } from "../panels/panel-state";
-import { usePhone } from "../phone";
+import { isTablet, usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
-import { type Attachment, readImages } from "./attachments";
+import { type Attachment, IMAGE_TYPES, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
@@ -136,6 +136,7 @@ export const Composer = memo(function Composer({
   const textRef = useRef(text);
   const [caret, setCaret] = useState(0);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
+  const picker = useRef<HTMLInputElement | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
@@ -146,6 +147,8 @@ export const Composer = memo(function Composer({
   /** Whether the phone's quick panel is open, in the keyboard's place. */
   const [panel, setPanel] = useState(false);
   const phone = usePhone();
+  /** A tablet: a touch screen wider than a phone, where a picture is not pasted or dropped either. */
+  const touch = !phone && isTablet();
   const draft = controller.draft;
   const menu = useComposerMenu(controller, text, caret);
   const shell = shellRun(text);
@@ -493,6 +496,39 @@ export const Composer = memo(function Composer({
   );
   const status =
     error ?? (waitingToSend !== null && disabled ? "Sends once the chat is open" : null);
+  /**
+   * Pictures from the device's own picker (#2783): where pasting and dropping a picture are out of reach, a phone or a
+   * tablet. A photo picked on an iPhone comes as JPEG: Safari converts HEIC to a type the picker accepts.
+   */
+  const attachButton = (phone || touch) && (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size={phone ? "icon" : "icon-sm"}
+        className={phone ? "size-11 shrink-0 text-t2" : "text-t3 hover:text-t1 tablet:size-11"}
+        aria-label="Attach images"
+        data-tour="attach-images"
+        disabled={closed}
+        onClick={() => picker.current?.click()}
+      >
+        <ImagePlus />
+      </Button>
+      <input
+        ref={picker}
+        type="file"
+        accept={IMAGE_TYPES.join(",")}
+        multiple
+        hidden
+        aria-label="Images to attach"
+        onChange={(event) => {
+          const files = [...(event.currentTarget.files ?? [])];
+          event.currentTarget.value = "";
+          if (files.length > 0) addFiles(files);
+        }}
+      />
+    </>
+  );
   /** Send, or Stop while omp works; on a phone a full-size target beside the text. */
   const sendOrStop = working ? (
     <Tooltip>
@@ -636,7 +672,8 @@ export const Composer = memo(function Composer({
               ))}
             </ul>
           )}
-          <div className={phone ? "flex items-end gap-1.5 pr-1.5 pb-1.5" : undefined}>
+          <div className={phone ? "flex items-end gap-1.5 px-1.5 pb-1.5" : undefined}>
+            {phone && attachButton}
             <textarea
               ref={boxRef}
               className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] py-2.5 text-base leading-snug" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[0.875rem] leading-normal"}`}
@@ -690,6 +727,7 @@ export const Composer = memo(function Composer({
           </div>
           {!phone && (
             <div className="flex items-center gap-1 px-2 pb-2">
+              {attachButton}
               {settings}
               <span
                 className="min-w-0 flex-1 truncate px-1 text-right text-xs text-t3"

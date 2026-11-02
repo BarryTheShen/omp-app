@@ -506,4 +506,38 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "a photo is attached from the phone's own picker beside the text (#2783); a desktop page has no such button",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const button = page.getByRole("button", { name: "Attach images" });
+      await expect(button).toBeVisible();
+      const bounds = await button.boundingBox();
+      expect(Math.min(bounds?.width ?? 0, bounds?.height ?? 0)).toBeGreaterThanOrEqual(44);
+      // A one-pixel PNG, as the picker would hand it over.
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      );
+      await page
+        .getByLabel("Images to attach")
+        .setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: png });
+      const attached = page.getByRole("list", { name: "Attached images" });
+      await expect(attached.getByText("photo.png")).toBeVisible();
+      await context.close();
+
+      // A desktop page opens with no chat: a new one brings the message box.
+      const desktop = await realApp.open({ path: "/" });
+      await desktop
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "New chat" })
+        .click();
+      await expect(box(desktop)).toHaveAttribute("placeholder", "Message omp", {
+        timeout: 120_000,
+      });
+      await expect(desktop.getByRole("button", { name: "Attach images" })).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

@@ -1164,6 +1164,24 @@ const TABLET_TOUCH_TOUR: Tour = {
   ],
 };
 
+const ATTACH_IMAGES = part("attach-images");
+
+/** #2783: a picture from the device's picker, on a phone or a tablet. */
+const ATTACH_IMAGES_TOUR: Tour = {
+  id: "attach-images-2026-11-01",
+  title: "Photos in a message",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: ATTACH_IMAGES,
+      title: "Attach a photo",
+      text: "Tap here to add photos or pictures to your message, from your library, the camera or your files. They go with the next message you send.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1178,6 +1196,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-attach-images",
+    when: "2026-11-02T02:45:00-06:00",
+    summary:
+      "On a phone or a tablet, the message box has a button that adds photos or pictures to your message from the device's own picker.",
+    tours: [ATTACH_IMAGES_TOUR],
+  },
   {
     id: "2026-11-02-files",
     when: "2026-11-02T02:40:00-06:00",
