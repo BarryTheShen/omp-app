@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { keepLaunchToken, launchTokenFile } from "./launch-token";
+import { keepLaunchToken, launchTokenFile, replaceLaunchToken } from "./launch-token";
 
 const DATA = join(import.meta.dir, "../../../.data");
 const roots: string[] = [];
@@ -63,5 +63,16 @@ describe("the launch token the installed app keeps", () => {
     expect(first.token).toMatch(TOKEN_SHAPE);
     expect(first.kept === false && first.reason.length > 0).toBe(true);
     expect((await keepLaunchToken(file)).token).not.toBe(first.token);
+  });
+
+  test("a new link replaces the token: the next start uses a new one, still readable only by its owner", async () => {
+    const file = launchTokenFile(await stateFolder());
+    const before = await keepLaunchToken(file);
+    await replaceLaunchToken(file);
+    const after = await keepLaunchToken(file);
+    expect(after.kept).toBe(true);
+    expect(after.token).toMatch(TOKEN_SHAPE);
+    expect(after.token).not.toBe(before.token);
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
   });
 });

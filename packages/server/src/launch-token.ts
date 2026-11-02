@@ -1,8 +1,8 @@
 /**
  * The launch token: the secret in the app's link (`…/#token=…`). The installed command (`scripts/omp-app.ts`) keeps
- * it in a file beside its instance record and uses it at every start, so a link saved on this computer (a bookmark,
- * the desktop window's way to this computer's app) keeps working after a restart or a reboot. A server that pairs
- * devices takes it from this computer's pages only.
+ * it in a file beside its instance record and uses it at every start, so a link someone saved (a bookmark, the
+ * desktop window's link to the app on another computer) keeps working after a restart or a reboot.
+ * `omp-app new-link` replaces it: from the next start on, links printed before read as expired (`launch-history.ts`).
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -72,4 +72,9 @@ export async function keepLaunchToken(path: string): Promise<KeptLaunchToken> {
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/** Saves a new launch token for the next start (`omp-app new-link`), owner-only and whole. */
+export async function replaceLaunchToken(path: string): Promise<void> {
+  await writeFileAtomic(path, `${newLaunchToken()}\n`);
 }

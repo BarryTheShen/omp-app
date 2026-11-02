@@ -1,11 +1,13 @@
 /**
  * The pairing routes (`PAIRING_PATHS`). Three are for a device with no key yet, which has no connection: they take the
  * app's own pages only (the WebSocket's Host and Origin check). Three are for `omp-app pair` and `omp-app devices` on
- * the server: they take the launch token as a bearer, on the loopback address only.
+ * the server: they take the launch token as a bearer, on the loopback address only. One turns a page signed in with the
+ * launch link at the Tailscale address into a paired device: the token as a bearer, from that page only.
  */
 import {
   type DeviceList,
   PAIRING_PATHS,
+  type PairingAdopted,
   PairingAsk,
   type PairingAsked,
   PairingClaim,
@@ -28,6 +30,10 @@ export interface PairingRouteOptions {
   readonly fromAppPage: (request: Request) => boolean;
   /** The request comes to the server's loopback address, from no web page. */
   readonly fromThisComputer: (request: Request) => boolean;
+  /** The request comes from the app's page at its Tailscale address (not a page on this computer). */
+  readonly fromRemotePage: (request: Request) => boolean;
+  /** The paired device whose key the request's cookie carries; undefined when none. */
+  readonly deviceOf: (request: Request) => string | undefined;
   /** The request came over HTTPS (the Tailscale address), so the key's cookie is Secure. */
   readonly overHttps: (request: Request) => boolean;
   /** Checks a bearer against the launch token. */
@@ -168,6 +174,24 @@ export async function pairingRoute(
         return refused(500, "The device list could not be saved.");
       }
       return json(200, list());
+    }
+    case PAIRING_PATHS.adopt: {
+      if (request.method !== "POST") return refused(405, "Method not allowed");
+      // Pages on this computer keep signing in with the launch link: they are not devices.
+      if (!options.fromRemotePage(request))
+        return refused(403, "Only the app's page at its Tailscale address");
+      const bearer = bearerOf(request);
+      if (bearer === undefined || !options.isLaunchToken(bearer))
+        return refused(401, "The app's launch token is needed");
+      const already = options.deviceOf(request);
+      if (already !== undefined) return json(200, { deviceId: already } satisfies PairingAdopted);
+      const adopt = await bodyOf(request, PairingAsk);
+      if (adopt instanceof Response) return adopt;
+      const paired = await pair(adopt.name, adopt.kind, "link");
+      if (paired instanceof Response) return paired;
+      return json(200, { deviceId: paired.deviceId } satisfies PairingAdopted, {
+        "Set-Cookie": paired.cookie,
+      });
     }
     default:
       return refused(404, "Not found");

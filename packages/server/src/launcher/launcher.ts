@@ -18,6 +18,7 @@ export const USAGE = `Usage: omp-app [folder] [options]
        omp-app devices [remove <device>]
        omp-app logs [--lines <n>]
        omp-app debug-report
+       omp-app new-link
 
 Starts the omp app and opens it in your browser. The app runs the omp release it is built for,
 which its package holds.
@@ -36,12 +37,13 @@ omp in the terminal, on the same chats:
 Each device that opens the app pairs once, and stays paired until it is removed:
   pair           print a one-time code for a new device: open the app's address on it and enter
                  the code (it works once, for 10 minutes). A device already paired can also allow
-                 a new one, or make a code in Settings → App → Devices.
+                 a new one, or make a code in Settings → Devices.
   devices        list the paired devices; devices remove <device> removes one, by its id (or the
                  start of it) or its name: its key stops working and its open windows close
 
-The app's link (the address with #token=) opens it on this computer only, and stays the same when
-the app restarts. Every other device pairs.
+The app's link (the address with #token=) stays the same when the app restarts:
+  new-link       make a new link, for example when the old one was shared by mistake: the app
+                 prints it when it next starts, and links printed before then stop working
 
 Problems? The app keeps a log of what it does (never your prompts, files or keys):
   logs           print where the log is and its last lines (--lines sets how many, default 100)
@@ -58,7 +60,8 @@ export type LauncherArgs = {
     | "pair"
     | "devices"
     | "logs"
-    | "debug-report";
+    | "debug-report"
+    | "new-link";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
@@ -134,7 +137,10 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       }
     } else if (arg.startsWith("-")) {
       return { ok: false, message: `Unknown option ${arg}.` };
-    } else if (index === 0 && (arg === "tui" || arg === "logs" || arg === "debug-report")) {
+    } else if (
+      index === 0 &&
+      (arg === "tui" || arg === "logs" || arg === "debug-report" || arg === "new-link")
+    ) {
       command = arg;
     } else if (folder === undefined) folder = arg;
     else return { ok: false, message: "Only one folder can be given." };
@@ -144,6 +150,12 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       ok: false,
       message: "The tui command takes a folder, then omp's own options after --.",
     };
+  }
+  if (
+    command === "new-link" &&
+    (folder !== undefined || port !== undefined || !open || lines !== undefined)
+  ) {
+    return { ok: false, message: "The new-link command takes no folder or options." };
   }
   return {
     ok: true,

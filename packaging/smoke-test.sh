@@ -3,7 +3,8 @@
 # it prints its version, serves the web app and its scripts, a second launch finds the first, it
 # writes its debug log (private, without the launch token) and `omp-app logs` and
 # `omp-app debug-report` read it, `omp-app tui` finds the chat host (and, with no terminal here, stops
-# there), stopping it removes its record, and a restart keeps its link. The chat host the package
+# there), stopping it removes its record, a restart keeps its link, and `omp-app new-link` gives the next start a new
+# one. The chat host the package
 # holds is omp's own command line at the pinned release with the app's chat program in front: it passes omp's own
 # smoke test, as a chat (`__omp_app_chat`) it stops at omp's model check, as omp does without a model, and the server
 # and `omp-app debug-report` run omp's commands with it. Nothing outside the temporary folder is touched.
@@ -140,4 +141,9 @@ restart() {
 }
 restart
 [[ ${address##*#token=} == "$token" ]] || { echo "FAIL: a restart changed the link" >&2; exit 1; }
-echo "smoke test passed: omp-app $expected serves its web app, keeps its debug log, manages its instance record, keeps its link across restarts, and its chat host is omp $omp_version, which answers the server's omp commands"
+# omp-app new-link: the next start prints a new link.
+new_link=$("$app" new-link)
+grep -q 'A new link is saved' <<<"$new_link" || { echo "FAIL: 'omp-app new-link' saved no new link:" >&2; echo "$new_link" >&2; exit 1; }
+restart
+[[ ${address##*#token=} != "$token" ]] || { echo "FAIL: the start after 'omp-app new-link' printed the old link" >&2; exit 1; }
+echo "smoke test passed: omp-app $expected serves its web app, keeps its debug log, manages its instance record, keeps its link across restarts until new-link replaces it, and its chat host is omp $omp_version, which answers the server's omp commands"

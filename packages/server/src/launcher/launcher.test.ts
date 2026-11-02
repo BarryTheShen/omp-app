@@ -104,6 +104,22 @@ describe("parseLauncherArgs", () => {
     expect(parseLauncherArgs(["logs", "--lines", "0"])).toMatchObject({ ok: false });
   });
 
+  test("new-link is a command only as the first word, and takes no folder or option", () => {
+    expect(parseLauncherArgs(["new-link"])).toMatchObject({
+      ok: true,
+      args: { command: "new-link" },
+    });
+    expect(parseLauncherArgs(["new-link", "/work/app"])).toEqual({
+      ok: false,
+      message: "The new-link command takes no folder or options.",
+    });
+    expect(parseLauncherArgs(["new-link", "--port", "4400"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["new-link", "--no-open"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["./new-link"])).toMatchObject({
+      args: { command: "run", folder: "./new-link" },
+    });
+  });
+
   test("tui takes a folder and hands everything after -- to omp, which no other command takes", () => {
     expect(parseLauncherArgs(["tui"])).toMatchObject({
       ok: true,

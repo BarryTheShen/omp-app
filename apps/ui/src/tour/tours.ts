@@ -762,7 +762,7 @@ const IPHONE_TOUR: Tour = {
       target: WORKSPACE,
       centred: true,
       title: "On your Home Screen",
-      text: "On an iPhone, open the app's address in Safari, tap <b>Share</b>, then <b>Add to Home Screen</b>. omp then opens from its icon, full screen, and keeps clear of the notch and the home bar. The first time it opens, pair it: allow it on a device that is already paired, or enter a one-time code.",
+      text: "On an iPhone, open the app's link in Safari, tap <b>Share</b>, then <b>Add to Home Screen</b>. omp then opens from its icon, full screen and already connected, and keeps clear of the notch and the home bar.",
       action: next,
     },
     {

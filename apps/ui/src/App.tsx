@@ -31,6 +31,8 @@ import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS } from "./keys/table";
+import { adoptThisPage } from "./pairing/adopt";
+import { guessThisDevice } from "./pairing/device-name";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
 import { RequestPrompt } from "./pairing/RequestPrompt";
@@ -97,7 +99,10 @@ export function App(): ReactNode {
     void (async () => {
       try {
         const info = await client.port(AppPort).serverInfo({});
-        if (active) setConnection({ kind: "ready", client, folder: info.launchFolder });
+        if (!active) return;
+        setConnection({ kind: "ready", client, folder: info.launchFolder });
+        // A page signed in with the launch link from another device becomes a paired device once.
+        if (token !== null) void adoptThisPage(client, token, guessThisDevice());
       } catch (error) {
         // The call fails when the server refuses the page: the screen the refusal chose (pairing, no link, its words)
         // stays. A refusal that comes after the failure replaces it (above).

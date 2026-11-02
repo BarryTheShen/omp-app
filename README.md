@@ -36,9 +36,9 @@ export OMP_APP_REMOTE_ORIGIN=https://<computer>.<tailnet>.ts.net   # this comput
 tailscale serve --bg localhost:4317                                # HTTPS on the tailnet, passed to the app's port
 ```
 
-`omp-app` then prints the address to open on another device of your tailnet, `https://<computer>.<tailnet>.ts.net`, and the device pairs there (see "Pair a device"). The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off` (or `tailscale serve reset`, which clears every serve setting of this computer), then unset the variable and restart the app.
+`omp-app` then prints a second link, `https://<computer>.<tailnet>.ts.net/#token=…`, that opens the app on another device of your tailnet. Send it to that device privately: whoever has the link can use the app. The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off` (or `tailscale serve reset`, which clears every serve setting of this computer), then unset the variable and restart the app.
 
-The link `omp-app` prints, with its secret after `#token=`, opens the app on this computer only, and stays the same when the app restarts or the computer reboots: the app keeps the token in `~/.local/state/omp-app/launch-token` (or under `$XDG_STATE_HOME`), a file only your account can read. A page at the Tailscale address that still has the token is asked to pair.
+Both links stay the same when the app restarts or the computer reboots: the app keeps the secret part (the token after `#token=`) in `~/.local/state/omp-app/launch-token` (or under `$XDG_STATE_HOME`), a file only your account can read. If a link was shared by mistake, `omp-app new-link` makes a new one, which the app prints when it next starts (`systemctl --user restart omp-app` restarts the service); every link printed before then stops working.
 
 The window (`omp-app-desktop`) can open that server from another computer too. Run it once with the address:
 
@@ -47,7 +47,7 @@ omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net'   # keeps the add
 omp-app-desktop --local                                          # back to this computer's own server
 ```
 
-The window keeps the address in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. The first time, it pairs with that server like any other device (see "Pair a device"); it stays paired across restarts, its key kept with the window's other data in `~/.local/share/omp-app/desktop-window` (or under `$XDG_DATA_HOME`). Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` address is accepted; a link with a token, from before pairing, is taken as its address. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
+The window keeps the address in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. The first time, it pairs with that server like any other device (see "Pair a device"); it stays paired across restarts, its key kept with the window's other data in `~/.local/share/omp-app/desktop-window` (or under `$XDG_DATA_HOME`). Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` address is accepted; a link with a token, from before pairing, works too. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
 
 ### Pair a device
 
@@ -58,7 +58,7 @@ Each phone, computer or browser that opens the app's address is paired once, and
 
 **Settings → App → Devices** lists the paired devices and when each last connected: **Rename** names one, **Remove** closes its windows (it pairs again to come back). On this computer, `omp-app devices` lists them and `omp-app devices remove <device>` removes one, named or by the start of its id.
 
-A paired device keeps its key in a cookie that only the app's own pages send, renewed while the device uses the app; the app keeps only a hash of each key.
+A paired device keeps its key in a cookie that only the app's own pages send, renewed while the device uses the app; the app keeps only a hash of each key. A page opened with the link above from another device pairs itself the first time, under the name it guesses for itself, and forgets the link's token; pages on this computer keep using the link.
 
 ### omp in the terminal, on the same chats
 
