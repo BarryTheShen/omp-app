@@ -18,6 +18,7 @@ import { ChatController, type ChatTarget } from "../chat/controller";
 import { userText } from "../chat/MessageActions";
 import { inbox } from "../inbox/inbox";
 import { chatCache } from "./chatCache";
+import type { OpenGate } from "./openGate";
 import { PaneModeOutline } from "./paneMode";
 
 /** A pane's chat: `chat` names this pane's chat, so a new chat that gets its id keeps its controller. */
@@ -119,6 +120,8 @@ export interface PaneHost {
   readonly newChat: (api: DockviewApi) => void;
   /** Whether this pane is the one you are in: the focused pane of the tab shown, with the page in front and focused. */
   readonly inView: (paneId: string) => boolean;
+  /** When a pane opens its chat: at once on a desktop, once it is in front on a phone (#2768). */
+  readonly openGate: OpenGate;
 }
 
 export const PaneHostContext = createContext<PaneHost | null>(null);
@@ -132,7 +135,7 @@ const TITLE_CHARACTERS = 60;
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>): ReactNode {
   const host = use(PaneHostContext);
   if (host === null) throw new Error("ChatPanel needs the workspace around it.");
-  const { client, focus, controllers, composers, onPaneChanged, inView } = host;
+  const { client, focus, controllers, composers, onPaneChanged, inView, openGate } = host;
   const paneInView = useCallback(() => inView(api.id), [inView, api.id]);
   const onComposer = useCallback(
     (handle: ComposerHandle | null) => {
@@ -149,7 +152,8 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   const controller = opened?.chat === params.chat ? opened.controller : null;
   const root = useRef<HTMLDivElement | null>(null);
 
-  // A controller only when the pane is given another chat; the same chat gaining its id keeps it.
+  // A controller only when the pane is given another chat; the same chat gaining its id keeps it. A new controller
+  // opens its chat once the gate lets the pane through: at once on a desktop, when the pane is in front on a phone.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `params.chat` names the chat; target and folder go with it
   useEffect(() => {
     const kept =
@@ -159,12 +163,21 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     const next = kept ?? new ChatController(client, params.target, params.folder, params.chat);
     setOpened({ chat: params.chat, controller: next });
     controllers.set(api.id, next);
-    if (kept === undefined) void next.open();
+    let current = true;
+    if (kept === undefined)
+      void openGate.wait(api.id).then(() => {
+        if (current) void next.open();
+      });
     return () => {
+      current = false;
       if (controllers.get(api.id) === next) controllers.delete(api.id);
+      // A chat that never opened is empty: the cache closes it rather than keep it.
       chatCache.keep(client, next);
     };
   }, [client, params.chat]);
+
+  // A pane that closes leaves the gate.
+  useEffect(() => () => openGate.forget(api.id), [openGate, api.id]);
 
   // Once the pane's message box is drawn, the keys that move between panes can put the caret in it.
   useEffect(() => {

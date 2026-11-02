@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import type { ServerFrame } from "@omp-app/contracts";
-
+import { createConnection } from "node:net";
+import { inflateRawSync } from "node:zlib";
 import {
   AppFailure,
   CapabilityMap,
   definePort,
+  ompCommandCapability,
+  type ServerFrame,
   serializeFrame,
   streamKey,
   WelcomeFrame,
 } from "@omp-app/contracts";
+import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import { z } from "zod";
-
+import { DEFAULT_HOST_CAPABILITIES } from "./capabilities";
 import { Dispatcher, type DispatcherSocket } from "./dispatcher";
 import { launchTokenDigest } from "./launch-history";
 import {
@@ -630,6 +633,100 @@ describe("A0.6 upgrade and static serving", () => {
       expect(await attempt("other.tail1234.ts.net", remote.origin)).toBe("refused");
       expect(await attempt(remote.host, "https://evil.example")).toBe("closed 4403");
     } finally {
+      await app.stop();
+    }
+  });
+
+  test("a browser that takes permessage-deflate gets it, and a long frame comes compressed (#2768)", async () => {
+    // The capabilities a real server lists (each host seam and each chat-host command): its welcome is long.
+    const capabilities: CapabilityMap = Object.fromEntries([
+      ...DEFAULT_HOST_CAPABILITIES.map(
+        (key) => [key, { state: "available", via: "host" }] as const,
+      ),
+      ...CHAT_HOST_METHODS.map(
+        (method) => [ompCommandCapability(method), { state: "available", via: "omp" }] as const,
+      ),
+    ]);
+    const app = createAppServer({
+      port: 0,
+      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
+      token: "right",
+      capabilities,
+    });
+    const { hostname, port } = new URL(app.url);
+    const socket = createConnection({ host: hostname, port: Number(port) });
+    let received = Buffer.alloc(0);
+    const more = (): Promise<void> =>
+      new Promise((resolve, reject) => {
+        socket.once("data", (chunk: Buffer) => {
+          received = Buffer.concat([received, chunk]);
+          resolve();
+        });
+        socket.once("error", reject);
+      });
+    try {
+      await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+      socket.write(
+        [
+          `GET /ws?token=right HTTP/1.1`,
+          `Host: ${hostname}:${port}`,
+          // The app's own page, as a browser sends it: a socket with no Origin is closed with 4403.
+          `Origin: ${new URL(app.url).origin}`,
+          "Upgrade: websocket",
+          "Connection: Upgrade",
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+          "Sec-WebSocket-Version: 13",
+          "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits",
+          "",
+          "",
+        ].join("\r\n"),
+      );
+      while (!received.includes("\r\n\r\n")) await more();
+      const headEnd = received.indexOf("\r\n\r\n") + 4;
+      const head = received.subarray(0, headEnd).toString("latin1").toLowerCase();
+      expect(head.startsWith("http/1.1 101")).toBe(true);
+      expect(head).toContain("sec-websocket-extensions: permessage-deflate");
+      received = received.subarray(headEnd);
+
+      // A client's frame is masked (RFC 6455 5.3): the hello, short enough for a one-byte length.
+      const hello = Buffer.from(
+        JSON.stringify({
+          type: "hello",
+          protocols: ["omp-app/1"],
+          client: { name: "test-client", version: "1.0.0" },
+        }),
+      );
+      const mask = Buffer.from([1, 2, 3, 4]);
+      const masked = hello.map((byte, index) => byte ^ (mask[index % 4] ?? 0));
+      socket.write(Buffer.concat([Buffer.from([0x81, 0x80 | hello.length]), mask, masked]));
+
+      // The welcome: one frame, its length in 7 bits, 16 bits after 126, or 64 bits after 127.
+      while (received.length < 2) await more();
+      const first = received[0] ?? 0;
+      const short = (received[1] ?? 0) & 0x7f;
+      const lengthBytes = short === 126 ? 2 : short === 127 ? 8 : 0;
+      while (received.length < 2 + lengthBytes) await more();
+      const length =
+        short === 126
+          ? received.readUInt16BE(2)
+          : short === 127
+            ? Number(received.readBigUInt64BE(2))
+            : short;
+      while (received.length < 2 + lengthBytes + length) await more();
+      const payload = received.subarray(2 + lengthBytes, 2 + lengthBytes + length);
+      const compressed = (first & 0x40) !== 0;
+      const text = (
+        compressed
+          ? inflateRawSync(Buffer.concat([payload, Buffer.from([0x00, 0x00, 0xff, 0xff])]))
+          : payload
+      ).toString("utf8");
+      expect(JSON.parse(text)).toMatchObject({ type: "welcome" });
+      // Long enough to be compressed, and it was: smaller on the wire than as text.
+      expect(text.length).toBeGreaterThanOrEqual(1024);
+      expect(compressed).toBe(true);
+      expect(length).toBeLessThan(text.length);
+    } finally {
+      socket.destroy();
       await app.stop();
     }
   });

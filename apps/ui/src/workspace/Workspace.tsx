@@ -55,6 +55,7 @@ import { DropGuides } from "./DropGuides";
 import { keepDividerDragsFromSelecting } from "./dividers";
 import { guideResolver } from "./guideCells";
 import { equalized, swappedWithNext } from "./layout";
+import { OpenGate } from "./openGate";
 import { chatOfPane, closePaneAsked, PaneTab } from "./PaneTab";
 import { PaneModeContext } from "./paneMode";
 import { TabStrip } from "./TabStrip";
@@ -227,6 +228,8 @@ export function Workspace({
   const freshTabs = useRef(new Set<string>());
   /** Whether a phone has had its new chat for this page load (a phone opens on a new chat). */
   const phoneStarted = useRef(false);
+  /** When a pane opens its chat: every pane at once on a desktop, only the pane in front on a phone (#2768). */
+  const [openGate] = useState(() => new OpenGate(!phone));
   /** Each tab's chat pane focused last, by its dockview: the side pane taking the focus leaves it the chat in use. */
   const lastChat = useRef(new WeakMap<DockviewApi, string>());
   /** A tab's chat pane in use: the focused pane, or while the side pane has the focus, the chat pane focused last. */
@@ -284,6 +287,15 @@ export function Workspace({
     if (phoneRef.current && panel !== undefined && !panel.api.isMaximized())
       api.maximizeGroup(panel);
   }, []);
+
+  /** The pane in front of a tab opens its chat: on a phone the only one that does (`openGate`). */
+  const allowFront = useCallback(
+    (api: DockviewApi) => {
+      const front = api.activePanel;
+      if (front !== undefined && isChatPane(front)) openGate.allow(front.id);
+    },
+    [openGate],
+  );
 
   /** Headers only between several panes (never on a phone): a single pane needs no title bar, as in kitty. */
   const syncHeaders = useCallback((api: DockviewApi) => {
@@ -449,6 +461,8 @@ export function Workspace({
           panel.api.setTitle("New chat");
         }
       }
+      // The shown tab's pane in front opens its chat; on a phone the others wait to come to the front.
+      if (tabId === tabsRef.current.active) allowFront(api);
       api.onDidLayoutChange(() => {
         if (apis.current.get(tabId) !== api) return;
         syncHeaders(api);
@@ -460,6 +474,7 @@ export function Workspace({
         const active = api.activePanel;
         if (active !== undefined && isChatPane(active)) lastChat.current.set(api, active.id);
         zoomForPhone(api);
+        if (tabId === tabsRef.current.active) allowFront(api);
         report();
       });
       api.onDidRemovePanel(() => {
@@ -481,7 +496,7 @@ export function Workspace({
       syncHeaders(api);
       report();
     },
-    [addChat, chatPaneIn, dropChat, folder, report, syncHeaders, zoomForPhone],
+    [addChat, allowFront, chatPaneIn, dropChat, folder, report, syncHeaders, zoomForPhone],
   );
 
   const withActive = useCallback((action: (api: DockviewApi) => void): void => {
@@ -718,9 +733,13 @@ export function Workspace({
     if (phone) zoomForPhone(api);
     else if (api.hasMaximizedGroup() && phoneZoomed.current) api.exitMaximizedGroup();
     phoneZoomed.current = phone;
+    allowFront(api);
     focusPane(api);
     report();
-  }, [tabs.active, phone, focusPane, report, syncHeaders, zoomForPhone]);
+  }, [tabs.active, phone, allowFront, focusPane, report, syncHeaders, zoomForPhone]);
+
+  // Leaving the phone layout (a tablet turned, a window made wider) opens every pane that waited.
+  useEffect(() => openGate.setEveryPane(!phone), [openGate, phone]);
 
   // kitty's keys for windows and tabs (`keys/table.ts`). They work from the message box too.
   const keys: Options = { enableOnFormTags: true, preventDefault: true, enabled: !phone };
@@ -816,8 +835,9 @@ export function Workspace({
         document.visibilityState === "visible" &&
         document.hasFocus() &&
         apis.current.get(tabsRef.current.active)?.activePanel?.id === paneId,
+      openGate,
     }),
-    [client, focus, controllers, composers, report, addChat, folder],
+    [client, focus, controllers, composers, report, addChat, folder, openGate],
   );
   const labels = new Map(
     tabs.tabs.flatMap((tab) => {

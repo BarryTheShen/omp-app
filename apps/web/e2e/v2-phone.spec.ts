@@ -540,4 +540,46 @@ realTest.describe("new UI on a phone", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a phone opens only the chat in front: panes kept behind it open no chat of their own (#2768)",
+    async ({ realApp, browser }) => {
+      // Three panes side by side, each a new chat, made at a tablet's width, where Ctrl+Shift+O splits.
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 844 },
+        hasTouch: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "New chat" })
+        .click();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      for (const panes of [2, 3]) {
+        await page.keyboard.press("Control+Shift+O");
+        await expect(page.locator("[data-chat-pane]")).toHaveCount(panes);
+      }
+      await expect(box(page)).toHaveCount(3);
+      for (const each of await box(page).all())
+        await expect(each).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await page.waitForTimeout(1_000);
+
+      // The same browser as a phone: it comes back with its panes, but only the chat in front opens. Counted from the
+      // page's new connection: the open calls it sends.
+      let opens = 0;
+      page.on("websocket", (socket) =>
+        socket.on("framesent", ({ payload }) => {
+          const text = typeof payload === "string" ? payload : payload.toString("utf8");
+          if (text.includes('"port":"A0.chatSession"') && text.includes('"method":"open"')) opens++;
+        }),
+      );
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.reload();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await page.waitForTimeout(3_000);
+      expect(opens).toBe(1);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });
