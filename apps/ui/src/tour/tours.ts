@@ -1321,18 +1321,18 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-02-paired-only",
+    when: "2026-11-02T11:38:00-06:00",
+    summary:
+      "Only paired devices reach the app: its link opens it on the server's own computer only, and every other device pairs once with a code.",
+    tours: [PAIRED_ONLY_TOUR],
+  },
+  {
     id: "2026-11-02-usage-pause",
     when: "2026-11-02T11:14:00-06:00",
     summary:
       "Mark a chat in Usage to pause it when its provider's 5-hour window reaches its own percent (95 unless you change it); it goes on when the window resets.",
     tours: [USAGE_PAUSE_TOUR],
-  },
-  {
-    id: "2026-11-02-paired-only",
-    when: "2026-11-02T10:43:00-06:00",
-    summary:
-      "Only paired devices reach the app: its link opens it on the server's own computer only, and every other device pairs once with a code.",
-    tours: [PAIRED_ONLY_TOUR],
   },
   {
     id: "2026-11-02-command-keys",

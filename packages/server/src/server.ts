@@ -286,6 +286,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     readonly deviceId: string | null;
     /** The client's user agent, for the log. */
     readonly client: string;
+    /** For a refused connection's log line: where its page was, and whether it brought a device key and a token. */
+    readonly origin: string;
+    readonly hadKey: boolean;
+    readonly hadToken: boolean;
     session?: DispatcherSession;
   }
 
@@ -320,6 +324,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           data: {
             id: randomId(),
             client: (request.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
+            origin: request.headers.get("origin") ?? "none",
+            hadKey: deviceKeyOf(request) !== undefined,
+            hadToken: url.searchParams.has("token"),
             ...("closeCode" in authorization
               ? { authFailure: authorization, deviceId: null }
               : { deviceId: authorization.deviceId }),
@@ -345,7 +352,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     websocket: {
       open: (socket) => {
         if (socket.data.authFailure) {
-          options.logger?.warn("connection.rejected", { reason: socket.data.authFailure.reason });
+          // Who was refused and with what: a paired device refused by mistake shows here (Nov 2, an unnamed "not paired").
+          options.logger?.warn("connection.rejected", {
+            reason: socket.data.authFailure.reason,
+            client: socket.data.client,
+            origin: socket.data.origin,
+            has_key: socket.data.hadKey,
+            has_token: socket.data.hadToken,
+          });
           socket.close(socket.data.authFailure.closeCode, socket.data.authFailure.reason);
           return;
         }
