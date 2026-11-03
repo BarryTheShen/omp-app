@@ -110,6 +110,7 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
         running: browser?.running ?? false,
         problem,
         tabs: [...(browser?.tabs() ?? [])],
+        front: browser?.front() ?? null,
       },
       edge: { ...relay, tabs: [...relay.tabs], until: edgeUntil, link: context.edgeLink },
     };

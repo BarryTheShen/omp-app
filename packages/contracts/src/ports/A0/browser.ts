@@ -35,6 +35,11 @@ export const BrowserStatus = z
         /** Why it is not available or did not start, in plain words; null when all is well. */
         problem: z.string().nullable(),
         tabs: z.array(BrowserTab),
+        /**
+         * The tab in front: the one that draws and takes input (a tab behind another does neither), and the one the
+         * panel shows. Null while none is known to be there.
+         */
+        front: TabId.nullable(),
       })
       .strict(),
     /**

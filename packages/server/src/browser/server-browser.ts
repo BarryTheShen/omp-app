@@ -75,6 +75,11 @@ export interface ServerBrowserOptions {
 export const SERVER_BROWSER_PORT = 9333;
 /** How often Chrome's tab list is read again for new titles. */
 const TAB_SYNC_MS = 1_000;
+/**
+ * How long an input may go unanswered. Chrome answers at once a tab that is in front, and never one that is behind
+ * another (its page neither draws nor takes input there): such an input fails in this time instead of waiting for good.
+ */
+const INPUT_MS = 5_000;
 
 /** The Chrome on this machine: `OMP_APP_CHROME`, or the first of the usual names on the path; null when there is none. */
 export function findChrome(env: Record<string, string | undefined>): string | null {
@@ -110,6 +115,15 @@ export class ServerBrowser {
   readonly #sessions = new Map<string, Promise<string>>();
   readonly #tabListeners = new Set<(tabs: readonly BrowserTab[]) => void>();
   readonly #stateListeners = new Set<(running: boolean) => void>();
+  /**
+   * The tab in front, which draws and takes input; null while none is known to be there. A new tab comes to the front,
+   * whoever opens it (the panel, a chat, a page); a tab is brought there by `show` and by the input meant for it.
+   */
+  #front: string | null = null;
+  /** Tabs with a mouse move on its way: another move to them is left out, as the next one carries the pointer. */
+  readonly #moving = new Set<string>();
+  /** Chrome lists the tabs it has while target discovery starts: those are not new tabs coming to the front. */
+  #discovering = false;
   /** Chrome tells a tab's new address but not its new title: the list is read again every second while it runs. */
   #sync: ReturnType<typeof setInterval> | undefined;
 
@@ -137,6 +151,11 @@ export class ServerBrowser {
 
   tabs(): readonly BrowserTab[] {
     return [...this.#tabs.values()];
+  }
+
+  /** The tab in front: the one that draws and takes input; null while none is known to be there. */
+  front(): string | null {
+    return this.#front;
   }
 
   onTabs(listener: (tabs: readonly BrowserTab[]) => void): () => void {
@@ -214,9 +233,13 @@ export class ServerBrowser {
     cdp.on((event) => this.#onEvent(event));
     cdp.onClose(() => this.#onClosed());
     child.once("exit", () => cdp.close());
+    this.#discovering = true;
     await cdp.send("Target.setDiscoverTargets", { discover: true });
     const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>("Target.getTargets");
+    this.#discovering = false;
     for (const info of targetInfos) this.#remember(info);
+    // Chrome starts with one tab, in front; of several, which is in front is not known until one is shown.
+    this.#front = this.#tabs.size === 1 ? ([...this.#tabs.keys()][0] ?? null) : null;
     this.#sync = setInterval(() => void this.#syncTabs(cdp), TAB_SYNC_MS);
     logger?.info("browser.started", { port: active.port, pid: child.pid ?? 0 });
     this.#tellTabs();
@@ -229,6 +252,8 @@ export class ServerBrowser {
     const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", {
       url: url === "" ? "about:blank" : addressOf(url),
     });
+    this.#front = targetId;
+    this.#tellTabs();
     return targetId;
   }
 
@@ -241,6 +266,8 @@ export class ServerBrowser {
   async show(id: string): Promise<void> {
     const cdp = await this.#ready();
     await cdp.send("Target.activateTarget", { targetId: id });
+    this.#front = id;
+    this.#tellTabs();
   }
 
   async go(id: string, to: BrowserGo): Promise<void> {
@@ -263,56 +290,93 @@ export class ServerBrowser {
       await cdp.send("Page.navigateToHistoryEntry", { entryId: entry.id }, session);
   }
 
+  /**
+   * Sends the viewer's input to a tab. A click, a key, the wheel or text brings the tab to the front first, as a click
+   * on a tab does: Chrome leaves input to a tab behind another unanswered. A mouse move to a tab that is not in front is
+   * left out instead (it would bring the tab forward on a mere pass of the pointer), and so is one while another move to
+   * the tab is on its way.
+   */
   async input(id: string, input: BrowserInput): Promise<void> {
     const cdp = await this.#ready();
     const session = await this.#session(id);
+    if (input.kind === "mouse" && input.type === "mouseMoved") {
+      if (this.#front !== id || this.#moving.has(id)) return;
+      this.#moving.add(id);
+      try {
+        await this.#dispatch(cdp, session, "Input.dispatchMouseEvent", {
+          type: input.type,
+          x: input.x,
+          y: input.y,
+          button: input.button,
+          clickCount: input.clickCount,
+          modifiers: input.modifiers,
+        });
+      } finally {
+        this.#moving.delete(id);
+      }
+      return;
+    }
+    if (this.#front !== id) await this.show(id);
     switch (input.kind) {
       case "mouse":
-        await cdp.send(
-          "Input.dispatchMouseEvent",
-          {
-            type: input.type,
-            x: input.x,
-            y: input.y,
-            button: input.button,
-            clickCount: input.clickCount,
-            modifiers: input.modifiers,
-          },
-          session,
-        );
+        await this.#dispatch(cdp, session, "Input.dispatchMouseEvent", {
+          type: input.type,
+          x: input.x,
+          y: input.y,
+          button: input.button,
+          clickCount: input.clickCount,
+          modifiers: input.modifiers,
+        });
         return;
       case "wheel":
-        await cdp.send(
-          "Input.dispatchMouseEvent",
-          {
-            type: "mouseWheel",
-            x: input.x,
-            y: input.y,
-            deltaX: input.deltaX,
-            deltaY: input.deltaY,
-            modifiers: input.modifiers,
-          },
-          session,
-        );
+        await this.#dispatch(cdp, session, "Input.dispatchMouseEvent", {
+          type: "mouseWheel",
+          x: input.x,
+          y: input.y,
+          deltaX: input.deltaX,
+          deltaY: input.deltaY,
+          modifiers: input.modifiers,
+        });
         return;
       case "key":
-        await cdp.send(
-          "Input.dispatchKeyEvent",
-          {
-            type: input.type === "keyDown" && input.text === undefined ? "rawKeyDown" : input.type,
-            key: input.key,
-            code: input.code,
-            windowsVirtualKeyCode: input.keyCode,
-            modifiers: input.modifiers,
-            ...(input.text === undefined ? {} : { text: input.text, unmodifiedText: input.text }),
-          },
-          session,
-        );
+        await this.#dispatch(cdp, session, "Input.dispatchKeyEvent", {
+          type: input.type === "keyDown" && input.text === undefined ? "rawKeyDown" : input.type,
+          key: input.key,
+          code: input.code,
+          windowsVirtualKeyCode: input.keyCode,
+          modifiers: input.modifiers,
+          ...(input.text === undefined ? {} : { text: input.text, unmodifiedText: input.text }),
+        });
         return;
       case "text":
-        await cdp.send("Input.insertText", { text: input.text }, session);
+        await this.#dispatch(cdp, session, "Input.insertText", { text: input.text });
         return;
     }
+  }
+
+  /**
+   * One input to a tab's page, answered within `INPUT_MS`. One that is not means the tab is behind another after all
+   * (a chat brought another forward): it is no longer counted as in front, so the next input brings it there, and that
+   * releases the input still waiting.
+   */
+  async #dispatch(
+    cdp: CdpConnection,
+    session: string,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => resolve("late"), INPUT_MS);
+    });
+    try {
+      if ((await Promise.race([cdp.send(method, params, session), late])) !== "late") return;
+    } finally {
+      clearTimeout(timer);
+    }
+    this.#front = null;
+    this.#tellTabs();
+    throw new Error("The page did not take that input in time. Try again.");
   }
 
   /**
@@ -398,13 +462,23 @@ export class ServerBrowser {
 
   #onEvent(event: CdpEvent): void {
     switch (event.method) {
-      case "Target.targetCreated":
+      case "Target.targetCreated": {
+        const info = event.params.targetInfo as TargetInfo;
+        // A new tab comes to the front, whoever opened it: a chat's browser tool, a page's own new window.
+        const fronted = info.type === "page" && !this.#discovering;
+        if (fronted) this.#front = info.targetId;
+        if (this.#remember(info) || fronted) this.#tellTabs();
+        return;
+      }
       case "Target.targetInfoChanged":
         if (this.#remember(event.params.targetInfo as TargetInfo)) this.#tellTabs();
         return;
       case "Target.targetDestroyed": {
         const id = event.params.targetId as string;
         this.#sessions.delete(id);
+        this.#moving.delete(id);
+        // Chrome brings another tab forward, and does not say which: none is known to be in front until one is shown.
+        if (this.#front === id) this.#front = null;
         if (this.#tabs.delete(id)) this.#tellTabs();
         return;
       }
@@ -441,6 +515,8 @@ export class ServerBrowser {
         if (!pages.has(id)) {
           this.#tabs.delete(id);
           this.#sessions.delete(id);
+          this.#moving.delete(id);
+          if (this.#front === id) this.#front = null;
           changed = true;
         }
       if (changed) this.#tellTabs();
@@ -456,6 +532,8 @@ export class ServerBrowser {
     this.#child = null;
     this.#sessions.clear();
     this.#tabs.clear();
+    this.#moving.clear();
+    this.#front = null;
     this.#options.logger?.info("browser.stopped", {});
     this.#tellTabs();
     for (const listener of this.#stateListeners) listener(false);

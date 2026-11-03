@@ -53,7 +53,9 @@ export function modifiersOf(event: {
 
 /**
  * A key the page gets as the browser's own key event: the text it types (Enter types a carriage return, which submits
- * forms), or none for a key that only acts. Null for a key the app keeps (a lone modifier, or one still composing).
+ * forms), or none for a key that only acts. Null for a key the app keeps: a lone modifier, one still composing, and the
+ * paste key, whose paste brings this device's clipboard into the page as typed text (the page's own paste would read
+ * the clipboard of the server's machine).
  */
 export function keyInput(
   event: {
@@ -69,6 +71,10 @@ export function keyInput(
   type: "keyDown" | "keyUp",
 ): BrowserInput | null {
   if (event.isComposing || ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return null;
+  const pastes =
+    ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") ||
+    (event.shiftKey && event.key === "Insert");
+  if (pastes) return null;
   const types = event.key.length === 1 && !event.ctrlKey && !event.metaKey;
   const text = event.key === "Enter" ? "\r" : types ? event.key : undefined;
   return {
@@ -91,6 +97,8 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   const [status, setStatus] = useState<BrowserStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [shown, setShown] = useState<string | null>(null);
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
   // "New page" puts the cursor in the address at once, like a browser's new tab, and an address entered before the page
   // is listed opens there; the panel shows the page once its list has it (the list can come after the open's answer), so
   // the address bar never goes in between.
@@ -103,18 +111,32 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
       const next = await client.port(BrowserPort).status({});
       setStatus(next);
       setProblem(null);
+      const { tabs, front } = next.app;
+      const listed = (id: string | null): id is string =>
+        id !== null && tabs.some((tab) => tab.id === id);
       const wanted = opened.current;
-      if (wanted !== null && next.app.tabs.some((tab) => tab.id === wanted)) {
+      if (listed(wanted)) {
         opened.current = null;
         setShown(wanted);
         setOpening(null);
         return;
       }
-      setShown((current) =>
-        current !== null && next.app.tabs.some((tab) => tab.id === current)
-          ? current
-          : (next.app.tabs[0]?.id ?? null),
-      );
+      // The panel shows the tab the browser has in front, the only one that draws and takes input: a page a chat opens
+      // comes forward here too. A tab just opened is shown once the list has it.
+      if (listed(front)) {
+        setShown(front);
+        return;
+      }
+      if (front !== null) return;
+      // None is known to be in front (the browser just started, or the one in front closed): the one shown is brought
+      // there.
+      const chosen = listed(shownRef.current) ? shownRef.current : (tabs[0]?.id ?? null);
+      setShown(chosen);
+      if (chosen !== null)
+        void client
+          .port(BrowserPort)
+          .show({ id: chosen })
+          .catch(() => undefined);
     } catch (failure) {
       setProblem(
         failure instanceof AppFailure && failure.appError.code === "not_found"
