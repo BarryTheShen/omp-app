@@ -381,8 +381,16 @@ export function FileViewer({
               {fit ? "100%" : "Fit"}
             </Button>
           )}
-          {editable && showsSource && !editing && (
-            <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+          {/* In the Rendered view too: Edit opens the source to type in (#2794). */}
+          {editable && textual && !editing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setRendered(false);
+                setEditing(true);
+              }}
+            >
               Edit
             </Button>
           )}

@@ -3,6 +3,21 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
+/** The WCAG contrast ratio of two computed `rgb(…)` colours. */
+function contrast(first: string, second: string): number {
+  const luminance = (color: string): number => {
+    const [red = 0, green = 0, blue = 0] = (color.match(/[\d.]+/g) ?? [])
+      .slice(0, 3)
+      .map((part) => {
+        const channel = Number(part) / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const [lighter = 0, darker = 0] = [luminance(first), luminance(second)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 /**
  * The Files panel (#2782) on the real server: a folder's files listed, opened, edited and saved; a change made outside
  * reloads an unedited file; a save over a changed file stops and asks, and Overwrite and Save as copy each leave what
@@ -67,6 +82,83 @@ realTest.describe("new UI: the Files panel", () => {
       await appendFile(join(realApp.folder, "notes", "plan.md"), "- from outside\n");
       await expect(editor(page)).toContainText("from outside", { timeout: 10_000 });
       await expect(page.getByText("Updated", { exact: true })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a Markdown task list shows a tick box in each task's bullet place, open or ticked, seen against the panel (#2794)",
+    async ({ realApp }) => {
+      await writeFile(
+        join(realApp.folder, "tasks.md"),
+        "# Tasks\n\n- [ ] first to do\n- [x] second, done\n- plain item\n",
+      );
+      const page = await realApp.open({ path: "/" });
+      await openFiles(page);
+      await row(page, "tasks.md").click();
+      const rendered = page.getByRole("region", { name: "Rendered" });
+      await expect(rendered).toBeVisible({ timeout: 30_000 });
+      const boxes = rendered.getByRole("checkbox");
+      await expect(boxes).toHaveCount(2);
+      await expect(boxes.nth(0)).not.toBeChecked();
+      await expect(boxes.nth(1)).toBeChecked();
+      const panelColor = await page
+        .getByRole("region", { name: "File tasks.md" })
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      const looks = await boxes.evaluateAll((elements) =>
+        elements.map((element) => {
+          const style = getComputedStyle(element);
+          const item = element.closest("li") ?? element;
+          return {
+            size: element.getBoundingClientRect().width,
+            // From the top of its item: the same for an open and a ticked box on a line of the same text.
+            top: element.getBoundingClientRect().top - item.getBoundingClientRect().top,
+            border: style.borderTopColor,
+            fill: style.backgroundColor,
+            marker: getComputedStyle(item).listStyleType,
+          };
+        }),
+      );
+      const [open, ticked] = looks;
+      if (open === undefined || ticked === undefined) throw new Error("two boxes expected");
+      // Each box takes its item's bullet place, at a size and contrast that reads (3:1 for a control's edge).
+      for (const look of looks) {
+        expect(look.marker).toBe("none");
+        expect(look.size).toBeGreaterThanOrEqual(14);
+      }
+      expect(contrast(open.border, panelColor)).toBeGreaterThanOrEqual(3);
+      expect(contrast(ticked.fill, panelColor)).toBeGreaterThanOrEqual(3);
+      expect(Math.abs(ticked.top - open.top)).toBeLessThanOrEqual(1);
+      // An item that is not a task keeps its bullet.
+      expect(
+        await rendered
+          .getByRole("listitem")
+          .filter({ hasText: "plain item" })
+          .evaluate((element) => getComputedStyle(element).listStyleType),
+      ).toBe("disc");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a Markdown file is edited from its Rendered view: Edit opens the source to type in, and Rendered shows the saved text (#2794)",
+    async ({ realApp }) => {
+      await writeFile(join(realApp.folder, "tasks.md"), "# Tasks\n\n- [ ] first to do\n");
+      const page = await realApp.open({ path: "/" });
+      await openFiles(page);
+      await row(page, "tasks.md").click();
+      const rendered = page.getByRole("region", { name: "Rendered" });
+      await expect(rendered).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "Edit" }).click();
+      await expect(editor(page)).toHaveAttribute("contenteditable", "true");
+      await type(page, "# Tasks\n\nAll done.\n");
+      await page.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+      expect(await readFile(join(realApp.folder, "tasks.md"), "utf8")).toBe(
+        "# Tasks\n\nAll done.\n",
+      );
+      await page.getByRole("button", { name: "Rendered" }).click();
+      await expect(rendered).toContainText("All done.");
       expect(realApp.problems).toEqual([]);
     },
   );

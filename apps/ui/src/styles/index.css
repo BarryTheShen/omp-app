@@ -269,6 +269,48 @@
   list-style: decimal;
 }
 
+/*
+  Task lists (#2794): a tick box in the bullet's place, as on GitHub, drawn to read in every theme; the browser's own
+  box, disabled, was 13 px of faint grey on the dark themes. A loose list puts the box in the item's first paragraph.
+*/
+.tr-md li:has(> input[type="checkbox"]:first-child),
+.tr-md li:has(> p:first-child > input[type="checkbox"]:first-child) {
+  list-style: none;
+}
+
+.tr-md li > input[type="checkbox"]:first-child,
+.tr-md li > p:first-child > input[type="checkbox"]:first-child {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  box-sizing: border-box;
+  width: 15px;
+  height: 15px;
+  margin: 0 5px 0 -22px;
+  /* By its middle: the tick inside a ticked box gave it a baseline of its own, and a ticked box sat lower. */
+  vertical-align: middle;
+  border: 1.5px solid var(--t3);
+  border-radius: 4px;
+  background: transparent;
+}
+
+.tr-md li > input[type="checkbox"]:first-child:checked,
+.tr-md li > p:first-child > input[type="checkbox"]:first-child:checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.tr-md li > input[type="checkbox"]:first-child:checked::after,
+.tr-md li > p:first-child > input[type="checkbox"]:first-child:checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  margin-top: -2px;
+  border: solid var(--primary-foreground);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 /* The 11 px floor for functional text: collab-web draws some badges and titles at 10 px, and marker rows at 11 px. */
 .tr-root :is(.tv-badge, .tv-agent-link, .tv-out-title, .tv-expand, .tv-cell-title, .tv-todo-phase),
 .ag-drawer :is(.ag-chip, .ag-heading-count) {
