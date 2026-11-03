@@ -739,7 +739,8 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
         aria-label="Files"
         tabIndex={0}
         className={cn(
-          "relative min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+          // Three rows stay in view under a tall preview.
+          "relative min-h-21 flex-1 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           dropTarget === "" && "bg-accent/10",
         )}
         onKeyDown={onTreeKey}
@@ -893,7 +894,12 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
               target.addEventListener("pointerup", stop);
             }}
           />
-          <div className="shrink-0" style={{ height: previewHeight }}>
+          {/*
+            The height dragged to, kept for the next time, but no more than the panel has room for: a height kept from a
+            taller window, or another zoom, pushed the panel past its bottom, and the side panel scrolled too, a second bar
+            beside the preview's own (#2793).
+          */}
+          <div className="min-h-30" style={{ flex: `0 1 ${previewHeight}px` }}>
             {viewer}
           </div>
         </>

@@ -252,4 +252,41 @@ try {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a preview height kept from a taller window fits the panel: the side panel does not scroll beside the preview (#2793)",
+    async ({ realApp }) => {
+      await writeFile(
+        join(realApp.folder, "long.md"),
+        Array.from(
+          { length: 80 },
+          (_, index) => `Paragraph ${index}: words to fill the line.\n`,
+        ).join("\n"),
+      );
+      // The preview was dragged to 744 px in a window taller than this one.
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (target) =>
+          target.addInitScript(() => localStorage.setItem("omp-app.files.previewHeight", "744")),
+      });
+      await page.setViewportSize({ width: 1280, height: 640 });
+      await openFiles(page);
+      await row(page, "long.md").click();
+      await expect(page.getByRole("region", { name: "Rendered" })).toBeVisible({ timeout: 30_000 });
+      // One scroll bar: the preview's own. The side panel's area holds the list and the preview without scrolling.
+      const sideArea = page.locator("[data-tour='side-panel'] [role='tabpanel']");
+      expect(
+        await sideArea.evaluate((area) => area.scrollHeight - area.clientHeight),
+      ).toBeLessThanOrEqual(1);
+      // The preview's bottom edge is inside the panel, and the list keeps a row in view above it.
+      const panelBox = await sideArea.boundingBox();
+      const previewBox = await page.getByRole("region", { name: "File long.md" }).boundingBox();
+      if (panelBox === null || previewBox === null) throw new Error("no panel or preview");
+      expect(previewBox.y + previewBox.height).toBeLessThanOrEqual(
+        panelBox.y + panelBox.height + 1,
+      );
+      await expect(row(page, "long.md")).toBeInViewport();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
