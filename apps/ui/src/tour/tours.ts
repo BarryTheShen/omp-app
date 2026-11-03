@@ -1371,6 +1371,36 @@ const ATTACH_IMAGES_TOUR: Tour = {
   ],
 };
 
+const PORTS_PANEL = part("ports-panel");
+
+/** #2788: the services on the app's computer, and pages, opened on the paired devices. */
+const PORTS_TOUR: Tour = {
+  id: "ports-2026-11-02",
+  title: "Ports and pages",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "A Ports panel",
+      text: "Click <b>Ports</b> on this rail: the side panel opens on the services running on the app's computer.",
+      action: { kind: "appears", selector: PORTS_PANEL },
+    },
+    {
+      target: PORTS_PANEL,
+      title: "Open a service on your devices",
+      text: "Each service is listed with its port. <b>Share</b> one, then <b>Open</b> takes you to it in your browser; it opens only on devices paired with the app. A service a chat starts is shared by itself, and the chat shows a line with <b>Open</b>.",
+      action: next,
+    },
+    {
+      target: PORTS_PANEL,
+      title: "A page of your own",
+      text: "An HTML file open in <b>Files</b> has <b>Share as a page</b>: then <b>Open in browser</b> shows it with its styles, scripts and pictures. Shared pages are listed here too, with <b>Stop sharing</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1385,6 +1415,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-ports",
+    when: "2026-11-02T20:47:00-06:00",
+    summary:
+      "A Ports panel lists the services running on the app's computer: share one and open it in the browser on your paired devices. A service a chat starts is shared by itself, and an HTML file in Files opens as a page.",
+    tours: [PORTS_TOUR],
+  },
   {
     id: "2026-11-02-workspaces",
     when: "2026-11-02T19:56:00-06:00",

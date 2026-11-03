@@ -1,7 +1,7 @@
 import { cn } from "cn";
-import { X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { ShellRunView } from "./rows";
 import type { ChatNotice } from "./store";
 
@@ -72,15 +72,21 @@ const NOTICE_TEXT: Record<Exclude<ChatNotice["level"], "status">, string> = {
   error: "font-sans text-[0.8125rem] text-bad-ink",
 };
 
-/** What a built-in command printed, or omp's notification, kept until it is dismissed; omp's status lines stay dim. */
+/**
+ * What a built-in command printed, or omp's notification, kept until it is dismissed; omp's status lines stay dim. A
+ * service this chat started that was shared (#2788) has Open: a one-time link into it on this device.
+ */
 export function NoticeRow({
   notice,
   onDismiss,
+  onShareOpened,
 }: {
   readonly notice: ChatNotice;
   readonly onDismiss: (id: number) => void;
+  readonly onShareOpened?: (shareId: string) => void;
 }): ReactNode {
   if (notice.level === "status") return <StatusLine text={notice.text} />;
+  const share = notice.share;
   return (
     <div
       role={notice.level === "error" ? "alert" : "status"}
@@ -91,6 +97,22 @@ export function NoticeRow({
       >
         {notice.text}
       </pre>
+      {share !== undefined &&
+        (share.url === null ? (
+          <Button size="xs" variant="secondary" disabled>
+            <ExternalLink /> Open
+          </Button>
+        ) : (
+          <a
+            href={share.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => onShareOpened?.(share.id)}
+            className={buttonVariants({ size: "xs", variant: "secondary" })}
+          >
+            <ExternalLink /> Open
+          </a>
+        ))}
       <Button
         variant="ghost"
         size="icon-xs"

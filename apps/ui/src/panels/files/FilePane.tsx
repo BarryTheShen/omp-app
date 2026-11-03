@@ -14,6 +14,7 @@ import { SidePaneContext } from "../SidePane";
 import { type DiskChange, FileViewer } from "./FileViewer";
 import type { FilePaneParams } from "./filePaneParams";
 import { baseName } from "./names";
+import { PageShare } from "./PageShare";
 import { watchHub } from "./watchHub";
 
 /** The Files panel's viewer as a pane beside the chats, for wide editing; it watches its own file. */
@@ -52,6 +53,11 @@ export function FilePane({ params, api }: IDockviewPanelProps<FilePaneParams>): 
         change={change}
         onDirtyChange={setDirty}
         onClose={() => (dirty ? setAsking(true) : api.close())}
+        pageShare={
+          client !== undefined && (
+            <PageShare client={client} folder={params.folder} path={params.path} />
+          )
+        }
       />
       <Dialog open={asking} onOpenChange={setAsking}>
         <DialogContent>

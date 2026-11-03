@@ -8,6 +8,7 @@ import {
   ListChecks,
   type LucideIcon,
   MessageCircleQuestion,
+  Network,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ChatController } from "../chat/controller";
@@ -15,6 +16,7 @@ import { AgentsPanel } from "./agents/AgentsPanel";
 import { BtwPanel } from "./btw/BtwPanel";
 import { FilesPanel } from "./files/FilesPanel";
 import { JobsPanel } from "./jobs/JobsPanel";
+import { PortsPanel } from "./ports/PortsPanel";
 import { ProgressPanel } from "./progress/ProgressPanel";
 import { UsagePanel } from "./usage/UsagePanel";
 
@@ -90,5 +92,11 @@ export const PANELS: readonly Panel[] = [
         {...(openFileTab === undefined ? {} : { openFileTab })}
       />
     ),
+  },
+  {
+    id: "ports",
+    title: "Ports",
+    icon: Network,
+    render: ({ client }) => <PortsPanel client={client} />,
   },
 ];

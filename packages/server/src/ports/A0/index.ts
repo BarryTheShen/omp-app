@@ -11,6 +11,7 @@ export * from "./app";
 export * from "./chat-session";
 export * from "./context";
 export * from "./devices";
+export * from "./shares/shares";
 
 /**
  * Main's registry composition seam. Add the returned registrations to `createPortRegistry([...])`
@@ -55,9 +56,7 @@ export interface A0Runtime {
   };
   /** The chats marked to pause at their usage limit, for the chat list (#2781 part 3; see the chat runtime). */
   readonly usagePauses: {
-    usagePausesIn(
-      folder: string,
-    ): readonly {
+    usagePausesIn(folder: string): readonly {
       readonly id: ThreadId;
       readonly percent: number;
       readonly hold: UsagePauseHold | null;

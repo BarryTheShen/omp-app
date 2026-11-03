@@ -89,6 +89,8 @@ export interface FileViewerProps {
   readonly onDirtyChange?: (dirty: boolean) => void;
   /** A copy was saved beside the file (Save as copy). */
   readonly onCopySaved?: (copy: WorkspaceRelativePath) => void;
+  /** For an HTML file: sharing it as a page, and opening it in the browser (#2788). */
+  readonly pageShare?: ReactNode;
 }
 
 /**
@@ -105,6 +107,7 @@ export function FileViewer({
   onOpenAsTab,
   onDirtyChange,
   onCopySaved,
+  pageShare,
 }: FileViewerProps): ReactNode {
   const name = baseName(path);
   const unsavedKey = `${folder}\0${path}`;
@@ -356,6 +359,7 @@ export function FileViewer({
           {dirty && <span className="text-t3"> · edited</span>}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          {kind === "html" && pageShare}
           {(kind === "markdown" || kind === "html") && (
             <Button variant="ghost" size="sm" onClick={() => setRendered((value) => !value)}>
               {rendered ? "Source" : "Rendered"}

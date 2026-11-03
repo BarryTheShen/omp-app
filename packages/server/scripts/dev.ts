@@ -74,6 +74,7 @@ import {
   type A0PortContext,
   createA0Runtime,
   createDevicesPortRegistration,
+  createSharesRuntime,
 } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -666,6 +667,24 @@ export async function createCompositionServer(
   // Device pairing: each device has a key of its own; the address a new device opens is known once the server listens.
   const devices = await openDevicePairing({ appDataDir, logger });
   let appAddress = "";
+  let appPort: number | undefined;
+  // Pages and services of this machine opened to the paired devices (#2788).
+  const shares = createSharesRuntime({
+    pairing: devices,
+    publish,
+    chats: () =>
+      processRegistry
+        .list()
+        .flatMap((entry) =>
+          entry.pid === undefined ? [] : [{ pid: entry.pid, threadId: entry.threadId }],
+        ),
+    appPort: () => appPort,
+    // Where shares open: the machine's Tailscale address, or the one this names (tests, a machine without Tailscale).
+    ...(env.OMP_APP_SHARE_ADDRESS === undefined
+      ? {}
+      : { address: () => env.OMP_APP_SHARE_ADDRESS ?? null }),
+    logger,
+  });
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
     createDevicesPortRegistration({
@@ -674,6 +693,7 @@ export async function createCompositionServer(
       address: () => appAddress,
       logger,
     }),
+    shares.registration,
     ...createA1PortRegistrations(a1Context),
   ]);
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
@@ -696,6 +716,7 @@ export async function createCompositionServer(
     devices,
   });
   appAddress = remote?.origin ?? server.url;
+  appPort = server.port;
   await launchHistory.remember(server.token);
   launchToken = server.token;
   logger.addSecret(server.token);
@@ -734,6 +755,7 @@ export async function createCompositionServer(
           sessionPinStore.dispose();
           memoryStore.dispose();
           devices.desk.dispose();
+          shares.stop();
           usageLimitStore.dispose();
         }
       }

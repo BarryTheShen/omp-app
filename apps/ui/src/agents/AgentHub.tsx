@@ -24,6 +24,7 @@ const READ_ONLY: RowActions = {
   onSwitchModel: () => undefined,
   onStopShell: async () => undefined,
   onDismissNotice: () => undefined,
+  onShareOpened: () => undefined,
   onEdit: () => undefined,
   canEdit: false,
 };

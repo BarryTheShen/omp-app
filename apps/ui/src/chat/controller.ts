@@ -15,6 +15,7 @@ import {
   type SessionEntryWindow,
   SessionFilePath,
   SessionFileStore,
+  SharesPort,
   type SubagentReadResult,
   type SubagentTranscript,
   type ThreadId,
@@ -49,6 +50,7 @@ import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
 import { clientTags, frameMarks, watchFrames } from "../perf/frames";
 import { isPhone } from "../phone";
+import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
@@ -169,6 +171,10 @@ export class ChatController {
   #stopContinue: (() => void) | null = null;
   /** Stops following this chat's usage pause (#2781 part 3). */
   #stopUsagePause: (() => void) | null = null;
+  /** Stops following the services this chat started that were shared (#2788). */
+  #stopShares: (() => void) | null = null;
+  /** Each shared service's one-time link, kept fresh for the chat's row. */
+  readonly #shareLinks = new Map<string, ReturnType<typeof keepShareLink>>();
   private readonly client: AppClient;
   private readonly target: ChatTarget;
   /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
@@ -346,6 +352,29 @@ export class ChatController {
     this.#refreshRole().catch(() => undefined);
     this.#followContinue();
     this.#followUsagePause();
+    this.#followShares();
+  }
+
+  /** A service this chat started is shared by itself (#2788): the chat gets a row that says so, with its link. */
+  #followShares(): void {
+    this.#stopShares = follow(this.client.subscribe(SharesPort, "sharedForChat"), (shared) => {
+      if (shared.threadId !== this.#threadId || this.#shareLinks.has(shared.share.id)) return;
+      this.store.addShareNotice(
+        `${shared.program ?? "A service"} is listening on port ${shared.share.port}. It opens on your paired devices.`,
+        shared.share.id,
+      );
+      this.#shareLinks.set(
+        shared.share.id,
+        keepShareLink(this.client, shared.share.id, (url) =>
+          this.store.setShareLink(shared.share.id, url),
+        ),
+      );
+    });
+  }
+
+  /** A share's link in the chat was followed: its ticket is taken, so a new one is made. */
+  shareLinkUsed(shareId: string): void {
+    this.#shareLinks.get(shareId)?.used();
   }
 
   /** omp's plan mode and the chat's goal, as they are when the chat opens. */
@@ -1070,6 +1099,9 @@ export class ChatController {
     this.#stopResync();
     this.#stopContinue?.();
     this.#stopUsagePause?.();
+    this.#stopShares?.();
+    for (const link of this.#shareLinks.values()) link.stop();
+    this.#shareLinks.clear();
     this.#draft.dispose();
     this.store.dispose();
     // A stream that ended with its chat (a deleted chat) has nothing left to unsubscribe.

@@ -57,6 +57,7 @@ import { lastSeen } from "../../lastSeen";
 import { usePhone } from "../../phone";
 import { type DiskChange, FileViewer } from "./FileViewer";
 import { baseName, childPath, keepBothName, parentOf } from "./names";
+import { PageShare } from "./PageShare";
 import { downloadBytes, failureCode, readFileBytes, uploadBytes } from "./transfer";
 import { watchHub } from "./watchHub";
 
@@ -620,6 +621,7 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
         {...(openFileTab === undefined ? {} : { onOpenAsTab: () => openFileTab(open) })}
         onDirtyChange={setOpenDirty}
         onCopySaved={(copy) => void list(parentOf(copy))}
+        pageShare={<PageShare client={client} folder={folder} path={open} />}
       />
     );
 

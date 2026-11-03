@@ -61,6 +61,8 @@ export interface ChatNotice {
   readonly text: string;
   /** `status`: one of omp's status lines, too long for a toast: a dim line in the chat, as omp's terminal shows it. */
   readonly level: "output" | "status" | "info" | "warning" | "error";
+  /** A service this chat started, shared by itself (#2788): its one-time link, null while a new one is made. */
+  readonly share?: { readonly id: string; readonly url: string | null };
 }
 
 /**
@@ -532,6 +534,29 @@ export class ChatStore {
   /** A row from the page itself that explains the chat: it could not open, or a part of it is not shown. */
   addNotice(text: string, level: ChatNotice["level"]): void {
     this.#notify(text, level);
+    this.#publish();
+  }
+
+  /** A service this chat started was shared (#2788): a row that says so, with a link the controller keeps fresh. */
+  addShareNotice(text: string, shareId: string): void {
+    this.#notices = [
+      ...this.#notices,
+      {
+        id: (this.#notices.at(-1)?.id ?? 0) + 1,
+        text,
+        level: "info",
+        share: { id: shareId, url: null },
+      },
+    ];
+    this.#publish();
+  }
+
+  /** The shared service's one-time link changed: made again, or taken. */
+  setShareLink(shareId: string, url: string | null): void {
+    if (!this.#notices.some((notice) => notice.share?.id === shareId)) return;
+    this.#notices = this.#notices.map((notice) =>
+      notice.share?.id === shareId ? { ...notice, share: { id: shareId, url } } : notice,
+    );
     this.#publish();
   }
 

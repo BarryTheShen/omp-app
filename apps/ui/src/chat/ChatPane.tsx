@@ -101,6 +101,7 @@ export function ChatPane({
       onSwitchModel: () => setModelPickerOpen(true),
       onStopShell: () => controller.stopShell(),
       onDismissNotice: (id) => controller.store.dismissNotice(id),
+      onShareOpened: (shareId) => controller.shareLinkUsed(shareId),
       onEdit: (entryId) => {
         if (editingNow.current) return;
         editingNow.current = true;

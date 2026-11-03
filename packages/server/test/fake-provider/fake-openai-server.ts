@@ -876,6 +876,17 @@ function reply(request: Request): Reply {
       thinking: "I should run a command and say what it is for.",
     };
   }
+  // A service a chat starts (#2788): a small web server on a free port, in the background, for a minute at most. It
+  // sends no type, as many small services do.
+  if (prompt.includes("serve_probe"))
+    return {
+      tool: "bash",
+      args: {
+        command: `timeout 60 bun -e "require('node:http').createServer((q, s) => s.end('served-by-chat')).listen(0, '127.0.0.1')"`,
+        async: true,
+      },
+      thinking: "I should start a server.",
+    };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("read_long_probe"))

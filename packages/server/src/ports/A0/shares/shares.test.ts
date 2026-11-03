@@ -1,0 +1,171 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { FolderPath, ListeningService, Share, SharesList, ThreadId } from "@omp-app/contracts";
+import type { PortHandlerContext } from "../../../registry/ports";
+import { createSharesRuntime, type SharesRuntime } from "./shares";
+
+const T1 = "thread-one" as ThreadId;
+const cleanups: (() => Promise<void> | void)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+});
+
+function upstream(): number {
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("hello") });
+  cleanups.push(() => server.stop(true));
+  if (server.port === undefined) throw new Error("no port");
+  return server.port;
+}
+
+const service = (port: number, extra: Partial<ListeningService> = {}): ListeningService => ({
+  port,
+  address: "127.0.0.1",
+  program: "vite",
+  command: "vite",
+  startedAt: 1,
+  threadId: null,
+  neverShare: false,
+  ...extra,
+});
+
+/** A runtime over a listed set of services, a phone that is paired, and the events it published. */
+function runtime(listed: { services: ListeningService[] }) {
+  let removed: ((deviceId: string) => void) | null = null;
+  const events: { stream: string; payload: unknown }[] = [];
+  let version = 0;
+  let lastSeen = "";
+  const shares: SharesRuntime = createSharesRuntime({
+    pairing: {
+      store: {
+        list: () => [{ id: "d1", name: "Phone", kind: "browser", pairedAt: 0, lastSeenAt: 0 }],
+        onRemoved: (listener: (deviceId: string) => void) => {
+          removed = listener;
+          return () => undefined;
+        },
+      },
+      connections: { deviceOf: (connection: string) => (connection === "c-phone" ? "d1" : null) },
+    } as never,
+    publish: (stream, payload) => events.push({ stream, payload }),
+    chats: () => [],
+    appPort: () => undefined,
+    address: () => "127.0.0.1",
+    pollMs: 1_000_000_000,
+    readServices: async () => listed.services,
+    signature: async () => {
+      const now = JSON.stringify(listed.services);
+      if (now !== lastSeen) {
+        lastSeen = now;
+        version += 1;
+      }
+      return String(version);
+    },
+  });
+  cleanups.push(() => shares.stop());
+  const call = (method: string, args: unknown, connectionId = "c-phone") =>
+    (
+      shares.registration.handlers as Record<string, (a: unknown, c: PortHandlerContext) => unknown>
+    )[method]?.(args, { connectionId } as PortHandlerContext);
+  return { shares, events, call, remove: (deviceId: string) => removed?.(deviceId) };
+}
+
+/** Follows a share's one-time address as a browser does: the cookie it gives. */
+async function enter(url: string): Promise<{ cookie: string; location: string | null }> {
+  const entered = await fetch(url, { redirect: "manual" });
+  expect(entered.status).toBe(303);
+  return {
+    cookie: (entered.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "",
+    location: entered.headers.get("location"),
+  };
+}
+
+describe("shares (#2788)", () => {
+  test("a service is shared when asked, and opens on the device that asked through a one-time address", async () => {
+    const port = upstream();
+    const { call } = runtime({ services: [service(port)] });
+    const share = (await call("share", { port })) as Share;
+    expect(share.automatic).toBe(false);
+    const { url } = (await call("open", { id: share.id })) as { url: string };
+    const { cookie } = await enter(url);
+    const shown = await fetch(share.url, { headers: { cookie } });
+    expect(await shown.text()).toBe("hello");
+    const list = (await call("list", {})) as SharesList;
+    expect(list.shares.map((entry) => entry.openedBy)).toEqual([["Phone"]]);
+  });
+
+  test("a service on the never-share list, or one not listening, is not shared", async () => {
+    const port = upstream();
+    const { call } = runtime({
+      services: [service(port, { program: "syncthing", neverShare: true })],
+    });
+    await expect(Promise.resolve(call("share", { port }))).rejects.toMatchObject({
+      appError: { code: "permission" },
+    });
+    await expect(Promise.resolve(call("share", { port: port + 1 }))).rejects.toMatchObject({
+      appError: { code: "not_found" },
+    });
+  });
+
+  test("a service a chat starts is shared by itself and the chat told; stopped by hand, it stays unshared", async () => {
+    const port = upstream();
+    const listed = { services: [service(port, { threadId: T1 })] };
+    const { shares, events, call } = runtime(listed);
+    await shares.poll();
+    const told = events.find((event) => event.stream === "A0.shares/sharedForChat")?.payload as {
+      threadId: ThreadId;
+      share: Share;
+    };
+    expect(told.threadId).toBe(T1);
+    expect(told.share.automatic).toBe(true);
+    await call("stop", { id: told.share.id });
+    listed.services = [service(port, { threadId: T1, command: "vite --again" })];
+    await shares.poll();
+    expect(((await call("list", {})) as SharesList).shares).toEqual([]);
+  });
+
+  test("a share ends when its service stops listening", async () => {
+    const port = upstream();
+    const listed = { services: [service(port)] };
+    const { shares, call } = runtime(listed);
+    const share = (await call("share", { port })) as Share;
+    listed.services = [];
+    await shares.poll();
+    expect(((await call("list", {})) as SharesList).shares).toEqual([]);
+    await expect(fetch(share.url)).rejects.toThrow();
+  });
+
+  test("a device removed from the paired devices loses its sessions", async () => {
+    const port = upstream();
+    const { call, remove } = runtime({ services: [service(port)] });
+    const share = (await call("share", { port })) as Share;
+    const { url } = (await call("open", { id: share.id })) as { url: string };
+    const { cookie } = await enter(url);
+    remove("d1");
+    expect((await fetch(share.url, { headers: { cookie } })).status).toBe(403);
+  });
+
+  test("an HTML file opens as a page from its folder; no other file, and none outside the folder", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "omp-app-share-"));
+    cleanups.push(() => rm(folder, { recursive: true, force: true }));
+    await writeFile(join(folder, "guide.html"), "<p>guide</p>");
+    await writeFile(join(folder, "notes.txt"), "notes");
+    const { call } = runtime({ services: [] });
+    const share = (await call("sharePage", {
+      folder: folder as FolderPath,
+      path: "guide.html",
+    })) as Share;
+    const { url } = (await call("open", { id: share.id }, "c-other")) as { url: string };
+    const { cookie, location } = await enter(url);
+    expect(location).toBe("/guide.html");
+    expect(await (await fetch(`${share.url}guide.html`, { headers: { cookie } })).text()).toBe(
+      "<p>guide</p>",
+    );
+    await expect(
+      Promise.resolve(call("sharePage", { folder: folder as FolderPath, path: "notes.txt" })),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    await expect(
+      Promise.resolve(call("sharePage", { folder: folder as FolderPath, path: "../x.html" })),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+  });
+});

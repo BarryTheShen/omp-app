@@ -422,6 +422,8 @@ export interface RowActions {
   readonly onSwitchModel: () => void;
   readonly onStopShell: () => Promise<void>;
   readonly onDismissNotice: (id: number) => void;
+  /** A shared service's link in the chat was followed (#2788). */
+  readonly onShareOpened: (shareId: string) => void;
   readonly onEdit: (entryId: string) => void;
   readonly canEdit: boolean;
 }
@@ -511,7 +513,11 @@ function RowView({
     case "notice":
       return (
         <Row kind="assistant" gutter="">
-          <NoticeRow notice={row.notice} onDismiss={actions.onDismissNotice} />
+          <NoticeRow
+            notice={row.notice}
+            onDismiss={actions.onDismissNotice}
+            onShareOpened={actions.onShareOpened}
+          />
         </Row>
       );
   }
