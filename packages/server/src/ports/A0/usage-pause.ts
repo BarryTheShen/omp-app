@@ -115,9 +115,7 @@ export class UsagePause {
   }
 
   /** The chats of a folder that are marked, with their limits and holds. */
-  marksIn(
-    folder: string,
-  ): readonly {
+  marksIn(folder: string): readonly {
     readonly id: ThreadId;
     readonly percent: number;
     readonly hold: UsagePauseHold | null;

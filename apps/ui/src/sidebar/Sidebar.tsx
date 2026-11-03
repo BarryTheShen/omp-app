@@ -1,6 +1,14 @@
-import type { FolderPath, RunningSession, SessionFile, ThreadId } from "@omp-app/contracts";
+import type {
+  FolderPath,
+  RunningChat,
+  RunningChatState,
+  RunningSession,
+  SessionFile,
+  ThreadId,
+} from "@omp-app/contracts";
 import { cn } from "cn";
 import {
+  CircleStop,
   Clock,
   Ellipsis,
   Pause,
@@ -43,6 +51,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatTarget } from "../chat/controller";
 import { firstPromptOf } from "../chat/firstPrompts";
+import { folderName } from "../folders/folder";
 import { InboxButton } from "../inbox/InboxButton";
 import { KEYS, keycap } from "../keys/table";
 import { useLongPress } from "../longPress";
@@ -63,6 +72,14 @@ const PREFETCH_REST_MS = 120;
  */
 type ChatState = "waiting" | "paused" | "running" | "continuing" | null;
 
+/** A running chat's state as its row's mark (D1): idle has none. */
+const RUNNING_MARK: Readonly<Record<RunningChatState, ChatState>> = {
+  working: "running",
+  waiting: "waiting",
+  paused: "paused",
+  idle: null,
+};
+
 /** A chat whose first reply still runs has no file to title it yet: the first message this page sent in it names it. */
 const startingTitleOf = (id: ThreadId): string => firstPromptOf(id) ?? "New chat";
 
@@ -77,17 +94,21 @@ const REVEAL =
  * The chosen folder's chats: those waiting for you first, then pinned ones, then the rest, newest first. Each row has
  * its state (running, waiting for you) and whether a window shows it; search narrows every list. A click opens a
  * chat in the focused window, Alt+click beside it. Each row's menu renames or deletes its chat. A chat whose first reply
- * still runs has its row before omp has written its file, at the top, with no pin or menu until that file comes.
+ * still runs has its row before omp has written its file, at the top, with no pin or menu until that file comes. Above
+ * them, the chats that run in other folders (D1), each with its folder's name: this folder's are in the list already.
  */
 export function Sidebar({
   folderMenu,
   folder,
+  home,
   list,
+  running,
   view,
   hidden,
   onOpen,
   onPrefetch,
   onDeleted,
+  onStopRunning,
   onSettings,
   onWhatsNew,
   workspace,
@@ -97,7 +118,11 @@ export function Sidebar({
   /** The folder at the top, with its menu to switch it. */
   readonly folderMenu: ReactNode;
   readonly folder: FolderPath;
+  /** The home folder on the server's computer, named `~` in a running chat's row; null while it is not known. */
+  readonly home: FolderPath | null;
   readonly list: ChatList;
+  /** The chats that run on the server now, from every folder (D1). */
+  readonly running: readonly RunningChat[];
   readonly view: WorkspaceView;
   /** On a phone while a chat is shown. */
   readonly hidden: boolean;
@@ -106,6 +131,8 @@ export function Sidebar({
   readonly onPrefetch: (session: SessionFile) => void;
   /** A chat was deleted: the panes that showed it move on. */
   readonly onDeleted: (id: ThreadId) => void;
+  /** Ends a running chat's process (D1); refused with the reason when another tab has it open. */
+  readonly onStopRunning: (id: ThreadId) => Promise<void>;
   readonly onSettings: () => void;
   /** Opens the What's new list: every update and its tours. */
   readonly onWhatsNew: () => void;
@@ -123,6 +150,12 @@ export function Sidebar({
   /** The chat the delete dialog asks about; kept while the dialog closes, so its words stay put. */
   const [deleting, setDeleting] = useState<SessionFile | null>(null);
   const [confirming, setConfirming] = useState(false);
+  /** The running chat the stop dialog asks about, while its turn runs; kept while the dialog closes. */
+  const [stopping, setStopping] = useState<{
+    readonly id: ThreadId;
+    readonly title: string;
+  } | null>(null);
+  const [confirmingStop, setConfirmingStop] = useState(false);
   /** On a phone: the row swiped open, showing Pin and Delete; one at a time. */
   const [swiped, setSwiped] = useState<ThreadId | null>(null);
   const needle = query.trim().toLowerCase();
@@ -141,6 +174,13 @@ export function Sidebar({
     (chat) =>
       !listed.has(chat.id) &&
       (needle === "" || startingTitleOf(chat.id).toLowerCase().includes(needle)),
+  );
+  const runningTitleOf = (chat: RunningChat): string =>
+    chat.title ?? startingTitleOf(chat.threadId);
+  const elsewhere = running.filter(
+    (chat) =>
+      chat.folder !== folder &&
+      (needle === "" || runningTitleOf(chat).toLowerCase().includes(needle)),
   );
   const stateOf = (id: ThreadId): ChatState =>
     view.waiting.has(id)
@@ -176,6 +216,26 @@ export function Sidebar({
       .then(() => onDeleted(session.id))
       .catch((failure: unknown) => setProblem(`Could not delete it: ${errorText(failure)}`));
   };
+  const runningOf = new Map(running.map((chat) => [chat.threadId, chat]));
+  const stopNow = (id: ThreadId): void => {
+    setConfirmingStop(false);
+    setProblem(null);
+    onStopRunning(id).catch((failure: unknown) =>
+      setProblem(`Could not stop it: ${errorText(failure)}`),
+    );
+  };
+  /** A chat whose turn runs (or waits, or is paused) asks first: the stop ends that turn. An idle one stops at once. */
+  const stop = (id: ThreadId, title: string): void => {
+    if ((runningOf.get(id)?.state ?? "idle") === "idle") {
+      stopNow(id);
+      return;
+    }
+    setStopping({ id, title });
+    setConfirmingStop(true);
+  };
+  /** Stop running, for a chat that runs on the server now. */
+  const stopOf = (id: ThreadId, title: string): (() => void) | undefined =>
+    runningOf.has(id) ? () => stop(id, title) : undefined;
   const row = (session: SessionFile): ReactNode => (
     <ChatRow
       key={session.id}
@@ -184,6 +244,7 @@ export function Sidebar({
       state={stateOf(session.id)}
       open={view.open.has(session.id)}
       focused={view.focused === session.id}
+      onStop={stopOf(session.id, renamed.get(session.id) ?? titleOf(session))}
       target={{ kind: "existing", threadId: session.id, sessionFile: session.sessionFile }}
       onOpen={onOpen}
       phone={phone}
@@ -217,6 +278,29 @@ export function Sidebar({
       open={view.open.has(chat.id)}
       focused={view.focused === chat.id}
       target={{ kind: "existing", threadId: chat.id, sessionFile: null }}
+      onOpen={onOpen}
+      phone={phone}
+    />
+  );
+  const runningRow = (chat: RunningChat): ReactNode => (
+    <ChatRow
+      key={chat.threadId}
+      title={runningTitleOf(chat)}
+      place={folderName(chat.folder, home)}
+      saving={false}
+      state={RUNNING_MARK[chat.state]}
+      open={view.open.has(chat.threadId)}
+      focused={view.focused === chat.threadId}
+      // A chat stopped before omp has written its file would leave no chat behind: Stop waits for the file.
+      onStop={
+        chat.sessionFile === null ? undefined : () => stop(chat.threadId, runningTitleOf(chat))
+      }
+      target={{
+        kind: "existing",
+        threadId: chat.threadId,
+        sessionFile: chat.sessionFile,
+        folder: chat.folder,
+      }}
       onOpen={onOpen}
       phone={phone}
     />
@@ -263,11 +347,14 @@ export function Sidebar({
         />
       </label>
       <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto">
+        {elsewhere.length > 0 && (
+          <Section label="Running in other folders">{elsewhere.map(runningRow)}</Section>
+        )}
         {waiting.length > 0 && <Section label="Needs you">{waiting.map(row)}</Section>}
         {pinned.length > 0 && <Section label="Pinned">{pinned.map(row)}</Section>}
         {/* One array, keyed by chat: a chat whose file comes keeps its row's element as it moves to its saved row. */}
         <Section label="Chats">{[...starting.map(startingRow), ...rest.map(row)]}</Section>
-        {needle !== "" && shown.length === 0 && starting.length === 0 && (
+        {needle !== "" && shown.length === 0 && starting.length === 0 && elsewhere.length === 0 && (
           <p className="px-2 py-1 text-xs text-t3">No chat's title has "{query.trim()}".</p>
         )}
       </div>
@@ -371,6 +458,27 @@ export function Sidebar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog open={confirmingStop} onOpenChange={setConfirmingStop}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop this chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{stopping?.title ?? ""}” is in the middle of a turn: it ends now, as Esc ends it. The
+              chat stays in its folder's list, and opening it starts it again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (stopping !== null) stopNow(stopping.id);
+              }}
+            >
+              Stop running
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </nav>
   );
 }
@@ -404,6 +512,7 @@ interface RowActions {
 
 function ChatRow({
   title,
+  place,
   state,
   saving,
   open,
@@ -412,10 +521,13 @@ function ChatRow({
   onOpen,
   phone,
   actions,
+  onStop,
   swiped = false,
   onSwipe,
 }: {
   readonly title: string;
+  /** The folder it runs in, when that is not the list's (D1): its name in small type after the title. */
+  readonly place?: string;
   readonly state: ChatState;
   /** A new title is on its way to omp: shown already, muted until omp has saved it. */
   readonly saving: boolean;
@@ -428,6 +540,8 @@ function ChatRow({
   readonly phone: boolean;
   /** None for a chat whose first reply still runs: it has no file to read ahead, pin, rename or delete yet. */
   readonly actions?: RowActions;
+  /** Stop running in its menu, for a chat that runs on the server now (D1). */
+  readonly onStop?: () => void;
   /** On a phone: the row is swiped open, showing Pin and Delete. One row at a time: the list keeps which. */
   readonly swiped?: boolean;
   readonly onSwipe?: (open: boolean) => void;
@@ -441,8 +555,10 @@ function ChatRow({
   const refocus = useRef(false);
   const titleButton = useRef<HTMLButtonElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The row has a menu: a saved chat's Rename and Delete, a running chat's Stop running, or both. */
+  const hasMenu = actions !== undefined || onStop !== undefined;
   const hold = useLongPress(() => {
-    if (actions !== undefined) setMenuOpen(true);
+    if (hasMenu) setMenuOpen(true);
   });
   const swipe = useSwipe(SWIPE_WIDTH, swiped, (next) => onSwipe?.(next), hold.onPointerCancel);
   /** A phone's row with actions slides on a track, its Pin and Delete just past its right edge. */
@@ -454,6 +570,7 @@ function ChatRow({
   }, [editing]);
   const said = [
     title,
+    place === undefined ? null : `in ${place}`,
     state === "waiting"
       ? "waiting for you"
       : state === "paused"
@@ -502,6 +619,8 @@ function ChatRow({
             type="button"
             className={cn(
               "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-busy:text-t3 aria-[current=true]:text-t1 max-sm:h-11 tablet:h-11",
+              // A second line for the folder's name: a little taller on a desktop; a touch row has the room.
+              place !== undefined && "h-auto min-h-8 py-1",
               // Up and down stay the list's scroll; left and right are the row's swipe.
               phone && "touch-pan-y",
             )}
@@ -557,13 +676,21 @@ function ChatRow({
                 )}
               />
             )}
-            <span className="min-w-0 flex-1 truncate">{title}</span>
+            {place === undefined ? (
+              <span className="min-w-0 flex-1 truncate">{title}</span>
+            ) : (
+              // The title keeps the row's width; the folder's name goes under it, in small type (D1).
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="truncate">{title}</span>
+                <span className="truncate text-[11px] text-t3">{place}</span>
+              </span>
+            )}
             {open && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-t3" />}
           </button>
         )}
-        {!editing && actions !== undefined && (
+        {!editing && hasMenu && (
           <>
-            {!phone && (
+            {!phone && actions !== undefined && (
               <button
                 type="button"
                 // In the row of its chat; the chat's title stays the name of the row's own button.
@@ -592,25 +719,35 @@ function ChatRow({
                 <Ellipsis className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-auto" finalFocus={() => !renaming.current}>
-                {phone && (
+                {phone && actions !== undefined && (
                   <DropdownMenuItem onClick={actions.onPin}>
                     {actions.pinned ? <PinOff /> : <Pin />}
                     {actions.pinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem
-                  onClick={() => {
-                    renaming.current = true;
-                    setEditing(true);
-                  }}
-                >
-                  <PencilLine />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
-                  <Trash2 />
-                  Delete…
-                </DropdownMenuItem>
+                {actions !== undefined && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      renaming.current = true;
+                      setEditing(true);
+                    }}
+                  >
+                    <PencilLine />
+                    Rename
+                  </DropdownMenuItem>
+                )}
+                {onStop !== undefined && (
+                  <DropdownMenuItem onClick={onStop}>
+                    <CircleStop />
+                    Stop running
+                  </DropdownMenuItem>
+                )}
+                {actions !== undefined && (
+                  <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
+                    <Trash2 />
+                    Delete…
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </>

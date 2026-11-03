@@ -1401,6 +1401,21 @@ const PORTS_TOUR: Tour = {
   ],
 };
 
+const RUNNING_TOUR: Tour = {
+  id: "running-2026-11-02",
+  title: "Chats running in other folders",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: CHAT_LIST,
+      title: "Chats running in other folders",
+      text: "A chat keeps running when you switch to another folder. At the top of this list, <b>Running in other folders</b> shows each one with its folder's name and its mark: working, waiting for you, or paused. Click one to open it in the focused window, or drag it onto a window. <b>Stop running</b> in a running chat's menu ends it, here and in its own folder; it stays in its folder's list, and opening it starts it again.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1415,6 +1430,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-running",
+    when: "2026-11-02T22:10:00-06:00",
+    summary:
+      "Chats that run in other folders are listed at the top of the chat list, with their folder's name and their mark: open one from there in a window, or stop it.",
+    tours: [RUNNING_TOUR],
+  },
   {
     id: "2026-11-02-ports",
     when: "2026-11-02T20:47:00-06:00",

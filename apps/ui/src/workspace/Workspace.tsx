@@ -379,7 +379,7 @@ export function Workspace({
         params: {
           chat: crypto.randomUUID(),
           target: target.kind === "new" ? { kind: "new", folder: chatFolder } : target,
-          folder: target.kind === "new" ? chatFolder : folder,
+          folder: target.kind === "new" ? chatFolder : (target.folder ?? folder),
         },
         ...(blank !== undefined
           ? { position: { referenceGroup: blank, direction: "within" } }
@@ -683,11 +683,12 @@ export function Workspace({
         )
           addChat(api, target, "right");
         else {
-          // A new chat runs in the folder it names; a chat from the list belongs to the list's folder.
+          // A new chat runs in the folder it names; a chat from the list belongs to the list's folder, a running chat
+          // from another folder to its own.
           panel.api.updateParameters({
             chat: crypto.randomUUID(),
             target,
-            folder: target.kind === "new" ? target.folder : folder,
+            folder: target.kind === "new" ? target.folder : (target.folder ?? folder),
           } satisfies ChatPanelParams);
           panel.api.setTitle("New chat");
           focus.request(panel.id, true);

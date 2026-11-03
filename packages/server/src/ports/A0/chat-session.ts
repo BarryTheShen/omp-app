@@ -514,6 +514,30 @@ export class ChatSessionPortRuntime {
       ) ?? (() => undefined),
   };
 
+  readonly #waitingListeners = new Set<() => void>();
+
+  /** Whether a chat waits for an answer from you (an approval or a question), and each change: the running list (D1). */
+  readonly waiting = {
+    waitingFor: (threadId: ThreadId): boolean =>
+      (this.#entries.get(this.#aliases.get(threadId) ?? threadId)?.openRequests.size ?? 0) > 0,
+    onWaitingChange: (listener: () => void): (() => void) => {
+      this.#waitingListeners.add(listener);
+      return () => {
+        this.#waitingListeners.delete(listener);
+      };
+    },
+  };
+
+  #waitingChanged(): void {
+    for (const listener of this.#waitingListeners) {
+      try {
+        listener();
+      } catch {
+        // A running-list observer must not break a chat's requests or other observers.
+      }
+    }
+  }
+
   /** The session file an open chat runs, known before omp writes it (a new chat writes its file after its first reply). */
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined {
     return this.#entryOrUndefined(threadId)?.bootstrap.sessionFile;
@@ -1085,6 +1109,7 @@ export class ChatSessionPortRuntime {
       });
     }
     entry.openRequests.delete(args.id);
+    this.#waitingChanged();
     open.resolve(answer.data);
     return null;
   }
@@ -1384,6 +1409,7 @@ export class ChatSessionPortRuntime {
   #hostRequest(entry: ChatEntry, request: HostRequest): Promise<unknown> {
     return new Promise((resolve, reject) => {
       entry.openRequests.set(request.id, { request, resolve, reject });
+      this.#waitingChanged();
       this.#receive(entry, { kind: "host_request", request });
     });
   }
@@ -1393,6 +1419,7 @@ export class ChatSessionPortRuntime {
     const open = entry.openRequests.get(id);
     if (open === undefined) return;
     entry.openRequests.delete(id);
+    this.#waitingChanged();
     open.reject(new Error("The chat no longer waits for this answer."));
   }
 

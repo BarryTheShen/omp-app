@@ -1,4 +1,4 @@
-import { SessionFilePath, ThreadId } from "@omp-app/contracts";
+import { FolderPath, SessionFilePath, ThreadId } from "@omp-app/contracts";
 import type { ChatTarget } from "../chat/controller";
 
 /** The app's own drag type: a chat from the list, dragged onto the workspace. */
@@ -49,10 +49,14 @@ export function droppedChat(event: DragEvent | PointerEvent): ChatTarget | null 
   const value = raw as Record<string, unknown>;
   const threadId = ThreadId.safeParse(value.threadId);
   if (value.kind !== "existing" || !threadId.success) return null;
+  // A running chat from another folder carries its own (D1).
+  const folder = value.folder === undefined ? undefined : FolderPath.safeParse(value.folder);
+  if (folder?.success === false) return null;
+  const inFolder = folder === undefined ? {} : { folder: folder.data };
   if (value.sessionFile === null)
-    return { kind: "existing", threadId: threadId.data, sessionFile: null };
+    return { kind: "existing", threadId: threadId.data, sessionFile: null, ...inFolder };
   const sessionFile = SessionFilePath.safeParse(value.sessionFile);
   return sessionFile.success
-    ? { kind: "existing", threadId: threadId.data, sessionFile: sessionFile.data }
+    ? { kind: "existing", threadId: threadId.data, sessionFile: sessionFile.data, ...inFolder }
     : null;
 }

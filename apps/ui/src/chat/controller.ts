@@ -88,6 +88,8 @@ export type ChatTarget =
       readonly threadId: ThreadId;
       /** Null for a chat whose first reply still runs: omp writes its file once that reply is done. */
       readonly sessionFile: SessionFilePath | null;
+      /** The folder it runs in when that is not the list's: a running chat opened from another folder (D1). */
+      readonly folder?: FolderPath;
     }
   | { readonly kind: "new"; readonly folder: FolderPath };
 

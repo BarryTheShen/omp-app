@@ -189,6 +189,88 @@ describe("OmpProcessRegistry", () => {
     expect(statesAtNotification).toEqual([true]);
   });
 
+  test("says each time a thread's process is held or let go, and lists the held ones in every folder with what each does (D1)", async () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    let heard = 0;
+    registry.onHeldChange(() => {
+      heard += 1;
+    });
+    const one = ThreadId.parse("thread-held-1");
+    const two = ThreadId.parse("thread-held-2");
+    registry.acquire(options(one, "/workspace/one"));
+    // A second viewer holds no second process.
+    registry.acquire(options(one, "/workspace/one"));
+    expect(heard).toBe(1);
+    registry.acquire(options(two, "/workspace/two"));
+    registry.setBusy(two, true);
+    registry.setPaused(one, 1_700_000_000_000);
+    expect(registry.held()).toEqual([
+      { threadId: one, folder: "/workspace/one", busy: false, pausedAt: 1_700_000_000_000 },
+      { threadId: two, folder: "/workspace/two", busy: true, pausedAt: null },
+    ]);
+    expect(heard).toBe(2);
+
+    // A process that stops is let go.
+    await createdAt(created, 0).stop();
+    expect(registry.held().map((chat) => chat.threadId)).toEqual([two]);
+    expect(heard).toBe(3);
+    // A rekey lets the thread go under its first id and holds it under omp's own.
+    const moved = ThreadId.parse("thread-held-3");
+    registry.rekey(two, moved);
+    expect(registry.held().map((chat) => chat.threadId)).toEqual([moved]);
+    expect(heard).toBe(5);
+    await registry.closeAll();
+    expect(registry.held()).toEqual([]);
+    expect(heard).toBe(6);
+  });
+
+  test("a stop on request ends a process only its asker watches, without waiting for omp to settle; another watcher or a command refuses it, and a turn ends with it (D1)", async () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    // omp never says it is settled: an idle stop would never come.
+    registry.setIdleHooks({ isSettled: async () => false, stopped: () => undefined });
+    const thread = ThreadId.parse("thread-stop");
+    registry.acquire(options(thread, "/workspace/stop"));
+    registry.acquire(options(thread, "/workspace/stop"));
+    // The asker has one view; the other is another tab's.
+    await expect(registry.stop(thread, 1)).rejects.toThrow("busy");
+    registry.release(thread);
+    // A command under way (a rename) holds it too.
+    const done = registry.holdCommand(thread);
+    await expect(registry.stop(thread, 1)).rejects.toThrow("busy");
+    done();
+    expect(createdAt(created, 0).stopCalls).toBe(0);
+
+    const turns: boolean[] = [];
+    registry.onBusyChange((_id, busy) => turns.push(busy));
+    registry.setBusy(thread, true);
+    await registry.stop(thread, 1);
+    expect(turns).toEqual([true, false]);
+    expect(createdAt(created, 0).stopCalls).toBe(1);
+    expect(registry.has(thread)).toBe(false);
+    // A thread with no process here has nothing to stop.
+    await registry.stop(ThreadId.parse("thread-none"));
+  });
+
   test("a throwing busy listener cannot prevent other listeners or change the registry state", () => {
     const timer = new ManualTimer();
     const registry = new OmpProcessRegistry({

@@ -1,5 +1,5 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
-import { AppPort, type FolderPath } from "@omp-app/contracts";
+import { AppPort, type FolderPath, RunningChatsPort, type ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
 import { ChevronLeft, Info, SquarePen } from "lucide-react";
 import {
@@ -50,6 +50,7 @@ import type { SettingsPlace } from "./settings/SettingsPage";
 import { Sidebar } from "./sidebar/Sidebar";
 import { TitleMenu } from "./sidebar/TitleMenu";
 import { useChatList } from "./sidebar/useChatList";
+import { useRunningChats } from "./sidebar/useRunningChats";
 import { WhatsNewList } from "./tour/WhatsNewList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
 
@@ -179,6 +180,8 @@ function Shell({
   const choice = useFolder(client, launchFolder);
   const { folder } = choice;
   const list = useChatList(client, folder);
+  // The chats that run on the server, from every folder (D1).
+  const running = useRunningChats(client);
   const [view, setView] = useState<WorkspaceView>(NOTHING_OPEN);
   useWaitingNotifications(view.waiting);
   // A turn that ends while the window is in the background, as omp's terminal notifies it (V19b).
@@ -245,6 +248,14 @@ function Shell({
     workspace.current?.open(target, where);
     setShowChat(true);
   }, []);
+  /** Stops a running chat (D1); its windows here go blank, as a deleted chat's do, and it stays in its folder's list. */
+  const stopRunning = useCallback(
+    async (id: ThreadId): Promise<void> => {
+      await client.port(RunningChatsPort).stop({ threadId: id });
+      workspace.current?.forget(id);
+    },
+    [client],
+  );
   /** On a phone: the workspace brought a chat forward by itself (a new tab, a tour's sandbox), so it shows. */
   const showChatView = useCallback(() => setShowChat(true), []);
   // The chat you are in is seen: what it settled with leaves the inbox when the focus moves to it, and when the page
@@ -360,13 +371,16 @@ function Shell({
       <Sidebar
         folderMenu={<FolderMenu client={client} choice={choice} />}
         folder={folder}
+        home={choice.home}
         list={list}
+        running={running}
         view={view}
         hidden={phone && showChat}
         onOpen={openChat}
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
+        onStopRunning={stopRunning}
         onWhatsNew={showWhatsNew}
         workspace={workspace}
         phone={phone}

@@ -66,6 +66,7 @@ import { createRuleStore } from "../src/modules/A1/rules";
 import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
+import { sessionDisplayTitle } from "../src/modules/A1/sessions/title-card";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
 import { createWorkspaceFiles } from "../src/modules/A1/workspace-files";
@@ -74,6 +75,7 @@ import {
   type A0PortContext,
   createA0Runtime,
   createDevicesPortRegistration,
+  createRunningChatsRuntime,
   createSharesRuntime,
 } from "../src/ports/A0";
 import {
@@ -685,6 +687,31 @@ export async function createCompositionServer(
       : { address: () => env.OMP_APP_SHARE_ADDRESS ?? null }),
     logger,
   });
+  // The chats that run, from every folder, and an event each time that changes (D1).
+  const runningChats = createRunningChatsRuntime({
+    held: () => processRegistry.held(),
+    waitingFor: (threadId) => a0Runtime.waiting.waitingFor(threadId),
+    titleOf: async (threadId) => {
+      const file = await sessionFileStore.findSession(threadId);
+      if (file === undefined) return null;
+      return file.title != null ? sessionDisplayTitle(file.title) : (file.firstPrompt ?? null);
+    },
+    sessionFileOf: (threadId) => a0Runtime.sessionFileOf(threadId),
+    changes: [
+      (listener) => processRegistry.onHeldChange(listener),
+      (listener) => processRegistry.onBusyChange(() => listener()),
+      (listener) => processRegistry.onPauseChange(() => listener()),
+      (listener) => a0Runtime.waiting.onWaitingChange(listener),
+    ],
+    publish,
+    views: {
+      viewsOf: (threadId, connectionId) => a0Runtime.views.viewsOf(threadId, connectionId),
+      watcherCount: (threadId) => a0Runtime.views.watcherCount(threadId),
+    },
+    busyOf: (threadId) => processRegistry.busyOf(threadId),
+    abortTurn: (threadId, call) => a0Runtime.abortTurn(threadId, call),
+    stopChat: (threadId, ownViews) => processRegistry.stop(threadId, ownViews),
+  });
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
     createDevicesPortRegistration({
@@ -694,6 +721,7 @@ export async function createCompositionServer(
       logger,
     }),
     shares.registration,
+    runningChats.registration,
     ...createA1PortRegistrations(a1Context),
   ]);
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
@@ -757,6 +785,7 @@ export async function createCompositionServer(
           devices.desk.dispose();
           shares.stop();
           usageLimitStore.dispose();
+          runningChats.stop();
         }
       }
     },

@@ -2837,7 +2837,10 @@ describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
     });
     const handlers = runtime.registrations[0]?.handlers as HandlerSet;
     await expect(
-      getHandler(handlers, "setUsagePause")({ threadId: authorityThread, percent: 90 }, call("one")),
+      getHandler(handlers, "setUsagePause")(
+        { threadId: authorityThread, percent: 90 },
+        call("one"),
+      ),
     ).rejects.toMatchObject({ appError: { code: "not_found" } });
   });
 });

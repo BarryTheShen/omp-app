@@ -61,7 +61,12 @@ realTest.describe("new UI folder switch", () => {
       await listed.filter({ hasText: realApp.folder }).click();
       await expect(folderButton(page)).toHaveText(home);
       await expect(seeded(page)).toBeVisible({ timeout: 60_000 });
-      await expect(made).toHaveCount(0);
+      // Its own list has none of the other folder's chats; one that still runs is listed above, under its folder (D1).
+      await expect(
+        chats(page)
+          .getByRole("region", { name: "Chats" })
+          .getByRole("button", { name: /^in the other folder/ }),
+      ).toHaveCount(0);
 
       expect(realApp.problems).toEqual([]);
     },

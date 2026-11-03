@@ -2,7 +2,7 @@ import type { SessionFilePath, ThreadId, UsagePauseHold } from "@omp-app/contrac
 import type { ChatHostHello } from "@omp-app/contracts/chat-host";
 import type { CommandSession } from "../../modules/A1/gateway/command-session";
 import type { OmpProcess } from "../../process";
-import type { PortRegistration } from "../../registry/ports";
+import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
 import { createAppPortRegistration } from "./app";
 import { type ChatSessionPortRegistration, createChatSessionPortRuntime } from "./chat-session";
 import type { A0PortContext, ThreadBootstrap } from "./context";
@@ -11,6 +11,7 @@ export * from "./app";
 export * from "./chat-session";
 export * from "./context";
 export * from "./devices";
+export * from "./running-chats";
 export * from "./shares/shares";
 
 /**
@@ -70,6 +71,13 @@ export interface A0Runtime {
       ) => void,
     ): () => void;
   };
+  /** Whether a chat waits for an answer from you, and each change, for the running list (D1; see the chat runtime). */
+  readonly waiting: {
+    waitingFor(threadId: ThreadId): boolean;
+    onWaitingChange(listener: () => void): () => void;
+  };
+  /** Ends a chat's turn as Esc does, for the running list's Stop (D1; the chat runtime's `abort` request). */
+  abortTurn(threadId: ThreadId, call: PortHandlerContext): Promise<unknown>;
 }
 
 /** The chat session port on the chat hosts (SDK plan H5.3, the app's runtime since H5.4a) and AppPort. */
@@ -98,6 +106,9 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     handingBack: (threadId) => chat.runtime.handingBack(threadId),
     continuing: chat.runtime.continuing,
     usagePauses: chat.runtime.usagePauses,
+    waiting: chat.runtime.waiting,
+    abortTurn: (threadId, call) =>
+      chat.runtime.request({ threadId, method: "abort", params: {} }, call),
   };
 }
 

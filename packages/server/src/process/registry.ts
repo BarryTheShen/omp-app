@@ -15,7 +15,7 @@ const DEFAULT_MAX_IDLE = 12;
 const STOP_LIMIT_MS = 10 * 1000;
 
 /** What a wait for omp to stop is for; it names the refusal when omp does not stop in time. */
-export type StopPurpose = "deleted" | "opened" | "renamed";
+export type StopPurpose = "deleted" | "opened" | "renamed" | "stopped";
 
 /** The refusal when omp did not stop in time: the chat stays as it is, since omp may still write its file. Retry later. */
 function stopRefused(purpose: StopPurpose): AppFailure {
@@ -80,6 +80,34 @@ interface Entry {
   idleOrder: number | undefined;
 }
 
+/** A map that says each time an entry comes or goes: the threads the registry holds, for the running list (D1). */
+class HeldMap<K, V> extends Map<K, V> {
+  readonly #changed: () => void;
+
+  constructor(changed: () => void) {
+    super();
+    this.#changed = changed;
+  }
+
+  override set(key: K, value: V): this {
+    super.set(key, value);
+    this.#changed();
+    return this;
+  }
+
+  override delete(key: K): boolean {
+    const deleted = super.delete(key);
+    if (deleted) this.#changed();
+    return deleted;
+  }
+
+  override clear(): void {
+    const held = this.size > 0;
+    super.clear();
+    if (held) this.#changed();
+  }
+}
+
 /**
  * One `OmpProcess` per open thread. A thread stays up while it has a watcher or is busy; an
  * unwatched thread's process is stopped after `idleCloseMs`, but only once omp reports it is
@@ -95,7 +123,9 @@ export class OmpProcessRegistry {
   #idleCount = 0;
   readonly #createProcess: (options: OmpProcessOptions) => OmpProcess;
   readonly #timer: ProcessTimer;
-  readonly #entries = new Map<ThreadId, Entry>();
+  readonly #heldListeners = new Set<() => void>();
+  /** Every way a thread comes or goes (acquire, adopt, a stop, a rekey, closeAll) tells the running list (D1). */
+  readonly #entries = new HeldMap<ThreadId, Entry>(() => this.#notifyHeld());
   readonly #stopping = new Map<ThreadId, Promise<void>>();
   /** The process of each thread whose stop failed, until a stop of it succeeds: a wait for the thread tries it again. */
   readonly #stuck = new Map<ThreadId, OmpProcess>();
@@ -465,6 +495,39 @@ export class OmpProcessRegistry {
       status: entry.process.status,
     }));
   }
+
+  /** The threads whose process is held now, in every folder, with what each does: the running list (D1). */
+  held(): readonly {
+    readonly threadId: ThreadId;
+    readonly folder: string;
+    readonly busy: boolean;
+    readonly pausedAt: number | null;
+  }[] {
+    return [...this.#entries.values()].map((entry) => ({
+      threadId: entry.key,
+      folder: entry.folder,
+      busy: entry.busy,
+      pausedAt: entry.pausedAt,
+    }));
+  }
+
+  /** Calls `listener` each time a thread's process is held or let go; the returned function stops it. */
+  onHeldChange(listener: () => void): () => void {
+    this.#heldListeners.add(listener);
+    return () => {
+      this.#heldListeners.delete(listener);
+    };
+  }
+
+  #notifyHeld(): void {
+    for (const listener of this.#heldListeners) {
+      try {
+        listener();
+      } catch {
+        // A running-list observer must not break process lifecycle updates or other observers.
+      }
+    }
+  }
   /** Move a just-started process from a provisional key to omp's authoritative session id. */
   rekey(from: ThreadId, to: ThreadId): OmpProcess {
     const entry = this.#entries.get(from);
@@ -492,6 +555,38 @@ export class OmpProcessRegistry {
       this.#notifyPause(to, entry.folder, entry.pausedAt);
     }
     return entry.process;
+  }
+
+  /**
+   * Stops a thread's process on request (D1's Stop) when nobody but `ownWatchers` watches it and no command (a rename)
+   * holds it. A turn does not refuse it: the turn ends with the process, as a respawn ends one, and so does omp's pause.
+   * Unlike the idle stop it does not wait for omp to settle: queued messages and background work end with it. Resolves
+   * once omp has exited, at once for a thread with no process here; refuses (a retryable conflict) a thread another viewer
+   * or a command holds, and as `whenGone` does when omp does not stop in time. A failed stop gives the thread back to the
+   * watchers it has then.
+   */
+  async stop(threadId: ThreadId, ownWatchers = 0): Promise<void> {
+    const entry = this.#entries.get(threadId);
+    if (entry === undefined) return this.whenGone(threadId, "stopped");
+    if (entry.watchers > ownWatchers || entry.commands > 0) {
+      throw new AppFailure({
+        code: "conflict",
+        message: "This chat is busy, so it was not stopped. Try again in a moment.",
+        retryable: true,
+      });
+    }
+    this.#cancelIdle(entry);
+    // Its end is no longer heard from here: the turn it may still run ends now, and its pause, which lives in omp.
+    this.#endTurn(entry);
+    this.#endPause(entry);
+    this.#entries.delete(threadId);
+    entry.unsubscribe();
+    this.#closing.set(threadId, entry);
+    await this.#finishedWithin(
+      this.#startStop(threadId, entry.process, entry),
+      "stopped",
+      threadId,
+    );
   }
 
   /**
