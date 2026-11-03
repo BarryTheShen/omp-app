@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The Files panel (#2782) on the real server: a folder's files listed, opened, edited and saved; a change made outside
@@ -19,10 +19,7 @@ realTest.describe("new UI: the Files panel", () => {
 
   /** A new chat open (the panel follows the focused chat), then the Files panel from the rail. */
   async function openFiles(page: Page): Promise<void> {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
       "placeholder",
       "Message omp",

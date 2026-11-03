@@ -45,6 +45,7 @@ describe("where a drop lands (#2790)", () => {
     const resolver = regionResolver(
       () => ({ left: 100, top: 50, width: 1200, height: 800, panes: 2 }),
       () => true,
+      () => false,
     );
     const resolve = (
       x: number,
@@ -70,6 +71,7 @@ describe("where a drop lands (#2790)", () => {
     const lone = regionResolver(
       () => ({ left: 0, top: 0, width: 1200, height: 800, panes: 1 }),
       () => false,
+      () => false,
     );
     const box = { width: 1200, height: 800 };
     // No window band with one pane: its own edges split it.
@@ -82,10 +84,36 @@ describe("where a drop lands (#2790)", () => {
     const empty = regionResolver(
       () => ({ left: 0, top: 0, width: 1200, height: 800, panes: 0 }),
       () => true,
+      () => false,
     );
     expect(
       empty.resolve({ ...box, x: 600, y: 400, zones: ALL, event: at(600, 400) })?.position,
     ).toBe("center");
     expect(empty.resolve({ ...box, x: 600, y: 400, zones: SIDES, event: at(600, 400) })).toBeNull();
+  });
+
+  it("a blank window is filled from anywhere in it, also near its edges; the window's edge band still wins (#2791)", () => {
+    const blank = regionResolver(
+      () => ({ left: 0, top: 0, width: 1200, height: 800, panes: 2 }),
+      () => true,
+      (event) => event.clientX >= 600,
+    );
+    const right = { width: 600, height: 770 };
+    // The right window is blank: its middle and its own edges all fill it.
+    for (const [x, y] of [
+      [300, 385],
+      [20, 385],
+      [300, 10],
+    ] as const)
+      expect(
+        blank.resolve({ ...right, x, y, zones: ALL, event: at(600 + x, 30 + y) })?.position,
+      ).toBe("center");
+    // At the window's right edge the band takes it, and a target that takes no middle has no drop.
+    expect(
+      blank.resolve({ ...right, x: 590, y: 385, zones: ALL, event: at(1190, 415) }),
+    ).toBeNull();
+    expect(
+      blank.resolve({ ...right, x: 300, y: 385, zones: SIDES, event: at(900, 415) }),
+    ).toBeNull();
   });
 });

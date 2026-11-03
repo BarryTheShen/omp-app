@@ -66,7 +66,7 @@ const SETTINGS_SHEET = part("settings-sheet");
 
 const PANES: Tour = {
   id: "workspace-2026-10-30",
-  title: "Your chats, tabs and panes",
+  title: "Your chats, workspaces and windows",
   minutes: 3,
   sandbox: true,
   steps: [
@@ -84,14 +84,14 @@ const PANES: Tour = {
     },
     {
       target: TABS,
-      title: "A tab to try things in",
-      text: "This tour opened a new tab with an empty chat, so nothing you try touches your chats. {nextTab} and {previousTab} move between tabs; {renameTab} names one.",
+      title: "A workspace to try things in",
+      text: "This tour opened a new workspace with a new chat, so nothing you try touches your chats. {nextTab} and {previousTab} move between workspaces; {renameTab} names one.",
       action: next,
     },
     {
       target: TABS,
       title: "More windows",
-      text: "In the desktop window, {newWindow} opens another window on the same server, with one empty tab of its own. Closing a window leaves the others open.",
+      text: "In the desktop window, {newWindow} opens another app window on the same server, with a workspace of its own. Closing one leaves the others open.",
       action: next,
       desktopOnly: true,
     },
@@ -99,41 +99,41 @@ const PANES: Tour = {
       target: WORKSPACE,
       centred: true,
       title: "Split the screen",
-      text: "Press {splitRight} to open a new chat to the right.",
+      text: "Press {splitRight} to split: a blank window opens to the right.",
       action: keys("splitRight"),
     },
     {
       target: WORKSPACE,
       centred: true,
-      title: "Move between panes",
-      text: "{focusPane} goes to the pane in that direction; {cyclePane} to the next one. Try one.",
+      title: "Move between windows",
+      text: "{focusPane} goes to the window in that direction; {cyclePane} to the next one. Try one.",
       action: keys("focusPane"),
     },
     {
       target: WORKSPACE,
       centred: true,
       title: "Zoom",
-      text: "Press {zoom} to let this pane fill the tab.",
+      text: "Press {zoom} to let this window fill the workspace.",
       action: keys("zoom"),
     },
     {
       target: WORKSPACE,
       centred: true,
       title: "Zoom back",
-      text: "Press {zoom} again to bring the other pane back.",
+      text: "Press {zoom} again to bring the other window back.",
       action: keys("zoom"),
     },
     {
       target: WORKSPACE,
       centred: true,
-      title: "Close a pane",
+      title: "Close a window",
       text: "Press {closePane} to close this one.",
       action: keys("closePane"),
     },
     {
       target: CHAT_LIST,
       title: "Several chats at once",
-      text: "Alt+click a chat to open it beside the one you're in. {equalize} shares the space equally; {resizePane} makes a pane bigger or smaller.",
+      text: "Drag a chat from the list onto a blank window to fill it, or near a window's edge to split it. Alt+click a chat to open it beside the one you're in. {equalize} shares the space equally; {resizePane} makes a window bigger or smaller.",
       action: next,
     },
     {
@@ -145,7 +145,7 @@ const PANES: Tour = {
     {
       target: TABS,
       title: "Done here",
-      text: "Close the tour's tab with {closeTab}.",
+      text: "Close the tour's workspace with {closeTab}.",
       action: keys("closeTab"),
     },
   ],
@@ -214,7 +214,7 @@ const MESSAGE_BOX_TOUR: Tour = {
     {
       target: TABS,
       title: "Done here",
-      text: "Close the tour's tab with {closeTab}.",
+      text: "Close the tour's workspace with {closeTab}.",
       action: keys("closeTab"),
     },
   ],
@@ -573,7 +573,7 @@ const INBOX_TOUR: Tour = {
     {
       target: INBOX_BUTTON,
       title: "The inbox",
-      text: "Chats waiting for you, and turns that end while you are in another pane, tab or window, gather behind this bell, as in Tern; the number counts them. Open it.",
+      text: "Chats waiting for you, and turns that end while you are in another window or workspace, gather behind this bell, as in Tern; the number counts them. Open it.",
       action: { kind: "appears", selector: INBOX },
     },
     {
@@ -715,14 +715,14 @@ const ARRANGE_TOUR: Tour = {
     },
     {
       target: SIDE_PANEL_RAIL,
-      title: "The side panel is a pane too",
-      text: "Click <b>Usage</b>, or press {sidePanel}: the side panel opens as a pane at the right of your chats.",
+      title: "The side panel is a window too",
+      text: "Click <b>Usage</b>, or press {sidePanel}: the side panel opens as a window at the right of your chats.",
       action: { kind: "appears", selector: SIDE_PANEL },
     },
     {
       target: SIDE_PANEL,
       title: "Size it as you like",
-      text: "Drag the line between it and the chat to make it wider or narrower, or drag its title to move it, as with a chat. Each tab keeps its own, also after a reload.",
+      text: "Drag the line between it and the chat to make it wider or narrower, or drag its title to move it, as with a chat. Each workspace keeps its own, also after a reload.",
       action: next,
     },
   ],
@@ -1095,29 +1095,29 @@ const PHONE_SETTINGS_TOUR: Tour = {
 
 const PANE_MODE_TOUR: Tour = {
   id: "pane-mode-2026-10-31",
-  title: "Pane mode",
+  title: "Window mode",
   minutes: 1,
   sandbox: true,
   steps: [
     {
       target: WORKSPACE,
       centred: true,
-      title: "A second pane",
-      text: "Pane mode works on panes, so first press {splitRight} to open a new chat to the right.",
+      title: "A second window",
+      text: "Window mode works on windows, so first press {splitRight} to split: a blank window opens to the right.",
       action: keys("splitRight"),
     },
     {
       target: WORKSPACE,
       centred: true,
-      title: "Pane mode",
-      text: "Press {paneMode}. Until it ends, plain keys work on the panes, in any browser and on any keyboard: no Super key needed.",
+      title: "Window mode",
+      text: "Press {paneMode}. Until it ends, plain keys work on the windows, in any browser and on any keyboard: no Super key needed.",
       action: keys("paneMode"),
     },
     {
       target: WORKSPACE,
       centred: true,
       title: "Go, resize, share",
-      text: "← → ↑ ↓ go to the pane in that direction, with Shift they make it larger or smaller, = shares the space and [ ] go to the previous or next pane. Esc ends it, as do 3 seconds without a key; {paneMode} starts it again.",
+      text: "← → ↑ ↓ go to the window in that direction, with Shift they make it larger or smaller, = shares the space and [ ] go to the previous or next window. Esc ends it, as do 3 seconds without a key; {paneMode} starts it again.",
       action: next,
     },
   ],
@@ -1126,30 +1126,74 @@ const PANE_MODE_TOUR: Tour = {
 /** #2790: dropping where you let go. A second pane first, so there is a pane to move and one to drop on. */
 const DROP_TOUR: Tour = {
   id: "drop-2026-11-02",
-  title: "Dropping chats and panes",
+  title: "Dropping chats and windows",
   minutes: 1,
   sandbox: true,
   steps: [
     {
       target: WORKSPACE,
       centred: true,
-      title: "A second pane",
-      text: "Press {splitRight} to open a new chat to the right, so there is a pane to move.",
+      title: "A second window",
+      text: "Press {splitRight} to split: a blank window opens to the right, to drop a chat on.",
       action: keys("splitRight"),
     },
     {
       target: WORKSPACE,
       centred: true,
-      title: "Drag a chat or a pane",
-      text: "Drag a chat from the list, or a pane by the grip ⠿ at the start of its title, and let go anywhere on a pane. A label where it will land says what the drop does.",
+      title: "Drag a chat or a window",
+      text: "Drag a chat from the list, or a window by the grip ⠿ at the start of its title, and let go anywhere on a window. A label where it will land says what the drop does.",
       action: next,
     },
     {
       target: WORKSPACE,
       centred: true,
       title: "Where it lands",
-      text: "Near a pane's edge it splits that pane on that side; in its middle, a chat from the list takes its place. Along the window's own edges it makes a column or row the whole length of that side.",
+      text: "A blank window it fills. Near a window's edge it splits that window on that side; in its middle, a chat from the list takes its place. Along the workspace's own edges it makes a column or row the whole length of that side.",
       action: next,
+    },
+  ],
+};
+
+const NEW_WORKSPACE = part("new-workspace");
+const BLANK_WINDOW = "[data-blank-window]";
+
+/** #2791: workspaces as tabs on top, made of windows; a window is blank until a chat fills it. */
+const WORKSPACES_TOUR: Tour = {
+  id: "workspaces-2026-11-02",
+  title: "Workspaces and windows",
+  minutes: 2,
+  sandbox: false,
+  steps: [
+    {
+      target: NEW_WORKSPACE,
+      title: "A new workspace",
+      text: "Click <b>New workspace</b>. A workspace is a tab on top with windows of its own, and it starts as one blank window.",
+      action: { kind: "click" },
+    },
+    {
+      target: BLANK_WINDOW,
+      title: "A blank window",
+      text: "It holds only <b>New chat</b>, which starts a chat in it. Or drag a chat from the list onto it: the chat fills the window.",
+      action: next,
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "More windows",
+      text: "Press {splitRight} to split: the new window is blank, and {splitDown} splits downward. A new chat never takes another's place: when the window shows a chat, the new one opens beside it.",
+      action: keys("splitRight"),
+    },
+    {
+      target: TABS,
+      title: "Your workspaces",
+      text: "Each workspace is a tab here, named after its first chat. Click one to show it, double-click to rename it, drag it to move it; <b>+</b> adds one. Closing a window or a workspace leaves its chats running, in the list.",
+      action: next,
+    },
+    {
+      target: TABS,
+      title: "Done here",
+      text: "Close this workspace with {closeTab}.",
+      action: keys("closeTab"),
     },
   ],
 };
@@ -1272,14 +1316,14 @@ const TABLET_TOUCH_TOUR: Tour = {
     {
       target: null,
       title: "Full-size controls",
-      text: "On a tablet the chat list's rows, the message box's buttons, the panes' title bars and Settings are a finger's size, and the buttons that show on pointing are always shown.",
+      text: "On a tablet the chat list's rows, the message box's buttons, the windows' title bars and Settings are a finger's size, and the buttons that show on pointing are always shown.",
       action: next,
       tabletOnly: true,
     },
     {
       target: null,
-      title: "Resize the panes",
-      text: "Drag the line between two panes to resize them: a touch anywhere close to it takes it.",
+      title: "Resize the windows",
+      text: "Drag the line between two windows to resize them: a touch anywhere close to it takes it.",
       action: next,
       tabletOnly: true,
     },
@@ -1297,7 +1341,7 @@ const COMMAND_KEYS_TOUR: Tour = {
       target: WORKSPACE,
       centred: true,
       title: "⌘ does what Ctrl does",
-      text: "With an iPad's keyboard or on a Mac, every Ctrl key works with ⌘ too: ⌘⇧T opens a tab, ⌘P switches the model's role. {shortcuts} lists every key, shown with ⌘ there. Try it.",
+      text: "With an iPad's keyboard or on a Mac, every Ctrl key works with ⌘ too: ⌘⇧T opens a workspace, ⌘P switches the model's role. {shortcuts} lists every key, shown with ⌘ there. Try it.",
       action: { kind: "appears", selector: KEY_LIST },
     },
     {
@@ -1341,6 +1385,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-02-workspaces",
+    when: "2026-11-02T19:56:00-06:00",
+    summary:
+      "New workspace, at the top left, opens a workspace: a tab on top that starts as one blank window with New chat. A chat dragged onto a blank window fills it, the split keys make blank windows, and a new chat never takes another's place.",
+    tours: [WORKSPACES_TOUR],
+  },
   {
     id: "2026-11-02-drop",
     when: "2026-11-02T15:25:00-06:00",

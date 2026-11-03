@@ -270,6 +270,37 @@ export async function startChat(page: Page): Promise<Locator> {
 }
 
 /**
+ * Starts a new chat in the new UI (`/`) as a person does (#2791). A phone's chat list has New chat, which shows the new
+ * chat in place of the one shown. On a desktop New chat belongs to a blank window: the shown workspace's blank window
+ * takes it, the focused one first. With none, a workspace of one window has its chat closed (Ctrl+Shift+W: the chat
+ * keeps running, in the list), which leaves the blank window a workspace always keeps, as New chat once took the
+ * focused pane's place; one of several windows gets a blank window beside it (Ctrl+Shift+O), as a new chat now does.
+ */
+export async function startNewChat(page: Page): Promise<void> {
+  const listButton = page
+    .getByRole("navigation", { name: "Chats" })
+    .getByRole("button", { name: "New chat" });
+  const shown = page.locator("[data-tab]:not([hidden])");
+  const blank = shown.locator("[data-blank-window]").getByRole("button", { name: "New chat" });
+  const focusedBlank = shown
+    .locator(".dv-active-group [data-blank-window]")
+    .getByRole("button", { name: "New chat" });
+  const box = shown.getByRole("textbox", { name: "Message" });
+  // The page has drawn: a phone's list, or a desktop's workspace with its blank window or a chat.
+  await expect(listButton.or(blank).or(box).first()).toBeVisible({ timeout: 120_000 });
+  if (await listButton.isVisible()) {
+    await listButton.click();
+    return;
+  }
+  if ((await blank.count()) === 0) {
+    const windows = await shown.locator(".dv-groupview").count();
+    await page.keyboard.press(windows <= 1 ? "Control+Shift+W" : "Control+Shift+O");
+    await expect(blank.first()).toBeVisible();
+  }
+  await ((await focusedBlank.count()) > 0 ? focusedBlank : blank).first().click();
+}
+
+/**
  * Types the prompt and presses Enter, as a person does. A chat that is still opening keeps the text and says so under the
  * box ("Opening session… omp is starting"), and a person waits for that line to go before pressing Enter. The empty chat
  * ("No messages yet.") can already show then.

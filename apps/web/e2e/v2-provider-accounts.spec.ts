@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { APP_ROOT, expect, realTest } from "./real-omp";
+import { APP_ROOT, expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * Settings → Providers on real omp: a provider's stored accounts, a second account added, one signed out while the
@@ -71,10 +71,7 @@ realTest.describe("provider accounts", () => {
     "a second account is added, and signing one out leaves the other",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
         "placeholder",
         "Message omp",

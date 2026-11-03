@@ -74,11 +74,14 @@ const LAYOUT_SLACK_PX = 8;
  * dockview's drop resolver: the pane under the pointer answers by its region. With two panes or more the whole layout
  * answers nothing, and neither does a pane in the window's edge band: those drops are the window's own (`DropGuides`
  * takes them, since where they fall, a divider or a title bar, no target of dockview's takes a drop in WebKit). A lone
- * pane, or none, answers as a pane. A position the target does not take now is null, so the pane under it gets the drag.
+ * pane, or none, answers as a pane. A blank window (#2791) is filled from anywhere in it: `blankAt` tells whether the
+ * pointer is over one, since dockview gives the resolver no group. A position the target does not take now is null, so
+ * the pane under it gets the drag.
  */
 export function regionResolver(
   layout: () => DropLayout | null,
   carriesChat: (event: DragEvent | PointerEvent) => boolean,
+  blankAt: (event: DragEvent | PointerEvent) => boolean,
 ): PositionResolver {
   return {
     resolve: ({ x, y, width, height, zones, event }) => {
@@ -96,7 +99,9 @@ export function regionResolver(
         );
         if (edge !== null) return null;
       }
-      const position = regionAt(width, height, x, y, carriesChat(event));
+      const position = blankAt(event)
+        ? "center"
+        : regionAt(width, height, x, y, carriesChat(event));
       return position !== null && zones.has(position) ? { position } : null;
     },
   };

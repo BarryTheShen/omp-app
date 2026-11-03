@@ -10,7 +10,7 @@ realTest.describe("new UI tours", () => {
   realTest.setTimeout(240_000);
   const boxes = (page: Page) => page.getByRole("textbox", { name: "Message" });
   const shown = (page: Page) => boxes(page).filter({ visible: true });
-  const tabs = (page: Page) => page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+  const tabs = (page: Page) => page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab");
   const card = (page: Page) => page.getByRole("region", { name: "What's new" });
   const palette = (page: Page) => page.getByRole("dialog", { name: "Palette", exact: true });
   const popover = (page: Page) => page.locator(".driver-popover");
@@ -79,30 +79,31 @@ realTest.describe("new UI tours", () => {
 
   realTest("the panes tour waits for each action and moves on", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
-    await startFromPalette(page, "Your chats, tabs and panes");
+    await startFromPalette(page, "Your chats, workspaces and windows");
     const next = popover(page).getByRole("button", { name: "Next" });
 
     await expect(heading(page)).toHaveText("Your chats");
     await next.click();
     await expect(heading(page)).toHaveText("Find a chat");
     await next.click();
-    await expect(heading(page)).toHaveText("A tab to try things in");
-    // The tour made its own tab with a chat in it.
+    await expect(heading(page)).toHaveText("A workspace to try things in");
+    // The tour made its own workspace with a chat in it.
     await expect(tabs(page)).toHaveCount(2);
     await next.click();
 
     await expect(heading(page)).toHaveText("Split the screen");
     await opened(page, 1);
     await page.keyboard.press("Control+Shift+O");
-    await opened(page, 2);
-    await expect(heading(page)).toHaveText("Move between panes");
+    // The split is a blank window beside the chat.
+    await expect(page.locator("[data-tab]:not([hidden]) [data-blank-window]")).toHaveCount(1);
+    await expect(heading(page)).toHaveText("Move between windows");
     await popover(page).getByRole("button", { name: "Skip" }).click();
 
     await expect(heading(page)).toHaveText("Zoom");
     await page.keyboard.press("Control+Shift+Enter");
     await expect(heading(page)).toHaveText("Zoom back");
     await page.keyboard.press("Control+Shift+Enter");
-    await expect(heading(page)).toHaveText("Close a pane");
+    await expect(heading(page)).toHaveText("Close a window");
 
     await page.keyboard.press("Control+Shift+W");
     await expect(shown(page)).toHaveCount(1);
@@ -114,8 +115,8 @@ realTest.describe("new UI tours", () => {
 
     await page.keyboard.press("Control+Shift+Q");
     await expect(popover(page)).toHaveCount(0);
-    // One tab is left, and a single tab shows no strip.
-    await expect(tabs(page)).toHaveCount(0);
+    // One workspace is left; the strip stays on top.
+    await expect(tabs(page)).toHaveCount(1);
     await expect.poll(() => doneTours(page)).toEqual(["workspace-2026-10-30"]);
 
     expect(realApp.problems).toEqual([]);

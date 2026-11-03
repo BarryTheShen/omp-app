@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's settings (`apps/ui`, under `/v2/`) on real omp: omp's own settings by tab, search, each kind of control
@@ -189,10 +189,7 @@ realTest.describe("new UI settings", () => {
     await expect(signIn).toContainText("Open a chat to sign in: omp signs in inside a chat.");
     await page.keyboard.press("Escape");
 
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
       "placeholder",
       "Message omp",

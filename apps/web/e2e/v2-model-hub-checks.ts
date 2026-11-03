@@ -1,14 +1,14 @@
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * omp's model hub (Alt+M) in the new UI (`apps/ui/src/models`) on real omp with the fake models: a role takes a model and
  * a thinking level, they are saved, Clear role hands it back to omp's auto-selection, Default switches the chat, and a
  * search narrows the models (Esc clears it, then closes). In Chromium and in WebKit, the desktop window's engine.
  */
-const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
+
 export const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const chip = (page: Page) => page.getByRole("button", { name: /^Model: / });
 export const hub = (page: Page) => page.getByRole("dialog", { name: "Models" });
@@ -17,7 +17,7 @@ const models = (page: Page) => hub(page).getByRole("listbox", { name: "Models" }
 const status = (page: Page) => hub(page).getByRole("status");
 
 async function newChat(page: Page): Promise<void> {
-  await chats(page).getByRole("button", { name: "New chat" }).click();
+  await startNewChat(page);
   await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 }
 

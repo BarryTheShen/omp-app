@@ -1,12 +1,12 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's model menu on real omp with the fake models: each provider's newest models first; a star puts a model
  * under Favorites, on every page of the server and after a reload; a hidden model folds away under Hidden, where the
  * search still finds it and Show brings it back; Recent lists the models the chat switched to, newest first.
  */
-const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
+
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const chip = (page: Page) => page.getByRole("button", { name: /^Model: / });
 const search = (page: Page) => page.getByPlaceholder("Find a model");
@@ -15,7 +15,7 @@ const names = async (page: Page, name: string): Promise<string[]> =>
   (await group(page, name).getByRole("option").allTextContents()).map((text) => text.trim());
 
 async function newChat(page: Page): Promise<void> {
-  await chats(page).getByRole("button", { name: "New chat" }).click();
+  await startNewChat(page);
   await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 }
 

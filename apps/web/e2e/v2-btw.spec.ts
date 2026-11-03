@@ -20,7 +20,7 @@ realTest.describe("new UI side questions tour", () => {
       await search.fill("Tour: Side questions");
       await search.press("Enter");
 
-      // The tour opens a new tab with a new chat, so what it has you try touches none of your chats.
+      // The tour opens a new workspace with a new chat, so what it has you try touches none of your chats.
       await expect(heading).toHaveText("Ask on the side");
       const shown = box(page).filter({ visible: true });
       await expect(shown).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });

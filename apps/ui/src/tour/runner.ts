@@ -202,7 +202,7 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
 
   async function play(): Promise<void> {
     if (tour.sandbox && row?.sandbox !== false) {
-      workspace.command("newTab");
+      workspace.sandbox();
       await frames(2);
     }
     const steps = tour.steps.filter(

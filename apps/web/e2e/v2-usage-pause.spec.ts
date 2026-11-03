@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, REAL_OMP, realTest } from "./real-omp";
+import { expect, REAL_OMP, realTest, startNewChat } from "./real-omp";
 
 /**
  * The usage pause (#2781 part 3) on real omp: a chat marked in Usage pauses (omp's `/pause`) once its provider's 5-hour
@@ -65,10 +65,7 @@ realTest.describe("new UI: pausing a chat at its usage limit", () => {
     "a marked chat pauses at its own percent of its provider's 5-hour window, says why, and goes on when the percent is raised or the mark removed",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box.fill("hello");

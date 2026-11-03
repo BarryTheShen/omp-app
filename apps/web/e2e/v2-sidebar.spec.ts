@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's chat list and the rest of kitty's pane keys (`apps/ui`, under `/v2/`) on real omp: the list follows new
@@ -11,7 +11,7 @@ realTest.describe("new UI chat list and pane keys", () => {
   const boxes = (page: Page) => page.getByRole("textbox", { name: "Message" });
 
   async function newChat(page: Page): Promise<void> {
-    await chats(page).getByRole("button", { name: "New chat" }).click();
+    await startNewChat(page);
     await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
       timeout: 120_000,
     });
@@ -26,12 +26,12 @@ realTest.describe("new UI chat list and pane keys", () => {
       await boxes(page).fill("hello");
       await boxes(page).press("Enter");
       const row = chats(page).getByRole("button", { name: /^hello/ });
-      await expect(row).toHaveAccessibleName("hello, open in a pane", { timeout: 60_000 });
+      await expect(row).toHaveAccessibleName("hello, open in a window", { timeout: 60_000 });
 
       await boxes(page).fill("stream_steady");
       await boxes(page).press("Enter");
       await expect(row).toHaveAccessibleName(/^hello, running/, { timeout: 60_000 });
-      await expect(row).toHaveAccessibleName("hello, open in a pane", { timeout: 90_000 });
+      await expect(row).toHaveAccessibleName("hello, open in a window", { timeout: 90_000 });
 
       await boxes(page).fill("ask_user");
       await boxes(page).press("Enter");
@@ -96,7 +96,7 @@ realTest.describe("new UI chat list and pane keys", () => {
         await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
         await expect(box).toBeFocused();
         await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
-        await chats(page).getByRole("button", { name: "New chat" }).click();
+        await startNewChat(page);
         await expect(box).toBeFocused();
         await page.keyboard.type("typed at once");
         await expect(box).toHaveValue("typed at once");
@@ -130,7 +130,7 @@ realTest.describe("new UI chat list and pane keys", () => {
         await expect(transcript).toContainText("long first reply stream_steady");
         await expect(transcript).toContainText(/Steady line [1-9]/, { timeout: 30_000 });
         // The reply ends and omp writes the file: the same row stays, now with its menu.
-        await expect(row).toHaveAccessibleName("long first reply stream_steady, open in a pane", {
+        await expect(row).toHaveAccessibleName("long first reply stream_steady, open in a window", {
           timeout: 120_000,
         });
         await expect(item.getByRole("button", { name: "More" })).toHaveCount(1);
@@ -146,6 +146,8 @@ realTest.describe("new UI chat list and pane keys", () => {
     await newChat(page);
     await boxes(page).first().fill("in the first pane");
     await page.keyboard.press("Control+Shift+O");
+    // The split is a blank window with the caret on its New chat.
+    await page.keyboard.press("Enter");
     await expect(boxes(page)).toHaveCount(2, { timeout: 60_000 });
     await expect(boxes(page).nth(1)).toBeFocused();
     const width = async (index: number) => (await boxes(page).nth(index).boundingBox())?.width ?? 0;

@@ -50,7 +50,7 @@ realTest.describe("new UI chat rename and delete", () => {
   );
 
   realTest(
-    "a chat a pane shows is deleted after a confirmation: its row goes, the pane gets a new chat, and it stays gone",
+    "a chat a window shows is deleted after a confirmation: its row goes, its window goes blank, and it stays gone",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
@@ -72,7 +72,11 @@ realTest.describe("new UI chat rename and delete", () => {
         timeout: 60_000,
       });
       await expect(transcript(page).getByText("Seeded chat 1")).toHaveCount(0);
-      await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // Its window stays, blank, with New chat (#2791).
+      await expect(page.locator("[data-tab]:not([hidden]) [data-blank-window]")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(boxes(page)).toHaveCount(0);
       await expect(chats(page).getByRole("alert")).toHaveCount(0);
 
       await page.reload();

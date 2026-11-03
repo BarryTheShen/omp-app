@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, type RealApp, realTest } from "./real-omp";
+import { expect, type RealApp, realTest, startNewChat } from "./real-omp";
 
 /** Pausing a chat (omp's `/pause`, #2766) on real omp: `/pause` in the box, Pause and Resume, Esc, and pause all. */
 realTest.describe("pausing a chat", () => {
@@ -9,10 +9,7 @@ realTest.describe("pausing a chat", () => {
 
   async function newChat(realApp: RealApp): Promise<Page> {
     const page = await realApp.open({ path: "/" });
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
       "placeholder",
       "Message omp",

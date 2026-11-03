@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** A two-page PDF, each page a black square on white (no fonts, so nothing outside the file is needed to draw it). */
 function twoPagePdf(): Buffer {
@@ -56,10 +56,7 @@ export function definePdfChecks(engine: "chromium" | "webkit"): void {
       async ({ realApp }) => {
         await writeFile(join(realApp.folder, "two-pages.pdf"), twoPagePdf());
         const page = await realApp.open({ path: "/" });
-        await page
-          .getByRole("navigation", { name: "Chats" })
-          .getByRole("button", { name: "New chat" })
-          .click();
+        await startNewChat(page);
         await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
           "placeholder",
           "Message omp",

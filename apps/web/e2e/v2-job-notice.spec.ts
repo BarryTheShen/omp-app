@@ -1,4 +1,4 @@
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's background job notices on real omp: a job that finished shows as omp's terminal shows it (one
@@ -10,10 +10,7 @@ realTest.describe("new UI background job notices", () => {
 
   realTest("a finished background job is one folded row in omp's words", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     const box = page.getByRole("textbox", { name: "Message" });
     await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
     // The fake model starts `sleep 2; echo quick-done` in the background; omp delivers its end two seconds later.

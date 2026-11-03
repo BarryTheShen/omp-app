@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's todo pill (`apps/ui`, under `/v2/`) on real omp: omp's todo list above the message box, and in full. */
 realTest.describe("new UI todos", () => {
@@ -15,10 +15,7 @@ realTest.describe("new UI todos", () => {
     "omp's todo list shows above the box with the task it works on, follows each change, and opens in full",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
       await send(page, "make_todos");

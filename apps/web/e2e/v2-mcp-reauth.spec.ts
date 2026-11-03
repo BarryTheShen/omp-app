@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * Signing in to an MCP server again from Settings (#2779 D6.2), on real omp, against a fake remote server that signs in
@@ -159,10 +159,7 @@ realTest.describe("new UI: signing in to an MCP server again", () => {
           JSON.stringify({ mcpServers: { "fixture-oauth": { type: "http", url: fake.url } } }),
         );
         const page = await realApp.open({ path: "/" });
-        await page
-          .getByRole("navigation", { name: "Chats" })
-          .getByRole("button", { name: "New chat" })
-          .click();
+        await startNewChat(page);
         await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
           "placeholder",
           "Message omp",

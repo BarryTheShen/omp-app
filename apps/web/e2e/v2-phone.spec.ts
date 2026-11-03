@@ -1,5 +1,5 @@
 import type { BrowserContext, Locator, Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI on a phone, on real omp: the message box's key row above the keyboard (the box's settings, and the keys a
@@ -529,10 +529,7 @@ realTest.describe("new UI on a phone", () => {
 
       // A desktop page opens with no chat: a new one brings the message box.
       const desktop = await realApp.open({ path: "/" });
-      await desktop
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(desktop);
       await expect(box(desktop)).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
       });
@@ -550,13 +547,12 @@ realTest.describe("new UI on a phone", () => {
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       for (const panes of [2, 3]) {
         await page.keyboard.press("Control+Shift+O");
+        // The split is a blank window with the caret on its New chat.
+        await page.keyboard.press("Enter");
         await expect(page.locator("[data-chat-pane]")).toHaveCount(panes);
       }
       await expect(box(page)).toHaveCount(3);

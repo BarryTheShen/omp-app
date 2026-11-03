@@ -49,8 +49,8 @@ interface Item {
   readonly run: () => void;
 }
 
-/** The workspace's commands in the palette, with their keys. */
-const WORKSPACE_COMMANDS: readonly WorkspaceCommand[] = [
+/** The workspace's commands in the palette, with their keys (New chat has none: a row of its own). */
+const WORKSPACE_COMMANDS: readonly Exclude<WorkspaceCommand, "newChat">[] = [
   "splitRight",
   "splitDown",
   "zoom",
@@ -304,6 +304,13 @@ export function Palette({
   // Rows for the palette as it is now: cheap, and only while it is open.
   const items: readonly Item[] = (() => {
     const all: Item[] = [
+      {
+        // A blank focused window takes it; else it opens in a window beside the focused chat (#2791).
+        key: "app:newChat",
+        group: "Commands",
+        label: "New chat",
+        run: () => close(() => workspace.current?.command("newChat")),
+      },
       ...WORKSPACE_COMMANDS.map((id) => ({
         key: `app:${id}`,
         group: "Commands" as const,

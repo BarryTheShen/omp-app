@@ -11,6 +11,7 @@ import {
   Settings,
   Sparkles,
   SquarePen,
+  SquarePlus,
   Trash2,
 } from "lucide-react";
 import {
@@ -74,8 +75,8 @@ const REVEAL =
 
 /**
  * The chosen folder's chats: those waiting for you first, then pinned ones, then the rest, newest first. Each row has
- * its state (running, waiting for you) and whether it is open in a pane; search narrows every list. A click opens a
- * chat in the focused pane, Alt+click beside it. Each row's menu renames or deletes its chat. A chat whose first reply
+ * its state (running, waiting for you) and whether a window shows it; search narrows every list. A click opens a
+ * chat in the focused window, Alt+click beside it. Each row's menu renames or deletes its chat. A chat whose first reply
  * still runs has its row before omp has written its file, at the top, with no pin or menu until that file comes.
  */
 export function Sidebar({
@@ -232,16 +233,19 @@ export function Sidebar({
       }}
     >
       {folderMenu}
-      {/* On a phone, New chat is at the foot of the list, in the thumb's reach. */}
+      {/*
+        On a desktop, a new workspace: a tab of its own, one blank window with its New chat (#2791). On a phone, one chat
+        at a time: New chat is at the foot of the list, in the thumb's reach.
+      */}
       {!phone && (
         <Button
-          data-tour="new-chat"
+          data-tour="new-workspace"
           variant="ghost"
           className="justify-start gap-2 px-2 text-t2 hover:text-t1 tablet:h-11"
-          onClick={() => onOpen({ kind: "new", folder }, "here")}
+          onClick={() => workspace.current?.command("newTab")}
         >
-          <SquarePen />
-          New chat
+          <SquarePlus />
+          New workspace
         </Button>
       )}
       <label
@@ -459,7 +463,7 @@ function ChatRow({
           : state === "continuing"
             ? "continues after its usage limit"
             : null,
-    open ? "open in a pane" : null,
+    open ? "open in a window" : null,
   ].filter((part) => part !== null);
   return (
     <li

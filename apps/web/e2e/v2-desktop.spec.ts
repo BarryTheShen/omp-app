@@ -1,7 +1,7 @@
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** A 1 x 1 PNG, as the desktop window's clipboard command answers it. */
 const PNG =
@@ -61,10 +61,7 @@ realTest.describe("new UI in the desktop window", () => {
     appSettings(page).getByRole("textbox", { name: "Connect to another server" });
 
   async function newChat(page: Page) {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     const box = page.getByRole("textbox", { name: "Message" });
     await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
     return box;
@@ -162,11 +159,9 @@ realTest.describe("new UI in the desktop window", () => {
       await search(browser);
       // Only the window's server options: a tour's title can name a server ("Tour: Signing in to an MCP server").
       await expect(
-        browser
-          .getByRole("dialog", { name: "Palette" })
-          .getByRole("option", {
-            name: /^(Connect to another server|Use this computer's server|Open the server on )/,
-          }),
+        browser.getByRole("dialog", { name: "Palette" }).getByRole("option", {
+          name: /^(Connect to another server|Use this computer's server|Open the server on )/,
+        }),
       ).toHaveCount(0);
       await browser.keyboard.press("Escape");
       await settingsButton(browser).click();
@@ -177,7 +172,7 @@ realTest.describe("new UI in the desktop window", () => {
   );
 
   realTest(
-    "Ctrl+Shift+N and the palette's New window ask the window for another window; a browser has neither",
+    "Ctrl+Shift+N and the palette's New app window ask the window for another window; a browser has neither",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       await expect(settingsButton(page)).toBeVisible({ timeout: 120_000 });
@@ -188,26 +183,26 @@ realTest.describe("new UI in the desktop window", () => {
 
       await page.keyboard.press("Control+k");
       const palette = page.getByRole("dialog", { name: "Palette" });
-      await palette.getByRole("combobox").fill("new window");
-      await palette.getByRole("option", { name: "New window" }).click();
+      await palette.getByRole("combobox").fill("new app window");
+      await palette.getByRole("option", { name: "New app window" }).click();
       await expect.poll(asked).toBe(2);
 
       await page.keyboard.press("Control+/");
       const keys = page.getByRole("dialog", { name: "Keys" });
-      await expect(keys.getByText("New window")).toBeVisible();
+      await expect(keys.getByText("New app window")).toBeVisible();
 
       // A browser keeps Ctrl+Shift+N for itself: no row in the palette, no line in the keys.
       const browser = await realApp.open({ path: "/" });
       await expect(settingsButton(browser)).toBeVisible({ timeout: 120_000 });
       await browser.keyboard.press("Control+k");
       const browserPalette = browser.getByRole("dialog", { name: "Palette" });
-      await browserPalette.getByRole("combobox").fill("new window");
-      await expect(browserPalette.getByRole("option", { name: "New window" })).toHaveCount(0);
+      await browserPalette.getByRole("combobox").fill("new app window");
+      await expect(browserPalette.getByRole("option", { name: "New app window" })).toHaveCount(0);
       await browser.keyboard.press("Escape");
       await browser.keyboard.press("Control+/");
       const browserKeys = browser.getByRole("dialog", { name: "Keys" });
       await expect(browserKeys).toBeVisible();
-      await expect(browserKeys.getByText("New window")).toHaveCount(0);
+      await expect(browserKeys.getByText("New app window")).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
     },
   );

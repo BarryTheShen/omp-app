@@ -1,4 +1,4 @@
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** The new UI (`apps/ui`, served under `/v2/`): a saved chat, a streamed reply and Stop, on real omp. */
 realTest.describe("new UI core", () => {
@@ -18,7 +18,7 @@ realTest.describe("new UI core", () => {
         timeout: 60_000,
       });
 
-      await chats.getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box.fill("stream_code please");

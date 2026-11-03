@@ -1,7 +1,7 @@
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * omp's Ctrl+P and Shift+Ctrl+P in the new UI (`apps/ui`) on real omp: the chat switches to the next or previous role's
@@ -10,13 +10,13 @@ import { expect, realTest } from "./real-omp";
  */
 realTest.describe("new UI role models", () => {
   realTest.setTimeout(240_000);
-  const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
+
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
   const chip = (page: Page) => page.getByRole("button", { name: /^Model: / });
   const track = (page: Page) => page.getByRole("status", { name: "Roles" });
 
   async function newChat(page: Page): Promise<void> {
-    await chats(page).getByRole("button", { name: "New chat" }).click();
+    await startNewChat(page);
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
   }
 
@@ -121,6 +121,8 @@ realTest.describe("new UI role models", () => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
       await box(page).press("Control+Shift+o");
+      // The split is a blank window: its New chat starts the second chat.
+      await startNewChat(page);
       const panes = page.locator("[data-chat-pane]");
       await expect(panes).toHaveCount(2);
       const [left, right] = [panes.nth(0), panes.nth(1)];

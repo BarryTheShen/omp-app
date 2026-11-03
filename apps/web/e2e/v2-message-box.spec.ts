@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's message box (`apps/ui`, under `/v2/`) on real omp: kept drafts, the queue, Stop, model and thinking. */
 realTest.describe("new UI message box", () => {
@@ -76,7 +76,7 @@ realTest.describe("new UI message box", () => {
       testInfo.setTimeout(240_000);
       const page = await realApp.open({ path: "/" });
       const followUp = "after this, write the docs";
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
       await box(page).fill("stream_steady");
@@ -111,7 +111,7 @@ realTest.describe("new UI message box", () => {
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(180_000);
       const page = await realApp.open({ path: "/" });
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
       const thinking = page.getByRole("button", { name: /^Thinking: / });
@@ -140,7 +140,7 @@ realTest.describe("new UI message box", () => {
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(240_000);
       const first = await realApp.open({ path: "/" });
-      await chats(first).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(first);
       await expect(box(first)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box(first).fill("slow_tool 30");
       await box(first).press("Enter");
@@ -193,7 +193,7 @@ realTest.describe("new UI message box", () => {
           }),
       });
       const stop = page.getByRole("button", { name: "Stop" });
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box(page).fill("slow_tool 3");
       await box(page).press("Enter");
@@ -221,7 +221,7 @@ realTest.describe("new UI message box", () => {
       const context = page.context();
 
       // Some text right after the click, before the box says "Message omp", and more once it does.
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await box(page).fill("half a thought");
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box(page).fill("half a thought, finished");
@@ -257,10 +257,10 @@ realTest.describe("new UI message box", () => {
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(300_000);
       const page = await realApp.open({ path: "/" });
-      const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+      const tabs = page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab");
 
       // A new chat's unsent text is kept under its pane's key.
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await box(page).fill("never sent");
       await page.waitForTimeout(1_500);
       const first = await newChatKeys(page);
@@ -268,6 +268,8 @@ realTest.describe("new UI message box", () => {
 
       // Closing that pane (Ctrl+Shift+W) removes the key.
       await page.keyboard.press("Control+Shift+O");
+      // The split is a blank window: its New chat starts the chat beside.
+      await startNewChat(page);
       await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
       await expect(box(page).nth(1)).toBeFocused();
       await page.keyboard.press("Meta+Control+ArrowLeft");
@@ -279,6 +281,7 @@ realTest.describe("new UI message box", () => {
 
       // Swap, equalize and a reload rebuild the layout with the same panes: their text stays.
       await page.keyboard.press("Control+Shift+O");
+      await startNewChat(page);
       await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
       await expect(box(page).nth(1)).toBeFocused();
       await box(page).nth(1).fill("still here");
@@ -303,17 +306,26 @@ realTest.describe("new UI message box", () => {
       // Closing a tab (Ctrl+Shift+Q) removes the keys of its panes.
       await page.keyboard.press("Control+Shift+T");
       await expect(tabs).toHaveCount(2);
+      await startNewChat(page);
+      await expect(box(page).filter({ visible: true })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        {
+          timeout: 120_000,
+        },
+      );
       await box(page).filter({ visible: true }).fill("in a tab");
       await page.waitForTimeout(1_500);
       const both = await newChatKeys(page);
       expect(both).toHaveLength(2);
       expect(both).toEqual(expect.arrayContaining(kept));
       await page.keyboard.press("Control+Shift+Q");
-      await expect(tabs).toHaveCount(0);
+      await expect(tabs).toHaveCount(1);
       await expect.poll(() => newChatKeys(page)).toEqual(kept);
 
       // So does the close button in a pane's title bar.
       await page.keyboard.press("Control+Shift+O");
+      await startNewChat(page);
       await expect(box(page)).toHaveCount(3, { timeout: 60_000 });
       const caret = page.locator("[data-chat-pane] textarea:focus");
       await expect(caret).toBeVisible();
@@ -341,7 +353,7 @@ realTest.describe("new UI message box", () => {
       testInfo.setTimeout(240_000);
       const page = await realApp.open({ path: "/" });
       const context = page.context();
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box(page).fill("typed just before a crash");
       // The app's copy is written 0.8 s after typing pauses; a crash before then leaves only this browser's copy.

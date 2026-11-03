@@ -11,7 +11,7 @@ describe("the app's keys", () => {
       id: "tab",
       hotkey: "ctrl+shift+t",
       scope: "workspace",
-      group: "Tabs",
+      group: "Workspaces",
       label: "",
     } as const;
     const thinking = {

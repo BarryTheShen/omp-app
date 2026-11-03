@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * A new chat always ready (#2760) in the new UI on real omp, as the installed app runs (`OMP_APP_NEW_CHATS_READY=1`):
@@ -16,7 +16,7 @@ realTest.describe("a new chat always ready", () => {
   /** Opens a new chat and returns how long it took to take text, in ms. */
   async function newChat(page: Page): Promise<number> {
     const started = Date.now();
-    await chats(page).getByRole("button", { name: "New chat" }).click();
+    await startNewChat(page);
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
     return Date.now() - started;
   }
@@ -52,7 +52,8 @@ realTest.describe("a new chat always ready", () => {
       ).toHaveCount(2, {
         timeout: 30_000,
       });
-      await expect(chats(page).getByRole("button", { name: /^New chat\b/ })).toHaveCount(1);
+      // No row for either chat without a reply (the list's own button is New workspace now, #2791).
+      await expect(chats(page).getByRole("button", { name: /^New chat\b/ })).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
     },
   );

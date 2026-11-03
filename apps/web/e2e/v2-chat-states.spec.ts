@@ -1,4 +1,4 @@
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's chat states (`apps/ui`, under `/v2/`) on real omp: a new chat's welcome, and a link that expired. */
 realTest.describe("new UI chat states", () => {
@@ -8,10 +8,7 @@ realTest.describe("new UI chat states", () => {
     "a new chat greets with its folder and the box's keys until the first message",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
@@ -51,10 +48,7 @@ realTest.describe("new UI chat states", () => {
       // The new link typed into the same tab changes only the address's fragment: the app works again.
       await page.goto(link);
       await expect(expired).toHaveCount(0, { timeout: 60_000 });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
         "placeholder",
         "Message omp",

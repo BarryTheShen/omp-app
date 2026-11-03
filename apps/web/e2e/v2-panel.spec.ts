@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, REAL_OMP, realTest } from "./real-omp";
+import { expect, REAL_OMP, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's side column (`apps/ui/src/panels`) on real omp, and Usage, its first panel: the key, the button and the
@@ -66,7 +66,7 @@ const numbers = (page: Page, title: string) => thisChat(page).getByRole("group",
 /** A panel's button on the rail at the window's right edge. */
 const railButton = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "Side panel" }).getByRole("button", { name });
-const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
+
 const boxes = (page: Page) => page.getByRole("textbox", { name: "Message" });
 
 async function send(page: Page, index: number, text: string, answers: number): Promise<void> {
@@ -151,7 +151,7 @@ realTest.describe("new UI side panel", () => {
       ).toBeVisible();
 
       // The focused chat's numbers, as omp's /session counts them.
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
       });
@@ -164,8 +164,9 @@ realTest.describe("new UI side panel", () => {
       await send(page, 0, "hello again", 2);
       await expect(user).toHaveText("2", { timeout: 30_000 });
 
-      // A new pane's chat is focused: its own numbers; back in the first pane, the first chat's.
+      // A new window's chat is focused: its own numbers; back in the first window, the first chat's.
       await page.keyboard.press("Control+Shift+O");
+      await page.keyboard.press("Enter");
       await expect(boxes(page).nth(1)).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
       });
@@ -181,7 +182,7 @@ realTest.describe("new UI side panel", () => {
     "a chat in the middle of a turn shows its numbers without waiting for the turn to end",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
       });
@@ -205,7 +206,7 @@ realTest.describe("new UI side panel", () => {
     "Progress shows the todo list, sets and pauses a goal and turns plan mode on; Agents lists a subagent and opens the Agent Hub on it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
       });

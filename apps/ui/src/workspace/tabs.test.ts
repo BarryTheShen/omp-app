@@ -6,6 +6,8 @@ import {
   layoutStorage,
   loadTabs,
   moveTab,
+  moveTabTo,
+  nameAfterChat,
   renameTab,
   stepTab,
   type WorkspaceTabs,
@@ -65,6 +67,47 @@ describe("workspace tabs", () => {
     ).toBe("x");
     for (const raw of [null, "", "{", "[]", JSON.stringify({ tabs: [{ title: 3 }] })])
       expect(loadTabs(raw).tabs).toHaveLength(1);
+  });
+
+  test("a workspace dragged right lands after the one it was dropped on; dragged left, before it (#2791)", () => {
+    expect(ids(moveTabTo(three(), "a", 2))).toEqual(["b", "c", "a"]);
+    expect(ids(moveTabTo(three(), "c", 0))).toEqual(["c", "a", "b"]);
+    expect(ids(moveTabTo(three(), "a", 1))).toEqual(["b", "a", "c"]);
+    // Onto itself, past the end, or a workspace that is gone: nothing moves.
+    for (const [id, to] of [
+      ["b", 1],
+      ["b", 3],
+      ["gone", 0],
+    ] as const)
+      expect(moveTabTo(three(), id, to)).toEqual(three());
+    expect(moveTabTo(three(), "a", 2).active).toBe("b");
+  });
+
+  test("a workspace takes its first chat's title once, and a later chat's never (#2791)", () => {
+    const named = nameAfterChat(three(), "a", "Fix the build");
+    expect(named.tabs[0]).toMatchObject({ id: "a", title: null, firstTitle: "Fix the build" });
+    expect(nameAfterChat(named, "a", "Another chat")).toBe(named);
+    // A name given with Rename is shown over it; cleared, the first chat's title is back.
+    const renamed = renameTab(named, "a", "Mine");
+    expect(renamed.tabs[0]).toMatchObject({ title: "Mine", firstTitle: "Fix the build" });
+    expect(renameTab(renamed, "a", " ").tabs[0]).toMatchObject({
+      title: null,
+      firstTitle: "Fix the build",
+    });
+  });
+
+  test("workspaces kept before they had a first chat's title come back as they were (#2791)", () => {
+    const kept = JSON.stringify({ tabs: [{ id: "x", title: null, layout: null }], active: "x" });
+    expect(loadTabs(kept).tabs).toEqual([{ id: "x", title: null, layout: null }]);
+    const named = JSON.stringify({
+      tabs: [{ id: "x", title: null, firstTitle: "Fix the build", layout: null }],
+      active: "x",
+    });
+    expect(loadTabs(named).tabs[0]).toMatchObject({ firstTitle: "Fix the build" });
+    const broken = JSON.stringify({
+      tabs: [{ id: "x", title: null, firstTitle: 3, layout: null }],
+    });
+    expect(loadTabs(broken).tabs[0]?.id).not.toBe("x");
   });
 });
 

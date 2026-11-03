@@ -46,7 +46,10 @@ realTest.describe("new UI on a tablet", () => {
       await tall(list.getByRole("button", { name: "Seeded chat 2" }));
       await square(list.getByRole("button", { name: "Pin" }).first());
       await square(list.getByRole("button", { name: "More" }).first());
-      await tall(page.getByRole("button", { name: "New chat" }).first());
+      await tall(page.getByRole("button", { name: "New workspace" }).first());
+      // The workspaces on top: their tabs and + are a finger's size too.
+      await tall(page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab").first());
+      await square(page.getByRole("button", { name: "New workspace" }).last());
       await square(page.getByRole("button", { name: "What's new" }));
       await square(page.getByRole("button", { name: "Settings", exact: true }).first());
 
@@ -58,6 +61,8 @@ realTest.describe("new UI on a tablet", () => {
       await square(page.getByRole("button", { name: "Usage", exact: true }));
 
       await page.keyboard.press("Control+Shift+O");
+      // The split is a blank window with the caret on its New chat.
+      await page.keyboard.press("Enter");
       await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
       await tall(page.locator(".dv-tab").first());
       await square(page.getByRole("button", { name: "Close Seeded chat 1" }));
@@ -71,6 +76,7 @@ realTest.describe("new UI on a tablet", () => {
     async ({ realApp, browser }) => {
       const { page, context } = await tablet(realApp, browser);
       await page.keyboard.press("Control+Shift+O");
+      await page.keyboard.press("Enter");
       await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
       const sash = page.locator(
         ".dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash.dv-enabled",

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI (`apps/ui`, under `/v2/`) on real omp, when the app's server is slow: a chat left a moment ago comes back
@@ -110,7 +110,7 @@ realTest.describe("new UI reopening and typing ahead", () => {
       // Opening a chat on omp takes the server four seconds.
       const opening = /"port":"A0\.chatSession","method":"open"/;
       server.slow = opening;
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Opening the chat…");
       await expect.poll(() => server.sent.some((frame) => opening.test(frame))).toBe(true);

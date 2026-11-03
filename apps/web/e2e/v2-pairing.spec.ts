@@ -107,7 +107,9 @@ realTest.describe("new UI device pairing", () => {
       // What the QR code opens: the app pairs with the code and loads, and the code leaves the address.
       const scanned = await realApp.open({ path: "/", hash: `#pair=${shown.replace("-", "")}` });
       expect(new URL(scanned.url()).hash).toBe("");
-      await expect(devices(owner).getByRole("list", { name: "Paired devices" }).getByRole("listitem")).toHaveCount(1);
+      await expect(
+        devices(owner).getByRole("list", { name: "Paired devices" }).getByRole("listitem"),
+      ).toHaveCount(1);
 
       // Used once, the code no longer works.
       await codeField.fill(shown);

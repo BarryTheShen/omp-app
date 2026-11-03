@@ -51,10 +51,13 @@ const ROSE_PINE =
   "https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT)";
 const NORD = "https://github.com/nordtheme/nord/blob/develop/src/nord.css (v0.2.1, MIT)";
 const GRUVBOX = "https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim (v2.0.0, MIT)";
-const DRACULA = "https://github.com/dracula/dracula-theme/blob/main/README.md, its palette tables (MIT)";
-const SOLARIZED = "https://github.com/altercation/solarized/blob/master/README.md, its palette (MIT)";
+const DRACULA =
+  "https://github.com/dracula/dracula-theme/blob/main/README.md, its palette tables (MIT)";
+const SOLARIZED =
+  "https://github.com/altercation/solarized/blob/master/README.md, its palette (MIT)";
 const EVERFOREST = "https://github.com/sainnhe/everforest/blob/master/palette.md, medium (MIT)";
-const KANAGAWA = "https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT)";
+const KANAGAWA =
+  "https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT)";
 const ONE =
   "styles/colors.less and styles/syntax-variables.less, computed as LESS does (v1.8.4, MIT)";
 const AYU = "https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT)";

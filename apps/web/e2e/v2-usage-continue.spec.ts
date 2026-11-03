@@ -1,4 +1,4 @@
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The app's own continue after a usage limit (#2781), on real omp, in the cases that lost a chat's work: a background
@@ -16,7 +16,7 @@ realTest.describe("new UI: continuing after a usage limit", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       const list = page.getByRole("navigation", { name: "Chats" });
-      await list.getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box.fill(`usage_limit_after_job t${Date.now().toString(36)}`);
@@ -46,8 +46,7 @@ realTest.describe("new UI: continuing after a usage limit", () => {
     "a turn refused after a refusal (a job's result, with a short wait) keeps the continue, and the chat goes on by itself",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      const list = page.getByRole("navigation", { name: "Chats" });
-      await list.getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box.fill(`usage_limit_twice t${Date.now().toString(36)}`);
@@ -74,8 +73,7 @@ realTest.describe("new UI: continuing after a usage limit", () => {
     "a turn refused while a background job runs on (the chat never settles) still goes on by itself after the wait",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      const list = page.getByRole("navigation", { name: "Chats" });
-      await list.getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box.fill(`usage_limit_job_running t${Date.now().toString(36)}`);

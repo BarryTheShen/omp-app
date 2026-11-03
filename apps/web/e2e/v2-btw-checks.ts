@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the side panel's BTW history beside the
@@ -7,7 +7,7 @@ import { expect, realTest } from "./real-omp";
  * away while an answer still comes says so, and the chat says when it is ready; Stop answer cancels one and keeps what
  * came; the history is there again after a reload. In Chromium and in WebKit, the desktop window's engine.
  */
-const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
+
 export const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
 export const history = (page: Page) =>
@@ -21,7 +21,7 @@ const topics = (page: Page) => history(page).getByRole("listbox", { name: "Side 
 const thread = (page: Page) => history(page).getByRole("region", { name: "Side question" });
 
 async function newChat(page: Page): Promise<void> {
-  await chats(page).getByRole("button", { name: "New chat" }).click();
+  await startNewChat(page);
   await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 }
 

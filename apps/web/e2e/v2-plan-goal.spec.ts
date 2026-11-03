@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's plan mode and goal mode (`apps/ui`, under `/v2/`) on real omp: plan mode by its chip and Alt+Shift+P,
@@ -10,10 +10,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 
   async function newChat(page: Page): Promise<void> {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
   }
 

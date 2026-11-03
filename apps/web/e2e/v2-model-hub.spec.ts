@@ -1,4 +1,4 @@
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 import { box, defineModelHubChecks, hub } from "./v2-model-hub-checks";
 
 /** omp's model hub (Alt+M) in the new UI in Chromium (the config's Chrome), its palette entry, and its tour. */
@@ -9,10 +9,7 @@ realTest.describe("new UI model hub, palette and tour", () => {
 
   realTest("the palette opens the Models dialog", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
     await page.keyboard.press("Control+k");
     const search = page
@@ -40,7 +37,7 @@ realTest.describe("new UI model hub, palette and tour", () => {
       await search.fill("Tour: A model for each role");
       await search.press("Enter");
 
-      // The tour opens a new tab with a new chat, so what it has you try touches none of your chats.
+      // The tour opens a new workspace with a new chat, so what it has you try touches none of your chats.
       await expect(heading).toHaveText("Models");
       const shown = box(page).filter({ visible: true });
       await expect(shown).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });

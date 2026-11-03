@@ -1,6 +1,6 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath } from "@omp-app/contracts";
-import type { DockviewApi, IDockviewPanelProps } from "dockview-react";
+import type { DockviewApi, IDockviewGroupPanel, IDockviewPanelProps } from "dockview-react";
 import {
   createContext,
   type MouseEvent,
@@ -116,8 +116,8 @@ export interface PaneHost {
   readonly composers: Map<string, ComposerHandle>;
   /** Tells the workspace a pane's chat, title or state changed. */
   readonly onPaneChanged: () => void;
-  /** Opens a new chat in a pane of that tab (an empty tab's New chat). */
-  readonly newChat: (api: DockviewApi) => void;
+  /** Opens a new chat in a workspace: in that blank window (its New chat), else in the focused one or beside. */
+  readonly newChat: (api: DockviewApi, group?: IDockviewGroupPanel) => void;
   /** Whether this pane is the one you are in: the focused pane of the tab shown, with the page in front and focused. */
   readonly inView: (paneId: string) => boolean;
   /** When a pane opens its chat: at once on a desktop, once it is in front on a phone (#2768). */

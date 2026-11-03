@@ -4,8 +4,8 @@ import { desktopBridge } from "../desktop/bridge";
 import { BINDINGS, chords, type KeyBinding, keycap } from "../keys/table";
 
 const GROUPS: readonly KeyBinding["group"][] = [
-  "Panes",
-  "Tabs",
+  "Windows",
+  "Workspaces",
   "Message box",
   "Transcript",
   "App",

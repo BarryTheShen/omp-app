@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { enableNativeSkills, expect, realTest } from "./real-omp";
+import { enableNativeSkills, expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * Signing in to a provider from Settings (#2784), on real omp, with providers a test extension registers:
@@ -46,10 +46,7 @@ realTest.describe("new UI: signing in to a provider", () => {
 
   /** A new chat (omp signs in inside one), then Settings → Providers, and a sign-in to `provider` started there. */
   async function startSignIn(page: Page, provider: string): Promise<void> {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
       "placeholder",
       "Message omp",

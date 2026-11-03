@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, type RealApp, realTest } from "./real-omp";
+import { expect, type RealApp, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's transcript (`apps/ui`, under `/v2/`) on real omp: a failed request and what it offers. */
 realTest.describe("new UI transcript", () => {
@@ -9,10 +9,7 @@ realTest.describe("new UI transcript", () => {
 
   async function newChat(realApp: RealApp): Promise<Page> {
     const page = await realApp.open({ path: "/" });
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
       "placeholder",
       "Message omp",

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's Jobs panel (`apps/ui/src/panels/jobs`) on real omp and the fake model: commands sent to the background
@@ -14,10 +14,7 @@ const job = (page: Page) => panel(page).getByRole("region", { name: /^Job / });
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 
 async function newChat(page: Page): Promise<void> {
-  await page
-    .getByRole("navigation", { name: "Chats" })
-    .getByRole("button", { name: "New chat" })
-    .click();
+  await startNewChat(page);
   await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 }
 

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's palette (Ctrl+K) and keys sheet (Ctrl+/) (`apps/ui`, under `/v2/`) on real omp: the app's commands and
@@ -17,10 +17,7 @@ realTest.describe("new UI palette", () => {
     palette(page).getByRole("combobox", { name: "Search the palette" });
 
   async function newChat(page: Page): Promise<void> {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(box(page).first()).toHaveAttribute("placeholder", "Message omp", {
       timeout: 120_000,
     });
@@ -35,7 +32,10 @@ realTest.describe("new UI palette", () => {
     await search(page).fill("split right");
     await search(page).press("Enter");
     await expect(palette(page)).toBeHidden();
-    await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
+    // The split is a blank window (#2791), which the chat opened next fills.
+    const blank = page.locator("[data-tab]:not([hidden]) [data-blank-window]");
+    await expect(blank).toHaveCount(1, { timeout: 30_000 });
+    await expect(box(page)).toHaveCount(1);
 
     await page.keyboard.press("Control+k");
     await palette(page)
@@ -48,8 +48,10 @@ realTest.describe("new UI palette", () => {
     await expect(
       page
         .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "Seeded chat 2, open in a pane" }),
+        .getByRole("button", { name: "Seeded chat 2, open in a window" }),
     ).toBeVisible({ timeout: 60_000 });
+    await expect(blank).toHaveCount(0);
+    await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
 
     await page.keyboard.press("Control+k");
     await search(page).fill("Theme: Tern Light");
@@ -106,10 +108,10 @@ realTest.describe("new UI palette", () => {
     await page.keyboard.press("Control+Slash");
     const sheet = page.getByRole("dialog", { name: "Keys" });
     await expect(sheet).toBeVisible();
-    await expect(sheet.getByRole("region", { name: "Panes" })).toContainText(
-      "Split right with a new chat",
+    await expect(sheet.getByRole("region", { name: "Windows" })).toContainText(
+      "Split right into a blank window",
     );
-    await expect(sheet.getByRole("region", { name: "Panes" })).toContainText("Ctrl+Shift+O");
+    await expect(sheet.getByRole("region", { name: "Windows" })).toContainText("Ctrl+Shift+O");
     await expect(sheet.getByRole("region", { name: "Message box" })).toContainText("Shift+Tab");
     await page.keyboard.press("Escape");
     await expect(sheet).toBeHidden();

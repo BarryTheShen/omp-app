@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's folder (`apps/ui/src/folders`) on real omp: the menu at the top of the sidebar switches the folder whose
@@ -40,7 +40,7 @@ realTest.describe("new UI folder switch", () => {
       await expect(seeded(page)).toHaveCount(0);
 
       // New chat starts in the folder shown, and its first reply puts it in that folder's list.
-      await chats(page).getByRole("button", { name: "New chat" }).click();
+      await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       // The new chat's first screen names where omp will work.
       await expect(page.getByRole("main").getByText(new RegExp(`/${other}$`))).toBeVisible();

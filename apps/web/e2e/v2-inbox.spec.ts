@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's attention inbox (`apps/ui/src/inbox`), Tern's, on real omp: the bell in the sidebar counts the chats that
@@ -15,10 +15,7 @@ realTest.describe("new UI inbox", () => {
   const rows = (page: Page) =>
     inbox(page).getByRole("list", { name: "Chats that need a look" }).getByRole("button");
   const newChat = async (page: Page) => {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(boxes(page)).toHaveCount(1, { timeout: 60_000 });
     await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
       timeout: 120_000,
@@ -42,6 +39,8 @@ realTest.describe("new UI inbox", () => {
         timeout: 60_000,
       });
       await page.keyboard.press("Control+Shift+O");
+      // The split is a blank window with the caret on its New chat.
+      await page.keyboard.press("Enter");
       await expect(boxes(page)).toHaveCount(2, { timeout: 60_000 });
       await expect(boxes(page).nth(1)).toBeFocused();
 

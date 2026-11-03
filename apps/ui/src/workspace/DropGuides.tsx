@@ -120,13 +120,15 @@ export function DropGuides({
         const content = group.element.querySelector(".dv-content-container");
         if (content === null) continue;
         const area = content.getBoundingClientRect();
-        const region = regionAt(
-          area.width,
-          area.height,
-          pointer.x - area.left,
-          pointer.y - area.top,
-          pointer.chat,
-        );
+        const across = pointer.x - area.left;
+        const down = pointer.y - area.top;
+        // A blank window (#2791) is filled from anywhere in it.
+        const region =
+          group.panels.length === 0
+            ? across >= 0 && across <= area.width && down >= 0 && down <= area.height
+              ? "center"
+              : null
+            : regionAt(area.width, area.height, across, down, pointer.chat);
         if (region === null) continue;
         setLit({
           where: "pane",

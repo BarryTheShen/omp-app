@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's Agent Hub (`apps/ui`, under `/v2/`) on real omp: a chat's subagents in a pill above the message box and
@@ -25,10 +25,7 @@ realTest.describe("new UI Agent Hub", () => {
   const hubOf = (page: Page) => page.getByRole("complementary", { name: "Agent Hub" });
 
   async function newChat(page: Page): Promise<void> {
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
   }
 

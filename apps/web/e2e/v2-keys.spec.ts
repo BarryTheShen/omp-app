@@ -1,7 +1,7 @@
 import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, type RealApp, realTest } from "./real-omp";
+import { expect, type RealApp, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's in-chat keys (`apps/ui`, under `/v2/`) on real omp, as Tern's: history, chips, retry, folds, approvals. */
 realTest.describe("new UI chat keys", () => {
@@ -11,10 +11,7 @@ realTest.describe("new UI chat keys", () => {
 
   async function newChat(realApp: RealApp): Promise<Page> {
     const page = await realApp.open({ path: "/" });
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
     return page;
   }

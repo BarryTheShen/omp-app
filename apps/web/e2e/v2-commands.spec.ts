@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, type RealApp, realTest } from "./real-omp";
+import { expect, type RealApp, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's message box (`apps/ui`, under `/v2/`) on real omp: the `/` command menu, `@` file mentions, `!` runs
@@ -13,10 +13,7 @@ realTest.describe("new UI commands, mentions and shell runs", () => {
 
   async function newChat(realApp: RealApp): Promise<Page> {
     const page = await realApp.open({ path: "/" });
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: "New chat" })
-      .click();
+    await startNewChat(page);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
       "placeholder",
       "Message omp",

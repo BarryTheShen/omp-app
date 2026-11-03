@@ -1,12 +1,14 @@
 import type { SerializedDockview } from "dockview-react";
 import { desktopBridge } from "../desktop/bridge";
 
-/** One workspace tab, as kitty's: its own layout of chat panes, saved as dockview writes it. */
+/** One workspace (#2791), a tab on top as kitty's: its own layout of windows, saved as dockview writes it. */
 export interface WorkspaceTab {
   readonly id: string;
-  /** A name given with Rename; null shows the focused chat's title. */
+  /** A name given with Rename; null shows its first chat's title. */
   readonly title: string | null;
-  /** The panes and their chats; null until the tab's first layout is saved. */
+  /** The title of its first chat to have one: its name until one is given. Absent in tabs kept before #2791. */
+  readonly firstTitle?: string | null;
+  /** The windows and their chats; null until the workspace's first layout is saved. */
   readonly layout: SerializedDockview | null;
 }
 
@@ -55,6 +57,9 @@ export function loadTabs(raw: string | null): WorkspaceTabs {
             tab !== null &&
             typeof tab.id === "string" &&
             (tab.title === null || typeof tab.title === "string") &&
+            (tab.firstTitle === undefined ||
+              tab.firstTitle === null ||
+              typeof tab.firstTitle === "string") &&
             (tab.layout === null || (typeof tab.layout === "object" && tab.layout !== undefined)),
         )
       : [];
@@ -107,11 +112,31 @@ export function moveTab(state: WorkspaceTabs, step: 1 | -1): WorkspaceTabs {
   return { ...state, tabs };
 }
 
+/** Puts a tab at another place in the strip, dragged there: moved right, it lands after the tab it was dropped on. */
+export function moveTabTo(state: WorkspaceTabs, id: string, to: number): WorkspaceTabs {
+  const from = indexOf(state, id);
+  if (from < 0 || to < 0 || to >= state.tabs.length || to === from) return state;
+  const tabs = [...state.tabs];
+  const [tab] = tabs.splice(from, 1);
+  tabs.splice(to, 0, tab as WorkspaceTab);
+  return { ...state, tabs };
+}
+
+/** A workspace without a name takes the title of its first chat to have one (#2791), once. */
+export function nameAfterChat(state: WorkspaceTabs, id: string, title: string): WorkspaceTabs {
+  const tab = state.tabs.find((each) => each.id === id);
+  if (tab === undefined || (tab.firstTitle ?? null) !== null) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((each) => (each.id === id ? { ...each, firstTitle: title } : each)),
+  };
+}
+
 export function activateTab(state: WorkspaceTabs, id: string): WorkspaceTabs {
   return indexOf(state, id) < 0 ? state : { ...state, active: id };
 }
 
-/** Names a tab; an empty name goes back to the focused chat's title. */
+/** Names a tab; an empty name goes back to its first chat's title. */
 export function renameTab(state: WorkspaceTabs, id: string, title: string): WorkspaceTabs {
   const name = title.trim();
   return {

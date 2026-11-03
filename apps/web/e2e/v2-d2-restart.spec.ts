@@ -1,4 +1,4 @@
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * D2 in the browser (`OMP_APP_DETACHED_HOSTS=1`): a reply under way when the server restarts keeps going in its chat's
@@ -13,10 +13,7 @@ realTest.describe("chats through a server restart", () => {
     "a reply under way when the server restarts is shown whole, once",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
-      await page
-        .getByRole("navigation", { name: "Chats" })
-        .getByRole("button", { name: "New chat" })
-        .click();
+      await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await box.fill("stream_steady");

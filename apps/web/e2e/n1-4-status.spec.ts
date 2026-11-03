@@ -87,10 +87,7 @@ async function expectSegments(page: Page): Promise<void> {
   await expect(bar).toBeVisible();
   // The bar draws the folder's name and the branch; the server and the session are in the folder's tooltip.
   await expect(shownValue(page, "N2.path")).toHaveText("app");
-  await expect(segment(page, "N2.path")).toHaveAttribute(
-    "title",
-    /Workspace folder: ~\/code\/app/,
-  );
+  await expect(segment(page, "N2.path")).toHaveAttribute("title", /Workspace folder: ~\/code\/app/);
   await expect(segment(page, "N2.path")).toHaveAttribute("title", /Server ID: devbox/);
   await expect(shownValue(page, "N2.git")).toHaveText("main");
   // Not drawn: the host, the pull request, the clock and the active time stay out of the bar.
