@@ -14,6 +14,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -90,10 +91,12 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   const [status, setStatus] = useState<BrowserStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [shown, setShown] = useState<string | null>(null);
-  // A page "New page" opened is shown once the list has it (the list can come after the open's answer), so the address
-  // bar never goes in between and loses what is typed; its address then takes the typing, like a browser's new tab.
+  // "New page" puts the cursor in the address at once, like a browser's new tab, and an address entered before the page
+  // is listed opens there; the panel shows the page once its list has it (the list can come after the open's answer), so
+  // the address bar never goes in between.
   const opened = useRef<string | null>(null);
-  const [fresh, setFresh] = useState<string | null>(null);
+  const [opening, setOpening] = useState<Promise<string> | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
   const [starting, setStarting] = useState(false);
   const read = useCallback(async () => {
     try {
@@ -104,7 +107,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
       if (wanted !== null && next.app.tabs.some((tab) => tab.id === wanted)) {
         opened.current = null;
         setShown(wanted);
-        setFresh(wanted);
+        setOpening(null);
         return;
       }
       setShown((current) =>
@@ -274,32 +277,35 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
                 type="button"
                 aria-label="New page"
                 className="shrink-0 rounded p-1 text-t2 hover:bg-l1"
-                onClick={() =>
-                  act(
-                    client
-                      .port(BrowserPort)
-                      .open({ url: "" })
-                      .then(({ id }) => {
-                        opened.current = id;
-                        return read();
-                      }),
-                  )
-                }
+                onClick={() => {
+                  const page = client
+                    .port(BrowserPort)
+                    .open({ url: "" })
+                    .then(({ id }) => {
+                      opened.current = id;
+                      void read();
+                      return id;
+                    });
+                  setOpening(page);
+                  setFocusTick((tick) => tick + 1);
+                  page.catch((failure: unknown) => {
+                    setOpening(null);
+                    setProblem(failureText(failure));
+                  });
+                }}
               >
                 <Plus className="size-4" />
               </button>
             </div>
           </div>
-          {tab !== null && (
-            <AddressBar
-              client={client}
-              id={tab.id}
-              url={tab.url}
-              focus={fresh === tab.id}
-              onFocused={() => setFresh(null)}
-              onFail={setProblem}
-            />
-          )}
+          <AddressBar
+            client={client}
+            id={tab?.id ?? null}
+            url={tab?.url ?? ""}
+            opening={opening}
+            focusTick={focusTick}
+            onFail={setProblem}
+          />
           {tab !== null ? (
             <LiveView client={client} id={tab.id} title={tab.title} onFail={setProblem} />
           ) : (
@@ -372,7 +378,7 @@ function EdgeSection({
             extension to this server):
           </p>
           <div className="flex items-center gap-1">
-            <code className="min-w-0 flex-1 rounded bg-l1 px-2 py-1 text-xs break-all">
+            <code className="min-w-0 flex-1 rounded bg-l1 px-2 py-1 text-xs break-words">
               {edge.link}
             </code>
             <Button
@@ -416,43 +422,63 @@ function AddressBar({
   client,
   id,
   url,
-  focus,
-  onFocused,
+  opening,
+  focusTick,
   onFail,
 }: {
   readonly client: AppClient;
-  readonly id: string;
+  /** The page shown; null when none is open, and an address entered then opens one. */
+  readonly id: string | null;
   readonly url: string;
-  /** A page just opened with "New page": its address takes the typing. */
-  readonly focus: boolean;
-  readonly onFocused: () => void;
+  /** The page "New page" is opening: an address entered before it is listed goes to it. */
+  readonly opening: Promise<string> | null;
+  /** Counts "New page" presses: each puts the cursor here. */
+  readonly focusTick: number;
   readonly onFail: (text: string) => void;
 }): ReactNode {
   const [typed, setTyped] = useState(url);
   const [editing, setEditing] = useState(false);
   const field = useRef<HTMLInputElement>(null);
+  const focused = useRef(focusTick);
   useEffect(() => {
-    if (!editing) setTyped(url === "about:blank" ? "" : url);
-  }, [url, editing]);
-  useEffect(() => {
-    if (!focus) return;
+    if (!editing && opening === null) setTyped(url === "about:blank" ? "" : url);
+  }, [url, editing, opening]);
+  // In the press's own commit, so the very next key lands here.
+  useLayoutEffect(() => {
+    if (focusTick === focused.current) return;
+    focused.current = focusTick;
+    setTyped("");
     field.current?.focus();
-    onFocused();
-  }, [focus, onFocused]);
+  }, [focusTick]);
   const go = (
+    page: string,
     to: Parameters<ReturnType<typeof client.port<typeof BrowserPort>>["go"]>[0]["to"],
   ) => {
     client
       .port(BrowserPort)
-      .go({ id, to })
+      .go({ id: page, to })
       .catch((failure: unknown) => onFail(failureText(failure)));
+  };
+  const enter = (address: string) => {
+    if (opening !== null) {
+      // A failed open is already said in the panel.
+      opening.then(
+        (page) => go(page, { kind: "url", url: address }),
+        () => undefined,
+      );
+    } else if (id === null) {
+      client
+        .port(BrowserPort)
+        .open({ url: address })
+        .catch((failure: unknown) => onFail(failureText(failure)));
+    } else go(id, { kind: "url", url: address });
   };
   return (
     <form
       className="flex items-center gap-1 border-b border-l2 px-2 py-1"
       onSubmit={(event: FormEvent) => {
         event.preventDefault();
-        if (typed.trim() !== "") go({ kind: "url", url: typed.trim() });
+        if (typed.trim() !== "") enter(typed.trim());
         setEditing(false);
         (document.activeElement as HTMLElement | null)?.blur();
       }}
@@ -462,7 +488,8 @@ function AddressBar({
         size="icon-sm"
         variant="ghost"
         aria-label="Back"
-        onClick={() => go({ kind: "back" })}
+        disabled={id === null}
+        onClick={() => id !== null && go(id, { kind: "back" })}
       >
         <ArrowLeft />
       </Button>
@@ -471,7 +498,8 @@ function AddressBar({
         size="icon-sm"
         variant="ghost"
         aria-label="Forward"
-        onClick={() => go({ kind: "forward" })}
+        disabled={id === null}
+        onClick={() => id !== null && go(id, { kind: "forward" })}
       >
         <ArrowRight />
       </Button>
@@ -480,7 +508,8 @@ function AddressBar({
         size="icon-sm"
         variant="ghost"
         aria-label="Reload"
-        onClick={() => go({ kind: "reload" })}
+        disabled={id === null}
+        onClick={() => id !== null && go(id, { kind: "reload" })}
       >
         <RotateCw />
       </Button>
