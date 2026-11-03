@@ -50,6 +50,26 @@ function executeXdevDispatch(props: ToolViewProps): XdevDispatch | null {
 	return { tool: xdev.tool, args: isRecord(xdev.args) ? xdev.args : {}, inner: xdev.inner };
 }
 
+/**
+ * omp-app: how long a running tool's output must have been there before its box shows. A tool that prints and ends at
+ * once flashed the box (up to its 160 px) for a frame or two, and a view following the chat's end jumped down and back.
+ */
+const PARTIAL_DELAY_MS = 300;
+
+/** omp-app: true once `on` has stayed true for `delayMs`; false again as soon as it turns false. */
+function useShownAfter(on: boolean, delayMs: number): boolean {
+	const [shown, setShown] = useState(false);
+	useEffect(() => {
+		if (!on) {
+			setShown(false);
+			return;
+		}
+		const timer = setTimeout(() => setShown(true), delayMs);
+		return () => clearTimeout(timer);
+	}, [on, delayMs]);
+	return on && shown;
+}
+
 export function ToolView(props: ToolViewProps): ReactNode {
 	// omp-app: a pane's Ctrl+O opens or folds every card; a card drawn later starts as the last request said.
 	const fold = useContext(FoldContext).tools;
@@ -76,6 +96,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 	const isError = props.result?.isError === true;
 	const status = props.running ? "run" : isError ? "err" : props.result ? "ok" : "pending";
 	const partial = props.running && !props.result && props.partial ? stripAnsi(replaceTabs(props.partial)) : "";
+	const partialShown = useShownAfter(partial !== "", PARTIAL_DELAY_MS);
 
 	return (
 		<div className={`tv-card${isError ? " tv-card--error" : ""}`}>
@@ -103,7 +124,9 @@ export function ToolView(props: ToolViewProps): ReactNode {
 					{renderer.Body ? <renderer.Body {...renderProps} /> : null}
 				</div>
 			)}
-			{partial && <pre className="tv-partial">{partial.length > 2048 ? `…${partial.slice(-2048)}` : partial}</pre>}
+			{partialShown && (
+				<pre className="tv-partial">{partial.length > 2048 ? `…${partial.slice(-2048)}` : partial}</pre>
+			)}
 		</div>
 	);
 }

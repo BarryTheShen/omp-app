@@ -889,6 +889,20 @@ function reply(request: Request): Reply {
     };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
+  // A tool that prints its whole output and ends 0.1 s later, and one that prints and runs on for 2 s: a live-output box
+  // shows only for the second (v2-tool-output).
+  if (prompt.includes("burst_output_tool"))
+    return {
+      tool: "bash",
+      args: { command: "sleep 1; seq 1 20; sleep 0.1" },
+      thinking: "I should run it.",
+    };
+  if (prompt.includes("streaming_output_tool"))
+    return {
+      tool: "bash",
+      args: { command: "seq 1 5; sleep 2; echo stream-done" },
+      thinking: "I should run it.",
+    };
   if (prompt.includes("read_long_probe"))
     return { tool: "read", args: { path: "long.txt" }, thinking: "I should read the long file." };
   if (prompt.includes("read_image"))
