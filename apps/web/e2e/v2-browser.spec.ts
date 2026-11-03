@@ -103,6 +103,17 @@ realTest.describe("new UI: the app's own browser", () => {
       await expect(panel(page).getByRole("tab", { name: "typed:hello" })).toBeVisible({
         timeout: 15_000,
       });
+
+      // A new page takes the typing at once, like a browser's new tab: its address has the cursor, and what is typed
+      // there opens in the new page while the first keeps its own.
+      await panel(page).getByRole("button", { name: "New page" }).click();
+      await expect(address).toBeFocused({ timeout: 15_000 });
+      await page.keyboard.type(`http://127.0.0.1:${port}/again`);
+      await page.keyboard.press("Enter");
+      await expect(panel(page).getByRole("tab", { name: "Test page" })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(panel(page).getByRole("tab", { name: "typed:hello" })).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

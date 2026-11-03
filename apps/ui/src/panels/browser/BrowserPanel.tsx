@@ -90,12 +90,23 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   const [status, setStatus] = useState<BrowserStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [shown, setShown] = useState<string | null>(null);
+  // A page "New page" opened is shown once the list has it (the list can come after the open's answer), so the address
+  // bar never goes in between and loses what is typed; its address then takes the typing, like a browser's new tab.
+  const opened = useRef<string | null>(null);
+  const [fresh, setFresh] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const read = useCallback(async () => {
     try {
       const next = await client.port(BrowserPort).status({});
       setStatus(next);
       setProblem(null);
+      const wanted = opened.current;
+      if (wanted !== null && next.app.tabs.some((tab) => tab.id === wanted)) {
+        opened.current = null;
+        setShown(wanted);
+        setFresh(wanted);
+        return;
+      }
       setShown((current) =>
         current !== null && next.app.tabs.some((tab) => tab.id === current)
           ? current
@@ -268,7 +279,10 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
                     client
                       .port(BrowserPort)
                       .open({ url: "" })
-                      .then(({ id }) => setShown(id)),
+                      .then(({ id }) => {
+                        opened.current = id;
+                        return read();
+                      }),
                   )
                 }
               >
@@ -277,7 +291,14 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
             </div>
           </div>
           {tab !== null && (
-            <AddressBar client={client} id={tab.id} url={tab.url} onFail={setProblem} />
+            <AddressBar
+              client={client}
+              id={tab.id}
+              url={tab.url}
+              focus={fresh === tab.id}
+              onFocused={() => setFresh(null)}
+              onFail={setProblem}
+            />
           )}
           {tab !== null ? (
             <LiveView client={client} id={tab.id} title={tab.title} onFail={setProblem} />
@@ -395,18 +416,29 @@ function AddressBar({
   client,
   id,
   url,
+  focus,
+  onFocused,
   onFail,
 }: {
   readonly client: AppClient;
   readonly id: string;
   readonly url: string;
+  /** A page just opened with "New page": its address takes the typing. */
+  readonly focus: boolean;
+  readonly onFocused: () => void;
   readonly onFail: (text: string) => void;
 }): ReactNode {
   const [typed, setTyped] = useState(url);
   const [editing, setEditing] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!editing) setTyped(url === "about:blank" ? "" : url);
   }, [url, editing]);
+  useEffect(() => {
+    if (!focus) return;
+    field.current?.focus();
+    onFocused();
+  }, [focus, onFocused]);
   const go = (
     to: Parameters<ReturnType<typeof client.port<typeof BrowserPort>>["go"]>[0]["to"],
   ) => {
@@ -453,6 +485,7 @@ function AddressBar({
         <RotateCw />
       </Button>
       <input
+        ref={field}
         aria-label="Address"
         value={typed}
         placeholder="Type an address"
