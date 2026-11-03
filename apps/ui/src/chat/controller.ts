@@ -53,6 +53,7 @@ import { isPhone } from "../phone";
 import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
+import { openFailureText } from "./openFailure";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
 import { cachedWindow, keepWindow } from "./windowCache";
@@ -239,16 +240,16 @@ export class ChatController {
     };
   }
 
-  /** Opens the chat for this pane. A failure is said in the transcript; a pane that went away meanwhile says nothing. */
+  /**
+   * Opens the chat for this pane. A failure is said in the transcript, with what to do when omp stopped as it started;
+   * a pane that went away meanwhile says nothing.
+   */
   async open(): Promise<void> {
     try {
       await this.#open();
     } catch (failure) {
       if (this.#disposed) return;
-      this.store.addNotice(
-        `Could not open this chat: ${failure instanceof Error ? failure.message : String(failure)}`,
-        "error",
-      );
+      this.store.addNotice(openFailureText(failure), "error");
       this.store.setPhase("ended");
     }
   }
