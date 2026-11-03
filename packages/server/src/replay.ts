@@ -53,6 +53,25 @@ export class EventReplayHub {
     return frame;
   }
 
+  /**
+   * Delivers an event to the stream's subscribers now and keeps no copy: for live pictures (the app's browser's frames),
+   * where a missed one is worth nothing and keeping them would hold megabytes. A resume from before it gets a conflict.
+   */
+  publishLive(stream: StreamKey, payload: unknown): void {
+    const validStream = StreamKeySchema.parse(stream);
+    const state = this.#streams.get(validStream) ?? { nextSeq: 0, frames: [] };
+    const frame = EventFrameSchema.parse({
+      type: "event",
+      stream: validStream,
+      seq: state.nextSeq + 1,
+      payload,
+    });
+    state.nextSeq = frame.seq;
+    state.frames.length = 0;
+    this.#streams.set(validStream, state);
+    for (const subscriber of this.#subscribers.get(validStream) ?? []) subscriber(frame);
+  }
+
   replay(stream: StreamKey, afterSeq: number | undefined): ReplayResult | ReplayConflict {
     const validStream = StreamKeySchema.parse(stream);
     const state = this.#streams.get(validStream) ?? { nextSeq: 0, frames: [] };

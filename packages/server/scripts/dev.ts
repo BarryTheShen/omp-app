@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { arch, cpus, homedir, platform, release, totalmem } from "node:os";
+import { arch, cpus, homedir, hostname, platform, release, totalmem, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { VERSION as OMP_VERSION } from "@oh-my-pi/pi-utils/dirs";
 import {
@@ -12,6 +12,8 @@ import {
 } from "@omp-app/contracts";
 import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
 import serverPackage from "../package.json";
+import { EDGE_RELAY_PORT, EdgeRelay } from "../src/browser/edge-relay";
+import { findChrome, SERVER_BROWSER_PORT, ServerBrowser } from "../src/browser/server-browser";
 import {
   type CapabilityProbeResult,
   capabilityProbeResultFromRaw,
@@ -74,6 +76,7 @@ import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
 import {
   type A0PortContext,
   createA0Runtime,
+  createBrowserRuntime,
   createDevicesPortRegistration,
   createRunningChatsRuntime,
   createSharesRuntime,
@@ -712,6 +715,79 @@ export async function createCompositionServer(
     abortTurn: (threadId, call) => a0Runtime.abortTurn(threadId, call),
     stopChat: (threadId, ownViews) => processRegistry.stop(threadId, ownViews),
   });
+  // The browsers chats use (Browser and relay control, B1-B7): the app's own (a Chrome on this machine with its own
+  // profile, shown in the Browser panel; none when no Chrome is found) or the user's Edge through omp's relay, run here
+  // while chosen. Chosen in the panel: omp's `browser.cdpUrl` or `browser.relay`, every folder.
+  const chrome = findChrome(env);
+  const browserRuntime = createBrowserRuntime({
+    browser:
+      chrome === null
+        ? null
+        : new ServerBrowser({
+            chrome,
+            profileDir: join(appDataDir, "server-browser", "profile"),
+            port: Number(env.OMP_APP_BROWSER_PORT ?? SERVER_BROWSER_PORT),
+            noSandbox: env.OMP_APP_BROWSER_NO_SANDBOX === "1",
+            logger,
+          }),
+    edge: new EdgeRelay({ port: EDGE_RELAY_PORT, logger }),
+    edgeLink: `ssh -N -L ${EDGE_RELAY_PORT}:127.0.0.1:${EDGE_RELAY_PORT} ${userInfo().username}@${hostname()}`,
+    // When "Your Edge", chosen in the panel, turns itself off: kept across restarts in the app's data folder.
+    edgeChoice: {
+      read: async () => {
+        const until = await Bun.file(join(appDataDir, "browser-edge.json"))
+          .json()
+          .then((saved: { until?: unknown }) => saved.until)
+          .catch(() => null);
+        return typeof until === "number" ? until : null;
+      },
+      write: async (until) => {
+        const file = join(appDataDir, "browser-edge.json");
+        if (until === null) await rm(file, { force: true });
+        else await Bun.write(file, JSON.stringify({ until }));
+      },
+    },
+    ...(env.OMP_APP_EDGE_MINUTES === undefined
+      ? {}
+      : { edgeMinutes: Number(env.OMP_APP_EDGE_MINUTES) }),
+    settings: {
+      read: async (key) => {
+        // A key no layer sets (no default either, as `browser.cdpUrl`) is "not found" to the store: here it is unset.
+        const entry = await configStore.read({ key, folder: null }).catch((error: unknown) => {
+          if (error instanceof AppFailure && error.appError.code === "not_found") return null;
+          throw error;
+        });
+        return entry !== null &&
+          !entry.secret &&
+          entry.source === "global" &&
+          (typeof entry.value === "string" || typeof entry.value === "boolean")
+          ? entry.value
+          : null;
+      },
+      write: async (key, value) => {
+        const { revision } = await configStore.list({ prefix: key, folder: null });
+        if (value === null)
+          await configStore.unset({
+            key,
+            layer: "global",
+            folder: null,
+            expectedRevision: revision,
+          });
+        else
+          await configStore.write({
+            key,
+            layer: "global",
+            value: { secret: false, value },
+            folder: null,
+            expectedRevision: revision,
+          });
+      },
+    },
+    publish,
+    publishLive: replay.publishLive.bind(replay),
+    watchStreams: watchStreamActivity,
+    logger,
+  });
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
     createDevicesPortRegistration({
@@ -722,6 +798,7 @@ export async function createCompositionServer(
     }),
     shares.registration,
     runningChats.registration,
+    browserRuntime.registration,
     ...createA1PortRegistrations(a1Context),
   ]);
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
@@ -786,6 +863,7 @@ export async function createCompositionServer(
           shares.stop();
           usageLimitStore.dispose();
           runningChats.stop();
+          await browserRuntime.stop();
         }
       }
     },

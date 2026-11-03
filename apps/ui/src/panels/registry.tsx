@@ -4,6 +4,7 @@ import {
   Bot,
   FolderTree,
   Gauge,
+  Globe,
   Layers,
   ListChecks,
   type LucideIcon,
@@ -13,6 +14,7 @@ import {
 import type { ReactNode } from "react";
 import type { ChatController } from "../chat/controller";
 import { AgentsPanel } from "./agents/AgentsPanel";
+import { BrowserPanel } from "./browser/BrowserPanel";
 import { BtwPanel } from "./btw/BtwPanel";
 import { FilesPanel } from "./files/FilesPanel";
 import { JobsPanel } from "./jobs/JobsPanel";
@@ -98,5 +100,11 @@ export const PANELS: readonly Panel[] = [
     title: "Ports",
     icon: Network,
     render: ({ client }) => <PortsPanel client={client} />,
+  },
+  {
+    id: "browser",
+    title: "Browser",
+    icon: Globe,
+    render: ({ client }) => <BrowserPanel client={client} />,
   },
 ];

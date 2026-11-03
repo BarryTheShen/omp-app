@@ -8,6 +8,7 @@ import { type ChatSessionPortRegistration, createChatSessionPortRuntime } from "
 import type { A0PortContext, ThreadBootstrap } from "./context";
 
 export * from "./app";
+export * from "./browser/browser";
 export * from "./chat-session";
 export * from "./context";
 export * from "./devices";

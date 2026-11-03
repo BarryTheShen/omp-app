@@ -1416,6 +1416,35 @@ const RUNNING_TOUR: Tour = {
   ],
 };
 
+const BROWSER_PANEL = part("browser-panel");
+
+const BROWSER_TOUR: Tour = {
+  id: "browser-2026-11-03",
+  title: "A browser for chats",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "A Browser panel",
+      text: "Click <b>Browser</b> on this rail: the side panel opens on the browsers your chats can use.",
+      action: { kind: "appears", selector: BROWSER_PANEL },
+    },
+    {
+      target: BROWSER_PANEL,
+      title: "Which browser chats use",
+      text: "<b>Their own browser</b> leaves it to each chat. <b>This browser</b> is a Chrome on the app's computer, shown here live: type an address, click and type in the page, and chats drive the same tabs; sign in to your sites in it once. <b>Your Edge</b> lets chats drive Edge on your computer.",
+      action: next,
+    },
+    {
+      target: BROWSER_PANEL,
+      title: "Your Edge",
+      text: "Edge needs omp's relay extension, and your computer runs the line shown here to reach the app's computer. Once Edge connects, its tabs are listed here. While it is on, anything on the app's computer can drive Edge, so when chosen here it turns itself off after 30 minutes; <b>30 minutes more</b> keeps it.",
+      action: next,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1430,6 +1459,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-03-browser",
+    when: "2026-11-03T12:18:00-06:00",
+    summary:
+      "A Browser panel chooses the browser chats use: a Chrome on the app's computer, shown live in the panel, where you click and type and chats drive the same tabs; or your own Edge on your computer, through omp's relay, for 30 minutes at a time.",
+    tours: [BROWSER_TOUR],
+  },
   {
     id: "2026-11-02-running",
     when: "2026-11-02T22:10:00-06:00",
