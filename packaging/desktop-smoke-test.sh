@@ -19,6 +19,7 @@
 # load, and the window shows the error page naming the computer and the reason, #2664).
 # More windows: Ctrl+Shift+N (a page command of the window) and a second launch with `--new-window` open another window
 # on the same server; a window that is not the last closes alone, and the last one's close ends the app (T11).
+# Undo in the window: Ctrl+Z takes text typed in the message box out again, which WebKitGTK alone does not (T12, #2792).
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -662,6 +663,19 @@ shot "$wid" long-turn-reopened
 read -r n_files n_users n_tools n_finals < <(session_counts)
 [[ ${n_files:-0} == 1 && ${n_users:-0} == 1 && ${n_tools:-0} == 1 && ${n_finals:-0} == 1 ]] || fail "T9: in the chat's session file slow_tool appears ${n_users:-?} times, the tool's result ${n_tools:-?} times and the final answer ${n_finals:-?} times, in ${n_files:-?} chat file(s); each must be exactly once, in one file"
 note "T9 the chat's session file holds the message slow_tool once, the tool's result once, and the final answer once"
+note "== T12: Ctrl+Z undoes typing in the window's message box: WebKitGTK maps no key to undo or redo, so the page runs them (#2792)"
+xdotool windowfocus "$wid" 2>/dev/null || true
+xdotool mousemove --window "$wid" 709 719 click 1 || fail "T12: could not click the message box"
+sleep 1
+xdotool type --delay 60 -- "undo this text" || fail "T12: could not type in the message box"
+sleep 1
+shot "$wid" undo-typed
+xdotool key --clearmodifiers ctrl+z || fail "T12: could not press Ctrl+Z"
+sleep 1
+shot "$wid" undo-undone
+changed=$(differing "$shots/undo-typed.png" "$shots/undo-undone.png")
+[[ $changed -gt 300 ]] || fail "T12: Ctrl+Z left the message box as it was ($changed pixels changed)"
+note "T12 Ctrl+Z took the typed text out of the message box ($changed pixels changed)"
 close_window "$wid"
 wait_gone "$p" 40 || fail "T9: the app did not exit after its window closed"
 wait "$p"

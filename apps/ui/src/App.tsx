@@ -25,6 +25,7 @@ import {
   useSettledNotifications,
   useWaitingNotifications,
 } from "./desktop/notify";
+import { runUndoKeys } from "./desktop/undo";
 import { keptZoom, setDesktopZoom, stepZoom } from "./desktop/zoom";
 import { FolderMenu } from "./folders/FolderMenu";
 import { keepLinkFolder } from "./folders/folder";
@@ -309,6 +310,8 @@ function Shell({
   useHotkeys(KEYS.zoomIn.hotkey, () => zoomTo((level) => stepZoom(level, 1)), desktopKeys);
   useHotkeys(KEYS.zoomOut.hotkey, () => zoomTo((level) => stepZoom(level, -1)), desktopKeys);
   useHotkeys(KEYS.zoomReset.hotkey, () => zoomTo(() => 1), desktopKeys);
+  // The window's engine maps no key to undo or redo in text fields (#2792); a browser maps them itself.
+  useEffect(() => (desktopBridge() === null ? undefined : runUndoKeys()), []);
   useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
   const sidePanel = usePanelState();
   /** On a phone the shown chat's details fill the screen in its place (`ChatDetails`), from the panel state. */
