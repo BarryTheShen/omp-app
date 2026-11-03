@@ -263,6 +263,33 @@ realTest.describe("new UI tours", () => {
     },
   );
 
+  realTest(
+    "on a phone, What's new fits its screen: no update's text or tour button runs past the list",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 402, height: 874 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      await page.keyboard.press("Control+k");
+      const search = palette(page).getByRole("combobox", { name: "Search the palette" });
+      await search.fill("What's new");
+      await search.press("Enter");
+      await expect(list(page)).toBeVisible();
+      expect(await list(page).evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth)).toBe(
+        true,
+      );
+      await expect(
+        list(page)
+          .getByRole("button", { name: /^Take the tour/ })
+          .first(),
+      ).toBeInViewport({ ratio: 1 });
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
   realTest("the What's new tour opens the list from its button", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
     await startFromPalette(page, "Updates and their tours");

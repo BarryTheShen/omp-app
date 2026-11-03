@@ -36,7 +36,9 @@ export function WhatsNewList({
       <DialogContent
         data-tour="whats-new-list"
         initialFocus={titleRef}
-        className="max-h-[80vh] gap-0 overflow-y-auto p-0 sm:max-w-xl"
+        // One column no wider than the dialog: a tour's one-line title is cut short there instead of widening the list
+        // past a phone's screen.
+        className="max-h-[80vh] grid-cols-1 gap-0 overflow-y-auto p-0 sm:max-w-xl"
       >
         <div className="border-b border-l2 px-5 pt-5 pb-3">
           <DialogTitle ref={titleRef} tabIndex={-1} className="outline-none">
