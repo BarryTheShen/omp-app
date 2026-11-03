@@ -5,6 +5,7 @@ import {
   frameMarks,
   type RowSize,
   rowBehindJump,
+  rowsCameAndWent,
   runningAnimations,
   type ScrollFrame,
   scrollMoves,
@@ -129,6 +130,17 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
       if (jump.seenPx !== null) jumps[`${name}_seen_px`] = Math.abs(jump.seenPx);
       if (jump.grewPx !== 0)
         jumps[`${name}_${jump.grewPx > 0 ? "grew" : "shrank"}_px`] = Math.abs(jump.grewPx);
+      // The rows that came into or went from the list in that frame, nearest the chat's end: a row drawn for a frame, or
+      // one row swapped for another, moves the view without any drawn row changing its height.
+      const { came, went } = rowsCameAndWent(ended.sizes, jump.frame);
+      if (came !== null) {
+        jumps[`${name}_came_${markWord(came.kind)}_px`] = came.height;
+        jumps[`${name}_came_from_last`] = came.fromLast;
+      }
+      if (went !== null) {
+        jumps[`${name}_went_${markWord(went.kind)}_px`] = went.height;
+        jumps[`${name}_went_from_last`] = went.fromLast;
+      }
       // The drawn row whose height change made the jump, in its frame or the one before (none: a row not drawn, or
       // the list's estimate of one, changed).
       const after = ended.sizes[jump.frame];

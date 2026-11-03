@@ -5,6 +5,7 @@ import {
   frameStats,
   type RowSize,
   rowBehindJump,
+  rowsCameAndWent,
   type ScrollFrame,
   scrollMoves,
 } from "./frames";
@@ -169,5 +170,27 @@ describe("rowBehindJump", () => {
 
   test("no drawn row changed: none", () => {
     expect(rowBehindJump([row(100), row(100), row(100)], jump(2, 300))).toBeNull();
+  });
+});
+
+describe("rowsCameAndWent", () => {
+  const frame = (rows: Record<string, readonly [number, string, number]>): Map<string, RowSize> =>
+    new Map(
+      Object.entries(rows).map(([key, [height, kind, index]]) => [key, { height, kind, index }]),
+    );
+
+  test("a row swapped at the chat's end, while another left the top of the drawn window: the ones at the end", () => {
+    const before = frame({ top: [80, "entry", 3], a: [60, "entry", 4], live: [107, "stream", 5] });
+    const after = frame({ a: [60, "entry", 4], saved: [99, "entry", 5], next: [40, "working", 6] });
+    expect(rowsCameAndWent([before, after], 1)).toEqual({
+      came: { height: 40, kind: "working", index: 6, fromLast: 0 },
+      went: { height: 107, kind: "stream", index: 5, fromLast: 0 },
+    });
+  });
+
+  test("the same rows in both frames: none came or went", () => {
+    const both = frame({ a: [60, "entry", 4], b: [90, "entry", 5] });
+    expect(rowsCameAndWent([both, both], 1)).toEqual({ came: null, went: null });
+    expect(rowsCameAndWent([both], 0)).toEqual({ came: null, went: null });
   });
 });

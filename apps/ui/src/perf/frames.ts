@@ -165,6 +165,38 @@ export function rowBehindJump(
   return earlier === null ? null : { ...earlier, lag: 1 };
 }
 
+/** A row drawn in one frame and not the other, with how many rows are drawn after it in the frame it is in. */
+export interface RowInOut extends RowSize {
+  readonly fromLast: number;
+}
+
+/**
+ * Of the rows drawn in only one of a jump's frame and the frame before it, the last in the list that came and the last
+ * that went (null: none). Rows also come and go at the top of the drawn window as the view moves; the last ones are the
+ * ones at the chat's end, where a row shown for a frame (a swapped or briefly drawn row) makes the view jump.
+ */
+export function rowsCameAndWent(
+  sizes: readonly ReadonlyMap<string, RowSize>[],
+  frame: number,
+): { readonly came: RowInOut | null; readonly went: RowInOut | null } {
+  const before = sizes[frame - 1];
+  const after = sizes[frame];
+  if (before === undefined || after === undefined) return { came: null, went: null };
+  const lastOnlyIn = (
+    from: ReadonlyMap<string, RowSize>,
+    without: ReadonlyMap<string, RowSize>,
+  ): RowInOut | null => {
+    let last: RowSize | null = null;
+    let end = -1;
+    for (const [key, size] of from) {
+      end = Math.max(end, size.index);
+      if (!without.has(key) && (last === null || size.index > last.index)) last = size;
+    }
+    return last === null ? null : { ...last, fromLast: end - last.index };
+  };
+  return { came: lastOnlyIn(after, before), went: lastOnlyIn(before, after) };
+}
+
 /** Records the time of every frame, and runs `onFrame` in each, until `stop`. */
 export function watchFrames(onFrame?: () => void): { readonly stop: () => FrameStats } {
   const times: number[] = [];
