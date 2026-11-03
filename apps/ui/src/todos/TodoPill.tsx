@@ -30,7 +30,11 @@ export function TodoPill({ phases }: { readonly phases: TodoPhases }): ReactNode
         </span>
         {now !== null && <span className="min-w-0 truncate">{now.content}</span>}
       </PopoverTrigger>
-      <PopoverContent align="start" side="top" className="max-h-96 w-96 overflow-y-auto p-3">
+      <PopoverContent
+        align="start"
+        side="top"
+        className="max-h-[min(24rem,var(--available-height))] w-96 overflow-y-auto p-3"
+      >
         <TodoList phases={phases} />
       </PopoverContent>
     </Popover>

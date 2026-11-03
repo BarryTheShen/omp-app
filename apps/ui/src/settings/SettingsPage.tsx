@@ -205,8 +205,9 @@ function SettingsSheet({
       className={
         phone
           ? // The whole screen, inside the safe areas, as a phone's own Settings.
-            "top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-row gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pb-(--safe-bottom) ring-0 sm:max-w-none"
-          : "flex h-[min(780px,94dvh)] w-[min(1080px,96vw)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+            "top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-row gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) ring-0 sm:max-w-none"
+          : // No wider than the safe area: a phone on its side keeps it clear of the Dynamic Island and the corners.
+            "flex h-[min(780px,94dvh)] w-[min(1080px,calc(96vw-var(--safe-left)-var(--safe-right)))] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
       }
     >
       <DialogTitle className="sr-only">Settings</DialogTitle>

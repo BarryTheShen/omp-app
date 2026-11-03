@@ -103,7 +103,7 @@ export function TitleMenu({
       {problem !== null && (
         <p
           role="alert"
-          className="fixed inset-x-3 top-[calc(var(--safe-top)+3rem)] z-50 flex items-center gap-2 rounded-lg border border-l2 bg-card px-3 py-2 text-xs text-bad-ink shadow-md"
+          className="fixed top-[calc(var(--safe-top)+3rem)] right-[calc(var(--safe-right)+0.75rem)] left-[calc(var(--safe-left)+0.75rem)] z-50 flex items-center gap-2 rounded-lg border border-l2 bg-card px-3 py-2 text-xs text-bad-ink shadow-md"
         >
           <span className="min-w-0 flex-1">{problem}</span>
           <Button

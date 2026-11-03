@@ -25,7 +25,7 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
     return (
       <div
         role="status"
-        className="fixed top-3 left-1/2 z-50 flex max-w-[min(90vw,560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg"
+        className="fixed top-[calc(var(--safe-top)+0.75rem)] left-[calc(50%+(var(--safe-left)-var(--safe-right))/2)] z-50 flex w-max max-w-[min(calc(90vw-var(--safe-left)-var(--safe-right)),560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg"
       >
         <span className="size-1.5 shrink-0 rounded-full bg-accent-ink" />
         <span className="min-w-0">The app was updated. Reload to use the new version.</span>
@@ -39,7 +39,7 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
   return (
     <div
       role={reconnecting ? "status" : "alert"}
-      className="fixed top-3 left-1/2 z-50 flex max-w-[min(90vw,560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg"
+      className="fixed top-[calc(var(--safe-top)+0.75rem)] left-[calc(50%+(var(--safe-left)-var(--safe-right))/2)] z-50 flex w-max max-w-[min(calc(90vw-var(--safe-left)-var(--safe-right)),560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg"
     >
       <span className={`size-1.5 shrink-0 rounded-full ${reconnecting ? "bg-warn" : "bg-bad"}`} />
       <span className="min-w-0">

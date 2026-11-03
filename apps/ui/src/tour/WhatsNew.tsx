@@ -63,13 +63,20 @@ export function WhatsNew({
     );
   }
 
+  // On a short screen (a phone on its side) only the heading and the buttons: the list keeps room for chats, and every
+  // update stays a tap away under What's new at the foot.
   return (
-    <section aria-label="What's new" className="mx-2 mb-2 rounded-xl border border-l2 bg-panel p-3">
+    <section
+      aria-label="What's new"
+      className="mx-2 mb-2 rounded-xl border border-l2 bg-panel p-3 short:p-2"
+    >
       <h2 className="font-medium text-t1">{heading}</h2>
       {firstVisit ? (
-        <p className="mt-1 text-xs text-t2">Learn what's here by doing it, a step at a time.</p>
+        <p className="mt-1 text-xs text-t2 short:hidden">
+          Learn what's here by doing it, a step at a time.
+        </p>
       ) : (
-        <ul className="mt-1 flex flex-col gap-0.5 text-xs text-t2">
+        <ul className="mt-1 flex flex-col gap-0.5 text-xs text-t2 short:hidden">
           {pending.slice(0, NAMED).map((tour) => (
             <li key={tour.id} className="truncate">
               {tour.title}
@@ -81,12 +88,12 @@ export function WhatsNew({
       <Button
         variant="link"
         size="sm"
-        className="mt-1 h-auto px-0 text-xs text-t3 tablet:h-11"
+        className="mt-1 h-auto px-0 text-xs text-t3 tablet:h-11 short:hidden"
         onClick={onAllUpdates}
       >
         All updates
       </Button>
-      <div className="mt-2 flex items-center justify-end gap-2">
+      <div className="mt-2 flex items-center justify-end gap-2 short:mt-1">
         <Button variant="ghost" size="sm" className="tablet:h-11" onClick={dismiss}>
           Later
         </Button>

@@ -6,6 +6,8 @@
 @custom-variant dark (&:is(.dark *));
 /* A tablet: a touch screen as the main pointer, wider than a phone (#2779 D1 part 4). Its targets are a finger's size. */
 @custom-variant tablet (@media (pointer: coarse) and (min-width: 640px));
+/* A short screen: a phone on its side (402 pt tall on an iPhone 17 Pro). The chat list gets the room first. */
+@custom-variant short (@media (max-height: 500px));
 
 /*
  * shadcn's roles, taken from the theme's Tern tokens. They are set on :root so they resolve there once. shadcn's

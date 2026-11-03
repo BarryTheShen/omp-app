@@ -4,6 +4,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cn } from "cn";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import type * as React from "react";
+import { useCollisionPadding } from "../../safeArea";
 import { closeSheet, SHEET_BACKDROP } from "./sheet";
 
 const Select = SelectPrimitive.Root;
@@ -68,6 +69,7 @@ function SelectContent({
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
   >) {
+  const collisionPadding = useCollisionPadding();
   return (
     <SelectPrimitive.Portal>
       {/* On a phone a select's list is a bottom sheet over the page dimmed; a tap there closes it (`sheet.ts`). */}
@@ -79,6 +81,7 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
+        collisionPadding={collisionPadding}
         className="isolate z-50"
       >
         <SelectPrimitive.Popup
