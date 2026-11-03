@@ -37,7 +37,7 @@ export interface SharesPortContext {
   readonly pollMs?: number;
   readonly now?: () => number;
   /** For tests: the services and their signature, instead of the machine's. */
-  readonly readServices?: (ownPorts: ReadonlySet<number>) => Promise<ListeningService[]>;
+  readonly readServices?: () => Promise<ListeningService[]>;
   readonly signature?: () => Promise<string>;
 }
 
@@ -62,6 +62,8 @@ const failure = (
 interface Held {
   readonly share: Share;
   readonly gate: Gate;
+  /** The address the gate listens at: with its port, a socket of the app's own. */
+  readonly address: string;
   /** A service's start, so a service stopped by hand is not shared again by itself while it runs. */
   readonly startedAt: number | null;
 }
@@ -87,15 +89,13 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
   const changed = streamKey(SharesPort.name, "changed");
   const sharedForChat = streamKey(SharesPort.name, "sharedForChat");
   const announce = () => context.publish(changed, { at: now() });
-  const ownPorts = (): ReadonlySet<number> => {
-    const ports = new Set([...held.values()].map((entry) => entry.gate.port));
-    const app = context.appPort();
-    if (app !== undefined) ports.add(app);
-    return ports;
-  };
+  /** The app's own sockets: its server's port, and each gate's address and port (a gate may take its service's number). */
+  const ownSocket = (at: string, port: number): boolean =>
+    port === context.appPort() ||
+    [...held.values()].some((entry) => entry.address === at && entry.gate.port === port);
   const services = (): Promise<ListeningService[]> =>
-    context.readServices?.(ownPorts()) ??
-    listServices({ chats: context.chats, ownPid: process.pid, ownPorts });
+    context.readServices?.() ??
+    listServices({ chats: context.chats, ownPid: process.pid, ownSocket });
   const shown = (entry: Held): Share => ({
     ...entry.share,
     lastUsedAt: entry.gate.lastUsedAt(),
@@ -117,9 +117,10 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
     const existing = sharedPort(service.port);
     if (existing !== undefined) return existing;
     const id = randomUUID();
+    const at = where();
     const gate = await openGate({
       shareId: id,
-      address: where(),
+      address: at,
       port: service.port,
       target: { kind: "service", port: service.port, address: service.address },
       reserved: [DEVICE_COOKIE],
@@ -140,7 +141,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
       lastUsedAt: now(),
       openedBy: [],
     };
-    const entry: Held = { share, gate, startedAt: service.startedAt };
+    const entry: Held = { share, gate, address: at, startedAt: service.startedAt };
     held.set(id, entry);
     context.logger?.info("share.created", {
       share: id,
@@ -252,9 +253,10 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
       );
       if (existing !== undefined) return shown(existing);
       const id = randomUUID();
+      const at = where();
       const gate = await openGate({
         shareId: id,
-        address: where(),
+        address: at,
         port: 0,
         target: { kind: "page", root: pageRoot, entry: entryFile },
         reserved: [DEVICE_COOKIE],
@@ -275,7 +277,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
         lastUsedAt: now(),
         openedBy: [],
       };
-      const entry: Held = { share, gate, startedAt: null };
+      const entry: Held = { share, gate, address: at, startedAt: null };
       held.set(id, entry);
       context.logger?.info("share.created", { share: id, page: entryFile, at_port: gate.port });
       announce();

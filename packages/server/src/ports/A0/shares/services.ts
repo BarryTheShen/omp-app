@@ -33,8 +33,12 @@ export interface ServiceSources {
   readonly chats: () => readonly ChatHost[];
   /** The app's own process: its sockets are not services. */
   readonly ownPid: number;
-  /** The ports the app listens on itself (its server, the shares' gates). */
-  readonly ownPorts: () => ReadonlySet<number>;
+  /**
+   * Whether the app listens on this address and port itself (its server, the shares' gates). By address and port, not by
+   * port alone: a share's gate takes its service's port number at the share's address, and the service, listening on the
+   * same number at another address, is still a service (#2788).
+   */
+  readonly ownSocket: (address: string, port: number) => boolean;
   readonly neverShare?: ReadonlySet<string>;
   readonly proc?: ProcReader;
 }
@@ -73,12 +77,16 @@ export async function listServices(sources: ServiceSources): Promise<ListeningSe
     byUnit.set(unit, chat.threadId);
   }
   for (const unit of sharedUnits) byUnit.delete(unit);
-  const own = sources.ownPorts();
+  const own = sources.ownSocket;
   const neverShare = sources.neverShare ?? NEVER_SHARE_PROGRAMS;
   const services = new Map<number, ListeningService>();
   for (const socket of listening) {
     if (socket.pid === sources.ownPid || (socket.pid !== null && hosts.has(socket.pid))) continue;
-    if (own.has(socket.port) || !REACHABLE_HERE.has(socket.address) || services.has(socket.port))
+    if (
+      own(socket.address, socket.port) ||
+      !REACHABLE_HERE.has(socket.address) ||
+      services.has(socket.port)
+    )
       continue;
     const unit = unitOf(socket.cgroup);
     const threadId =

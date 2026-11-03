@@ -131,4 +131,35 @@ realTest.describe("new UI: ports and pages on your devices", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest.describe("a share at another address than its service", () => {
+    // A share listens at the share's address and takes its service's port number there when it is free, as on the
+    // machine's Tailscale address: here 127.0.0.2, while the chat's service listens at 127.0.0.1.
+    realTest.use({ serverEnv: { OMP_APP_SHARE_ADDRESS: "127.0.0.2" } });
+
+    realTest(
+      "a chat's service keeps its one share while it runs, when the share took the same port number",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await newChat(page);
+        await box(page).fill("serve_probe");
+        await box(page).press("Enter");
+        const lines = page.getByRole("status").filter({ hasText: /is listening on port \d+/ });
+        await expect(lines).toHaveCount(1, { timeout: 90_000 });
+        const port = /port (\d+)/.exec((await lines.textContent()) ?? "")?.[1] ?? "";
+        await page.getByRole("button", { name: "Ports", exact: true }).click();
+        const row = ports(page).getByRole("listitem", { name: `Port ${port}` });
+        await expect(row).toContainText("Shared by itself.");
+        const at = new URL(
+          (await row.getByRole("link", { name: "Open" }).getAttribute("href")) ?? "",
+        );
+        expect([at.hostname, at.port]).toEqual(["127.0.0.2", port]);
+        // Five looks at the sockets later it is the same share: the chat has no second line, and it is still shared.
+        await page.waitForTimeout(10_000);
+        await expect(lines).toHaveCount(1);
+        await expect(row).toContainText("Shared by itself.");
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+  });
 });

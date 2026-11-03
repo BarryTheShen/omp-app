@@ -86,7 +86,7 @@ describe("the services a share can open (#2788)", () => {
         { pid: 300, threadId: T2 },
       ],
       ownPid: 600,
-      ownPorts: () => new Set(),
+      ownSocket: () => false,
       proc: { root, ticksPerSecond: 100 },
     });
     expect(
@@ -128,13 +128,41 @@ describe("the services a share can open (#2788)", () => {
         { pid: 300, threadId: T3 },
       ],
       ownPid: 600,
-      ownPorts: () => new Set(),
+      ownSocket: () => false,
       proc: { root, ticksPerSecond: 100 },
     });
     expect(services.map((entry) => [entry.port, entry.program, entry.threadId])).toEqual([
       [4001, "vite", null],
       [4002, "python3", T1],
       [4003, "node", null],
+    ]);
+  });
+
+  test("a service whose share took its port number at the share's address is still listed, with its chat", async () => {
+    root = await mkdtemp(join(tmpdir(), "omp-app-proc-"));
+    await mkdir(join(root, "net"));
+    await writeFile(
+      join(root, "net/tcp"),
+      HEADER +
+        listen(0, "0100007F:1435", 1) + // 127.0.0.1:5173, started in a chat's scope
+        listen(1, "01004064:1435", 2) + // 100.64.0.1:5173, that service's share (the app's own gate)
+        listen(2, "0100007F:10DD", 3), // 127.0.0.1:4317, the app
+    );
+    await writeFile(join(root, "net/tcp6"), HEADER);
+    await writeFile(join(root, "stat"), "btime 1700000000\n");
+    const scope = "/user.slice/user-1000.slice/user@1000.service/app.slice/omp-app-chat-a.scope";
+    const service = "/user.slice/user-1000.slice/user@1000.service/app.slice/omp-app.service";
+    await process(root, 100, "bun", 1, scope, []);
+    await process(root, 200, "vite", 1, scope, [1]);
+    await process(root, 600, "omp-app", 1, service, [2, 3]);
+    const services = await listServices({
+      chats: () => [{ pid: 100, threadId: T1 }],
+      ownPid: 600,
+      ownSocket: (address, port) => (address === "100.64.0.1" && port === 5173) || port === 4317,
+      proc: { root, ticksPerSecond: 100 },
+    });
+    expect(services.map((entry) => [entry.port, entry.address, entry.threadId])).toEqual([
+      [5173, "127.0.0.1", T1],
     ]);
   });
 });
