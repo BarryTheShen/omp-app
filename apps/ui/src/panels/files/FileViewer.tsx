@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
+import { previewDocument } from "./htmlPreview";
 import { baseName } from "./names";
 import { type ConflictChoice, resolveConflict, saveText } from "./save";
 import { downloadBytes, type FilesClient, readFileBytes } from "./transfer";
@@ -474,11 +475,12 @@ export function FileViewer({
           </section>
         )}
         {ready !== null && kind === "html" && rendered && (
-          // No allow-same-origin: the page runs in an opaque origin, away from the app's cookies, storage and page.
+          // No allow-same-origin: the page runs in an opaque origin, away from the app's cookies, storage and page; its
+          // relative links lead nowhere, not to the app's address (`previewDocument`).
           <iframe
             title={`${name}, rendered`}
             sandbox="allow-scripts"
-            srcDoc={mine}
+            srcDoc={previewDocument(mine)}
             className="h-full w-full bg-white"
           />
         )}

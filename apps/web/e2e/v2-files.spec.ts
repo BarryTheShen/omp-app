@@ -143,29 +143,52 @@ realTest.describe("new UI: the Files panel", () => {
   );
 
   realTest(
-    "an HTML preview runs sandboxed: it reaches neither the app's page, its cookies, its storage nor its socket",
+    "an HTML preview runs sandboxed: it reaches neither the app's page, its cookies, its storage, its socket nor its address",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       const socketUrl = new URL("/ws", page.url()).toString().replace(/^http/, "ws");
+      // The page's relative links would resolve against the app's own address: they must lead nowhere. The frame says
+      // what it fetched itself (its resource timing): the test browser reports none of a sandboxed frame's requests.
       await writeFile(
         join(realApp.folder, "probe.html"),
-        `<!doctype html><title>probe</title><script>
+        `<!doctype html><title>probe</title><link rel="stylesheet" href="probe.css"><img src="probe.png"><script>
 const tried = {};
 try { tried.parent = String(parent.document.title); } catch { tried.parent = "blocked"; }
 try { tried.cookie = document.cookie; tried.cookie = "read"; } catch { tried.cookie = "blocked"; }
 try { localStorage.setItem("probe", "1"); tried.storage = "used"; } catch { tried.storage = "blocked"; }
+let socket = null;
+let loaded = false;
 let told = false;
-const tell = (socket) => {
-  if (told) return;
+const tell = () => {
+  if (told || socket === null || !loaded) return;
   told = true;
   tried.socket = socket;
+  // Only fetches count: a link that resolves to nothing is listed by some engines under its own words.
+  tried.fetched = performance
+    .getEntriesByType("resource")
+    .map((entry) => entry.name)
+    .filter((name) => /^https?:.*\\/probe\\.(css|png)$/.test(name))
+    .map((name) => name.slice(name.lastIndexOf("/")));
   parent.postMessage({ probe: tried }, "*");
 };
+addEventListener("load", () => {
+  loaded = true;
+  tell();
+});
 try {
-  const socket = new WebSocket(${JSON.stringify(socketUrl)});
-  socket.onmessage = () => tell("reached");
-  socket.onclose = (event) => tell("closed " + event.code);
-} catch { tell("blocked"); }
+  const opened = new WebSocket(${JSON.stringify(socketUrl)});
+  opened.onmessage = () => {
+    socket ??= "reached";
+    tell();
+  };
+  opened.onclose = (event) => {
+    socket ??= "closed " + event.code;
+    tell();
+  };
+} catch {
+  socket = "blocked";
+  tell();
+}
 </script>`,
       );
       await page.evaluate(() => {
@@ -190,6 +213,7 @@ try {
           cookie: "blocked",
           storage: "blocked",
           socket: "closed 4403",
+          fetched: [],
         });
       expect(realApp.problems.filter((problem) => !problem.includes("WebSocket"))).toEqual([]);
     },
