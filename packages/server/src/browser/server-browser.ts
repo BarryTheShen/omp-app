@@ -181,8 +181,17 @@ export class ServerBrowser {
       { stdio: ["ignore", "ignore", "pipe"] },
     );
     let stderr = "";
+    // Chrome says where DevTools listens on its error output; it writes `DevToolsActivePort` only for a port it chose
+    // itself (Chrome 156 with the fixed 9333 wrote none, so the app waited out its 20 s).
+    let early = "";
+    let listening: DevToolsAddress | null = null;
     child.stderr?.on("data", (chunk: Buffer) => {
-      stderr = `${stderr}${chunk.toString()}`.slice(-2_000);
+      const text = chunk.toString();
+      stderr = `${stderr}${text}`.slice(-2_000);
+      if (listening === null && early.length < 64_000) {
+        early += text;
+        listening = devToolsAddress(early);
+      }
     });
     this.#child = child;
     // A program that cannot start emits an error and may never exit: either ends the wait, and neither reaches the app.
@@ -193,7 +202,7 @@ export class ServerBrowser {
         resolve();
       });
     });
-    const active = await waitForPortFile(portFile, exited);
+    const active = await waitForDevTools(() => listening, portFile, exited);
     if (active === null) {
       child.kill("SIGKILL");
       this.#child = null;
@@ -460,20 +469,44 @@ interface TargetInfo {
   readonly title: string;
 }
 
+/** Where Chrome's DevTools listen: the port and the browser's own path. */
+export interface DevToolsAddress {
+  readonly port: number;
+  readonly path: string;
+}
+
+/** The address in Chrome's "DevTools listening on ws://…" line, or null when its output has none yet. */
+export function devToolsAddress(output: string): DevToolsAddress | null {
+  const url = /DevTools listening on (ws:\/\/\S+)/.exec(output)?.[1];
+  if (url === undefined) return null;
+  try {
+    const parsed = new URL(url);
+    const port = Number(parsed.port);
+    return Number.isInteger(port) && port > 0 && parsed.pathname.length > 1
+      ? { port, path: parsed.pathname }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Waits for Chrome's `DevToolsActivePort` file: the port it listens on and its browser's path, or null when Chrome exits
- * or 20 s pass.
+ * Waits for Chrome's DevTools: the address from its output, or else its `DevToolsActivePort` file; null when Chrome
+ * exits or 20 s pass.
  */
-async function waitForPortFile(
+async function waitForDevTools(
+  said: () => DevToolsAddress | null,
   file: string,
   exited: Promise<void>,
-): Promise<{ port: number; path: string } | null> {
+): Promise<DevToolsAddress | null> {
   let gone = false;
   void exited.then(() => {
     gone = true;
   });
   const until = Date.now() + 20_000;
   while (!gone && Date.now() < until) {
+    const fromOutput = said();
+    if (fromOutput !== null) return fromOutput;
     const lines = (await readFile(file, "utf8").catch(() => "")).split("\n");
     const port = Number(lines[0]?.trim());
     const path = lines[1]?.trim();
