@@ -79,6 +79,11 @@ export interface A0Runtime {
   };
   /** Ends a chat's turn as Esc does, for the running list's Stop (D1; the chat runtime's `abort` request). */
   abortTurn(threadId: ThreadId, call: PortHandlerContext): Promise<unknown>;
+  /**
+   * Ends the runtime as the server stops: the new chats kept ready stop with their hosts, since they hold no chat a later
+   * server could resume, and every chat's host is let go to the next server (D2).
+   */
+  dispose(): Promise<void>;
 }
 
 /** The chat session port on the chat hosts (SDK plan H5.3, the app's runtime since H5.4a) and AppPort. */
@@ -110,6 +115,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     waiting: chat.runtime.waiting,
     abortTurn: (threadId, call) =>
       chat.runtime.request({ threadId, method: "abort", params: {} }, call),
+    dispose: () => chat.runtime.dispose(),
   };
 }
 

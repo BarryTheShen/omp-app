@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
@@ -33,6 +34,48 @@ realTest.describe("chats through a server restart", () => {
       await expect(reopened.getByText("Steady line 239:")).toHaveCount(1);
       await expect(reopened.getByText("Steady line 0:")).toHaveCount(1);
       expect(realApp.problems).toEqual([]);
+    },
+  );
+});
+
+/** Whether a process runs: one that has exited, or only waits to be reaped, does not. */
+function running(pid: number): boolean {
+  try {
+    return !/^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+realTest.describe("a new chat kept ready, through a server restart", () => {
+  realTest.use({ serverEnv: { OMP_APP_DETACHED_HOSTS: "1", OMP_APP_NEW_CHATS_READY: "1" } });
+  realTest.setTimeout(240_000);
+
+  realTest(
+    "stops with the server that kept it: no later server keeps its omp running",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      // The folder shown keeps a new chat ready: an omp of its own, the only one before any chat opens.
+      let spare = 0;
+      await expect
+        .poll(
+          () => {
+            const started = [
+              ...realApp
+                .log()
+                .matchAll(/omp\.process thread=provisional-\S+ status=running pid=(\d+)/g),
+            ];
+            spare = Number(started.at(-1)?.[1] ?? 0);
+            return spare;
+          },
+          { timeout: 120_000 },
+        )
+        .toBeGreaterThan(0);
+      expect(running(spare)).toBe(true);
+
+      await page.close();
+      await realApp.restartServer();
+      await expect.poll(() => running(spare), { timeout: 15_000 }).toBe(false);
     },
   );
 });

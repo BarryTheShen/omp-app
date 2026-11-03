@@ -848,7 +848,13 @@ export async function createCompositionServer(
         await server.stop();
       } finally {
         try {
-          await processRegistry.closeAll();
+          try {
+            // The new chats kept ready stop with their hosts: a later server could resume nothing in them, and one that
+            // found them would keep each for an hour. Every chat's host is then let go to the next server (D2).
+            await a0Runtime.dispose();
+          } finally {
+            await processRegistry.closeAll();
+          }
         } finally {
           await sessionFileStore.close();
           urlCatalog.dispose();
