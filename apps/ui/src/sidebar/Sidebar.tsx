@@ -308,7 +308,8 @@ export function Sidebar({
   return (
     <nav
       aria-label="Chats"
-      className={cn("flex min-h-0 flex-col p-2", hidden && "hidden")}
+      // On a short screen (a phone held sideways) the list keeps a few chats in view and the column scrolls to its foot.
+      className={cn("flex min-h-0 flex-col p-2 short:overflow-y-auto", hidden && "hidden")}
       // A finger landing anywhere but on the open row shuts it, as a phone's lists do.
       onPointerDownCapture={(event) => {
         if (swiped === null) return;
@@ -346,7 +347,7 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
-      <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto">
+      <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto short:min-h-36">
         {elsewhere.length > 0 && (
           <Section label="Running in other folders">{elsewhere.map(runningRow)}</Section>
         )}

@@ -86,6 +86,31 @@ realTest.describe("new UI chat list and pane keys", () => {
     );
 
     realTest(
+      "on a phone held sideways (874 × 402, touch) the list keeps its chats on screen beside the What's new card, and Settings is reached by scrolling",
+      async ({ realApp, browser }) => {
+        const context = await browser.newContext({
+          viewport: { width: 874, height: 402 },
+          hasTouch: true,
+          isMobile: true,
+        });
+        const page = await realApp.open({ path: "/", context });
+        await expect(page.getByRole("region", { name: "What's new" })).toBeVisible({
+          timeout: 60_000,
+        });
+        await expect(chats(page).getByRole("button", { name: "Seeded chat 1" })).toBeInViewport({
+          ratio: 1,
+        });
+        const settings = chats(page).getByRole("button", { name: "Settings" });
+        await settings.scrollIntoViewIfNeeded();
+        await expect(settings).toBeInViewport({ ratio: 1 });
+        await settings.tap();
+        await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+        expect(realApp.problems).toEqual([]);
+        await context.close();
+      },
+    );
+
+    realTest(
       "a chat picked from the list, and New chat, put the caret in the pane's message box",
       async ({ realApp }) => {
         const page = await realApp.open({ path: "/" });
