@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { biggestJumps, frameStats, type ScrollFrame, scrollMoves } from "./frames";
+import {
+  biggestJumps,
+  biggestRowChange,
+  frameStats,
+  type RowSize,
+  rowBehindJump,
+  type ScrollFrame,
+  scrollMoves,
+} from "./frames";
 
 describe("frameStats", () => {
   test("steady frames: the median and worst are one frame's length, none is long", () => {
@@ -94,5 +102,72 @@ describe("biggestJumps", () => {
       { frame: 3, movedPx: 60, seenPx: null, grewPx: 0 },
       { frame: 2, movedPx: 40, seenPx: 40, grewPx: 0 },
     ]);
+  });
+});
+
+describe("biggestRowChange", () => {
+  const sizes = (rows: Record<string, readonly [number, string, number]>): Map<string, RowSize> =>
+    new Map(
+      Object.entries(rows).map(([key, [height, kind, index]]) => [key, { height, kind, index }]),
+    );
+
+  test("names the row that changed most, by kind and place; a row in one frame only is not a change", () => {
+    const before = sizes({ a: [100, "assistant", 4], b: [50, "tool", 5], c: [80, "user", 6] });
+    const after = sizes({
+      a: [130, "assistant", 4],
+      b: [185, "tool", 5],
+      c: [80, "user", 6],
+      d: [900, "assistant", 7],
+    });
+    expect(biggestRowChange(before, after)).toEqual({ kind: "tool", index: 5, changePx: 135 });
+  });
+
+  test("a shrink is negative, and no change at all is none", () => {
+    const before = sizes({ a: [300, "thinking", 2], b: [40, "working", 3] });
+    expect(
+      biggestRowChange(before, sizes({ a: [140, "thinking", 2], b: [40, "working", 3] })),
+    ).toEqual({
+      kind: "thinking",
+      index: 2,
+      changePx: -160,
+    });
+    expect(biggestRowChange(before, before)).toBeNull();
+  });
+});
+
+describe("rowBehindJump", () => {
+  const row = (height: number): Map<string, RowSize> =>
+    new Map([
+      ["a", { height: 80, kind: "user", index: 8 }],
+      ["b", { height, kind: "tool", index: 9 }],
+    ]);
+  const jump = (frame: number, grewPx: number) => ({
+    frame,
+    movedPx: grewPx,
+    seenPx: grewPx,
+    grewPx,
+  });
+
+  test("a row that changes in the jump's own frame", () => {
+    expect(rowBehindJump([row(100), row(100), row(240)], jump(2, 140))).toEqual({
+      kind: "tool",
+      index: 9,
+      changePx: 140,
+      lag: 0,
+    });
+  });
+
+  test("a one-frame flicker the list follows a frame late: the change that matches the content's growth", () => {
+    // The row grows in frame 1 and is back in frame 2; the list's height, and the position, follow in frame 2.
+    expect(rowBehindJump([row(100), row(240), row(100)], jump(2, 140))).toEqual({
+      kind: "tool",
+      index: 9,
+      changePx: 140,
+      lag: 1,
+    });
+  });
+
+  test("no drawn row changed: none", () => {
+    expect(rowBehindJump([row(100), row(100), row(100)], jump(2, 300))).toBeNull();
   });
 });

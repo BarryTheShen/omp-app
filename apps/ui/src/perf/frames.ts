@@ -115,6 +115,56 @@ export function biggestJumps(frames: readonly ScrollFrame[], count: number): rea
     .slice(0, count);
 }
 
+/** A transcript row's height in one frame, and what it is: its kind and its place in the list. */
+export interface RowSize {
+  readonly height: number;
+  readonly kind: string;
+  readonly index: number;
+}
+
+/** The row drawn in both frames whose height changed most between them (grew positive); null when none changed. */
+export function biggestRowChange(
+  before: ReadonlyMap<string, RowSize>,
+  after: ReadonlyMap<string, RowSize>,
+): { readonly kind: string; readonly index: number; readonly changePx: number } | null {
+  let biggest: { kind: string; index: number; changePx: number } | null = null;
+  for (const [key, now] of after) {
+    const was = before.get(key);
+    if (was === undefined) continue;
+    const changePx = Math.round(now.height - was.height);
+    if (changePx !== 0 && (biggest === null || Math.abs(changePx) > Math.abs(biggest.changePx)))
+      biggest = { kind: now.kind, index: now.index, changePx };
+  }
+  return biggest;
+}
+
+/**
+ * The row behind a jump: a row's own height changes in the jump's frame, or one frame before it (the list's total
+ * height, and so the position, follows on its next render). Of the two, the change closest to the content's growth in
+ * the jump's frame, with how many frames before the jump it came (`lag`); null when no drawn row changed in either.
+ */
+export function rowBehindJump(
+  sizes: readonly ReadonlyMap<string, RowSize>[],
+  jump: ScrollJump,
+): {
+  readonly kind: string;
+  readonly index: number;
+  readonly changePx: number;
+  readonly lag: 0 | 1;
+} | null {
+  const between = (from: number, to: number) => {
+    const before = sizes[from];
+    const after = sizes[to];
+    return before === undefined || after === undefined ? null : biggestRowChange(before, after);
+  };
+  const now = between(jump.frame - 1, jump.frame);
+  const earlier = between(jump.frame - 2, jump.frame - 1);
+  const off = (change: { readonly changePx: number }): number =>
+    Math.abs(change.changePx - jump.grewPx);
+  if (now !== null && (earlier === null || off(now) <= off(earlier))) return { ...now, lag: 0 };
+  return earlier === null ? null : { ...earlier, lag: 1 };
+}
+
 /** Records the time of every frame, and runs `onFrame` in each, until `stop`. */
 export function watchFrames(onFrame?: () => void): { readonly stop: () => FrameStats } {
   const times: number[] = [];

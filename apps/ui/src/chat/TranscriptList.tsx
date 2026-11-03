@@ -339,6 +339,8 @@ export function TranscriptList({
                 data-index={item.index}
                 // The row's own key, which a prepend does not shift: the scroll trace follows a row by it.
                 data-key={String(item.key)}
+                // What the row is: the scroll trace names a row that grows or shrinks by it.
+                data-kind={row.kind}
                 className="tl-item group/msg absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >

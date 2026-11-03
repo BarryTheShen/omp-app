@@ -3,6 +3,8 @@ import {
   biggestJumps,
   clientTags,
   frameMarks,
+  type RowSize,
+  rowBehindJump,
   runningAnimations,
   type ScrollFrame,
   scrollMoves,
@@ -39,6 +41,8 @@ interface Gesture {
   readonly target: Element;
   readonly started: number;
   readonly frames: ScrollFrame[];
+  /** Each frame's drawn transcript rows by key (empty outside the transcript), in step with `frames`. */
+  readonly sizes: ReadonlyMap<string, RowSize>[];
   readonly watch: ReturnType<typeof watchFrames>;
   /** Animations running when the gesture began. */
   readonly animationsAtStart: number;
@@ -59,6 +63,28 @@ function middleRow(target: Element): Anchor | null {
   const key = row?.dataset.key;
   if (row === null || row === undefined || key === undefined || !target.contains(row)) return null;
   return { key, top: row.getBoundingClientRect().top };
+}
+
+/** The height of each transcript row drawn now, by its key, with its kind and place in the list. */
+function rowSizes(target: Element): ReadonlyMap<string, RowSize> {
+  const sizes = new Map<string, RowSize>();
+  for (const row of target.querySelectorAll<HTMLElement>(".tl-item[data-key]"))
+    sizes.set(row.dataset.key ?? "", {
+      height: row.offsetHeight,
+      kind: row.dataset.kind ?? "row",
+      index: Number(row.dataset.index),
+    });
+  return sizes;
+}
+
+/** A row kind as a mark's name takes it: lower case letters, digits and `_`, starting with a letter. */
+function markWord(kind: string): string {
+  const word = kind
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 20);
+  return /^[a-z]/.test(word) ? word : `k${word}`;
 }
 
 /**
@@ -103,6 +129,21 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
       if (jump.seenPx !== null) jumps[`${name}_seen_px`] = Math.abs(jump.seenPx);
       if (jump.grewPx !== 0)
         jumps[`${name}_${jump.grewPx > 0 ? "grew" : "shrank"}_px`] = Math.abs(jump.grewPx);
+      // The drawn row whose height change made the jump, in its frame or the one before (none: a row not drawn, or
+      // the list's estimate of one, changed).
+      const after = ended.sizes[jump.frame];
+      const row = rowBehindJump(ended.sizes, jump);
+      if (row === null) {
+        if (after !== undefined && after.size > 0) jumps[`${name}_row_none`] = 1;
+        return;
+      }
+      jumps[`${name}_row_${markWord(row.kind)}_${row.changePx > 0 ? "grew" : "shrank"}_px`] =
+        Math.abs(row.changePx);
+      jumps[`${name}_row_index`] = row.index;
+      jumps[`${name}_row_lag`] = row.lag;
+      // 0: the last row drawn (the end of the chat when the view is at the end).
+      jumps[`${name}_row_from_last`] =
+        Math.max(...[...(after?.values() ?? [])].map((size) => size.index)) - row.index;
     });
     report({
       marks: {
@@ -140,10 +181,12 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
       const frames: ScrollFrame[] = [
         { top: target.scrollTop, height: target.scrollHeight, seen: null },
       ];
+      const sizes: ReadonlyMap<string, RowSize>[] = [inTranscript ? rowSizes(target) : new Map()];
       gesture = {
         target,
         started: performance.now(),
         frames,
+        sizes,
         watch: watchFrames(() => {
           let seen: number | null = null;
           if (anchor !== null) {
@@ -151,6 +194,7 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
             if (row !== null) seen = anchor.top - row.getBoundingClientRect().top;
           }
           frames.push({ top: target.scrollTop, height: target.scrollHeight, seen });
+          sizes.push(inTranscript ? rowSizes(target) : new Map());
           if (inTranscript) anchor = middleRow(target);
         }),
         animationsAtStart: runningAnimations(),
