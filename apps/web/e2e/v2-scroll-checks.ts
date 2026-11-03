@@ -356,5 +356,51 @@ export function defineScrollChecks(engine: string): void {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest(
+      "a reply right after a long one starts at its own height, and its saved entry keeps it: the list never jumps by a reply",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await openLongChat(page);
+        const transcript = page.getByRole("region", { name: "Transcript" });
+        const box = page.getByRole("textbox", { name: "Message" });
+        await box.fill("stream_steady");
+        await box.press("Enter");
+        await expect(transcript).toContainText("Steady line 239:", { timeout: 150_000 });
+        // Every frame from here: where the next message is on the screen, once it shows. At the chat's end it moves up
+        // as the reply grows below it; a frame drawn at the long reply's height threw it thousands of pixels and back.
+        await page.evaluate(() => {
+          const tops: (number | null)[] = [];
+          (window as unknown as { tops: (number | null)[] }).tops = tops;
+          const tick = (): void => {
+            const row = [
+              ...document.querySelectorAll<HTMLElement>(
+                "section[aria-label='Transcript'] [data-index]",
+              ),
+            ].find((element) => element.textContent?.includes("stream_code after the long one"));
+            tops.push(row === undefined ? null : row.getBoundingClientRect().top);
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        await box.fill("stream_code after the long one");
+        await box.press("Enter");
+        await expect(transcript).toContainText("export const answer = sum([1, 2, 3]);", {
+          timeout: 60_000,
+        });
+        await page.waitForTimeout(1_500);
+        const tops = await page.evaluate(
+          () => (window as unknown as { tops: (number | null)[] }).tops,
+        );
+        const moves = tops.flatMap((top, index) => {
+          const before = tops[index - 1];
+          return top === null || before === null || before === undefined ? [] : [top - before];
+        });
+        expect(moves.length).toBeGreaterThan(10);
+        // The reply is about 280 px in all: no single frame moves the message by more than that.
+        expect(Math.max(...moves.map(Math.abs))).toBeLessThan(300);
+        expect(realApp.problems).toEqual([]);
+      },
+    );
   });
 }

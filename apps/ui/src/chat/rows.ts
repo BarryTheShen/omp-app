@@ -175,7 +175,9 @@ export function buildRows(
   if (stream !== null) {
     rows.push({
       kind: "stream",
-      key: "live:stream",
+      // A key of each reply's own: the list keeps a key's measured height, and a reply under the key of the one before
+      // started at that reply's height (a frame 5,000 px too tall after a long reply, and the view jumping with it).
+      key: `live:stream:${stream.timestamp}`,
       message: stream,
       pending: !snapshot.streamDone,
     });
@@ -190,7 +192,12 @@ export function buildRows(
       ),
   );
   if (tools.length > 0)
-    rows.push({ kind: "tools", key: "live:tools", tools, first: stream === null });
+    rows.push({
+      kind: "tools",
+      key: `live:tools:${tools[0]?.toolCallId ?? ""}`,
+      tools,
+      first: stream === null,
+    });
   if (snapshot.working && stream === null && snapshot.activeTools.size === 0) {
     rows.push({ kind: "working", key: "live:working" });
   }

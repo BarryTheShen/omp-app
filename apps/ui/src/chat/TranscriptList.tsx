@@ -28,8 +28,46 @@ import { buildRows, type TranscriptRow, toolResults } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
 
-/** A first guess at a row's height; every row is measured once drawn. */
+/**
+ * A first guess at a row's height; every row is measured once drawn. A guess too large is harmless at the end, where the
+ * view stops at the real end; one too small leaves the view short of it, as near the end counts as at it (`AT_END_PX`).
+ */
 const ESTIMATED_ROW_PX = 72;
+
+/**
+ * The height a row not measured yet starts at. A reply's saved entry takes its stream's place with the same text, and
+ * drawn at the guess for a frame it moved the view (211 px short at the end of a reply): it starts at the stream's
+ * measured height instead, kept until it is measured itself. Any other row starts at the guess. `measured` is TanStack's
+ * size cache as of the last render, which still holds the stream.
+ */
+function useFirstHeights(
+  rows: readonly TranscriptRow[],
+  measured: RefObject<ReadonlyMap<unknown, number>>,
+): (index: number) => number {
+  const last = useRef<{
+    rows: readonly TranscriptRow[];
+    placed: readonly Pick<TranscriptRow, "key" | "kind">[];
+  } | null>(null);
+  const inherited = useRef(new Map<string, number>());
+  if (last.current?.rows !== rows) {
+    const before = last.current?.placed ?? [];
+    const now = new Set(rows.map((row) => row.key));
+    rows.forEach((row, index) => {
+      const was = before[index];
+      if (was?.kind !== "stream" || row.kind !== "entry" || now.has(was.key)) return;
+      if (measured.current.has(row.key)) return;
+      const size = measured.current.get(was.key);
+      if (size !== undefined) inherited.current.set(row.key, size);
+    });
+    for (const key of [...inherited.current.keys()])
+      if (!now.has(key) || measured.current.has(key)) inherited.current.delete(key);
+    last.current = { rows, placed: rows.map(({ key, kind }) => ({ key, kind })) };
+  }
+  return (index) => {
+    const row = rows[index];
+    return (row === undefined ? undefined : inherited.current.get(row.key)) ?? ESTIMATED_ROW_PX;
+  };
+}
 
 /**
  * Which resized rows move the scroll position with them, so that the line being read stays where it is. TanStack's
@@ -278,10 +316,12 @@ export function TranscriptList({
     [entries, stream, streamDone, activeTools, working, shell, notices, hasOlder],
   );
   const results = useMemo(() => toolResults(entries), [entries]);
+  const measured = useRef<ReadonlyMap<unknown, number>>(new Map());
+  const firstHeight = useFirstHeights(rows, measured);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ESTIMATED_ROW_PX,
+    estimateSize: firstHeight,
     getItemKey: (index) => rows[index]?.key ?? index,
     anchorTo: "end",
     followOnAppend: true,
@@ -291,6 +331,7 @@ export function TranscriptList({
     paddingEnd: 16,
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
+  measured.current = virtualizer.itemSizeCache;
   const holding = useHoldCorrectionsWhileReading(scrollRef, virtualizer);
   useStayAtEndWhenShorter(scrollRef, virtualizer);
   const { follow, following } = useFollowLatest(scrollRef, virtualizer);
