@@ -50,20 +50,19 @@ realTest.describe("provider accounts", () => {
       .click();
   }
 
-  /** Signs in to Test Accounts as `email`: the dropdown, the sign-in page's link, then omp's question in the chat. */
+  /** Signs in to Test Accounts as `email`: the dropdown, the sign-in page's link, then omp's question, answered in Settings. */
   async function signInAs(page: Page, email: string): Promise<void> {
     await openProviders(page);
     await signIn(page).getByRole("combobox", { name: "Provider to sign in to" }).click();
     await page.getByRole("option", { name: /^Test Accounts/ }).click();
     await signIn(page).getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(signIn(page).getByRole("status")).toContainText("Test Accounts's sign-in page");
-    // omp asks in the chat: the settings close to answer it.
-    await page.keyboard.press("Escape");
-    const question = page.getByRole("dialog", { name: "Your email" });
-    await question.getByRole("textbox", { name: "Your answer" }).fill(email);
-    await question.getByRole("button", { name: "Send" }).click();
-    await expect(question).toBeHidden();
-    await openProviders(page);
+    const signingIn = signIn(page).getByRole("group", { name: "Signing in to Test Accounts" });
+    await expect(
+      signingIn.getByRole("link", { name: "Open Test Accounts's sign-in page" }),
+    ).toBeVisible();
+    // omp asks for the email: Settings shows the chat's own question (#2784).
+    await signingIn.getByRole("textbox", { name: "Your email" }).fill(email);
+    await signingIn.getByRole("button", { name: "Finish sign-in" }).click();
     await expect(row(page)).toContainText(email, { timeout: 30_000 });
     await page.keyboard.press("Escape");
   }
