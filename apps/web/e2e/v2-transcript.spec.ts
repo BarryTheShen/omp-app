@@ -171,3 +171,90 @@ realTest.describe("new UI transcript", () => {
     },
   );
 });
+
+/** omp's IRC message and a launch's ended processes, as a chat's file holds them (#2827). */
+const NOTICES_AT = Date.UTC(2026, 10, 4, 15, 0, 0);
+const usage = {
+  input: 1,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 2,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+const NOTICE_ENTRIES = [
+  {
+    type: "message",
+    message: {
+      role: "user",
+      content: [{ type: "text", text: "notices question" }],
+      timestamp: NOTICES_AT,
+    },
+  },
+  {
+    type: "custom_message",
+    customType: "irc:incoming",
+    content:
+      '<irc>\nIncoming IRC message from agent `StressA`:\n\nBB probe passed with no findings.\n\nIf response expected, reply via `write` (`path: "agent://StressA"`); may finish current step first.\n</irc>',
+    display: true,
+    details: { id: "irc-1", from: "StressA", message: "BB probe passed with no findings." },
+    timestamp: "2026-11-04T15:00:05.000Z",
+  },
+  {
+    type: "custom_message",
+    customType: "launch-completion",
+    content: "Launch finished.",
+    display: true,
+    details: {
+      daemons: [
+        {
+          name: "dev-server",
+          state: "exited",
+          exitCode: 0,
+          startedAt: NOTICES_AT,
+          exitedAt: NOTICES_AT + 2_500,
+        },
+      ],
+    },
+    timestamp: "2026-11-04T15:00:08.000Z",
+  },
+  {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "All done here." }],
+      api: "openai-completions",
+      provider: "fake",
+      model: "fake-model",
+      usage,
+      stopReason: "stop",
+      timestamp: NOTICES_AT + 10_000,
+    },
+  },
+];
+
+realTest.describe("new UI transcript: omp's own messages", () => {
+  realTest.use({ seedEntries: { entries: NOTICE_ENTRIES } });
+
+  realTest(
+    "an IRC message shows who wrote it and what it says, and a launch's process its row, not the text for the model (#2827)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: /^notices question/ })
+        .click({ timeout: 120_000 });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      await expect(transcript.getByText("All done here.")).toBeVisible({ timeout: 60_000 });
+      await expect(transcript.getByText("Message from StressA")).toBeVisible();
+      await expect(transcript.getByText("BB probe passed with no findings.")).toBeVisible();
+      await expect(transcript.getByText("Supervised process completed")).toBeVisible();
+      await expect(transcript.getByText("dev-server")).toBeVisible();
+      // None of what omp tells the model.
+      await expect(transcript).not.toContainText("<irc>");
+      await expect(transcript).not.toContainText("If response expected");
+      await expect(transcript).not.toContainText("irc:incoming");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});

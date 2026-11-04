@@ -5,7 +5,7 @@ import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState
 import { FoldContext } from "../../lib/fold";
 import type { ActiveTool, ConnectionPhase } from "../../lib/types";
 import { fmtTokens } from "../../lib/format";
-import { deliveredText, jobRows } from "../../lib/notices";
+import { contentText, deliveredText, describeNotice, jobRows } from "../../lib/notices";
 import type { ToolRenderHost } from "../../tool-render";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { ToolCard } from "./ToolCard";
@@ -226,8 +226,9 @@ function entryRowEqual(prev: EntryRowProps, next: EntryRowProps): boolean {
 
 /**
  * omp-app: a message omp shows (`display`), drawn the same from the file (`custom_message`) and from the live stream
- * (a `custom` message, before the file holds it): a finished background job as omp's row, anything else as its type and
- * text.
+ * (a `custom` message, before the file holds it): a finished background job as omp's row, the others from their details
+ * as omp's terminal and the old UI drew them (#2827): an IRC message as who wrote it and what it says, not the envelope
+ * omp gives the model. A kind it does not know shows its type and its text, without omp's tag.
  */
 function CustomBody({
 	customType,
@@ -239,10 +240,26 @@ function CustomBody({
 	content: string | readonly (TextContent | ImageContent)[];
 }): ReactNode {
 	if (customType === "async-result") return <JobNotice details={details} content={content} />;
+	const note = describeNotice(customType, details, contentText(content));
+	const images = typeof content === "string" ? [] : content.filter(block => block.type === "image");
 	return (
-		<div className="tr-custom">
-			<span className="tr-chip">{customType}</span>
-			<MsgContent content={content} />
+		<div className="tr-custom" data-custom-type={customType}>
+			{!note.known && <span className="tr-chip">{customType}</span>}
+			{note.heading !== undefined && <span className="tr-note-head">{note.heading}</span>}
+			{note.rows.length > 0 && (
+				<span className="tr-job-rows">
+					{note.rows.map((row, i) => (
+						<span key={i} className={`tr-job-row tr-job-row--${row.tone}`}>
+							{row.tone === "err" ? <X size={12} aria-hidden /> : <Check size={12} aria-hidden />}
+							<span className="tr-job-text">{row.text}</span> <span className="tr-job-id">{row.name}</span>
+							{row.exit !== undefined && <> <span className="tr-job-dim">(exit {row.exit})</span></>}
+							{row.duration !== undefined && <> <span className="tr-job-dim">({row.duration})</span></>}
+						</span>
+					))}
+				</span>
+			)}
+			{note.body !== "" && <Markdown text={note.body} />}
+			{images.length > 0 && <MsgContent content={images} />}
 		</div>
 	);
 }

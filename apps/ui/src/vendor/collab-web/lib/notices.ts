@@ -71,3 +71,118 @@ export function deliveredText(content: unknown): string {
 	if (lines[0]?.startsWith("Background job")) lines.shift();
 	return lines.join("\n").trim();
 }
+
+/** The text of a message's content: a string, or its text blocks joined by lines. */
+export function contentText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map(part => {
+			const block = asRecord(part);
+			return block?.type === "text" ? (textOf(block.text) ?? "") : "";
+		})
+		.filter(text => text !== "")
+		.join("\n");
+}
+
+/** omp's text without the tag it wraps it in for the model (`<irc>…</irc>`, `<system-notice>…</system-notice>`). */
+export function withoutWrapper(text: string): string {
+	const match = /^\s*<([a-z][a-z0-9_-]*)(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/\1>\s*$/i.exec(text);
+	return match?.[2] ?? text.trim();
+}
+
+/** A process a launch supervised and that has ended, as omp's terminal writes it (`buildLaunchCompletionBlock`). */
+export interface ProcessRow {
+	readonly tone: "ok" | "err";
+	readonly text: string;
+	readonly name: string;
+	readonly exit?: number;
+	readonly duration?: string;
+}
+
+/**
+ * omp-app's addition (#2827): one of omp's other messages it shows, as its terminal and the old UI drew it, from the
+ * message's details, not from the text omp gives the model (the `<irc>` envelope and how to answer, a tag around a
+ * notice): who wrote an IRC message and what it says, the advisor's notes, the processes a launch ended, a tangent sent
+ * to a background job. A kind this does not know keeps its type as a chip and its text, without omp's tag.
+ */
+export interface NoticeView {
+	readonly known: boolean;
+	readonly heading?: string;
+	readonly rows: readonly ProcessRow[];
+	/** Markdown under the heading. */
+	readonly body: string;
+}
+
+/** omp's cut for a tangent's work (`packages/tui/src/chat/background-tan-message.ts`): 56 characters, an ellipsis last. */
+const TANGENT_PREVIEW = 56;
+
+export function describeNotice(customType: string, details: unknown, text: string): NoticeView {
+	const record = asRecord(details);
+	const said = (key: string): string | undefined => textOf(record?.[key])?.trim() || undefined;
+	const note = (heading: string, body: string): NoticeView => ({ known: true, heading, rows: [], body });
+	switch (customType) {
+		case "irc:incoming": {
+			const from = said("from");
+			return note(
+				from === undefined ? "Message from another agent" : `Message from ${from}`,
+				said("message") ?? withoutWrapper(text),
+			);
+		}
+		case "irc:autoreply": {
+			const to = said("to");
+			return note(to === undefined ? "Automatic reply" : `Automatic reply to ${to}`, said("body") ?? withoutWrapper(text));
+		}
+		case "irc:relay":
+			return note(
+				`Message from ${said("from") ?? "an agent"} to ${said("to") ?? "another agent"}`,
+				said("body") ?? withoutWrapper(text),
+			);
+		case "irc:workpool": {
+			const mode = said("mode");
+			const heading = `Pool ${said("pool") ?? "?"} to ${said("to") ?? "?"}`;
+			return note(mode === undefined ? heading : `${heading} (${mode})`, said("body") ?? withoutWrapper(text));
+		}
+		case "advisor": {
+			const notes = Array.isArray(record?.notes)
+				? record.notes.flatMap(each => {
+						const line = textOf(asRecord(each)?.note);
+						return line === undefined ? [] : [line];
+					})
+				: [];
+			return note("Advisor note", notes.length > 0 ? notes.join("\n\n") : withoutWrapper(text));
+		}
+		case "launch-completion": {
+			const rows = (Array.isArray(record?.daemons) ? record.daemons : []).flatMap(each => {
+				const daemon = asRecord(each);
+				if (daemon === undefined) return [];
+				const exit = typeof daemon.exitCode === "number" ? daemon.exitCode : undefined;
+				const failed = daemon.state === "failed" || (exit !== undefined && exit !== 0);
+				const ran =
+					typeof daemon.startedAt === "number" && typeof daemon.exitedAt === "number"
+						? daemon.exitedAt - daemon.startedAt
+						: undefined;
+				const row: ProcessRow = {
+					tone: failed ? "err" : "ok",
+					text: failed ? "Supervised process failed" : "Supervised process completed",
+					name: textOf(daemon.name) ?? "process",
+					...(exit === undefined ? {} : { exit }),
+					...(ran === undefined ? {} : { duration: fmtDuration(ran) }),
+				};
+				return [row];
+			});
+			return rows.length > 0
+				? { known: true, rows, body: "" }
+				: note("Process finished", withoutWrapper(text));
+		}
+		case "background-tan-dispatch": {
+			const jobId = said("jobId");
+			const work = textOf(record?.work)?.replace(/\s+/g, " ").trim() ?? "";
+			const preview = work.length <= TANGENT_PREVIEW ? work : `${work.slice(0, TANGENT_PREVIEW - 1)}…`;
+			const job = jobId === undefined ? "a background job" : `background job ${jobId}`;
+			return note(preview === "" ? `Tangent sent to ${job}` : `Tangent sent to ${job}: ${preview}`, withoutWrapper(text));
+		}
+		default:
+			return { known: false, rows: [], body: withoutWrapper(text) };
+	}
+}

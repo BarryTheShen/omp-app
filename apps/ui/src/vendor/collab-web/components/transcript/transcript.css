@@ -85,6 +85,13 @@
 	gap: 4px;
 }
 
+/* omp-app: the heading of one of omp's messages, from its details (#2827): "Message from StressA". */
+.tr-note-head {
+	color: var(--fg);
+	font-size: 12px;
+	font-weight: 600;
+}
+
 .tr-msg-img {
 	max-height: 240px;
 	max-width: 100%;
