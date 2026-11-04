@@ -70,6 +70,11 @@ export const WorkspaceListArgs = z.strictObject({
   /** The directory listed; none is the folder itself. */
   path: WorkspaceRelativePath.optional(),
   showIgnored: z.boolean(),
+  /**
+   * Only the entries whose name holds this text, whatever its case: how a directory past `MAX_LIST_ENTRIES` is
+   * reached (#2799).
+   */
+  match: z.string().min(1).max(200).optional(),
 });
 export type WorkspaceListArgs = z.infer<typeof WorkspaceListArgs>;
 
@@ -77,6 +82,8 @@ export const WorkspaceListResult = z.strictObject({
   /** Directories first, then by name as people sort them. */
   entries: z.array(WorkspaceEntry).max(MAX_LIST_ENTRIES),
   truncated: z.boolean(),
+  /** How many entries the directory holds (that match), listed or not. */
+  total: z.int().nonnegative(),
 });
 export type WorkspaceListResult = z.infer<typeof WorkspaceListResult>;
 

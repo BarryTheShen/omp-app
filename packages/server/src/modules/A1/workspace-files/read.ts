@@ -31,7 +31,10 @@ export function kindOf(info: Stats): WorkspaceEntryKind {
   return "other";
 }
 
-/** A directory's entries: directories first, then by name as people sort them; ignored names only when asked for. */
+/**
+ * A directory's entries: directories first, then by name as people sort them; ignored names only when asked for, and
+ * with `match` only the names that hold it, whatever its case.
+ */
 export async function listEntries(
   args: WorkspaceListArgs,
   limit = MAX_LIST_ENTRIES,
@@ -40,10 +43,12 @@ export async function listEntries(
   const directory =
     args.path === undefined ? await folderItself(root) : await followInside(root, args.path);
   if (!directory.info.isDirectory()) throw invalidFailure(`${args.path} is not a directory.`);
+  const match = args.match?.toLocaleLowerCase();
   const entries: WorkspaceEntry[] = [];
   for (const name of await readdir(directory.real)) {
     // A save in progress writes its temp and lock files beside the file: they are not the person's.
     if (isAtomicWriteArtifact(name)) continue;
+    if (match !== undefined && !name.toLocaleLowerCase().includes(match)) continue;
     const ignored = WALK_SKIPPED_NAMES.has(name);
     if (ignored && !args.showIgnored) continue;
     const at = join(directory.real, name);
@@ -73,7 +78,11 @@ export async function listEntries(
       Number(left.kind !== "directory") - Number(right.kind !== "directory") ||
       COLLATOR.compare(left.name, right.name),
   );
-  return { entries: entries.slice(0, limit), truncated: entries.length > limit };
+  return {
+    entries: entries.slice(0, limit),
+    truncated: entries.length > limit,
+    total: entries.length,
+  };
 }
 
 /**

@@ -114,6 +114,33 @@ describe("the Files panel's reading (#2782)", () => {
     const capped = await listEntries({ folder, path: path("sorted"), showIgnored: false }, 2);
     expect(capped.entries.map((entry) => entry.name)).toEqual(["zdir", "A.txt"]);
     expect(capped.truncated).toBe(true);
+    // The total counts what the cut left out too (#2799).
+    expect(capped.total).toBe(4);
+  });
+
+  test("a list with a match holds only the names with it, whatever their case, and counts them (#2799)", async () => {
+    const many = join(folder, "many");
+    await mkdir(join(many, "Notes-dir"), { recursive: true });
+    for (const name of ["notes.md", "NOTES-old.txt", "plan.md"])
+      await writeFile(join(many, name), name);
+
+    const found = await listEntries({
+      folder,
+      path: path("many"),
+      showIgnored: false,
+      match: "noTes",
+    });
+    expect(found.entries.map((entry) => entry.name).sort()).toEqual(
+      ["Notes-dir", "notes.md", "NOTES-old.txt"].sort(),
+    );
+    expect(found).toMatchObject({ truncated: false, total: 3 });
+
+    const cut = await listEntries(
+      { folder, path: path("many"), showIgnored: false, match: "noTes" },
+      2,
+    );
+    expect(cut.entries).toHaveLength(2);
+    expect(cut).toMatchObject({ truncated: true, total: 3 });
   });
 
   test("stat names a file's media type from its name, and a directory has no hash", async () => {

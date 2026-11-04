@@ -78,6 +78,17 @@ const BADGE: Readonly<Record<string, string>> = {
 interface Listing {
   readonly entries: readonly WorkspaceEntry[];
   readonly truncated: boolean;
+  /** How many entries the directory holds (that match), listed or not. */
+  readonly total: number;
+}
+
+/** The line under a folder cut short at 5,000 entries, or found in by name (#2799). */
+interface FolderNote {
+  readonly directory: string;
+  /** The depth of the folder's own entries. */
+  readonly depth: number;
+  readonly listing: Listing;
+  readonly match: string | undefined;
 }
 
 /**
@@ -159,6 +170,9 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
     lastListings(folder, false),
   );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  /** A name to find, per folder: such a folder is listed with only the names holding it (#2799). */
+  const [matches, setMatches] = useState<ReadonlyMap<string, string>>(new Map());
+  const matchesRef = useRef(matches);
   const [selected, setSelected] = useState<WorkspaceRelativePath | null>(null);
   const [open, setOpen] = useState<WorkspaceRelativePath | null>(null);
   const [openDirty, setOpenDirty] = useState(false);
@@ -190,14 +204,19 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
 
   const list = useCallback(
     async (directory: string) => {
+      const match = matchesRef.current.get(directory);
       try {
         const result = await files.list({
           folder,
           ...(directory === "" ? {} : { path: directory as WorkspaceRelativePath }),
           showIgnored,
+          ...(match === undefined ? {} : { match }),
         });
+        // Asked again with another name to find since: the newer answer is the one to show.
+        if (matchesRef.current.get(directory) !== match) return;
         setListings((now) => new Map(now).set(directory, result));
-        keepListing(folder, showIgnored, directory, result);
+        // A listing narrowed to a name is not kept for the folder's next visit.
+        if (match === undefined) keepListing(folder, showIgnored, directory, result);
       } catch (error) {
         if (failureCode(error) === "not_found" && directory !== "") {
           keepListing(folder, showIgnored, directory, undefined);
@@ -236,6 +255,9 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
   useEffect(() => {
     let active = true;
     setListings(lastListings(folder, showIgnored));
+    // A name found in one folder's listing means nothing in another's (#2799).
+    matchesRef.current = new Map();
+    setMatches(matchesRef.current);
     setOpen(null);
     setSelected(null);
     void get<string[]>(folder, expandedStore)
@@ -291,27 +313,53 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
     [hub],
   );
 
-  const rows = useMemo(() => {
+  /** The tree's rows, and the notes under folders cut short or found in by name (#2799), by the row they follow. */
+  const { rows, notes } = useMemo(() => {
     const out: Row[] = [];
+    const notesAt = new Map<number, FolderNote[]>();
     const walk = (directory: string, depth: number) => {
-      for (const entry of listings.get(directory)?.entries ?? []) {
+      const listing = listings.get(directory);
+      for (const entry of listing?.entries ?? []) {
         const path = childPath(directory, entry.name) as WorkspaceRelativePath;
         out.push({ path, entry, depth });
         if (isDirectory(entry) && expanded.has(path)) walk(path, depth + 1);
       }
+      const match = matches.get(directory);
+      // Under the folder's last row, or its own row when nothing in it is listed; a top folder with no rows at all
+      // shows its note in the empty folder's place.
+      if (listing !== undefined && (listing.truncated || match !== undefined) && out.length > 0) {
+        const at = out.length - 1;
+        notesAt.set(at, [...(notesAt.get(at) ?? []), { directory, depth, listing, match }]);
+      }
     };
     walk("", 0);
-    return out;
-  }, [listings, expanded]);
+    return { rows: out, notes: notesAt };
+  }, [listings, expanded, matches]);
 
   const touch = useMemo(() => matchMedia("(pointer: coarse)").matches, []);
   const rowHeight = phone || touch ? 44 : 28;
+  const noteHeight = phone || touch ? 84 : 68;
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => treeRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: (index) => rowHeight + (notes.get(index)?.length ?? 0) * noteHeight,
     overscan: 12,
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a note's room changes its row's size, measured again here
+  useEffect(() => {
+    virtualizer.measure();
+  }, [notes, virtualizer]);
+
+  /** Lists `directory` again with only the names holding `text` (#2799); an empty `text` lists it whole again. */
+  const findIn = (directory: string, text: string): void => {
+    const match = text.trim();
+    const next = new Map(matchesRef.current);
+    if (match === "") next.delete(directory);
+    else next.set(directory, match);
+    matchesRef.current = next;
+    setMatches(next);
+    void list(directory);
+  };
 
   const toggle = (path: WorkspaceRelativePath, to?: boolean) => {
     const opening = to ?? !expanded.has(path);
@@ -746,9 +794,16 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
         onKeyDown={onTreeKey}
       >
         {root === undefined && <p className="p-3 text-sm text-t3">Listing the folder…</p>}
-        {root !== undefined && rows.length === 0 && (
-          <p className="p-3 text-sm text-t3">This folder is empty.</p>
-        )}
+        {root !== undefined &&
+          rows.length === 0 &&
+          (matches.has("") ? (
+            <FolderNoteView
+              note={{ directory: "", depth: 0, listing: root, match: matches.get("") }}
+              onFind={(text) => findIn("", text)}
+            />
+          ) : (
+            <p className="p-3 text-sm text-t3">This folder is empty.</p>
+          ))}
         <div style={{ height: virtualizer.getTotalSize() }} className="relative">
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index];
@@ -807,12 +862,24 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
               </div>
             );
           })}
+          {/*
+            Keyed by folder, beside the rows rather than inside one: a find lists the folder again and moves its note to
+            another row, and a note remounted with its row would lose the box's focus while typing.
+          */}
+          {[...notes].flatMap(([index, list]) =>
+            list.map((note, at) => {
+              const start = virtualizer.measurementsCache[index]?.start;
+              return start === undefined ? null : (
+                <FolderNoteView
+                  key={`note:${note.directory}`}
+                  note={note}
+                  place={{ top: start + rowHeight + at * noteHeight, height: noteHeight }}
+                  onFind={(text) => findIn(note.directory, text)}
+                />
+              );
+            }),
+          )}
         </div>
-        {root?.truncated === true && (
-          <p className="px-3 py-1 text-xs text-t3">
-            Only the first 5,000 entries of this folder are listed.
-          </p>
-        )}
       </div>
       {uploads.length > 0 && (
         <ul aria-label="Uploads" className="shrink-0 border-t border-l2 px-2 py-1 text-xs">
@@ -973,6 +1040,64 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
         </DialogContent>
       </Dialog>
       {closeDialog()}
+    </div>
+  );
+}
+
+/**
+ * The line under a folder cut short at 5,000 entries, or found in by name (#2799): how many entries are listed of how
+ * many, and a box that lists the folder again with only the names holding what is typed.
+ */
+function FolderNoteView({
+  note,
+  place,
+  onFind,
+}: {
+  readonly note: FolderNote;
+  /** Where it sits in the tree's list; none in the empty folder's place. */
+  readonly place?: { readonly top: number; readonly height: number };
+  readonly onFind: (text: string) => void;
+}): ReactNode {
+  const [text, setText] = useState(note.match ?? "");
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const find = (value: string): void => {
+    setText(value);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => onFind(value), 250);
+  };
+  const name = note.directory === "" ? "this folder" : baseName(note.directory);
+  const listed = note.listing.entries.length.toLocaleString();
+  const total = note.listing.total.toLocaleString();
+  const said =
+    note.match === undefined
+      ? `${listed} of ${total} entries in ${name} are listed.`
+      : note.listing.total === 0
+        ? `Nothing in ${name} has “${note.match}” in its name.`
+        : note.listing.total === 1
+          ? `1 entry in ${name} has “${note.match}” in its name.`
+          : `${total} entries in ${name} have “${note.match}” in their names${note.listing.truncated ? `; ${listed} are listed` : ""}.`;
+  return (
+    <div
+      className={cn(
+        "flex flex-col justify-center gap-1 pr-2 text-xs text-t3",
+        place !== undefined && "absolute inset-x-0",
+      )}
+      style={{ ...place, paddingLeft: 8 + note.depth * 14 + 18 }}
+    >
+      <span>{said}</span>
+      <Input
+        aria-label={`Find in ${name} by name`}
+        placeholder={`Find in ${name} by name`}
+        className="h-7 text-xs"
+        value={text}
+        onChange={(event) => find(event.target.value)}
+        // The tree's own keys (arrows, Enter, Delete, typing to jump) stay out of the box; Esc empties it.
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Escape") find("");
+        }}
+      />
     </div>
   );
 }

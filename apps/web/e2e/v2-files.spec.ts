@@ -381,4 +381,39 @@ try {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a folder cut short at 5,000 entries says so under its last row, and a name typed there finds the rest (#2799)",
+    async ({ realApp }) => {
+      const big = join(realApp.folder, "big");
+      await mkdir(big);
+      // 5,010 files: the listing stops at 5,000, so f5000 to f5009 are left out.
+      for (let index = 0; index < 5_010; index += 1)
+        await writeFile(join(big, `f${String(index).padStart(4, "0")}.txt`), "");
+      const page = await realApp.open({ path: "/" });
+      await openFiles(page);
+      await row(page, "big").click();
+      // The note is under the folder's last listed row, at the end of the tree.
+      const find = tree(page).getByRole("textbox", { name: "Find in big by name" });
+      await expect(row(page, "f0000.txt")).toBeVisible({ timeout: 30_000 });
+      await tree(page).evaluate((element) => element.scrollTo(0, element.scrollHeight));
+      await expect(find).toBeVisible({ timeout: 30_000 });
+      await expect(tree(page)).toContainText("5,000 of 5,010 entries in big are listed.");
+      await expect(row(page, "f5009.txt")).toHaveCount(0);
+
+      // A name finds what the cut left out; the box keeps the focus while the folder is listed again.
+      await find.click();
+      await page.keyboard.type("f5009");
+      await expect(row(page, "f5009.txt")).toBeVisible({ timeout: 30_000 });
+      await expect(tree(page)).toContainText("1 entry in big has “f5009” in its name.");
+      await expect(find).toBeFocused();
+
+      // Esc empties the box, and the folder is listed whole again.
+      await page.keyboard.press("Escape");
+      await expect(row(page, "f5009.txt")).toHaveCount(0, { timeout: 30_000 });
+      await tree(page).evaluate((element) => element.scrollTo(0, element.scrollHeight));
+      await expect(tree(page)).toContainText("5,000 of 5,010 entries in big are listed.");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
