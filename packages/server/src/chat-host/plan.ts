@@ -29,14 +29,21 @@ export class PlanMode {
   readonly #session: AgentSession;
   /** Tells the app what omp's terminal shows as a warning. */
   readonly #warn: (message: string) => void;
+  /** Tells every page the status after plan mode turned on or off (#2812): omp's own state sends no event. */
+  readonly #changed: (status: PlanModeStatus) => void;
   /** The tools before plan mode turned on, for the way back (the terminal's `#planModePreviousToolPresentation`). */
   #toolsBefore: { readonly enabled: string[]; readonly mounted: string[] } | undefined;
   /** Plan mode was on before in this session: omp tells the model it is coming back to a plan (`reentry`). */
   #plannedBefore = false;
 
-  constructor(session: AgentSession, warn: (message: string) => void) {
+  constructor(
+    session: AgentSession,
+    warn: (message: string) => void,
+    changed: (status: PlanModeStatus) => void,
+  ) {
     this.#session = session;
     this.#warn = warn;
+    this.#changed = changed;
   }
 
   status(): PlanModeStatus {
@@ -206,6 +213,7 @@ export class PlanMode {
     if (session.isStreaming) await session.sendPlanModeContext({ deliverAs: "steer" });
     this.#plannedBefore = true;
     session.sessionManager.appendModeChange("plan", { planFilePath });
+    this.#changed(this.status());
   }
 
   /**
@@ -236,6 +244,7 @@ export class PlanMode {
     this.#toolsBefore = undefined;
     session.setPlanProposalHandler(null);
     if (options.persist) session.sessionManager.appendModeChange("none");
+    this.#changed(this.status());
   }
 
   /** A goal is active or paused: the terminal refuses plan mode for both ("Exit goal mode first."). */

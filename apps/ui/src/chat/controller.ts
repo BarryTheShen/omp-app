@@ -511,6 +511,8 @@ export class ChatController {
 
   /** Plan mode switches so far: an answer about plan mode counts only while no later switch is on its way. */
   #planSwitches = 0;
+  /** This page's plan mode switches omp has not answered yet: the answer to the latest decides the chip meanwhile. */
+  #planSwitchesPending = 0;
   /**
    * The latest plan mode switch until omp answers it. omp answers switches in order but starts a prompt as soon as it
    * reads one, so a message waits for this: it runs in the mode the chip shows.
@@ -955,6 +957,7 @@ export class ChatController {
     const switches = ++this.#planSwitches;
     const shown = this.store.getSnapshot().planMode;
     if (shown !== null) this.store.setPlanMode({ ...shown, enabled });
+    this.#planSwitchesPending += 1;
     try {
       const request = this.#request("set_plan_mode", { enabled });
       this.#planSwitch = request.catch(() => undefined);
@@ -963,6 +966,8 @@ export class ChatController {
     } catch (failure) {
       if (switches === this.#planSwitches) this.#readPlanMode().catch(() => undefined);
       throw failure;
+    } finally {
+      this.#planSwitchesPending -= 1;
     }
   }
 
@@ -1083,6 +1088,16 @@ export class ChatController {
     if (payload.event.type === "todo_auto_clear") this.#refreshState().catch(() => undefined);
     // Plan mode can change outside this pane (another tab, omp's own commands): read it again when omp settles.
     if (payload.event.type === "session_settled") this.#readPlanMode().catch(() => undefined);
+    // Plan mode switched by another page, or by omp (an approved plan): shown here at once (#2812). While this page's
+    // own switch waits for omp's answer, that answer decides.
+    if (payload.event.type === "plan_mode_changed" && this.#planSwitchesPending === 0) {
+      const { enabled, available, planFilePath } = payload.event;
+      this.store.setPlanMode({
+        enabled,
+        available,
+        ...(planFilePath === undefined ? {} : { planFilePath }),
+      });
+    }
   }
 
   /**

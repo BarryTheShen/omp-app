@@ -124,6 +124,45 @@ describe("plan mode on the chat host", () => {
     );
 
     programTest(
+      `${program.name}: each switch of plan mode, and an approval, is announced with the status after (#2812)`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const announced = async (step: () => Promise<unknown>) => {
+          const mark = chat.events.length;
+          await step();
+          return chat.nextAfter(mark, (event) => event.type === "plan_mode_changed");
+        };
+        expect(
+          await announced(() => chat.client.request("set_plan_mode", { enabled: true })),
+        ).toEqual({
+          type: "plan_mode_changed",
+          enabled: true,
+          available: true,
+          planFilePath: "local://PLAN.md",
+        });
+        expect(
+          await announced(() => chat.client.request("set_plan_mode", { enabled: false })),
+        ).toEqual({
+          type: "plan_mode_changed",
+          enabled: false,
+          available: true,
+        });
+        await chat.client.request("set_plan_mode", { enabled: true });
+        await promptToEnd(chat, "plan_propose");
+        expect(
+          await announced(() =>
+            chat.client.request("approve_plan", {
+              planFilePath: PLAN_FILE,
+              title: "fix-the-login",
+            }),
+          ),
+        ).toEqual({ type: "plan_mode_changed", enabled: false, available: true });
+      },
+      120_000,
+    );
+
+    programTest(
       `${program.name}: a plan whose copy cannot be saved still runs, and omp's warning reaches the app`,
       async () => {
         // omp copies an approved plan into `plan.autosaveDir`; a file where that folder should be makes the copy fail.

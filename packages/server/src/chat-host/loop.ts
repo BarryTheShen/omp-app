@@ -241,8 +241,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);
   const subagents = new SubagentRoster(chat.subagentEventBus, emit);
-  const plan = new PlanMode(session, (message) =>
-    emit({ type: "notice", level: "warning", message, source: "plan-mode" }),
+  const plan = new PlanMode(
+    session,
+    (message) => emit({ type: "notice", level: "warning", message, source: "plan-mode" }),
+    (status) => emit({ type: "plan_mode_changed", ...status }),
   );
   const live = new LiveVoice(session, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */

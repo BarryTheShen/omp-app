@@ -94,6 +94,34 @@ realTest.describe("new UI plan mode and goal mode", () => {
     },
   );
 
+  realTest(
+    "plan mode switched on one page shows on another page with the same chat, both ways (#2812)",
+    async ({ realApp }) => {
+      const first = await realApp.open({ path: "/" });
+      await newChat(first);
+      await box(first).fill("count_reply shared");
+      await box(first).press("Enter");
+      await expect(first.getByText(/count-\d+ shared/)).toBeVisible({ timeout: 60_000 });
+      const second = await realApp.open({ path: "/" });
+      await second
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: /count_reply shared/ })
+        .first()
+        .click();
+      await expect(box(second)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(off(second)).toBeVisible({ timeout: 30_000 });
+
+      await off(first).click();
+      await expect(on(first)).toBeVisible({ timeout: 1_000 });
+      await expect(on(second)).toBeVisible({ timeout: 5_000 });
+      await on(second).click();
+      await expect(off(second)).toBeVisible({ timeout: 1_000 });
+      await expect(off(first)).toBeVisible({ timeout: 5_000 });
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest("a goal is set from the palette, paused, resumed and dropped", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });
     await newChat(page);

@@ -1193,6 +1193,14 @@ export interface SessionSettledEvent {
 }
 
 /**
+ * Plan mode turned on or off in the chat (a page's switch, an approved plan, the session's own mode at start), with its
+ * status after: every page that shows the chat shows it (#2812). omp's own plan mode state sends no event.
+ */
+export interface PlanModeChangedEvent extends PlanModeStatus {
+  readonly type: "plan_mode_changed";
+}
+
+/**
  * An extension's handler failed (omp's `reportRuntimeError`), with the fields omp's RPC sends for it
  * (18.12.6 `modes/rpc/rpc-mode.ts:1659-1661`): the extension's file, the event it was handling, and the error's message.
  */
@@ -1274,7 +1282,8 @@ export type ChatEvent =
   | LiveEvent
   | BtwDeltaEvent
   | BtwRecordEvent
-  | PauseChangedEvent;
+  | PauseChangedEvent
+  | PlanModeChangedEvent;
 
 /** omp's `/btw` answering: the next piece of a side question's answer (omp's `btw_delta`). */
 export interface BtwDeltaEvent {
