@@ -1451,6 +1451,9 @@ export class ChatSessionPortRuntime {
         threadId,
         paused: event.pausedAt !== null,
       });
+    } else if (event.type === "session_info_update") {
+      // omp named the chat (#2798): the list reads its title again.
+      this.#context.processRegistry.noteTitleChanged(threadId);
     }
   }
 

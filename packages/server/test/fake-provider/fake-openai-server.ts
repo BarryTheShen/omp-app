@@ -477,6 +477,8 @@ function reply(request: Request): Reply {
   // omp's request to name the chat (`title-fork.md`, #2798): one card title, as a model gives it.
   if (prompt.includes("<title-request>"))
     return { text: '<title emoji="🧪" code="FAKE">Fake chat title marker</title>' };
+  // omp's title model naming a chat from its conversation (`renameTitle`: an old chat opened, #2798), as a `<chat>` block.
+  if (prompt.startsWith("<chat>")) return { text: "<title>Fake old chat title</title>" };
   // `context_has <word>`: whether any earlier message the model was sent holds <word>. A `!!` run (#839) is kept out of the
   // model's context, so its command and output must not reach it; a plain `!` run does.
   const contextProbe = /context_has\s+(\S+)/.exec(prompt);

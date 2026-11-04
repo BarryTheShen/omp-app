@@ -167,3 +167,44 @@ describe("the session file port publishes pauses and lists the paused chats", ()
     expect(await list({ folder: "/workspace/other" }, handlerContext)).toEqual({ chats: [] });
   });
 });
+
+describe("the session file port publishes a chat its omp names (#2798)", () => {
+  test("a title change publishes the chat's file as updated, so the list reads its title again", async () => {
+    const threadId = ThreadId.parse("chat-named");
+    const hooks: ((threadId: ThreadId) => void)[] = [];
+    const published: unknown[] = [];
+    const context = {
+      sessionFileStore: {
+        findSession: async (sessionId: string) =>
+          sessionId === threadId
+            ? { cwd: "/workspace/app", sessionFile: "/workspace/app/.omp/chat-named.jsonl" }
+            : undefined,
+        onBackground: () => () => undefined,
+      },
+      processTitles: {
+        onTitleChange: (listener: (threadId: ThreadId) => void) => {
+          hooks.push(listener);
+          return () => undefined;
+        },
+      },
+      publish: (_stream: unknown, payload: unknown) => {
+        published.push(payload);
+        return undefined;
+      },
+      watchStreamActivity: () => () => undefined,
+    } as unknown as A1PortContext;
+    createSessionFileStoreRegistration(context);
+
+    for (const listener of hooks) listener(threadId);
+    await settle();
+
+    expect(published).toEqual([
+      {
+        folder: "/workspace/app",
+        sessionFile: "/workspace/app/.omp/chat-named.jsonl",
+        id: threadId,
+        kind: "updated",
+      },
+    ]);
+  });
+});

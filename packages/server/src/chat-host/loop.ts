@@ -101,6 +101,7 @@ import type { ChatSession } from "./session-factory";
 import { isSessionSettled, SettleWatcher } from "./settle";
 import { SignIn } from "./sign-in";
 import { cancelSubagent, readSubagentTranscript, SubagentRoster, steerSubagent } from "./subagents";
+import { nameUntitledChat } from "./title";
 import { HostRequests, HostUIContext } from "./ui-context";
 
 export interface ChatLoopOptions {
@@ -355,6 +356,15 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const stopPauseEvents = agentPauseGate.onChange(() =>
     emit({ type: "pause_changed", pausedAt: agentPauseGate.pausedAt ?? null }),
   );
+  // Every name omp gives the chat (from its first message, a replan's refresh, an old chat named below, a /rename)
+  // reaches the chat list as it is given (#2798): the list read it from the chat's file only when something else changed.
+  const stopTitleEvents = session.sessionManager.onSessionNameChanged(() =>
+    emit({
+      type: "session_info_update",
+      sessionId: session.sessionId,
+      title: session.sessionName ?? null,
+    }),
+  );
   // A goal journaled in the session comes back (paused if it was active, as omp's terminal does at start).
   await goal.reconcile();
   await goal.settled();
@@ -369,6 +379,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     );
   });
   await emitAvailableCommands();
+  // An old chat, from before omp named the app's chats, gets a title from its conversation (#2798).
+  void nameUntitledChat(session).catch((error: unknown) =>
+    log(`chat host: the chat could not be named: ${errorMessage(error)}`),
+  );
 
   /**
    * A session change (`new_session`, `branch`, `fork`), in omp's order (`rpc-mode.ts:1994-2032`). Once made, input read
@@ -1173,6 +1187,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // is disposed by the entry.
   stopAttached();
   stopPauseEvents();
+  stopTitleEvents();
   requests.closeAll("The app closed the chat");
   hostUris.clear();
   // The live call (microphone, socket) ends before the session it hands work to, as in omp.

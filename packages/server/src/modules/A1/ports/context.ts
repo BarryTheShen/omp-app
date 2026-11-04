@@ -65,6 +65,10 @@ export interface A1PortContext {
     ): () => void;
     pausedIn(folder: string): readonly { readonly id: ThreadId; readonly pausedAt: number }[];
   };
+  /** Each time a chat's omp names it (#2798): the chat list reads that chat's file again for its title. */
+  readonly processTitles?: {
+    onTitleChange(listener: (threadId: ThreadId) => void): () => void;
+  };
   /** The chats the app continues after a usage limit (#2781) by folder, and each change, with the chat's folder if known. */
   readonly processContinue?: {
     onContinueChange(
@@ -88,9 +92,7 @@ export interface A1PortContext {
         hold: UsagePauseHold | null,
       ) => void,
     ): () => void;
-    usagePausesIn(
-      folder: string,
-    ): readonly {
+    usagePausesIn(folder: string): readonly {
       readonly id: ThreadId;
       readonly percent: number;
       readonly hold: UsagePauseHold | null;

@@ -138,6 +138,7 @@ export class OmpProcessRegistry {
   readonly #pauseListeners = new Set<
     (threadId: ThreadId, folder: string, pausedAt: number | null) => void
   >();
+  readonly #titleListeners = new Set<(threadId: ThreadId) => void>();
 
   constructor(options: OmpProcessRegistryOptions) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
@@ -421,6 +422,29 @@ export class OmpProcessRegistry {
     this.#pauseListeners.add(listener);
     return () => {
       this.#pauseListeners.delete(listener);
+    };
+  }
+
+  /**
+   * The thread's omp named it, or named it again (its first message, a replan's refresh, an old chat named, a rename;
+   * #2798): the title the chat list shows is out of date. Listeners hear it while a process is held for the thread.
+   */
+  noteTitleChanged(threadId: ThreadId): void {
+    if (!this.#entries.has(threadId)) return;
+    for (const listener of this.#titleListeners) {
+      try {
+        listener(threadId);
+      } catch {
+        // A title observer must not break the chat's events or other observers.
+      }
+    }
+  }
+
+  /** Calls `listener` each time a thread's omp names it; the returned function stops it. */
+  onTitleChange(listener: (threadId: ThreadId) => void): () => void {
+    this.#titleListeners.add(listener);
+    return () => {
+      this.#titleListeners.delete(listener);
     };
   }
 

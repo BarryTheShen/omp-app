@@ -640,6 +640,7 @@ export async function createCompositionServer(
     sessionFileStore,
     processBusy: processRegistry,
     processPause: processRegistry,
+    processTitles: processRegistry,
     processContinue: a0Runtime.continuing,
     processUsagePause: a0Runtime.usagePauses,
     configStore,

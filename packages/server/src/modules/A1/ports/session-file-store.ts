@@ -135,6 +135,39 @@ function sessionPauseBindings(context: A1PortContext): readonly A1EventBinding[]
   ];
 }
 
+/**
+ * A chat its omp named, or named again (#2798), is published as updated, so clients read its file again for the title:
+ * nothing else changes in the file then, and the list read it only when something else did.
+ */
+function sessionTitleBindings(context: A1PortContext): readonly A1EventBinding[] {
+  const titles = context.processTitles;
+  if (titles === undefined) return [];
+  return [
+    {
+      event: "changed",
+      subscribe: (listener) =>
+        titles.onTitleChange((threadId) => {
+          context.sessionFileStore
+            .findSession(threadId)
+            .then((file) => {
+              if (file === undefined) return;
+              listener(
+                SessionFileChanged.parse({
+                  folder: file.cwd,
+                  sessionFile: file.sessionFile,
+                  id: threadId,
+                  kind: "updated",
+                }),
+              );
+            })
+            .catch((error: unknown) => {
+              context.logger?.warn("session.title_unreadable", { message: String(error) });
+            });
+        }),
+    },
+  ];
+}
+
 /** A chat the app will continue after its usage limit, or no longer will (#2781), changes the time its row shows. */
 function sessionContinueBindings(context: A1PortContext): readonly A1EventBinding[] {
   const continuing = context.processContinue;
@@ -322,6 +355,7 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
     [
       ...sessionTurnBindings(context),
       ...sessionPauseBindings(context),
+      ...sessionTitleBindings(context),
       ...sessionContinueBindings(context),
       ...sessionUsagePauseBindings(context),
       removalBinding(removals),

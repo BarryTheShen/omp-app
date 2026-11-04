@@ -1,3 +1,5 @@
+import { appendFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
@@ -223,6 +225,33 @@ realTest.describe("new UI chat list: the chat's title from omp", () => {
         timeout: 90_000,
       });
       await expect(chats.getByRole("button", { name: /^rename the export/ })).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});
+
+/** An old chat, from before omp named the app's chats, is named from its conversation once it opens (#2798). */
+realTest.describe("new UI chat list: an old chat's title from omp", () => {
+  realTest.setTimeout(240_000);
+  realTest.use({ serverEnv: { PI_NO_TITLE: "" }, seedSessions: 1 });
+
+  realTest(
+    "an old chat with no title takes one from its conversation once it opens (#2798)",
+    async ({ realApp }) => {
+      // omp names it with its title model (the `tiny` role, as `/rename` does): here the fake model.
+      await appendFile(
+        join(realApp.agentDir, "config.yml"),
+        "\nmodelRoles:\n  tiny: fake/fake-model\n",
+      );
+      const page = await realApp.open({ path: "/" });
+      const chats = page.getByRole("navigation", { name: "Chats" });
+      const old = chats.getByRole("button", { name: /^Seeded chat 1/ });
+      await expect(old).toBeVisible({ timeout: 120_000 });
+      await old.click();
+      await expect(chats.getByRole("button", { name: /Fake old chat title/ })).toBeVisible({
+        timeout: 90_000,
+      });
+      await expect(old).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
     },
   );
