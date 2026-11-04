@@ -97,6 +97,23 @@ describe("the ask dialog", () => {
       ],
     });
   });
+
+  test("a note on an answer goes to omp with it, trimmed; a blank note is no note", async () => {
+    const { ui, answer } = harness();
+    ui.askDialogEnabled = true;
+    const noted = ui.askDialog?.(questions);
+    answer(0, {
+      answers: [{ id: "colour", selectedOptions: ["red"], note: "  matches the logo  " }],
+    });
+    const withNote = await noted;
+    if (withNote?.kind !== "submit") throw new Error("expected answers");
+    expect(withNote.results[0]?.note).toBe("matches the logo");
+    const blank = ui.askDialog?.(questions);
+    answer(1, { answers: [{ id: "colour", selectedOptions: ["red"], note: "   " }] });
+    const withoutNote = await blank;
+    if (withoutNote?.kind !== "submit") throw new Error("expected answers");
+    expect(withoutNote.results[0]).not.toHaveProperty("note");
+  });
 });
 
 describe("what is on show, for a server that attaches later", () => {

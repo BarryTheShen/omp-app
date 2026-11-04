@@ -367,7 +367,8 @@ export function TranscriptList({
   }, [positioned, firstIndex, hasOlder, onNearTop]);
 
   return (
-    <div className="relative min-h-0 flex-1">
+    // At least a quarter of the chat stays the conversation's, under questions or an approval too (#2795).
+    <div className="relative min-h-[25%] flex-1">
       <section ref={scrollRef} className="tr-root tl-scroll" aria-label={label}>
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {items.map((item) => {

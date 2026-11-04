@@ -1,24 +1,23 @@
 import type {
   ApproveAnswer,
   ApproveDialog,
-  AskDialog,
   HostDialogAnswer,
   HostDialogRequest,
 } from "@omp-app/contracts/chat-host";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatController } from "./controller";
+import { OptionText, QuestionsDialog } from "./QuestionsDialog";
 import { SignInPage } from "./SignInPage";
 
 type Answer = (answer: HostDialogAnswer) => void;
 
 /**
  * What omp waits on, above the message box: the oldest open dialog (a tool approval, questions, a choice, a text), one
- * at a time; the count of the others shows under it.
+ * at a time; the count of the others shows under it. It takes at most about half the chat's height (most of a phone's
+ * screen) and scrolls inside, so the conversation stays in view above it (#2795).
  */
 export function HostRequests({
   controller,
@@ -30,8 +29,8 @@ export function HostRequests({
   const request = requests[0];
   if (request === undefined) return null;
   return (
-    <div className="px-4 pt-2">
-      <div className="mx-auto max-w-[720px]">
+    <div className="flex max-h-[55%] min-h-0 flex-col px-4 pt-2 max-sm:max-h-[70%]">
+      <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-col">
         <RequestCard
           key={request.id}
           controller={controller}
@@ -64,6 +63,16 @@ function RequestCard({
       )
       .finally(() => setBusy(false));
   };
+  if (request.method === "ui.ask")
+    return (
+      <QuestionsDialog
+        dialog={request.params}
+        busy={busy}
+        error={error}
+        waiting={waiting}
+        onAnswer={answer}
+      />
+    );
   let title: string;
   let body: ReactNode;
   switch (request.method) {
@@ -72,10 +81,6 @@ function RequestCard({
       body = <Approval dialog={request.params} busy={busy} onAnswer={answer} />;
       break;
     }
-    case "ui.ask":
-      title = "Questions from omp";
-      body = <Questions dialog={request.params} busy={busy} onAnswer={answer} />;
-      break;
     case "ui.select":
       title = request.params.title;
       body = (
@@ -140,7 +145,7 @@ function RequestCard({
     <section
       role="dialog"
       aria-label={title}
-      className="flex flex-col gap-3 rounded-xl border border-l3 bg-card p-3.5 shadow-md"
+      className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-l3 bg-card p-3.5 shadow-md"
     >
       <p className="font-medium text-t1">{title}</p>
       {body}
@@ -226,152 +231,6 @@ function Approval({
 function Keycap({ children }: { readonly children: ReactNode }): ReactNode {
   return (
     <kbd className="rounded-sm border border-l2 px-1 font-mono text-[11px] text-t2">{children}</kbd>
-  );
-}
-
-/** omp's `ask`: every question with its options (one or several), the recommended one marked, and a typed answer. */
-function Questions({
-  dialog,
-  busy,
-  onAnswer,
-}: {
-  readonly dialog: AskDialog;
-  readonly busy: boolean;
-  readonly onAnswer: Answer;
-}): ReactNode {
-  const { questions } = dialog;
-  const [picked, setPicked] = useState<readonly (readonly string[])[]>(() =>
-    questions.map(() => []),
-  );
-  const [typed, setTyped] = useState<readonly string[]>(() => questions.map(() => ""));
-  const answered = (index: number): boolean =>
-    (picked[index]?.length ?? 0) > 0 || (typed[index] ?? "").trim() !== "";
-  const pick = (index: number, next: readonly string[]): void =>
-    setPicked(picked.map((current, at) => (at === index ? next : current)));
-  const submit = (): void =>
-    onAnswer({
-      answers: questions.map((question, index) => {
-        const text = (typed[index] ?? "").trim();
-        return {
-          id: question.id,
-          selectedOptions: [...(picked[index] ?? [])],
-          ...(text === "" ? {} : { customInput: text }),
-        };
-      }),
-    });
-  return (
-    <>
-      {questions.map((question, index) => {
-        const chosen = picked[index] ?? [];
-        return (
-          <fieldset key={question.id} className="flex flex-col gap-2">
-            <legend className="mb-2 text-t1">
-              {question.header !== undefined && (
-                <span className="mr-2 text-xs text-t3">{question.header}</span>
-              )}
-              {question.question}
-            </legend>
-            {question.multi === true ? (
-              question.options.map((option, at) => (
-                // biome-ignore lint/a11y/noLabelWithoutControl: the checkbox inside is the control
-                <label key={option.label} className="flex items-start gap-2.5">
-                  <Checkbox
-                    className="mt-0.5"
-                    aria-label={option.label}
-                    checked={chosen.includes(option.label)}
-                    onCheckedChange={(checked) =>
-                      pick(
-                        index,
-                        checked
-                          ? [...chosen, option.label]
-                          : chosen.filter((label) => label !== option.label),
-                      )
-                    }
-                  />
-                  <OptionText
-                    label={option.label}
-                    description={option.description}
-                    recommended={question.recommended === at}
-                  />
-                </label>
-              ))
-            ) : (
-              <RadioGroup
-                value={chosen[0] ?? null}
-                onValueChange={(value) => pick(index, typeof value === "string" ? [value] : [])}
-              >
-                {question.options.map((option, at) => (
-                  // biome-ignore lint/a11y/noLabelWithoutControl: the radio inside is the control
-                  <label key={option.label} className="flex items-start gap-2.5">
-                    <RadioGroupItem
-                      className="mt-0.5"
-                      value={option.label}
-                      aria-label={option.label}
-                    />
-                    <OptionText
-                      label={option.label}
-                      description={option.description}
-                      recommended={question.recommended === at}
-                    />
-                  </label>
-                ))}
-              </RadioGroup>
-            )}
-            <Input
-              aria-label={`Your own answer: ${question.question}`}
-              placeholder="Or type your own answer"
-              value={typed[index] ?? ""}
-              onChange={(event) =>
-                setTyped(typed.map((current, at) => (at === index ? event.target.value : current)))
-              }
-            />
-          </fieldset>
-        );
-      })}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          disabled={busy || !questions.every((_, index) => answered(index))}
-          onClick={submit}
-        >
-          Send answers
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={busy}
-          onClick={() => onAnswer({ cancelled: true })}
-        >
-          Skip
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function OptionText({
-  label,
-  description,
-  recommended,
-}: {
-  readonly label: string;
-  readonly description: string | undefined;
-  readonly recommended: boolean;
-}): ReactNode {
-  return (
-    <span className="flex min-w-0 flex-col">
-      <span className="break-words text-t1">
-        {label}
-        {recommended && (
-          <span className="ml-2 rounded-sm bg-l2 px-1.5 py-0.5 text-[11px] text-accent-ink">
-            Recommended
-          </span>
-        )}
-      </span>
-      {description !== undefined && (
-        <span className="break-words text-xs text-t3">{description}</span>
-      )}
-    </span>
   );
 }
 

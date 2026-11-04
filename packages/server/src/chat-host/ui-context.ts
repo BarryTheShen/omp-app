@@ -225,6 +225,7 @@ function readAskAnswer(
           `Ask dialog answer ${JSON.stringify(question.id)} is single-select but carries more than one answer`,
         );
       }
+      const note = given.note?.trim() || undefined;
       return {
         id: question.id,
         question: question.question,
@@ -232,6 +233,7 @@ function readAskAnswer(
         multi,
         selectedOptions: selected,
         customInput: custom,
+        ...(note === undefined ? {} : { note }),
       };
     }),
   };

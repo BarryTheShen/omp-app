@@ -20,7 +20,10 @@ export type ValueAnswer = z.infer<typeof ValueAnswer>;
 export const ConfirmAnswer = z.union([z.object({ confirmed: z.boolean() }), Cancelled]);
 export type ConfirmAnswer = z.infer<typeof ConfirmAnswer>;
 
-/** One answer per question, in question order; the host checks them against the questions as omp does. */
+/**
+ * One answer per question, in question order; the host checks them against the questions as omp does. `note` is a note
+ * on the answer, which omp passes to the agent with it (omp's ask dialog, `n`).
+ */
 export const AskAnswer = z.union([
   z.object({
     answers: z.array(
@@ -28,6 +31,7 @@ export const AskAnswer = z.union([
         id: z.string(),
         selectedOptions: z.array(z.string()),
         customInput: z.string().optional(),
+        note: z.string().optional(),
       }),
     ),
   }),

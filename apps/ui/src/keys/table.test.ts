@@ -37,6 +37,18 @@ describe("the app's keys", () => {
       label: "",
     } as const;
     expect(collisions([fold, send])).toEqual([]);
+    // A menu takes its own keys first: a pane's key on the same chord does not act there; a workspace key does.
+    const menuKey = {
+      id: "menuKey",
+      hotkey: "alt+h",
+      scope: "menu",
+      group: "Message box",
+      label: "",
+    } as const;
+    expect(collisions([{ ...fold, id: "paneKey", hotkey: "alt+h" }, menuKey])).toEqual([]);
+    expect(collisions([{ ...tab, id: "everywhere", hotkey: "alt+h" }, menuKey])).toEqual([
+      "everywhere and menuKey: alt+h",
+    ]);
   });
 
   test("keys compare by their modifiers whatever the order, and read as keycaps", () => {

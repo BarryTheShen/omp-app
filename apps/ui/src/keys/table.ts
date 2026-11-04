@@ -4,8 +4,11 @@
  * bindings that can act at once share a key.
  */
 
-/** Where a key acts: anywhere in the app, in the focused pane, or in its message box. */
-export type KeyScope = "workspace" | "pane" | "box";
+/**
+ * Where a key acts: anywhere in the app, in the focused pane, in its message box, or in an open menu, which takes its
+ * own keys first.
+ */
+export type KeyScope = "workspace" | "pane" | "box" | "menu";
 
 export interface KeyBinding {
   readonly id: string;
@@ -248,15 +251,22 @@ const TABLE = {
   model: { hotkey: "alt+p", scope: "box", group: "Message box", label: "Choose the model" },
   starModel: {
     hotkey: "alt+s",
-    scope: "box",
+    scope: "menu",
     group: "Message box",
     label: "In the model menu: star or unstar the highlighted model",
   },
   hideModel: {
     hotkey: "alt+h",
-    scope: "box",
+    scope: "menu",
     group: "Message box",
     label: "In the model menu: hide or show the highlighted model",
+  },
+  // omp's own key for its question dialog (`app.ask.hide`).
+  askHide: {
+    hotkey: "alt+h",
+    scope: "pane",
+    group: "Message box",
+    label: "Hide or show the questions omp asks",
   },
   nextRole: {
     hotkey: "ctrl+p",
@@ -394,11 +404,15 @@ export function keycap(binding: Pick<KeyBinding, "hotkey">, apple = APPLE): stri
     .join(apple ? "" : "+");
 }
 
-/** Which scopes act together: a workspace key acts in a pane and in its box too, a pane's key in its box. */
+/**
+ * Which scopes act together: a workspace key acts in a pane, its box and an open menu too, a pane's key in its box. An
+ * open menu takes its keys first (`preventDefault`), so a pane's key on the same chord does not act there.
+ */
 const REACHES: Record<KeyScope, readonly KeyScope[]> = {
-  workspace: ["workspace", "pane", "box"],
+  workspace: ["workspace", "pane", "box", "menu"],
   pane: ["pane", "box"],
   box: ["box"],
+  menu: ["menu"],
 };
 
 /** Pairs of bindings that share a key where both act; empty when the table is sound. */

@@ -116,7 +116,7 @@ realTest.describe("new UI inbox", () => {
       await expect(inbox(page)).toBeHidden();
 
       await questions.getByRole("radio", { name: "Postgres" }).click();
-      await questions.getByRole("button", { name: "Send answers" }).click();
+      await questions.getByRole("button", { name: "Submit" }).click();
       await expect(questions).toBeHidden();
       await expect(bell(page)).toHaveAccessibleName("Inbox");
       await bell(page).click();

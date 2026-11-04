@@ -1445,6 +1445,42 @@ const BROWSER_TOUR: Tour = {
   ],
 };
 
+const QUESTIONS = part("questions");
+const QUESTIONS_HIDDEN = part("questions-hidden");
+
+const QUESTIONS_TOUR: Tour = {
+  id: "questions-2026-11-03",
+  title: "omp's questions, one at a time",
+  minutes: 2,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Have omp ask you",
+      text: "Type <b>Ask me two quick questions with your ask tool, one with several answers</b> and send it. omp's questions show above the message box.",
+      action: { kind: "appears", selector: QUESTIONS },
+    },
+    {
+      target: QUESTIONS,
+      title: "A tab for each question",
+      text: "Pick an answer, or <b>Other…</b> to type your own; <b>Next</b> moves on, and <b>Review</b> shows every answer before <b>Submit</b>. <b>Note</b> adds a note the agent gets with your answer.",
+      action: next,
+    },
+    {
+      target: QUESTIONS,
+      title: "Hide them for now",
+      text: "Click <b>Hide</b>, or press {askHide}: the questions fold into one line above the message box, and the chat reads and scrolls freely.",
+      action: { kind: "appears", selector: QUESTIONS_HIDDEN },
+    },
+    {
+      target: QUESTIONS_HIDDEN,
+      title: "Back to them",
+      text: "Click <b>Show</b>: they come back as you left them. Answer them and press <b>Submit</b>; <b>Skip</b> closes them unanswered.",
+      action: { kind: "appears", selector: QUESTIONS },
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1459,6 +1495,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-03-questions",
+    when: "2026-11-03T19:30:00-06:00",
+    summary:
+      "omp's questions come one at a time, as omp's own question dialog asks them: a tab for each, Next and Review, Other… to type your own, a note on an answer, and Hide to fold them into one line until you are ready. They take at most about half the chat, so the conversation stays in view.",
+    tours: [QUESTIONS_TOUR],
+  },
   {
     id: "2026-11-03-browser",
     when: "2026-11-03T12:18:00-06:00",

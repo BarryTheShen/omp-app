@@ -784,6 +784,44 @@ function reply(request: Request): Reply {
       },
       thinking: "I need to ask, and SQLite is the one I recommend.",
     };
+  // The question dialog (#2795): three questions with short headers, descriptions, a preview, one with several
+  // answers, and a recommended answer where there is one.
+  if (prompt.includes("ask_three"))
+    return {
+      tool: "ask",
+      args: {
+        questions: [
+          {
+            id: "db",
+            header: "Database",
+            question: "Which database?",
+            options: [
+              { label: "Postgres", description: "A server; best with many writers." },
+              {
+                label: "SQLite",
+                description: "One file; nothing to run.",
+                preview: 'preview-marker-3c9e: open("app.db")',
+              },
+            ],
+            recommended: 1,
+          },
+          {
+            id: "tools",
+            header: "Tools",
+            question: "Which tools should run?",
+            options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
+            multi: true,
+          },
+          {
+            id: "name",
+            header: "Name",
+            question: "What should the file be called?",
+            options: [{ label: "notes.md" }, { label: "plan.md" }],
+          },
+        ],
+      },
+      thinking: "I need to ask three questions.",
+    };
   // Issue #1327: one question whose text, one option label and one option description each hold a 100-character
   // word with no spaces. The ask dialog must wrap that word inside the dialog.
   if (prompt.includes("ask_long_word")) {

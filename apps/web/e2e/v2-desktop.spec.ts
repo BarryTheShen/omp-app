@@ -271,7 +271,7 @@ realTest.describe("new UI in the desktop window", () => {
       // In the foreground, nothing is raised.
       await ask();
       await questions.getByRole("radio", { name: "Postgres" }).click();
-      await questions.getByRole("button", { name: "Send answers" }).click();
+      await questions.getByRole("button", { name: "Submit" }).click();
       await expect(questions).toBeHidden();
       await expect(page.getByText(/^tool said: /).last()).toContainText("Postgres", {
         timeout: 60_000,

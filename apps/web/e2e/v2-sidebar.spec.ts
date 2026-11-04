@@ -42,7 +42,7 @@ realTest.describe("new UI chat list and pane keys", () => {
       // Answering takes it off the list of chats waiting for you.
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
       await questions.getByRole("radio", { name: "Postgres" }).click();
-      await questions.getByRole("button", { name: "Send answers" }).click();
+      await questions.getByRole("button", { name: "Submit" }).click();
       await expect(waiting).toHaveCount(0, { timeout: 60_000 });
 
       expect(realApp.problems).toEqual([]);
