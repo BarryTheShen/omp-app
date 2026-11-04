@@ -610,7 +610,9 @@ export const Composer = memo(function Composer({
               className={`${phone ? "size-11 shrink-0" : "tablet:size-11"}${working ? " text-accent-ink" : ""}`}
               aria-label={working ? "Queue" : "Send"}
               data-tour="send-button"
-              disabled={disabled || sending || !typed}
+              // While the chat opens, Send waits for it ("Sends once the chat is open"), as Enter does: a phone has
+              // only this button to send with.
+              disabled={closed || sending || !typed}
             />
           }
         >
@@ -667,7 +669,10 @@ export const Composer = memo(function Composer({
         )}
         {/* An error has a line of its own, as wide as the box and wrapping: a cut one can't be read. */}
         {status !== null && (phone || error !== null) && (
-          <p className="px-1 pb-1.5 text-xs text-pretty break-words text-bad-ink" role="status">
+          <p
+            className={`px-1 pb-1.5 text-xs text-pretty break-words ${error === null ? "text-t2" : "text-bad-ink"}`}
+            role="status"
+          >
             {status}
           </p>
         )}

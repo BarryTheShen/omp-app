@@ -767,4 +767,38 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "a message typed while the chat opens is sent by Send once the chat is open, as Enter does on a computer",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      // A slow link: the chat's open answers 5 s late.
+      await context.routeWebSocket(/\/ws\?/, (socket) => {
+        const server = socket.connectToServer();
+        socket.onMessage((message) => {
+          if (String(message).includes('"method":"open"'))
+            setTimeout(() => server.send(message), 5_000);
+          else server.send(message);
+        });
+        server.onMessage((message) => socket.send(message));
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Opening the chat…", {
+        timeout: 60_000,
+      });
+      await box(page).fill("count_reply early");
+      // Tapped at once: before the chat is open, which the button does not wait for.
+      await page.getByRole("button", { name: "Send" }).tap({ force: true });
+      await expect(
+        page.getByRole("status").filter({ hasText: "Sends once the chat is open" }),
+      ).toBeVisible();
+      await expect(page.getByText(/count-\d+ early/)).toBeVisible({ timeout: 60_000 });
+      await expect(box(page)).toHaveValue("");
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });
