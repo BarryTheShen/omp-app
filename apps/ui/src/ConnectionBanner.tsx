@@ -1,6 +1,7 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { reloadKeepingChat } from "./reloadKeepsChat";
 import { useAppUpdated } from "./update";
 
 /** What a refused link means, in the words a person acts on. */
@@ -33,7 +34,7 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
       <div role="status" className={PLACE}>
         <span className="size-1.5 shrink-0 rounded-full bg-accent-ink" />
         <span className="min-w-0">The app was updated. Reload to use the new version.</span>
-        <Button size="xs" variant="secondary" onClick={() => window.location.reload()}>
+        <Button size="xs" variant="secondary" onClick={reloadKeepingChat}>
           Reload
         </Button>
       </div>
@@ -56,7 +57,7 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
         </Button>
       )}
       {!reconnecting && state.refusal === undefined && (
-        <Button size="xs" variant="secondary" onClick={() => window.location.reload()}>
+        <Button size="xs" variant="secondary" onClick={reloadKeepingChat}>
           Reload
         </Button>
       )}

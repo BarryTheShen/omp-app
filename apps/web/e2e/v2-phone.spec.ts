@@ -856,4 +856,59 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "the update banner's Reload comes back to the chat that was open; a launch still opens on a new chat (#2819)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      await context.addInitScript(() => {
+        let hidden = false;
+        Object.defineProperty(document, "visibilityState", {
+          get: () => (hidden ? "hidden" : "visible"),
+          configurable: true,
+        });
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden = (on) => {
+          hidden = on;
+          document.dispatchEvent(new Event("visibilitychange"));
+        };
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("count_reply kept");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const reply = page.getByRole("region", { name: "Transcript" }).getByText(/count-\d+ kept/);
+      await expect(reply).toBeVisible({ timeout: 60_000 });
+
+      // A new build goes live; the banner's Reload.
+      await page.route(/\/$/, async (route) => {
+        const response = await route.fetch();
+        const html = (await response.text()).replace(
+          /\/assets\/index-[\w-]+\.js/,
+          "/assets/index-next.js",
+        );
+        await route.fulfill({ response, body: html });
+      });
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(true),
+      );
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(false),
+      );
+      const banner = page.getByRole("status").filter({ hasText: "The app was updated" });
+      await expect(banner).toBeVisible({ timeout: 30_000 });
+      await page.unroute(/\/$/);
+      await banner.getByRole("button", { name: "Reload" }).tap();
+      await expect(reply).toBeVisible({ timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+
+      // Opened again by itself (a launch: no Reload asked for it), the app opens on a new chat, as before.
+      await page.reload();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(reply).toHaveCount(0);
+      await context.close();
+    },
+  );
 });
