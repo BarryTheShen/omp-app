@@ -52,6 +52,7 @@ realTest.describe("new UI on a tablet", () => {
       await square(page.getByRole("button", { name: "New workspace" }).last());
       await square(page.getByRole("button", { name: "What's new" }));
       await square(page.getByRole("button", { name: "Settings", exact: true }).first());
+      await square(page.getByRole("button", { name: "Hide the chat list" }));
 
       await tall(page.getByRole("button", { name: /^Model: / }));
       await tall(page.getByRole("button", { name: /^Thinking: / }));
@@ -79,11 +80,18 @@ realTest.describe("new UI on a tablet", () => {
       expect(fits).toEqual({ pageWider: 0, outside: 0 });
 
       await page.keyboard.press("Control+Shift+O");
-      // The split is a blank window with the caret on its New chat.
+      // The split is a blank window with the caret on its New chat; its New chat and Close are a finger's size (#2814).
+      await square(page.getByRole("button", { name: "Close the window" }));
+      await tall(page.locator("[data-new-chat]").last());
       await page.keyboard.press("Enter");
       await expect(box(page)).toHaveCount(2, { timeout: 60_000 });
       await tall(page.locator(".dv-tab").first());
       await square(page.getByRole("button", { name: "Close Seeded chat 1" }));
+      // Two panes and a side panel: each pane's model chip gives way, but not below a finger's width.
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+      const models = page.getByRole("button", { name: /^Model: / });
+      await expect(models).toHaveCount(2);
+      for (const chip of await models.all()) await square(chip);
       expect(realApp.problems).toEqual([]);
       await context.close();
     },

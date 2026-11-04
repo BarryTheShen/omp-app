@@ -1092,7 +1092,7 @@ function BlankWindow({ containerApi, group }: IWatermarkPanelProps): ReactNode {
           variant="ghost"
           size="icon-sm"
           aria-label="Close the window"
-          className="absolute top-1.5 right-1.5 text-t3 hover:text-t1"
+          className="absolute top-1.5 right-1.5 text-t3 hover:text-t1 tablet:size-11"
           onClick={() => containerApi.removeGroup(group)}
         >
           <X />
@@ -1108,6 +1108,7 @@ function BlankWindow({ containerApi, group }: IWatermarkPanelProps): ReactNode {
         ref={newChat}
         data-new-chat=""
         size="sm"
+        className="tablet:h-11"
         onClick={() => host?.newChat(containerApi, group)}
       >
         <SquarePen />

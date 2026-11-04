@@ -333,7 +333,7 @@ export function Sidebar({
             data-tour="chat-list-hide"
             variant="ghost"
             size="icon-sm"
-            className="shrink-0 text-t3 hover:text-t1"
+            className="shrink-0 text-t3 hover:text-t1 tablet:size-11"
             aria-label="Hide the chat list"
             title={`Hide the chat list  ${keycap(KEYS.chatList)}`}
             onClick={onHide}

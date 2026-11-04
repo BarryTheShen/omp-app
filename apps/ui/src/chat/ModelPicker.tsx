@@ -277,8 +277,8 @@ export function ModelPicker({
             type="button"
             variant="ghost"
             size="sm"
-            // The chip gives way first on a narrow box, so Send stays in it.
-            className="max-w-56 min-w-0 shrink gap-1 text-t2 hover:text-t1 tablet:h-11"
+            // The chip gives way first on a narrow box, so Send stays in it; on a tablet not below a finger's width (#2814).
+            className="max-w-56 min-w-0 shrink gap-1 text-t2 hover:text-t1 tablet:h-11 tablet:min-w-11"
             aria-label={`Model: ${model?.name ?? "none"}${named === null ? "" : ` (${named})`}`}
             disabled={disabled}
           />
