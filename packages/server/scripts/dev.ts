@@ -731,7 +731,9 @@ export async function createCompositionServer(
             logger,
           }),
     edge: new EdgeRelay({ port: EDGE_RELAY_PORT, logger }),
-    edgeLink: `ssh -N -L ${EDGE_RELAY_PORT}:127.0.0.1:${EDGE_RELAY_PORT} ${userInfo().username}@${hostname()}`,
+    // The laptop's end listens on its own loopback only, and ssh stops when the forward fails instead of running on
+    // unforwarded (#2796).
+    edgeLink: `ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:${EDGE_RELAY_PORT}:127.0.0.1:${EDGE_RELAY_PORT} ${userInfo().username}@${hostname()}`,
     // When "Your Edge", chosen in the panel, turns itself off: kept across restarts in the app's data folder.
     edgeChoice: {
       read: async () => {

@@ -418,7 +418,8 @@ function EdgeSection({
           </div>
           <p className="text-xs text-t3">
             Edge needs omp's relay extension, on its usual port. While Your Edge is chosen, anything
-            on this server can drive Edge.
+            on this server can drive Edge: put the extension in a profile of its own, signed in only
+            to the sites chats should reach.
           </p>
         </>
       )}

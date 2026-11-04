@@ -86,7 +86,10 @@ realTest.describe("new UI: Your Edge, through omp's relay", () => {
       await choice.getByRole("button", { name: "Your Edge" }).click();
       const section = panel(page).getByRole("region", { name: "Your Edge" });
       await expect(section).toContainText("Waiting for your Edge", { timeout: 30_000 });
-      await expect(section.locator("code")).toContainText("ssh -N -L 9224:127.0.0.1:9224 ");
+      // Loopback only on the laptop's end, and ssh stops if the forward fails (#2796).
+      await expect(section.locator("code")).toContainText(
+        "ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:9224:127.0.0.1:9224 ",
+      );
       await expect(section).toContainText("Turns itself off at");
       const settings = () => readFile(join(realApp.agentDir, "config.yml"), "utf8").catch(() => "");
       await expect.poll(settings).toMatch(/relay: true/);
