@@ -24,7 +24,7 @@ export interface BrowserSettings {
   write(key: BrowserSettingKey, value: string | boolean | null): Promise<void>;
 }
 
-/** When "Your Edge", chosen in the panel, turns itself off (ms since the epoch), kept across the server's restarts. */
+/** When "Your own browser", chosen in the panel, turns itself off (ms since the epoch), kept across the server's restarts. */
 export interface EdgeChoiceStore {
   read(): Promise<number | null>;
   write(until: number | null): Promise<void>;
@@ -46,7 +46,7 @@ export interface BrowserPortContext {
   /** First and last subscriber of every stream that begins with a prefix. */
   readonly watchStreams: (prefix: string, listener: StreamActivityListener) => () => void;
   readonly now?: () => number;
-  /** How long "Your Edge" stays chosen; `EDGE_MINUTES` unless a test says less. */
+  /** How long "Your own browser" stays chosen; `EDGE_MINUTES` unless a test says less. */
   readonly edgeMinutes?: number;
   readonly logger?: Logger;
 }
@@ -63,7 +63,7 @@ const unavailable = (message: string) =>
 
 /** The size a tab is drawn at until its viewer says. */
 const DEFAULT_SIZE = { width: 1280, height: 800 } as const;
-/** How long "Your Edge", chosen in the panel, stays on: anything on this machine can drive Edge meanwhile. */
+/** How long "Your own browser", chosen in the panel, stays on: anything on this machine can drive it meanwhile. */
 export const EDGE_MINUTES = 30;
 /** How often the relay is looked at while chats use it. */
 const EDGE_POLL_MS = 2_000;
@@ -73,10 +73,10 @@ const EDGE_POLL_MS = 2_000;
  * input, the live picture of a tab while anyone watches it (`frame` scoped by the tab's id), and which browser chats use.
  * The picture starts with the first watcher and stops with the last; frames are delivered live and never kept.
  *
- * Which browser chats use is omp's own settings: `browser.relay` (the user's Edge; whoever set it) before
- * `browser.cdpUrl` (the app's browser when it names it). "Your Edge" chosen in the panel stays on for `EDGE_MINUTES` (its
- * end kept across restarts) and then turns itself off; one set in omp's settings by hand stays until another browser is
- * chosen here. When chats use the app's browser, it starts with the server.
+ * Which browser chats use is omp's own settings: `browser.relay` (the user's own browser; whoever set it) before
+ * `browser.cdpUrl` (the app's browser when it names it). "Your own browser" chosen in the panel stays on for
+ * `EDGE_MINUTES` (its end kept across restarts) and then turns itself off; one set in omp's settings by hand stays until
+ * another browser is chosen here. When chats use the app's browser, it starts with the server.
  */
 export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntime {
   const { browser, edge, settings } = context;
@@ -90,7 +90,7 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
   const sizes = new Map<string, { width: number; height: number }>();
   /** The pictures being sent, by tab: how to stop each. */
   const watching = new Map<string, Promise<() => Promise<void>>>();
-  /** When the panel's "Your Edge" turns itself off; null when it was not chosen in the panel. */
+  /** When the panel's "Your own browser" turns itself off; null when it was not chosen in the panel. */
   let edgeUntil: number | null = null;
   let edgeTimer: ReturnType<typeof setTimeout> | undefined;
   let edgePoll: ReturnType<typeof setInterval> | undefined;
@@ -227,7 +227,7 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
     if (active) startWatching(id);
     else void stopWatching(id);
   });
-  // At start: the panel's "Your Edge" ends if its time ran out while the server was down, or keeps its time left; one
+  // At start: the panel's "Your own browser" ends if its time ran out while the server was down, or keeps its time left; one
   // set by hand is left alone. The app's browser, when chats use it, starts now so its setting reaches a running browser.
   const ready = (async () => {
     const until = await context.edgeChoice.read();

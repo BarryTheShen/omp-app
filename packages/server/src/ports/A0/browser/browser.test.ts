@@ -96,7 +96,7 @@ function runtimeOver(
 }
 
 describe("which browser chats use: omp's browser.relay", () => {
-  test("one set in omp's settings by hand outlives the server's start and has no end; choosing Your Edge starts the relay", async () => {
+  test("one set in omp's settings by hand outlives the server's start and has no end; choosing your own browser starts the relay", async () => {
     const settings = settingsOf({ "browser.relay": true });
     const edge = relay();
     const store = choiceStore(null);

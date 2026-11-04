@@ -1433,13 +1433,13 @@ const BROWSER_TOUR: Tour = {
     {
       target: BROWSER_PANEL,
       title: "Which browser chats use",
-      text: "<b>Their own browser</b> leaves it to each chat. <b>This browser</b> is a Chrome on the app's computer, shown here live: type an address, click and type in the page, and chats drive the same tabs; sign in to your sites in it once. <b>Your Edge</b> lets chats drive Edge on your computer.",
+      text: "<b>omp's hidden one</b> is a browser omp runs out of sight on the app's computer, signed in to nothing. <b>The one shown here</b> is a Chrome on the app's computer, shown live: type an address, click and type in the page, and chats drive the same tabs; sign in to your sites in it once. <b>Your own browser</b> lets chats drive the browser on your computer.",
       action: next,
     },
     {
       target: BROWSER_PANEL,
-      title: "Your Edge",
-      text: "Edge needs omp's relay extension, and your computer runs the line shown here to reach the app's computer. Once Edge connects, its tabs are listed here. While it is on, anything on the app's computer can drive Edge, so when chosen here it turns itself off after 30 minutes; <b>30 minutes more</b> keeps it.",
+      title: "Your own browser",
+      text: "Chrome, Edge or another Chromium browser with omp's relay extension: your computer runs the line shown here to reach the app's computer, and once the browser connects, its tabs are listed here. While it is on, anything on the app's computer can drive it, so put the extension in a profile of its own; chosen here, it turns itself off after 30 minutes, and <b>30 minutes more</b> keeps it.",
       action: next,
     },
   ],

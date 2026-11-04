@@ -5,11 +5,11 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, screenshots, startNewChat } from "./real-omp";
 
 /**
- * "Your Edge" (Browser and relay control, B5-B7) on the real server: choosing it runs omp's relay in the app's server and
- * sets omp's `browser.relay`; the panel shows the link to run on the laptop until the browser connects; a stand-in for
- * Edge's relay extension (the test's own WebSocket on the relay's `/ext`, speaking omp's relay protocol: it says hello
- * with one tab and answers every request) connects, and the panel lists its tab; the choice turns itself off after its
- * time (9 seconds here). The relay listens on its usual port, 9224: one test at a time.
+ * "Your own browser" (Browser and relay control, B5-B7) on the real server: choosing it runs omp's relay in the app's
+ * server and sets omp's `browser.relay`; the panel shows the line to run on the user's computer until the browser
+ * connects; a stand-in for the relay extension (the test's own WebSocket on the relay's `/ext`, speaking omp's relay
+ * protocol: it says hello with one tab and answers every request) connects, and the panel lists its tab; the choice turns
+ * itself off after its time (9 seconds here). The relay listens on its usual port, 9224: one test at a time.
  */
 realTest.use({ serverEnv: { OMP_APP_EDGE_MINUTES: "0.15" } });
 
@@ -56,7 +56,7 @@ function standInExtension(): Promise<WebSocket> {
   });
 }
 
-realTest.describe("new UI: Your Edge, through omp's relay", () => {
+realTest.describe("new UI: your own browser, through omp's relay", () => {
   realTest.setTimeout(180_000);
   let extension: WebSocket | null = null;
   realTest.afterEach(async ({ realApp }, testInfo) => {
@@ -77,15 +77,15 @@ realTest.describe("new UI: Your Edge, through omp's relay", () => {
       .getByRole("region", { name: "Browser", exact: true });
 
   realTest(
-    "Your Edge waits with the laptop's link, lists the browser's tabs once its extension connects, and turns itself off",
+    "Your own browser waits with the line to run, lists the browser's tabs once its extension connects, and turns itself off",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
       await page.getByRole("button", { name: "Browser", exact: true }).click();
       const choice = panel(page).getByRole("group", { name: "Chats use" });
-      await choice.getByRole("button", { name: "Your Edge" }).click();
-      const section = panel(page).getByRole("region", { name: "Your Edge" });
-      await expect(section).toContainText("Waiting for your Edge", { timeout: 30_000 });
+      await choice.getByRole("button", { name: "Your own browser" }).click();
+      const section = panel(page).getByRole("region", { name: "Your own browser" });
+      await expect(section).toContainText("Waiting for your browser", { timeout: 30_000 });
       // Loopback only on the laptop's end, and ssh stops if the forward fails (#2796).
       await expect(section.locator("code")).toContainText(
         "ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:9224:127.0.0.1:9224 ",
@@ -100,8 +100,8 @@ realTest.describe("new UI: Your Edge, through omp's relay", () => {
       await expect(section.getByRole("list", { name: "Its tabs" })).toContainText("Edge page");
       await page.screenshot({ path: join(screenshots, "browser-edge-connected.png") });
 
-      // Its time runs out: the relay stops, the setting goes and the choice is the chats' own browser again.
-      await expect(choice.getByRole("button", { name: "Their own browser" })).toHaveAttribute(
+      // Its time runs out: the relay stops, the setting goes and the choice is omp's hidden one again.
+      await expect(choice.getByRole("button", { name: "omp's hidden one" })).toHaveAttribute(
         "aria-pressed",
         "true",
         {

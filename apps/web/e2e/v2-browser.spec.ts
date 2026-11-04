@@ -198,18 +198,18 @@ realTest.describe("new UI: the app's own browser", () => {
   );
 
   realTest(
-    "This browser makes it the one chats use (omp's browser.cdpUrl, every folder); Their own browser takes that out",
+    "The one shown here makes it the one chats use (omp's browser.cdpUrl, every folder); omp's hidden one takes that out",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
       await page.getByRole("button", { name: "Browser", exact: true }).click();
       const choice = panel(page).getByRole("group", { name: "Chats use" });
-      await expect(choice.getByRole("button", { name: "Their own browser" })).toHaveAttribute(
+      await expect(choice.getByRole("button", { name: "omp's hidden one" })).toHaveAttribute(
         "aria-pressed",
         "true",
       );
-      await choice.getByRole("button", { name: "This browser" }).click();
-      await expect(choice.getByRole("button", { name: "This browser" })).toHaveAttribute(
+      await choice.getByRole("button", { name: "The one shown here" }).click();
+      await expect(choice.getByRole("button", { name: "The one shown here" })).toHaveAttribute(
         "aria-pressed",
         "true",
         { timeout: 60_000 },
@@ -219,8 +219,8 @@ realTest.describe("new UI: the app's own browser", () => {
       const settings = () => readFile(join(realApp.agentDir, "config.yml"), "utf8").catch(() => "");
       await expect.poll(settings).toMatch(/cdpUrl: http:\/\/127\.0\.0\.1:\d+/);
 
-      await choice.getByRole("button", { name: "Their own browser" }).click();
-      await expect(choice.getByRole("button", { name: "Their own browser" })).toHaveAttribute(
+      await choice.getByRole("button", { name: "omp's hidden one" }).click();
+      await expect(choice.getByRole("button", { name: "omp's hidden one" })).toHaveAttribute(
         "aria-pressed",
         "true",
       );

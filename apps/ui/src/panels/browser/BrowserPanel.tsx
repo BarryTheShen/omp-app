@@ -206,22 +206,30 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
             value="off"
             className="h-auto min-h-7 px-1.5 py-1 leading-tight whitespace-normal text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1"
           >
-            Their own browser
+            omp's hidden one
           </ToggleGroupItem>
           <ToggleGroupItem
             value="app"
             disabled={!app.available}
             className="h-auto min-h-7 px-1.5 py-1 leading-tight whitespace-normal text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1"
           >
-            This browser
+            The one shown here
           </ToggleGroupItem>
           <ToggleGroupItem
             value="edge"
             className="h-auto min-h-7 px-1.5 py-1 leading-tight whitespace-normal text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1"
           >
-            Your Edge
+            Your own browser
           </ToggleGroupItem>
         </ToggleGroup>
+        {/* What the chosen one is (#2797). */}
+        <p className="text-t3">
+          {status.target === "off"
+            ? "A browser omp runs out of sight on the app's computer, signed in to nothing."
+            : status.target === "app"
+              ? "The browser below, on the app's computer: sign in to sites in it, and watch chats use it or take over."
+              : "The browser on your own computer: Chrome, Edge or another Chromium browser with omp's relay extension, signed in as you."}
+        </p>
       </div>
       {(status.target === "edge" || status.edge.problem !== null) && (
         <EdgeSection
@@ -263,9 +271,9 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
         </div>
       ) : (
         <>
-          {/* The app's own browser, labelled: with Your Edge chosen, it is still here to use by hand. */}
+          {/* The app's own browser, labelled: with your own browser chosen, it is still here to use by hand. */}
           <div className="flex items-center border-b border-l2">
-            <span className="shrink-0 pl-4 text-xs text-t3">This browser</span>
+            <span className="shrink-0 pl-4 text-xs text-t3">The app's browser</span>
             <div
               role="tablist"
               aria-label="Pages"
@@ -340,8 +348,9 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
 }
 
 /**
- * "Your Edge": the relay's state (none running yet, waiting for Edge with the laptop's link, or connected with Edge's
- * tabs), and how long it stays: until a time when chosen here, or until another browser is chosen when set by hand.
+ * "Your own browser": the relay's state (none running yet, waiting for the browser with the line that links its
+ * computer, or connected with its tabs), and how long it stays: until a time when chosen here, or until another browser
+ * is chosen when set by hand.
  */
 function EdgeSection({
   edge,
@@ -350,7 +359,7 @@ function EdgeSection({
 }: {
   readonly edge: BrowserStatus["edge"];
   readonly chosen: boolean;
-  /** Chooses Your Edge again: starts the relay, and gives a choice made here 30 minutes more. */
+  /** Chooses your own browser again: starts the relay, and gives a choice made here 30 minutes more. */
   readonly onChoose: () => void;
 }): ReactNode {
   const [copied, setCopied] = useState(false);
@@ -360,7 +369,7 @@ function EdgeSection({
       : new Date(edge.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return (
     <section
-      aria-label="Your Edge"
+      aria-label="Your own browser"
       className="flex flex-col gap-2 border-b border-l2 px-4 py-3 text-[0.8125rem]"
     >
       {edge.problem !== null ? (
@@ -396,8 +405,8 @@ function EdgeSection({
       ) : (
         <>
           <p className="text-t2">
-            Waiting for your Edge. On your computer, keep this running (it carries Edge's relay
-            extension to this server):
+            Waiting for your browser. On your computer, keep this running while chats use it (it
+            carries the relay extension's connection to the app's computer):
           </p>
           <div className="flex items-center gap-1">
             <code className="min-w-0 flex-1 rounded bg-l1 px-2 py-1 text-xs break-words">
@@ -417,9 +426,9 @@ function EdgeSection({
             </Button>
           </div>
           <p className="text-xs text-t3">
-            Edge needs omp's relay extension, on its usual port. While Your Edge is chosen, anything
-            on this server can drive Edge: put the extension in a profile of its own, signed in only
-            to the sites chats should reach.
+            Your browser needs omp's relay extension (Chrome, Edge or another Chromium browser), on
+            its usual port. While it is chosen, anything on the app's computer can drive it: put the
+            extension in a profile of its own, signed in only to the sites chats should reach.
           </p>
         </>
       )}
