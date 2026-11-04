@@ -89,6 +89,9 @@ export interface A0Runtime {
 /** The chat session port on the chat hosts (SDK plan H5.3, the app's runtime since H5.4a) and AppPort. */
 export function createA0Runtime(context: A0PortContext): A0Runtime {
   const chat = createChatSessionPortRuntime(context);
+  // The server's own folder has a new chat ready from the start, not only once a page shows a folder (#2768): a page
+  // that opens a new chat as it starts, as the phone app does after the system reloads it, would wait for omp to start.
+  chat.runtime.prepareNew({ folderPath: context.serverInfo.launchFolder });
   return {
     registrations: [
       {

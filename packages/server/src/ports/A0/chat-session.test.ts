@@ -2543,15 +2543,47 @@ describe("the chat session runtime: a chat an earlier server left running, on an
 });
 
 describe("the chat session runtime: a new chat kept ready (#2760)", () => {
-  /** A folder shown with new chats kept ready, the refresh's timer driven by the test. */
+  /** A server started in the folder with new chats kept ready, the refresh's timer driven by the test. */
   async function readyInFolder() {
     const created: FakeChatHost[] = [];
     const timer = firingTimer();
-    const handlers = handlersFor({ ...context(created), newChatsReady: true, spareTimer: timer });
-    await getHandler(handlers, "prepareNew")({ folderPath: folder }, call("one"));
+    const base = context(created);
+    const handlers = handlersFor({
+      ...base,
+      serverInfo: { ...base.serverInfo, launchFolder: folder },
+      newChatsReady: true,
+      spareTimer: timer,
+    });
     await ticks(20);
     return { created, timer, handlers };
   }
+
+  test("the server's own folder has one from its start, before a page shows it, and the first new chat there is it (#2768)", async () => {
+    const created: FakeChatHost[] = [];
+    const base = context(created);
+    const launchFolder = base.serverInfo.launchFolder;
+    const handlers = handlersFor({ ...base, newChatsReady: true, spareTimer: firingTimer() });
+    await ticks(20);
+    expect(created.map((host) => [host.folder, host.status])).toEqual([[launchFolder, "running"]]);
+    // A page showing the folder starts no other.
+    await getHandler(handlers, "prepareNew")({ folderPath: launchFolder }, call("one"));
+    await ticks(20);
+    expect(created).toHaveLength(1);
+
+    const opened = (await getHandler(handlers, "open")(
+      { folderPath: launchFolder, start: "new" },
+      call("one"),
+    )) as { threadId: ThreadId };
+    await ticks(20);
+    await getHandler(handlers, "request")(
+      { threadId: opened.threadId, method: "prompt", params: { text: "hello" } },
+      call("one"),
+    );
+    // The chat runs on the host started with the server; the one started since is the next ready chat.
+    expect(created).toHaveLength(2);
+    expect(created[0]?.requests.some((request) => request.method === "prompt")).toBe(true);
+    expect(created[1]?.requests.some((request) => request.method === "prompt")).toBe(false);
+  });
 
   test("is replaced by a fresh one before it ages out, and the next new chat opens on the fresh one (#2768)", async () => {
     const { created, timer, handlers } = await readyInFolder();
