@@ -509,7 +509,15 @@ sleep 5
 is_alive "$p" || fail "T6: the app quit when its server died"
 [[ $(window_ids | wc -l) == 1 ]] || fail "T6: the window is gone"
 shot "$wid" error-page-server-died
-[[ -z $(group_left "$side") ]] || fail "T6: processes left in the dead server's group: $(group_left "$side")"
+# The server starts a new chat ready as it starts (#2768). A chat host still starting omp sees its server's end (its
+# stdin closing) only once omp is up (`chat-host/chat.ts`, step 3), some seconds on a slow machine, and then ends.
+left=$(group_left "$side")
+for _ in $(seq 1 30); do
+  [[ -z $left ]] && break
+  sleep 1
+  left=$(group_left "$side")
+done
+[[ -z $left ]] || fail "T6: processes left in the dead server's group 35 s after it died: $left"
 close_window "$wid"
 wait_gone "$p" 40 || fail "T6: the app did not exit after its window closed"
 wait "$p"
