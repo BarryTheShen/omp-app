@@ -621,6 +621,8 @@ function ChatRow({
           resting.current = setTimeout(actions.onPrefetch, PREFETCH_REST_MS);
       }}
       onPointerLeave={() => clearTimeout(resting.current)}
+      // A press opens the chat, which reads its file itself: a read ahead after it would read it twice (#2768).
+      onPointerDown={() => clearTimeout(resting.current)}
     >
       <div
         className={cn(

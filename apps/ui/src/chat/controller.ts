@@ -171,6 +171,8 @@ export class ChatController {
    */
   #replayEvents = 0;
   #replayBytes = 0;
+  /** The replay held a turn's end: its turn may be newer than the file's window (see `#open`). */
+  #replayEndedTurn = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
   /** The roles Ctrl+P walks, in omp's `cycleOrder`, as last read; empty until read. */
   #roleOrder: readonly string[] = [];
@@ -325,6 +327,9 @@ export class ChatController {
     }
     this.#live = true;
     this.#mark("subscribed_ms");
+    // A turn that ended after the file's window was read came in the replay with no omp entry ids: the window is read
+    // once more for it. Turns the window held already need nothing (#2768).
+    if (this.#replayEndedTurn && this.store.beyondWindow) this.#refreshWindow();
     // The rest of the setup goes out together: no answer needs another, so the chat is live after the slowest, not after
     // their sum (#2760). omp's ask tool then sends all its questions in one request, with their checkboxes and typed
     // answers; without the ask dialog, omp asks each question as a plain choice, which still works.
@@ -1057,6 +1062,15 @@ export class ChatController {
     if (payload.kind !== "event") return;
     // A new turn is written on from the branch's end, which makes it the file's last entry again.
     if (payload.event.type === "agent_start") this.#leaf = undefined;
+    if (payload.event.type === "available_commands")
+      this.#commands = Promise.resolve(withBtwCommand(payload.event.commands));
+    // The server's replay at the open is history: the open reads the file's window before it, and omp's state, role and
+    // plan mode after it, so its events ask for none of these again. Each replayed turn's end read the window anew, which
+    // on a slow link made an open wait for several copies of it (#2768).
+    if (!this.#live) {
+      if (payload.event.type === "agent_end") this.#replayEndedTurn = true;
+      return;
+    }
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") this.#refreshWindow();
     if (payload.event.type === "model_changed") {
@@ -1067,8 +1081,6 @@ export class ChatController {
     if (payload.event.type === "todo_auto_clear") this.#refreshState().catch(() => undefined);
     // Plan mode can change outside this pane (another tab, omp's own commands): read it again when omp settles.
     if (payload.event.type === "session_settled") this.#readPlanMode().catch(() => undefined);
-    if (payload.event.type === "available_commands")
-      this.#commands = Promise.resolve(withBtwCommand(payload.event.commands));
   }
 
   /**

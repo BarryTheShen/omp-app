@@ -288,6 +288,8 @@ export class ChatStore {
 
   #entries: readonly SessionEntry[] = [];
   #keys = new Set<string>();
+  /** Messages taken from events since the file's window was set that the window did not hold (no omp entry id yet). */
+  #beyondWindow = false;
   #hasOlder = false;
   #stream: AssistantMessage | null = null;
   #streamDone = false;
@@ -342,9 +344,18 @@ export class ChatStore {
     this.#entries = entries;
     this.#keys = new Set(entries.map(messageKey).filter((key) => key !== null));
     this.#hasOlder = hasOlder;
+    this.#beyondWindow = false;
     // A reply that the file now holds is shown from the file.
     if (this.#stream !== null && this.#streamDone) this.#stream = null;
     this.#publish();
+  }
+
+  /**
+   * Whether messages came in by events since the file's window was set that the window did not hold: they show without
+   * omp's entry ids (which Edit needs) until the window is read again.
+   */
+  get beyondWindow(): boolean {
+    return this.#beyondWindow;
   }
 
   /** Adds an older window of the session file in front of the transcript. */
@@ -868,6 +879,7 @@ export class ChatStore {
       this.#keys.add(key);
     }
     this.#entries = [...this.#entries, entry];
+    this.#beyondWindow = true;
   }
 
   /**

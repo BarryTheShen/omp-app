@@ -167,4 +167,101 @@ realTest.describe("new UI reopening and typing ahead", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  /** A chat with a finished turn for each word, started on a page of its own; its row's name is its first message. */
+  async function chatWithTurns(
+    realApp: { open: (options: { path: string }) => Promise<Page> },
+    words: string[],
+  ) {
+    const page = await realApp.open({ path: "/" });
+    await startNewChat(page);
+    const box = page.getByRole("textbox", { name: "Message" });
+    await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+    for (const word of words) {
+      await box.fill(`count_reply ${word}`);
+      await box.press("Enter");
+      await expect(transcript(page).getByText(new RegExp(`count-\\d+ ${word}`))).toBeVisible({
+        timeout: 60_000,
+      });
+    }
+    return { page, box };
+  }
+
+  realTest(
+    "a chat with finished turns, opened on another page, reads its file once, not again for each turn the server replays (#2768)",
+    async ({ realApp }) => {
+      await chatWithTurns(realApp, ["one", "two", "three"]);
+      let server!: SlowServer;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (target: Page) => {
+          server = await slowServer(target, 0);
+        },
+      });
+      await chats(page)
+        .getByRole("button", { name: /count_reply one/ })
+        .first()
+        .click();
+      await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        {
+          timeout: 60_000,
+        },
+      );
+      await expect(transcript(page).getByText(/count-\d+ three/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Edit this message" })).toHaveCount(3);
+      // What the replay would have asked for has gone out by now.
+      await page.waitForTimeout(1_500);
+      expect(fileReads(server)).toBe(1);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a turn that ends while a page subscribes to the chat shows there, read back from the file so it can be edited (#2768)",
+    async ({ realApp }) => {
+      const first = await chatWithTurns(realApp, ["early"]);
+      let server!: SlowServer;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (target: Page) => {
+          server = await slowServer(target, 15_000);
+        },
+      });
+      // The page's subscription to the chat's events is held while a turn runs and ends on the first page: the page read
+      // the file's window before it, so the turn comes only in the server's replay.
+      server.slow = /^(?=.*"type":"subscribe")(?=.*A0\.chatSession\/event\/)/;
+      await chats(page)
+        .getByRole("button", { name: /count_reply early/ })
+        .first()
+        .click();
+      await expect
+        .poll(() => server.sent.some((frame) => server.slow?.test(frame) === true), {
+          timeout: 30_000,
+        })
+        .toBe(true);
+      await first.box.fill("count_reply late");
+      await first.box.press("Enter");
+      await expect(transcript(first.page).getByText(/count-\d+ late/)).toBeVisible({
+        timeout: 60_000,
+      });
+
+      await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        {
+          timeout: 60_000,
+        },
+      );
+      await expect(transcript(page).getByText(/count-\d+ late/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Edit this message" })).toHaveCount(2, {
+        timeout: 30_000,
+      });
+      expect(fileReads(server)).toBe(2);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
