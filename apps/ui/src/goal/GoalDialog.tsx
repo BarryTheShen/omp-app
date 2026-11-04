@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { ChatController } from "../chat/controller";
+import { isImeEnter } from "../keys/ime";
 
 /** Sets a goal for a chat (omp's goal mode): its objective, and a token budget if wanted. Open while `controller` is set. */
 export function GoalDialog({
@@ -78,7 +79,7 @@ function GoalForm({
             value={objective}
             onChange={(event) => setObjective(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              if (event.key === "Enter" && !event.shiftKey && !isImeEnter(event)) {
                 event.preventDefault();
                 submit();
               }

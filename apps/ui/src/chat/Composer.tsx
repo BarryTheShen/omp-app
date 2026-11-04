@@ -20,6 +20,7 @@ import { AgentsPill } from "../agents/AgentsPill";
 import { btwQuestion } from "../btw/btw";
 import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
+import { isImeEnter } from "../keys/ime";
 import { showPanel } from "../panels/panel-state";
 import { isTablet, usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
@@ -410,7 +411,7 @@ export const Composer = memo(function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || isImeEnter(event)) return;
     if (menu.menu !== null) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();

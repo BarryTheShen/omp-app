@@ -49,6 +49,66 @@ realTest.describe("new UI chat rename and delete", () => {
     },
   );
 
+  /** The page has drawn what a key changed. */
+  const frame = (page: Page) =>
+    page.evaluate(() => new Promise((done) => requestAnimationFrame(done)));
+
+  realTest(
+    "the Enter that confirms an input method's word only confirms it in a chat's name (#2820)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await choose(page, "Seeded chat 2", "Rename");
+      const field = chats(page).getByRole("textbox", { name: "Chat title" });
+      await field.fill("发布说明");
+      // The confirming Enter as most browsers send it: still composing.
+      await field.evaluate((element) =>
+        element.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            isComposing: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      );
+      await frame(page);
+      await expect(field).toHaveValue("发布说明");
+      await field.press("Enter");
+      await expect(chats(page).getByRole("button", { name: "发布说明" })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the Enter that confirms an input method's word only confirms it in the message box, as Safari sends it (#2820)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+      const box = boxes(page);
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box.fill("你好");
+      // Safari's confirming Enter comes after the composition ended, with the key code 229.
+      await box.evaluate((element) => {
+        const enter = new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          bubbles: true,
+          cancelable: true,
+        });
+        Object.defineProperty(enter, "keyCode", { value: 229 });
+        element.dispatchEvent(enter);
+      });
+      // A send is answered within a second here; nothing may arrive in two.
+      await page.waitForTimeout(2_000);
+      await expect(box).toHaveValue("你好");
+      await expect(transcript(page).getByText("你好")).toHaveCount(0);
+      await box.press("Enter");
+      await expect(transcript(page).getByText("你好")).toBeVisible({ timeout: 60_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest(
     "a chat a window shows is deleted after a confirmation: its row goes, its window goes blank, and it stays gone",
     async ({ realApp }) => {

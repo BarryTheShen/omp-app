@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import { Plus, X } from "lucide-react";
 import { type DragEvent, type ReactNode, useRef, useState } from "react";
+import { isImeEnter } from "../keys/ime";
 import { useSidewaysRow } from "../sidewaysRow";
 import type { WorkspaceTab } from "./tabs";
 
@@ -164,7 +165,7 @@ function RenameInput({
       onKeyDown={(event) => {
         // The workspace's keys do not act on the name being typed.
         event.stopPropagation();
-        if (event.key === "Enter") end(value);
+        if (event.key === "Enter" && !isImeEnter(event)) end(value);
         if (event.key === "Escape") end(null);
       }}
     />

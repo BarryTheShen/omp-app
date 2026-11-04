@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { isImeEnter } from "../keys/ime";
 import { KEYS, keycap } from "../keys/table";
 import { useSidewaysRow } from "../sidewaysRow";
 import { matchesHotkey } from "../tour/keys";
@@ -225,7 +226,7 @@ export function QuestionsDialog({
       } else skip();
       return;
     }
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !isImeEnter(event)) {
       if (target.matches("textarea")) return;
       if (target.matches("button:not([data-row]), a")) return;
       stop();

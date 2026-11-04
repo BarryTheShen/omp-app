@@ -54,6 +54,7 @@ import type { ChatTarget } from "../chat/controller";
 import { firstPromptOf } from "../chat/firstPrompts";
 import { folderName } from "../folders/folder";
 import { InboxButton } from "../inbox/InboxButton";
+import { isImeEnter } from "../keys/ime";
 import { KEYS, keycap } from "../keys/table";
 import { useLongPress } from "../longPress";
 import { useSwipe } from "../swipe";
@@ -843,6 +844,7 @@ function RenameField({
       autoFocus
       onFocus={(event) => event.currentTarget.select()}
       onKeyDown={(event) => {
+        if (isImeEnter(event)) return;
         if (event.key === "Enter") {
           event.preventDefault();
           finish(event.currentTarget.value, true);

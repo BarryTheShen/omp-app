@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "../../btw/btw";
 import type { ChatController } from "../../chat/controller";
+import { isImeEnter } from "../../keys/ime";
 import {
   Markdown,
   StreamingMarkdown,
@@ -425,11 +426,7 @@ function BtwHistory({ controller }: { readonly controller: ChatController }): Re
                     if (event.key === "Escape") {
                       event.preventDefault();
                       setComposing(false);
-                    } else if (
-                      event.key === "Enter" &&
-                      !event.shiftKey &&
-                      !event.nativeEvent.isComposing
-                    ) {
+                    } else if (event.key === "Enter" && !event.shiftKey && !isImeEnter(event)) {
                       event.preventDefault();
                       sendFollowUp();
                     }

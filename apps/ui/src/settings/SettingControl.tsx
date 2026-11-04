@@ -14,6 +14,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { isImeEnter } from "../keys/ime";
 import type { SettingDef } from "./data";
 
 /** Saves a value, or `"unset"` takes the setting out of the file (omp's default again). */
@@ -211,6 +212,7 @@ function TextControl({
         }}
         onBlur={commit}
         onKeyDown={(event) => {
+          if (isImeEnter(event)) return;
           if (event.key === "Enter") {
             event.preventDefault();
             commit();
