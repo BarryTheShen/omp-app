@@ -117,6 +117,40 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().entries.map((entry) => entry.id)).toEqual(["u1"]);
   });
 
+  test("a message that starts a turn shows at once and the chat works; omp's copy takes its place (#2828)", () => {
+    const store = new ChatStore();
+    store.sendStarted("hi", []);
+    const shown = store.getSnapshot();
+    expect(shown.working).toBe(true);
+    expect(shown.entries.map((entry) => (entry as { message?: unknown }).message)).toMatchObject([
+      { role: "user", content: "hi" },
+    ]);
+
+    // omp starts the turn seconds later and sends the message back: one message, omp's.
+    store.apply(event({ type: "agent_start" }));
+    const user = { role: "user", content: [{ type: "text", text: "hi" }], timestamp: T };
+    store.apply(event({ type: "message_end", messageId: "msg-1", message: user }));
+    const entries = store.getSnapshot().entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ message: user });
+  });
+
+  test("a message whose prompt never reached the model leaves the chat, and the chat stops working (#2828)", () => {
+    const store = new ChatStore();
+    store.sendStarted("hi", []);
+    store.apply(
+      event({
+        type: "prompt_result",
+        requestId: "r1",
+        agentInvoked: false,
+        status: "error",
+        sessionSettled: true,
+      }),
+    );
+    expect(store.getSnapshot().entries).toEqual([]);
+    expect(store.getSnapshot().working).toBe(false);
+  });
+
   test("a running tool shows until its end, and every tool stops showing when omp's turn ends", () => {
     const store = new ChatStore();
     store.apply(event({ type: "agent_start" }));

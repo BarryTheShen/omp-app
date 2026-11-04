@@ -606,7 +606,18 @@ export class ChatController {
       return;
     }
     try {
-      await this.#request("prompt", message);
+      // The turn's starts and ends seen so far: one seen by the time the answer comes means the message is already in
+      // the chat (omp starts later turns at once).
+      const asked = this.store.activityMark.turn;
+      const answer = await this.#request("prompt", message);
+      // A message that starts a turn shows at once, with the chat working, though omp may take seconds to start it (its
+      // first turn recalls memories, #2828); a paused chat holds it instead (the box's paused row).
+      if (
+        answer.resultFollows &&
+        this.store.activityMark.turn === asked &&
+        this.store.getSnapshot().pausedAt === null
+      )
+        this.store.sendStarted(text, images);
     } catch (failure) {
       if (!(failure instanceof AppFailure && failure.appError.code === "agent_busy")) throw failure;
       this.store.markWorking();

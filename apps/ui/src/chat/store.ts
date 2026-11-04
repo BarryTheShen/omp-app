@@ -2,6 +2,7 @@ import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ChatSessionEvent, ProcessStatus, UsagePauseHold } from "@omp-app/contracts";
 import type {
   ChatEvent,
+  ChatHostImage,
   ChatHostState,
   GoalAnswer,
   HostDialogRequest,
@@ -293,6 +294,8 @@ export class ChatStore {
   #cancelFrame: (() => void) | null = null;
 
   #entries: readonly SessionEntry[] = [];
+  /** The message just sent, shown until omp sends it back (#2828); null when none waits. */
+  #pending: SessionEntry | null = null;
   #keys = new Set<string>();
   /** Messages taken from events since the file's window was set that the window did not hold (no omp entry id yet). */
   #beyondWindow = false;
@@ -453,6 +456,40 @@ export class ChatStore {
     this.#turnMark += 1;
     this.#startWorking();
     this.#publish();
+  }
+
+  /**
+   * omp admitted a message that starts a turn (#2828): it shows at once, and the chat works. omp may take seconds before
+   * the turn starts (its first turn recalls memories: 4 s on a memory server's CPU), and only then sends the message back,
+   * which takes this copy's place (`#dropPending`). A copy that is not done (`live-`) offers no Edit.
+   */
+  sendStarted(text: string, images: readonly ChatHostImage[]): void {
+    const now = Date.now();
+    const entry = {
+      type: "message",
+      id: `live-pending-${now}`,
+      parentId: this.#entries.at(-1)?.id ?? null,
+      timestamp: new Date(now).toISOString(),
+      message: {
+        role: "user",
+        content: images.length === 0 ? text : [{ type: "text", text }, ...images],
+        timestamp: now,
+      },
+    } as unknown as SessionEntry;
+    this.#dropPending();
+    this.#pending = entry;
+    this.#entries = [...this.#entries, entry];
+    this.#turnMark += 1;
+    this.#startWorking();
+    this.#publish();
+  }
+
+  /** The message shown since it was sent goes: omp sent it back, or the turn it started is over or never came. */
+  #dropPending(): void {
+    const pending = this.#pending;
+    if (pending === null) return;
+    this.#pending = null;
+    this.#entries = this.#entries.filter((entry) => entry !== pending);
   }
 
   #startWorking(): void {
@@ -654,6 +691,7 @@ export class ChatStore {
           this.#turnMark += 1;
           this.#compactionMark += 1;
           this.#stopWorking();
+          this.#dropPending();
           this.#compacting = false;
           // A process that has ended waits on nothing.
           this.#requests = [];
@@ -708,6 +746,13 @@ export class ChatStore {
         return true;
       case "message_end": {
         const message = event.message as unknown as SessionMessage;
+        // omp's copy of the message just sent takes the place of the one shown as it was sent (#2828): the prompt, or a
+        // skill's prompt omp sends as a message of its own in the person's name.
+        if (
+          message.role === "user" ||
+          (message.role === "custom" && message.attribution === "user")
+        )
+          this.#dropPending();
         this.#append(message, event.messageId);
         if (message.role === "assistant") {
           this.#stream = null;
@@ -777,6 +822,15 @@ export class ChatStore {
       case "agent_end":
         this.#turnMark += 1;
         this.#stopWorking();
+        this.#dropPending();
+        return false;
+      case "prompt_result":
+        // A prompt that ended without reaching the model (a command took it, or setup failed) never started its turn.
+        if (!event.agentInvoked && this.#pending !== null) {
+          this.#dropPending();
+          this.#turnMark += 1;
+          this.#stopWorking();
+        }
         return false;
       case "thinking_level_changed":
         this.#thinkingLevel = event.configured ?? event.thinkingLevel ?? null;
@@ -1083,6 +1137,8 @@ export class ChatStore {
 interface SessionMessage {
   readonly role: string;
   readonly timestamp?: number;
+  /** Whose a custom message is: `user` for a skill's prompt omp sends in the person's name. */
+  readonly attribution?: string;
 }
 
 /** The reply so far with one streaming increment added (the `delta` form of `message_update`). */
