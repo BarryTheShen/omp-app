@@ -1463,7 +1463,7 @@ const QUESTIONS_TOUR: Tour = {
     {
       target: QUESTIONS,
       title: "A tab for each question",
-      text: "Pick an answer, or <b>Other…</b> to type your own; <b>Next</b> moves on, and <b>Review</b> shows every answer before <b>Submit</b>. <b>Note</b> adds a note the agent gets with your answer.",
+      text: "Pick an answer, or <b>Other…</b> to type your own; <b>Next</b> moves on (<b>Skip</b> while it has no answer), and <b>Review</b> shows every answer before <b>Submit</b>. <b>Note</b> adds a note the agent gets with your answer.",
       action: next,
     },
     {
@@ -1475,7 +1475,7 @@ const QUESTIONS_TOUR: Tour = {
     {
       target: QUESTIONS_HIDDEN,
       title: "Back to them",
-      text: "Click <b>Show</b>: they come back as you left them. Answer them and press <b>Submit</b>; <b>Skip</b> closes them unanswered.",
+      text: "Click <b>Show</b>: they come back as you left them. Answer them and press <b>Submit</b>; <b>Skip all</b> here, or Esc, closes them unanswered.",
       action: { kind: "appears", selector: QUESTIONS },
     },
   ],

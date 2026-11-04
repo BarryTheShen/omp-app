@@ -78,11 +78,12 @@ realTest.describe("new UI approvals and questions", () => {
       await expect(questions).toBeVisible({ timeout: 60_000 });
       await expect(questions.getByText("Which database?")).toBeVisible();
       await expect(questions.getByText("Recommended")).toBeVisible();
-      // One question: Submit, which needs an answer first.
-      const submit = questions.getByRole("button", { name: "Submit" });
-      await expect(submit).toBeDisabled();
+      // One question: the button to go on reads Skip until an answer is chosen, then Submit.
+      const goOn = questions.getByRole("button", { name: /^(Skip|Submit)$/ });
+      await expect(goOn).toHaveText("Skip");
       await questions.getByRole("radio", { name: "SQLite" }).click();
-      await submit.click();
+      await expect(goOn).toHaveText("Submit");
+      await goOn.click();
       await expect(questions).toBeHidden();
       await expect(replies(page).last()).toContainText("SQLite", { timeout: 60_000 });
 
@@ -156,7 +157,7 @@ realTest.describe("new UI approvals and questions", () => {
         .fill("only the safe ones");
       await questions.getByRole("button", { name: "Next" }).click();
       await expect(questions.getByText("What should the file be called?")).toBeVisible();
-      await questions.getByRole("button", { name: "Next" }).click();
+      await questions.getByRole("button", { name: "Skip", exact: true }).click();
       // Review: what is unanswered, then every answer; Submit still sends the rest.
       await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true");
       await expect(questions).toContainText("1 unanswered · Submit still sends the rest");
@@ -176,6 +177,39 @@ realTest.describe("new UI approvals and questions", () => {
   );
 
   realTest(
+    "one button goes on: Skip while a question has no answer, Next once it has one; the note's × removes the note (#2803, #2804)",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const questions = page.getByRole("dialog", { name: "Questions from omp" });
+      await send(page, "ask_three");
+      await expect(questions).toBeVisible({ timeout: 60_000 });
+      const tabs = questions.getByRole("tab");
+      const goOn = questions.getByRole("button", { name: /^(Skip|Next)$/ });
+
+      // Tools, several answers: nothing ticked reads Skip, a tick reads Next, no tick again reads Skip.
+      await tabs.nth(1).click();
+      await expect(goOn).toHaveText("Skip");
+      const read = questions.getByRole("checkbox", { name: "Read" });
+      await read.click();
+      await expect(goOn).toHaveText("Next");
+      await read.click();
+      await expect(goOn).toHaveText("Skip");
+      // Skip leaves the question unanswered and goes on to the next one; the questions stay.
+      await goOn.click();
+      await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
+      await expect(questions.getByText("What should the file be called?")).toBeVisible();
+
+      // The note's × takes the note away, box and all.
+      await questions.getByRole("button", { name: "Note" }).click();
+      const note = questions.getByRole("textbox", { name: "Note on your answer" });
+      await note.fill("never mind");
+      await questions.getByRole("button", { name: "Remove the note" }).click();
+      await expect(note).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "more question tabs than fit: the selected one comes into view, and the wheel scrolls the row sideways (#2802)",
     async ({ realApp }) => {
       const page = await newChat(realApp);
@@ -188,9 +222,9 @@ realTest.describe("new UI approvals and questions", () => {
       await expect(tabs).toHaveCount(7);
       expect(await row.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 
-      // Next, to the last question: its tab is in view, not beyond the row's end.
+      // Skip, to the last question: its tab is in view, not beyond the row's end.
       for (let step = 0; step < 5; step += 1) {
-        await questions.getByRole("button", { name: "Next" }).click();
+        await questions.getByRole("button", { name: "Skip", exact: true }).click();
       }
       await expect(tabs.nth(5)).toHaveAttribute("aria-selected", "true");
       await expect(tabs.nth(5)).toBeInViewport({ ratio: 1 });
@@ -301,8 +335,8 @@ realTest.describe("new UI approvals and questions", () => {
       expect(dialogBox.x).toBeGreaterThanOrEqual(0);
       expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(390);
       expect(dialogBox.height).toBeLessThanOrEqual(paneBox.height * 0.7 + 1);
-      // Every button of the bar is on screen and can be tapped.
-      for (const name of ["Hide", "Note", "Skip", "Next"]) {
+      // Every button of the bar is on screen and can be tapped; with no answer yet, the one to go on reads Skip.
+      for (const name of ["Hide", "Note", "Skip"]) {
         await expect(questions.getByRole("button", { name, exact: true })).toBeInViewport();
       }
       await questions.getByRole("button", { name: "Hide", exact: true }).tap();

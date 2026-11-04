@@ -61,8 +61,9 @@ const clock = (seconds: number): string =>
 /**
  * omp's questions (#2795), as omp's own question dialog asks them: one question at a time, a tab for each and a Review
  * tab when there are two or more; answers with their descriptions, the recommended one marked, Other… for a typed
- * answer, and the highlighted answer's preview; Hide, Note, Skip and Next (Submit on the last); and omp's keys. Hide
- * folds it to one line above the message box until Show.
+ * answer, and the highlighted answer's preview; Hide, Note, and one button to go on: Skip while the question has no
+ * answer, Next once it has one (#2804), Submit on the last; and omp's keys (Esc skips them all). Hide folds it to one
+ * line above the message box until Show.
  */
 export function QuestionsDialog({
   dialog,
@@ -153,6 +154,14 @@ export function QuestionsDialog({
     else if (canSubmit(all)) submit(all);
   };
 
+  /** The question on screen has no answer yet: the button to go on skips it (#2804), a lone question too. */
+  const skipsThis = tab < count && !answered(chosen[tab]);
+  const goOn = (): void => {
+    if (skipsThis && onLastStep) skip();
+    else primary();
+  };
+  const goOnLabel = skipsThis ? "Skip" : onLastStep ? "Submit" : "Next";
+
   /** A single answer's option chosen: the answers with it, which the caller may send at once. */
   const choose = (index: number, label: string): readonly Chosen[] => {
     const all = chosen.map((current, at) =>
@@ -183,6 +192,12 @@ export function QuestionsDialog({
   const openNote = (index: number): void => {
     update(index, (current) => ({ ...current, note: current.note ?? "" }));
     focusNext.current = "[data-note]";
+  };
+
+  /** × beside the note (#2803): the note goes, and the highlighted answer has the keyboard again. */
+  const removeNote = (index: number): void => {
+    update(index, (current) => ({ ...current, note: undefined }));
+    focusNext.current = `[data-row="${highlight[index] ?? 0}"]`;
   };
 
   // omp's keys in the dialog: Enter chooses and moves on, Tab and Shift+Tab change question, N adds a note, Esc
@@ -281,8 +296,14 @@ export function QuestionsDialog({
             <span className="text-t1">{shownQuestion?.question}</span>
             {count > 1 && <span className="text-t3"> +{count - 1} more</span>}
           </p>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={skip}>
-            Skip
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={skip}
+            title="Skip without answering  Esc"
+          >
+            {count > 1 ? "Skip all" : "Skip"}
           </Button>
           <Button
             size="sm"
@@ -369,6 +390,7 @@ export function QuestionsDialog({
               }
               onTyped={(text) => update(tab, (now) => ({ ...now, typed: text }))}
               onNote={(text) => update(tab, (now) => ({ ...now, note: text }))}
+              onRemoveNote={() => removeNote(tab)}
             />
           )}
         </div>
@@ -401,20 +423,15 @@ export function QuestionsDialog({
           )}
           <Button
             size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={skip}
-            title="Skip without answering  Esc"
+            disabled={busy || (goOnLabel === "Submit" && !canSubmit())}
+            onClick={goOn}
+            title={
+              goOnLabel === "Skip"
+                ? "Leave this question unanswered (Esc skips them all)"
+                : `${goOnLabel}  Enter`
+            }
           >
-            Skip
-          </Button>
-          <Button
-            size="sm"
-            disabled={busy || (onLastStep && !canSubmit())}
-            onClick={() => primary()}
-            title={`${onLastStep ? "Submit" : "Next"}  Enter`}
-          >
-            {onLastStep ? "Submit" : "Next"}
+            {goOnLabel}
           </Button>
         </div>
       </section>
@@ -435,6 +452,7 @@ function QuestionBody({
   onOther,
   onTyped,
   onNote,
+  onRemoveNote,
 }: {
   readonly question: Question;
   readonly chosen: Chosen;
@@ -450,6 +468,8 @@ function QuestionBody({
   readonly onOther: (on: boolean) => void;
   readonly onTyped: (text: string) => void;
   readonly onNote: (text: string) => void;
+  /** × beside the note: no note at all. */
+  readonly onRemoveNote: () => void;
 }): ReactNode {
   const multi = question.multi === true;
   const preview = question.options[highlight]?.preview?.trim();
@@ -578,7 +598,7 @@ function QuestionBody({
             size="icon-sm"
             variant="ghost"
             aria-label="Remove the note"
-            onClick={() => onNote("")}
+            onClick={onRemoveNote}
           >
             <X />
           </Button>
