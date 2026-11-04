@@ -164,6 +164,12 @@ export class ChatController {
   #parked = false;
   /** Events before the subscription is acknowledged are the server's replay: history, not new requests. */
   #live = false;
+  /**
+   * The server's replay at the open, for the open's trace (#2768): how many events came before the subscription was
+   * acknowledged, and their size as JSON. A slow link shows the subscription waiting on them.
+   */
+  #replayEvents = 0;
+  #replayBytes = 0;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
   /** The roles Ctrl+P walks, in omp's `cycleOrder`, as last read; empty until read. */
   #roleOrder: readonly string[] = [];
@@ -481,6 +487,8 @@ export class ChatController {
       ...this.#marks,
       ...(frames === undefined ? {} : frameMarks(frames)),
       new_chat: this.target.kind === "new" ? 1 : 0,
+      replay_events: this.#replayEvents,
+      replay_kb: Math.round(this.#replayBytes / 1024),
       hidden: this.#hiddenDuringOpen ? 1 : 0,
     };
     void this.client
@@ -1017,6 +1025,10 @@ export class ChatController {
   }
 
   #onEvent(payload: ChatSessionEvent): void {
+    if (!this.#live) {
+      this.#replayEvents += 1;
+      this.#replayBytes += JSON.stringify(payload).length;
+    }
     if (payload.kind === "moved") {
       this.#threadId = payload.threadId;
       this.#sessionFile = payload.sessionFile;
