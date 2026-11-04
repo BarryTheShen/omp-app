@@ -264,4 +264,77 @@ realTest.describe("new UI reopening and typing ahead", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a chat's state is asked with its subscription, not after the subscription's answer, so a slow link waits one round trip less (#2768)",
+    async ({ realApp }) => {
+      const sent: { at: number; text: string }[] = [];
+      const received: { at: number; text: string }[] = [];
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (target: Page) =>
+          target.routeWebSocket(/\/ws/, (ws) => {
+            const server = ws.connectToServer();
+            ws.onMessage((message) => {
+              sent.push({ at: Date.now(), text: String(message) });
+              server.send(message);
+            });
+            // Every answer reaches the page 400 ms late, as on a phone's slow link.
+            server.onMessage((message) =>
+              setTimeout(() => {
+                received.push({ at: Date.now(), text: String(message) });
+                ws.send(message);
+              }, 400),
+            );
+          }),
+      });
+      await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+      await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        { timeout: 60_000 },
+      );
+
+      type Frame = {
+        type?: string;
+        id?: unknown;
+        stream?: string;
+        args?: { method?: string; threadId?: string };
+      };
+      const parse = (text: string): Frame => {
+        try {
+          return JSON.parse(text) as Frame;
+        } catch {
+          return {};
+        }
+      };
+      const out = sent.map(({ at, text }) => ({ at, frame: parse(text) }));
+      // Each chat opened: its first state read, and its subscription's answer.
+      const opens = [
+        ...new Set(
+          out.flatMap(({ frame }) =>
+            frame.type === "call" && frame.args?.method === "get_state" && frame.args.threadId
+              ? [frame.args.threadId]
+              : [],
+          ),
+        ),
+      ].map((threadId) => {
+        const state = out.find(
+          ({ frame }) => frame.args?.method === "get_state" && frame.args.threadId === threadId,
+        );
+        const subscribe = out.find(
+          ({ frame }) =>
+            frame.type === "subscribe" && frame.stream === `A0.chatSession/event/${threadId}`,
+        );
+        const answer = received.find(({ text }) => parse(text).id === subscribe?.frame.id);
+        return { asked: state?.at, answered: answer?.at };
+      });
+      expect(opens.length).toBeGreaterThan(0);
+      for (const { asked, answered } of opens) {
+        expect(answered).toBeDefined();
+        expect(asked ?? Number.POSITIVE_INFINITY).toBeLessThan(answered ?? 0);
+      }
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

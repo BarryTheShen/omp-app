@@ -629,6 +629,35 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().working).toBe(true);
   });
 
+  test("a read asked before a replay that holds a compaction, not the turn's start, still says omp works (#2768)", () => {
+    const store = new ChatStore();
+    const read = (isStreaming: boolean, isCompacting: boolean) =>
+      ({ queuedMessages: { steering: [], followUp: [] }, isStreaming, isCompacting }) as never;
+    // Opened in the middle of a long turn: the state is asked with the subscription, and the replay that comes first
+    // holds a compaction but not the turn's start.
+    const asked = store.activityMark;
+    store.apply(
+      event({ type: "auto_compaction_start", reason: "threshold", action: "context-full" }),
+    );
+    store.apply(
+      event({
+        type: "auto_compaction_end",
+        action: "context-full",
+        aborted: false,
+        willRetry: false,
+      }),
+    );
+    store.setState(read(true, true), asked);
+    expect(store.getSnapshot().working).toBe(true);
+    // The compaction's end came after the read was asked: the compaction is over.
+    expect(store.getSnapshot().activity?.label).not.toBe("Compacting the chat");
+    // A turn's end in the replay still outranks a read asked before it.
+    const later = store.activityMark;
+    store.apply(event({ type: "agent_end", messages: [] }));
+    store.setState(read(true, false), later);
+    expect(store.getSnapshot().working).toBe(false);
+  });
+
   test("omp's answer to a write of xd://propose waits for review under the model's name; a failed write or another file does not", () => {
     const store = new ChatStore();
     const write = (id: string, path: string, details: unknown, isError = false) => {

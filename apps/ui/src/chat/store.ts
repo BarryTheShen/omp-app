@@ -42,6 +42,12 @@ export interface ChatActivity {
   readonly label: string;
 }
 
+/** `ChatStore.activityMark`: the counts of turn starts and ends, and of compaction starts and ends, taken so far. */
+export interface ActivityMark {
+  readonly turn: number;
+  readonly compaction: number;
+}
+
 /** A `!` or `$` run while omp runs it; once it ends, the transcript holds it with omp's result. */
 export interface ChatShellRun {
   readonly method: "bash" | "python";
@@ -296,7 +302,8 @@ export class ChatStore {
   #activeTools: ReadonlyMap<string, ActiveTool> = new Map();
   #jobs: ReadonlyMap<string, unknown> = new Map();
   #working = false;
-  #activityMark = 0;
+  #turnMark = 0;
+  #compactionMark = 0;
   #phase: ConnectionPhase = "connecting";
   #process: ProcessStatus | null = null;
   #model: ChatModel | null = null;
@@ -400,22 +407,24 @@ export class ChatStore {
   }
 
   /**
-   * Counts the starts and ends of turns and compactions this store has taken. A state read is asked at one count and
-   * answers at a later one: when the count moved in between, those events are newer than the read.
+   * Counts the starts and ends of turns, and of compactions, this store has taken, apart. A state read is asked at one
+   * mark and answers at a later one: a count that moved in between is newer than the read, on its own point only.
    */
-  get activityMark(): number {
-    return this.#activityMark;
+  get activityMark(): ActivityMark {
+    return { turn: this.#turnMark, compaction: this.#compactionMark };
   }
 
   /**
    * The chat's state as `get_state` read it: its model, thinking level, queue and (when given) todo list. `asked` is
-   * `activityMark` when the read was asked: unless a turn or a compaction started or ended since, the read also says
-   * whether omp works and compacts, for a page that opened in the middle of a turn or missed events in a reconnect.
+   * `activityMark` when the read was asked. Unless a turn started or ended since, the read also says whether omp works,
+   * and unless a compaction did, whether it compacts: for a page that opened in the middle of a turn or missed events in
+   * a reconnect. Kept apart, a read asked before the replay of a long turn still says omp works when the replay holds a
+   * compaction but not the turn's start (#2768).
    */
   setState(
     state: Pick<ChatHostState, "model" | "thinkingLevel" | "queuedMessages"> &
       Partial<Pick<ChatHostState, "todoPhases" | "isStreaming" | "isCompacting" | "pausedAt">>,
-    asked: number,
+    asked: ActivityMark,
   ): void {
     this.#model = state.model === undefined ? null : toChatModel(state.model);
     this.#thinkingLevel = state.thinkingLevel ?? null;
@@ -424,11 +433,12 @@ export class ChatStore {
     // A full read: no `pausedAt` is a chat that runs.
     this.#pausedAt = state.pausedAt ?? null;
     if (this.#pausedAt === null) this.#held = [];
-    if (asked === this.#activityMark) {
+    if (asked.turn === this.#turnMark) {
       if (state.isStreaming === true) this.#startWorking();
       if (state.isStreaming === false) this.#stopWorking();
-      if (state.isCompacting !== undefined) this.#setCompacting(state.isCompacting);
     }
+    if (asked.compaction === this.#compactionMark && state.isCompacting !== undefined)
+      this.#setCompacting(state.isCompacting);
     this.#publish();
   }
 
@@ -440,7 +450,7 @@ export class ChatStore {
 
   /** omp turned out to be in a turn this page did not see start: what is sent now steers it. */
   markWorking(): void {
-    this.#activityMark += 1;
+    this.#turnMark += 1;
     this.#startWorking();
     this.#publish();
   }
@@ -641,7 +651,8 @@ export class ChatStore {
           payload.status === "stopped" ||
           payload.status === "error"
         ) {
-          this.#activityMark += 1;
+          this.#turnMark += 1;
+          this.#compactionMark += 1;
           this.#stopWorking();
           this.#compacting = false;
           // A process that has ended waits on nothing.
@@ -756,7 +767,7 @@ export class ChatStore {
         return false;
       }
       case "agent_start":
-        this.#activityMark += 1;
+        this.#turnMark += 1;
         this.#working = true;
         this.#workingSince = Date.now();
         // A retried tool batch (omp's tool replay): the calls run again, so their old results go.
@@ -764,7 +775,7 @@ export class ChatStore {
           this.#dropReplayed(new Set(event.resumedToolCallIds));
         return false;
       case "agent_end":
-        this.#activityMark += 1;
+        this.#turnMark += 1;
         this.#stopWorking();
         return false;
       case "thinking_level_changed":
@@ -774,11 +785,11 @@ export class ChatStore {
         this.#queue = takeBackable(event);
         return false;
       case "auto_compaction_start":
-        this.#activityMark += 1;
+        this.#compactionMark += 1;
         this.#setCompacting(true);
         return false;
       case "auto_compaction_end":
-        this.#activityMark += 1;
+        this.#compactionMark += 1;
         this.#setCompacting(false);
         return false;
       case "auto_retry_start":

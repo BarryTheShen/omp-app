@@ -318,29 +318,22 @@ export class ChatController {
     this.#threadId = opened.threadId;
     if (this.target.kind === "new") this.#draft.keepFor(opened.threadId);
     this.#sessionFile = opened.sessionFile;
-    this.#subscription = await this.client.subscribe(ChatSessionPort, "event", {
+    // The setup goes out with the subscription, not after its answer (#2768): none of it needs the subscription, so the
+    // chat is live a round trip sooner, and the store's marks judge a state read asked before the replay (`setState`).
+    // The answers come together: the chat is live after the slowest, not after their sum (#2760). omp's ask tool then
+    // sends all its questions in one request, with their checkboxes and typed answers; without the ask dialog, omp asks
+    // each question as a plain choice, which still works.
+    const subscribing = this.client.subscribe(ChatSessionPort, "event", {
       scope: opened.threadId,
       afterSeq: 0,
       onEvent: (payload) => this.#onEvent(payload),
     });
-    if (this.#disposed) {
-      await this.#subscription.unsubscribe();
-      return;
-    }
-    this.#live = true;
-    this.#mark("subscribed_ms");
-    // A turn that ended after the file's window was read came in the replay with no omp entry ids: the window is read
-    // once more for it. Turns the window held already need nothing (#2768).
-    if (this.#replayEndedTurn && this.store.beyondWindow) this.#refreshWindow();
-    // The rest of the setup goes out together: no answer needs another, so the chat is live after the slowest, not after
-    // their sum (#2760). omp's ask tool then sends all its questions in one request, with their checkboxes and typed
-    // answers; without the ask dialog, omp asks each question as a plain choice, which still works.
     const marked = <T>(mark: string, step: Promise<T>): Promise<T> =>
       step.then((value) => {
         this.#mark(mark);
         return value;
       });
-    const [, , , open] = await Promise.all([
+    const setup = Promise.all([
       marked(
         "event_options_ms",
         chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" }),
@@ -350,10 +343,21 @@ export class ChatController {
         this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined),
       ),
       marked("state_ms", this.#refreshState()),
-      chat.openRequests({ threadId: opened.threadId }),
     ]);
+    // Awaited after the subscription; a failure meanwhile is not left unhandled.
+    setup.catch(() => undefined);
+    this.#subscription = await subscribing;
+    if (this.#disposed) {
+      await this.#subscription.unsubscribe();
+      return;
+    }
+    this.#live = true;
+    this.#mark("subscribed_ms");
+    // A turn that ended after the file's window was read came in the replay with no omp entry ids: the window is read
+    // once more for it. Turns the window held already need nothing (#2768).
+    if (this.#replayEndedTurn && this.store.beyondWindow) this.#refreshWindow();
+    await setup;
     if (this.#disposed) return;
-    this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
     this.store.setPhase("live");
     this.#mark("live_ms");
     this.#reportTimes();
@@ -378,6 +382,14 @@ export class ChatController {
         return read();
       }
     };
+    // The dialogs the server still holds open, read once the subscription holds, so one opened since comes as an event
+    // (a replayed history cannot tell open dialogs from answered ones). They come beside the box, not before it (#2768).
+    onTheLink(() => chat.openRequests({ threadId: opened.threadId }))
+      .then((open) => {
+        if (!this.#disposed)
+          this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
+      })
+      .catch(unshown("The questions waiting in this chat are not shown"));
     onTheLink(() => this.#followAgents(opened.threadId)).catch(
       unshown("This chat's subagents are not shown"),
     );
