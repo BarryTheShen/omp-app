@@ -358,6 +358,40 @@ export function defineScrollChecks(engine: string): void {
     );
 
     realTest(
+      "a reader who follows never sees Jump to latest while a reply comes in and a question opens (#2821)",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await openLongChat(page);
+        // Each time the button is put in the page, also for a single frame.
+        await page.evaluate(() => {
+          const counted = window as unknown as { jumpShown: number };
+          counted.jumpShown = 0;
+          let shown = false;
+          new MutationObserver(() => {
+            const now = document.querySelector("button[aria-label='Jump to latest']") !== null;
+            if (now && !shown) counted.jumpShown += 1;
+            shown = now;
+          }).observe(document.body, { childList: true, subtree: true });
+        });
+        const box = page.getByRole("textbox", { name: "Message" });
+        await box.fill("ask_user");
+        await box.press("Enter");
+        await expect(page.getByRole("dialog", { name: "Questions from omp" })).toBeVisible({
+          timeout: 60_000,
+        });
+        await page.waitForTimeout(1_000);
+        expect(
+          await page.evaluate(() => (window as unknown as { jumpShown: number }).jumpShown),
+        ).toBe(0);
+        // A reader who scrolls up is offered it.
+        await page.getByRole("region", { name: "Transcript" }).hover();
+        await page.mouse.wheel(0, -600);
+        await expect(page.getByRole("button", { name: "Jump to latest" })).toBeVisible();
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
       "a reply right after a long one starts at its own height, and its saved entry keeps it: the list never jumps by a reply",
       async ({ realApp }) => {
         const page = await realApp.open({ path: "/" });

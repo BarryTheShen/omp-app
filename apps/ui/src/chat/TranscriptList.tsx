@@ -218,13 +218,20 @@ const READER_SCROLL_MS = 1_000;
  * at the moment output arrives, and that distance is wrong while rows grew and their new height is not measured yet: in
  * the desktop window, without the focus, the view was left 100 to 240 px short for good, with no input. So after every
  * render, a reader who follows and is not at the end is taken there, unless the reader's own scroll or a smooth jump is
- * under way. Returns `follow`, which starts following (Jump to latest), and whether the reader follows, for the trace.
+ * under way. Returns `follow`, which starts following (Jump to latest), whether the reader follows, for the trace, and
+ * the same as state, for Jump to latest: it is offered only to a reader who does not follow (#2821).
  */
 function useFollowLatest(
   scrollRef: RefObject<HTMLDivElement | null>,
   instance: Virtualizer<HTMLDivElement, Element>,
-): { readonly follow: () => void; readonly following: RefObject<boolean> } {
+): {
+  readonly follow: () => void;
+  readonly following: RefObject<boolean>;
+  readonly follows: boolean;
+} {
   const following = useRef(true);
+  // While a reader follows, output arriving leaves the end for one render, and the view is taken back after it.
+  const [follows, setFollows] = useState(true);
   const lastReader = useRef(Number.NEGATIVE_INFINITY);
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -251,6 +258,7 @@ function useFollowLatest(
       lastReader.current = performance.now();
       following.current =
         element.scrollHeight - element.scrollTop - element.clientHeight <= AT_END_PX;
+      setFollows(following.current);
     };
     const passive = { passive: true } as const;
     element.addEventListener("wheel", input, passive);
@@ -281,8 +289,9 @@ function useFollowLatest(
 
   const follow = (): void => {
     following.current = true;
+    setFollows(true);
   };
-  return { follow, following };
+  return { follow, following, follows };
 }
 
 /**
@@ -335,7 +344,7 @@ export function TranscriptList({
   measured.current = virtualizer.itemSizeCache;
   const holding = useHoldCorrectionsWhileReading(scrollRef, virtualizer);
   useStayAtEndWhenShorter(scrollRef, virtualizer);
-  const { follow, following } = useFollowLatest(scrollRef, virtualizer);
+  const { follow, following, follows } = useFollowLatest(scrollRef, virtualizer);
   const atEnd = virtualizer.isAtEnd();
   useFollowTrace(scrollRef, virtualizer, {
     atEnd,
@@ -402,8 +411,8 @@ export function TranscriptList({
         </div>
       </section>
       {empty && welcome !== null && <Welcome folder={welcome.folder} />}
-      {!empty && !atEnd && (
-        // On a phone a round button in the corner, clear of the text being read.
+      {!empty && !atEnd && !follows && (
+        // Only for a reader who left the end; on a phone a round button in the corner, clear of the text being read.
         <Button
           variant="secondary"
           size="sm"
