@@ -83,7 +83,10 @@ function ThemeCard({
   );
 }
 
-/** The app in miniature, drawn in the card's theme: the page with the chat list, a pane with a reply, the box. */
+/**
+ * The app in miniature, drawn in the card's theme: the page with the chat list, a pane with a reply, a line of code in
+ * the theme's code colours, the status colours, and the box.
+ */
 function ThemePicture(): ReactNode {
   return (
     <span aria-hidden="true" className="flex h-20 gap-1.5 bg-page p-1.5">
@@ -94,7 +97,11 @@ function ThemePicture(): ReactNode {
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1 rounded-md bg-panel p-1.5">
         <span className="h-1.5 w-3/4 rounded-full bg-t1" />
-        <span className="h-1.5 w-1/2 rounded-full bg-t3" />
+        <span className="flex gap-1">
+          <span className="h-1.5 w-2.5 rounded-full bg-(--syn-keyword)" />
+          <span className="h-1.5 w-5 rounded-full bg-(--syn-string)" />
+          <span className="h-1.5 w-3.5 rounded-full bg-(--syn-function)" />
+        </span>
         <span className="flex gap-1 pt-0.5">
           <span className="size-1.5 rounded-full bg-ok" />
           <span className="size-1.5 rounded-full bg-warn" />

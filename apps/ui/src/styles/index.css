@@ -314,6 +314,90 @@
   transform: rotate(45deg);
 }
 
+/*
+ * Code's colours (#2801): highlight.js's tokens in replies' code blocks and in tool cards, and inline code, in the
+ * theme's own code colours (`--syn-*` in `styles/themes.css`, from each theme's editor theme).
+ */
+.hljs-keyword,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-selector-tag,
+.hljs-name,
+.hljs-meta {
+  color: var(--syn-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-link,
+.hljs-meta .hljs-string {
+  color: var(--syn-string);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable.constant_ {
+  color: var(--syn-number);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-section {
+  color: var(--syn-function);
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: var(--syn-type);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-property {
+  color: var(--syn-property);
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+  color: var(--syn-variable);
+}
+
+.hljs-operator {
+  color: var(--syn-operator);
+}
+
+.hljs-addition {
+  color: var(--ok-ink);
+}
+
+.hljs-deletion {
+  color: var(--bad-ink);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong,
+.hljs-section {
+  font-weight: 600;
+}
+
+.tr-md :not(pre) > code {
+  color: var(--syn-string);
+}
+
 /* The 11 px floor for functional text: collab-web draws some badges and titles at 10 px, and marker rows at 11 px. */
 .tr-root :is(.tv-badge, .tv-agent-link, .tv-out-title, .tv-expand, .tv-cell-title, .tv-todo-phase),
 .ag-drawer :is(.ag-chip, .ag-heading-count) {

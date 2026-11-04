@@ -34,6 +34,25 @@ export interface PaletteColors {
   readonly inkPen: string;
 }
 
+/** How a theme colours code: each role in the colour its own editor theme gives it. */
+export interface SyntaxColors {
+  /** `if`, `return`, `const`, and keyword-like storage. */
+  readonly keyword: string;
+  readonly string: string;
+  /** Numbers and constants (`true`, `null`). */
+  readonly number: string;
+  readonly comment: string;
+  /** Function and method names. */
+  readonly function: string;
+  /** Types and class names. */
+  readonly type: string;
+  /** Property names: JSON keys, attributes. */
+  readonly property: string;
+  /** Parameters and variables. */
+  readonly variable: string;
+  readonly operator: string;
+}
+
 export interface Palette {
   readonly id: string;
   readonly name: string;
@@ -42,6 +61,15 @@ export interface Palette {
   /** The file the colours were read from. */
   readonly source: string;
   readonly colors: PaletteColors;
+  /**
+   * Code's colours, from each family's editor theme: Catppuccin's style guide ("Code Editors"), the Tokyo Night, Nord,
+   * Dracula and Solarized (VS Code's own) VS Code themes, the Rosé Pine and Kanagawa Neovim themes, the Gruvbox and
+   * Everforest (tree-sitter groups) Vim themes, Atom's One syntax (`styles/syntax/base.less`), Ayu's VS Code template
+   * over its v9.1.0 colours, and GitHub's code colours (Primer's `prettylights` syntax tokens, v11.10.0). Alucard takes
+   * Dracula's roles in its own palette; Nord Light takes Nord's. Where a colour misses a contrast check, `derive.ts`
+   * moves it in lightness only, as it does the text.
+   */
+  readonly syntax: SyntaxColors;
 }
 
 const CATPPUCCIN = "https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT)";
@@ -90,6 +118,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#8839ef",
       inkPen: "#fe640b",
     },
+    syntax: {
+      keyword: "#8839ef",
+      string: "#40a02b",
+      number: "#fe640b",
+      comment: "#7c7f93",
+      function: "#1e66f5",
+      type: "#df8e1d",
+      property: "#1e66f5",
+      variable: "#e64553",
+      operator: "#04a5e5",
+    },
   },
   {
     id: "catppuccin-frappe",
@@ -115,6 +154,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#e78284",
       live: "#ca9ee6",
       inkPen: "#ef9f76",
+    },
+    syntax: {
+      keyword: "#ca9ee6",
+      string: "#a6d189",
+      number: "#ef9f76",
+      comment: "#949cbb",
+      function: "#8caaee",
+      type: "#e5c890",
+      property: "#8caaee",
+      variable: "#ea999c",
+      operator: "#99d1db",
     },
   },
   {
@@ -142,6 +192,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#c6a0f6",
       inkPen: "#f5a97f",
     },
+    syntax: {
+      keyword: "#c6a0f6",
+      string: "#a6da95",
+      number: "#f5a97f",
+      comment: "#939ab7",
+      function: "#8aadf4",
+      type: "#eed49f",
+      property: "#8aadf4",
+      variable: "#ee99a0",
+      operator: "#91d7e3",
+    },
   },
   {
     id: "catppuccin-mocha",
@@ -167,6 +228,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#f38ba8",
       live: "#cba6f7",
       inkPen: "#fab387",
+    },
+    syntax: {
+      keyword: "#cba6f7",
+      string: "#a6e3a1",
+      number: "#fab387",
+      comment: "#9399b2",
+      function: "#89b4fa",
+      type: "#f9e2af",
+      property: "#89b4fa",
+      variable: "#eba0ac",
+      operator: "#89dceb",
     },
   },
   {
@@ -194,6 +266,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#bb9af7",
       inkPen: "#ff9e64",
     },
+    syntax: {
+      keyword: "#bb9af7",
+      string: "#9ece6a",
+      number: "#ff9e64",
+      comment: "#51597d",
+      function: "#7aa2f7",
+      type: "#c0caf5",
+      property: "#0db9d7",
+      variable: "#e0af68",
+      operator: "#89ddff",
+    },
   },
   {
     id: "tokyo-night-storm",
@@ -219,6 +302,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#f7768e",
       live: "#bb9af7",
       inkPen: "#ff9e64",
+    },
+    syntax: {
+      keyword: "#bb9af7",
+      string: "#9ece6a",
+      number: "#ff9e64",
+      comment: "#5f6996",
+      function: "#7aa2f7",
+      type: "#c0caf5",
+      property: "#2ac3de",
+      variable: "#e0af68",
+      operator: "#89ddff",
     },
   },
   {
@@ -246,6 +340,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#7b43ba",
       inkPen: "#965027",
     },
+    syntax: {
+      keyword: "#65359d",
+      string: "#385f0d",
+      number: "#965027",
+      comment: "#888b94",
+      function: "#2959aa",
+      type: "#343b58",
+      property: "#006c86",
+      variable: "#8f5e15",
+      operator: "#006c86",
+    },
   },
   {
     id: "rose-pine",
@@ -271,6 +376,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#eb6f92",
       live: "#31748f",
       inkPen: "#ebbcba",
+    },
+    syntax: {
+      keyword: "#31748f",
+      string: "#f6c177",
+      number: "#f6c177",
+      comment: "#908caa",
+      function: "#ebbcba",
+      type: "#9ccfd8",
+      property: "#9ccfd8",
+      variable: "#c4a7e7",
+      operator: "#908caa",
     },
   },
   {
@@ -298,6 +414,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#3e8fb0",
       inkPen: "#ea9a97",
     },
+    syntax: {
+      keyword: "#3e8fb0",
+      string: "#f6c177",
+      number: "#f6c177",
+      comment: "#908caa",
+      function: "#ea9a97",
+      type: "#9ccfd8",
+      property: "#9ccfd8",
+      variable: "#c4a7e7",
+      operator: "#908caa",
+    },
   },
   {
     id: "rose-pine-dawn",
@@ -324,6 +451,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#286983",
       inkPen: "#d7827e",
     },
+    syntax: {
+      keyword: "#286983",
+      string: "#ea9d34",
+      number: "#ea9d34",
+      comment: "#797593",
+      function: "#d7827e",
+      type: "#56949f",
+      property: "#56949f",
+      variable: "#907aa9",
+      operator: "#797593",
+    },
   },
   {
     id: "nord",
@@ -349,6 +487,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#bf616a",
       live: "#b48ead",
       inkPen: "#d08770",
+    },
+    syntax: {
+      keyword: "#81a1c1",
+      string: "#a3be8c",
+      number: "#b48ead",
+      comment: "#616e88",
+      function: "#88c0d0",
+      type: "#8fbcbb",
+      property: "#8fbcbb",
+      variable: "#d8dee9",
+      operator: "#81a1c1",
     },
   },
   {
@@ -377,6 +526,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#b48ead",
       inkPen: "#d08770",
     },
+    syntax: {
+      keyword: "#81a1c1",
+      string: "#a3be8c",
+      number: "#b48ead",
+      comment: "#616e88",
+      function: "#88c0d0",
+      type: "#8fbcbb",
+      property: "#8fbcbb",
+      variable: "#2e3440",
+      operator: "#81a1c1",
+    },
   },
   {
     id: "gruvbox-dark",
@@ -402,6 +562,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#fb4934",
       live: "#d3869b",
       inkPen: "#fe8019",
+    },
+    syntax: {
+      keyword: "#fb4934",
+      string: "#b8bb26",
+      number: "#d3869b",
+      comment: "#928374",
+      function: "#b8bb26",
+      type: "#fabd2f",
+      property: "#b8bb26",
+      variable: "#83a598",
+      operator: "#ebdbb2",
     },
   },
   {
@@ -429,6 +600,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#8f3f71",
       inkPen: "#af3a03",
     },
+    syntax: {
+      keyword: "#9d0006",
+      string: "#79740e",
+      number: "#8f3f71",
+      comment: "#928374",
+      function: "#79740e",
+      type: "#b57614",
+      property: "#79740e",
+      variable: "#076678",
+      operator: "#3c3836",
+    },
   },
   {
     id: "dracula",
@@ -454,6 +636,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#ff5555",
       live: "#ff79c6",
       inkPen: "#ffb86c",
+    },
+    syntax: {
+      keyword: "#ff79c6",
+      string: "#f1fa8c",
+      number: "#bd93f9",
+      comment: "#6272a4",
+      function: "#50fa7b",
+      type: "#8be9fd",
+      property: "#8be9fd",
+      variable: "#ffb86c",
+      operator: "#ff79c6",
     },
   },
   {
@@ -481,6 +674,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#a3144d",
       inkPen: "#a34d14",
     },
+    syntax: {
+      keyword: "#a3144d",
+      string: "#846e15",
+      number: "#644ac9",
+      comment: "#6c664b",
+      function: "#14710a",
+      type: "#036a96",
+      property: "#036a96",
+      variable: "#a34d14",
+      operator: "#a3144d",
+    },
   },
   {
     id: "solarized-dark",
@@ -506,6 +710,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#dc322f",
       live: "#6c71c4",
       inkPen: "#cb4b16",
+    },
+    syntax: {
+      keyword: "#859900",
+      string: "#2aa198",
+      number: "#d33682",
+      comment: "#586e75",
+      function: "#268bd2",
+      type: "#cb4b16",
+      property: "#859900",
+      variable: "#839496",
+      operator: "#859900",
     },
   },
   {
@@ -533,6 +748,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#6c71c4",
       inkPen: "#cb4b16",
     },
+    syntax: {
+      keyword: "#859900",
+      string: "#2aa198",
+      number: "#d33682",
+      comment: "#93a1a1",
+      function: "#268bd2",
+      type: "#cb4b16",
+      property: "#859900",
+      variable: "#657b83",
+      operator: "#859900",
+    },
   },
   {
     id: "everforest-dark",
@@ -558,6 +784,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#e67e80",
       live: "#d699b6",
       inkPen: "#e69875",
+    },
+    syntax: {
+      keyword: "#e67e80",
+      string: "#83c092",
+      number: "#d699b6",
+      comment: "#859289",
+      function: "#a7c080",
+      type: "#dbbc7f",
+      property: "#7fbbb3",
+      variable: "#d3c6aa",
+      operator: "#e69875",
     },
   },
   {
@@ -585,6 +822,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#df69ba",
       inkPen: "#f57d26",
     },
+    syntax: {
+      keyword: "#f85552",
+      string: "#35a77c",
+      number: "#df69ba",
+      comment: "#939f91",
+      function: "#8da101",
+      type: "#dfa000",
+      property: "#3a94c5",
+      variable: "#5c6a72",
+      operator: "#f57d26",
+    },
   },
   {
     id: "kanagawa-wave",
@@ -610,6 +858,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#e46876",
       live: "#957fb8",
       inkPen: "#ffa066",
+    },
+    syntax: {
+      keyword: "#957fb8",
+      string: "#98bb6c",
+      number: "#d27e99",
+      comment: "#727169",
+      function: "#7e9cd8",
+      type: "#7aa89f",
+      property: "#e6c384",
+      variable: "#b8b4d0",
+      operator: "#c0a36e",
     },
   },
   {
@@ -637,6 +896,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#8992a7",
       inkPen: "#b6927b",
     },
+    syntax: {
+      keyword: "#8992a7",
+      string: "#8a9a7b",
+      number: "#a292a3",
+      comment: "#737c73",
+      function: "#8ba4b0",
+      type: "#8ea4a2",
+      property: "#c4b28a",
+      variable: "#a6a69c",
+      operator: "#c4746e",
+    },
   },
   {
     id: "kanagawa-lotus",
@@ -662,6 +932,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#c84053",
       live: "#766b90",
       inkPen: "#cc6d00",
+    },
+    syntax: {
+      keyword: "#624c83",
+      string: "#6f894e",
+      number: "#b35b79",
+      comment: "#8a8980",
+      function: "#4d699b",
+      type: "#597b75",
+      property: "#77713f",
+      variable: "#5d57a3",
+      operator: "#836f4a",
     },
   },
   {
@@ -689,6 +970,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#c678dd",
       inkPen: "#d19a66",
     },
+    syntax: {
+      keyword: "#c678dd",
+      string: "#98c379",
+      number: "#d19a66",
+      comment: "#5c6370",
+      function: "#61afef",
+      type: "#56b6c2",
+      property: "#d19a66",
+      variable: "#abb2bf",
+      operator: "#c678dd",
+    },
   },
   {
     id: "one-light",
@@ -714,6 +1006,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#e45649",
       live: "#a626a4",
       inkPen: "#986801",
+    },
+    syntax: {
+      keyword: "#a626a4",
+      string: "#50a14f",
+      number: "#b76b01",
+      comment: "#a0a1a7",
+      function: "#4078f2",
+      type: "#0184bc",
+      property: "#b76b01",
+      variable: "#383a42",
+      operator: "#a626a4",
     },
   },
   {
@@ -742,6 +1045,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#d2a6ff",
       inkPen: "#f29668",
     },
+    syntax: {
+      keyword: "#ff8f40",
+      string: "#aad94c",
+      number: "#d2a6ff",
+      comment: "#5a6673",
+      function: "#ffb454",
+      type: "#59c2ff",
+      property: "#39bae6",
+      variable: "#bfbdb6",
+      operator: "#f29668",
+    },
   },
   {
     id: "ayu-mirage",
@@ -767,6 +1081,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#ff6666",
       live: "#dfbfff",
       inkPen: "#f29e74",
+    },
+    syntax: {
+      keyword: "#ffa659",
+      string: "#d5ff80",
+      number: "#dfbfff",
+      comment: "#6e7c8f",
+      function: "#ffcd66",
+      type: "#73d0ff",
+      property: "#5ccfe6",
+      variable: "#cccac2",
+      operator: "#f29e74",
     },
   },
   {
@@ -794,6 +1119,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#a37acc",
       inkPen: "#f2a191",
     },
+    syntax: {
+      keyword: "#fa8532",
+      string: "#86b300",
+      number: "#a37acc",
+      comment: "#adaeb1",
+      function: "#eba400",
+      type: "#22a4e6",
+      property: "#55b4d4",
+      variable: "#5c6166",
+      operator: "#f2a191",
+    },
   },
   {
     id: "github-dark",
@@ -819,6 +1155,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#f85149",
       live: "#ab7df8",
       inkPen: "#db6d28",
+    },
+    syntax: {
+      keyword: "#ff7b72",
+      string: "#a5d6ff",
+      number: "#79c0ff",
+      comment: "#9198a1",
+      function: "#d2a8ff",
+      type: "#d2a8ff",
+      property: "#7ee787",
+      variable: "#ffa657",
+      operator: "#ff7b72",
     },
   },
   {
@@ -846,6 +1193,17 @@ export const PALETTES: readonly Palette[] = [
       live: "#986ee2",
       inkPen: "#cc6b2c",
     },
+    syntax: {
+      keyword: "#f47067",
+      string: "#96d0ff",
+      number: "#6cb6ff",
+      comment: "#9198a1",
+      function: "#dcbdfb",
+      type: "#dcbdfb",
+      property: "#8ddb8c",
+      variable: "#f69d50",
+      operator: "#f47067",
+    },
   },
   {
     id: "github-light",
@@ -871,6 +1229,17 @@ export const PALETTES: readonly Palette[] = [
       bad: "#d1242f",
       live: "#8250df",
       inkPen: "#bc4c00",
+    },
+    syntax: {
+      keyword: "#cf222e",
+      string: "#0a3069",
+      number: "#0550ae",
+      comment: "#59636e",
+      function: "#6639ba",
+      type: "#6639ba",
+      property: "#0550ae",
+      variable: "#953800",
+      operator: "#cf222e",
     },
   },
 ];

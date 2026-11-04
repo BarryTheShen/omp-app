@@ -1,9 +1,12 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * Themes (#2767) on real omp: every theme as a picture in Settings → App, a preview while pointing at one, a click
- * that keeps it through a reload, the switch's Light and Dark as your themes, and the palette's theme rows.
+ * that keeps it through a reload, the switch's Light and Dark as your themes, and the palette's theme rows. Code in a
+ * reply and in the Files editor is in the chosen theme's own code colours (#2801).
  */
 realTest.describe("themes", () => {
   realTest.setTimeout(240_000);
@@ -90,6 +93,83 @@ realTest.describe("themes", () => {
       expect(await fill("Dracula")).toBe("rgb(140, 98, 195)");
       expect(await fill("Gruvbox Dark")).toBe("rgb(91, 124, 112)");
       expect(await fill("Tern Dark")).toBe("rgb(42, 95, 224)");
+      // Its line of code starts with a keyword, in the theme's keyword colour.
+      const keyword = (name: string) =>
+        dark
+          .getByRole("button", { name })
+          .locator('[class~="bg-(--syn-keyword)"]')
+          .evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(await keyword("Dracula")).toBe("rgb(255, 121, 198)");
+      expect(await keyword("Tern Dark")).toBe("rgb(255, 123, 114)");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  /** A new chat, ready for a message. */
+  async function newChat(page: Page): Promise<void> {
+    await startNewChat(page);
+    await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+      "placeholder",
+      "Message omp",
+      { timeout: 120_000 },
+    );
+  }
+
+  realTest(
+    "code in a reply is in the theme's own code colours, and choosing a theme recolours it (#2801)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      const box = page.getByRole("textbox", { name: "Message" });
+      await box.fill("stream_code");
+      await box.press("Enter");
+      const block = page.locator("pre").filter({ hasText: "export const answer" });
+      await expect(block).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 60_000 });
+      const keyword = block.locator(".hljs-keyword", { hasText: /^export$/ }).first();
+      const number = block.locator(".hljs-number").first();
+      const name = block.locator(".hljs-title", { hasText: /^sum$/ }).first();
+      // Tern Dark's code colours are GitHub's.
+      await expect(keyword).toHaveCSS("color", "rgb(255, 123, 114)");
+      await expect(number).toHaveCSS("color", "rgb(121, 192, 255)");
+
+      await page.keyboard.press("Control+k");
+      const search = page
+        .getByRole("dialog", { name: "Palette", exact: true })
+        .getByRole("combobox", { name: "Search the palette" });
+      await search.fill("Theme: Dracula");
+      await search.press("Enter");
+      await expect.poll(() => shown(page)).toEqual({ theme: "dracula", dark: true });
+      // Dracula's own: pink keywords, purple numbers, green function names.
+      await expect(keyword).toHaveCSS("color", "rgb(255, 121, 198)");
+      await expect(number).toHaveCSS("color", "rgb(189, 147, 249)");
+      await expect(name).toHaveCSS("color", "rgb(80, 250, 123)");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the Files editor shows code in the theme's own code colours (#2801)",
+    async ({ realApp }) => {
+      await writeFile(join(realApp.folder, "total.ts"), "const total = 1;\n");
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+      await page
+        .getByRole("tree", { name: "Files" })
+        .getByRole("treeitem", { name: "total.ts", exact: true })
+        .click();
+      const code = page.locator(".cm-content");
+      await expect(code).toContainText("const total = 1;");
+      // Tern Dark's code colours are GitHub's: a red keyword and a blue number.
+      await expect(code.locator("span", { hasText: /^const$/ })).toHaveCSS(
+        "color",
+        "rgb(255, 123, 114)",
+      );
+      await expect(code.locator("span", { hasText: /^1$/ })).toHaveCSS(
+        "color",
+        "rgb(121, 192, 255)",
+      );
       expect(realApp.problems).toEqual([]);
     },
   );

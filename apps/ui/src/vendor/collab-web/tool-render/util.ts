@@ -179,18 +179,3 @@ export function argsDigest(args: unknown, maxLen = 96): string {
 	if (isRecord(args) && Object.keys(args).length === 0) return "";
 	return truncate(normalizeWs(display(args)), maxLen);
 }
-
-interface HljsLike {
-	getLanguage(name: string): unknown;
-	highlight(code: string, options: { language: string; ignoreIllegals?: boolean }): { value: string };
-}
-
-/**
- * Optional syntax highlighter seam. The HTML export page ships highlight.js as
- * a global; the collab-web app does not bundle it. Renderers degrade to plain
- * text when absent.
- */
-export function getHljs(): HljsLike | null {
-	const candidate = (globalThis as { hljs?: HljsLike }).hljs;
-	return candidate && typeof candidate.highlight === "function" ? candidate : null;
-}

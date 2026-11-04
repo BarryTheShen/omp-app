@@ -4,8 +4,9 @@
  */
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
+import { highlightCode } from "./highlight";
 import type { ToolRenderHost, ToolResultImage, ToolResultLike } from "./types";
-import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
+import { replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
 
 export type Tone = "accent" | "ok" | "err" | "warn";
 
@@ -70,24 +71,14 @@ export function Kv({ k, children }: { k: ReactNode; children: ReactNode }): Reac
 }
 
 function useHighlight(code: string, lang: string | null | undefined): string | null {
-	return useMemo(() => {
-		if (!lang) return null;
-		const hljs = getHljs();
-		if (!hljs) return null;
-		try {
-			if (!hljs.getLanguage(lang)) return null;
-			return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-		} catch {
-			return null;
-		}
-	}, [code, lang]);
+	return useMemo(() => (lang ? highlightCode(code, lang) : null), [code, lang]);
 }
 
 export interface OutputProps {
 	text: string;
 	/** Lines shown before collapsing behind a "more" affordance. */
 	maxLines?: number;
-	/** highlight.js language (only applied when the host exposes hljs). */
+	/** Its language, by highlight.js's name or alias, for code's colours. */
 	lang?: string | null;
 	/** Render in error color. */
 	error?: boolean;

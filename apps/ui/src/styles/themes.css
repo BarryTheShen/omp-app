@@ -64,6 +64,16 @@
   --chip-bg: rgb(255 255 255 / 7%);
   --pop-bg: #232327;
   --dim: rgb(0 0 0 / 55%);
+  /* Code: GitHub's own colours (Primer's prettylights syntax tokens, v11.10.0). */
+  --syn-keyword: #ff7b72;
+  --syn-string: #a5d6ff;
+  --syn-number: #79c0ff;
+  --syn-comment: #9198a1;
+  --syn-function: #d2a8ff;
+  --syn-type: #d2a8ff;
+  --syn-property: #7ee787;
+  --syn-variable: #ffa657;
+  --syn-operator: #ff7b72;
 }
 
 [data-theme="tern-light"] {
@@ -109,6 +119,16 @@
   --chip-bg: rgb(27 28 32 / 5.5%);
   --pop-bg: #ffffff;
   --dim: rgb(244 244 241 / 50%);
+  /* Code: GitHub's own colours (Primer's prettylights syntax tokens, v11.10.0). */
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-number: #0550ae;
+  --syn-comment: #59636e;
+  --syn-function: #6639ba;
+  --syn-type: #6639ba;
+  --syn-property: #0550ae;
+  --syn-variable: #953800;
+  --syn-operator: #cf222e;
 }
 
 /* palette themes: start (written by `bun run themes`; do not edit) */
@@ -150,6 +170,15 @@
   --chip-bg: rgb(76 79 105 / 5.5%);
   --pop-bg: #eff1f5;
   --dim: rgb(230 233 239 / 50%);
+  --syn-keyword: #8535eb;
+  --syn-string: #1e7800;
+  --syn-number: #b44300;
+  --syn-comment: #63667a;
+  --syn-function: #135cea;
+  --syn-type: #955b00;
+  --syn-property: #135cea;
+  --syn-variable: #c7233b;
+  --syn-operator: #006f9c;
 }
 
 /* Catppuccin Frappé: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
@@ -189,6 +218,15 @@
   --chip-bg: rgb(198 208 245 / 7%);
   --pop-bg: #414559;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #cfa3eb;
+  --syn-string: #a6d189;
+  --syn-number: #f1a178;
+  --syn-comment: #aab2d2;
+  --syn-function: #95b4f8;
+  --syn-type: #e5c890;
+  --syn-property: #95b4f8;
+  --syn-variable: #ef9ea1;
+  --syn-operator: #99d1db;
 }
 
 /* Catppuccin Macchiato: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
@@ -228,6 +266,15 @@
   --chip-bg: rgb(202 211 245 / 7%);
   --pop-bg: #363a4f;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #c6a0f6;
+  --syn-string: #a6da95;
+  --syn-number: #f5a97f;
+  --syn-comment: #9ea5c2;
+  --syn-function: #8aadf4;
+  --syn-type: #eed49f;
+  --syn-property: #8aadf4;
+  --syn-variable: #ee99a0;
+  --syn-operator: #91d7e3;
 }
 
 /* Catppuccin Mocha: https://github.com/catppuccin/palette/blob/main/palette.json (v1.8.0, MIT) */
@@ -267,6 +314,15 @@
   --chip-bg: rgb(205 214 244 / 7%);
   --pop-bg: #313244;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #cba6f7;
+  --syn-string: #a6e3a1;
+  --syn-number: #fab387;
+  --syn-comment: #959bb4;
+  --syn-function: #89b4fa;
+  --syn-type: #f9e2af;
+  --syn-property: #89b4fa;
+  --syn-variable: #eba0ac;
+  --syn-operator: #89dceb;
 }
 
 /* Tokyo Night: https://github.com/tokyo-night/tokyo-night-vscode-theme/tree/master/themes (MIT), tokyo-night-color-theme.json */
@@ -306,6 +362,15 @@
   --chip-bg: rgb(169 177 214 / 7%);
   --pop-bg: #202330;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #bb9af7;
+  --syn-string: #9ece6a;
+  --syn-number: #ff9e64;
+  --syn-comment: #838cb3;
+  --syn-function: #7aa2f7;
+  --syn-type: #c0caf5;
+  --syn-property: #0db9d7;
+  --syn-variable: #e0af68;
+  --syn-operator: #89ddff;
 }
 
 /* Tokyo Night Storm: https://github.com/tokyo-night/tokyo-night-vscode-theme/tree/master/themes (MIT), tokyo-night-storm-color-theme.json */
@@ -345,6 +410,15 @@
   --chip-bg: rgb(169 177 214 / 7%);
   --pop-bg: #2c324a;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #bb9af7;
+  --syn-string: #9ece6a;
+  --syn-number: #ff9e64;
+  --syn-comment: #8d99c9;
+  --syn-function: #7aa2f7;
+  --syn-type: #c0caf5;
+  --syn-property: #2ac3de;
+  --syn-variable: #e0af68;
+  --syn-operator: #89ddff;
 }
 
 /* Tokyo Night Light: https://github.com/tokyo-night/tokyo-night-vscode-theme/tree/master/themes (MIT), tokyo-night-light-color-theme.json */
@@ -384,6 +458,15 @@
   --chip-bg: rgb(52 59 89 / 5.5%);
   --pop-bg: #e6e7ed;
   --dim: rgb(214 216 223 / 50%);
+  --syn-keyword: #65359d;
+  --syn-string: #385f0d;
+  --syn-number: #914c22;
+  --syn-comment: #5b5e66;
+  --syn-function: #2959aa;
+  --syn-type: #343b58;
+  --syn-property: #006780;
+  --syn-variable: #845402;
+  --syn-operator: #006780;
 }
 
 /* Rosé Pine: https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT), main */
@@ -423,6 +506,15 @@
   --chip-bg: rgb(224 222 244 / 7%);
   --pop-bg: #26233a;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #5a9bb8;
+  --syn-string: #f6c177;
+  --syn-number: #f6c177;
+  --syn-comment: #9591af;
+  --syn-function: #ebbcba;
+  --syn-type: #9ccfd8;
+  --syn-property: #9ccfd8;
+  --syn-variable: #c4a7e7;
+  --syn-operator: #9591af;
 }
 
 /* Rosé Pine Moon: https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT), moon */
@@ -462,6 +554,15 @@
   --chip-bg: rgb(224 222 244 / 7%);
   --pop-bg: #393552;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #5babcd;
+  --syn-string: #f6c177;
+  --syn-number: #f6c177;
+  --syn-comment: #a29ebd;
+  --syn-function: #ea9a97;
+  --syn-type: #9ccfd8;
+  --syn-property: #9ccfd8;
+  --syn-variable: #c4a7e7;
+  --syn-operator: #a29ebd;
 }
 
 /* Rosé Pine Dawn: https://github.com/rose-pine/rose-pine-palette/blob/main/palette.json (v4.0.1, MIT), dawn */
@@ -501,6 +602,15 @@
   --chip-bg: rgb(70 66 97 / 5.5%);
   --pop-bg: #fffaf3;
   --dim: rgb(242 233 225 / 50%);
+  --syn-keyword: #286983;
+  --syn-string: #945d00;
+  --syn-number: #945d00;
+  --syn-comment: #696582;
+  --syn-function: #a25250;
+  --syn-type: #33727c;
+  --syn-property: #33727c;
+  --syn-variable: #75608d;
+  --syn-operator: #696582;
 }
 
 /* Nord: https://github.com/nordtheme/nord/blob/develop/src/nord.css (v0.2.1, MIT) */
@@ -540,6 +650,15 @@
   --chip-bg: rgb(236 239 244 / 7%);
   --pop-bg: #3b4252;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #90b1d1;
+  --syn-string: #a3be8c;
+  --syn-number: #c9a2c2;
+  --syn-comment: #a1afcb;
+  --syn-function: #88c0d0;
+  --syn-type: #8fbcbb;
+  --syn-property: #8fbcbb;
+  --syn-variable: #d8dee9;
+  --syn-operator: #90b1d1;
 }
 
 /* Nord Light: https://github.com/nordtheme/nord/blob/develop/src/nord.css (v0.2.1, MIT); the light theme is the app's, from Nord's own colours */
@@ -579,6 +698,15 @@
   --chip-bg: rgb(46 52 64 / 5.5%);
   --pop-bg: #eceff4;
   --dim: rgb(216 222 233 / 50%);
+  --syn-keyword: #466481;
+  --syn-string: #51693b;
+  --syn-number: #795773;
+  --syn-comment: #54617b;
+  --syn-function: #326978;
+  --syn-type: #3e6968;
+  --syn-property: #3e6968;
+  --syn-variable: #2e3440;
+  --syn-operator: #466481;
 }
 
 /* Gruvbox Dark: https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim (v2.0.0, MIT) */
@@ -618,6 +746,15 @@
   --chip-bg: rgb(235 219 178 / 7%);
   --pop-bg: #3c3836;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ff7965;
+  --syn-string: #b8bb26;
+  --syn-number: #da8ca1;
+  --syn-comment: #afa090;
+  --syn-function: #b8bb26;
+  --syn-type: #fabd2f;
+  --syn-property: #b8bb26;
+  --syn-variable: #88aa9d;
+  --syn-operator: #ebdbb2;
 }
 
 /* Gruvbox Light: https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim (v2.0.0, MIT) */
@@ -657,6 +794,15 @@
   --chip-bg: rgb(60 56 54 / 5.5%);
   --pop-bg: #f9f5d7;
   --dim: rgb(242 229 188 / 50%);
+  --syn-keyword: #9d0006;
+  --syn-string: #6d6800;
+  --syn-number: #8f3f71;
+  --syn-comment: #736456;
+  --syn-function: #6d6800;
+  --syn-type: #905b00;
+  --syn-property: #6d6800;
+  --syn-variable: #076678;
+  --syn-operator: #3c3836;
 }
 
 /* Dracula: https://github.com/dracula/dracula-theme/blob/main/README.md, its palette tables (MIT) */
@@ -696,6 +842,15 @@
   --chip-bg: rgb(248 248 242 / 7%);
   --pop-bg: #44475a;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ff79c6;
+  --syn-string: #f1fa8c;
+  --syn-number: #bd93f9;
+  --syn-comment: #8fa1d6;
+  --syn-function: #50fa7b;
+  --syn-type: #8be9fd;
+  --syn-property: #8be9fd;
+  --syn-variable: #ffb86c;
+  --syn-operator: #ff79c6;
 }
 
 /* Alucard: https://github.com/dracula/dracula-theme/blob/main/README.md, its palette tables (MIT) */
@@ -735,6 +890,15 @@
   --chip-bg: rgb(31 31 31 / 5.5%);
   --pop-bg: #fffbeb;
   --dim: rgb(255 251 235 / 50%);
+  --syn-keyword: #a3144d;
+  --syn-string: #806a0d;
+  --syn-number: #644ac9;
+  --syn-comment: #6c664b;
+  --syn-function: #14710a;
+  --syn-type: #036a96;
+  --syn-property: #036a96;
+  --syn-variable: #a34d14;
+  --syn-operator: #a3144d;
 }
 
 /* Solarized Dark: https://github.com/altercation/solarized/blob/master/README.md, its palette (MIT) */
@@ -774,6 +938,15 @@
   --chip-bg: rgb(147 161 161 / 7%);
   --pop-bg: #073642;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #8ea219;
+  --syn-string: #35a9a0;
+  --syn-number: #fc5ea5;
+  --syn-comment: #859ca4;
+  --syn-function: #3f9fe8;
+  --syn-type: #f57243;
+  --syn-property: #8ea219;
+  --syn-variable: #8a9c9e;
+  --syn-operator: #8ea219;
 }
 
 /* Solarized Light: https://github.com/altercation/solarized/blob/master/README.md, its palette (MIT) */
@@ -813,6 +986,15 @@
   --chip-bg: rgb(78 100 107 / 5.5%);
   --pop-bg: #fdf6e3;
   --dim: rgb(238 232 213 / 50%);
+  --syn-keyword: #606e00;
+  --syn-string: #00746d;
+  --syn-number: #c12173;
+  --syn-comment: #5e6b6b;
+  --syn-function: #006cac;
+  --syn-type: #ba3e00;
+  --syn-property: #606e00;
+  --syn-variable: #576c74;
+  --syn-operator: #606e00;
 }
 
 /* Everforest Dark: https://github.com/sainnhe/everforest/blob/master/palette.md, medium (MIT) */
@@ -852,6 +1034,15 @@
   --chip-bg: rgb(211 198 170 / 7%);
   --pop-bg: #3d484d;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #f48a8c;
+  --syn-string: #83c092;
+  --syn-number: #d699b6;
+  --syn-comment: #9faca3;
+  --syn-function: #a7c080;
+  --syn-type: #dbbc7f;
+  --syn-property: #7fbbb3;
+  --syn-variable: #d3c6aa;
+  --syn-operator: #e69875;
 }
 
 /* Everforest Light: https://github.com/sainnhe/everforest/blob/master/palette.md, medium (MIT) */
@@ -891,6 +1082,15 @@
   --chip-bg: rgb(86 100 108 / 5.5%);
   --pop-bg: #fdf6e3;
   --dim: rgb(239 235 212 / 50%);
+  --syn-keyword: #cb252c;
+  --syn-string: #007954;
+  --syn-number: #af3d8e;
+  --syn-comment: #616c5f;
+  --syn-function: #627000;
+  --syn-type: #8b6200;
+  --syn-property: #0271a0;
+  --syn-variable: #5c6a72;
+  --syn-operator: #aa4f00;
 }
 
 /* Kanagawa Wave: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT) */
@@ -930,6 +1130,15 @@
   --chip-bg: rgb(220 215 186 / 7%);
   --pop-bg: #2a2a37;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #a08ac3;
+  --syn-string: #98bb6c;
+  --syn-number: #d27e99;
+  --syn-comment: #96958c;
+  --syn-function: #7e9cd8;
+  --syn-type: #7aa89f;
+  --syn-property: #e6c384;
+  --syn-variable: #b8b4d0;
+  --syn-operator: #c0a36e;
 }
 
 /* Kanagawa Dragon: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT) */
@@ -969,6 +1178,15 @@
   --chip-bg: rgb(197 201 197 / 7%);
   --pop-bg: #282727;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #8992a7;
+  --syn-string: #8a9a7b;
+  --syn-number: #a292a3;
+  --syn-comment: #889188;
+  --syn-function: #8ba4b0;
+  --syn-type: #8ea4a2;
+  --syn-property: #c4b28a;
+  --syn-variable: #a6a69c;
+  --syn-operator: #c97972;
 }
 
 /* Kanagawa Lotus: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (MIT) */
@@ -1008,6 +1226,15 @@
   --chip-bg: rgb(84 84 100 / 5.5%);
   --pop-bg: #f2ecbc;
   --dim: rgb(229 221 176 / 50%);
+  --syn-keyword: #624c83;
+  --syn-string: #4f672d;
+  --syn-number: #974261;
+  --syn-comment: #616058;
+  --syn-function: #456092;
+  --syn-type: #446560;
+  --syn-property: #67612f;
+  --syn-variable: #5c56a1;
+  --syn-operator: #705c38;
 }
 
 /* One Dark: https://github.com/atom/one-dark-syntax, styles/colors.less and styles/syntax-variables.less, computed as LESS does (v1.8.4, MIT) */
@@ -1047,6 +1274,15 @@
   --chip-bg: rgb(171 178 191 / 7%);
   --pop-bg: #3e4451;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ce80e5;
+  --syn-string: #98c379;
+  --syn-number: #d19a66;
+  --syn-comment: #979eac;
+  --syn-function: #61afef;
+  --syn-type: #56b6c2;
+  --syn-property: #d19a66;
+  --syn-variable: #abb2bf;
+  --syn-operator: #ce80e5;
 }
 
 /* One Light: https://github.com/atom/one-light-syntax, styles/colors.less and styles/syntax-variables.less, computed as LESS does (v1.8.4, MIT) */
@@ -1086,6 +1322,15 @@
   --chip-bg: rgb(56 58 66 / 5.5%);
   --pop-bg: #fafafa;
   --dim: rgb(229 229 230 / 50%);
+  --syn-keyword: #a626a4;
+  --syn-string: #227624;
+  --syn-number: #975700;
+  --syn-comment: #65666b;
+  --syn-function: #295ed6;
+  --syn-type: #006d9c;
+  --syn-property: #975700;
+  --syn-variable: #383a42;
+  --syn-operator: #a626a4;
 }
 
 /* Ayu Dark: https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT), dark.yaml */
@@ -1125,6 +1370,15 @@
   --chip-bg: rgb(191 189 182 / 7%);
   --pop-bg: #0f131a;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ff8f40;
+  --syn-string: #aad94c;
+  --syn-number: #d2a6ff;
+  --syn-comment: #7b8895;
+  --syn-function: #ffb454;
+  --syn-type: #59c2ff;
+  --syn-property: #39bae6;
+  --syn-variable: #bfbdb6;
+  --syn-operator: #f29668;
 }
 
 /* Ayu Mirage: https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT), mirage.yaml */
@@ -1164,6 +1418,15 @@
   --chip-bg: rgb(204 202 194 / 7%);
   --pop-bg: #1c212c;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ffa659;
+  --syn-string: #d5ff80;
+  --syn-number: #dfbfff;
+  --syn-comment: #8f9db1;
+  --syn-function: #ffcd66;
+  --syn-type: #73d0ff;
+  --syn-property: #5ccfe6;
+  --syn-variable: #cccac2;
+  --syn-operator: #f29e74;
 }
 
 /* Ayu Light: https://github.com/ayu-theme/ayu-colors/tree/master/themes (v9.1.0, MIT), light.yaml */
@@ -1203,6 +1466,15 @@
   --chip-bg: rgb(92 97 102 / 5.5%);
   --pop-bg: #ffffff;
   --dim: rgb(248 249 250 / 50%);
+  --syn-keyword: #b25500;
+  --syn-string: #5a7900;
+  --syn-number: #855cac;
+  --syn-comment: #6e6f72;
+  --syn-function: #936500;
+  --syn-type: #0076aa;
+  --syn-property: #007997;
+  --syn-variable: #5c6166;
+  --syn-operator: #a45a4c;
 }
 
 /* GitHub Dark: https://github.com/primer/primitives/tree/main/src/tokens, functional colours over the base scales (v11.10.0, MIT) */
@@ -1242,6 +1514,15 @@
   --chip-bg: rgb(240 246 252 / 7%);
   --pop-bg: #151b23;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ff7b72;
+  --syn-string: #a5d6ff;
+  --syn-number: #79c0ff;
+  --syn-comment: #9198a1;
+  --syn-function: #d2a8ff;
+  --syn-type: #d2a8ff;
+  --syn-property: #7ee787;
+  --syn-variable: #ffa657;
+  --syn-operator: #ff7b72;
 }
 
 /* GitHub Dark Dimmed: https://github.com/primer/primitives/tree/main/src/tokens, functional colours over the base scales (v11.10.0, MIT) */
@@ -1281,6 +1562,15 @@
   --chip-bg: rgb(209 215 224 / 7%);
   --pop-bg: #262c36;
   --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #f8736a;
+  --syn-string: #96d0ff;
+  --syn-number: #6cb6ff;
+  --syn-comment: #969da6;
+  --syn-function: #dcbdfb;
+  --syn-type: #dcbdfb;
+  --syn-property: #8ddb8c;
+  --syn-variable: #f69d50;
+  --syn-operator: #f8736a;
 }
 
 /* GitHub Light: https://github.com/primer/primitives/tree/main/src/tokens, functional colours over the base scales (v11.10.0, MIT) */
@@ -1320,6 +1610,15 @@
   --chip-bg: rgb(31 35 40 / 5.5%);
   --pop-bg: #ffffff;
   --dim: rgb(246 248 250 / 50%);
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-number: #0550ae;
+  --syn-comment: #59636e;
+  --syn-function: #6639ba;
+  --syn-type: #6639ba;
+  --syn-property: #0550ae;
+  --syn-variable: #953800;
+  --syn-operator: #cf222e;
 }
 
 /* palette themes: end */

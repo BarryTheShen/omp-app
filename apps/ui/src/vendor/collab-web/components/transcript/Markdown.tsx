@@ -4,6 +4,7 @@ import { listMayContinueAt } from "@oh-my-pi/pi-utils/marked-list";
 import type { MouseEvent, ReactNode } from "react";
 import { memo, useMemo, useRef } from "react";
 import { escapeHtml } from "../../lib/format";
+import { highlightCode } from "../../tool-render/highlight";
 import { mathExtension } from "./math";
 
 function unescapeHtml(raw: string): string {
@@ -73,12 +74,13 @@ const md = new Marked({
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
 		},
-		// A code block, with a Copy button that `copyCode` handles.
+		// A code block, with a Copy button that `copyCode` handles; in code's colours where its language is known (#2801).
 		code({ text, lang, escaped }) {
 			const language = (lang ?? "").match(/^\S*/)?.[0] ?? "";
 			const body = `${text.replace(/\n$/, "")}\n`;
 			const languageClass = language === "" ? "" : ` class="language-${escapeHtml(language)}"`;
-			return `<div class="tr-code"><button type="button" class="tr-code-copy" data-copy-code aria-label="Copy code">Copy</button><pre><code${languageClass}>${escaped ? body : escapeHtml(body)}</code></pre></div>\n`;
+			const html = escaped ? body : (highlightCode(body, language) ?? escapeHtml(body));
+			return `<div class="tr-code"><button type="button" class="tr-code-copy" data-copy-code aria-label="Copy code">Copy</button><pre><code${languageClass}>${html}</code></pre></div>\n`;
 		},
 	},
 	breaks: true,

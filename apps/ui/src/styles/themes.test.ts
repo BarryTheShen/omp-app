@@ -69,6 +69,22 @@ const FILLS_UNDER_WHITE = ["--accent-fill", "--ok-fill", "--bad-fill", "--live-f
 const TINTED = ["--accent-ink", "--ok-ink", "--warn-ink", "--bad-ink"];
 const TINT = 0.14;
 const WHITE: Rgba = [255, 255, 255, 1];
+/**
+ * Code's colours, and the surfaces code is shown on: the page, a panel, a card (inline code) and a code block, and the
+ * Files editor's current line (`--l1` over a panel).
+ */
+const CODE = [
+  "--syn-keyword",
+  "--syn-string",
+  "--syn-number",
+  "--syn-comment",
+  "--syn-function",
+  "--syn-type",
+  "--syn-property",
+  "--syn-variable",
+  "--syn-operator",
+];
+const CODE_SURFACES = ["--page", "--panel", "--card", "--code-bg"];
 
 describe.each(["tern-dark", "tern-light", ...PALETTES.map((palette) => palette.id)])(
   "%s",
@@ -84,6 +100,22 @@ describe.each(["tern-dark", "tern-light", ...PALETTES.map((palette) => palette.i
       "%s on %s reads at 4.5:1 or more",
       (text, surface) => {
         expect(contrast(color(text), color(surface))).toBeGreaterThanOrEqual(4.5);
+      },
+    );
+
+    test.each(CODE.flatMap((code) => CODE_SURFACES.map((surface) => [code, surface] as const)))(
+      "%s on %s reads at 4.5:1 or more",
+      (code, surface) => {
+        expect(contrast(color(code), color(surface))).toBeGreaterThanOrEqual(4.5);
+      },
+    );
+
+    test.each(CODE)(
+      "%s on the editor's current line (--l1 over --panel) reads at 4.5:1 or more",
+      (code) => {
+        expect(contrast(color(code), over(color("--l1"), color("--panel")))).toBeGreaterThanOrEqual(
+          4.5,
+        );
       },
     );
 

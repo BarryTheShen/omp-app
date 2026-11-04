@@ -1,4 +1,4 @@
-import type { Palette, PaletteColors } from "./palettes";
+import type { Palette, PaletteColors, SyntaxColors } from "./palettes";
 
 /** A colour's red, green and blue, 0 to 255. */
 export type Rgb = readonly [number, number, number];
@@ -120,11 +120,24 @@ const TINT = 0.14;
 const rgba = ([r, g, b]: Rgb, percent: number): string =>
   `rgb(${Math.round(r)} ${Math.round(g)} ${Math.round(b)} / ${percent}%)`;
 
+/** Code's colour roles, each written as `--syn-<role>`. */
+const SYNTAX_ROLES = [
+  "keyword",
+  "string",
+  "number",
+  "comment",
+  "function",
+  "type",
+  "property",
+  "variable",
+  "operator",
+] as const satisfies readonly (keyof SyntaxColors)[];
+
 /**
- * A palette theme's 33 variables, in the order of the Tern blocks in `styles/themes.css`. Surfaces, the faintest text and
- * the status dots are the palette's; text, focus ring, status text and fills move in lightness where they would miss the
- * checks of `styles/themes.test.ts` (text 4.5:1 on every surface and on row fills, a status's text on its own tint, white
- * on a fill, the focus ring 3:1).
+ * A palette theme's 42 variables, in the order of the Tern blocks in `styles/themes.css`. Surfaces, the faintest text and
+ * the status dots are the palette's; text, code's colours, focus ring, status text and fills move in lightness where they
+ * would miss the checks of `styles/themes.test.ts` (text 4.5:1 on every surface and on row fills, code 4.5:1 where code
+ * is shown, a status's text on its own tint, white on a fill, the focus ring 3:1).
  */
 export function themeTokens(palette: Palette): readonly (readonly [string, string])[] {
   const c: PaletteColors = palette.colors;
@@ -133,7 +146,9 @@ export function themeTokens(palette: Palette): readonly (readonly [string, strin
   const surfaces = [c.page, c.panel, c.card, c.raise, c.codeBg, c.tblHead, c.popBg].map(parseHex);
   const readsOnSurfaces = (color: Rgb): boolean =>
     surfaces.every((surface) => contrast(color, surface) >= 4.5);
-  const lineAlphas = dark ? [7, 10, 15, 24] : [6, 9, 14, 22];
+  const lineAlphas: readonly [number, number, number, number] = dark
+    ? [7, 10, 15, 24]
+    : [6, 9, 14, 22];
   const rowSurfaces = [parseHex(c.page), parseHex(c.panel)];
   const readsOnRows = (color: Rgb, lines: Rgb): boolean =>
     lineAlphas
@@ -152,6 +167,14 @@ export function themeTokens(palette: Palette): readonly (readonly [string, strin
   const lines = parseHex(t1);
   const t2 = seek(c.t2, (color) => readsOnSurfaces(color) && readsOnRows(color, lines), away);
   const t3 = seek(c.t3, readsOnSurfaces, away);
+  // Code is shown on the page, a panel, a card (inline code), a code block and the Files editor's current line (the
+  // faintest line fill over a panel); not on raised controls, table heads or menus.
+  const codeSurfaces = [
+    ...[c.page, c.panel, c.card, c.codeBg].map(parseHex),
+    over(lines, lineAlphas[0] / 100, parseHex(c.panel)),
+  ];
+  const readsAsCode = (color: Rgb): boolean =>
+    codeSurfaces.every((surface) => contrast(color, surface) >= 4.5);
   const focusSurfaces = [c.page, c.panel, c.card].map(parseHex);
   const accent = seek(
     c.accent,
@@ -189,6 +212,9 @@ export function themeTokens(palette: Palette): readonly (readonly [string, strin
     ["--chip-bg", rgba(lines, dark ? 7 : 5.5)],
     ["--pop-bg", c.popBg.toLowerCase()],
     ["--dim", dark ? "rgb(0 0 0 / 55%)" : rgba(parseHex(c.page), 50)],
+    ...SYNTAX_ROLES.map(
+      (role) => [`--syn-${role}`, seek(palette.syntax[role], readsAsCode, away)] as const,
+    ),
   ];
 }
 

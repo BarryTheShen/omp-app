@@ -7,7 +7,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import {
   bracketMatching,
-  defaultHighlightStyle,
+  HighlightStyle,
   indentOnInput,
   syntaxHighlighting,
 } from "@codemirror/language";
@@ -20,6 +20,7 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
+import { tags as t } from "@lezer/highlight";
 import { type ReactNode, useEffect, useRef } from "react";
 
 /**
@@ -85,6 +86,38 @@ const THEME = EditorView.theme({
   },
 });
 
+/** Code in the theme's own code colours (#2801), as code in a chat (`--syn-*` in `styles/themes.css`). */
+const CODE_COLOURS = HighlightStyle.define([
+  { tag: [t.keyword, t.modifier, t.tagName, t.processingInstruction], color: "var(--syn-keyword)" },
+  { tag: [t.string, t.regexp, t.url, t.escape], color: "var(--syn-string)" },
+  {
+    tag: [t.number, t.bool, t.null, t.atom, t.constant(t.variableName)],
+    color: "var(--syn-number)",
+  },
+  { tag: t.comment, color: "var(--syn-comment)", fontStyle: "italic" },
+  {
+    tag: [
+      t.function(t.variableName),
+      t.function(t.propertyName),
+      t.function(t.definition(t.variableName)),
+    ],
+    color: "var(--syn-function)",
+  },
+  { tag: [t.typeName, t.className, t.namespace], color: "var(--syn-type)" },
+  { tag: [t.propertyName, t.attributeName], color: "var(--syn-property)" },
+  { tag: [t.special(t.variableName), t.self], color: "var(--syn-variable)" },
+  { tag: t.operator, color: "var(--syn-operator)" },
+  // A member access's `.` stays in the text's colour.
+  { tag: t.derefOperator, color: "inherit" },
+  { tag: t.heading, color: "var(--syn-function)", fontWeight: "600" },
+  { tag: t.monospace, color: "var(--syn-string)" },
+  { tag: t.link, color: "var(--accent-ink)" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strong, fontWeight: "600" },
+  { tag: t.inserted, color: "var(--ok-ink)" },
+  { tag: [t.deleted, t.invalid], color: "var(--bad-ink)" },
+]);
+
 export default function CodeEditor({
   value,
   path,
@@ -115,7 +148,7 @@ export default function CodeEditor({
           indentOnInput(),
           bracketMatching(),
           highlightSelectionMatches(),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          syntaxHighlighting(CODE_COLOURS),
           keymap.of([
             {
               key: "Mod-s",
