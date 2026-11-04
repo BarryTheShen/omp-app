@@ -90,6 +90,11 @@ export interface ChatSnapshot {
   readonly stream: AssistantMessage | null;
   readonly streamDone: boolean;
   readonly activeTools: ReadonlyMap<string, ActiveTool>;
+  /**
+   * What a command left running in the background reported last, by the call that started it (omp's job frame,
+   * `details.async`): the call's own card shows it, filling and settling with the job (#2800).
+   */
+  readonly jobs: ReadonlyMap<string, unknown>;
   /** From omp's `agent_start` to its `agent_end`. */
   readonly working: boolean;
   /** When the chat's pause began (omp's pause gate holds its agents, `/pause`); null while it runs. */
@@ -155,6 +160,7 @@ const EMPTY: ChatSnapshot = {
   stream: null,
   streamDone: false,
   activeTools: new Map(),
+  jobs: new Map(),
   working: false,
   pausedAt: null,
   held: [],
@@ -184,6 +190,17 @@ const EMPTY: ChatSnapshot = {
 /** A transcript to draw that is not a live chat (a subagent's, in the Agent Hub): its entries, and whether it runs. */
 export function transcriptOnly(entries: readonly SessionEntry[], working: boolean): ChatSnapshot {
   return { ...EMPTY, entries, working, phase: "live" };
+}
+
+/** omp's job frame: a backgrounded command's report on the call that started it, with the job's state (`details.async`). */
+function isJobFrame(partialResult: unknown): boolean {
+  const details = (partialResult as { readonly details?: unknown } | null | undefined)?.details;
+  return (
+    typeof details === "object" &&
+    details !== null &&
+    typeof (details as { readonly async?: unknown }).async === "object" &&
+    (details as { readonly async?: unknown }).async !== null
+  );
 }
 
 /** A plan omp proposed: its file and its name (the model's slug, as `approve_plan` takes it). */
@@ -275,6 +292,7 @@ export class ChatStore {
   #stream: AssistantMessage | null = null;
   #streamDone = false;
   #activeTools: ReadonlyMap<string, ActiveTool> = new Map();
+  #jobs: ReadonlyMap<string, unknown> = new Map();
   #working = false;
   #activityMark = 0;
   #phase: ConnectionPhase = "connecting";
@@ -680,6 +698,12 @@ export class ChatStore {
       }
       case "tool_execution_update": {
         const existing = this.#activeTools.get(event.toolCallId);
+        // A call that returned with its command still running in the background reports on that call as the job goes
+        // on: the call's own card shows it, rather than the call coming back as one running at the chat's end (#2800).
+        if (existing === undefined && isJobFrame(event.partialResult)) {
+          this.#jobs = new Map(this.#jobs).set(event.toolCallId, event.partialResult);
+          return true;
+        }
         const tool: ActiveTool = existing
           ? { ...existing, partialResult: event.partialResult }
           : {
@@ -973,6 +997,7 @@ export class ChatStore {
       stream: this.#stream,
       streamDone: this.#streamDone,
       activeTools: this.#activeTools,
+      jobs: this.#jobs,
       working: this.#working,
       pausedAt: this.#pausedAt,
       held: this.#held,

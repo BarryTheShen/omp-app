@@ -1,7 +1,7 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ChatSessionEvent } from "@omp-app/contracts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { toolResults } from "./rows";
+import { buildRows, toolResults } from "./rows";
 import { applyDelta, ChatStore } from "./store";
 
 const T = 1_790_000_000_000;
@@ -202,6 +202,63 @@ describe("ChatStore", () => {
       }),
     );
     expect(toolResults(store.getSnapshot().entries).get("c1")?.isError).toBe(false);
+  });
+
+  test("a command left running in the background reports on its call's card, never as a call still running (#2800)", () => {
+    const store = new ChatStore();
+    const calls = {
+      ...assistant([
+        {
+          type: "toolCall",
+          id: "c1",
+          name: "bash",
+          arguments: { command: "sleep 600", async: true },
+        },
+      ]),
+      stopReason: "toolUse",
+    };
+    const backgrounded = {
+      role: "toolResult",
+      toolCallId: "c1",
+      toolName: "bash",
+      content: [{ type: "text", text: "Backgrounded as job bg_1" }],
+      isError: false,
+      timestamp: T + 1,
+    };
+    store.setWindow([fileEntry("a1", calls), fileEntry("r1", backgrounded)], false);
+    store.apply(event({ type: "agent_start" }));
+    const frame = (state: string, text: string) => ({
+      content: [{ type: "text", text }],
+      details: { async: { state, jobId: "bg_1", type: "bash" } },
+    });
+    // The job goes on long after its call returned: each report is the card's, not a running call's.
+    for (const [state, text] of [
+      ["running", "half way"],
+      ["completed", "all done"],
+    ] as const) {
+      store.apply(
+        event({
+          type: "tool_execution_update",
+          toolCallId: "c1",
+          toolName: "bash",
+          args: {},
+          partialResult: frame(state, text),
+        }),
+      );
+      // Updates publish once a frame.
+      vi.advanceTimersToNextFrame();
+      const snapshot = store.getSnapshot();
+      expect(snapshot.activeTools.size).toBe(0);
+      expect(toolResults(snapshot.entries, snapshot.jobs).get("c1")).toMatchObject({
+        content: [{ type: "text", text }],
+        details: { async: { state } },
+      });
+    }
+    // Long after, the call's message has left the chat's window of entries (a long chat): nothing shows as a call still
+    // running at the chat's end, where a report used to bring the call back as one.
+    expect(
+      buildRows({ ...store.getSnapshot(), entries: [] }).some((row) => row.kind === "tools"),
+    ).toBe(false);
   });
 
   test("older entries go in front without repeating the ones already shown", () => {

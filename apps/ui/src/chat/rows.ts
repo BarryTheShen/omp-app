@@ -106,15 +106,29 @@ function entryKey(entry: SessionEntry): string {
   return message.timestamp === undefined ? entry.id : `m:${message.role}:${message.timestamp}`;
 }
 
-/** The results of tool calls, by call id: each card shows its call's result. */
+/**
+ * The results of tool calls, by call id: each card shows its call's result, or, for a command its call left running in
+ * the background, what the job reported last (`jobs`, #2800), so the card fills and settles with the job.
+ */
 export function toolResults(
   entries: readonly SessionEntry[],
+  jobs: ReadonlyMap<string, unknown> = new Map(),
 ): ReadonlyMap<string, ToolResultMessage> {
   const results = new Map<string, ToolResultMessage>();
   for (const entry of entries) {
     if (entry.type === "message" && entry.message.role === "toolResult") {
       results.set(entry.message.toolCallId, entry.message);
     }
+  }
+  for (const [id, frame] of jobs) {
+    const result = results.get(id);
+    const report = frame as { readonly content?: unknown; readonly details?: unknown };
+    if (result === undefined || !Array.isArray(report.content)) continue;
+    results.set(id, {
+      ...result,
+      content: report.content as ToolResultMessage["content"],
+      details: report.details,
+    });
   }
   return results;
 }

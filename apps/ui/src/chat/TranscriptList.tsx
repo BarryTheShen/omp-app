@@ -309,13 +309,14 @@ export function TranscriptList({
   readonly label?: string;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { entries, stream, streamDone, activeTools, working, hasOlder, shell, notices } = snapshot;
+  const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, shell, notices } =
+    snapshot;
   const rows = useMemo(
     () =>
       buildRows({ entries, stream, streamDone, activeTools, working, shell, notices, hasOlder }),
     [entries, stream, streamDone, activeTools, working, shell, notices, hasOlder],
   );
-  const results = useMemo(() => toolResults(entries), [entries]);
+  const results = useMemo(() => toolResults(entries, jobs), [entries, jobs]);
   const measured = useRef<ReadonlyMap<unknown, number>>(new Map());
   const firstHeight = useFirstHeights(rows, measured);
   const virtualizer = useVirtualizer({
