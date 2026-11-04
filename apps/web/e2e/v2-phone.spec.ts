@@ -801,4 +801,59 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "the 'app was updated' banner leaves the top bar's controls in reach (#2818)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      await context.addInitScript(() => {
+        let hidden = false;
+        Object.defineProperty(document, "visibilityState", {
+          get: () => (hidden ? "hidden" : "visible"),
+          configurable: true,
+        });
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden = (on) => {
+          hidden = on;
+          document.dispatchEvent(new Event("visibilitychange"));
+        };
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // A new build goes live: the app's page names another entry script.
+      await page.route(/\/$/, async (route) => {
+        const response = await route.fetch();
+        const html = (await response.text()).replace(
+          /\/assets\/index-[\w-]+\.js/,
+          "/assets/index-next.js",
+        );
+        await route.fulfill({ response, body: html });
+      });
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(true),
+      );
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(false),
+      );
+      await expect(page.getByRole("status").filter({ hasText: "The app was updated" })).toBeVisible(
+        {
+          timeout: 30_000,
+        },
+      );
+      const covered = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-tour="phone-top-bar"] button')].flatMap((button) => {
+          const r = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return button.contains(hit)
+            ? []
+            : [button.getAttribute("aria-label") ?? button.textContent];
+        }),
+      );
+      expect(covered).toEqual([]);
+      await page.unroute(/\/$/);
+      await context.close();
+    },
+  );
 });
