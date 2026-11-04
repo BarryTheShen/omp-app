@@ -364,9 +364,25 @@ export class ChatController {
         "warning",
       );
     };
-    this.#followAgents(opened.threadId).catch(unshown("This chat's subagents are not shown"));
-    this.#readModes().catch(unshown("Plan mode and the goal are not shown"));
-    this.#refreshRole().catch(() => undefined);
+    // A read the link dropped under (the phone locked right after the chat opened, its link dead on waking) is made once
+    // more on the new link, which it waits for, as the window's is (#2813).
+    const onTheLink = async <T>(read: () => Promise<T>): Promise<T> => {
+      try {
+        return await read();
+      } catch (failure) {
+        if (
+          this.#disposed ||
+          !(failure instanceof AppFailure && failure.appError.code === "unavailable")
+        )
+          throw failure;
+        return read();
+      }
+    };
+    onTheLink(() => this.#followAgents(opened.threadId)).catch(
+      unshown("This chat's subagents are not shown"),
+    );
+    onTheLink(() => this.#readModes()).catch(unshown("Plan mode and the goal are not shown"));
+    onTheLink(() => this.#refreshRole()).catch(() => undefined);
     this.#followContinue();
     this.#followUsagePause();
     this.#followShares();

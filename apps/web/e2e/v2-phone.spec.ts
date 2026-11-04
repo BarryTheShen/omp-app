@@ -711,4 +711,60 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "a phone locked right after a chat opened reads the chat's subagents again on the new link, with no warning (#2813)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      await context.addInitScript(() => {
+        let hidden = false;
+        Object.defineProperty(document, "visibilityState", {
+          get: () => (hidden ? "hidden" : "visible"),
+          configurable: true,
+        });
+        Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden = (on) => {
+          hidden = on;
+          document.dispatchEvent(new Event("visibilitychange"));
+        };
+      });
+      // The first link dies as the chat's setup asks for its subagents: that read and the rest of the setup are lost.
+      const links: { dead: boolean; asked: number }[] = [];
+      await context.routeWebSocket(/\/ws\?/, (socket) => {
+        const server = socket.connectToServer();
+        const link = { dead: false, asked: 0 };
+        links.push(link);
+        socket.onMessage((message) => {
+          if (String(message).includes('"method":"setSubagentSubscription"')) {
+            link.asked += 1;
+            if (links.length === 1) link.dead = true;
+          }
+          if (!link.dead) server.send(message);
+        });
+        server.onMessage((message) => {
+          if (!link.dead) socket.send(message);
+        });
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect.poll(() => links[0]?.dead ?? false, { timeout: 30_000 }).toBe(true);
+
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(true),
+      );
+      await page.waitForTimeout(6_000);
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(false),
+      );
+      // The app finds the link dead and opens another; the setup's read goes again on it.
+      await expect.poll(() => links[1]?.asked ?? 0, { timeout: 15_000 }).toBe(1);
+      await page.waitForTimeout(1_000);
+      await expect(page.getByText(/subagents are not shown/)).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });
