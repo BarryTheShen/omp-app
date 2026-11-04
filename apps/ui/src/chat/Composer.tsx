@@ -225,12 +225,21 @@ export const Composer = memo(function Composer({
     };
   }, [draft]);
 
+  /**
+   * Pictures of a message that came back to the box (Edit of a sent or a queued message, Stop's queue) join what it
+   * holds; a picture it holds already is not put in a second time.
+   */
+  const putBack = (images: readonly ChatHostImage[]): void => {
+    const held = new Set(attachmentsRef.current.map((attachment) => attachment.image.data));
+    const fresh = images.filter((image) => !held.has(image.data));
+    if (fresh.length > 0) attach([...attachmentsRef.current, ...fresh.map(asAttachment)]);
+  };
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: an edited message is put in once, when Edit brings it
   useEffect(() => {
     if (restore === null) return;
     update(withRestored([restore.text], textRef.current));
-    if (restore.images.length > 0)
-      attach([...attachmentsRef.current, ...restore.images.map(asAttachment)]);
+    putBack(restore.images);
     boxRef.current?.focus();
   }, [restore]);
 
@@ -334,7 +343,14 @@ export const Composer = memo(function Composer({
     controller
       .stop()
       .then((restored) => {
-        if (restored.length > 0) update(withRestored(restored, textRef.current));
+        if (restored.length === 0) return;
+        update(
+          withRestored(
+            restored.map((message) => message.text),
+            textRef.current,
+          ),
+        );
+        putBack(restored.flatMap((message) => message.images ?? []));
       })
       .catch((failure: unknown) => setError(`Could not stop: ${errorText(failure)}`));
   };
@@ -344,7 +360,8 @@ export const Composer = memo(function Composer({
       .takeQueued(message, queueName)
       .then((taken) => {
         if (taken === null) return;
-        update(withRestored([taken], textRef.current));
+        update(withRestored([taken.text], textRef.current));
+        putBack(taken.images ?? []);
         boxRef.current?.focus();
       })
       .catch((failure: unknown) => setError(`Could not take it back: ${errorText(failure)}`));

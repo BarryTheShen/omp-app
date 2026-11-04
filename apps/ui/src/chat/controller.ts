@@ -38,6 +38,7 @@ import {
   type ModelHub,
   type PlanFile,
   type ProviderAccounts,
+  type QueuedMessage,
   type QueueName,
   type SubagentSnapshot,
 } from "@omp-app/contracts/chat-host";
@@ -591,11 +592,14 @@ export class ChatController {
     return { text: result.editorText ?? "", images: result.editorImages ?? [] };
   }
 
-  /** Stops the reply as omp's Escape does: every queued message comes back, in order, for the message box. */
-  async stop(): Promise<readonly string[]> {
+  /**
+   * Stops the reply as omp's Escape does: every queued message comes back, in order, with its pictures, for the message
+   * box.
+   */
+  async stop(): Promise<readonly QueuedMessage[]> {
     if (this.#threadId === null) return [];
     const restored = await this.#request("abort_and_restore_queue", {});
-    return [...restored.steering, ...restored.followUp].map((message) => message.text);
+    return [...restored.steering, ...restored.followUp];
   }
 
   /**
@@ -625,10 +629,11 @@ export class ChatController {
     }
   }
 
-  /** Takes a queued message back out of its queue; null when omp already delivered it. */
-  async takeQueued(message: string, queue: QueueName): Promise<string | null> {
+  /** Takes a queued message back out of its queue, with its pictures; null when omp already delivered it. */
+  async takeQueued(message: string, queue: QueueName): Promise<QueuedMessage | null> {
     const result = await this.#request("remove_queued_message", { message, queue });
-    return result.removed ? result.text : null;
+    if (!result.removed) return null;
+    return { text: result.text, ...(result.images === undefined ? {} : { images: result.images }) };
   }
 
   async models(): Promise<readonly ChatModel[]> {

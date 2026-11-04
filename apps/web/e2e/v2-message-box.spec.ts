@@ -71,11 +71,14 @@ realTest.describe("new UI message box", () => {
   });
 
   realTest(
-    "queues a follow-up, takes it back with Edit, and Esc stops the reply and returns what was queued",
+    "queues a follow-up with a picture, takes it back with Edit, and Esc stops the reply and returns what was queued, picture included (#2811)",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(240_000);
       const page = await realApp.open({ path: "/" });
       const followUp = "after this, write the docs";
+      const attached = page.getByRole("list", { name: "Attached images" }).getByRole("listitem");
+      const png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
       await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
@@ -84,21 +87,36 @@ realTest.describe("new UI message box", () => {
       const working = page.getByRole("status").filter({ hasText: "to stop" });
       await expect(working).toBeVisible({ timeout: 60_000 });
 
+      // A computer adds a picture by dropping or pasting it on the box.
+      await box(page).evaluate((input, base64) => {
+        const dataTransfer = new DataTransfer();
+        const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+        dataTransfer.items.add(new File([bytes], "chart.png", { type: "image/png" }));
+        input.dispatchEvent(
+          new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }),
+        );
+      }, png);
+      await expect(attached).toHaveCount(1);
       await box(page).fill(followUp);
       await box(page).press("Control+Enter");
       const queued = page.getByRole("list", { name: "Queued messages" });
       await expect(queued.getByText(followUp)).toBeVisible({ timeout: 30_000 });
       await expect(box(page)).toHaveValue("");
+      await expect(attached).toHaveCount(0);
 
+      // Its picture comes back with it, once.
       await queued.getByRole("button", { name: "Edit queued message" }).click();
       await expect(queued).toHaveCount(0);
       await expect(box(page)).toHaveValue(followUp);
+      await expect(attached).toHaveCount(1);
 
       await box(page).press("Control+Enter");
       await expect(queued.getByText(followUp)).toBeVisible({ timeout: 30_000 });
+      await expect(attached).toHaveCount(0);
       await box(page).press("Escape");
       await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 30_000 });
       await expect(box(page)).toHaveValue(followUp);
+      await expect(attached).toHaveCount(1);
       await expect(queued).toHaveCount(0);
       await expect(working).toHaveCount(0);
 
