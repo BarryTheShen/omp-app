@@ -73,4 +73,24 @@ realTest.describe("themes", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "each theme's picture is drawn in that theme's own colours, its message box's button too, whatever theme the app shows (#2801)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const dark = app(page).getByRole("region", { name: "Dark themes" });
+      await expect.poll(() => shown(page)).toEqual({ theme: "tern-dark", dark: true });
+      // The picture's send button, in the theme's accent fill (themes.css), not the chosen theme's.
+      const fill = (name: string) =>
+        dark
+          .getByRole("button", { name })
+          .locator(".bg-primary")
+          .evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(await fill("Dracula")).toBe("rgb(140, 98, 195)");
+      expect(await fill("Gruvbox Dark")).toBe("rgb(91, 124, 112)");
+      expect(await fill("Tern Dark")).toBe("rgb(42, 95, 224)");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

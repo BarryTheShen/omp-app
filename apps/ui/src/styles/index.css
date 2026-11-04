@@ -10,10 +10,13 @@
 @custom-variant short (@media (max-height: 500px));
 
 /*
- * shadcn's roles, taken from the theme's Tern tokens. They are set on :root so they resolve there once. shadcn's
- * "accent" role (hover and selected surfaces) is `--accent-surface` here, because `--accent` is Tern's accent colour.
+ * shadcn's roles, taken from the theme's Tern tokens. They are set on :root and on every element with a theme of its
+ * own, where they resolve again: a theme gallery card set on :root only showed the chosen theme's buttons, borders and
+ * fields, whatever its own theme (#2801). shadcn's "accent" role (hover and selected surfaces) is `--accent-surface`
+ * here, because `--accent` is Tern's accent colour.
  */
-:root {
+:root,
+[data-theme] {
   --background: var(--panel);
   --foreground: var(--t1);
   --card-foreground: var(--t1);
