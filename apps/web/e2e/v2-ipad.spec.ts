@@ -59,6 +59,24 @@ realTest.describe("new UI on a tablet", () => {
       await square(page.getByRole("button", { name: "Send" }));
       await square(page.getByRole("button", { name: "Copy this message" }));
       await square(page.getByRole("button", { name: "Usage", exact: true }));
+      // The side panel's buttons fit their column, so the page fits the screen and a finger cannot move it sideways
+      // (#2810: they were 44 wide in a column of 40).
+      const fits = await page.evaluate(() => {
+        const rail = document
+          .querySelector('nav[aria-label="Side panel"]')
+          ?.getBoundingClientRect();
+        const buttons = [...document.querySelectorAll('nav[aria-label="Side panel"] button')];
+        return {
+          pageWider: document.documentElement.scrollWidth - window.innerWidth,
+          outside: buttons.filter((button) => {
+            const edge = button.getBoundingClientRect();
+            return (
+              rail === undefined || edge.left < rail.left - 0.5 || edge.right > rail.right + 0.5
+            );
+          }).length,
+        };
+      });
+      expect(fits).toEqual({ pageWider: 0, outside: 0 });
 
       await page.keyboard.press("Control+Shift+O");
       // The split is a blank window with the caret on its New chat.

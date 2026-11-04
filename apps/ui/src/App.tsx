@@ -378,13 +378,14 @@ function Shell({
     <div
       className={cn(
         "grid h-full max-sm:grid-cols-1",
-        // The last column is the side panel's rail, at the window's right edge; the panel opens as a pane. The first is
-        // the chat list (#2805): hidden, at the width it was given, or the layout's own.
+        // The last column is the side panel's rail, at the window's right edge; the panel opens as a pane. It is 40 wide,
+        // or its buttons' width where they are larger (44 on a tablet, a finger's size: #2810). The first is the chat
+        // list (#2805): hidden, at the width it was given, or the layout's own.
         listHidden
-          ? "grid-cols-[minmax(0,1fr)_40px]"
+          ? "grid-cols-[minmax(0,1fr)_minmax(40px,auto)]"
           : chatList.width === null
-            ? "grid-cols-[244px_minmax(0,1fr)_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_40px]"
-            : "grid-cols-[var(--list-width)_minmax(0,1fr)_40px]",
+            ? "grid-cols-[244px_minmax(0,1fr)_minmax(40px,auto)] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_minmax(40px,auto)]"
+            : "grid-cols-[var(--list-width)_minmax(0,1fr)_minmax(40px,auto)]",
       )}
       style={
         chatList.width === null
