@@ -1061,6 +1061,21 @@ function FolderNoteView({
   const [text, setText] = useState(note.match ?? "");
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
+  const input = useRef<HTMLInputElement | null>(null);
+  // A find lists the folder again, and the note moves with its last row: the box being typed in stays in view, at the
+  // bottom with what it found just above it (the list's old place showed other folders' rows). A box in view stays put.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each new listing moves the note
+  useEffect(() => {
+    const box = input.current;
+    if (box === null || document.activeElement !== box) return;
+    const frame = requestAnimationFrame(() => {
+      const view = box.closest("[role='tree']")?.getBoundingClientRect();
+      const shown = box.getBoundingClientRect();
+      if (view !== undefined && shown.top >= view.top && shown.bottom <= view.bottom) return;
+      box.scrollIntoView({ block: "end" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [note.listing]);
   const find = (value: string): void => {
     setText(value);
     window.clearTimeout(timer.current);
@@ -1087,6 +1102,7 @@ function FolderNoteView({
     >
       <span>{said}</span>
       <Input
+        ref={input}
         aria-label={`Find in ${name} by name`}
         placeholder={`Find in ${name} by name`}
         className="h-7 text-xs"
