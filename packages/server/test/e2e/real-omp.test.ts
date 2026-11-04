@@ -104,91 +104,99 @@ afterEach(async () => {
 });
 
 describe("A0.9 real omp composition", () => {
-  realTest("opens, prompts, reconnects with afterSeq replay, and closes", async () => {
-    const root = await mkdtemp(join(tmpdir(), "omp-app-a0-9-e2e-"));
-    roots.push(root);
-    const home = join(root, "home");
-    const agentDir = join(root, "agent");
-    const appDataDir = join(root, "app");
-    const folderPath = join(root, "workspace");
-    await Promise.all([mkdir(home), mkdir(agentDir), mkdir(appDataDir), mkdir(folderPath)]);
-    const fakeKey = ["sk", "ant", "k".repeat(30)].join("-");
-    const env = {
-      ...Bun.env,
-      HOME: home,
-      PI_CODING_AGENT_DIR: agentDir,
-      OMP_APP_DATA_DIR: appDataDir,
-      ANTHROPIC_API_KEY: fakeKey,
-    };
-    await startFakeProvider(agentDir, env);
-    const server = await createCompositionServer({
-      port: 0,
-      env,
-      homeDir: home,
-      agentDir,
-      appDataDir,
-      ompArgs: ["--model", "fake/fake-model"],
-      staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
-    });
-    servers.push(server);
-
-    const url = `ws://127.0.0.1:${server.port}/ws`;
-    const webSocketFactory = (socketUrl: string): WebSocketLike => {
-      const socket = new WebSocket(socketUrl, {
-        headers: { Origin: server.url },
+  realTest(
+    "opens, prompts, reconnects with afterSeq replay, and closes",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "omp-app-a0-9-e2e-"));
+      roots.push(root);
+      const home = join(root, "home");
+      const agentDir = join(root, "agent");
+      const appDataDir = join(root, "app");
+      const folderPath = join(root, "workspace");
+      await Promise.all([mkdir(home), mkdir(agentDir), mkdir(appDataDir), mkdir(folderPath)]);
+      const fakeKey = ["sk", "ant", "k".repeat(30)].join("-");
+      const env = {
+        ...Bun.env,
+        HOME: home,
+        PI_CODING_AGENT_DIR: agentDir,
+        OMP_APP_DATA_DIR: appDataDir,
+        ANTHROPIC_API_KEY: fakeKey,
+        // omp names chats itself since #2798; these tests read the names they give, so omp leaves chats unnamed here, as
+        // the web specs' harness does.
+        PI_NO_TITLE: "1",
+      };
+      await startFakeProvider(agentDir, env);
+      const server = await createCompositionServer({
+        port: 0,
+        env,
+        homeDir: home,
+        agentDir,
+        appDataDir,
+        ompArgs: ["--model", "fake/fake-model"],
+        staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
       });
-      return socket as unknown as WebSocketLike;
-    };
-    const client = createAppClient({
-      url,
-      token: server.token,
-      webSocketFactory,
-      reconnect: { maxAttempts: 2 },
-    });
-    const chat = client.port(ChatSessionPort);
-    const opened = await chat.open({ folderPath: FolderPath.parse(folderPath), start: "new" });
-    const subscription = await client.subscribe(ChatSessionPort, "event", {
-      scope: opened.threadId,
-    });
-    const firstEvents: Array<{ prompted: boolean; seq: number }> = [];
-    const stopFirst = subscription.onEvent((payload, seq) => {
-      firstEvents.push({ prompted: isPromptResult(payload), seq });
-    });
+      servers.push(server);
 
-    await chat.request({
-      threadId: opened.threadId,
-      method: "prompt",
-      params: { text: "hello from A0.9" },
-    });
-    const prompt = await waitForEvent(subscription, isPromptResult);
-    expect(firstEvents.some((event) => event.prompted)).toBe(true);
-    const lastSeq = Math.max(subscription.lastSeq, prompt.seq);
-    stopFirst();
-    client.dispose();
+      const url = `ws://127.0.0.1:${server.port}/ws`;
+      const webSocketFactory = (socketUrl: string): WebSocketLike => {
+        const socket = new WebSocket(socketUrl, {
+          headers: { Origin: server.url },
+        });
+        return socket as unknown as WebSocketLike;
+      };
+      const client = createAppClient({
+        url,
+        token: server.token,
+        webSocketFactory,
+        reconnect: { maxAttempts: 2 },
+      });
+      const chat = client.port(ChatSessionPort);
+      const opened = await chat.open({ folderPath: FolderPath.parse(folderPath), start: "new" });
+      const subscription = await client.subscribe(ChatSessionPort, "event", {
+        scope: opened.threadId,
+      });
+      const firstEvents: Array<{ prompted: boolean; seq: number }> = [];
+      const stopFirst = subscription.onEvent((payload, seq) => {
+        firstEvents.push({ prompted: isPromptResult(payload), seq });
+      });
 
-    const reconnectingClient = createAppClient({
-      url,
-      token: server.token,
-      webSocketFactory,
-      reconnect: { maxAttempts: 2 },
-    });
-    const reconnectingChat = reconnectingClient.port(ChatSessionPort);
-    const reopened = await reconnectingChat.open({ threadId: ThreadId.parse(opened.threadId) });
-    expect(reopened.threadId).toBe(opened.threadId);
-    const replayed = await reconnectingClient.subscribe(ChatSessionPort, "event", {
-      scope: opened.threadId,
-      afterSeq: Math.max(0, lastSeq - 1),
-    });
-    expect(replayed.lastSeq).toBeGreaterThanOrEqual(lastSeq);
+      await chat.request({
+        threadId: opened.threadId,
+        method: "prompt",
+        params: { text: "hello from A0.9" },
+      });
+      const prompt = await waitForEvent(subscription, isPromptResult);
+      expect(firstEvents.some((event) => event.prompted)).toBe(true);
+      const lastSeq = Math.max(subscription.lastSeq, prompt.seq);
+      stopFirst();
+      client.dispose();
 
-    await reconnectingChat.request({
-      threadId: opened.threadId,
-      method: "prompt",
-      params: { text: "second turn" },
-    });
-    const secondPrompt = await waitForEvent(replayed, isPromptResult);
-    expect(secondPrompt.seq).toBeGreaterThan(lastSeq);
-    await reconnectingChat.close({ threadId: opened.threadId });
-    reconnectingClient.dispose();
-  });
+      const reconnectingClient = createAppClient({
+        url,
+        token: server.token,
+        webSocketFactory,
+        reconnect: { maxAttempts: 2 },
+      });
+      const reconnectingChat = reconnectingClient.port(ChatSessionPort);
+      const reopened = await reconnectingChat.open({ threadId: ThreadId.parse(opened.threadId) });
+      expect(reopened.threadId).toBe(opened.threadId);
+      const replayed = await reconnectingClient.subscribe(ChatSessionPort, "event", {
+        scope: opened.threadId,
+        afterSeq: Math.max(0, lastSeq - 1),
+      });
+      expect(replayed.lastSeq).toBeGreaterThanOrEqual(lastSeq);
+
+      await reconnectingChat.request({
+        threadId: opened.threadId,
+        method: "prompt",
+        params: { text: "second turn" },
+      });
+      const secondPrompt = await waitForEvent(replayed, isPromptResult);
+      expect(secondPrompt.seq).toBeGreaterThan(lastSeq);
+      await reconnectingChat.close({ threadId: opened.threadId });
+      reconnectingClient.dispose();
+      // Two of omp's turns and a reconnect on real omp: about 10 s on the build server, past bun's 5 s default.
+    },
+    60_000,
+  );
 });

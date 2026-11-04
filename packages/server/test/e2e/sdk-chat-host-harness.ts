@@ -126,6 +126,9 @@ export function chatHostChats() {
       HOME: home,
       PI_CODING_AGENT_DIR: agentDir,
       ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
+      // omp names chats itself since #2798; these tests read the names they give (an approved plan's, a rename), so
+      // omp leaves chats unnamed here, as the web specs' harness does.
+      PI_NO_TITLE: "1",
     };
     return { home, agentDir, folder, env };
   };
