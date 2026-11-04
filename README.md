@@ -70,7 +70,7 @@ omp-app tui ~/work/site -- --resume <chat id>   # that chat, in that folder
 omp-app tui -- --continue                       # the folder's newest chat
 ```
 
-One of them writes a chat at a time (omp's own rule). While the app has a chat open, and for an hour after its last tab left it (sooner when more than 12 chats sit unopened: the one left longest goes first), omp in the terminal writes its turns to a copy, which both then list as a chat of its own. While omp in the terminal has a chat open, the app does not open it and says so. Quit omp (`/exit`) to hand the chat back. If you have never used omp in a terminal, its first start shows omp's own setup steps once (Esc skips a step).
+One of them writes a chat at a time (omp's own rule). While the app has a chat open, and for a day after its last tab left it (sooner when more than 12 chats sit unopened: the one left longest goes first), omp in the terminal writes its turns to a copy, which both then list as a chat of its own. While omp in the terminal has a chat open, the app does not open it and says so. Quit omp (`/exit`) to hand the chat back. If you have never used omp in a terminal, its first start shows omp's own setup steps once (Esc skips a step).
 
 ### When something goes wrong: the debug log
 

@@ -3,10 +3,10 @@ import { AppFailure } from "@omp-app/contracts";
 import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "./omp-process";
 
 /**
- * Each omp process holds about 380 MB while idle. A chat nobody views stays up for an hour, so coming back to it finds
- * omp ready; after that it is stopped, and coming back restarts omp and replays its history (a couple of seconds).
+ * Each omp process holds about 380 MB while idle. A chat nobody views stays up for a day (#2768), so coming back to it
+ * finds omp ready; after that it is stopped, and coming back restarts omp and replays its history (a couple of seconds).
  */
-const DEFAULT_IDLE_CLOSE_MS = 60 * 60 * 1000;
+const DEFAULT_IDLE_CLOSE_MS = 24 * 60 * 60 * 1000;
 
 /** At most this many chats nobody views stay up: past it, the one left unviewed longest is stopped first. */
 const DEFAULT_MAX_IDLE = 12;
@@ -34,7 +34,7 @@ function defaultTimer(): ProcessTimer {
 }
 
 export interface OmpProcessRegistryOptions {
-  /** How long an unwatched thread's process stays up before it is checked and stopped. Default an hour. */
+  /** How long an unwatched thread's process stays up before it is checked and stopped. Default a day. */
   readonly idleCloseMs?: number;
   /** How many unwatched threads keep their process before the one unwatched longest is stopped. Default 12. */
   readonly maxIdle?: number;

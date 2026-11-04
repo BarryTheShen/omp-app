@@ -35,6 +35,32 @@ class ManualTimer implements ProcessTimer {
   }
 }
 
+/** A timer on a clock the test moves: a callback runs once the clock reaches the time it was set for. */
+class ClockTimer implements ProcessTimer {
+  #nextId = 0;
+  #now = 0;
+  readonly #due = new Map<number, { readonly at: number; readonly handler: () => void }>();
+
+  setTimeout(handler: () => void, delayMs: number): number {
+    const id = ++this.#nextId;
+    this.#due.set(id, { at: this.#now + delayMs, handler });
+    return id;
+  }
+
+  clearTimeout(handle: unknown): void {
+    if (typeof handle === "number") this.#due.delete(handle);
+  }
+
+  advance(ms: number): void {
+    this.#now += ms;
+    for (const [id, { at, handler }] of [...this.#due]) {
+      if (at > this.#now) continue;
+      this.#due.delete(id);
+      handler();
+    }
+  }
+}
+
 class StubProcess implements OmpProcess {
   readonly threadId: ThreadId;
   readonly folder: FolderPath;
@@ -732,6 +758,27 @@ describe("OmpProcessRegistry", () => {
       await waiting;
       expect(waited).toBe(true);
     });
+  });
+
+  test("a chat nobody views keeps its omp for a day, not an hour, so coming back to it starts nothing (#2768)", async () => {
+    const timer = new ClockTimer();
+    const registry = new OmpProcessRegistry({
+      timer,
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+    registry.setIdleHooks({ isSettled: async () => true, stopped: () => undefined });
+    const thread = ThreadId.parse("thread-left");
+    registry.acquire(options(thread, "/workspace/left"));
+    registry.release(thread);
+    const hour = 60 * 60 * 1000;
+
+    timer.advance(2 * hour);
+    await Bun.sleep(0);
+    expect(registry.has(thread)).toBe(true);
+
+    timer.advance(22 * hour);
+    await Bun.sleep(0);
+    expect(registry.has(thread)).toBe(false);
   });
 
   describe("the cap on unwatched threads", () => {
