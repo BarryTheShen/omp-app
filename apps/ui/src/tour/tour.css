@@ -67,6 +67,19 @@
   color: var(--foreground);
 }
 
+/* On a phone Next, Skip, Done and the close mark are 44 px targets (#2816). */
+@media (max-width: 639px) {
+  .driver-popover.omp-tour .driver-popover-footer-btn {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+
+  .driver-popover.omp-tour .driver-popover-close-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* The arrow takes the popover's background; driver colours only the side that points at the element. */
 .driver-popover.omp-tour .driver-popover-arrow-side-left.driver-popover-arrow {
   border-left-color: var(--popover);

@@ -360,7 +360,7 @@ export function Sidebar({
       )}
       <label
         data-tour="search-chats"
-        className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1 tablet:h-11"
+        className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1 max-sm:h-11 tablet:h-11"
       >
         <Search className="size-3.5 shrink-0" />
         <input

@@ -545,3 +545,43 @@
     min-height: 44px;
   }
 }
+
+/*
+ * Everything you tap on a phone is at least 44 px high, and a button that is only an icon 44 px wide too (#2816, the
+ * issue's choice A): the controls' desktop sizes (24, 28 and 32 px) are a mouse's. A checkbox, a switch and a radio keep
+ * their drawn size; the target around them (shadcn's `after:` area, 32 px high before) grows to 44 px.
+ */
+@media (max-width: 639px) {
+  :is(
+    [data-slot="button"],
+    [data-slot="dropdown-menu-trigger"],
+    [data-slot="popover-trigger"],
+    [data-slot="select-trigger"],
+    [data-slot="alert-dialog-action"],
+    [data-slot="alert-dialog-cancel"],
+    [data-slot="dialog-close"],
+    [data-slot="tooltip-trigger"],
+    [data-slot="toggle"],
+    [data-slot="toggle-group-item"],
+    [data-slot="input"],
+    [data-slot="input-group"],
+    [data-slot="command-input"]
+  ) {
+    min-height: 44px;
+  }
+
+  [data-size^="icon"]:is(
+    [data-slot="button"],
+    [data-slot="dropdown-menu-trigger"],
+    [data-slot="popover-trigger"],
+    [data-slot="dialog-close"],
+    [data-slot="tooltip-trigger"]
+  ) {
+    min-width: 44px;
+  }
+
+  :is([data-slot="checkbox"], [data-slot="switch"], [data-slot="radio-group-item"])::after {
+    inset-block: calc((100% - 44px) / 2);
+    inset-inline: min(-12px, calc((100% - 44px) / 2));
+  }
+}

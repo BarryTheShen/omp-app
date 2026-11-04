@@ -726,14 +726,18 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
   return (
     <div data-tour="files-panel" className="flex h-full min-h-0 flex-col" {...dropInto("")}>
       <div className="flex shrink-0 items-center gap-1 border-b border-l2 px-2 py-1">
-        <div className="flex flex-1 items-center gap-2 text-xs text-t3">
+        {/* The whole row takes the tap, 44 px high on a phone (#2816). */}
+        <label
+          htmlFor="files-show-ignored"
+          className="flex flex-1 items-center gap-2 text-xs text-t3 max-sm:min-h-11"
+        >
           <Checkbox
             id="files-show-ignored"
             checked={showIgnored}
             onCheckedChange={(value) => setShowIgnored(value === true)}
           />
-          <label htmlFor="files-show-ignored">Show ignored</label>
-        </div>
+          Show ignored
+        </label>
         <Button
           variant="ghost"
           size="icon-sm"

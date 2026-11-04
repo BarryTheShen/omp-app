@@ -63,6 +63,12 @@ export function useSafeInsets(): SafeInsets {
   );
 }
 
+/** The insets now, measured again: for code outside React (the tour's popover). */
+export function safeInsetsNow(): SafeInsets {
+  measure();
+  return insets;
+}
+
 /**
  * How far a popover, menu, select or tooltip keeps from the screen's edges (Base UI's `collisionPadding`): its own 5 px
  * from the safe area, so that on a phone on its side it stays clear of the Dynamic Island and the curved corners.

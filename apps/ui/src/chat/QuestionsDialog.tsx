@@ -29,6 +29,9 @@ const NONE: Chosen = { picked: [], typed: undefined, note: undefined };
 /** The radio value of Other…: no option of omp's can have it, as omp reserves its own rows' labels. */
 const OTHER = "\u0000other";
 
+/** A choice's row, all of it its target: on a phone 44 px for one line (#2816), the mark beside its first line. */
+const CHOICE_ROW = "flex items-start gap-2.5 max-sm:py-[13px]";
+
 const answered = (chosen: Chosen | undefined): boolean =>
   chosen !== undefined && (chosen.picked.length > 0 || (chosen.typed ?? "").trim() !== "");
 
@@ -490,14 +493,13 @@ function QuestionBody({
         <Markdown text={question.question} />
       </div>
       {multi ? (
-        <fieldset className="flex min-w-0 flex-col gap-2" aria-label={question.question}>
+        <fieldset
+          className="flex min-w-0 flex-col gap-2 max-sm:gap-0"
+          aria-label={question.question}
+        >
           {question.options.map((option, at) => (
             // biome-ignore lint/a11y/noLabelWithoutControl: the tick box inside is the control
-            <label
-              key={option.label}
-              className="flex items-start gap-2.5"
-              onMouseEnter={() => onHighlight(at)}
-            >
+            <label key={option.label} className={CHOICE_ROW} onMouseEnter={() => onHighlight(at)}>
               <Checkbox
                 className="mt-0.5"
                 data-row={at}
@@ -514,7 +516,7 @@ function QuestionBody({
             </label>
           ))}
           {/* biome-ignore lint/a11y/noLabelWithoutControl: the tick box inside is the control */}
-          <label className="flex items-start gap-2.5">
+          <label className={CHOICE_ROW}>
             <Checkbox
               className="mt-0.5"
               data-row="other"
@@ -527,6 +529,7 @@ function QuestionBody({
         </fieldset>
       ) : (
         <RadioGroup
+          className="max-sm:gap-0"
           aria-label={question.question}
           value={otherOn ? OTHER : (chosen.picked[0] ?? null)}
           onValueChange={(value) => {
@@ -539,7 +542,7 @@ function QuestionBody({
             // biome-ignore lint/a11y/useKeyWithClickEvents: the round mark inside takes the keys; Enter moves on
             <label
               key={option.label}
-              className="flex items-start gap-2.5"
+              className={CHOICE_ROW}
               onMouseEnter={() => onHighlight(at)}
               // A pointer's click has a count; a click made by keys or by the round marks' own code has none.
               onClick={(event) => {
@@ -562,7 +565,7 @@ function QuestionBody({
             </label>
           ))}
           {/* biome-ignore lint/a11y/noLabelWithoutControl: the round mark inside is the control */}
-          <label className="flex items-start gap-2.5">
+          <label className={CHOICE_ROW}>
             <RadioGroupItem className="mt-0.5" value={OTHER} data-row="other" aria-label="Other…" />
             {otherRow}
           </label>

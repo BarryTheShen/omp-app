@@ -3,6 +3,7 @@ import "driver.js/dist/driver.css";
 import { desktopBridge } from "../desktop/bridge";
 import { KEYS, keycap } from "../keys/table";
 import { isPhone, isTablet } from "../phone";
+import { safeInsetsNow } from "../safeArea";
 import type { WorkspaceHandle } from "../workspace/Workspace";
 import { matchesHotkey } from "./keys";
 import { markDone } from "./seen";
@@ -17,6 +18,8 @@ const TARGET_WAIT_MS = 3000;
  * comes, and the longer wait left the last step's popover and the dimmed page unanswering for three seconds (#2774).
  */
 const AFTER_SKIP_WAIT_MS = 300;
+/** How far the popover keeps above the home bar's strip on a phone (#2816). */
+const HOME_BAR_GAP_PX = 8;
 
 /** Stops the tour that is running, if one is. */
 let stopCurrent: (() => void) | null = null;
@@ -145,7 +148,13 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
     onCloseClick: () => stop(),
     // Driver puts the focus in the popover as it draws it; the box, the list or the pane the person was in keeps it.
     onPopoverRender: ({ wrapper }) => {
+      wrapper.style.translate = "";
       requestAnimationFrame(() => {
+        // On a phone the popover stays out of the home bar's strip (#2816): driver keeps it inside the window only.
+        // `translate` moves it up whichever of top or bottom driver placed it by.
+        const room = window.innerHeight - safeInsetsNow().bottom - HOME_BAR_GAP_PX;
+        const over = wrapper.getBoundingClientRect().bottom - room;
+        if (over > 0) wrapper.style.translate = `0 ${-over}px`;
         if (stopped || !(lastFocus instanceof HTMLElement) || !lastFocus.isConnected) return;
         if (wrapper.contains(document.activeElement)) lastFocus.focus({ preventScroll: true });
       });

@@ -34,7 +34,7 @@ export function ThemeSwitch(): ReactNode {
               <ToggleGroupItem
                 value={value}
                 aria-label={label}
-                className="text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 tablet:h-11 tablet:min-w-11"
+                className="text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 max-sm:min-w-11 tablet:h-11 tablet:min-w-11"
               />
             }
           >

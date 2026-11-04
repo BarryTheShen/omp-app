@@ -336,6 +336,113 @@ realTest.describe("new UI on a phone", () => {
     },
   );
 
+  /**
+   * What a finger can tap inside `scope` that is under 44 high, or under 44 wide when it is only an icon (#2816). A row
+   * around a control (a label) is its target, and so is the area shadcn draws around a tick box, a switch or a round
+   * mark (its `::after`).
+   */
+  const smallTargets = (scope: Locator): Promise<string[]> =>
+    scope.evaluate((root) => {
+      const tappable =
+        'button, a[href], input:not([type="hidden"]), select, textarea, [role="button"], [role="switch"], ' +
+        '[role="checkbox"], [role="radio"], [role="tab"], [role="combobox"]';
+      const small: string[] = [];
+      for (const element of root.querySelectorAll(tappable)) {
+        const box = element.getBoundingClientRect();
+        if (box.width < 2 || box.height < 2 || element.closest('[aria-hidden="true"], [inert]'))
+          continue;
+        const style = getComputedStyle(element);
+        if (style.visibility === "hidden" || style.pointerEvents === "none") continue;
+        const id = element.getAttribute("id");
+        const label =
+          element.closest("label") ??
+          (id === null ? null : document.querySelector(`label[for="${CSS.escape(id)}"]`));
+        const row = label?.getBoundingClientRect();
+        const after = getComputedStyle(element, "::after");
+        const around = (start: string, end: string, size: number): number =>
+          after.position === "absolute"
+            ? size - Number.parseFloat(start) - Number.parseFloat(end)
+            : 0;
+        const height = Math.max(
+          box.height,
+          row?.height ?? 0,
+          around(after.top, after.bottom, box.height),
+        );
+        const width = Math.max(
+          box.width,
+          row?.width ?? 0,
+          around(after.left, after.right, box.width),
+        );
+        const icon = (element.textContent ?? "").trim() === "";
+        if (height >= 43.5 && (!icon || width >= 43.5)) continue;
+        const name = (element.getAttribute("aria-label") ?? element.textContent ?? "")
+          .trim()
+          .slice(0, 30);
+        small.push(`${name} ${Math.round(width)}×${Math.round(height)}`);
+      }
+      return small;
+    });
+
+  realTest(
+    "everything you tap outside the chat is 44 pt or more: the list, Settings, the Details panels and a question (#2816)",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const list = page.getByRole("navigation", { name: "Chats" });
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      await expect(list).toBeVisible();
+      expect(await smallTargets(list)).toEqual([]);
+
+      await list.getByRole("button", { name: "Settings" }).tap();
+      const sheet = page.getByRole("dialog", { name: "Settings" });
+      const sections = sheet.getByRole("navigation", { name: "Settings sections" });
+      for (const section of ["Appearance", "App"]) {
+        await sections.getByRole("button", { name: section, exact: true }).tap();
+        // omp's sections show their name as a heading; the app's own section is its region.
+        await expect(
+          sheet
+            .getByRole("heading", { name: section, exact: true })
+            .or(sheet.getByRole("region", { name: `${section} settings` }))
+            .first(),
+        ).toBeVisible();
+        expect(await smallTargets(sheet), section).toEqual([]);
+        await sheet.getByRole("button", { name: "Settings", exact: true }).tap();
+      }
+      await sheet.getByRole("button", { name: "Done" }).tap();
+
+      await page.getByRole("button", { name: "New chat" }).first().tap();
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await page.getByRole("button", { name: "Details" }).tap();
+      const details = page.getByRole("region", { name: "Chat details" });
+      for (const panel of ["Progress", "Files"]) {
+        await details.getByRole("tab", { name: panel }).tap();
+        await expect(details.getByRole("tabpanel", { name: panel })).toBeVisible();
+        expect(await smallTargets(details), panel).toEqual([]);
+      }
+      await details.getByRole("button", { name: "Chat", exact: true }).tap();
+
+      await box(page).fill("ask_user");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const questions = page.getByRole("dialog", { name: "Questions from omp" });
+      await expect(questions).toBeVisible({ timeout: 60_000 });
+      expect(await smallTargets(questions)).toEqual([]);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest("a computer keeps its denser controls (#2816)", async ({ realApp }) => {
+    const page = await realApp.open({ path: "/" });
+    const search = page
+      .getByRole("navigation", { name: "Chats" })
+      .getByRole("searchbox", { name: "Search chats" });
+    await expect(search).toBeVisible({ timeout: 60_000 });
+    const height = await search.evaluate(
+      (input) => input.closest("label")?.getBoundingClientRect().height,
+    );
+    expect(height).toBe(32);
+    expect(realApp.problems).toEqual([]);
+  });
+
   realTest.describe("with two saved chats", () => {
     realTest.use({ seedSessions: 2 });
 
