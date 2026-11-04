@@ -200,4 +200,36 @@ realTest.describe("new UI on a tablet", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "narrowed to Split View, an iPad goes on showing its chat in the phone layout, the list one tap away (#2822)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 1180, height: 820 },
+        hasTouch: true,
+        isMobile: true,
+        deviceScaleFactor: 2,
+      });
+      const page = await realApp.open({ path: "/", context });
+      // A chat started here (a tap on a list row would mark the chat as shown for a phone layout already).
+      await page.getByRole("button", { name: "New chat" }).first().tap({ timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("stream_steady");
+      await box(page).press("Enter");
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      await expect(transcript.getByText(/Steady line 3:/)).toBeVisible({ timeout: 60_000 });
+      // Split View at a half and at a third of the screen: the phone layout.
+      for (const width of [590, 375]) {
+        await page.setViewportSize({ width, height: 820 });
+        await expect(transcript).toBeVisible();
+        await expect(box(page)).toBeVisible();
+      }
+      await page.getByRole("button", { name: /^Chats/ }).tap();
+      await expect(chats(page).getByRole("button", { name: /stream_steady/ })).toBeInViewport();
+      await page.setViewportSize({ width: 1180, height: 820 });
+      await expect(transcript).toBeVisible();
+      await context.close();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

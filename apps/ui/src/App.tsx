@@ -229,6 +229,13 @@ function Shell({
   const [showChat, setShowChat] = useState(isPhone);
   const workspace = useRef<WorkspaceHandle>(null);
   const phone = usePhone();
+  // A window that narrows into the phone layout (an iPad's Split View) goes on showing the chat in front, not the
+  // list; a blank window shows the list. Set while rendering, so the list is never drawn over the chat first (#2822).
+  const [phoneBefore, setPhoneBefore] = useState(phone);
+  if (phone !== phoneBefore) {
+    setPhoneBefore(phone);
+    if (phone && view.focused !== null) setShowChat(true);
+  }
   const [palette, setPalette] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [whatsNew, setWhatsNew] = useState(false);
