@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import { Plus, X } from "lucide-react";
 import { type DragEvent, type ReactNode, useRef, useState } from "react";
+import { useSidewaysRow } from "../sidewaysRow";
 import type { WorkspaceTab } from "./tabs";
 
 /** What a workspace's tab carries while it is dragged along the strip. */
@@ -41,13 +42,15 @@ export function TabStrip({
 }): ReactNode {
   /** The tab a dragged one would land on. */
   const [over, setOver] = useState<string | null>(null);
+  const tabRow = useSidewaysRow(active);
   return (
     <div className="flex h-9 shrink-0 items-end gap-0.5 px-1.5 pt-1 tablet:h-12">
       <div
+        ref={tabRow}
         data-tour="tabs"
         role="tablist"
         aria-label="Workspaces"
-        className="flex min-w-0 items-end gap-0.5 overflow-x-auto"
+        className="row-scroll flex min-w-0 items-end gap-0.5"
       >
         {tabs.map((tab, index) => {
           const label = labels.get(tab.id) ?? "New workspace";

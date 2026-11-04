@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { KEYS, keycap } from "../keys/table";
+import { useSidewaysRow } from "../sidewaysRow";
 import { matchesHotkey } from "../tour/keys";
 import { Markdown } from "../vendor/collab-web/components/transcript/Markdown";
 
@@ -86,6 +87,7 @@ export function QuestionsDialog({
     questions.map((question) => question.recommended ?? 0),
   );
   const [hidden, setHidden] = useState(false);
+  const tabRow = useSidewaysRow(tab);
   const root = useRef<HTMLDivElement | null>(null);
   /** What to focus once the next render is on screen: a row, the typed answer, or the note. */
   const focusNext = useRef<string | null>(null);
@@ -304,9 +306,10 @@ export function QuestionsDialog({
       >
         {reviewTab !== null && (
           <div
+            ref={tabRow}
             role="tablist"
             aria-label="Questions"
-            className="flex shrink-0 gap-1 overflow-x-auto border-b border-l2 px-2 pt-1.5"
+            className="row-scroll flex shrink-0 gap-1 border-b border-l2 px-2 pt-1.5"
           >
             {[...questions.map((question, index) => tabName(question, index)), "Review"].map(
               (name, index) => {

@@ -176,6 +176,39 @@ realTest.describe("new UI approvals and questions", () => {
   );
 
   realTest(
+    "more question tabs than fit: the selected one comes into view, and the wheel scrolls the row sideways (#2802)",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      await page.setViewportSize({ width: 640, height: 720 });
+      const questions = page.getByRole("dialog", { name: "Questions from omp" });
+      await send(page, "ask_six");
+      await expect(questions).toBeVisible({ timeout: 60_000 });
+      const row = questions.getByRole("tablist", { name: "Questions" });
+      const tabs = questions.getByRole("tab");
+      await expect(tabs).toHaveCount(7);
+      expect(await row.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+      // Next, to the last question: its tab is in view, not beyond the row's end.
+      for (let step = 0; step < 5; step += 1) {
+        await questions.getByRole("button", { name: "Next" }).click();
+      }
+      await expect(tabs.nth(5)).toHaveAttribute("aria-selected", "true");
+      await expect(tabs.nth(5)).toBeInViewport({ ratio: 1 });
+
+      // Back to the first, then the wheel turned over the row scrolls it sideways.
+      await tabs.nth(0).click();
+      await expect(tabs.nth(0)).toBeInViewport({ ratio: 1 });
+      const before = await row.evaluate((element) => element.scrollLeft);
+      await row.hover();
+      await page.mouse.wheel(0, 240);
+      await expect
+        .poll(() => row.evaluate((element) => element.scrollLeft))
+        .toBeGreaterThan(before);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "takes at most about half the chat and scrolls inside; Hide folds it to one line until Show, Alt+H too; omp's keys answer (#2795)",
     async ({ realApp }) => {
       const page = await newChat(realApp);

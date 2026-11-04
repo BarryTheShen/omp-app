@@ -20,6 +20,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useSidewaysRow } from "../../sidewaysRow";
 
 const failureText = (failure: unknown): string =>
   failure instanceof AppFailure
@@ -99,6 +100,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   const [shown, setShown] = useState<string | null>(null);
   const shownRef = useRef(shown);
   shownRef.current = shown;
+  const pageRow = useSidewaysRow(shown);
   // "New page" puts the cursor in the address at once, like a browser's new tab, and an address entered before the page
   // is listed opens there; the panel shows the page once its list has it (the list can come after the open's answer), so
   // the address bar never goes in between.
@@ -275,9 +277,10 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
           <div className="flex items-center border-b border-l2">
             <span className="shrink-0 pl-4 text-xs text-t3">The app's browser</span>
             <div
+              ref={pageRow}
               role="tablist"
               aria-label="Pages"
-              className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 py-1"
+              className="row-scroll flex min-w-0 flex-1 items-center gap-1 px-2 py-1"
             >
               {app.tabs.map((page) => (
                 <div key={page.id} className="flex shrink-0 items-center">

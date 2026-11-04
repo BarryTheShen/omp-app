@@ -291,6 +291,7 @@ realTest.describe("new UI side panel", () => {
         "BTW history",
         "Files",
         "Ports",
+        "Browser",
       ]);
       const heights = await tabs.evaluateAll((all) =>
         all.map((tab) => tab.getBoundingClientRect().height),

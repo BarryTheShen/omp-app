@@ -825,6 +825,27 @@ function reply(request: Request): Reply {
       },
       thinking: "I need to ask three questions.",
     };
+  // Issue #2802: six questions with longer headers, more tabs than a narrow chat fits in a row.
+  if (prompt.includes("ask_six"))
+    return {
+      tool: "ask",
+      args: {
+        questions: [
+          "Drop sections",
+          "Different behavior",
+          "SiYuan-only",
+          "Plugins",
+          "Day one bar",
+          "Review order",
+        ].map((header, index) => ({
+          id: `q${index}`,
+          header,
+          question: `${header}: which way?`,
+          options: [{ label: "This way" }, { label: "That way" }],
+        })),
+      },
+      thinking: "I need to ask six questions.",
+    };
   // Issue #1327: one question whose text, one option label and one option description each hold a 100-character
   // word with no spaces. The ask dialog must wrap that word inside the dialog.
   if (prompt.includes("ask_long_word")) {

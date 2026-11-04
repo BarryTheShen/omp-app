@@ -42,7 +42,7 @@ export function KeyRow({
       role="toolbar"
       aria-label="Keys"
       // Every button in the row looks like a key, the settings' chips too.
-      className="flex items-center gap-1.5 overflow-x-auto px-0.5 pt-2 [scrollbar-width:none] [&_button]:min-h-11 [&_button]:shrink-0 [&_button]:rounded-lg [&_button]:bg-secondary [&_button]:text-t1 [&::-webkit-scrollbar]:hidden"
+      className="row-scroll flex items-center gap-1.5 px-0.5 pt-2 [&_button]:min-h-11 [&_button]:shrink-0 [&_button]:rounded-lg [&_button]:bg-secondary [&_button]:text-t1"
       // The box keeps the focus: a key pressed while typing leaves the keyboard up.
       onPointerDown={(event) => event.preventDefault()}
     >

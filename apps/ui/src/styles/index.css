@@ -10,6 +10,18 @@
 @custom-variant short (@media (max-height: 500px));
 
 /*
+ * A row of tabs or chips that scrolls sideways (#2802), with `useSidewaysRow` (`src/sidewaysRow.ts`): no scroll bar, which
+ * the desktop window draws over the row's labels; the wheel and the selected tab move the row.
+ */
+@utility row-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/*
  * shadcn's roles, taken from the theme's Tern tokens. They are set on :root and on every element with a theme of its
  * own, where they resolve again: a theme gallery card set on :root only showed the chosen theme's buttons, borders and
  * fields, whatever its own theme (#2801). shadcn's "accent" role (hover and selected surfaces) is `--accent-surface`
@@ -396,6 +408,47 @@
 
 .tr-md :not(pre) > code {
   color: var(--syn-string);
+}
+
+/*
+ * A block that scrolls sideways (a wide table, a code block, a formula, a tool's output, a diff) draws its own thin scroll
+ * bar under its content (#2802): the desktop window's own bar is drawn over the block's last line, about 10 px of it. A
+ * bar a page draws takes its own room, and only while the block is wider than its place.
+ */
+.tr-md table::-webkit-scrollbar,
+.tr-md pre::-webkit-scrollbar,
+.tr-md .tr-math::-webkit-scrollbar,
+.tv-pre::-webkit-scrollbar,
+.tv-diff::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.tr-md table::-webkit-scrollbar-track,
+.tr-md pre::-webkit-scrollbar-track,
+.tr-md .tr-math::-webkit-scrollbar-track,
+.tv-pre::-webkit-scrollbar-track,
+.tv-diff::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tr-md table::-webkit-scrollbar-thumb,
+.tr-md pre::-webkit-scrollbar-thumb,
+.tr-md .tr-math::-webkit-scrollbar-thumb,
+.tv-pre::-webkit-scrollbar-thumb,
+.tv-diff::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-color: var(--l4);
+  background-clip: content-box;
+}
+
+.tr-md table::-webkit-scrollbar-thumb:hover,
+.tr-md pre::-webkit-scrollbar-thumb:hover,
+.tr-md .tr-math::-webkit-scrollbar-thumb:hover,
+.tv-pre::-webkit-scrollbar-thumb:hover,
+.tv-diff::-webkit-scrollbar-thumb:hover {
+  background-color: var(--t3);
 }
 
 /* The 11 px floor for functional text: collab-web draws some badges and titles at 10 px, and marker rows at 11 px. */

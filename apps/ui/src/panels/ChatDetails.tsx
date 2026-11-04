@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatController } from "../chat/controller";
+import { useSidewaysRow } from "../sidewaysRow";
 import { showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
 
@@ -28,6 +29,7 @@ export function ChatDetails({
   readonly onBack: () => void;
 }): ReactNode {
   const { panel } = usePanelState();
+  const tabRow = useSidewaysRow(panel);
   const chosen = PANELS.find((item) => item.id === panel) ?? PANELS[0];
   if (chosen === undefined) return null;
   return (
@@ -48,9 +50,10 @@ export function ChatDetails({
         <span aria-hidden="true" className="w-[4.5rem] shrink-0" />
       </header>
       <div
+        ref={tabRow}
         role="tablist"
         aria-label="Details"
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-l2 px-2 pb-2"
+        className="row-scroll flex shrink-0 gap-1 border-b border-l2 px-2 pb-2"
       >
         {PANELS.map((item) => (
           <button
