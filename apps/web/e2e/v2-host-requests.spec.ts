@@ -377,4 +377,33 @@ realTest.describe("new UI approvals and questions", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a question answered on one page closes on another page that shows the chat (#2809)",
+    async ({ realApp }) => {
+      const first = await newChat(realApp);
+      await send(first, "count_reply start");
+      await expect(first.getByText("count-1 start")).toBeVisible({ timeout: 60_000 });
+      // Another device opens the same chat from its list.
+      const second = await realApp.open({ path: "/" });
+      await second
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: /count_reply start/ })
+        .first()
+        .click();
+      await expect(second.getByText("count-1 start")).toBeVisible({ timeout: 60_000 });
+
+      await send(first, "ask_user");
+      const asked = (page: Page) => page.getByRole("dialog", { name: "Questions from omp" });
+      await expect(asked(first)).toBeVisible({ timeout: 60_000 });
+      await expect(asked(second)).toBeVisible({ timeout: 60_000 });
+      await asked(second).getByRole("radio", { name: "Postgres" }).click();
+      await asked(second).getByRole("button", { name: "Submit" }).click();
+      await expect(asked(second)).toBeHidden({ timeout: 30_000 });
+      // The page that did not answer closes it too, and both show the answer.
+      await expect(asked(first)).toBeHidden({ timeout: 10_000 });
+      await expect(first.getByText(/User selected: Postgres/)).toBeVisible({ timeout: 30_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

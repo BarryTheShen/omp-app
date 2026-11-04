@@ -164,6 +164,8 @@ function storeEventOfChatEvent(event: ChatEvent): StoreEvent {
   if (isHostUiEvent(event)) return frame(event);
   switch (event.type) {
     case "ui_cancel":
+    case "ui_answered":
+      // omp gave the dialog up, or another page that shows the chat answered it.
       return frame({ type: "host_dialog_cancel", requestId: event.requestId });
     case "tool_cancel":
     case "uri_cancel":

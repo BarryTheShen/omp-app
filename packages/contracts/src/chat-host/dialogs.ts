@@ -104,6 +104,15 @@ export interface UiCancelEvent {
   readonly requestId: string;
 }
 
+/**
+ * A dialog was answered from a page that shows the chat: every other page closes it too (#2809). The server writes it
+ * when it takes the answer; omp does not. A page that does not know it shows the dialog until the chat opens again.
+ */
+export interface UiAnsweredEvent {
+  readonly type: "ui_answered";
+  readonly requestId: string;
+}
+
 export interface UiNotifyEvent {
   readonly type: "ui_notify";
   readonly message: string;

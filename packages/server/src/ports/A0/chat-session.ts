@@ -1111,6 +1111,9 @@ export class ChatSessionPortRuntime {
     entry.openRequests.delete(args.id);
     this.#waitingChanged();
     open.resolve(answer.data);
+    // The other pages that show the chat close it too (#2809). An event a page does not know is passed over, so a page
+    // still running an older build keeps working.
+    this.#receive(entry, { kind: "event", event: { type: "ui_answered", requestId: args.id } });
     return null;
   }
 

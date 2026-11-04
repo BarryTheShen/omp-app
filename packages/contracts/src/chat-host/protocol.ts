@@ -23,7 +23,7 @@ import type { Goal } from "@oh-my-pi/pi-tui/tools/goal";
 import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
-import type { UiEvent } from "./dialogs";
+import type { UiAnsweredEvent, UiEvent } from "./dialogs";
 import {
   HostToolUpdateParams,
   SetHostToolsParams,
@@ -1265,6 +1265,7 @@ export type ChatEvent =
   | SessionInfoUpdateEvent
   | ConfigUpdateEvent
   | UiEvent
+  | UiAnsweredEvent
   | ToolCancelEvent
   | UriCancelEvent
   | SubagentEvent

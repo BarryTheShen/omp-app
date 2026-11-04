@@ -769,7 +769,9 @@ export class ChatStore {
         this.#retry = null;
         return false;
       case "ui_cancel":
-        // omp closed the dialog itself (its signal aborted or its timeout passed).
+      case "ui_answered":
+        // omp closed the dialog itself (its signal aborted or its timeout passed), or another page that shows the chat
+        // answered it (#2809).
         this.#requests = this.#requests.filter((open) => open.id !== event.requestId);
         return false;
       case "command_output":

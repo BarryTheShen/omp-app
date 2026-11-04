@@ -2072,6 +2072,27 @@ describe("the chat session runtime: the host's requests and UI state", () => {
     expect(openRequests()).toEqual([]);
   });
 
+  test("an answer is published on the chat's stream, so every page that shows the chat closes the request (#2809)", async () => {
+    const { handlers, process, frames } = await openChat();
+    process.emitRequest("ui-1", "ui.confirm", confirm);
+    process.emitRequest("ui-2", "ui.input", { title: "Name?" });
+    await ticks();
+    getHandler(handlers, "answer")(
+      { threadId: authorityThread, id: "ui-1", answer: { confirmed: true } },
+      call("one"),
+    );
+    const answered = frames().filter(
+      (frame) =>
+        payloadKind(frame.payload) === "event" &&
+        (frame.payload as { event: { type: string } }).event.type === "ui_answered",
+    );
+    expect(answered.map((frame) => frame.payload)).toEqual([
+      { kind: "event", event: { type: "ui_answered", requestId: "ui-1" } },
+    ]);
+    // It comes after the request it answers, in the stream's order.
+    expect(answered[0]?.seq ?? 0).toBeGreaterThan(seqOfHostRequest(frames(), "ui-1"));
+  });
+
   test("a request the host was waiting on is not open once the host has exited", async () => {
     const { handlers, process } = await openChat();
     process.emitRequest("ui-1", "ui.confirm", confirm);
