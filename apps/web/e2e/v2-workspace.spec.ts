@@ -292,7 +292,7 @@ realTest.describe("new UI workspace", () => {
     });
 
     realTest(
-      "a phone opens on a new chat with the list a tap away, and on a new chat again when opened again",
+      "a phone opens on a new chat with the list a tap away, and on a new chat again when opened again over an hour later",
       async ({ realApp, browser }) => {
         const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
         const page = await realApp.open({ path: "/", context: phone });
@@ -311,7 +311,11 @@ realTest.describe("new UI workspace", () => {
         await expect(chats(page)).toBeHidden();
         await expect(welcome).toBeHidden();
 
-        // Opened again, it starts on a new chat; the saved one is still in the list.
+        // Opened again over an hour after it was last up, it starts on a new chat (#2819); the saved one is still in
+        // the list.
+        await phone.addInitScript(() =>
+          localStorage.setItem("omp-app:last-up", String(Date.now() - 2 * 60 * 60 * 1000)),
+        );
         await page.reload();
         await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", {
           timeout: 120_000,

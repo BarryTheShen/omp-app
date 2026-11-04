@@ -858,7 +858,7 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
-    "the update banner's Reload comes back to the chat that was open; a launch still opens on a new chat (#2819)",
+    "the update banner's Reload, and any load within an hour of the app last being up, come back to the chat that was open; a load after longer opens on a new chat (#2819)",
     async ({ realApp, browser }) => {
       const context = await browser.newContext({
         viewport: { width: 390, height: 844 },
@@ -904,7 +904,15 @@ realTest.describe("new UI on a phone", () => {
       await expect(reply).toBeVisible({ timeout: 120_000 });
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
 
-      // Opened again by itself (a launch: no Reload asked for it), the app opens on a new chat, as before.
+      // Opened again by itself within the hour (iOS reloads a Home Screen app it put away): back to the same chat.
+      await page.reload();
+      await expect(reply).toBeVisible({ timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+
+      // Opened again two hours after the app was last up: a new chat, as a launch.
+      await context.addInitScript(() =>
+        localStorage.setItem("omp-app:last-up", String(Date.now() - 2 * 60 * 60 * 1000)),
+      );
       await page.reload();
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
       await expect(reply).toHaveCount(0);

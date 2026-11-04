@@ -45,7 +45,7 @@ import {
   type SidePaneParams,
 } from "../panels/SidePane";
 import { usePhone } from "../phone";
-import { reloadKeepsChat } from "../reloadKeepsChat";
+import { loadKeepsChat } from "../reloadKeepsChat";
 import { matchesHotkey } from "../tour/keys";
 import {
   ChatPanel,
@@ -535,13 +535,14 @@ export function Workspace({
       }
       // A phone opens on a new chat in the shown tab, ready to type, with the list a tap away: going through the list
       // to start one is slow on a phone. A new chat already in front stays, with the text kept for it. A reload the app
-      // asked for (its banner's Reload) comes back to the chat it showed instead (#2819).
+      // asked for (its banner's Reload), or any load within an hour of the page last being up, comes back to the chat it
+      // showed instead (#2819).
       if (phoneRef.current && !phoneStarted.current && tabId === tabsRef.current.active) {
         phoneStarted.current = true;
         const panel = chatPaneIn(api);
         if (panel === undefined)
           addChat(api, { kind: "new", folder }, undefined, api.groups.find(isBlank));
-        else if (!reloadKeepsChat && paramsOf(panel.params)?.target.kind !== "new") {
+        else if (!loadKeepsChat && paramsOf(panel.params)?.target.kind !== "new") {
           panel.api.updateParameters({
             chat: crypto.randomUUID(),
             target: { kind: "new", folder },
