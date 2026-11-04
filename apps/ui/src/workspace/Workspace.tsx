@@ -193,6 +193,7 @@ export function Workspace({
   phone,
   onView,
   onShown,
+  stripLeading,
   ref,
 }: {
   readonly client: AppClient;
@@ -201,6 +202,8 @@ export function Workspace({
   readonly onView: (view: WorkspaceView) => void;
   /** A tab of its own with a new chat came to the front (a new tab, a tour's sandbox): a phone shows the chat then. */
   readonly onShown?: () => void;
+  /** Before the workspace tabs: Show the chat list while it is hidden (#2805). */
+  readonly stripLeading?: ReactNode;
   readonly ref: Ref<WorkspaceHandle>;
 }): ReactNode {
   const onShownRef = useRef(onShown);
@@ -967,6 +970,7 @@ export function Workspace({
                 onRenaming={setRenaming}
                 onAdd={commands.newTab}
                 onMove={(id, to) => setTabs((state) => moveTabTo(state, id, to))}
+                leading={stripLeading}
               />
             )}
             <div className="relative min-h-0 flex-1">

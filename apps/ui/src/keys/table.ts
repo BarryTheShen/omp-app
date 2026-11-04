@@ -158,6 +158,12 @@ const TABLE = {
     group: "App",
     label: "Show or hide the side panel",
   },
+  chatList: {
+    hotkey: "ctrl+b",
+    scope: "workspace",
+    group: "App",
+    label: "Show or hide the chat list",
+  },
   newWindow: {
     hotkey: "ctrl+shift+n",
     scope: "workspace",

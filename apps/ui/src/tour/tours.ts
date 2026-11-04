@@ -1481,6 +1481,37 @@ const QUESTIONS_TOUR: Tour = {
   ],
 };
 
+const CHAT_LIST_EDGE = part("chat-list-edge");
+const CHAT_LIST_HIDE = part("chat-list-hide");
+const CHAT_LIST_SHOW = part("chat-list-show");
+
+const CHAT_LIST_TOUR: Tour = {
+  id: "chat-list-2026-11-03",
+  title: "A chat list your size",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: CHAT_LIST_EDGE,
+      title: "Make it wider or narrower",
+      text: "Drag the chat list's right edge; with the keyboard on it, the arrow keys move it too. A double click gives the list its own width again.",
+      action: next,
+    },
+    {
+      target: CHAT_LIST_HIDE,
+      title: "Hide it",
+      text: "Click this, or press {chatList}: the list goes, and your chats get the whole window.",
+      action: { kind: "appears", selector: CHAT_LIST_SHOW },
+    },
+    {
+      target: CHAT_LIST_SHOW,
+      title: "Bring it back",
+      text: "Click this, before the tabs, or press {chatList} again. The width and whether the list is hidden stay in this browser.",
+      action: { kind: "appears", selector: CHAT_LIST_HIDE },
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1495,6 +1526,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-03-chat-list",
+    when: "2026-11-03T22:30:00-06:00",
+    summary:
+      "The chat list resizes and hides: drag its right edge, or hide it with the button at its top or Ctrl+B, and your chats get the whole window; a button before the tabs brings it back.",
+    tours: [CHAT_LIST_TOUR],
+  },
   {
     id: "2026-11-03-questions",
     when: "2026-11-03T19:30:00-06:00",

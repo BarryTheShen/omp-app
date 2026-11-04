@@ -11,6 +11,7 @@ import {
   CircleStop,
   Clock,
   Ellipsis,
+  PanelLeftClose,
   Pause,
   PencilLine,
   Pin,
@@ -114,6 +115,8 @@ export function Sidebar({
   workspace,
   phone,
   connection,
+  edge,
+  onHide,
 }: {
   /** The folder at the top, with its menu to switch it. */
   readonly folderMenu: ReactNode;
@@ -124,7 +127,7 @@ export function Sidebar({
   /** The chats that run on the server now, from every folder (D1). */
   readonly running: readonly RunningChat[];
   readonly view: WorkspaceView;
-  /** On a phone while a chat is shown. */
+  /** On a phone while a chat is shown; on a desktop while the list is hidden (#2805). */
   readonly hidden: boolean;
   readonly onOpen: (target: ChatTarget, where: "here" | "split") => void;
   /** The pointer rests on a chat: read it ahead, so opening it shows it at once. */
@@ -142,6 +145,10 @@ export function Sidebar({
   readonly phone: boolean;
   /** The link to the app's server, in the foot beside Settings (#2789). */
   readonly connection: ReactNode;
+  /** On a desktop, the list's right edge, which resizes it (#2805). */
+  readonly edge?: ReactNode;
+  /** On a desktop, hides the list (#2805); Ctrl+B does too. */
+  readonly onHide?: () => void;
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -309,7 +316,7 @@ export function Sidebar({
     <nav
       aria-label="Chats"
       // On a short screen (a phone held sideways) the list keeps a few chats in view and the column scrolls to its foot.
-      className={cn("flex min-h-0 flex-col p-2 short:overflow-y-auto", hidden && "hidden")}
+      className={cn("relative flex min-h-0 flex-col p-2 short:overflow-y-auto", hidden && "hidden")}
       // A finger landing anywhere but on the open row shuts it, as a phone's lists do.
       onPointerDownCapture={(event) => {
         if (swiped === null) return;
@@ -317,7 +324,24 @@ export function Sidebar({
         setSwiped(null);
       }}
     >
-      {folderMenu}
+      {onHide === undefined ? (
+        folderMenu
+      ) : (
+        <div className="flex items-center gap-0.5">
+          <div className="min-w-0 flex-1">{folderMenu}</div>
+          <Button
+            data-tour="chat-list-hide"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 text-t3 hover:text-t1"
+            aria-label="Hide the chat list"
+            title={`Hide the chat list  ${keycap(KEYS.chatList)}`}
+            onClick={onHide}
+          >
+            <PanelLeftClose />
+          </Button>
+        </div>
+      )}
       {/*
         On a desktop, a new workspace: a tab of its own, one blank window with its New chat (#2791). On a phone, one chat
         at a time: New chat is at the foot of the list, in the thumb's reach.
@@ -480,6 +504,7 @@ export function Sidebar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {edge}
     </nav>
   );
 }

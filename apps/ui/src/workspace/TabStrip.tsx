@@ -25,6 +25,7 @@ export function TabStrip({
   onRenaming,
   onAdd,
   onMove,
+  leading,
 }: {
   readonly tabs: readonly WorkspaceTab[];
   readonly active: string;
@@ -39,12 +40,15 @@ export function TabStrip({
   readonly onAdd: () => void;
   /** A workspace dragged onto another's place. */
   readonly onMove: (id: string, to: number) => void;
+  /** Before the tabs: Show the chat list while it is hidden (#2805). */
+  readonly leading?: ReactNode;
 }): ReactNode {
   /** The tab a dragged one would land on. */
   const [over, setOver] = useState<string | null>(null);
   const tabRow = useSidewaysRow(active);
   return (
     <div className="flex h-9 shrink-0 items-end gap-0.5 px-1.5 pt-1 tablet:h-12">
+      {leading}
       <div
         ref={tabRow}
         data-tour="tabs"

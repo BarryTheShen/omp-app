@@ -1,8 +1,9 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { AppPort, type FolderPath, RunningChatsPort, type ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
-import { ChevronLeft, Info, SquarePen } from "lucide-react";
+import { ChevronLeft, Info, PanelLeftOpen, SquarePen } from "lucide-react";
 import {
+  type CSSProperties,
   lazy,
   type ReactNode,
   Suspense,
@@ -32,7 +33,7 @@ import { keepLinkFolder } from "./folders/folder";
 import { useFolder } from "./folders/useFolder";
 import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
-import { KEYS } from "./keys/table";
+import { KEYS, keycap } from "./keys/table";
 import { watchLink } from "./linkCheck";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
@@ -48,7 +49,9 @@ import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
 import { isPhone, usePhone } from "./phone";
 import type { SettingsPlace } from "./settings/SettingsPage";
+import { ListEdge } from "./sidebar/ListEdge";
 import { Sidebar } from "./sidebar/Sidebar";
+import { useChatListSize } from "./sidebar/size";
 import { TitleMenu } from "./sidebar/TitleMenu";
 import { useChatList } from "./sidebar/useChatList";
 import { useRunningChats } from "./sidebar/useRunningChats";
@@ -313,6 +316,17 @@ function Shell({
   // The window's engine maps no key to undo or redo in text fields (#2792); a browser maps them itself.
   useEffect(() => (desktopBridge() === null ? undefined : runUndoKeys()), []);
   useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
+  /** The chat list's width and whether it is hidden, on a desktop (#2805); a phone keeps its own list screen. */
+  const chatList = useChatListSize();
+  const listHidden = !phone && chatList.hidden;
+  useHotkeys(
+    KEYS.chatList.hotkey,
+    () => {
+      if (!phone) chatList.toggle();
+    },
+    anywhere,
+    [phone, chatList.toggle],
+  );
   const sidePanel = usePanelState();
   /** On a phone the shown chat's details fill the screen in its place (`ChatDetails`), from the panel state. */
   const details = phone && sidePanel.open;
@@ -364,9 +378,19 @@ function Shell({
     <div
       className={cn(
         "grid h-full max-sm:grid-cols-1",
-        // The last column is the side panel's rail, at the window's right edge; the panel opens as a pane.
-        "grid-cols-[244px_minmax(0,1fr)_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_40px]",
+        // The last column is the side panel's rail, at the window's right edge; the panel opens as a pane. The first is
+        // the chat list (#2805): hidden, at the width it was given, or the layout's own.
+        listHidden
+          ? "grid-cols-[minmax(0,1fr)_40px]"
+          : chatList.width === null
+            ? "grid-cols-[244px_minmax(0,1fr)_40px] max-[1360px]:grid-cols-[224px_minmax(0,1fr)_40px]"
+            : "grid-cols-[var(--list-width)_minmax(0,1fr)_40px]",
       )}
+      style={
+        chatList.width === null
+          ? undefined
+          : ({ "--list-width": `${chatList.width}px` } as CSSProperties)
+      }
       data-app-root="true"
     >
       <ConnectionBanner client={client} />
@@ -378,7 +402,7 @@ function Shell({
         list={list}
         running={running}
         view={view}
-        hidden={phone && showChat}
+        hidden={(phone && showChat) || listHidden}
         onOpen={openChat}
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
         onDeleted={(id) => workspace.current?.forget(id)}
@@ -388,12 +412,15 @@ function Shell({
         workspace={workspace}
         phone={phone}
         connection={<ConnectionDot client={client} line={!phone} />}
+        edge={phone ? undefined : <ListEdge width={chatList.width} onResize={chatList.resize} />}
+        onHide={phone ? undefined : chatList.toggle}
       />
       <main
         data-tour="workspace"
         className={cn(
           "my-1.5 mr-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-l2 bg-panel max-sm:m-0 max-sm:rounded-none max-sm:border-0",
           phone && !showChat && !details && "hidden",
+          listHidden && "ml-1.5",
         )}
       >
         {phone && !details && (
@@ -461,6 +488,21 @@ function Shell({
               phone={phone}
               onView={setView}
               onShown={showChatView}
+              stripLeading={
+                listHidden ? (
+                  <Button
+                    data-tour="chat-list-show"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0 self-center text-t3 hover:text-t1"
+                    aria-label="Show the chat list"
+                    title={`Show the chat list  ${keycap(KEYS.chatList)}`}
+                    onClick={chatList.toggle}
+                  >
+                    <PanelLeftOpen />
+                  </Button>
+                ) : undefined
+              }
             />
           </SidePaneContext>
         </div>

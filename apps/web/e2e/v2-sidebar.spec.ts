@@ -256,3 +256,47 @@ realTest.describe("new UI chat list: an old chat's title from omp", () => {
     },
   );
 });
+
+/** The chat list resizes and hides on a desktop (#2805), and keeps both in this browser. */
+realTest.describe("new UI chat list: resize and hide", () => {
+  realTest.setTimeout(240_000);
+
+  realTest(
+    "the list's edge resizes it and the width stays after a reload; its button, Show and Ctrl+B hide and show it (#2805)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      const list = page.getByRole("navigation", { name: "Chats" });
+      const edge = list.getByRole("separator", { name: "Resize the chat list" });
+      await expect(edge).toBeVisible({ timeout: 120_000 });
+      const width = async (): Promise<number> => Math.round((await list.boundingBox())?.width ?? 0);
+      const before = await width();
+
+      // A drag of the edge, 100 px to the right.
+      const box = await edge.boundingBox();
+      if (box === null) throw new Error("no edge");
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2, { steps: 5 });
+      await page.mouse.up();
+      await expect.poll(width).toBe(before + 100);
+      await page.reload();
+      await expect(edge).toBeVisible({ timeout: 60_000 });
+      await expect.poll(width).toBe(before + 100);
+
+      // Hidden by its button, back by Show before the tabs; Ctrl+B both ways.
+      await list.getByRole("button", { name: "Hide the chat list" }).click();
+      await expect(list).toBeHidden();
+      await page.getByRole("button", { name: "Show the chat list" }).click();
+      await expect(list).toBeVisible();
+      await page.keyboard.press("Control+b");
+      await expect(list).toBeHidden();
+      await page.keyboard.press("Control+b");
+      await expect(list).toBeVisible();
+
+      // A double click gives the list its own width again.
+      await edge.dblclick();
+      await expect.poll(width).toBe(before);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});
