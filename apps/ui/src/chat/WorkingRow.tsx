@@ -11,6 +11,10 @@ function elapsed(ms: number): string {
  * What omp is doing, how long it has been at it, and how to stop it: Esc, where there is a key for it (`stopKey`; a
  * phone has none, and its Stop button is beside the box). Pause (`onPause`) holds every agent at its next step, as omp's
  * `/pause`; a phone has it in its key row. What it is given (the phone's pills) shares the row.
+ *
+ * The line is a grid so that the dot and the time keep their room whatever shares the row: the step's name gives way
+ * first (its column can shrink to nothing), then the pills beside it. On a phone a long current task used to push the
+ * time onto two lines and over the progress pill.
  */
 export function WorkingRow({
   activity,
@@ -30,12 +34,15 @@ export function WorkingRow({
   }, []);
   return (
     <div className="flex min-w-0 items-center gap-2 px-1 pb-2 text-xs text-t3">
-      <span className="flex min-w-0 flex-1 items-center gap-2" role="status">
-        <span className="size-1.5 shrink-0 rounded-full bg-live" aria-hidden="true" />
-        <span className="min-w-0 truncate text-t2">{activity.label}</span>
-        <span className="tabular-nums">{elapsed(now - activity.since)}</span>
+      <span
+        className="grid flex-1 grid-cols-[auto_minmax(0,max-content)_auto_1fr] items-center gap-2"
+        role="status"
+      >
+        <span className="size-1.5 rounded-full bg-live" aria-hidden="true" />
+        <span className="truncate text-t2">{activity.label}</span>
+        <span className="whitespace-nowrap tabular-nums">{elapsed(now - activity.since)}</span>
         {stopKey && (
-          <span className="ml-auto shrink-0">
+          <span className="justify-self-end whitespace-nowrap">
             <kbd className="rounded-sm border border-l2 px-1 font-mono text-[11px]">esc</kbd> to
             stop
           </span>

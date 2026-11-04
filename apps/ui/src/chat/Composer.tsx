@@ -68,8 +68,8 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
  * Alt+Enter adds a line; Esc stops omp and brings queued messages back into the box. `/` at the start lists omp's
  * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context).
  * Images pasted or dropped go with the next message. The text is kept as it is typed (`drafts.ts`), and only the text
- * that was sent leaves the box. On a phone the return key adds a line and Send sends; the box's settings and the keys a
- * phone lacks are in the key row under it (`KeyRow`).
+ * that was sent leaves the box. On a phone the return key adds a line, and the button sends (or, while omp works,
+ * queues what is typed); the box's settings and the keys a phone lacks are in the key row under it (`KeyRow`).
  */
 export const Composer = memo(function Composer({
   controller,
@@ -236,6 +236,16 @@ export const Composer = memo(function Composer({
 
   /** Enter pressed before the chat was ready: it is sent once the chat is (a new chat takes typing at once). */
   const [waitingToSend, setWaitingToSend] = useState<"auto" | "followUp" | null>(null);
+  /**
+   * Just queued while omp works: for a moment the button stays Queue (unpressable, the box being empty), so a second
+   * tap does not land on the Stop that takes its place and end omp's reply.
+   */
+  const [justQueued, setJustQueued] = useState(false);
+  useEffect(() => {
+    if (!justQueued) return;
+    const timer = setTimeout(() => setJustQueued(false), 800);
+    return () => clearTimeout(timer);
+  }, [justQueued]);
 
   const pause = (): void => {
     setError(null);
@@ -256,6 +266,7 @@ export const Composer = memo(function Composer({
       return;
     }
     setWaitingToSend(null);
+    if (working) setJustQueued(true);
     // omp's `/btw`: a side question, answered beside the chat in the side panel's BTW history; `/btw` alone opens it.
     const aside = btwQuestion(value);
     if (aside !== null) {
@@ -543,43 +554,56 @@ export const Composer = memo(function Composer({
       />
     </>
   );
-  /** Send, or Stop while omp works; on a phone a full-size target beside the text. */
-  const sendOrStop = working ? (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            variant="secondary"
-            size={phone ? "icon" : "icon-sm"}
-            className={phone ? "size-11 shrink-0" : "tablet:size-11"}
-            aria-label="Stop"
-            onClick={stop}
-          />
-        }
-      >
-        <Square className="fill-current" />
-      </TooltipTrigger>
-      <TooltipContent>Stop (Esc)</TooltipContent>
-    </Tooltip>
-  ) : (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="submit"
-            size={phone ? "icon" : "icon-sm"}
-            className={phone ? "size-11 shrink-0" : "tablet:size-11"}
-            aria-label="Send"
-            disabled={disabled || sending || (text.trim().length === 0 && attachments.length === 0)}
-          />
-        }
-      >
-        <ArrowUp />
-      </TooltipTrigger>
-      <TooltipContent>Send (Enter)</TooltipContent>
-    </Tooltip>
-  );
+  /** Something to send: text, or pictures. */
+  const typed = text.trim().length > 0 || attachments.length > 0;
+  /**
+   * The button beside the text, a full-size target on a phone. Send while omp is idle. While omp works: Stop for an
+   * empty box, and Queue once something is typed, which hands the message to omp as Enter does (omp takes it in at once
+   * or after its current step, by its Interrupt Mode) without ending the reply, so a phone, whose return key adds a
+   * line, queues without stopping omp.
+   */
+  const sendOrStop =
+    working && !typed && !justQueued ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="secondary"
+              size={phone ? "icon" : "icon-sm"}
+              className={phone ? "size-11 shrink-0" : "tablet:size-11"}
+              aria-label="Stop"
+              data-tour="send-button"
+              onClick={stop}
+            />
+          }
+        >
+          <Square className="fill-current" />
+        </TooltipTrigger>
+        <TooltipContent>Stop (Esc)</TooltipContent>
+      </Tooltip>
+    ) : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="submit"
+              variant={working ? "outline" : "default"}
+              size={phone ? "icon" : "icon-sm"}
+              className={`${phone ? "size-11 shrink-0" : "tablet:size-11"}${working ? " text-accent-ink" : ""}`}
+              aria-label={working ? "Queue" : "Send"}
+              data-tour="send-button"
+              disabled={disabled || sending || !typed}
+            />
+          }
+        >
+          <ArrowUp />
+        </TooltipTrigger>
+        <TooltipContent>
+          {working ? "Queue (Enter): omp takes it in without stopping" : "Send (Enter)"}
+        </TooltipContent>
+      </Tooltip>
+    );
   const hasPills = agentsTotal > 0 || todos.some((phase) => phase.tasks.length > 0);
   const pills = hasPills && (
     <>

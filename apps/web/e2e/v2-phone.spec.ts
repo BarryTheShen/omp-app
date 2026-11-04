@@ -148,6 +148,80 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
+    "while omp works, an empty box offers Stop and a typed one Queue, which queues without stopping omp",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      await box(page).fill("slow_tool 20");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const working = page.getByRole("status").filter({ hasText: /\d+s/ });
+      await expect(working).toBeVisible({ timeout: 60_000 });
+      const stop = page.getByRole("button", { name: "Stop" });
+      const queue = page.getByRole("button", { name: "Queue" });
+      await expect(stop).toBeVisible();
+      await expect(queue).toHaveCount(0);
+
+      // Typed text turns Stop into Queue, a full-size target; the return key still adds a line.
+      await box(page).tap();
+      await page.keyboard.type("then say");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("done");
+      await expect(box(page)).toHaveValue("then say\ndone");
+      await expect(queue).toBeVisible();
+      await expect(stop).toHaveCount(0);
+      expect((await queue.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+      // Queue hands it to omp as Enter does, without ending the reply: the box empties, no Stop takes its place under
+      // the finger at once, and the message goes into the chat (a Stop would have put it back in the box).
+      await queue.tap();
+      await expect(box(page)).toHaveValue("");
+      await expect(stop).toHaveCount(0);
+      await expect(
+        page.getByRole("region", { name: "Transcript" }).getByText(/then say/),
+      ).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(box(page)).toHaveValue("");
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "beside a long plan's pill, the working line's time stays whole, on one line",
+    async ({ realApp, browser }) => {
+      // A 375-point phone (an iPhone mini): the narrowest, where the pill leaves the line least room.
+      const context = await browser.newContext({
+        viewport: { width: 375, height: 812 },
+        hasTouch: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("make_long_todos");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const plan = page.getByRole("button", { name: /^Todos: / });
+      await expect(plan).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0, { timeout: 60_000 });
+
+      await box(page).fill("slow_tool 30");
+      await page.getByRole("button", { name: "Send" }).tap();
+      // Two digits: the time at its widest before a minute.
+      const clock = page.getByRole("status").getByText(/^[1-5]\ds$/);
+      await expect(clock).toBeVisible({ timeout: 60_000 });
+      const time = await clock.boundingBox();
+      const pill = await plan.boundingBox();
+      if (time === null || pill === null)
+        throw new Error("the time and the plan's pill should be on the screen");
+      expect(time.height).toBeLessThan(20);
+      expect(time.x + time.width).toBeLessThanOrEqual(pill.x);
+      // The pill gave way instead: its task is cut short, and it stays on the screen.
+      expect(pill.x + pill.width).toBeLessThanOrEqual(375);
+      await page.getByRole("button", { name: "Stop" }).tap();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "the top bar names the chat and starts a new one; Chats goes to the list",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);

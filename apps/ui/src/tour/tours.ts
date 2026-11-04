@@ -1512,6 +1512,36 @@ const CHAT_LIST_TOUR: Tour = {
   ],
 };
 
+const SEND_BUTTON = part("send-button");
+
+const QUEUE_TOUR: Tour = {
+  id: "queue-2026-11-04",
+  title: "Stop, or queue",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: SEND_BUTTON,
+      title: "One button, three jobs",
+      text: "With nothing running, it sends. While omp works and the box is empty, it is the square Stop.",
+      action: next,
+    },
+    {
+      target: SEND_BUTTON,
+      title: "Type, and it queues",
+      text: "Type while omp works and it becomes Queue, an outlined arrow: omp takes your message in without stopping, at once or after its current step as its Interrupt Mode setting says. Enter does the same.",
+      action: next,
+    },
+    {
+      target: SEND_BUTTON,
+      title: "On a phone",
+      text: "The return key adds a line, so this is how you queue from a phone. To stop omp instead, empty the box and tap the square.",
+      action: next,
+      phoneOnly: true,
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1526,6 +1556,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-04-queue",
+    when: "2026-11-04T02:45:00-06:00",
+    summary:
+      "While omp works, the button beside the message box follows what you do: with the box empty it is the square Stop, and once you type it becomes Queue, an outlined arrow that hands omp your message without stopping it, as Enter does. On a phone that is how you queue. The working line's time also keeps its room beside a long plan.",
+    tours: [QUEUE_TOUR],
+  },
   {
     id: "2026-11-03-chat-list",
     when: "2026-11-03T22:30:00-06:00",

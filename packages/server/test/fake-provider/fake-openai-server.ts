@@ -879,6 +879,28 @@ function reply(request: Request): Reply {
       },
       thinking: "I should track todos.",
     };
+  // A plan as long as a real one: its current task's name is longer than a phone is wide.
+  if (prompt.includes("make_long_todos"))
+    return {
+      tool: "todo",
+      args: {
+        op: "init",
+        list: [
+          {
+            phase: "Now",
+            items: [
+              "Calibrate the phone checks to the measurements the phone itself reports, then run them again",
+              "Check every report against its own probe before anything is filed",
+            ],
+          },
+          {
+            phase: "Next",
+            items: ["Measure the empty space at the top and the bottom", "Ship the update"],
+          },
+        ],
+      },
+      thinking: "I should track a long plan.",
+    };
   // A bash call, then a write, in one message: write is exclusive, so omp starts it only after the bash.
   if (prompt.includes("run_queued_pair"))
     return {
