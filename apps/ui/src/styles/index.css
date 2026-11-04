@@ -6,8 +6,12 @@
 @custom-variant dark (&:is(.dark *));
 /* A tablet: a touch screen as the main pointer, wider than a phone (#2779 D1 part 4). Its targets are a finger's size. */
 @custom-variant tablet (@media (pointer: coarse) and (min-width: 640px));
-/* A short screen: a phone on its side (402 pt tall on an iPhone 17 Pro). The chat list gets the room first. */
-@custom-variant short (@media (max-height: 500px));
+/*
+ * A short screen: a phone on its side (402 pt tall on an iPhone 17 Pro), an iPad's Stage Manager window (from about 520
+ * tall), a short computer window. The chat list gets the room first: under about 700 the full What's new card left
+ * it almost none (#2815).
+ */
+@custom-variant short (@media (max-height: 700px));
 
 /*
  * A row of tabs or chips that scrolls sideways (#2802), with `useSidewaysRow` (`src/sidewaysRow.ts`): no scroll bar, which

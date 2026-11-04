@@ -143,6 +143,35 @@ realTest.describe("new UI on a tablet", () => {
   });
 
   realTest(
+    "in a short window the chat list keeps room above the What's new card (#2815)",
+    async ({ realApp, browser }) => {
+      // An iPad's app in a small Stage Manager window: 747 × 519.
+      const context = await browser.newContext({
+        viewport: { width: 747, height: 519 },
+        hasTouch: true,
+        isMobile: true,
+        deviceScaleFactor: 2,
+      });
+      const page = await realApp.open({ path: "/", context });
+      const card = page.getByRole("region", { name: "What's new" });
+      await expect(card).toBeVisible({ timeout: 120_000 });
+      await expect(chats(page).getByRole("button", { name: "Seeded chat 2" })).toBeVisible();
+      const list = await page.locator('[data-tour="chat-list"]').boundingBox();
+      const whatsNew = await card.boundingBox();
+      // At least three rows of the list show, and the card is below them, not over them.
+      expect(Math.round(list?.height ?? 0)).toBeGreaterThanOrEqual(132);
+      expect(Math.round((list?.y ?? 0) + (list?.height ?? 0))).toBeLessThanOrEqual(
+        Math.round(whatsNew?.y ?? 0),
+      );
+      await expect(
+        page.getByRole("button", { name: "Settings", exact: true }).first(),
+      ).toBeInViewport();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "with an iPad's keyboard ⌘ does what Ctrl does and the keys read ⌘; on Linux that key stays Super (#2775)",
     async ({ realApp, browser }) => {
       // iPadOS's Safari reports a Mac.
