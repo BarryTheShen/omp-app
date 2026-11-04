@@ -368,8 +368,10 @@ export function TranscriptList({
   }, [positioned, firstIndex, hasOlder, onNearTop]);
 
   return (
-    // At least a quarter of the chat stays the conversation's, under questions or an approval too (#2795).
-    <div className="relative min-h-[25%] flex-1">
+    // At least a quarter of the chat stays the conversation's, under questions or an approval too (#2795). A chat
+    // too short for that, a quarter and the message box and a question's choices (a phone held sideways, a window about
+    // 400 px high), keeps 20rem for the message box and the question instead, so their choices stay in view (#2807).
+    <div className="relative min-h-[min(25%,max(0px,calc(100%_-_20rem)))] flex-1">
       <section ref={scrollRef} className="tr-root tl-scroll" aria-label={label}>
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {items.map((item) => {

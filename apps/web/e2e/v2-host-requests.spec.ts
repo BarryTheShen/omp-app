@@ -315,6 +315,36 @@ realTest.describe("new UI approvals and questions", () => {
   );
 
   realTest(
+    "in a chat about 400 px high, as on a phone held sideways, a question's choices can still be seen (#2807)",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      await page.setViewportSize({ width: 874, height: 402 });
+      const questions = page.getByRole("dialog", { name: "Questions from omp" });
+      await send(page, "ask_user");
+      await expect(questions).toBeVisible({ timeout: 60_000 });
+      // Each choice is the element under its own middle: not cut off by the card, nor under the message box.
+      for (const name of ["Postgres", "SQLite", "Other…"]) {
+        const choice = questions.getByRole("radio", { name });
+        await expect
+          .poll(() =>
+            choice.evaluate((radio) => {
+              const box = radio.getBoundingClientRect();
+              const top = document.elementFromPoint(
+                box.left + box.width / 2,
+                box.top + box.height / 2,
+              );
+              return top !== null && (radio === top || radio.contains(top) || top.contains(radio));
+            }),
+          )
+          .toBe(true);
+      }
+      // The message box stays whole beneath.
+      await expect(page.getByRole("button", { name: "Stop" })).toBeInViewport({ ratio: 1 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "on a phone the questions fit the screen's width and leave the top of the chat in view (#2795)",
     async ({ realApp, browser }) => {
       const context = await browser.newContext({
