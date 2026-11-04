@@ -716,6 +716,9 @@ export const realTest = test.extend<{
       PI_CODING_AGENT_DIR: agentDir,
       OMP_APP_DATA_DIR: appDataDir,
       ...(noModel ? {} : { ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-") }),
+      // omp names chats in the app (#2798); specs find their chats by their first message, so omp leaves them unnamed
+      // here unless a spec turns it back on (`serverEnv: { PI_NO_TITLE: "" }`).
+      PI_NO_TITLE: "1",
       ...serverEnv,
     };
     let provider: ChildProcess | undefined;

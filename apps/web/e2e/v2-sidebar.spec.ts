@@ -202,3 +202,28 @@ realTest.describe("new UI chat list and pane keys", () => {
     expect(realApp.problems).toEqual([]);
   });
 });
+
+/** omp names a chat, as it does on its terminal (#2798): the list shows that name in place of the first message. */
+realTest.describe("new UI chat list: the chat's title from omp", () => {
+  realTest.setTimeout(240_000);
+  realTest.use({ serverEnv: { PI_NO_TITLE: "" } });
+
+  realTest(
+    "a new chat takes the title omp names it with, in place of its first message (#2798)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      const box = page.getByRole("textbox", { name: "Message" }).first();
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // A task: omp leaves a greeting or an acknowledgement unnamed (`isLowSignalTitleInput`).
+      await box.fill("rename the export button in the toolbar");
+      await box.press("Enter");
+      const chats = page.getByRole("navigation", { name: "Chats" });
+      await expect(chats.getByRole("button", { name: /Fake chat title marker/ })).toBeVisible({
+        timeout: 90_000,
+      });
+      await expect(chats.getByRole("button", { name: /^rename the export/ })).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});

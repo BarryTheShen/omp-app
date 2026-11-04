@@ -8,7 +8,7 @@
  *   plugin-root preload (1840) and the command-line extension roots (1850); the goal and restore checks (1881); not an
  *   interactive host (1901); settings with `--config` (1908); auth discovery and its settings sync (1912-1928); the
  *   approval mode (1929); the protocol defaults (1938); the model registry, its credential caches and the runtime
- *   identity (1946-1961); `PI_NO_PTY` and `PI_NO_TITLE` (1962-1972); `initializeWithSettings` (1975); the model role
+ *   identity (1946-1961); `PI_NO_PTY` (1962-1972); `initializeWithSettings` (1975); the model role
  *   overrides (1978); `--hide-thinking`, `--advisor`, `--external-thinking` (1997-2007); `initTheme` (2009); the scoped
  *   models (2040); `--continue <id>` (2051); `--from-*` refused (2061); the session manager (2118); the resume folder
  *   switch (2135, `switchToResumedProject` below, copied from `main.ts:947` because it is not exported); the pending
@@ -19,7 +19,9 @@
  *   (2617-2668); the settings watcher (2670).
  * - changed: a launch error throws (omp writes it to stderr and exits; `chat.ts` does that for this process); notices
  *   omp prints in a protocol mode go to stderr, as there; a session file whose folder is gone is not moved (omp asks on
- *   a terminal; a protocol host has none, so its answer is "unavailable", as omp's own `promptMoveSession` gives).
+ *   a terminal; a protocol host has none, so its answer is "unavailable", as omp's own `promptMoveSession` gives); and
+ *   omp names the chat, as on its terminal (`autoTitle`, `title.generator`), where a protocol launch sets
+ *   `PI_NO_TITLE` and leaves it unnamed: the app shows a chat's title (#2798).
  * - skipped, because no terminal runs here: the start-up watchdog (1782), piped input (1869), the start-up composer
  *   (2019), the session picker of a bare `--resume` (2169, refused), the Warp event bridge (2375), the splash, the
  *   changelog and the Python probe (2462-2502).
@@ -192,7 +194,7 @@ export async function createChatSession(
   const credentialScopedCaches = modelRegistry.hydrateCredentialScopedModelCaches();
   const runtimeIdentity = loadRuntimeIdentity();
   Bun.env.PI_NO_PTY = "1";
-  Bun.env.PI_NO_TITLE = "1";
+  // No `PI_NO_TITLE`: omp names the chat (`autoTitle` below, #2798).
   initializeWithSettings(settings);
   const smol = parsed.smol ?? $env.PI_SMOL_MODEL;
   const slow = parsed.slow ?? $env.PI_SLOW_MODEL;
@@ -274,7 +276,8 @@ export async function createChatSession(
   sessionOptions.allowSessionModelFallback = false;
   sessionOptions.settingsApproval = false;
   sessionOptions.tuiTranscript = false;
-  sessionOptions.autoTitle = false;
+  // As omp's terminal does: omp names an untitled chat from its first message once the reply starts (`title.generator`).
+  sessionOptions.autoTitle = true;
   sessionOptions.settings = settings;
   sessionOptions.onPrewalkWarning = (warning) => notice(`Warning: ${warning}`);
   await initTelemetryExport(cfgTelemetryOtlpExportEnabled.get(settings));

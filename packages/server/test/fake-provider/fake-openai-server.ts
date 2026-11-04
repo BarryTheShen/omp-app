@@ -474,6 +474,9 @@ function reply(request: Request): Reply {
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
+  // omp's request to name the chat (`title-fork.md`, #2798): one card title, as a model gives it.
+  if (prompt.includes("<title-request>"))
+    return { text: '<title emoji="🧪" code="FAKE">Fake chat title marker</title>' };
   // `context_has <word>`: whether any earlier message the model was sent holds <word>. A `!!` run (#839) is kept out of the
   // model's context, so its command and output must not reach it; a plain `!` run does.
   const contextProbe = /context_has\s+(\S+)/.exec(prompt);
