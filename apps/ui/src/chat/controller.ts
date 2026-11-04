@@ -1043,7 +1043,7 @@ export class ChatController {
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") this.#refreshWindow();
     if (payload.event.type === "model_changed") {
-      void this.#refreshState();
+      this.#refreshState().catch(() => undefined);
       this.#refreshRole().catch(() => undefined);
     }
     // omp cleared finished todos on its own; the list it kept comes with the state.
@@ -1054,10 +1054,22 @@ export class ChatController {
       this.#commands = Promise.resolve(withBtwCommand(payload.event.commands));
   }
 
-  /** Reads the newest window again after omp wrote to the file; a new chat's file waits for omp's first reply. */
-  #refreshWindow(): void {
+  /**
+   * Reads the newest window again after omp wrote to the file; a new chat's file waits for omp's first reply. A read the
+   * link dropped under (a phone asleep, a server restart) is made again on the new link, which it waits for.
+   */
+  #refreshWindow(retried = false): void {
     this.#reloadWindow().catch((error: unknown) => {
       if (error instanceof AppFailure && error.appError.code === "not_found") return;
+      if (
+        !retried &&
+        !this.#disposed &&
+        error instanceof AppFailure &&
+        error.appError.code === "unavailable"
+      ) {
+        this.#refreshWindow(true);
+        return;
+      }
       throw error;
     });
   }

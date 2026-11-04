@@ -2,6 +2,7 @@ import {
   APP_PROTOCOL,
   type AppError,
   AppFailure,
+  AppPort,
   CallFrame,
   CancelFrame,
   type EventFrame,
@@ -110,6 +111,13 @@ export interface AppClient {
    * stopped answering) is dropped and opened again. Does nothing after the server refused this page: that stays.
    */
   reconnectNow(): void;
+  /**
+   * Checks that the open link still answers before anything else goes on it, as when a phone wakes: a link can die
+   * without closing, and what is sent into it is lost. Calls made while the check runs wait. An answer lets them go on
+   * the link; no answer within `withinMs` drops the link for a new one, and they go on that once it is open. Resolves
+   * true when the link answered, false when it did not or was not open. One check runs at a time.
+   */
+  checkLink(withinMs: number): Promise<boolean>;
   dispose(): void;
 }
 
@@ -286,6 +294,8 @@ class AppClientImpl implements AppClient {
   private reconnectTimer: TimerHandle | undefined;
   private _connectionState: ConnectionState = "connecting";
   private _instanceId: string | undefined;
+  /** The link check that runs (`checkLink`): new calls wait until it settles. */
+  private linkCheck: Promise<boolean> | undefined;
 
   constructor(options: CreateAppClientOptions) {
     this.options = options;
@@ -406,6 +416,49 @@ class AppClientImpl implements AppClient {
       this.setConnectionState(this.everOpen ? "reconnecting" : "connecting");
     }
     this.connectNow();
+  }
+
+  checkLink(withinMs: number): Promise<boolean> {
+    if (this.linkCheck !== undefined) return this.linkCheck;
+    const socket = this.socket;
+    if (this.disposed || this._connectionState !== "open" || !socket || !this.welcomeReceived)
+      return Promise.resolve(false);
+    const frame = CallFrame.parse({
+      type: "call",
+      id: this.nextRequestId(),
+      port: AppPort.name,
+      method: "health",
+      args: {},
+    });
+    const deadline = new AbortController();
+    // Without a timer (a scheduler that has none) the check waits for the answer or the link's close.
+    const timer = this.timers.setTimeout?.(() => deadline.abort(), withinMs);
+    const check = this.request(frame, AppPort.methods.health.result, { signal: deadline.signal })
+      .then(
+        () => true,
+        (failure: unknown) => {
+          // No answer in time: the link died without closing, so a new one takes its place.
+          if (deadline.signal.aborted) {
+            if (this.socket === socket) this.reconnectNow();
+            return false;
+          }
+          // The link closed meanwhile (its close starts the reconnect), or the client was disposed.
+          if (this.disposed) return false;
+          if (failure instanceof AppFailure && failure.appError.code === "unavailable")
+            return false;
+          // Any other answer, an error included, came over the link: it works.
+          return true;
+        },
+      )
+      .finally(() => {
+        if (timer !== undefined) this.timers.clearTimeout?.(timer);
+        this.linkCheck = undefined;
+        // The calls that waited go now on a link that answered; after a reconnect they go once it is open.
+        if (this._connectionState === "open" && this.socket && this.welcomeReceived)
+          this.resolveOpenWaiters();
+      });
+    this.linkCheck = check;
+    return check;
   }
 
   dispose(): void {
@@ -870,7 +923,13 @@ class AppClientImpl implements AppClient {
 
   private waitForOpen(signal?: PortCallOptions["signal"]): Promise<void> {
     if (this.disposed) return Promise.reject(appFailure("cancelled", "Client disposed", false));
-    if (this._connectionState === "open" && this.socket && this.welcomeReceived)
+    // While a link check runs (`checkLink`), a call waits for it, as for a link that is opening.
+    if (
+      this._connectionState === "open" &&
+      this.socket &&
+      this.welcomeReceived &&
+      this.linkCheck === undefined
+    )
       return Promise.resolve();
     if (this.closedFailure) return Promise.reject(this.closedFailure);
     if (signal?.aborted) return Promise.reject(appFailure("cancelled", "Call cancelled", false));

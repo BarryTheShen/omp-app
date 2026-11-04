@@ -89,6 +89,11 @@ class FakeServer {
   }> = [];
   /** Holds the next subscribe request instead of answering it. */
   holdNextSubscribe = false;
+  /** Holds the next health call instead of answering it, until `answerHeldHealth`. */
+  holdNextHealth = false;
+  private heldHealth: { socket: FakeSocket; id: z.infer<typeof RequestId> } | undefined;
+  /** Connections that take frames and answer nothing, as a link that died without closing. */
+  readonly silent = new Set<FakeConnection>();
   instanceId = "instance-1";
   private pendingCalls = new Map<string, FakeSocket>();
   private readonly factory: WebSocketFactory = (url) => {
@@ -139,6 +144,14 @@ class FakeServer {
     held.socket.deliver({ type: "result", id: held.id, ok: true, value: { stream: held.stream } });
   }
 
+  /** Answers the held health call: the link works. */
+  answerHeldHealth(): void {
+    const held = this.heldHealth;
+    if (!held) throw new Error("no health call is held");
+    this.heldHealth = undefined;
+    held.socket.deliver({ type: "result", id: held.id, ok: true, value: { status: "ok" } });
+  }
+
   private receive(socket: FakeSocket, text: string): void {
     const parsed = parseClientFrame(text);
     if (!parsed.ok) throw new Error("fake server received invalid client frame");
@@ -146,6 +159,7 @@ class FakeServer {
     const connection = this.connections.find((candidate) => candidate.socket === socket);
     if (!connection) throw new Error("unknown fake connection");
     connection.received.push(frame);
+    if (this.silent.has(connection)) return;
     if (frame.type === "hello") {
       expect(frame.protocols).toEqual([APP_PROTOCOL]);
       expect(frame.client.name).toBe("@omp-app/client");
@@ -217,6 +231,11 @@ class FakeServer {
     this.callIds.push(frame.id);
     this.pendingCalls.set(frame.id, socket);
     if (frame.method === "health") {
+      if (this.holdNextHealth) {
+        this.holdNextHealth = false;
+        this.heldHealth = { socket, id: frame.id };
+        return;
+      }
       socket.deliver({ type: "result", id: frame.id, ok: true, value: { status: "ok" } });
     } else if (frame.method === "capabilities") {
       return;
@@ -695,6 +714,75 @@ describe("createAppClient", () => {
       await new Promise<void>((resolve) => queueMicrotask(resolve));
     expect(server.connections).toHaveLength(1);
     expect(client.connectionState).toBe("closed");
+    client.dispose();
+  });
+
+  /** A client whose timers run only when the test says (`fire`), open on `server`. */
+  async function openWithTimers(
+    server: FakeServer,
+  ): Promise<{ client: AppClient; fire: () => void }> {
+    const due: Array<() => void> = [];
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      token: "test-token",
+      webSocketFactory: server.connectFactory(),
+      timers: {
+        setTimeout: (handler) => {
+          due.push(handler);
+          return handler;
+        },
+        clearTimeout: (handle) => {
+          const at = due.indexOf(handle as () => void);
+          if (at >= 0) due.splice(at, 1);
+        },
+      },
+      reconnect: { baseDelayMs: 0, maxDelayMs: 0 },
+    });
+    await eventually(() => client.connectionState === "open");
+    return { client, fire: () => due.splice(0).forEach((handler) => handler()) };
+  }
+
+  const calls = (connection: FakeConnection, method: string) =>
+    connection.received.filter((frame) => frame.type === "call" && frame.method === method);
+
+  test("calls made while a link check runs wait for it, and go on the link once it answers", async () => {
+    const server = new FakeServer();
+    const { client } = await openWithTimers(server);
+    server.holdNextHealth = true;
+    const checked = client.checkLink(4000);
+    await eventually(() => calls(server.current(), "health").length === 1);
+    const info = settle(client.port(AppPort).serverInfo({}));
+    for (let turn = 0; turn < 20; turn += 1)
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(calls(server.current(), "serverInfo")).toHaveLength(0);
+
+    server.answerHeldHealth();
+    expect(await checked).toBe(true);
+    await eventually(() => info.settled);
+    expect(calls(server.current(), "serverInfo")).toHaveLength(1);
+    expect(server.connections).toHaveLength(1);
+    client.dispose();
+  });
+
+  test("a link check with no answer in time drops the link, and the calls that waited go on the new one", async () => {
+    const server = new FakeServer();
+    const { client, fire } = await openWithTimers(server);
+    const dead = server.current();
+    server.silent.add(dead);
+    const checked = client.checkLink(4000);
+    const info = settle(client.port(AppPort).serverInfo({}));
+    await eventually(() => calls(dead, "health").length === 1);
+    for (let turn = 0; turn < 20; turn += 1)
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+    // Only the check went into the dead link.
+    expect(calls(dead, "serverInfo")).toHaveLength(0);
+
+    fire();
+    expect(await checked).toBe(false);
+    await eventually(() => server.connections.length === 2 && client.connectionState === "open");
+    await eventually(() => info.settled);
+    expect(calls(server.current(), "serverInfo")).toHaveLength(1);
+    expect(calls(dead, "serverInfo")).toHaveLength(0);
     client.dispose();
   });
 

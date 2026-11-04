@@ -652,4 +652,63 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "a message sent as the phone comes back, on a link that died while it slept, goes within seconds (#2808)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      // The page away from the screen and back, as the browser tells it.
+      await context.addInitScript(() => {
+        let hidden = false;
+        Object.defineProperty(document, "visibilityState", {
+          get: () => (hidden ? "hidden" : "visible"),
+          configurable: true,
+        });
+        Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden = (on) => {
+          hidden = on;
+          document.dispatchEvent(new Event("visibilitychange"));
+        };
+      });
+      // A link that dies while the phone sleeps stays open on the page and carries nothing either way.
+      const links: { dead: boolean }[] = [];
+      await context.routeWebSocket(/\/ws\?/, (socket) => {
+        const server = socket.connectToServer();
+        const link = { dead: false };
+        links.push(link);
+        socket.onMessage((message) => {
+          if (!link.dead) server.send(message);
+        });
+        server.onMessage((message) => {
+          if (!link.dead) socket.send(message);
+        });
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("count_reply first");
+      await page.getByRole("button", { name: "Send" }).tap();
+      await expect(page.getByText("count-1 first")).toBeVisible({ timeout: 60_000 });
+
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(true),
+      );
+      for (const link of links) link.dead = true;
+      await page.waitForTimeout(6_000);
+      await page.evaluate(() =>
+        (window as unknown as { setHidden: (on: boolean) => void }).setHidden(false),
+      );
+
+      // Sent at once: it waits for the app to find the link dead and open a new one, then goes.
+      await box(page).fill("count_reply now");
+      await page.getByRole("button", { name: "Send" }).tap();
+      await expect(page.getByText("count-2 now")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText(/^Not sent/)).toHaveCount(0);
+      await expect(box(page)).toHaveValue("");
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });
