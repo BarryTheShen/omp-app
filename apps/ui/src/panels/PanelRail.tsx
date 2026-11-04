@@ -15,7 +15,9 @@ export function PanelRail(): ReactNode {
     <nav
       aria-label="Side panel"
       data-tour="side-panel-rail"
-      className="flex flex-col items-center gap-1 pt-1.5"
+      // As short as the page: a phone held sideways with its keyboard up leaves 193 pt, and a rail as tall as its
+      // buttons held the row (and the message box with it) under the keyboard (#2824). It scrolls instead.
+      className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto pt-1.5 [scrollbar-width:none]"
     >
       {PANELS.map((item) => {
         const shown = open && item.id === panel;

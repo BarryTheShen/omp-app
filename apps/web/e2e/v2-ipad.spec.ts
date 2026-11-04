@@ -232,4 +232,31 @@ realTest.describe("new UI on a tablet", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a phone held sideways (this layout) keeps its message box above the keyboard (#2824)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 874, height: 402 },
+        hasTouch: true,
+        isMobile: true,
+        deviceScaleFactor: 3,
+      });
+      const page = await realApp.open({ path: "/", context });
+      await chats(page).getByRole("button", { name: "Seeded chat 1" }).tap({ timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // What the page does while iOS's keyboard (209 pt sideways) covers it: it takes the visible height (viewport.ts).
+      await page.evaluate(() =>
+        document.documentElement.style.setProperty("--app-height", "193px"),
+      );
+      await expect
+        .poll(async () => {
+          const bounds = await box(page).boundingBox();
+          return bounds === null ? Number.POSITIVE_INFINITY : bounds.y + bounds.height;
+        })
+        .toBeLessThanOrEqual(193);
+      await context.close();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
