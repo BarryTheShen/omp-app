@@ -74,7 +74,9 @@ export function firstWindowBytes(): number {
 
 /** A chat's side questions as the panel showed them last, for this page: shown at once while omp's are read (#2785). */
 const keptBtw = (threadId: string) => lastSeen<readonly BtwRecord[]>(`btw:${threadId}`);
+/** An older window, read as the reader nears the top: a phone's as small as its first, for the same reason (#2768). */
 const OLDER_WINDOW_BYTES = 1024 * 1024;
+const PHONE_OLDER_WINDOW_BYTES = 128 * 1024;
 
 /** A chat's usage for the side panel: omp's session statistics (its `/session` numbers) and the last reply's speed. */
 export interface ChatUsage {
@@ -1009,7 +1011,7 @@ export class ChatController {
       const window = await this.client.port(SessionFileStore).readEntryWindow({
         sessionFile,
         before: before as EntryId,
-        byteBudget: OLDER_WINDOW_BYTES,
+        byteBudget: isPhone() ? PHONE_OLDER_WINDOW_BYTES : OLDER_WINDOW_BYTES,
       });
       this.store.prependWindow(window.entries as unknown as SessionEntry[], window.hasOlder);
     } finally {

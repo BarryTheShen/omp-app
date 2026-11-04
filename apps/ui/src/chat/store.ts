@@ -339,11 +339,19 @@ export class ChatStore {
     return this.#entries[0]?.id ?? null;
   }
 
-  /** Replaces the transcript with the newest window of the session file, oldest first. */
+  /**
+   * Replaces the transcript with the newest window of the session file (or a branch's), oldest first. Older entries
+   * shown already in front of its first entry stay in front of it: a window read again after a turn ended keeps what the
+   * reader loaded above it, and nothing is read twice (#2768). The entries in front of a shown entry are its ancestors
+   * in the file, so they stay true whichever branch is read.
+   */
   setWindow(entries: readonly SessionEntry[], hasOlder: boolean): void {
-    this.#entries = entries;
-    this.#keys = new Set(entries.map(messageKey).filter((key) => key !== null));
-    this.#hasOlder = hasOlder;
+    const first = entries[0]?.id;
+    const at = first === undefined ? -1 : this.#entries.findIndex((entry) => entry.id === first);
+    const kept = at > 0 ? this.#entries.slice(0, at) : [];
+    this.#entries = kept.length > 0 ? [...kept, ...entries] : entries;
+    this.#keys = new Set(this.#entries.map(messageKey).filter((key) => key !== null));
+    this.#hasOlder = kept.length > 0 ? this.#hasOlder : hasOlder;
     this.#beyondWindow = false;
     // A reply that the file now holds is shown from the file.
     if (this.#stream !== null && this.#streamDone) this.#stream = null;
@@ -876,10 +884,24 @@ export class ChatStore {
     const key = messageKey(entry);
     if (key !== null) {
       if (this.#keys.has(key)) return;
+      // From before what is shown (the server's replay reaches further back than the file's window): the older windows
+      // bring it, in its place, as the reader scrolls up.
+      if (this.#hasOlder && (message.timestamp ?? Infinity) < (this.#oldestShown() ?? -Infinity))
+        return;
       this.#keys.add(key);
     }
     this.#entries = [...this.#entries, entry];
     this.#beyondWindow = true;
+  }
+
+  /** The time of the oldest message shown; null when none is. */
+  #oldestShown(): number | null {
+    for (const entry of this.#entries) {
+      if (entry.type !== "message") continue;
+      const time = (entry.message as { readonly timestamp?: number }).timestamp;
+      if (time !== undefined) return time;
+    }
+    return null;
   }
 
   /**

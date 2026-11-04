@@ -276,6 +276,49 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().hasOlder).toBe(false);
   });
 
+  test("a window read again keeps the older entries shown in front of it, and a branch's keeps its ancestors (#2768)", () => {
+    const store = new ChatStore();
+    const message = (n: number) =>
+      fileEntry(`e${n}`, { role: "user", content: `m${n}`, timestamp: T + n });
+    const ids = () => store.getSnapshot().entries.map((entry) => entry.id);
+    store.setWindow([message(3), message(4)], true);
+    store.prependWindow([message(1), message(2)], false);
+    // A turn ended: the newest window is read again, one entry further on. What the reader loaded above stays.
+    store.setWindow([message(4), message(5)], true);
+    expect(ids()).toEqual(["e1", "e2", "e3", "e4", "e5"]);
+    expect(store.getSnapshot().hasOlder).toBe(false);
+    // Edit went back to e3: its branch's window ends there, with e1 and e2 still in front.
+    store.setWindow([message(2), message(3)], true);
+    expect(ids()).toEqual(["e1", "e2", "e3"]);
+    // Another file's window shares no entry: it replaces what was shown.
+    store.setWindow([fileEntry("x1", { role: "user", content: "x", timestamp: T + 9 })], true);
+    expect(ids()).toEqual(["x1"]);
+    expect(store.getSnapshot().hasOlder).toBe(true);
+  });
+
+  test("a message replayed from before the file's window is left to the older windows; one after it is added (#2768)", () => {
+    const store = new ChatStore();
+    store.setWindow([fileEntry("e5", { role: "user", content: "m5", timestamp: T + 5 })], true);
+    store.apply(
+      event({
+        type: "message_end",
+        messageId: "old",
+        message: { role: "user", content: "m1", timestamp: T + 1 },
+      }),
+    );
+    expect(store.getSnapshot().entries.map((entry) => entry.id)).toEqual(["e5"]);
+    expect(store.beyondWindow).toBe(false);
+    store.apply(
+      event({
+        type: "message_end",
+        messageId: "new",
+        message: { role: "user", content: "m6", timestamp: T + 6 },
+      }),
+    );
+    expect(store.getSnapshot().entries).toHaveLength(2);
+    expect(store.beyondWindow).toBe(true);
+  });
+
   test("the queue shows only messages that can still be taken back: steers already sent into the reply drop out", () => {
     const store = new ChatStore();
     store.apply(
