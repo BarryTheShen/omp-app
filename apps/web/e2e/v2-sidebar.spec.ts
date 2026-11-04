@@ -1,4 +1,4 @@
-import { appendFile } from "node:fs/promises";
+import { appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
@@ -47,6 +47,23 @@ realTest.describe("new UI chat list and pane keys", () => {
       await questions.getByRole("button", { name: "Submit" }).click();
       await expect(waiting).toHaveCount(0, { timeout: 60_000 });
 
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a chat another page started is named by its first message while its first reply runs, not New chat (#2825)",
+    async ({ realApp }) => {
+      const first = await realApp.open({ path: "/" });
+      const other = await realApp.open({ path: "/" });
+      await newChat(first);
+      // A first reply held open: omp writes the chat's file only once it ends, so the server has no title for it.
+      await boxes(first).fill("stream_held naming question");
+      await boxes(first).press("Enter");
+      await expect(
+        chats(other).getByRole("button", { name: /^stream_held naming question, running/ }),
+      ).toBeVisible({ timeout: 60_000 });
+      await writeFile(join(realApp.agentDir, "release-held-reply"), "");
       expect(realApp.problems).toEqual([]);
     },
   );

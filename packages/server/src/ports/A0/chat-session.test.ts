@@ -2621,6 +2621,37 @@ describe("the chat session runtime: a new chat kept ready (#2760)", () => {
   });
 });
 
+describe("the chat session runtime: a chat's first message for other pages (#2825)", () => {
+  test("is the first prompt sent through this server, trimmed and cut short; a later one keeps it, a new session clears it", async () => {
+    const created: FakeChatHost[] = [];
+    const handlers = handlersFor(context(created));
+    const opened = (await getHandler(handlers, "open")(
+      { folderPath: folder, start: "new" },
+      call("one"),
+    )) as { threadId: ThreadId };
+    await ticks(20);
+    const firstOf = () =>
+      getHandler(handlers, "firstPrompts")({ threadIds: [opened.threadId] }, call("two"));
+    const send = (method: string, params: Record<string, unknown>) =>
+      getHandler(handlers, "request")({ threadId: opened.threadId, method, params }, call("one"));
+    expect(await firstOf()).toEqual([]);
+
+    await send("prompt", { text: `  ${"x".repeat(250)}  ` });
+    await send("prompt", { text: "a later message" });
+    expect(await firstOf()).toEqual([{ threadId: opened.threadId, text: "x".repeat(200) }]);
+    // A chat this server holds no message for is left out.
+    expect(
+      await getHandler(handlers, "firstPrompts")(
+        { threadIds: [ThreadId.parse("omp-session-unknown")] },
+        call("two"),
+      ),
+    ).toEqual([]);
+
+    await send("new_session", {});
+    expect(await firstOf()).toEqual([]);
+  });
+});
+
 describe("the chat session runtime: the app's own continue after a usage limit (#2781)", () => {
   const scratch = join(globalThis.process.cwd(), ".data", `usage-resume-${crypto.randomUUID()}`);
   afterAll(async () => {

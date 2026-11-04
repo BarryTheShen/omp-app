@@ -10,6 +10,7 @@ import {
   type ThreadId,
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { firstPromptOf, noteFirstPrompt } from "../chat/firstPrompts";
 import { forgetWindow } from "../chat/windowCache";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
@@ -74,6 +75,8 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   pinsRef.current = pins;
   /** Reads the list again now; a no-op once the folder's list is gone. */
   const reread = useRef<() => Promise<void>>(async () => undefined);
+  /** False once the server turned out older than its chats' first messages (#2825): the rows then stay "New chat". */
+  const namesKnown = useRef(true);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -89,6 +92,21 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       const listed = await client.port(SessionFileStore).listContinuing({ folder });
       if (active) setContinuing(new Set(listed.chats.map((chat) => chat.id)));
     };
+    // The first messages of chats another page started: the rows show them as that page's do, until omp writes the
+    // file (#2825). This page knows the ones it sent; a server older than the answer has none to give.
+    const nameStarting = async (chats: readonly RunningSession[]): Promise<void> => {
+      const unnamed = chats.map((chat) => chat.id).filter((id) => firstPromptOf(id) === undefined);
+      if (unnamed.length === 0 || !namesKnown.current) return;
+      try {
+        const named = await client.port(ChatSessionPort).firstPrompts({ threadIds: unnamed });
+        for (const { threadId, text } of named) noteFirstPrompt(threadId, text);
+        // The same chats, drawn again with their names.
+        if (active && named.length > 0) setStarting((current) => [...current]);
+      } catch (failure) {
+        if (failure instanceof AppFailure && failure.appError.code === "not_found")
+          namesKnown.current = false;
+      }
+    };
     const read = async (): Promise<void> => {
       void readPaused().catch(() => undefined);
       void readContinuing().catch(() => undefined);
@@ -97,6 +115,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       keptChats(folder).set(listed.sessions.map((session) => ({ ...session, subagents: [] })));
       setSessions(listed.sessions);
       setStarting(listed.running ?? []);
+      void nameStarting(listed.running ?? []);
       setRunning(
         new Set([
           ...listed.sessions

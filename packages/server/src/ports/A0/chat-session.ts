@@ -22,6 +22,8 @@ import {
   type ChatSessionEvent,
   ChatSessionPort,
   chatSessionEventStream,
+  type FirstPromptsArgs,
+  type FirstPromptsResult,
   FolderPath,
   isUiStateEvent,
   type ModelChoice,
@@ -114,6 +116,8 @@ interface ChatEntry {
   readonly payloadListeners: Set<(payload: ChatSessionEvent) => void>;
   /** A host an earlier server left running on another omp (D2): restarted on this server's omp once the chat settles. */
   restartWhenSettled?: boolean;
+  /** The first message sent to the chat through this server, cut short: other pages name the chat by it (#2825). */
+  firstPrompt?: string;
 }
 
 type SubagentLevel = SetSubagentSubscriptionArgs["level"];
@@ -134,6 +138,8 @@ const SPARE_MAX_AGE_MS = 10 * 60_000;
 const SPARE_REFRESH_MS = 9 * 60_000;
 /** An open at least this long logs when each of its steps ended (`chat_session.open_steps`, #2768). */
 const SLOW_OPEN_MS = 1_000;
+/** How much of a chat's first message other pages get to name it by (#2825): a row shows one line of it. */
+const FIRST_PROMPT_CHARS = 200;
 /** The global timer, which does not keep the server running by itself: a spare's refresh, a continue after a limit. */
 const SPARE_TIMER: ProcessTimer = {
   setTimeout: (handler, delayMs) => {
@@ -429,12 +435,24 @@ export class ChatSessionPortRuntime {
     pauseAll: (args) => this.pauseAll(args as PauseAllArgs),
     cancelContinue: (args) => this.cancelContinue(args as { threadId: ThreadId }),
     setUsagePause: (args) => this.setUsagePause(args as SetUsagePauseArgs),
+    firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
   /** A page shows the folder: a new chat is kept ready there, if this server keeps them (#2760). */
   prepareNew(args: PrepareNewChatArgs): null {
     this.#prepareSpare(args.folderPath);
     return null;
+  }
+
+  /**
+   * The first message of each chat, as this server sent it to omp: a page that did not send it names the chat by it, as
+   * the page that did, until omp writes the chat's file and its title (#2825).
+   */
+  firstPrompts(args: FirstPromptsArgs): FirstPromptsResult {
+    return args.threadIds.flatMap((threadId) => {
+      const text = this.#entryOrUndefined(threadId)?.firstPrompt;
+      return text === undefined ? [] : [{ threadId, text }];
+    });
   }
 
   /** "Don't continue": the app does not continue the chat after its usage limit (#2781). */
@@ -926,6 +944,10 @@ export class ChatSessionPortRuntime {
         retryable: false,
       });
     }
+    if (method === "prompt" && entry.firstPrompt === undefined) {
+      const text = (params.value as ChatHostMethodMap["prompt"]["params"]).text.trim();
+      if (text !== "") entry.firstPrompt = text.slice(0, FIRST_PROMPT_CHARS);
+    }
     if (method === "set_host_tools" || method === "set_host_uri_schemes") {
       const owner = args.registrationOwner;
       if (owner === undefined) {
@@ -969,7 +991,11 @@ export class ChatSessionPortRuntime {
         params.value as ChatHostMethodMap["set_ask_dialog"]["params"]
       ).enabled;
     }
-    if (SESSION_SWITCH_METHODS.has(method)) await this.#refreshIdentity(entry);
+    if (SESSION_SWITCH_METHODS.has(method)) {
+      // Another session: its first message is still to come.
+      entry.firstPrompt = undefined;
+      await this.#refreshIdentity(entry);
+    }
     return result;
   }
 

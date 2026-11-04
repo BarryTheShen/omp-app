@@ -256,6 +256,14 @@ export const SetUsagePauseArgs = z.strictObject({
 });
 export type SetUsagePauseArgs = z.infer<typeof SetUsagePauseArgs>;
 
+/** Chats a page lists as running before omp has written their file, and whose first message another page sent (#2825). */
+export const FirstPromptsArgs = z.strictObject({ threadIds: z.array(ThreadId).max(100) });
+export type FirstPromptsArgs = z.infer<typeof FirstPromptsArgs>;
+
+/** Each chat's first message as this server sent it to omp, cut to 200 characters; a chat it holds none for is left out. */
+export const FirstPromptsResult = z.array(z.strictObject({ threadId: ThreadId, text: z.string() }));
+export type FirstPromptsResult = z.infer<typeof FirstPromptsResult>;
+
 export const ChatSessionPort = definePort({
   name: "A0.chatSession",
   methods: {
@@ -279,6 +287,8 @@ export const ChatSessionPort = definePort({
     cancelContinue: { args: ThreadRef, result: z.null() },
     /** Marks a chat to pause at its own share of its provider's 5-hour limit, or unmarks it (#2781). */
     setUsagePause: { args: SetUsagePauseArgs, result: z.null() },
+    /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
+    firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },
   events: { event: { payload: ChatSessionEvent } },
 });
