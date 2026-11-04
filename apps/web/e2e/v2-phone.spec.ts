@@ -911,4 +911,32 @@ realTest.describe("new UI on a phone", () => {
       await context.close();
     },
   );
+
+  realTest(
+    "a tour about the chat, started from What's new on a phone, brings the chat in front and points at its button (#2823)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // On a phone What's new is in Settings → App, reached from the list.
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "Settings" })
+        .tap();
+      const settings = page.getByRole("dialog", { name: "Settings" });
+      await settings.getByRole("button", { name: "App", exact: true }).tap();
+      await settings.getByRole("button", { name: "What's new" }).tap();
+      await page.getByRole("button", { name: "Take the tour: Stop, or queue" }).tap();
+      await expect(page.locator(".driver-popover")).toContainText("One button, three jobs");
+      const highlighted = page.locator(".driver-active-element");
+      await expect(highlighted).toHaveAttribute("data-tour", "send-button");
+      await expect(highlighted).toBeInViewport();
+      await context.close();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

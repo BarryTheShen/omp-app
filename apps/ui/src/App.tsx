@@ -55,6 +55,7 @@ import { useChatListSize } from "./sidebar/size";
 import { TitleMenu } from "./sidebar/TitleMenu";
 import { useChatList } from "./sidebar/useChatList";
 import { useRunningChats } from "./sidebar/useRunningChats";
+import { setTourReveal } from "./tour/runner";
 import { WhatsNewList } from "./tour/WhatsNewList";
 import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
 
@@ -247,6 +248,19 @@ function Shell({
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   /** The chat focused when the settings opened: provider sign-in runs in it. */
   const [settingsChat, setSettingsChat] = useState<ChatController | null>(null);
+  // A tour's step whose element is on the phone's other screen brings that screen in front: the chat, or the list, out
+  // from under the settings and What's new (#2823).
+  useEffect(() => {
+    setTourReveal((element) => {
+      if (!isPhone()) return;
+      if (element.closest('[data-tour="workspace"]') !== null) setShowChat(true);
+      else if (element.closest('nav[aria-label="Chats"]') !== null) setShowChat(false);
+      else return;
+      setSettings(false);
+      setWhatsNew(false);
+    });
+    return () => setTourReveal(null);
+  }, []);
   const openSettings = useCallback((place: SettingsPlace) => {
     setSettingsChat(workspace.current?.focused()?.controller ?? null);
     setSettingsPlace(place);

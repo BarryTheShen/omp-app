@@ -22,6 +22,18 @@ const AFTER_SKIP_WAIT_MS = 300;
 let stopCurrent: (() => void) | null = null;
 
 /**
+ * Shows the place a step's element is in when it is there but not drawn, set by the app (#2823): on a phone the chat
+ * and the list take turns in front, and a tour started from What's new (in the settings, over the list) points at the
+ * chat's controls.
+ */
+let reveal: ((element: Element) => void) | null = null;
+
+/** Sets what shows a step's element that is there but not drawn; null takes it away. */
+export function setTourReveal(show: ((element: Element) => void) | null): void {
+  reveal = show;
+}
+
+/**
  * The element a selector names: of several, the one in the focused pane, else the last. A match that is not drawn (a
  * pane of another tab, or one a zoomed pane hides) is not a match.
  */
@@ -190,10 +202,19 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
   const find = (selector: string, waitMs: number): Promise<Element | null> =>
     until<Element | null>(null, (done) => {
       const since = Date.now();
+      let revealed = false;
       const look = (): void => {
         const element = pick(selector);
         if (element !== null) done(element);
         else if (Date.now() - since >= waitMs) done(null);
+        else if (!revealed && reveal !== null) {
+          // There but not drawn: the place it is in is not in front.
+          const there = document.querySelector(selector);
+          if (there !== null) {
+            revealed = true;
+            reveal(there);
+          }
+        }
       };
       look();
       const timer = setInterval(look, POLL_MS);
