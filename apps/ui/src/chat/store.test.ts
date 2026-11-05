@@ -151,6 +151,50 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().working).toBe(false);
   });
 
+  test("Stop before omp started the turn: the chat stops working and the message goes back to the box (#2828)", () => {
+    const store = new ChatStore();
+    const back: unknown[] = [];
+    store.onSendDropped((sent) => back.push(sent));
+    const image = { type: "image", data: "aGk=", mimeType: "image/png" } as const;
+    store.sendStarted("hi", [image]);
+    // omp dropped the message: no run, and a result that says the prompt was aborted.
+    store.apply(
+      event({
+        type: "prompt_result",
+        requestId: "r1",
+        agentInvoked: true,
+        status: "aborted",
+        sessionSettled: true,
+      }),
+    );
+    expect(store.getSnapshot().entries).toEqual([]);
+    expect(store.getSnapshot().working).toBe(false);
+    expect(back).toEqual([{ text: "hi", images: [image] }]);
+  });
+
+  test("Stop during the turn leaves the message in the chat, not in the box", () => {
+    const store = new ChatStore();
+    const back: unknown[] = [];
+    store.onSendDropped((sent) => back.push(sent));
+    store.sendStarted("hi", []);
+    const user = { role: "user", content: [{ type: "text", text: "hi" }], timestamp: T };
+    store.apply(event({ type: "agent_start" }));
+    store.apply(event({ type: "message_end", messageId: "msg-1", message: user }));
+    store.apply(event({ type: "agent_end", messages: [] }));
+    store.apply(
+      event({
+        type: "prompt_result",
+        requestId: "r1",
+        agentInvoked: true,
+        status: "aborted",
+        sessionSettled: true,
+      }),
+    );
+    expect(store.getSnapshot().entries).toHaveLength(1);
+    expect(store.getSnapshot().working).toBe(false);
+    expect(back).toEqual([]);
+  });
+
   test("a running tool shows until its end, and every tool stops showing when omp's turn ends", () => {
     const store = new ChatStore();
     store.apply(event({ type: "agent_start" }));

@@ -37,6 +37,12 @@ export interface ChatQueue {
   readonly followUp: readonly string[];
 }
 
+/** A message as it was sent: its text and pictures. */
+export interface SentMessage {
+  readonly text: string;
+  readonly images: readonly ChatHostImage[];
+}
+
 /** What omp is doing, for the working row above the message box. */
 export interface ChatActivity {
   readonly since: number;
@@ -294,8 +300,10 @@ export class ChatStore {
   #cancelFrame: (() => void) | null = null;
 
   #entries: readonly SessionEntry[] = [];
-  /** The message just sent, shown until omp sends it back (#2828); null when none waits. */
-  #pending: SessionEntry | null = null;
+  /** The message just sent, shown until omp sends it back (#2828), with what was sent; null when none waits. */
+  #pending: { readonly entry: SessionEntry; readonly sent: SentMessage } | null = null;
+  /** The message boxes that put a sent message back when Stop came before omp started its turn. */
+  readonly #sendDropped = new Set<(sent: SentMessage) => void>();
   #keys = new Set<string>();
   /** Messages taken from events since the file's window was set that the window did not hold (no omp entry id yet). */
   #beyondWindow = false;
@@ -477,7 +485,7 @@ export class ChatStore {
       },
     } as unknown as SessionEntry;
     this.#dropPending();
-    this.#pending = entry;
+    this.#pending = { entry, sent: { text, images } };
     this.#entries = [...this.#entries, entry];
     this.#turnMark += 1;
     this.#startWorking();
@@ -489,7 +497,13 @@ export class ChatStore {
     const pending = this.#pending;
     if (pending === null) return;
     this.#pending = null;
-    this.#entries = this.#entries.filter((entry) => entry !== pending);
+    this.#entries = this.#entries.filter((entry) => entry !== pending.entry);
+  }
+
+  /** Hears a sent message whose turn never started because Stop came first, for the box; returns the stop. */
+  onSendDropped(listener: (sent: SentMessage) => void): () => void {
+    this.#sendDropped.add(listener);
+    return () => this.#sendDropped.delete(listener);
   }
 
   #startWorking(): void {
@@ -824,14 +838,19 @@ export class ChatStore {
         this.#stopWorking();
         this.#dropPending();
         return false;
-      case "prompt_result":
-        // A prompt that ended without reaching the model (a command took it, or setup failed) never started its turn.
-        if (!event.agentInvoked && this.#pending !== null) {
-          this.#dropPending();
-          this.#turnMark += 1;
-          this.#stopWorking();
-        }
+      case "prompt_result": {
+        // A result while the message shown at Send is still only ours: its turn never started. A command took it
+        // (`agentInvoked` false), its setup failed, or Stop came before omp started the turn (`aborted` with no run: omp
+        // drops the message and hands it back, as its own editor gets it again), and then it goes back to the box.
+        const pending = this.#pending;
+        if (pending === null) return false;
+        this.#dropPending();
+        this.#turnMark += 1;
+        this.#stopWorking();
+        if (event.status === "aborted")
+          for (const listener of this.#sendDropped) listener(pending.sent);
         return false;
+      }
       case "thinking_level_changed":
         this.#thinkingLevel = event.configured ?? event.thinkingLevel ?? null;
         return false;

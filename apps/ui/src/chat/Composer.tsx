@@ -37,7 +37,14 @@ import { QueuedMessages } from "./QueuedMessages";
 import { QuickPanel } from "./QuickPanel";
 import { RoleTrack } from "./RoleTrack";
 import { withRestored } from "./restored";
-import type { ChatActivity, ChatModel, ChatQueue, ChatToast, RoleTrack as Track } from "./store";
+import type {
+  ChatActivity,
+  ChatModel,
+  ChatQueue,
+  ChatToast,
+  SentMessage,
+  RoleTrack as Track,
+} from "./store";
 import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
 import { holdReason } from "./usagePause";
@@ -367,6 +374,17 @@ export const Composer = memo(function Composer({
       })
       .catch((failure: unknown) => setError(`Could not take it back: ${errorText(failure)}`));
   };
+
+  // A message whose turn never started because Stop came first comes back to the box, as Stop's queue does.
+  const sendDroppedRef = useRef<(sent: SentMessage) => void>(() => undefined);
+  sendDroppedRef.current = (sent) => {
+    update(withRestored([sent.text], textRef.current));
+    putBack(sent.images);
+  };
+  useEffect(
+    () => controller.store.onSendDropped((sent) => sendDroppedRef.current(sent)),
+    [controller],
+  );
 
   /** Puts the menu's row into the text, and the caret after it. */
   const take = (index: number): void => {
