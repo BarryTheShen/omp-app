@@ -279,7 +279,7 @@ export function Workspace({
   const report = useCallback(() => {
     const open = new Set<ThreadId>();
     const waiting = new Map<ThreadId, string>();
-    const named: [string, string][] = [];
+    const named: [string, string, string][] = [];
     for (const tab of tabsRef.current.tabs) {
       const api = apis.current.get(tab.id);
       if (api === undefined) continue;
@@ -290,15 +290,19 @@ export function Workspace({
         if ((controllers.get(panel.id)?.store.getSnapshot().requests.length ?? 0) > 0)
           waiting.set(target.threadId, panel.title ?? "");
       }
-      // A workspace without a name takes its first chat's title, once that chat has one (#2791).
-      const title = chatPaneIn(api)?.title;
+      // A workspace without a name takes its first chat's title, once that chat has one (#2791), and follows that chat's
+      // window as omp names the chat (#2829): the window that named it, else (none yet) the chat in use.
+      const namer =
+        (tab.firstPane ?? null) === null ? chatPaneIn(api) : api.getPanel(tab.firstPane as string);
+      const title = namer?.title;
       if (
-        (tab.firstTitle ?? null) === null &&
+        namer !== undefined &&
         title !== undefined &&
         title !== "" &&
-        title !== "New chat"
+        title !== "New chat" &&
+        (title !== tab.firstTitle || namer.id !== tab.firstPane)
       )
-        named.push([tab.id, title]);
+        named.push([tab.id, title, namer.id]);
     }
     const shown = apis.current.get(tabsRef.current.active);
     const focused = paramsOf(chatPaneIn(shown)?.params)?.target;
@@ -311,7 +315,7 @@ export function Workspace({
     });
     if (named.length > 0)
       setTabs((state) =>
-        named.reduce((next, [id, title]) => nameAfterChat(next, id, title), state),
+        named.reduce((next, [id, title, pane]) => nameAfterChat(next, id, title, pane), state),
       );
   }, [onView, controllers, chatPaneIn]);
 

@@ -245,6 +245,23 @@ realTest.describe("new UI chat list: the chat's title from omp", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "the workspace follows its chat as omp names it, as the chat's window does, not its first message (#2829)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      const box = page.getByRole("textbox", { name: "Message" }).first();
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box.fill("rename the export button in the toolbar");
+      await box.press("Enter");
+      const workspace = page
+        .getByRole("tablist", { name: "Workspaces" })
+        .getByRole("tab", { selected: true });
+      await expect(workspace).toHaveText(/Fake chat title marker/, { timeout: 90_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
 
 /** An old chat, from before omp named the app's chats, is named from its conversation once it opens (#2798). */

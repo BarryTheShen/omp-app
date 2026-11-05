@@ -16,6 +16,7 @@ import { ChatPane } from "../chat/ChatPane";
 import type { ComposerHandle } from "../chat/Composer";
 import { ChatController, type ChatTarget } from "../chat/controller";
 import { userText } from "../chat/MessageActions";
+import { useSavedTitle } from "../chat/savedTitles";
 import { inbox } from "../inbox/inbox";
 import { chatCache } from "./chatCache";
 import type { OpenGate } from "./openGate";
@@ -236,7 +237,9 @@ function PaneChat({
   const first = snapshot.entries
     .map(userText)
     .find((text): text is string => text !== null && text !== "");
-  const title = first === undefined ? "New chat" : first.slice(0, TITLE_CHARACTERS);
+  // The name the chat list shows once the chat is saved (omp's name for it, #2829), else its first message.
+  const savedTitle = useSavedTitle(controller.threadId);
+  const title = (savedTitle ?? first ?? "New chat").slice(0, TITLE_CHARACTERS);
   const waiting = snapshot.requests.length > 0;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a question or approval arriving or ending is news for the sidebar

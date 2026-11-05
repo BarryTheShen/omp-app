@@ -83,16 +83,28 @@ describe("workspace tabs", () => {
     expect(moveTabTo(three(), "a", 2).active).toBe("b");
   });
 
-  test("a workspace takes its first chat's title once, and a later chat's never (#2791)", () => {
-    const named = nameAfterChat(three(), "a", "Fix the build");
+  test("a workspace takes its first chat's title, follows that chat as omp names it, and never another chat's (#2791, #2829)", () => {
+    const named = nameAfterChat(three(), "a", "Fix the build", "pane-1");
     expect(named.tabs[0]).toMatchObject({ id: "a", title: null, firstTitle: "Fix the build" });
-    expect(nameAfterChat(named, "a", "Another chat")).toBe(named);
+    // Another window's chat leaves it; its own chat's later name (omp's, after the first message) is taken.
+    expect(nameAfterChat(named, "a", "Another chat", "pane-2")).toBe(named);
+    const followed = nameAfterChat(named, "a", "Build fixes", "pane-1");
+    expect(followed.tabs[0]).toMatchObject({ firstTitle: "Build fixes" });
     // A name given with Rename is shown over it; cleared, the first chat's title is back.
-    const renamed = renameTab(named, "a", "Mine");
-    expect(renamed.tabs[0]).toMatchObject({ title: "Mine", firstTitle: "Fix the build" });
+    const renamed = renameTab(followed, "a", "Mine");
+    expect(renamed.tabs[0]).toMatchObject({ title: "Mine", firstTitle: "Build fixes" });
     expect(renameTab(renamed, "a", " ").tabs[0]).toMatchObject({
       title: null,
-      firstTitle: "Fix the build",
+      firstTitle: "Build fixes",
+    });
+    // A workspace kept before it knew its window takes the one that names it now.
+    const kept = {
+      tabs: [{ id: "k", title: null, firstTitle: "First message", layout: null }],
+      active: "k",
+    };
+    expect(nameAfterChat(kept, "k", "omp's name", "pane-9").tabs[0]).toMatchObject({
+      firstTitle: "omp's name",
+      firstPane: "pane-9",
     });
   });
 

@@ -8,6 +8,11 @@ export interface WorkspaceTab {
   readonly title: string | null;
   /** The title of its first chat to have one: its name until one is given. Absent in tabs kept before #2791. */
   readonly firstTitle?: string | null;
+  /**
+   * The window whose chat names it (#2829): the workspace follows that chat's title as omp names the chat. Absent in
+   * tabs kept before #2829: the window that names one next becomes its.
+   */
+  readonly firstPane?: string | null;
   /** The windows and their chats; null until the workspace's first layout is saved. */
   readonly layout: SerializedDockview | null;
 }
@@ -60,6 +65,9 @@ export function loadTabs(raw: string | null): WorkspaceTabs {
             (tab.firstTitle === undefined ||
               tab.firstTitle === null ||
               typeof tab.firstTitle === "string") &&
+            (tab.firstPane === undefined ||
+              tab.firstPane === null ||
+              typeof tab.firstPane === "string") &&
             (tab.layout === null || (typeof tab.layout === "object" && tab.layout !== undefined)),
         )
       : [];
@@ -122,13 +130,27 @@ export function moveTabTo(state: WorkspaceTabs, id: string, to: number): Workspa
   return { ...state, tabs };
 }
 
-/** A workspace without a name takes the title of its first chat to have one (#2791), once. */
-export function nameAfterChat(state: WorkspaceTabs, id: string, title: string): WorkspaceTabs {
+/**
+ * A workspace without a name takes the title of its first chat to have one (#2791), from that chat's window (`pane`),
+ * and follows that window's chat as omp names it later (#2829): a new chat's first title is its first message. Another
+ * window's chat never names it.
+ */
+export function nameAfterChat(
+  state: WorkspaceTabs,
+  id: string,
+  title: string,
+  pane: string,
+): WorkspaceTabs {
   const tab = state.tabs.find((each) => each.id === id);
-  if (tab === undefined || (tab.firstTitle ?? null) !== null) return state;
+  if (tab === undefined) return state;
+  const mine = (tab.firstPane ?? null) === null || tab.firstPane === pane;
+  const named = (tab.firstTitle ?? null) !== null;
+  if (named && (!mine || (tab.firstTitle === title && tab.firstPane === pane))) return state;
   return {
     ...state,
-    tabs: state.tabs.map((each) => (each.id === id ? { ...each, firstTitle: title } : each)),
+    tabs: state.tabs.map((each) =>
+      each.id === id ? { ...each, firstTitle: title, firstPane: pane } : each,
+    ),
   };
 }
 

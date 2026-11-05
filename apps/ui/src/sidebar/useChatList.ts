@@ -11,9 +11,11 @@ import {
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { firstPromptOf, noteFirstPrompt } from "../chat/firstPrompts";
+import { noteSavedTitles } from "../chat/savedTitles";
 import { forgetWindow } from "../chat/windowCache";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
+import { titleOf } from "./title";
 
 /** How long a burst of file and turn changes is gathered before the list is read again. */
 const SETTLE_MS = 250;
@@ -114,6 +116,8 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       if (!active) return;
       keptChats(folder).set(listed.sessions.map((session) => ({ ...session, subagents: [] })));
       setSessions(listed.sessions);
+      // A window and its workspace show the name the list shows (#2829).
+      noteSavedTitles(listed.sessions.map((session) => [session.id, titleOf(session)] as const));
       setStarting(listed.running ?? []);
       void nameStarting(listed.running ?? []);
       setRunning(
