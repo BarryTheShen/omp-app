@@ -1573,8 +1573,8 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
-    id: "2026-11-05-attach-files",
-    when: "2026-11-05T01:30:00-06:00",
+    id: "2026-11-04-attach-files",
+    when: "2026-11-04T23:58:00-06:00",
     summary:
       "The paperclip in the message box, on a computer and on a phone, attaches any file: pictures go to the model with your message, and every other file is uploaded to the chat's own folder, where omp reads it and moves it where you ask. You can also drop or paste files on the box, and a file in a sent message downloads with a click.",
     tours: [ATTACH_FILES_TOUR],
