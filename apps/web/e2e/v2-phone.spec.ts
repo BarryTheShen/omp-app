@@ -300,9 +300,12 @@ realTest.describe("new UI on a phone", () => {
         .tap();
       const sheet = page.getByRole("dialog", { name: "Settings" });
       await expect(sheet).toBeVisible();
-      const area = await sheet.boundingBox();
-      expect(Math.round(area?.width ?? 0)).toBe(390);
-      expect(Math.round(area?.height ?? 0)).toBe(844);
+      // Measured once it has opened: the sheet zooms in from 95 % over 220 ms, and a box read during that is smaller.
+      const size = async (): Promise<string> => {
+        const area = await sheet.boundingBox();
+        return `${Math.round(area?.width ?? 0)}x${Math.round(area?.height ?? 0)}`;
+      };
+      await expect.poll(size).toBe("390x844");
       const sections = sheet.getByRole("navigation", { name: "Settings sections" });
       const heights = await sections
         .getByRole("button")
