@@ -609,6 +609,11 @@ export interface RestoredQueue {
   readonly followUp: readonly QueuedMessage[];
 }
 
+/** `local_folder`: the chat's own scratch folder on the server, omp's `local://`, made when missing. */
+export interface LocalFolder {
+  readonly folder: string;
+}
+
 /** One entry of omp's command list (`buildAvailableSlashCommands`): the fields the app reads. */
 export interface ChatHostCommand {
   readonly name: string;
@@ -667,6 +672,8 @@ export interface ChatHostMethodMap {
     readonly params: EmptyParams;
     readonly result: RestoredQueue;
   };
+  /** The chat's scratch folder (omp's `local://`), where files attached to a message are put for omp's tools. */
+  readonly local_folder: { readonly params: EmptyParams; readonly result: LocalFolder };
   /**
    * Holds every agent of the chat (main, subagents, advisor) at its next step, as omp's `/pause` does: a model reply or
    * tool already under way finishes, nothing new starts. Pausing a paused chat keeps the first time.
@@ -1060,6 +1067,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   remove_queued_message: RemoveQueuedMessageParams,
   promote_queued_message: PromoteQueuedMessageParams,
   abort_and_restore_queue: EmptyParams,
+  local_folder: EmptyParams,
   pause: EmptyParams,
   resume: EmptyParams,
   get_available_commands: EmptyParams,

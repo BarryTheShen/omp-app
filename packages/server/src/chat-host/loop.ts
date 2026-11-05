@@ -86,6 +86,7 @@ import { checkHostTools, HostTools, HostUriSchemes } from "./host-tools";
 import { InputGate } from "./input";
 import { cancelJob, inspectJob, listJobs } from "./jobs";
 import { LiveVoice } from "./live";
+import { localFolder } from "./local-folder";
 import { HostMethodError } from "./method-error";
 import { assignModelRole, clearModelRole, findModel, readModelHub } from "./model-hub";
 import { readModelMenu } from "./model-menu";
@@ -489,6 +490,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         followUp: restored.followUp.map(queuedMessage),
       };
     },
+    local_folder: async () => localFolder(session),
     get_available_commands: async () => ({ commands: await listCommands() }),
     bash: async ({ command, excludeFromContext }) =>
       shellRun(await session.executeBash(command, undefined, { excludeFromContext })),

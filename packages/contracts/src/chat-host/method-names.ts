@@ -81,6 +81,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "set_steering_mode",
   "set_follow_up_mode",
   "set_interrupt_mode",
+  "local_folder",
 ] as const;
 
 export type ChatHostMethodName = (typeof CHAT_HOST_METHOD_NAMES)[number];
