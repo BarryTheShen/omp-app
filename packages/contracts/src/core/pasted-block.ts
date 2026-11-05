@@ -4,6 +4,8 @@
  * back out for display (`splitPastedBlocks`), and the server reads a chat's first prompt from it (`firstPromptTextOf`). All
  * read the constants below, so they cannot drift apart.
  */
+import { splitAttached } from "./attached-files";
+
 const BLOCK_TAG = { open: "<attachment>", close: "</attachment>" } as const;
 /** How a block opens and closes: each tag on a line of its own, around the text. */
 const BLOCK = { open: `${BLOCK_TAG.open}\n`, close: `\n${BLOCK_TAG.close}` } as const;
@@ -161,11 +163,12 @@ export function splitPastedBlocks(message: string): readonly MessageSegment[] {
 /**
  * The words a chat lists as its first prompt: the typed text, its parts joined by a space, when there is some. Otherwise
  * the first line with words in the message's pasted texts, so a message that is only a pasted text lists that text and
- * never omp's wrapper. A block that is not in exact form is typed text, as the transcript shows it. Empty when there is
- * neither.
+ * never omp's wrapper; then the names of its attached files (`attached-files.ts`), whose paragraph is never listed. A
+ * block that is not in exact form is typed text, as the transcript shows it. Empty when there is none of these.
  */
 export function firstPromptTextOf(message: string): string {
-  const segments = splitPastedBlocks(message);
+  const { text, files } = splitAttached(message);
+  const segments = splitPastedBlocks(text);
   const typed = segments
     .flatMap((segment) => (segment.kind === "text" ? [segment.text] : []))
     .join(" ");
@@ -174,9 +177,9 @@ export function firstPromptTextOf(message: string): string {
     if (segment.kind !== "pasted") continue;
     const line = segment.text
       .split(/\r\n|\r|\n/)
-      .map((text) => text.trim())
-      .find((text) => text.length > 0);
+      .map((part) => part.trim())
+      .find((part) => part.length > 0);
     if (line !== undefined) return line;
   }
-  return "";
+  return files.map((file) => file.name).join(", ");
 }

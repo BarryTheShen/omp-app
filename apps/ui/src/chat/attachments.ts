@@ -22,8 +22,6 @@ export interface Attachment {
   readonly image: ChatHostImage;
 }
 
-const MB = 1024 * 1024;
-
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
   // In slices: one call with every byte as an argument overflows the stack.
@@ -33,28 +31,20 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Reads pasted or dropped files as images for the next message: images omp reads, while the message stays within
- * {@link MAX_IMAGE_BYTES}. What is left out comes back as a sentence per file.
+ * Sorts pasted, dropped or picked files for the next message: the pictures omp's models read go with it while the
+ * message's pictures stay within {@link MAX_IMAGE_BYTES}; every other file, and a picture past that, comes back in
+ * `others`, to be uploaded to the chat's folder (#2830).
  */
 export async function readImages(
   files: readonly File[],
   alreadyBytes: number,
-): Promise<{ readonly added: readonly Attachment[]; readonly refused: readonly string[] }> {
+): Promise<{ readonly added: readonly Attachment[]; readonly others: readonly File[] }> {
   const added: Attachment[] = [];
-  const refused: string[] = [];
+  const others: File[] = [];
   let total = alreadyBytes;
   for (const file of files) {
-    const name = file.name === "" ? "The pasted file" : file.name;
-    if (!IMAGE_TYPES.includes(file.type)) {
-      refused.push(
-        `${name} is not attached: only PNG, JPEG, GIF and WebP images go with a message.`,
-      );
-      continue;
-    }
-    if (total + file.size > MAX_IMAGE_BYTES) {
-      refused.push(
-        `${name} is not attached: a message takes ${MAX_IMAGE_BYTES / MB} MB of images, and this one is ${(file.size / MB).toFixed(1)} MB.`,
-      );
+    if (!IMAGE_TYPES.includes(file.type) || total + file.size > MAX_IMAGE_BYTES) {
+      others.push(file);
       continue;
     }
     total += file.size;
@@ -66,5 +56,5 @@ export async function readImages(
       image: { type: "image", data, mimeType: file.type },
     });
   }
-  return { added, refused };
+  return { added, others };
 }

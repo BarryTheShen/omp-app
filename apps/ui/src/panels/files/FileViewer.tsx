@@ -29,7 +29,7 @@ import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown
 import { previewDocument } from "./htmlPreview";
 import { baseName } from "./names";
 import { type ConflictChoice, resolveConflict, saveText } from "./save";
-import { downloadBytes, type FilesClient, readFileBytes } from "./transfer";
+import { downloadBytes, type FilesClient, readFileBytes, sizeText } from "./transfer";
 import { chooseViewer, decodeText, TEXT_EDIT_BYTES, type ViewerChoice } from "./viewer";
 
 /** CodeMirror and its merge view load only when a text viewer opens (#2782: the main script stays small). */
@@ -71,12 +71,6 @@ type Shown =
     };
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-function sizeText(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 export interface FileViewerProps {
   readonly files: FilesClient;

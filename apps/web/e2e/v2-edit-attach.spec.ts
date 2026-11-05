@@ -79,11 +79,11 @@ realTest.describe("new UI edit and attachments", () => {
   );
 
   realTest(
-    "a pasted or dropped image goes with the message, Remove takes one out, and other files are refused by name",
+    "a pasted or dropped image goes with the message, any other file is uploaded with it, and Remove takes one out",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       const box = page.getByRole("textbox", { name: "Message" });
-      const attached = page.getByRole("list", { name: "Attached images" });
+      const attached = page.getByRole("list", { name: "Attachments" });
 
       await box.evaluate((element, data) => {
         const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
@@ -94,13 +94,13 @@ realTest.describe("new UI edit and attachments", () => {
           new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }),
         );
       }, PIXEL);
-      await expect(attached.getByRole("listitem")).toHaveCount(1);
+      // The picture goes with the message; the text file is uploaded to the chat's folder (#2830).
+      await expect(attached.getByRole("listitem")).toHaveCount(2);
       await expect(attached).toContainText("pixel.png");
-      await expect(
-        page.getByText(
-          "notes.txt is not attached: only PNG, JPEG, GIF and WebP images go with a message.",
-        ),
-      ).toBeVisible();
+      await expect(attached.getByRole("listitem").filter({ hasText: "notes.txt" })).toContainText(
+        "5 B",
+        { timeout: 30_000 },
+      );
 
       await box.evaluate((element, data) => {
         const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
@@ -110,9 +110,9 @@ realTest.describe("new UI edit and attachments", () => {
           new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }),
         );
       }, PIXEL);
-      await expect(attached.getByRole("listitem")).toHaveCount(2);
+      await expect(attached.getByRole("listitem")).toHaveCount(3);
       await page.getByRole("button", { name: "Remove dropped.png" }).click();
-      await expect(attached.getByRole("listitem")).toHaveCount(1);
+      await expect(attached.getByRole("listitem")).toHaveCount(2);
       await expect(attached).not.toContainText("dropped.png");
 
       await box.fill("what is in this picture");
@@ -122,6 +122,7 @@ realTest.describe("new UI edit and attachments", () => {
         timeout: 60_000,
       });
       await expect(transcript.getByRole("img", { name: "attachment" })).toHaveCount(1);
+      await expect(transcript.getByRole("button", { name: "Download notes.txt" })).toBeVisible();
       await expect(attached).toHaveCount(0);
 
       expect(realApp.problems).toEqual([]);

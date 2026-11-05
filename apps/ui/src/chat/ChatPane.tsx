@@ -1,3 +1,4 @@
+import { splitAttached } from "@omp-app/contracts";
 import type { ChatHostImage } from "@omp-app/contracts/chat-host";
 import {
   type KeyboardEvent,
@@ -76,16 +77,28 @@ export function ChatPane({
     return {
       hasAgent: (id) => known.has(id),
       openAgent: (id) => controller.agentHub.open(id),
+      // A file a sent message names (#2830), from the chat's own folder to this device.
+      downloadAttachment: (name) =>
+        controller
+          .downloadAttachment(name)
+          .catch((failure: unknown) =>
+            controller.store.toast(
+              `Could not download ${name}: ${failure instanceof Error ? failure.message : String(failure)}`,
+              "error",
+            ),
+          ),
     };
   }, [agentIds, controller]);
   const agentsRunning = snapshot.agents.filter(
     (agent) => agent.status === "running" || agent.status === "pending",
   ).length;
-  // What you sent, oldest first: the message box's Up and Down go through it, as omp's history does.
+  // What you sent, oldest first: the message box's Up and Down go through it, as omp's history does. A message's files
+  // stay where they are: only what was typed comes back.
   const history = useMemo(
     () =>
       snapshot.entries
         .map(userText)
+        .map((text) => (text === null ? null : splitAttached(text).text))
         .filter((text): text is string => text !== null && text.trim() !== ""),
     [snapshot.entries],
   );

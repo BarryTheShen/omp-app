@@ -9,7 +9,8 @@ import {
   type EntryId,
   type FileSearchCandidate,
   FileSearchPort,
-  type FolderPath,
+  FolderPath,
+  firstPromptTextOf,
   type McpCommandServerSummary,
   McpCommandsPort,
   type SessionEntryWindow,
@@ -19,6 +20,8 @@ import {
   type SubagentReadResult,
   type SubagentTranscript,
   type ThreadId,
+  WorkspaceFilesPort,
+  WorkspaceRelativePath,
 } from "@omp-app/contracts";
 import {
   type AssignModelRoleParams,
@@ -49,6 +52,8 @@ import { type Attention, AttentionTracker } from "../inbox/attention";
 import { lastSeen } from "../lastSeen";
 import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
+import { keepBothName } from "../panels/files/names";
+import { downloadBytes, readFileBytes, uploadBlob } from "../panels/files/transfer";
 import { clientTags, frameMarks, watchFrames } from "../perf/frames";
 import { isPhone } from "../phone";
 import { keepShareLink } from "../shares/link";
@@ -189,6 +194,8 @@ export class ChatController {
   #stopShares: (() => void) | null = null;
   /** Each shared service's one-time link, kept fresh for the chat's row. */
   readonly #shareLinks = new Map<string, ReturnType<typeof keepShareLink>>();
+  /** The chat's own folder on the server (`localFolder`), with the chat it was asked for. */
+  #localFolder: { readonly threadId: ThreadId; readonly folder: Promise<FolderPath> } | null = null;
   private readonly client: AppClient;
   private readonly target: ChatTarget;
   /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
@@ -598,7 +605,8 @@ export class ChatController {
   ): Promise<void> {
     await this.#planSwitch;
     if (this.target.kind === "new" && this.#threadId !== null)
-      noteFirstPrompt(this.#threadId, text);
+      // Named as the server names it: what was typed, or the files' names when only files were sent (#2830).
+      noteFirstPrompt(this.#threadId, firstPromptTextOf(text));
     const message = { text, ...(images.length > 0 ? { images: [...images] } : {}) };
     const behind = { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } as const;
     if (this.store.getSnapshot().working) {
@@ -682,6 +690,81 @@ export class ChatController {
     const result = await this.#request("remove_queued_message", { message, queue });
     if (!result.removed) return null;
     return { text: result.text, ...(result.images === undefined ? {} : { images: result.images }) };
+  }
+
+  /**
+   * The chat's own folder on the server, omp's `local://` (#2830), where files attached to a message go: asked once per
+   * chat, and again after a failure.
+   */
+  localFolder(): Promise<FolderPath> {
+    const threadId = this.#threadId;
+    if (threadId === null) return Promise.reject(new Error("The chat is not open yet."));
+    const known = this.#localFolder;
+    if (known !== null && known.threadId === threadId) return known.folder;
+    const folder: Promise<FolderPath> = this.#request("local_folder", {}).then(
+      (answer) => FolderPath.parse(answer.folder),
+      (failure: unknown) => {
+        if (this.#localFolder?.folder === folder) this.#localFolder = null;
+        // The chat's omp started before the update (it moves to the new one once settled), or the server is older.
+        if (failure instanceof AppFailure && failure.appError.omp?.code === "unknown_method") {
+          throw new Error(OLDER_OMP_FILES);
+        }
+        throw olderServer(failure, "take files");
+      },
+    );
+    this.#localFolder = { threadId, folder };
+    return folder;
+  }
+
+  /**
+   * Uploads a file attached to a message into the chat's folder, under its own name, or `name (n).ext` when the folder or
+   * `reserved()` (the box's other files, read as the name is chosen) holds that name; `onName` hears it at once, so two
+   * files picked together never take one name. Returns the name.
+   */
+  async uploadAttachment(
+    file: File,
+    options: {
+      readonly reserved: () => ReadonlySet<string>;
+      readonly signal: AbortSignal;
+      readonly onName: (name: string) => void;
+      readonly onProgress: (sent: number) => void;
+    },
+  ): Promise<string> {
+    const folder = await this.localFolder();
+    const files = this.client.port(WorkspaceFilesPort);
+    const listed = await files.list({ folder, showIgnored: true });
+    const taken = new Set([...listed.entries.map((entry) => entry.name), ...options.reserved()]);
+    const wanted = file.name === "" ? "file" : file.name;
+    const name = taken.has(wanted) ? keepBothName(wanted, taken) : wanted;
+    options.onName(name);
+    // Read a chunk at a time as it goes (a phone never holds a big file whole), never over a file already there: one
+    // that appeared meanwhile fails the upload instead.
+    await uploadBlob(files, folder, WorkspaceRelativePath.parse(name), file, {
+      expectedHash: null,
+      signal: options.signal,
+      onProgress: options.onProgress,
+    });
+    return name;
+  }
+
+  /** Takes a file this page uploaded, then took out of the box before sending, out of the chat's folder (to the trash). */
+  async removeAttachment(name: string): Promise<void> {
+    const folder = await this.localFolder();
+    await this.client
+      .port(WorkspaceFilesPort)
+      .trash({ folder, path: WorkspaceRelativePath.parse(name) });
+  }
+
+  /** Saves a file of the chat's folder (one a sent message names) to this device. */
+  async downloadAttachment(name: string): Promise<void> {
+    const folder = await this.localFolder();
+    const files = this.client.port(WorkspaceFilesPort);
+    const path = WorkspaceRelativePath.parse(name);
+    const [{ mediaType }, read] = await Promise.all([
+      files.stat({ folder, path }),
+      readFileBytes(files, folder, path),
+    ]);
+    downloadBytes(read.bytes, name, mediaType);
   }
 
   async models(): Promise<readonly ChatModel[]> {
@@ -1259,3 +1342,7 @@ function olderServer(failure: unknown, cannot: string): unknown {
 /** The words for a chat still on an omp from before pause: the server moves it to the new omp once its reply ends. */
 const OLDER_OMP =
   "This chat still runs the omp from before the update. It moves to the new one once this reply ends; Stop ends the reply now.";
+
+/** The words for a file attached in a chat still on an omp from before files: it moves to the new omp once settled. */
+const OLDER_OMP_FILES =
+  "This chat still runs the omp from before the update, which takes no files. It moves to the new one once this reply ends; attach the file again then.";

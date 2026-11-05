@@ -1,3 +1,4 @@
+import { attachedSummary } from "@omp-app/contracts";
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ export function QueuedMessages({
           <span className="shrink-0 text-t3">
             {item.queue === "steering" ? "Steer" : "Follow-up"}
           </span>
-          <span className="min-w-0 flex-1 truncate text-t1">{item.message}</span>
+          <span className="min-w-0 flex-1 truncate text-t1">{attachedSummary(item.message)}</span>
           <Button
             type="button"
             variant="ghost"

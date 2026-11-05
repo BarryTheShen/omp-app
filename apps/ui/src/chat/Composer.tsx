@@ -1,10 +1,11 @@
+import { type SentFile, splitAttached, withAttached } from "@omp-app/contracts";
 import type {
   ChatHostImage,
   ChatHostState,
   GoalAnswer,
   PlanModeStatus,
 } from "@omp-app/contracts/chat-host";
-import { ArrowUp, Brain, ImagePlus, Square, X } from "lucide-react";
+import { ArrowUp, Brain, FileText, Paperclip, Square, X } from "lucide-react";
 import {
   type KeyboardEvent,
   memo,
@@ -21,11 +22,13 @@ import { btwQuestion } from "../btw/btw";
 import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { isImeEnter } from "../keys/ime";
+import { sizeText } from "../panels/files/transfer";
 import { showPanel } from "../panels/panel-state";
-import { isTablet, usePhone } from "../phone";
+import { usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
-import { type Attachment, IMAGE_TYPES, readImages } from "./attachments";
+import { type AttachedFile, MAX_FILE_BYTES } from "./attachedFiles";
+import { type Attachment, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
@@ -54,6 +57,8 @@ import { WorkingRow } from "./WorkingRow";
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+const MB = 1024 * 1024;
+
 /** A typed `/pause` (omp's takes no arguments and ignores any). */
 const PAUSE_TEXT = /^\/pause(?:\s|$)/;
 
@@ -75,9 +80,10 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
  * The message box: Enter sends; while omp works, Enter steers and Ctrl+Enter queues a follow-up; Shift+Enter or
  * Alt+Enter adds a line; Esc stops omp and brings queued messages back into the box. `/` at the start lists omp's
  * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context).
- * Images pasted or dropped go with the next message. The text is kept as it is typed (`drafts.ts`), and only the text
- * that was sent leaves the box. On a phone the return key adds a line, and the button sends (or, while omp works,
- * queues what is typed); the box's settings and the keys a phone lacks are in the key row under it (`KeyRow`).
+ * Files pasted, dropped or picked with the paperclip go with the next message: pictures to the model, any other file
+ * uploaded to the chat's own folder and named in the message (#2830). The text is kept as it is typed (`drafts.ts`), and
+ * only the text that was sent leaves the box. On a phone the return key adds a line, and the button sends (or, while omp
+ * works, queues what is typed); the box's settings and the keys a phone lacks are in the key row under it (`KeyRow`).
  */
 export const Composer = memo(function Composer({
   controller,
@@ -158,6 +164,11 @@ export const Composer = memo(function Composer({
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
   const attachmentsRef = useRef(attachments);
+  /** Files for the next message other than pictures: uploaded to the chat's own folder as they are attached (#2830). */
+  const [files, setFiles] = useState<readonly AttachedFile[]>([]);
+  const filesRef = useRef(files);
+  /** The uploads still running, by file: taking a file out of the box cancels its upload. */
+  const uploads = useRef(new Map<string, AbortController>());
   const [dragging, setDragging] = useState(false);
   /** Whether the box has the focus: on a phone the keyboard is up then, and the key row offers to put it away. */
   const [focused, setFocused] = useState(false);
@@ -169,8 +180,6 @@ export const Composer = memo(function Composer({
     const usagePause = controller.store.getSnapshot().usagePause;
     return usagePause?.hold == null ? undefined : holdReason(usagePause.percent, usagePause.hold);
   });
-  /** A tablet: a touch screen wider than a phone, where a picture is not pasted or dropped either. */
-  const touch = !phone && isTablet();
   const draft = controller.draft;
   const menu = useComposerMenu(controller, text, caret);
   const shell = shellRun(text);
@@ -202,13 +211,70 @@ export const Composer = memo(function Composer({
     attachmentsRef.current = next;
     setAttachments(next);
   };
+  const attachFiles = (next: readonly AttachedFile[]): void => {
+    filesRef.current = next;
+    setFiles(next);
+  };
+  const patchFile = (id: string, patch: Partial<AttachedFile>): void =>
+    attachFiles(filesRef.current.map((file) => (file.id === id ? { ...file, ...patch } : file)));
 
-  /** Reads pasted or dropped files; what is not an image omp reads, or is too big, is named in the status. */
-  const addFiles = (files: readonly File[]): void => {
+  /** Uploads a file to the chat's folder; its chip shows how far it got, then its size. */
+  const upload = (file: File): void => {
+    const shown = file.name === "" ? "The pasted file" : file.name;
+    if (file.size > MAX_FILE_BYTES) {
+      setError(
+        `${shown} is not attached: a file can be up to ${MAX_FILE_BYTES / MB} MB, and this one is ${(file.size / MB).toFixed(1)} MB.`,
+      );
+      return;
+    }
+    const id = crypto.randomUUID();
+    const abort = new AbortController();
+    uploads.current.set(id, abort);
+    attachFiles([
+      ...filesRef.current,
+      {
+        id,
+        name: file.name === "" ? "file" : file.name,
+        size: sizeText(file.size),
+        progress: 0,
+        own: true,
+      },
+    ]);
+    controller
+      .uploadAttachment(file, {
+        // The names of the box's other files, read as this one's name is chosen.
+        reserved: () =>
+          new Set(filesRef.current.filter((held) => held.id !== id).map((held) => held.name)),
+        signal: abort.signal,
+        onName: (name) => patchFile(id, { name }),
+        onProgress: (sent) => patchFile(id, { progress: file.size === 0 ? 1 : sent / file.size }),
+      })
+      .then(() => patchFile(id, { progress: null }))
+      .catch((failure: unknown) => {
+        attachFiles(filesRef.current.filter((held) => held.id !== id));
+        if (abort.signal.aborted) return;
+        // A message waiting for its files is not sent without one of them.
+        setWaitingToSend(null);
+        setError(`Could not upload ${shown}: ${errorText(failure)}`);
+      })
+      .finally(() => uploads.current.delete(id));
+  };
+
+  /** Takes a file out of the box: an upload stops, and a file this box uploaded leaves the chat's folder too. */
+  const removeFile = (file: AttachedFile): void => {
+    uploads.current.get(file.id)?.abort();
+    attachFiles(filesRef.current.filter((held) => held.id !== file.id));
+    if (file.own && file.progress === null)
+      void controller.removeAttachment(file.name).catch(() => undefined);
+  };
+
+  /** Takes pasted, dropped or picked files: pictures go with the message, any other file is uploaded. */
+  const addFiles = (picked: readonly File[]): void => {
     const already = attachmentsRef.current.reduce((sum, attachment) => sum + attachment.bytes, 0);
-    void readImages(files, already).then(({ added, refused }) => {
+    setError(null);
+    void readImages(picked, already).then(({ added, others }) => {
       if (added.length > 0) attach([...attachmentsRef.current, ...added]);
-      setError(refused.length > 0 ? refused.join(" ") : null);
+      for (const file of others) upload(file);
     });
   };
   /** Pictures read from the desktop window's clipboard so far, which names the next one. */
@@ -243,11 +309,45 @@ export const Composer = memo(function Composer({
     if (fresh.length > 0) attach([...attachmentsRef.current, ...fresh.map(asAttachment)]);
   };
 
+  /** Files a message names, back in the box as they are in the chat's folder: nothing is uploaded again. */
+  const putBackFiles = (named: readonly SentFile[]): void => {
+    const held = new Set(filesRef.current.map((file) => file.name));
+    const fresh = named.filter((file) => !held.has(file.name));
+    if (fresh.length === 0) return;
+    attachFiles([
+      ...filesRef.current,
+      ...fresh.map((file) => ({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        progress: null,
+        own: false,
+      })),
+    ]);
+  };
+
+  /**
+   * Messages that came back to the box (Edit, Stop's queue, a queued message taken back, a message Stop dropped): their
+   * text joins what the box holds, and their pictures and files come back as attachments, not as text.
+   */
+  const restoreMessages = (
+    messages: readonly { readonly text: string; readonly images?: readonly ChatHostImage[] }[],
+  ): void => {
+    const parts = messages.map((message) => splitAttached(message.text));
+    update(
+      withRestored(
+        parts.map((part) => part.text),
+        textRef.current,
+      ),
+    );
+    putBack(messages.flatMap((message) => message.images ?? []));
+    putBackFiles(parts.flatMap((part) => part.files));
+  };
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: an edited message is put in once, when Edit brings it
   useEffect(() => {
     if (restore === null) return;
-    update(withRestored([restore.text], textRef.current));
-    putBack(restore.images);
+    restoreMessages([restore]);
     boxRef.current?.focus();
   }, [restore]);
 
@@ -277,8 +377,11 @@ export const Composer = memo(function Composer({
     const sent = textRef.current;
     const value = sent.trim();
     const images = attachmentsRef.current;
-    if ((value.length === 0 && images.length === 0) || sending) return;
-    if (disabled) {
+    const attachedFiles = filesRef.current;
+    if ((value.length === 0 && images.length === 0 && attachedFiles.length === 0) || sending)
+      return;
+    // A chat still opening, or a file still uploading: the message goes once they are done.
+    if (disabled || attachedFiles.some((file) => file.progress !== null)) {
       if (!closed) setWaitingToSend(mode);
       return;
     }
@@ -319,9 +422,11 @@ export const Composer = memo(function Composer({
     if (run !== null && run.input === "") return;
     setSending(true);
     setError(null);
+    // The files go as a paragraph after the text that names each by its `local://` address (#2830).
+    const message = withAttached(value, attachedFiles);
     (run === null
       ? controller.send(
-          value,
+          message,
           mode,
           images.map((attachment) => attachment.image),
         )
@@ -329,36 +434,33 @@ export const Composer = memo(function Composer({
     )
       .then(() => {
         // Held at omp's pause, the message is not in the chat yet: the paused row says it waits.
-        if (run === null && pausedAt !== null) controller.store.holdMessage(value);
+        if (run === null && pausedAt !== null) controller.store.holdMessage(message);
         // Only what was sent leaves the box; anything typed or attached since stays.
         const now = textRef.current;
         update(now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now);
         if (run === null) {
           const gone = new Set(images.map((attachment) => attachment.id));
           attach(attachmentsRef.current.filter((attachment) => !gone.has(attachment.id)));
+          const goneFiles = new Set(attachedFiles.map((file) => file.id));
+          attachFiles(filesRef.current.filter((file) => !goneFiles.has(file.id)));
         }
       })
       .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`))
       .finally(() => setSending(false));
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: sends once, when the chat becomes ready
+  /** A file of the box still uploading: a message sent meanwhile waits for it. */
+  const uploading = files.some((file) => file.progress !== null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sends once, when the chat is ready and the files are up
   useEffect(() => {
-    if (!disabled && waitingToSend !== null) send(waitingToSend);
-  }, [disabled]);
+    if (!disabled && !uploading && waitingToSend !== null) send(waitingToSend);
+  }, [disabled, uploading]);
 
   const stop = (): void => {
     controller
       .stop()
       .then((restored) => {
-        if (restored.length === 0) return;
-        update(
-          withRestored(
-            restored.map((message) => message.text),
-            textRef.current,
-          ),
-        );
-        putBack(restored.flatMap((message) => message.images ?? []));
+        if (restored.length > 0) restoreMessages(restored);
       })
       .catch((failure: unknown) => setError(`Could not stop: ${errorText(failure)}`));
   };
@@ -368,8 +470,7 @@ export const Composer = memo(function Composer({
       .takeQueued(message, queueName)
       .then((taken) => {
         if (taken === null) return;
-        update(withRestored([taken.text], textRef.current));
-        putBack(taken.images ?? []);
+        restoreMessages([taken]);
         boxRef.current?.focus();
       })
       .catch((failure: unknown) => setError(`Could not take it back: ${errorText(failure)}`));
@@ -377,10 +478,7 @@ export const Composer = memo(function Composer({
 
   // A message whose turn never started because Stop came first comes back to the box, as Stop's queue does.
   const sendDroppedRef = useRef<(sent: SentMessage) => void>(() => undefined);
-  sendDroppedRef.current = (sent) => {
-    update(withRestored([sent.text], textRef.current));
-    putBack(sent.images);
-  };
+  sendDroppedRef.current = (sent) => restoreMessages([sent]);
   useEffect(
     () => controller.store.onSendDropped((sent) => sendDroppedRef.current(sent)),
     [controller],
@@ -556,42 +654,58 @@ export const Composer = memo(function Composer({
     </>
   );
   const status =
-    error ?? (waitingToSend !== null && disabled ? "Sends once the chat is open" : null);
+    error ??
+    (waitingToSend === null
+      ? null
+      : disabled
+        ? "Sends once the chat is open"
+        : uploading
+          ? "Sends once the files are uploaded"
+          : null);
   /**
-   * Pictures from the device's own picker (#2783): where pasting and dropping a picture are out of reach, a phone or a
-   * tablet. A photo picked on an iPhone comes as JPEG: Safari converts HEIC to a type the picker accepts.
+   * Files from the device's own picker, on every device (#2783, #2830): any kind, as dropping or pasting takes. On an
+   * iPhone the picker offers the photo library, the camera and Files; a photo comes as JPEG (Safari converts HEIC).
    */
-  const attachButton = (phone || touch) && (
+  const pickerButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size={phone ? "icon" : "icon-sm"}
+      className={phone ? "size-11 shrink-0 text-t2" : "text-t3 hover:text-t1 tablet:size-11"}
+      aria-label="Attach files"
+      data-tour="attach-files"
+      disabled={closed}
+      onClick={() => picker.current?.click()}
+    >
+      <Paperclip />
+    </Button>
+  );
+  const attachButton = (
     <>
-      <Button
-        type="button"
-        variant="ghost"
-        size={phone ? "icon" : "icon-sm"}
-        className={phone ? "size-11 shrink-0 text-t2" : "text-t3 hover:text-t1 tablet:size-11"}
-        aria-label="Attach images"
-        data-tour="attach-images"
-        disabled={closed}
-        onClick={() => picker.current?.click()}
-      >
-        <ImagePlus />
-      </Button>
+      {phone ? (
+        pickerButton
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={pickerButton} />
+          <TooltipContent>Attach files, or drop them on the box</TooltipContent>
+        </Tooltip>
+      )}
       <input
         ref={picker}
         type="file"
-        accept={IMAGE_TYPES.join(",")}
         multiple
         hidden
-        aria-label="Images to attach"
+        aria-label="Files to attach"
         onChange={(event) => {
-          const files = [...(event.currentTarget.files ?? [])];
+          const picked = [...(event.currentTarget.files ?? [])];
           event.currentTarget.value = "";
-          if (files.length > 0) addFiles(files);
+          if (picked.length > 0) addFiles(picked);
         }}
       />
     </>
   );
-  /** Something to send: text, or pictures. */
-  const typed = text.trim().length > 0 || attachments.length > 0;
+  /** Something to send: text, pictures or files. */
+  const typed = text.trim().length > 0 || attachments.length > 0 || files.length > 0;
   /**
    * The button beside the text, a full-size target on a phone. Send while omp is idle. While omp works: Stop for an
    * empty box, and Queue once something is typed, which hands the message to omp as Enter does (omp takes it in at once
@@ -728,12 +842,16 @@ export const Composer = memo(function Composer({
               onPick={take}
             />
           )}
-          {attachments.length > 0 && (
-            <ul aria-label="Attached images" className="flex flex-wrap gap-2 px-3 pt-3">
+          {(attachments.length > 0 || files.length > 0) && (
+            // A phone keeps them on one row that scrolls sideways, as the key row does: the box stays low.
+            <ul
+              aria-label="Attachments"
+              className="flex flex-wrap gap-2 px-3 pt-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-2 max-sm:pt-2 max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
+            >
               {attachments.map((attachment) => (
                 <li
                   key={attachment.id}
-                  className="flex items-center gap-1.5 rounded-md border border-l2 bg-raise p-1"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
                 >
                   <img
                     src={`data:${attachment.image.mimeType};base64,${attachment.image.data}`}
@@ -750,6 +868,30 @@ export const Composer = memo(function Composer({
                     onClick={() =>
                       attach(attachmentsRef.current.filter((kept) => kept.id !== attachment.id))
                     }
+                  >
+                    <X />
+                  </Button>
+                </li>
+              ))}
+              {files.map((file) => (
+                <li
+                  key={file.id}
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
+                >
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-secondary text-t2">
+                    <FileText className="size-4" />
+                  </span>
+                  <span className="max-w-40 truncate text-xs text-t2">{file.name}</span>
+                  <span className="text-xs text-t3 tabular-nums">
+                    {file.progress === null ? file.size : `${Math.floor(file.progress * 100)}%`}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-t3 hover:text-t1"
+                    aria-label={`Remove ${file.name}`}
+                    onClick={() => removeFile(file)}
                   >
                     <X />
                   </Button>

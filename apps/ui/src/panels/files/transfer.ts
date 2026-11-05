@@ -26,6 +26,13 @@ export function fromBase64(text: string): Uint8Array {
   return bytes;
 }
 
+/** A size as people read it: bytes, KB or MB. */
+export function sizeText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export interface ReadFile {
   readonly bytes: Uint8Array;
   /** The whole file's size; more than `bytes` when only a part was asked for. */
@@ -86,26 +93,62 @@ export interface UploadOptions {
 }
 
 /** Writes `bytes` to `path` in chunks, then commits; a commit refused by `expectedHash` throws the `conflict`. */
-export async function uploadBytes(
+export function uploadBytes(
   files: FilesClient,
   folder: FolderPath,
   path: WorkspaceRelativePath,
   bytes: Uint8Array,
   options: UploadOptions = {},
 ): Promise<FileHash> {
+  return uploadChunks(
+    files,
+    folder,
+    path,
+    bytes.length,
+    async (start, end) => bytes.subarray(start, end),
+    options,
+  );
+}
+
+/**
+ * As {@link uploadBytes}, reading `blob` (a picked file) one chunk at a time as it goes: a phone never holds a big file
+ * whole, nor its base64 (#2830).
+ */
+export function uploadBlob(
+  files: FilesClient,
+  folder: FolderPath,
+  path: WorkspaceRelativePath,
+  blob: Blob,
+  options: UploadOptions = {},
+): Promise<FileHash> {
+  return uploadChunks(
+    files,
+    folder,
+    path,
+    blob.size,
+    async (start, end) => new Uint8Array(await blob.slice(start, end).arrayBuffer()),
+    options,
+  );
+}
+
+async function uploadChunks(
+  files: FilesClient,
+  folder: FolderPath,
+  path: WorkspaceRelativePath,
+  size: number,
+  read: (start: number, end: number) => Promise<Uint8Array>,
+  options: UploadOptions,
+): Promise<FileHash> {
   const { uploadId } = await files.beginWrite({
     folder,
     path,
     ...(options.expectedHash === undefined ? {} : { expectedHash: options.expectedHash }),
   });
-  for (let offset = 0; offset < bytes.length; offset += MAX_FILE_CHUNK_BYTES) {
+  for (let offset = 0; offset < size; offset += MAX_FILE_CHUNK_BYTES) {
     if (options.signal?.aborted) throw new DOMException("The upload was cancelled.", "AbortError");
-    await files.writeChunk({
-      uploadId,
-      offset,
-      bytes: toBase64(bytes.subarray(offset, offset + MAX_FILE_CHUNK_BYTES)),
-    });
-    options.onProgress?.(Math.min(bytes.length, offset + MAX_FILE_CHUNK_BYTES));
+    const end = Math.min(size, offset + MAX_FILE_CHUNK_BYTES);
+    await files.writeChunk({ uploadId, offset, bytes: toBase64(await read(offset, end)) });
+    options.onProgress?.(end);
   }
   if (options.signal?.aborted) throw new DOMException("The upload was cancelled.", "AbortError");
   return (await files.commit({ uploadId })).hash;

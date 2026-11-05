@@ -76,7 +76,7 @@ realTest.describe("new UI message box", () => {
       testInfo.setTimeout(240_000);
       const page = await realApp.open({ path: "/" });
       const followUp = "after this, write the docs";
-      const attached = page.getByRole("list", { name: "Attached images" }).getByRole("listitem");
+      const attached = page.getByRole("list", { name: "Attachments" }).getByRole("listitem");
       const png =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
       await startNewChat(page);

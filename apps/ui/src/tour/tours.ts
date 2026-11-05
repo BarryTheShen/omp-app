@@ -1353,9 +1353,25 @@ const COMMAND_KEYS_TOUR: Tour = {
   ],
 };
 
-const ATTACH_IMAGES = part("attach-images");
+const ATTACH_FILES = part("attach-files");
 
-/** #2783: a picture from the device's picker, on a phone or a tablet. */
+/** #2783, #2830: photos and any other file from the device's picker, on a computer and a phone. */
+const ATTACH_FILES_TOUR: Tour = {
+  id: "attach-files-2026-11-05",
+  title: "Files in a message",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: ATTACH_FILES,
+      title: "Attach files",
+      text: "Tap or click here to add photos or any file to your message. Pictures go to the model with it; other files are uploaded to this chat's own folder, where omp reads them and moves them where you ask. On a computer you can also drop or paste files on the box.",
+      action: next,
+    },
+  ],
+};
+
+/** #2783: a picture from the device's picker, on a phone or a tablet (the paperclip since #2830). */
 const ATTACH_IMAGES_TOUR: Tour = {
   id: "attach-images-2026-11-01",
   title: "Photos in a message",
@@ -1363,7 +1379,7 @@ const ATTACH_IMAGES_TOUR: Tour = {
   sandbox: false,
   steps: [
     {
-      target: ATTACH_IMAGES,
+      target: ATTACH_FILES,
       title: "Attach a photo",
       text: "Tap here to add photos or pictures to your message, from your library, the camera or your files. They go with the next message you send.",
       action: next,
@@ -1556,6 +1572,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-05-attach-files",
+    when: "2026-11-05T01:30:00-06:00",
+    summary:
+      "The paperclip in the message box, on a computer and on a phone, attaches any file: pictures go to the model with your message, and every other file is uploaded to the chat's own folder, where omp reads it and moves it where you ask. You can also drop or paste files on the box, and a file in a sent message downloads with a click.",
+    tours: [ATTACH_FILES_TOUR],
+  },
   {
     id: "2026-11-04-queue",
     when: "2026-11-04T02:45:00-06:00",

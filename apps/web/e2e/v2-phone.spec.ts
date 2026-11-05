@@ -692,33 +692,45 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
-    "a photo is attached from the phone's own picker beside the text (#2783); a desktop page has no such button",
+    "the paperclip beside the text takes a photo or any file from the phone's own picker (#2783, #2830), with targets of 44 pt",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
-      const button = page.getByRole("button", { name: "Attach images" });
+      const button = page.getByRole("button", { name: "Attach files" });
       await expect(button).toBeVisible();
       const bounds = await button.boundingBox();
       expect(Math.min(bounds?.width ?? 0, bounds?.height ?? 0)).toBeGreaterThanOrEqual(44);
-      // A one-pixel PNG, as the picker would hand it over.
+      // The picker is not limited to pictures: an iPhone offers the photo library, the camera and Files.
+      const picker = page.getByLabel("Files to attach");
+      expect(await picker.getAttribute("accept")).toBeNull();
+      // A one-pixel PNG and a small PDF, as the picker would hand them over.
       const png = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
         "base64",
       );
-      await page
-        .getByLabel("Images to attach")
-        .setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: png });
-      const attached = page.getByRole("list", { name: "Attached images" });
+      await picker.setInputFiles([
+        { name: "photo.png", mimeType: "image/png", buffer: png },
+        { name: "report.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") },
+      ]);
+      const attached = page.getByRole("list", { name: "Attachments" });
       await expect(attached.getByText("photo.png")).toBeVisible();
-      await context.close();
+      // The PDF is uploaded to the chat's folder: its chip shows its size once it is up.
+      await expect(attached.getByRole("listitem").filter({ hasText: "report.pdf" })).toContainText(
+        "13 B",
+        { timeout: 30_000 },
+      );
+      const remove = await page.getByRole("button", { name: "Remove report.pdf" }).boundingBox();
+      expect(Math.min(remove?.width ?? 0, remove?.height ?? 0)).toBeGreaterThanOrEqual(44);
 
-      // A desktop page opens with no chat: a new one brings the message box.
-      const desktop = await realApp.open({ path: "/" });
-      await startNewChat(desktop);
-      await expect(box(desktop)).toHaveAttribute("placeholder", "Message omp", {
-        timeout: 120_000,
-      });
-      await expect(desktop.getByRole("button", { name: "Attach images" })).toHaveCount(0);
+      await box(page).fill("hello");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const sent = page
+        .getByRole("region", { name: "Transcript" })
+        .getByRole("button", { name: "Download report.pdf" });
+      await expect(sent).toBeVisible({ timeout: 60_000 });
+      expect((await sent.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await expect(attached).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
+      await context.close();
     },
   );
 

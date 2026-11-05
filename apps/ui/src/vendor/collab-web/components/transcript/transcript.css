@@ -99,6 +99,77 @@
 	border-radius: var(--radius-sm);
 }
 
+/* omp-app: a sent message's files (#2830), one chip each; a chip downloads its file. */
+.tr-files {
+	/* As wide as the message, not as its longest name: a long name ends in an ellipsis inside the bubble. */
+	align-self: stretch;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-width: 0;
+	margin: 6px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tr-files > li {
+	min-width: 0;
+	max-width: 100%;
+}
+
+.tr-file {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	height: 28px;
+	padding: 0 10px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--bg-raised);
+	color: var(--fg);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.tr-file svg {
+	flex-shrink: 0;
+	color: var(--fg-muted);
+}
+
+.tr-file:hover:not(:disabled) {
+	border-color: color-mix(in oklch, var(--fg-muted) 50%, var(--border));
+}
+
+.tr-file:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+.tr-file:disabled {
+	cursor: default;
+}
+
+.tr-file-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tr-file-size {
+	flex-shrink: 0;
+	color: var(--fg-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+/* A phone: everything tapped is 44 pt high (#2816). */
+@media (max-width: 639px) {
+	.tr-file {
+		height: 44px;
+	}
+}
+
 /* ---- chips & badges ---- */
 
 .tr-badge {

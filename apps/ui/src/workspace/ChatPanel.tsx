@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import type { FolderPath } from "@omp-app/contracts";
+import { type FolderPath, firstPromptTextOf } from "@omp-app/contracts";
 import type { DockviewApi, IDockviewGroupPanel, IDockviewPanelProps } from "dockview-react";
 import {
   createContext,
@@ -234,8 +234,10 @@ function PaneChat({
   readonly inView: () => boolean;
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
+  // What was typed (or the files' names, #2830), as the chat list names a chat by its first message.
   const first = snapshot.entries
     .map(userText)
+    .map((text) => (text === null ? null : firstPromptTextOf(text)))
     .find((text): text is string => text !== null && text !== "");
   // The name the chat list shows once the chat is saved (omp's name for it, #2829), else its first message.
   const savedTitle = useSavedTitle(controller.threadId);

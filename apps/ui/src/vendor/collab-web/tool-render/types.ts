@@ -44,6 +44,8 @@ export interface ToolRenderHost {
 	hasAgent?(id: string): boolean;
 	/** Open the sub-session/transcript view for an agent id. */
 	openAgent?(id: string): void;
+	/** omp-app: save a file a sent message names (its chat's `local://` folder, #2830) to this device. */
+	downloadAttachment?(name: string): void;
 }
 
 export interface ToolRenderProps {

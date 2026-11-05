@@ -1,10 +1,11 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { Check, ChevronRight, X } from "lucide-react";
+import { Check, ChevronRight, FileText, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FoldContext } from "../../lib/fold";
 import type { ActiveTool, ConnectionPhase } from "../../lib/types";
 import { fmtTokens } from "../../lib/format";
+import { type SentFile, splitAttached } from "@omp-app/contracts";
 import { contentText, deliveredText, describeNotice, jobRows } from "../../lib/notices";
 import type { ToolRenderHost } from "../../tool-render";
 import { Markdown, StreamingMarkdown } from "./Markdown";
@@ -143,6 +144,53 @@ function MsgContent({ content }: { content: string | readonly (TextContent | Ima
 	);
 }
 
+type UserContent = string | readonly (TextContent | ImageContent)[];
+
+/** omp-app: the files a message names (`lib/attached.ts`, #2830), taken off its last text, and the message without them. */
+function withoutAttached(content: UserContent): { content: UserContent; files: readonly SentFile[] } {
+	if (typeof content === "string") {
+		const { text, files } = splitAttached(content);
+		return { content: text, files };
+	}
+	const last = content.findLastIndex(block => block.type === "text");
+	const block = content[last];
+	if (block?.type !== "text") return { content, files: [] };
+	const { text, files } = splitAttached(block.text);
+	if (files.length === 0) return { content, files };
+	return {
+		content:
+			text === ""
+				? content.filter((_, index) => index !== last)
+				: content.map((part, index) => (index === last ? { ...block, text } : part)),
+		files,
+	};
+}
+
+/** omp-app: a sent message's files, one chip each; a chip downloads its file to this device where the host can. */
+function AttachedFiles({ files, host }: { files: readonly SentFile[]; host?: ToolRenderHost }): ReactNode {
+	const download = host?.downloadAttachment;
+	return (
+		<ul className="tr-files" aria-label="Attached files">
+			{files.map(file => (
+				<li key={file.name}>
+					<button
+						type="button"
+						className="tr-file"
+						disabled={download === undefined}
+						aria-label={download === undefined ? file.name : `Download ${file.name}`}
+						title={download === undefined ? undefined : "Download"}
+						onClick={() => download?.(file.name)}
+					>
+						<FileText size={14} aria-hidden />
+						<span className="tr-file-name">{file.name}</span>
+						<span className="tr-file-size">{file.size}</span>
+					</button>
+				</li>
+			))}
+		</ul>
+	);
+}
+
 export function AssistantBody({
 	message,
 	results,
@@ -270,12 +318,16 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 			const msg = entry.message;
 			// omp-app: `custom` is omp's own message kind, which the wire's role list does not name.
 			switch (msg.role as string) {
-				case "user":
+				case "user": {
+					// omp-app: the files a message names (#2830) are drawn as chips under its text, not as the paragraph.
+					const { content, files } = withoutAttached((msg as Extract<typeof msg, { role: "user" }>).content);
 					return (
 						<Row kind="user" gutter="host" title={entry.timestamp}>
-							<MsgContent content={(msg as Extract<typeof msg, { role: "user" }>).content} />
+							<MsgContent content={content} />
+							{files.length > 0 && <AttachedFiles files={files} host={host} />}
 						</Row>
 					);
+				}
 				case "assistant":
 					return (
 						<Row kind="assistant" gutter="agent" title={entry.timestamp}>

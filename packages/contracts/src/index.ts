@@ -1,3 +1,4 @@
+export * from "./core/attached-files";
 export * from "./core/capabilities";
 export * from "./core/descriptors";
 export * from "./core/envelope";

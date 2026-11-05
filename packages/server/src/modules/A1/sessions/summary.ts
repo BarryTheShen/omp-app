@@ -42,10 +42,11 @@ export function promptLine(content: unknown): string | null {
       ? content
       : Array.isArray(content)
         ? content
-            .map((part) =>
+            // The texts alone: a picture's place is no part, so nothing trails the last text.
+            .flatMap((part) =>
               isJsonObject(part) && part.type === "text" && typeof part.text === "string"
-                ? part.text
-                : "",
+                ? [part.text]
+                : [],
             )
             .join(MESSAGE_PART_SEPARATOR)
         : "";

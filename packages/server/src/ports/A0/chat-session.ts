@@ -25,6 +25,7 @@ import {
   type FirstPromptsArgs,
   type FirstPromptsResult,
   FolderPath,
+  firstPromptTextOf,
   isUiStateEvent,
   type ModelChoice,
   type OpenHostRequests,
@@ -945,7 +946,10 @@ export class ChatSessionPortRuntime {
       });
     }
     if (method === "prompt" && entry.firstPrompt === undefined) {
-      const text = (params.value as ChatHostMethodMap["prompt"]["params"]).text.trim();
+      // As a saved chat's first prompt is listed: what was typed, never a pasted text's wrapper or the paragraph that
+      // names attached files (#2830), on one line.
+      const sent = (params.value as ChatHostMethodMap["prompt"]["params"]).text;
+      const text = firstPromptTextOf(sent).replace(/\s+/g, " ").trim();
       if (text !== "") entry.firstPrompt = text.slice(0, FIRST_PROMPT_CHARS);
     }
     if (method === "set_host_tools" || method === "set_host_uri_schemes") {
