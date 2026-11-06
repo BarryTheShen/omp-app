@@ -802,8 +802,14 @@ realTest.describe("new UI on a phone", () => {
         "13 B",
         { timeout: 30_000 },
       );
-      const remove = await page.getByRole("button", { name: "Remove report.pdf" }).boundingBox();
-      expect(Math.min(remove?.width ?? 0, remove?.height ?? 0)).toBeGreaterThanOrEqual(44);
+      // Sizes are read until they settle: a chip and a sent message are drawn again as their file and the reply come in.
+      const remove = page.getByRole("button", { name: "Remove report.pdf" });
+      await expect
+        .poll(async () => {
+          const bounds = await remove.boundingBox();
+          return Math.min(bounds?.width ?? 0, bounds?.height ?? 0);
+        })
+        .toBeGreaterThanOrEqual(44);
 
       await box(page).fill("hello");
       await page.getByRole("button", { name: "Send" }).tap();
@@ -811,7 +817,9 @@ realTest.describe("new UI on a phone", () => {
         .getByRole("region", { name: "Transcript" })
         .getByRole("button", { name: "Download report.pdf" });
       await expect(sent).toBeVisible({ timeout: 60_000 });
-      expect((await sent.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await expect
+        .poll(async () => (await sent.boundingBox())?.height ?? 0)
+        .toBeGreaterThanOrEqual(44);
       await expect(attached).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
       await context.close();
