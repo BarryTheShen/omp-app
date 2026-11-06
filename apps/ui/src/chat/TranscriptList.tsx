@@ -217,8 +217,8 @@ const READER_SCROLL_MS = 1_000;
  * when it comes back, and with Jump to latest. TanStack's own following decides from how far the view is from the end
  * at the moment output arrives, and that distance is wrong while rows grew and their new height is not measured yet: in
  * the desktop window, without the focus, the view was left 100 to 240 px short for good, with no input. So after every
- * render, a reader who follows and is not at the end itself is taken there, unless the reader's own scroll or a smooth
- * jump is under way. Near the end (`AT_END_PX`) decides only whether a reader's scroll follows: a view short of the end
+ * render, a reader who follows and is not at the end itself is taken there, unless the reader's own scroll is under
+ * way. Near the end (`AT_END_PX`) decides only whether a reader's scroll follows: a view short of the end
  * by less stayed short for a whole reply (30 px, when a message's copy shown as it was sent and the working line gave
  * way to omp's copy and the reply in one render, which TanStack does not take for new output). Returns `follow`, which
  * starts following (Jump to latest), whether the reader follows, for the trace, and the same as state, for Jump to
@@ -286,9 +286,6 @@ function useFollowLatest(
     if (!following.current || element === null) return;
     if (element.scrollHeight - element.scrollTop - element.clientHeight <= 1) return;
     if (performance.now() - lastReader.current < READER_SCROLL_MS) return;
-    const state = (instance as unknown as { scrollState?: { behavior?: string } | null })
-      .scrollState;
-    if (state?.behavior === "smooth") return;
     instance.scrollToEnd();
   });
 
@@ -427,7 +424,10 @@ export function TranscriptList({
           aria-label="Jump to latest"
           onClick={() => {
             follow();
-            virtualizer.scrollToEnd({ behavior: "smooth" });
+            // At once, not smooth: during a smooth scroll TanStack measures only the rows near its end and drops the
+            // others' sizes, so a row drawn on the way kept the estimated height for good, drawn over the next row or
+            // apart from it (#2839).
+            virtualizer.scrollToEnd();
           }}
         >
           <ArrowDown />

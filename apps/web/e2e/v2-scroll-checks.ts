@@ -140,6 +140,38 @@ function rowPlace(
 }
 
 /**
+ * The drawn rows whose slot (where the next row starts, less where they start) is not their own height: rows drawn over
+ * the next one or apart from it. Each as its first words, its slot and its height.
+ */
+function slotsOffHeights(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>("section[aria-label='Transcript'] .tl-item"),
+    ]
+      .map((element) => ({
+        element,
+        start: Number(
+          /translateY\((-?[\d.]+)px\)/.exec(element.style.transform)?.[1] ?? Number.NaN,
+        ),
+        height: element.getBoundingClientRect().height,
+      }))
+      .sort((a, b) => a.start - b.start);
+    const off: string[] = [];
+    for (let index = 0; index + 1 < rows.length; index += 1) {
+      const row = rows[index];
+      const next = rows[index + 1];
+      if (row === undefined || next === undefined) continue;
+      const slot = next.start - row.start;
+      if (Math.abs(slot - row.height) > 1)
+        off.push(
+          `${row.element.innerText.replace(/\s+/g, " ").slice(0, 40)}: slot ${Math.round(slot)}, height ${Math.round(row.height)}`,
+        );
+    }
+    return off;
+  });
+}
+
+/**
  * The transcript's scrolling in one engine (`browserName` is chosen at the top of the file that calls this): a live
  * chat shows its end, each wheel step up moves the line being read as far as the wheel asked while rows above are
  * measured, older entries loading above keep the line being read where it is, and a streaming reply changes only its
@@ -433,6 +465,36 @@ export function defineScrollChecks(engine: string): void {
         expect(moves.length).toBeGreaterThan(10);
         // The reply is about 280 px in all: no single frame moves the message by more than that.
         expect(Math.max(...moves.map(Math.abs))).toBeLessThan(300);
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
+      "rows added while the reader is up sit right under each other once Jump to latest reaches them (#2839)",
+      async ({ realApp }, testInfo) => {
+        testInfo.setTimeout(360_000);
+        const page = await realApp.open({ path: "/" });
+        await openLongChat(page);
+        const box = page.getByRole("textbox", { name: "Message" });
+        await box.fill("Please run the long_loop job.");
+        await box.press("Enter");
+        await expect(page.getByText(/loop-3/).first()).toBeVisible({ timeout: 90_000 });
+        // The reader goes up while the loop adds its sixty steps below, unseen.
+        await page.getByRole("region", { name: "Transcript" }).hover();
+        for (let step = 0; step < 6; step += 1) {
+          await page.mouse.wheel(0, -3000);
+          await settled(page);
+        }
+        // The last row is not drawn while the reader is up: the turn has ended when Stop is gone.
+        await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0, {
+          timeout: 180_000,
+        });
+        await page.getByRole("button", { name: "Jump to latest" }).click();
+        await expect(page.getByText("loop finished")).toBeInViewport({ timeout: 30_000 });
+        await settled(page);
+        // A smooth jump left the rows it drew on the way at the 72 px estimate: 49 px steps drawn 23 px apart, and a
+        // taller row drawn under the next one.
+        expect(await slotsOffHeights(page)).toEqual([]);
         expect(realApp.problems).toEqual([]);
       },
     );
