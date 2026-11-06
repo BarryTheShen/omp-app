@@ -77,9 +77,26 @@ const isTab = (tab: unknown): tab is WorkspaceTab => {
   );
 };
 
-/** Whether a workspace holds nothing: no window shows a chat, a file or the side panel. */
+type GridNode = SerializedDockview["grid"]["root"];
+
+/** How many windows a kept layout has: the leaves of its grid; a layout this version cannot read counts as one. */
+function windowsIn(node: GridNode | undefined): number {
+  if (node === undefined || node === null) return 1;
+  if (node.type === "leaf") return 1;
+  return Array.isArray(node.data)
+    ? (node.data as GridNode[]).reduce((sum, child) => sum + windowsIn(child), 0)
+    : 1;
+}
+
+/**
+ * Whether a workspace holds nothing a person made (#2831): no window shows a chat, a file or the side panel, it has no
+ * name of its own, and it is one window at most. Closing such a workspace keeps nothing for Reopen; a renamed or split
+ * one is kept, as its windows and name are what Reopen brings back.
+ */
 export const isBlankTab = (tab: WorkspaceTab): boolean =>
-  tab.layout === null || Object.keys(tab.layout.panels ?? {}).length === 0;
+  tab.title === null &&
+  (tab.layout === null ||
+    (Object.keys(tab.layout.panels ?? {}).length === 0 && windowsIn(tab.layout.grid?.root) <= 1));
 
 export function initialTabs(): WorkspaceTabs {
   const tab = blankTab();

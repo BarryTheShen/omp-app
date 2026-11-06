@@ -174,6 +174,33 @@ describe("workspace tabs", () => {
     );
   });
 
+  test("a renamed or split workspace is kept when closed though it holds no chat; one blank window is not (#2831)", () => {
+    const grid = (windows: number) =>
+      ({
+        grid: {
+          root: {
+            type: "branch",
+            data: Array.from({ length: windows }, () => ({ type: "leaf", data: {} })),
+          },
+        },
+        panels: {},
+      }) as unknown as SerializedDockview;
+    const keep = { id: "keep", title: null, layout: null };
+    const kept = (tab: WorkspaceTab) =>
+      closeTab({ tabs: [tab, keep], active: tab.id }, tab.id).closed?.map((entry) => entry.tab.id);
+    expect(kept({ id: "named", title: "Plans", layout: null })).toEqual(["named"]);
+    expect(kept({ id: "split", title: null, layout: grid(2) })).toEqual(["split"]);
+    expect(kept({ id: "one", title: null, layout: grid(1) })).toBeUndefined();
+    // A layout this version cannot read counts as one window.
+    expect(
+      kept({ id: "odd", title: null, layout: { panels: {} } as unknown as SerializedDockview }),
+    ).toBeUndefined();
+    // Reopened while only a renamed workspace is left, it goes beside it rather than in its place.
+    const named = { id: "named", title: "Plans", layout: null };
+    const state = closeTab({ tabs: [held("a"), named], active: "a" }, "a");
+    expect(ids(reopenTab(state))).toEqual(["a", "named"]);
+  });
+
   test("the last workspace closed comes back in place of the blank one its closing left (#2831)", () => {
     const only: WorkspaceTabs = { tabs: [held("a")], active: "a" };
     const after = closeTab(only, "a");
