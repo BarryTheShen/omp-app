@@ -6,7 +6,7 @@ import {
   type SharesList,
   SharesPort,
 } from "@omp-app/contracts";
-import { Copy, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useShareLink } from "../../shares/link";
@@ -27,7 +27,8 @@ const isOlderServer = (failure: unknown): boolean =>
 /**
  * The services listening on the server's machine and the pages shared from it (#2788). A shared one opens on this device
  * through a one-time link; any other is shared with a click, except those on the never-share list. A service a chat
- * started is shared by itself. Every share opens only on devices paired with the app.
+ * started is shared by itself. Every share opens only on devices paired with the app. The chats' services and the shared
+ * ones come first; every other listening port folds away under "Other services on this machine" (#2836).
  */
 export function PortsPanel({ client }: { readonly client: AppClient }): ReactNode {
   const [list, setList] = useState<SharesList | null>(null);
@@ -35,6 +36,7 @@ export function PortsPanel({ client }: { readonly client: AppClient }): ReactNod
   const [said, setSaid] = useState<{ readonly text: string; readonly failed: boolean } | null>(
     null,
   );
+  const [showOthers, setShowOthers] = useState(false);
   const read = useCallback(async () => {
     try {
       setList(await client.port(SharesPort).list({}));
@@ -88,6 +90,60 @@ export function PortsPanel({ client }: { readonly client: AppClient }): ReactNod
   const shareOf = (service: ListeningService): Share | undefined =>
     list.shares.find((share) => share.kind === "service" && share.port === service.port);
   const pages = list.shares.filter((share) => share.kind === "page");
+  const ours = list.services.filter(
+    (service) => service.threadId !== null || shareOf(service) !== undefined,
+  );
+  const others = list.services.filter(
+    (service) => service.threadId === null && shareOf(service) === undefined,
+  );
+  const row = (service: ListeningService): ReactNode => {
+    const share = shareOf(service);
+    return (
+      <li
+        key={service.port}
+        aria-label={`Port ${service.port}`}
+        className="flex flex-col gap-1 border-b border-l1 px-4 py-2"
+      >
+        <div className="flex items-baseline gap-2">
+          <span className="font-medium text-[0.8125rem] text-t1">{service.port}</span>
+          <span className="min-w-0 truncate text-[0.8125rem] text-t2">
+            {service.program ?? "another user's program"}
+          </span>
+          {service.startedAt !== null && (
+            <span className="ml-auto shrink-0 text-xs text-t3">
+              running {fmtDuration(Date.now() - service.startedAt)}
+            </span>
+          )}
+        </div>
+        {service.threadId !== null && <span className="text-xs text-t3">Started by a chat</span>}
+        {service.neverShare ? (
+          <span className="text-xs text-t3">Never shared: it is on the never-share list.</span>
+        ) : share === undefined ? (
+          <div>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={list.address === null}
+              onClick={() =>
+                act(
+                  client.port(SharesPort).share({ port: service.port }),
+                  `Port ${service.port} is shared.`,
+                )
+              }
+            >
+              Share
+            </Button>
+          </div>
+        ) : (
+          <SharedRow
+            client={client}
+            share={share}
+            onStop={() => act(client.port(SharesPort).stop({ id: share.id }), "Stopped sharing.")}
+          />
+        )}
+      </li>
+    );
+  };
   return (
     <section
       data-tour="ports-panel"
@@ -107,66 +163,33 @@ export function PortsPanel({ client }: { readonly client: AppClient }): ReactNod
           {said.text}
         </p>
       )}
-      <h3 className="px-4 pt-3 pb-1 font-medium text-t2 text-xs">Services on this machine</h3>
-      {list.services.length === 0 && (
-        <p className="px-4 py-1 text-[0.8125rem] text-t3">Nothing is listening for connections.</p>
+      <h3 className="px-4 pt-3 pb-1 font-medium text-t2 text-xs">
+        Started by your chats, or shared
+      </h3>
+      {ours.length === 0 && (
+        <p className="px-4 py-1 text-[0.8125rem] text-t3">
+          No chat has started a service, and nothing is shared.
+        </p>
       )}
-      <ul className="flex flex-col">
-        {list.services.map((service) => {
-          const share = shareOf(service);
-          return (
-            <li
-              key={service.port}
-              aria-label={`Port ${service.port}`}
-              className="flex flex-col gap-1 border-b border-l1 px-4 py-2"
-            >
-              <div className="flex items-baseline gap-2">
-                <span className="font-medium text-[0.8125rem] text-t1">{service.port}</span>
-                <span className="min-w-0 truncate text-[0.8125rem] text-t2">
-                  {service.program ?? "another user's program"}
-                </span>
-                {service.startedAt !== null && (
-                  <span className="ml-auto shrink-0 text-xs text-t3">
-                    running {fmtDuration(Date.now() - service.startedAt)}
-                  </span>
-                )}
-              </div>
-              {service.threadId !== null && (
-                <span className="text-xs text-t3">Started by a chat</span>
-              )}
-              {service.neverShare ? (
-                <span className="text-xs text-t3">
-                  Never shared: it is on the never-share list.
-                </span>
-              ) : share === undefined ? (
-                <div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={list.address === null}
-                    onClick={() =>
-                      act(
-                        client.port(SharesPort).share({ port: service.port }),
-                        `Port ${service.port} is shared.`,
-                      )
-                    }
-                  >
-                    Share
-                  </Button>
-                </div>
-              ) : (
-                <SharedRow
-                  client={client}
-                  share={share}
-                  onStop={() =>
-                    act(client.port(SharesPort).stop({ id: share.id }), "Stopped sharing.")
-                  }
-                />
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <ul className="flex flex-col">{ours.map(row)}</ul>
+      {others.length > 0 && (
+        <>
+          <button
+            type="button"
+            aria-expanded={showOthers}
+            className="flex items-center gap-1 px-4 pt-3 pb-1 text-left font-medium text-t2 text-xs hover:text-t1 max-sm:min-h-11 tablet:min-h-11"
+            onClick={() => setShowOthers((shown) => !shown)}
+          >
+            {showOthers ? (
+              <ChevronDown className="size-3.5" aria-hidden />
+            ) : (
+              <ChevronRight className="size-3.5" aria-hidden />
+            )}
+            Other services on this machine ({others.length})
+          </button>
+          {showOthers && <ul className="flex flex-col">{others.map(row)}</ul>}
+        </>
+      )}
       {pages.length > 0 && (
         <>
           <h3 className="px-4 pt-3 pb-1 font-medium text-t2 text-xs">Pages</h3>
@@ -194,7 +217,10 @@ export function PortsPanel({ client }: { readonly client: AppClient }): ReactNod
   );
 }
 
-/** A shared service or page: Open (a one-time link for this device), Copy link, Stop sharing, and who opened it. */
+/**
+ * A shared service or page: Open (a one-time link for this device), Copy link, Stop sharing, and who opened it; once the
+ * share ended, a line that says so instead (#2836).
+ */
 function SharedRow({
   client,
   share,
@@ -204,8 +230,14 @@ function SharedRow({
   readonly share: Share;
   readonly onStop: () => void;
 }): ReactNode {
-  const { url, used } = useShareLink(client, share.id);
+  const { url, used, ended } = useShareLink(client, share.id);
   const [copied, setCopied] = useState(false);
+  if (ended)
+    return (
+      <span className="text-xs text-t3">
+        {share.kind === "service" ? "This share ended: the service stopped." : "This share ended."}
+      </span>
+    );
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1.5">

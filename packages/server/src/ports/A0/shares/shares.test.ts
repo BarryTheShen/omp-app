@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FolderPath, ListeningService, Share, SharesList, ThreadId } from "@omp-app/contracts";
 import type { PortHandlerContext } from "../../../registry/ports";
-import { createSharesRuntime, type SharesRuntime } from "./shares";
+import { createSharesRuntime, END_AFTER_MS, SHARE_AFTER_MS, type SharesRuntime } from "./shares";
 
 const T1 = "thread-one" as ThreadId;
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -30,8 +30,8 @@ const service = (port: number, extra: Partial<ListeningService> = {}): Listening
   ...extra,
 });
 
-/** A runtime over a listed set of services, a phone that is paired, and the events it published. */
-function runtime(listed: { services: ListeningService[] }) {
+/** A runtime over a listed set of services, a phone that is paired, the events it published, and its clock. */
+function runtime(listed: { services: ListeningService[] }, clock = { at: 1_000_000 }) {
   let removed: ((deviceId: string) => void) | null = null;
   const events: { stream: string; payload: unknown }[] = [];
   let version = 0;
@@ -52,6 +52,7 @@ function runtime(listed: { services: ListeningService[] }) {
     appPort: () => undefined,
     address: () => "127.0.0.1",
     pollMs: 1_000_000_000,
+    now: () => clock.at,
     readServices: async () => listed.services,
     signature: async () => {
       const now = JSON.stringify(listed.services);
@@ -107,31 +108,67 @@ describe("shares (#2788)", () => {
     });
   });
 
-  test("a service a chat starts is shared by itself and the chat told; stopped by hand, it stays unshared", async () => {
+  test("a service a chat starts is shared by itself once it has listened 5 s, and the chat told; stopped by hand, it stays unshared", async () => {
     const port = upstream();
     const listed = { services: [service(port, { threadId: T1 })] };
-    const { shares, events, call } = runtime(listed);
+    const clock = { at: 1_000_000 };
+    const { shares, events, call } = runtime(listed, clock);
+    const told = () =>
+      events.find((event) => event.stream === "A0.shares/sharedForChat")?.payload as
+        | { threadId: ThreadId; share: Share }
+        | undefined;
     await shares.poll();
-    const told = events.find((event) => event.stream === "A0.shares/sharedForChat")?.payload as {
-      threadId: ThreadId;
-      share: Share;
-    };
-    expect(told.threadId).toBe(T1);
-    expect(told.share.automatic).toBe(true);
-    await call("stop", { id: told.share.id });
+    expect(told()).toBeUndefined();
+    clock.at += SHARE_AFTER_MS;
+    await shares.poll();
+    expect(told()?.threadId).toBe(T1);
+    expect(told()?.share.automatic).toBe(true);
+    await call("stop", { id: told()?.share.id });
     listed.services = [service(port, { threadId: T1, command: "vite --again" })];
+    clock.at += SHARE_AFTER_MS;
     await shares.poll();
     expect(((await call("list", {})) as SharesList).shares).toEqual([]);
   });
 
-  test("a share ends when its service stops listening", async () => {
+  test("a service that comes and goes every 2 s is never shared (#2836)", async () => {
+    const port = upstream();
+    const listed: { services: ListeningService[] } = { services: [] };
+    const clock = { at: 1_000_000 };
+    const { shares, events } = runtime(listed, clock);
+    for (let start = 1; start <= 10; start += 1) {
+      listed.services = [service(port, { threadId: T1, startedAt: start })];
+      await shares.poll();
+      clock.at += 2_000;
+      listed.services = [];
+      await shares.poll();
+      clock.at += 2_000;
+    }
+    expect(events.filter((event) => event.stream === "A0.shares/sharedForChat")).toEqual([]);
+  });
+
+  test("a share ends once its service has been gone 10 s; back before then, it stays (#2836)", async () => {
     const port = upstream();
     const listed = { services: [service(port)] };
-    const { shares, call } = runtime(listed);
+    const clock = { at: 1_000_000 };
+    const { shares, call } = runtime(listed, clock);
     const share = (await call("share", { port })) as Share;
+    const kept = async () => ((await call("list", {})) as SharesList).shares.map((each) => each.id);
     listed.services = [];
     await shares.poll();
-    expect(((await call("list", {})) as SharesList).shares).toEqual([]);
+    clock.at += 4_000;
+    await shares.poll();
+    listed.services = [service(port)];
+    await shares.poll();
+    expect(await kept()).toEqual([share.id]);
+
+    listed.services = [];
+    await shares.poll();
+    clock.at += END_AFTER_MS - 1;
+    await shares.poll();
+    expect(await kept()).toEqual([share.id]);
+    clock.at += 1;
+    await shares.poll();
+    expect(await kept()).toEqual([]);
     await expect(fetch(share.url)).rejects.toThrow();
   });
 

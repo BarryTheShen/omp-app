@@ -49,7 +49,12 @@ realTest.describe("new UI: ports and pages on your devices", () => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
       await page.getByRole("button", { name: "Ports", exact: true }).click();
+      // A service no chat started is folded away under the machine's other services (#2836).
       const row = ports(page).getByRole("listitem", { name: `Port ${port}` });
+      const others = ports(page).getByRole("button", { name: /^Other services on this machine/ });
+      await expect(others).toHaveAttribute("aria-expanded", "false", { timeout: 30_000 });
+      await expect(row).toHaveCount(0);
+      await others.click();
       await expect(row).toBeVisible({ timeout: 30_000 });
       await row.getByRole("button", { name: "Share", exact: true }).click();
 

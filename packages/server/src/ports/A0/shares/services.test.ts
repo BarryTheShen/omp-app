@@ -19,8 +19,8 @@ afterEach(async () => {
 });
 
 /**
- * A process in the fake `/proc`: its name, parent, control group and the sockets it holds. Each leads a session of its
- * own, as omp's bash tool starts every command.
+ * A process in the fake `/proc`: its name, parent, control group and the sockets it holds, and its command line (its name
+ * unless given). Each leads a session of its own, as omp's bash tool starts every command.
  */
 async function process(
   base: string,
@@ -29,13 +29,14 @@ async function process(
   parent: number,
   cgroup: string,
   inodes: readonly number[],
+  cmdline: readonly string[] = [comm],
 ) {
   const dir = join(base, String(pid));
   await mkdir(join(dir, "fd"), { recursive: true });
   for (const [fd, inode] of inodes.entries())
     await symlink(`socket:[${inode}]`, join(dir, "fd", String(fd + 3)));
   await writeFile(join(dir, "comm"), `${comm}\n`);
-  await writeFile(join(dir, "cmdline"), `${comm}\0`);
+  await writeFile(join(dir, "cmdline"), `${cmdline.join("\0")}\0`);
   const fields = [
     "S",
     String(parent),
@@ -163,6 +164,41 @@ describe("the services a share can open (#2788)", () => {
     });
     expect(services.map((entry) => [entry.port, entry.address, entry.threadId])).toEqual([
       [5173, "127.0.0.1", T1],
+    ]);
+  });
+
+  test("omp's browser relay is never shared, and a chat host's own stats page (/stats) is that chat's service (#2836)", async () => {
+    root = await mkdtemp(join(tmpdir(), "omp-app-proc-"));
+    await mkdir(join(root, "net"));
+    await writeFile(
+      join(root, "net/tcp"),
+      HEADER +
+        listen(0, "0100007F:2408", 1) + // 127.0.0.1:9224, omp's browser relay, started by the chat
+        listen(1, "0100007F:0F07", 2) + // 127.0.0.1:3847, omp's stats page, in the chat's host itself
+        listen(2, "0100007F:95F1", 3), // 127.0.0.1:38385, the host's own
+    );
+    await writeFile(join(root, "net/tcp6"), HEADER);
+    await writeFile(join(root, "stat"), "btime 1700000000\n");
+    const scope = "/user.slice/user-1000.slice/user@1000.service/app.slice/omp-app-chat-a.scope";
+    await process(root, 100, "bun", 1, scope, [2, 3]);
+    await process(
+      root,
+      200,
+      "bun",
+      100,
+      scope,
+      [1],
+      ["bun", "omp", "browser-relay", "--port", "9224"],
+    );
+    const services = await listServices({
+      chats: () => [{ pid: 100, threadId: T1 }],
+      ownPid: 600,
+      ownSocket: () => false,
+      proc: { root, ticksPerSecond: 100 },
+    });
+    expect(services.map((entry) => [entry.port, entry.threadId, entry.neverShare])).toEqual([
+      [3847, T1, false],
+      [9224, T1, true],
     ]);
   });
 });

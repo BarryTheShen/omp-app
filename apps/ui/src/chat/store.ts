@@ -75,8 +75,11 @@ export interface ChatNotice {
   readonly text: string;
   /** `status`: one of omp's status lines, too long for a toast: a dim line in the chat, as omp's terminal shows it. */
   readonly level: "output" | "status" | "info" | "warning" | "error";
-  /** A service this chat started, shared by itself (#2788): its one-time link, null while a new one is made. */
-  readonly share?: { readonly id: string; readonly url: string | null };
+  /**
+   * A service this chat started, shared by itself (#2788): its one-time link, null while a new one is made, and whether
+   * the share has ended (#2836).
+   */
+  readonly share?: { readonly id: string; readonly url: string | null; readonly ended: boolean };
 }
 
 /**
@@ -650,17 +653,17 @@ export class ChatStore {
         id: (this.#notices.at(-1)?.id ?? 0) + 1,
         text,
         level: "info",
-        share: { id: shareId, url: null },
+        share: { id: shareId, url: null, ended: false },
       },
     ];
     this.#publish();
   }
 
-  /** The shared service's one-time link changed: made again, or taken. */
-  setShareLink(shareId: string, url: string | null): void {
+  /** The shared service's one-time link changed: made again, or taken; or the share ended. */
+  setShareLink(shareId: string, url: string | null, ended: boolean): void {
     if (!this.#notices.some((notice) => notice.share?.id === shareId)) return;
     this.#notices = this.#notices.map((notice) =>
-      notice.share?.id === shareId ? { ...notice, share: { id: shareId, url } } : notice,
+      notice.share?.id === shareId ? { ...notice, share: { id: shareId, url, ended } } : notice,
     );
     this.#publish();
   }

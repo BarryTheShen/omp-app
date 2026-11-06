@@ -23,7 +23,19 @@ export const NEVER_SHARE_PROGRAMS: ReadonlySet<string> = new Set([
   "WebKitWebDriver",
 ]);
 
-/** A chat's host process: its own sockets are not services, and what it starts is that chat's. */
+/**
+ * omp's own helpers a chat starts, never shared, by their command line (#2836): its browser relay (`browser-relay`, on
+ * port 9224 unless set otherwise), which drives the user's own browser.
+ */
+const NEVER_SHARE_COMMANDS: readonly RegExp[] = [/\bbrowser-relay\b/];
+
+/**
+ * The port omp's stats page (`/stats`) listens on, inside the chat's own process: omp's `DEFAULT_STATS_DASHBOARD_PORT`
+ * (`slash-commands/helpers/stats-dashboard.ts`), copied, as that module loads omp's whole stats package.
+ */
+const OMP_STATS_PORT = 3847;
+
+/** A chat's host process: its own sockets are not services (but for omp's stats page), and what it starts is that chat's. */
 export interface ChatHost {
   readonly pid: number;
   readonly threadId: ThreadId;
@@ -51,16 +63,16 @@ const unitOf = (cgroup: string | null): string | null =>
 
 /**
  * The services listening on this machine that a share can pass requests to (#2788), one a port: those listening on the
- * machine itself or on every network. Not the app's own process or ports, nor the chats' host processes. A service in a
- * chat host's own systemd scope, or started under its host process (without systemd, a daemon that left its parent is no
- * chat's), was started by that chat. A scope the server runs in too (its own service, or a chat's scope it was started
- * from), or that holds several chats, names none of them.
+ * machine itself or on every network. Not the app's own process or ports, nor the chats' host processes, but for omp's
+ * stats page, which `/stats` starts inside a chat's host (#2836). A service in a chat host's own systemd scope, or started
+ * under its host process (without systemd, a daemon that left its parent is no chat's), was started by that chat. A scope
+ * the server runs in too (its own service, or a chat's scope it was started from), or that holds several chats, names
+ * none of them.
  */
 export async function listServices(sources: ServiceSources): Promise<ListeningService[]> {
   const proc = sources.proc ?? { root: "/proc", ticksPerSecond: 100 };
   const listening = await readListening(proc);
   const chats = sources.chats();
-  const hosts = new Set(chats.map((chat) => chat.pid));
   const byHost = new Map(chats.map((chat) => [chat.pid, chat.threadId]));
   const unitOfPid = async (pid: number): Promise<string | null> => {
     const cgroup = await readFile(join(proc.root, String(pid), "cgroup"), "utf8").catch(() => null);
@@ -81,7 +93,9 @@ export async function listServices(sources: ServiceSources): Promise<ListeningSe
   const neverShare = sources.neverShare ?? NEVER_SHARE_PROGRAMS;
   const services = new Map<number, ListeningService>();
   for (const socket of listening) {
-    if (socket.pid === sources.ownPid || (socket.pid !== null && hosts.has(socket.pid))) continue;
+    if (socket.pid === sources.ownPid) continue;
+    const host = socket.pid === null ? undefined : byHost.get(socket.pid);
+    if (host !== undefined && socket.port !== OMP_STATS_PORT) continue;
     if (
       own(socket.address, socket.port) ||
       !REACHABLE_HERE.has(socket.address) ||
@@ -90,6 +104,7 @@ export async function listServices(sources: ServiceSources): Promise<ListeningSe
       continue;
     const unit = unitOf(socket.cgroup);
     const threadId =
+      host ??
       (unit === null ? undefined : byUnit.get(unit)) ??
       byHost.get(socket.ancestors.find((pid) => byHost.has(pid)) ?? -1) ??
       null;
@@ -100,7 +115,9 @@ export async function listServices(sources: ServiceSources): Promise<ListeningSe
       command: socket.command,
       startedAt: socket.startedAt,
       threadId,
-      neverShare: socket.program !== null && neverShare.has(socket.program),
+      neverShare:
+        (socket.program !== null && neverShare.has(socket.program)) ||
+        NEVER_SHARE_COMMANDS.some((pattern) => pattern.test(socket.command ?? "")),
     });
   }
   return [...services.values()].sort((left, right) => left.port - right.port);

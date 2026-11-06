@@ -74,7 +74,8 @@ const NOTICE_TEXT: Record<Exclude<ChatNotice["level"], "status">, string> = {
 
 /**
  * What a built-in command printed, or omp's notification, kept until it is dismissed; omp's status lines stay dim. A
- * service this chat started that was shared (#2788) has Open: a one-time link into it on this device.
+ * service this chat started that was shared (#2788) has Open: a one-time link into it on this device; once its share
+ * ended (the service stopped), the row says so instead (#2836).
  */
 export function NoticeRow({
   notice,
@@ -98,7 +99,11 @@ export function NoticeRow({
         {notice.text}
       </pre>
       {share !== undefined &&
-        (share.url === null ? (
+        (share.ended ? (
+          <span className="shrink-0 self-center text-xs text-t3">
+            The service stopped: share ended
+          </span>
+        ) : share.url === null ? (
           <Button size="xs" variant="secondary" disabled>
             <ExternalLink /> Open
           </Button>

@@ -75,17 +75,23 @@ export function PageShare({
         Share as a page
       </Button>
     );
-  return <OpenPage client={client} share={share} />;
+  // A share that ended (stopped from Ports, or unused for 12 hours) leaves the page unshared: Share as a page again.
+  return <OpenPage client={client} share={share} onEnded={() => setShare(null)} />;
 }
 
 function OpenPage({
   client,
   share,
+  onEnded,
 }: {
   readonly client: AppClient;
   readonly share: Share;
+  readonly onEnded: () => void;
 }): ReactNode {
-  const { url, used } = useShareLink(client, share.id);
+  const { url, used, ended } = useShareLink(client, share.id);
+  useEffect(() => {
+    if (ended) onEnded();
+  }, [ended, onEnded]);
   if (url === null)
     return (
       <Button variant="ghost" size="sm" disabled>

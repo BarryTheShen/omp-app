@@ -412,9 +412,12 @@ export class ChatController {
     this.#followShares();
   }
 
-  /** A service this chat started is shared by itself (#2788): the chat gets a row that says so, with its link. */
+  /**
+   * A service this chat started is shared by itself (#2788): the chat gets a row that says so, with its link. When the
+   * shares change (one ended, say), each link is made again, so a row whose share ended says so at once (#2836).
+   */
   #followShares(): void {
-    this.#stopShares = follow(this.client.subscribe(SharesPort, "sharedForChat"), (shared) => {
+    const stopShared = follow(this.client.subscribe(SharesPort, "sharedForChat"), (shared) => {
       if (shared.threadId !== this.#threadId || this.#shareLinks.has(shared.share.id)) return;
       this.store.addShareNotice(
         `${shared.program ?? "A service"} is listening on port ${shared.share.port}. It opens on your paired devices.`,
@@ -422,11 +425,18 @@ export class ChatController {
       );
       this.#shareLinks.set(
         shared.share.id,
-        keepShareLink(this.client, shared.share.id, (url) =>
-          this.store.setShareLink(shared.share.id, url),
+        keepShareLink(this.client, shared.share.id, (url, ended) =>
+          this.store.setShareLink(shared.share.id, url, ended),
         ),
       );
     });
+    const stopChanged = follow(this.client.subscribe(SharesPort, "changed"), () => {
+      for (const link of this.#shareLinks.values()) link.refresh();
+    });
+    this.#stopShares = () => {
+      stopShared();
+      stopChanged();
+    };
   }
 
   /** A share's link in the chat was followed: its ticket is taken, so a new one is made. */

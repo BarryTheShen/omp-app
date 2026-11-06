@@ -22,6 +22,14 @@ import { type Gate, openGate } from "./gate";
 import { listeningSignature } from "./listening";
 import { type ChatHost, listServices } from "./services";
 
+/**
+ * A chat's service is shared by itself once it has listened this long, and a share ends once its service has been gone
+ * this long (#2836): services that came and went every 2 s made and ended about 400 shares in 14 minutes, each a row
+ * that appeared and vanished, and a share opened a moment after its service went had ended.
+ */
+export const SHARE_AFTER_MS = 5_000;
+export const END_AFTER_MS = 10_000;
+
 export interface SharesPortContext {
   readonly pairing: Pick<DevicePairing, "store" | "connections">;
   /** Publishes an event into the replay hub. */
@@ -86,6 +94,10 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
   const held = new Map<string, Held>();
   /** Services stopped by hand, by port and start: not shared again by themselves. */
   const stoppedByHand = new Set<string>();
+  /** A chat's service not shared yet, by port and start: when it was first seen listening. */
+  const firstSeen = new Map<string, number>();
+  /** A service share whose service is not listening, by share: since when. */
+  const goneSince = new Map<string, number>();
   const changed = streamKey(SharesPort.name, "changed");
   const sharedForChat = streamKey(SharesPort.name, "sharedForChat");
   const announce = () => context.publish(changed, { at: now() });
@@ -155,6 +167,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
   };
 
   const end = (id: string, reason: string): Held | undefined => {
+    goneSince.delete(id);
     const entry = held.get(id);
     if (entry === undefined) return undefined;
     entry.gate.stop();
@@ -174,17 +187,23 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
         if (now() - entry.gate.lastUsedAt() > SHARE_IDLE_MS)
           end(entry.share.id, "unused for 12 hours");
       const next = await (context.signature?.() ?? listeningSignature());
-      if (next === signature) return;
+      // The sockets as they were, and nothing waiting on its time: nothing to look at.
+      const moved = next !== signature;
+      if (!moved && firstSeen.size === 0 && goneSince.size === 0) return;
       signature = next;
       const listed = await services();
       const ports = new Set(listed.map((service) => service.port));
-      for (const entry of [...held.values()])
-        if (
-          entry.share.kind === "service" &&
-          entry.share.port !== null &&
-          !ports.has(entry.share.port)
-        )
-          end(entry.share.id, "the service stopped");
+      for (const entry of [...held.values()]) {
+        if (entry.share.kind !== "service" || entry.share.port === null) continue;
+        if (ports.has(entry.share.port)) {
+          goneSince.delete(entry.share.id);
+          continue;
+        }
+        const since = goneSince.get(entry.share.id) ?? now();
+        goneSince.set(entry.share.id, since);
+        if (now() - since >= END_AFTER_MS) end(entry.share.id, "the service stopped");
+      }
+      const waiting = new Set<string>();
       for (const service of listed) {
         if (
           service.threadId === null ||
@@ -192,8 +211,15 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
           sharedPort(service.port) !== undefined
         )
           continue;
-        if (stoppedByHand.has(`${service.port}:${service.startedAt}`)) continue;
-        if (address() === null) continue;
+        const key = `${service.port}:${service.startedAt}`;
+        if (stoppedByHand.has(key) || address() === null) continue;
+        const since = firstSeen.get(key) ?? now();
+        if (now() - since < SHARE_AFTER_MS) {
+          firstSeen.set(key, since);
+          waiting.add(key);
+          continue;
+        }
+        firstSeen.delete(key);
         const entry = await shareService(service, true);
         context.publish(sharedForChat, {
           threadId: service.threadId,
@@ -201,7 +227,9 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
           program: service.program,
         });
       }
-      announce();
+      // A service gone before its time came is forgotten.
+      for (const key of [...firstSeen.keys()]) if (!waiting.has(key)) firstSeen.delete(key);
+      if (moved) announce();
     } catch (error) {
       context.logger?.warn("share.poll_failed", {
         error: error instanceof Error ? error.message : String(error),
