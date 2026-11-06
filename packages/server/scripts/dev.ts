@@ -70,7 +70,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { sessionDisplayTitle } from "../src/modules/A1/sessions/title-card";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
-import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
+import { createUsageLimitStore, UsageReadings } from "../src/modules/A1/usage-limits";
 import { createWorkspaceFiles } from "../src/modules/A1/workspace-files";
 import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
 import {
@@ -421,6 +421,11 @@ export async function createCompositionServer(
   const usageLimitStore = createUsageLimitStore({ env, command: ompCmd });
   // The server reads the limits itself, so every page follows them and the usage pause judges them (#2781).
   usageLimitStore.watch();
+  // Each window's readings over the last day, kept on disk, for its pace on the dashboard (#2836).
+  const usageReadings = await UsageReadings.open(join(appDataDir, "usage-readings.json"), {
+    logger,
+  });
+  usageLimitStore.subscribe((result) => usageReadings.add(result));
   const a0Context: A0PortContext = {
     processRegistry,
     newChatsReady,
@@ -652,6 +657,7 @@ export async function createCompositionServer(
     modelPreferenceStore,
     providerAccountStore,
     usageLimitStore,
+    usageReadings,
     extensionCatalog,
     memoryStore,
     ruleStore,

@@ -21,7 +21,7 @@ import type { RuleStoreService } from "../rules";
 import type { SessionImportStoreService } from "../session-import";
 import type { SessionFileStore } from "../sessions";
 import type { UrlCatalogService } from "../url-catalog";
-import type { UsageLimitStoreService } from "../usage-limits";
+import type { UsageLimitStoreService, UsageReadings } from "../usage-limits";
 import type { WorkspaceFilesService } from "../workspace-files";
 import type { A1EventPublisher, A1StreamActivity } from "./helper";
 /** Stores and host seams composed by the main server; A1 handlers never create parallel stores. */
@@ -37,6 +37,8 @@ export interface A1PortContext {
   readonly modelPreferenceStore: ModelPreferenceStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
   readonly usageLimitStore: UsageLimitStoreService;
+  /** Each usage window's readings over the last day and its pace (#2836). */
+  readonly usageReadings: UsageReadings;
   readonly extensionCatalog: ExtensionCatalogService;
   readonly attachmentStore: AttachmentStoreService;
   readonly memoryStore: MemoryStoreService;

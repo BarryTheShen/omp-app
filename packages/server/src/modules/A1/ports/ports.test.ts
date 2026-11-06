@@ -240,6 +240,7 @@ function createContext(
       read: async () => ({ state: "unavailable" as const, reason: "Not read in this test." }),
       subscribe: () => () => undefined,
     },
+    usageReadings: { pace: () => ({ windows: [] }) },
     providerAccountStore: {
       listProviders: async () => {
         if (options.providerFailure) throw options.providerFailure;

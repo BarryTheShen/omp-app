@@ -40,6 +40,27 @@ export const UsageLimitsResult = z.discriminatedUnion("state", [
 export type UsageLimitsResult = z.infer<typeof UsageLimitsResult>;
 
 /**
+ * One window's pace (#2836), from the server's own readings of it over the last hour: percent an hour, and where that
+ * leads: when the window is full, if before its reset, or how full at its reset.
+ */
+export const UsageWindowPace = z.strictObject({
+  providerId: z.string().min(1).max(128),
+  label: z.string().min(1).max(64),
+  /** Percent of the window an hour; null while the readings are too few or too close together. */
+  perHour: z.number().min(0).max(1_000_000).nullable(),
+  /** When the window would be full at this pace (ISO), if that comes before its reset. */
+  fullAt: z.string().max(64).nullable(),
+  /** How full the window would be at its reset at this pace, at most 100; null without a reset time or a pace. */
+  atReset: z.number().min(0).max(100).nullable(),
+  /** How many readings of the window the server keeps (a day's). */
+  readings: z.number().int().min(0).max(1_000_000),
+});
+export type UsageWindowPace = z.infer<typeof UsageWindowPace>;
+
+export const UsagePaceResult = z.strictObject({ windows: z.array(UsageWindowPace).max(1_024) });
+export type UsagePaceResult = z.infer<typeof UsagePaceResult>;
+
+/**
  * The provider usage limits omp reports for the signed-in accounts (read-only; cached by the host). The host reads them
  * by itself too, and every fresh read goes to every page as `changed` (#2781).
  */
@@ -49,6 +70,12 @@ export const UsageLimitStore = definePort({
     read: {
       args: z.strictObject({}),
       result: UsageLimitsResult,
+      capability: "host.usage-limits",
+    },
+    /** Each window's pace from the server's readings (#2836). */
+    pace: {
+      args: z.strictObject({}),
+      result: UsagePaceResult,
       capability: "host.usage-limits",
     },
   },
