@@ -1,4 +1,4 @@
-import type { MarkedExtension, Tokens } from "@oh-my-pi/pi-utils/marked";
+import type { MarkedExtension, TokenizerThis, Tokens } from "@oh-my-pi/pi-utils/marked";
 import {
 	type MathSpan,
 	mathBlockInContext,
@@ -15,6 +15,61 @@ import { escapeHtml } from "../../lib/format";
  */
 function typesettable(span: MathSpan): boolean {
 	return !span.body.includes("`");
+}
+
+/** An own-line display opener: `$$` or `\[` alone on its line, after up to 3 spaces. */
+const OPENER_LINE = /^ {0,3}(?:\$\$|\\\[)[ \t]*\n?$/;
+
+/** The line of `source` that starts at `start`, with its line break; "" past the end. */
+function lineAt(source: string, start: number): string {
+	if (start >= source.length) return "";
+	const end = source.indexOf("\n", start);
+	return end === -1 ? source.slice(start) : source.slice(start, end + 1);
+}
+
+/**
+ * Whether the lexer may start a block at `line`, with `next` under it: the core's `isBlockStart`, which
+ * `@oh-my-pi/pi-utils/marked` does not export, read wider where it is unsure and never narrower, so a paragraph
+ * ended here never runs past one the core would have ended.
+ */
+function mayStartBlock(line: string, next: string): boolean {
+	if (line.trim() === "") return true;
+	if (/^ {0,3}(?:`{3,}|~{3,})/.test(line)) return true; // a fence
+	if (/^ {0,3}#{1,6}(?:\s|$)/.test(line)) return true; // a heading
+	if (/^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*\n?$/.test(line)) return true; // a rule
+	if (/^ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]|\n|$)/.test(line)) return true; // a list item
+	if (/^ {0,3}[>[<]/.test(line)) return true; // a quote, a link definition, HTML
+	if (/^ {4}\S/.test(line)) return true; // indented code
+	if (/^ {0,3}(?:=+|-+)[ \t]*\n?$/.test(next)) return true; // a heading's underline under it
+	return line.includes("|") && /^[\s|:-]*-[\s|:-]*$/.test(next); // a table's head
+}
+
+/**
+ * The paragraph right above an own-line display block, ended at the block's opener (#2840). A paragraph runs on
+ * until a line that starts a block, and `$$` and `\[` start none, so an equation written under its line of text
+ * joined that paragraph, and a line of it that Markdown reads as a block start ended the paragraph there: a lone
+ * `=` made the line above it a heading, `- x` a list item. Ended at the opener, the paragraph leaves the block
+ * rule to take the whole equation at the next block start. Anything the core would not make a paragraph of, and a
+ * paragraph with no closed block under it, are left to the core.
+ */
+function paragraphAboveMath(context: TokenizerThis, source: string): Tokens.Generic | undefined {
+	const first = lineAt(source, 0);
+	if (/^ {4}/.test(first) || OPENER_LINE.test(first) || mayStartBlock(first, lineAt(source, first.length)))
+		return undefined;
+	let start = first.length;
+	for (;;) {
+		const line = lineAt(source, start);
+		if (line === "") return undefined;
+		if (OPENER_LINE.test(line) && mathBlockInContext(context, source.slice(start))) {
+			const raw = source.slice(0, start);
+			const text = raw.slice(0, -1);
+			return { type: "paragraph", raw, text, tokens: context.lexer.inline(text, []) };
+		}
+		// As in the core, a line indented as code goes on with the paragraph it is attached to.
+		const indented = line.trim() !== "" && /^ {4}/.test(line);
+		if (!indented && mayStartBlock(line, lineAt(source, start + line.length))) return undefined;
+		start += line.length;
+	}
 }
 
 function renderMath(token: Tokens.Generic): string | false {
@@ -47,11 +102,11 @@ function renderMath(token: Tokens.Generic): string | false {
  * scan hint come from `@oh-my-pi/pi-utils/math-delimiters`, so this renderer and
  * the TUI agree on what counts as math; only presentation policy lives here.
  *
- * Two limits follow from that shared behavior, both matching the TUI: a rejected
+ * One limit follows from that shared behavior, matching the TUI: a rejected
  * opener hides later spans on its line ("it costs $5, and the growth is $x^2$"
- * typesets nothing, since marked drops a start hint at its own position), and a
- * display block whose body contains a blank line must be preceded by one —
- * attached blocks are tokenized by the inline rule, which a blank line ends.
+ * typesets nothing, since marked drops a start hint at its own position). An
+ * own-line block right under a line of text ends that line's paragraph
+ * (`paragraphAboveMath`), so it is a block as it is after a blank line.
  */
 export const mathExtension: MarkedExtension = {
 	extensions: [
@@ -66,6 +121,14 @@ export const mathExtension: MarkedExtension = {
 				return { type: "math", raw: block.raw, text: block.body, display: true };
 			},
 			renderer: renderMath,
+		},
+		{
+			// Before the block rule: it hands that rule the equation at the next block start.
+			name: "mathLeadIn",
+			level: "block",
+			tokenizer(source) {
+				return paragraphAboveMath(this, source);
+			},
 		},
 		{
 			name: "math",
