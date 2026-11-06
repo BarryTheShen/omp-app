@@ -113,12 +113,29 @@
     @apply border-border outline-ring/50;
   }
 
-  /* The safe areas (the notch, the status bar, the home indicator, the rounded corners), 0 on a desktop. */
+  /*
+   * The safe areas (the notch, the status bar, the home indicator, the rounded corners), 0 on a desktop.
+   * `--status-inset` is the status bar's own; `--safe-top`, where the screens start, is lower on a phone (below).
+   */
   :root {
-    --safe-top: env(safe-area-inset-top, 0px);
+    --status-inset: env(safe-area-inset-top, 0px);
+    --safe-top: var(--status-inset);
     --safe-right: env(safe-area-inset-right, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-left: env(safe-area-inset-left, 0px);
+  }
+
+  /*
+   * A phone's screens start 1.25rem below the status bar of a Home Screen app. iOS 26 and later lay their own blur (the
+   * scroll edge effect of Liquid Glass) over about 35 pt under the status bar, above the page, and no CSS turns it off:
+   * it smeared the top bar's buttons and title. ChatGPT's header starts 1rem lower for the same reason; 1.25rem clears
+   * the buttons' icons, 14 px into the bar. The band keeps the screens' colour (the strip below), so the blur over it
+   * shows nothing. Where no status bar is over the page (a browser tab) nothing moves: the `min()` is 0 there.
+   */
+  @media (max-width: 639px) {
+    :root {
+      --safe-top: calc(var(--status-inset) + min(1.25rem, var(--status-inset) * 1000));
+    }
   }
 
   /*
@@ -161,8 +178,8 @@
   }
 
   /*
-   * A solid strip behind the status bar, as high as it: iOS 27 draws a blur over the top of a Home Screen app unless a
-   * fixed element with a background sits there. 0 high wherever there is no status bar over the page.
+   * A solid strip over the status bar, and on a phone the band under it (`--safe-top`), so what iOS blurs there is one
+   * colour. 0 high wherever there is no status bar over the page.
    */
   #root::before {
     content: "";
@@ -172,6 +189,23 @@
     background: var(--page);
     z-index: 60;
     pointer-events: none;
+  }
+
+  /*
+   * On a phone each screen fills the display, so the strips behind the status bar and the home bar take the screens'
+   * colour: the page's darker colour there read as two empty bands. Nothing is put in them; the camera, the clock and
+   * the home bar stay clear. Settings, a screen of its own over the rest, gives the top strip its colour while it is
+   * open (the strip is drawn over everything, for iOS's sake).
+   */
+  @media (max-width: 639px) {
+    body,
+    #root::before {
+      background-color: var(--panel);
+    }
+
+    :root:has([data-tour="settings-sheet"]) #root::before {
+      background-color: var(--popover);
+    }
   }
 
   /* iOS zooms the page into a text field under 16 px when it gets the focus. */
@@ -500,6 +534,14 @@
  * `!important`.
  */
 @media (max-width: 639px) {
+  /*
+   * The message box's foot: with the keyboard down, the home bar's inset under it is room enough; with it up
+   * (`--app-bottom` 0), a small gap above the keyboard.
+   */
+  .composer-foot {
+    padding-bottom: max(0px, calc(0.5rem - var(--app-bottom, var(--safe-bottom))));
+  }
+
   [data-slot="popover-positioner"],
   [data-slot="dropdown-menu-positioner"],
   [data-slot="select-positioner"] {

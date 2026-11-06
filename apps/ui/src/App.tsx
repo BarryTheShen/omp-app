@@ -1,7 +1,7 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { AppPort, type FolderPath, RunningChatsPort, type ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
-import { ChevronLeft, Info, PanelLeftOpen, SquarePen } from "lucide-react";
+import { ChevronLeft, PanelLeftOpen, SquarePen } from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ConnectionBanner, REFUSED_WORDS } from "./ConnectionBanner";
 import { ConnectionDot } from "./ConnectionDot";
 import type { ChatController, ChatTarget } from "./chat/controller";
+import { PhoneDetailsButton } from "./chat/PhoneDetailsButton";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
@@ -472,16 +473,10 @@ function Shell({
               focused={view.focused}
               onDeleted={(id) => workspace.current?.forget(id)}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-11 shrink-0 text-t2"
-              aria-label="Details"
-              data-tour="chat-details-button"
-              onClick={() => showPanel(sidePanel.panel)}
-            >
-              <Info />
-            </Button>
+            <PhoneDetailsButton
+              chat={focusedChat}
+              onOpen={(panel) => showPanel(panel ?? sidePanel.panel)}
+            />
             <Button
               variant="ghost"
               size="icon"

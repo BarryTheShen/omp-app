@@ -1056,7 +1056,7 @@ const CHAT_DETAILS_TOUR: Tour = {
     {
       target: part("chat-details-button"),
       title: "This chat's details",
-      text: "On a phone, ⓘ opens this chat's usage, agents, progress, jobs and side questions as a screen of their own. Tap it.",
+      text: "On a phone, ⓘ in the top bar opens this chat's usage, agents, progress, jobs and side questions as a screen of their own. While omp keeps a to-do list or the chat has agents, the button shows their counts in place of ⓘ. Tap it.",
       action: { kind: "click" },
       phoneOnly: true,
     },
@@ -1064,6 +1064,30 @@ const CHAT_DETAILS_TOUR: Tour = {
       target: SIDE_PANEL,
       title: "One screen, named tabs",
       text: "The tabs at the top switch between them; ‹ Chat brings you back to the chat as you left it.",
+      action: next,
+      phoneOnly: true,
+    },
+  ],
+};
+
+/** #2837: on a phone, omp's to-do list and the chat's agents show in the top bar, not in a row above the message box. */
+const PHONE_TOP_TOUR: Tour = {
+  id: "phone-top-2026-11-06",
+  title: "The to-do list and agents on the phone",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("chat-details-button"),
+      title: "Up in the top bar",
+      text: "On a phone, while omp keeps a to-do list or the chat has agents, this button shows how far the list got and how many agents are running, where ⓘ was. The row above the message box is gone. Tap it.",
+      action: { kind: "click" },
+      phoneOnly: true,
+    },
+    {
+      target: SIDE_PANEL,
+      title: "Progress first",
+      text: "It opens the chat's details at Progress, or at Agents when there is no list. ‹ Chat brings you back to the chat as you left it.",
       action: next,
       phoneOnly: true,
     },
@@ -1645,8 +1669,15 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-06-phone-top",
+    when: "2026-11-06T01:10:00-06:00",
+    summary:
+      "On a phone, omp's to-do list and the chat's agents moved from the row above the message box into the top bar: the button where ⓘ was shows how far the list got and how many agents are running, and a tap opens them. In the Home Screen app the top bar starts a little lower, below the band iOS blurs under the status bar, so its buttons and title stay sharp. The chat starts right under the top bar, and the empty bands above and below it are gone.",
+    tours: [PHONE_TOP_TOUR],
+  },
+  {
     id: "2026-11-06-thinking-menu",
-    when: "2026-11-06T00:22:00-06:00",
+    when: "2026-11-06T00:20:00-06:00",
     summary:
       "The thinking level in the message box is a menu now: click or tap it to see every level the model offers and pick one, instead of stepping through them. Shift+Tab still steps to the next.",
     tours: [THINKING_MENU_TOUR],

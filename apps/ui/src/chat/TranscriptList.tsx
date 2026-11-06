@@ -333,6 +333,8 @@ export function TranscriptList({
   const results = useMemo(() => toolResults(entries, jobs), [entries, jobs]);
   const measured = useRef<ReadonlyMap<unknown, number>>(new Map());
   const firstHeight = useFirstHeights(rows, measured);
+  // A phone's screen is small: the chat starts right under its top bar (each row keeps its own 10 px).
+  const phone = usePhone();
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -342,7 +344,7 @@ export function TranscriptList({
     followOnAppend: true,
     scrollEndThreshold: AT_END_PX,
     overscan: 6,
-    paddingStart: 24,
+    paddingStart: phone ? 0 : 24,
     paddingEnd: 16,
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;

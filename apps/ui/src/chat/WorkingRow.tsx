@@ -10,22 +10,19 @@ function elapsed(ms: number): string {
 /**
  * What omp is doing, how long it has been at it, and how to stop it: Esc, where there is a key for it (`stopKey`; a
  * phone has none, and its Stop button is beside the box). Pause (`onPause`) holds every agent at its next step, as omp's
- * `/pause`; a phone has it in its key row. What it is given (the phone's pills) shares the row.
+ * `/pause`; a phone has it in its key row.
  *
- * The line is a grid so that the dot and the time keep their room whatever shares the row: the step's name gives way
- * first (its column can shrink to nothing), then the pills beside it. On a phone a long current task used to push the
- * time onto two lines and over the progress pill.
+ * The line is a grid so that the dot and the time keep their room: the step's name gives way first (its column can
+ * shrink to nothing).
  */
 export function WorkingRow({
   activity,
   stopKey = true,
   onPause,
-  children,
 }: {
   readonly activity: ChatActivity;
   readonly stopKey?: boolean;
   readonly onPause?: () => void;
-  readonly children?: ReactNode;
 }): ReactNode {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -58,7 +55,6 @@ export function WorkingRow({
           Pause
         </button>
       )}
-      {children}
     </div>
   );
 }

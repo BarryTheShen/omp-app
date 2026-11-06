@@ -825,10 +825,10 @@ export const Composer = memo(function Composer({
   };
 
   return (
-    <div className="px-4 pt-2 pb-4 max-sm:px-2 max-sm:pb-2">
+    <div className="composer-foot px-4 pt-2 pb-4 max-sm:px-2">
       <div className="relative mx-auto max-w-[720px]">
         {toast !== null && <Toast toast={toast} onDone={onToastDone} />}
-        {/* On a phone the pills share the working row: one line between the chat and the box. */}
+        {/* On a phone the pills live in the top bar (`PhoneDetailsButton`): no row of their own above the box. */}
         {pausedAt !== null ? (
           <PausedRow
             pausedAt={pausedAt}
@@ -839,14 +839,16 @@ export const Composer = memo(function Composer({
           />
         ) : (
           activity !== null && (
-            <WorkingRow activity={activity} stopKey={!phone} {...(phone ? {} : { onPause: pause })}>
-              {phone && pills}
-            </WorkingRow>
+            <WorkingRow
+              activity={activity}
+              stopKey={!phone}
+              {...(phone ? {} : { onPause: pause })}
+            />
           )
         )}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
-        {hasPills && !(phone && activity !== null && pausedAt === null) && (
+        {hasPills && !phone && (
           <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">{pills}</div>
         )}
         {/* An error has a line of its own, as wide as the box and wrapping: a cut one can't be read. */}

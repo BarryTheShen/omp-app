@@ -187,35 +187,66 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
-    "beside a long plan's pill, the working line's time stays whole, on one line",
+    "omp's plan shows in the top bar, not in a row above the box; a tap there opens the chat's Progress (#2837)",
     async ({ realApp, browser }) => {
-      // A 375-point phone (an iPhone mini): the narrowest, where the pill leaves the line least room.
+      // A 375-point phone (an iPhone mini): the narrowest.
       const context = await browser.newContext({
         viewport: { width: 375, height: 812 },
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const topBar = page.locator('[data-tour="phone-top-bar"]');
+      // Nothing kept yet: the top bar has ⓘ.
+      await expect(topBar.getByRole("button", { name: "Details", exact: true })).toBeVisible();
       await box(page).fill("make_long_todos");
       await page.getByRole("button", { name: "Send" }).tap();
-      const plan = page.getByRole("button", { name: /^Todos: / });
+      const plan = topBar.getByRole("button", { name: /^Todos: 0 of 4 done, now: .*\. Details$/ });
       await expect(plan).toBeVisible({ timeout: 60_000 });
+      await expect(plan).toHaveText("0/4");
+      await expect(topBar.getByRole("button", { name: "Details", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0, { timeout: 60_000 });
-
+      // No pill above the message box, also while omp works, and the working line's time stays whole.
+      const composer = page.locator(".composer-foot");
       await box(page).fill("slow_tool 30");
       await page.getByRole("button", { name: "Send" }).tap();
-      // Two digits: the time at its widest before a minute.
       const clock = page.getByRole("status").getByText(/^[1-5]\ds$/);
       await expect(clock).toBeVisible({ timeout: 60_000 });
-      const time = await clock.boundingBox();
-      const pill = await plan.boundingBox();
-      if (time === null || pill === null)
-        throw new Error("the time and the plan's pill should be on the screen");
-      expect(time.height).toBeLessThan(20);
-      expect(time.x + time.width).toBeLessThanOrEqual(pill.x);
-      // The pill gave way instead: its task is cut short, and it stays on the screen.
-      expect(pill.x + pill.width).toBeLessThanOrEqual(375);
+      expect((await clock.boundingBox())?.height ?? 99).toBeLessThan(20);
+      await expect(composer.getByRole("button", { name: /^Todos: / })).toHaveCount(0);
+      const bar = await topBar.boundingBox();
+      const button = await plan.boundingBox();
+      expect((button?.x ?? 0) + (button?.width ?? 999)).toBeLessThanOrEqual(375);
+      expect(button?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(bar?.height ?? 0).toBe(44);
+
+      // The top bar's button opens the chat's details at Progress, with the plan.
+      await plan.tap();
+      await expect(page.getByRole("tab", { name: "Progress", selected: true })).toBeVisible();
+      await expect(
+        page.getByRole("tabpanel", { name: "Progress" }).getByText("Ship the update"),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Chat", exact: true }).tap();
       await page.getByRole("button", { name: "Stop" }).tap();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "a chat's agents show in the top bar while they run; with no plan a tap opens the chat's Agents (#2837)",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      await box(page).fill("spawn_long_subagent");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const topBar = page.locator('[data-tour="phone-top-bar"]');
+      const agents = topBar.getByRole("button", { name: /agents? running\. Details$/ });
+      await expect(agents).toBeVisible({ timeout: 60_000 });
+      await expect(
+        page.locator(".composer-foot").getByRole("button", { name: /running/ }),
+      ).toHaveCount(0);
+      await agents.tap();
+      await expect(page.getByRole("tab", { name: "Agents", selected: true })).toBeVisible();
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
@@ -1071,6 +1102,69 @@ realTest.describe("new UI on a phone", () => {
       await expect(highlighted).toBeInViewport();
       await context.close();
       expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the strips behind the status bar and the home bar take the screen's colour, the top bar starts below the band iOS blurs, and no empty band is left above or below the chat",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      // An iPhone's status bar and home bar (62 at the top, 34 at the bottom), through the app's own variables: a test
+      // browser has none.
+      await page.addStyleTag({
+        content: ":root{--status-inset:62px!important;--safe-bottom:34px!important}",
+      });
+      await box(page).fill("count_reply bands");
+      await page.getByRole("button", { name: "Send" }).tap();
+      await expect(page.getByText("count-1 bands")).toBeVisible({ timeout: 60_000 });
+      const shown = await page.evaluate(() => {
+        const edge = (selector: string) =>
+          document.querySelector(selector)?.getBoundingClientRect();
+        const keyRow = edge('[role="toolbar"][aria-label="Keys"]');
+        const strip = getComputedStyle(document.getElementById("root") as Element, "::before");
+        return {
+          chat: getComputedStyle(document.querySelector("main") as Element).backgroundColor,
+          top: strip.backgroundColor,
+          bottom: getComputedStyle(document.body).backgroundColor,
+          // iOS blurs about 35 pt under the status bar, over the page: the top bar starts 20 px lower, and the strip
+          // covers the status bar and that band in the screen's colour.
+          barTop: Math.round(edge('[data-tour="phone-top-bar"]')?.top ?? 0),
+          stripHeight: Math.round(Number.parseFloat(strip.height)),
+          // The first message right under the top bar (its row keeps its own spacing), and the key row, the lowest
+          // thing on the screen, right on the home bar's strip.
+          aboveChat: Math.round(
+            (edge('[data-index="0"]')?.top ?? 0) -
+              (edge('[data-tour="phone-top-bar"]')?.bottom ?? 0),
+          ),
+          belowKeys: Math.round(window.innerHeight - 34 - (keyRow?.bottom ?? 0)),
+        };
+      });
+      expect(shown).toEqual({
+        chat: shown.chat,
+        top: shown.chat,
+        bottom: shown.chat,
+        barTop: 82,
+        stripHeight: 82,
+        aboveChat: 0,
+        belowKeys: 0,
+      });
+
+      // Settings covers the screen: the strip over its top takes its colour.
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "Settings" })
+        .tap();
+      const sheet = page.getByRole("dialog", { name: "Settings" });
+      await expect(sheet).toBeVisible();
+      const settings = await sheet.evaluate((element) => ({
+        sheet: getComputedStyle(element).backgroundColor,
+        top: getComputedStyle(document.getElementById("root") as Element, "::before")
+          .backgroundColor,
+      }));
+      expect(settings.top).toBe(settings.sheet);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
     },
   );
 });
