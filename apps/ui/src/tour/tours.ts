@@ -1622,7 +1622,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-05-browser-keys",
-    when: "2026-11-05T18:30:00-06:00",
+    when: "2026-11-05T18:24:00-06:00",
     summary:
       "Workspaces work like a browser's tabs: Ctrl+T opens one, Ctrl+W closes it, Ctrl+Shift+T brings back the one closed last, Ctrl+PgDn and Ctrl+PgUp move between them, and in the app's own window Ctrl+1 to Ctrl+9 go to one. Ctrl+O starts a new chat. A chat from the list opens in a workspace of its own, or in the blank window you're in; Ctrl+click opens it behind, Alt+click beside. Closing a workspace's only window closes the workspace. Show thinking and open tool cards moved to Alt+T and Alt+O.",
     tours: [BROWSER_KEYS_TOUR],
