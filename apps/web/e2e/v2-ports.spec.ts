@@ -137,6 +137,29 @@ realTest.describe("new UI: ports and pages on your devices", () => {
     },
   );
 
+  realTest(
+    "an HTML file the chat writes opens as a page from the write's card (#2836)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await box(page).fill(
+        `call_tool write ${JSON.stringify({ path: "site/hello.html", content: "<h1>Written by the chat</h1>" })}`,
+      );
+      await box(page).press("Enter");
+      // The write's card, opened: Share as a page, then Open in browser shows it.
+      const card = page.locator(".tr-root .tv-head").filter({ hasText: "site/hello.html" }).first();
+      await expect(card).toBeVisible({ timeout: 90_000 });
+      await card.click();
+      await page.getByRole("button", { name: "Share as a page" }).click();
+      const open = page.getByRole("link", { name: "Open in browser" });
+      await expect(open).toBeVisible({ timeout: 15_000 });
+      const [shown] = await Promise.all([newTab(page), open.click()]);
+      await expect(shown.locator("h1")).toHaveText("Written by the chat");
+      await shown.close();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest.describe("a share at another address than its service", () => {
     // A share listens at the share's address and takes its service's port number there when it is free, as on the
     // machine's Tailscale address: here 127.0.0.2, while the chat's service listens at 127.0.0.1.

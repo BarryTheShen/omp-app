@@ -1,4 +1,4 @@
-import { splitAttached } from "@omp-app/contracts";
+import { splitAttached, WorkspaceRelativePath } from "@omp-app/contracts";
 import type { ChatHostImage } from "@omp-app/contracts/chat-host";
 import {
   type KeyboardEvent,
@@ -12,6 +12,7 @@ import {
 import { AgentHub } from "../agents/AgentHub";
 import { KEYS } from "../keys/table";
 import { ModelHub } from "../models/ModelHub";
+import { PageShare } from "../panels/files/PageShare";
 import { PlanReview } from "../plan/PlanReview";
 import { matchesHotkey } from "../tour/keys";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
@@ -21,6 +22,17 @@ import type { ChatController } from "./controller";
 import { HostRequests } from "./HostRequests";
 import { userText } from "./MessageActions";
 import { type RowActions, TranscriptList } from "./TranscriptList";
+
+/** A path a chat's tool wrote, relative to the chat's folder (#2836); null for one outside it. */
+function inFolder(folder: string, path: string): string | null {
+  const relative = path.startsWith("/")
+    ? path.startsWith(`${folder}/`)
+      ? path.slice(folder.length + 1)
+      : null
+    : path.replace(/^\.\//, "");
+  if (relative === null || relative === "" || relative.split("/").includes("..")) return null;
+  return relative;
+}
 
 /** What Edit brings back to the message box: the message's text and images; `key` tells one edit from the next. */
 export interface ComposerRestore {
@@ -87,6 +99,14 @@ export function ChatPane({
               "error",
             ),
           ),
+      // An HTML file the chat wrote, as a page of its own on the paired devices (#2836).
+      pageShare: (path) => {
+        const relative = inFolder(controller.folder, path);
+        const parsed = relative === null ? null : WorkspaceRelativePath.safeParse(relative);
+        return parsed?.success === true ? (
+          <PageShare client={controller.client} folder={controller.folder} path={parsed.data} />
+        ) : null;
+      },
     };
   }, [agentIds, controller]);
   const agentsRunning = snapshot.agents.filter(

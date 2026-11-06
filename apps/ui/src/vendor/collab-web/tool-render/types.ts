@@ -11,7 +11,7 @@
  * runtime, node builtins) and must tolerate partial/malformed `args` and
  * `details` — these arrive as plain JSON over the wire.
  */
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 export interface ToolResultText {
 	type: "text";
@@ -46,6 +46,11 @@ export interface ToolRenderHost {
 	openAgent?(id: string): void;
 	/** omp-app: save a file a sent message names (its chat's `local://` folder, #2830) to this device. */
 	downloadAttachment?(name: string): void;
+	/**
+	 * omp-app: an HTML file the chat wrote, as a page of its own on the paired devices (#2836): Share as a page, then
+	 * Open in browser. Nothing for a file outside the chat's folder.
+	 */
+	pageShare?(path: string): ReactNode;
 }
 
 export interface ToolRenderProps {

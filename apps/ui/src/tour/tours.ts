@@ -1134,6 +1134,23 @@ const ZOOM_TOUR: Tour = {
   ],
 };
 
+/** #2836 D1b: an HTML file the chat writes opens as a page, from the write's card. */
+const PAGE_FROM_CHAT_TOUR: Tour = {
+  id: "page-from-chat-2026-11-06",
+  title: "A page the chat wrote",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Open what the chat wrote",
+      text: "When omp writes an HTML file in this chat's folder, open the write's card in the chat: <b>Share as a page</b> makes it a page of its own on your paired devices, then <b>Open in browser</b> shows it with its styles, scripts and pictures. Ports lists it under Pages, with <b>Stop sharing</b>.",
+      action: next,
+      centred: true,
+    },
+  ],
+};
+
 const CHAT_DETAILS_TOUR: Tour = {
   id: "chat-details-2026-10-31",
   title: "A chat's details on the phone",
@@ -1781,8 +1798,15 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
-    id: "2026-11-06-phone-plus",
+    id: "2026-11-06-page-from-chat",
     when: "2026-11-06T04:25:00-06:00",
+    summary:
+      "An HTML file omp writes in a chat's folder opens as a page from the write's card: Share as a page, then Open in browser shows it on your paired devices, with its styles, scripts and pictures.",
+    tours: [PAGE_FROM_CHAT_TOUR],
+  },
+  {
+    id: "2026-11-06-phone-plus",
+    when: "2026-11-06T04:21:00-06:00",
     summary:
       "On a phone, ＋ beside the message box holds a photo or file, the quick prompts, Pause while omp works, and this chat's model, thinking level, plan mode and goal. The keys a phone lacks come up with the keyboard, in one line, and go with it, so the chat has the room while you read; the empty box names the model and its level.",
     tours: [PHONE_PLUS_TOUR],

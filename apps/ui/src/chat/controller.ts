@@ -201,7 +201,8 @@ export class ChatController {
   readonly #shareLinks = new Map<string, ReturnType<typeof keepShareLink>>();
   /** The chat's own folder on the server (`localFolder`), with the chat it was asked for. */
   #localFolder: { readonly threadId: ThreadId; readonly folder: Promise<FolderPath> } | null = null;
-  private readonly client: AppClient;
+  /** The app's client: the pane opens a page the chat wrote through its shares (#2836). */
+  readonly client: AppClient;
   private readonly target: ChatTarget;
   /** The folder the chat works in: `@` mentions search it, and a new chat's welcome names it. */
   readonly folder: FolderPath;

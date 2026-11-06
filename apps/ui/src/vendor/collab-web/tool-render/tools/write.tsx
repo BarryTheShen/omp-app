@@ -41,11 +41,16 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+function Body({ args, result, host }: ToolRenderProps): ReactNode {
 	const path = str(args.file_path ?? args.path);
 	const content = str(args.content);
 	const details = detailsRecord(result);
 	const diagnostics = diagnosticsOf(details);
+	// omp-app (#2836): an HTML file written, as a page on the paired devices.
+	const page =
+		path !== null && /\.html?$/i.test(path) && result !== undefined && result.isError !== true
+			? host?.pageShare?.(path)
+			: null;
 	return (
 		<>
 			<Badges
@@ -75,6 +80,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					maxLines={8}
 				/>
 			)}
+			{page}
 		</>
 	);
 }
