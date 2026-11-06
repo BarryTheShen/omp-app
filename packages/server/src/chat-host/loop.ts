@@ -532,6 +532,13 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         entry ?? { role: result.role, model: result.model, explicitThinkingLevel: false },
       );
     },
+    // omp's own switch to a role (`applyRoleModel`), which records the role: picked from the model menu (#2838).
+    use_role_model: async ({ role }) => {
+      const entry = session.getRoleModelCycle([role])?.models.find((each) => each.role === role);
+      if (entry === undefined) return null;
+      await session.applyRoleModel(entry);
+      return roleModel(entry);
+    },
     btw: async ({ question, recordId }) => ({ record: await btw.ask(question, recordId) }),
     btw_cancel: async ({ recordId }) => ({ cancelled: btw.cancel(recordId) }),
     get_btw_history: async () => ({ records: await btw.history() }),

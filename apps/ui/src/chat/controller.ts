@@ -940,11 +940,27 @@ export class ChatController {
   }
 
   /**
-   * Switches the chat to a role's model, with the thinking level the role names, as omp's role switch does (only this
-   * chat; the settings stay): the model menu's Roles (#2838). The chip then names the role, as omp tells it from the
-   * model: two roles on one model are told apart only by omp's own switch, which this server cannot ask for by name.
+   * Switches the chat to a role's model, with the thinking level the role names, through omp's own role switch (only
+   * this chat; the settings stay): the model menu's Roles (#2838). omp records the role, so it stays the chat's role
+   * when another role has the same model; the chip changes in one step, as Ctrl+P's does. A server or a chat host from
+   * before that switch gets the model and the level as two requests, and omp then tells the role from the model.
    */
   async useRole(role: RoleModel): Promise<void> {
+    try {
+      const used = await this.#request("use_role_model", { role: role.role });
+      if (used !== null)
+        this.store.switchRole(
+          [],
+          used.role,
+          { provider: used.provider, id: used.modelId, name: used.name },
+          used.thinkingLevel,
+        );
+      await this.#refreshRole();
+      return;
+    } catch (failure) {
+      if (!(failure instanceof AppFailure && failure.appError.code === "invalid_args"))
+        throw failure;
+    }
     await this.setModel({ provider: role.provider, id: role.modelId, name: role.name });
     const level = ThinkingLevelParams.safeParse({ level: role.thinkingLevel });
     if (level.success && level.data.level !== "inherit") await this.setThinking(level.data.level);

@@ -20,6 +20,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "get_available_models",
   "get_role_models",
   "cycle_role_models",
+  "use_role_model",
   "btw",
   "btw_cancel",
   "get_btw_history",

@@ -273,6 +273,9 @@ export type SetModelParams = z.infer<typeof SetModelParams>;
 export const CycleRoleModelsParams = z.object({ direction: z.enum(["forward", "backward"]) });
 export type CycleRoleModelsParams = z.infer<typeof CycleRoleModelsParams>;
 
+export const UseRoleModelParams = z.object({ role: z.string().min(1) });
+export type UseRoleModelParams = z.infer<typeof UseRoleModelParams>;
+
 export const BtwParams = z.object({
   question: z.string().min(1),
   recordId: z.string().min(1).optional(),
@@ -736,6 +739,15 @@ export interface ChatHostMethodMap {
     readonly result: RoleModel | null;
   };
   /**
+   * Switches the live model to a role's, with the thinking level the role names, as omp's Ctrl+P does for the next one
+   * (`applyRoleModel`): only the session changes, and omp records the role, so it stays the chat's role when another
+   * role has the same model (#2838). null when the role has no model.
+   */
+  readonly use_role_model: {
+    readonly params: UseRoleModelParams;
+    readonly result: RoleModel | null;
+  };
+  /**
    * What omp's model hub (Alt+M) shows: the roles with the model each resolves to (omp's own auto-selection for a role
    * that has none) and the models a role can take. Read as the catalog is, like `get_role_models`.
    */
@@ -1077,6 +1089,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_available_models: EmptyParams,
   get_role_models: EmptyParams,
   cycle_role_models: CycleRoleModelsParams,
+  use_role_model: UseRoleModelParams,
   btw: BtwParams,
   btw_cancel: BtwCancelParams,
   get_btw_history: EmptyParams,

@@ -123,6 +123,37 @@ describe("the chat host's state methods", () => {
     );
 
     programTest(
+      `${program.name}: a role picked by name takes its model and the level it names, and stays the chat's role when another role has that model (#2838)`,
+      async () => {
+        const chat = await chats.start(command, {
+          config: [
+            "modelRoles:",
+            "  smol: fake/claude-fable-5",
+            "  slow: fake/claude-fable-5:low",
+            "",
+          ].join("\n"),
+        });
+        await chat.client.hello;
+        expect(await chat.client.request("use_role_model", { role: "slow" })).toEqual({
+          role: "slow",
+          provider: "fake",
+          modelId: "claude-fable-5",
+          name: "Claude Fable 5",
+          thinkingLevel: "low",
+        });
+        const state = await chat.client.request("get_state", {});
+        expect(state.model?.id).toBe("claude-fable-5");
+        expect(`${state.thinkingLevel}`).toBe("low");
+        // smol has the same model and comes first in omp's order: omp knows which one was picked.
+        expect((await chat.client.request("get_role_models", {})).current).toBe("slow");
+        // A role without a model switches nothing.
+        expect(await chat.client.request("use_role_model", { role: "plan" })).toBeNull();
+        expect((await chat.client.request("get_state", {})).model?.id).toBe("claude-fable-5");
+      },
+      60_000,
+    );
+
+    programTest(
       `${program.name}: thinking levels list, set and cycle, and an unknown level is refused`,
       async () => {
         const chat = await chats.start(command);
