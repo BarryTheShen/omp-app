@@ -916,8 +916,8 @@ const PHONE_TOUR: Tour = {
   title: "Your phone's controls",
   minutes: 1,
   sandbox: true,
-  // Its steps on the key row act on the keys: the tour's Next would take the focus from the box, so the keyboard and
-  // the keys with it would go.
+  // The box's step waits for a tap on the box, which brings the keyboard and the keys; a Next takes the focus from the
+  // box, so the keys go after their step, and ⚡'s step points beside Send, where it stays.
   steps: [
     {
       target: MESSAGE_BOX,
@@ -928,7 +928,13 @@ const PHONE_TOUR: Tour = {
     {
       target: part("phone-keys"),
       title: "The keys a phone lacks",
-      text: "<b>⚡</b> quick prompts, <b>/</b> commands, <b>@</b> files, <b>!</b> the shell, <b>↑ ↓</b> for what you sent, and <b>⌄</b> to put the keyboard away. A key leaves the keyboard up. Tap <b>⚡</b>: your quick prompts take the keyboard's place, and <b>⌨</b> brings it back.",
+      text: "<b>/</b> commands, <b>@</b> files, <b>!</b> the shell, <b>↑ ↓</b> for what you sent, and <b>⌄</b> to put the keyboard away. A key leaves the keyboard up.",
+      action: next,
+    },
+    {
+      target: part("quick-prompts-key"),
+      title: "Your quick prompts",
+      text: "Beside Send, <b>⚡</b> puts your quick prompts in the keyboard's place, and <b>⌨</b> brings the keyboard back. Tap <b>⚡</b>.",
       action: { kind: "appears", selector: part("quick-panel") },
     },
     {
@@ -978,6 +984,30 @@ const PHONE_PLUS_TOUR: Tour = {
       title: "The keys come with the keyboard",
       text: "With the keyboard down the chat gets the room, and the empty box names the model and its level. Tap the box: the keys a phone lacks come up with the keyboard, in one line.",
       action: { kind: "appears", selector: part("phone-keys") },
+      phoneOnly: true,
+    },
+  ],
+};
+
+/** #2837: on a phone, ⚡ sits beside Send. */
+const PHONE_QUICK_KEY_TOUR: Tour = {
+  id: "phone-quick-key-2026-11-06",
+  title: "⚡ beside Send",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("quick-prompts-key"),
+      title: "Your quick prompts",
+      text: "On a phone, <b>⚡</b> sits beside Send. Tap it: your quick prompts take the keyboard's place.",
+      action: { kind: "appears", selector: part("quick-panel") },
+      phoneOnly: true,
+    },
+    {
+      target: part("quick-panel"),
+      title: "One tap answers",
+      text: "Tap a prompt to send it as it is, or hold it to put it in the box and change it first. <b>⌨</b> beside Send brings the keyboard back.",
+      action: next,
       phoneOnly: true,
     },
   ],
@@ -1958,6 +1988,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-quick-prompts-key",
+    when: "2026-11-06T11:15:00-06:00",
+    summary:
+      "On a phone, ⚡ sits beside Send: it puts your quick prompts in the keyboard's place, and ⌨ brings the keyboard back. The keys that come up with the keyboard keep / @ ! ↑ ↓ ⌄, each one wider, and Send sits centred in the box.",
+    tours: [PHONE_QUICK_KEY_TOUR],
+  },
   {
     id: "2026-11-06-models-view",
     when: "2026-11-06T06:06:00-06:00",

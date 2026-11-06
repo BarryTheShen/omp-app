@@ -37,7 +37,7 @@ import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
-import { KeyRow } from "./KeyRow";
+import { KeyRow, QuickPromptsKey } from "./KeyRow";
 import { ModelPicker } from "./ModelPicker";
 import { PausedRow } from "./PausedRow";
 import { PlusMenu } from "./PlusMenu";
@@ -103,7 +103,8 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
  * Files pasted, dropped or picked with the paperclip go with the next message: pictures to the model, any other file
  * uploaded to the chat's own folder and named in the message (#2830). The text is kept as it is typed (`drafts.ts`), and
  * only the text that was sent leaves the box. On a phone the return key adds a line, and the button sends (or, while omp
- * works, queues what is typed); the box's settings and the keys a phone lacks are in the key row under it (`KeyRow`).
+ * works, queues what is typed); ＋ holds the box's settings (`PlusMenu`), ⚡ beside Send the quick prompts
+ * (`QuickPromptsKey`), and the keys a phone lacks come up with the keyboard in the row under the box (`KeyRow`).
  */
 export const Composer = memo(function Composer({
   controller,
@@ -1065,6 +1066,22 @@ export const Composer = memo(function Composer({
                 pasteFromWindow(event.currentTarget, text);
               }}
             />
+            {phone && (
+              <QuickPromptsKey
+                open={panel}
+                onPress={() => {
+                  if (panel) {
+                    setPanel(false);
+                    // Within the tap, so the keyboard comes back up.
+                    setTapped(true);
+                    boxRef.current?.focus({ preventScroll: true });
+                  } else {
+                    setPanel(true);
+                    boxRef.current?.blur();
+                  }
+                }}
+              />
+            )}
             {phone && sendOrStop}
           </div>
           {!phone && (
@@ -1086,18 +1103,6 @@ export const Composer = memo(function Composer({
         {phone && keysShown && (
           <KeyRow
             keyboardUp={keyboardUp}
-            panelOpen={panel}
-            onPanel={() => {
-              if (panel) {
-                setPanel(false);
-                // Within the tap, so the keyboard comes back up.
-                setTapped(true);
-                boxRef.current?.focus({ preventScroll: true });
-              } else {
-                setPanel(true);
-                boxRef.current?.blur();
-              }
-            }}
             onInsert={(character) => {
               // Within the tap, so a phone brings its keyboard up for what follows.
               setTapped(true);

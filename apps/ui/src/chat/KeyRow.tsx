@@ -1,29 +1,22 @@
 import { ArrowDown, ArrowUp, ChevronDown, Keyboard, Zap } from "lucide-react";
-import { type ReactNode, useRef } from "react";
+import { type MouseEvent, type ReactNode, useRef } from "react";
 import { Button } from "@/components/ui/button";
 
 /**
  * The phone's key row, under the message box and so right above the keyboard (Termius's keyboard add-on), shown while
- * the keyboard or the quick panel is up (#2837): the quick panel's key (⚡, in the keyboard's place; ⌨ brings the
- * keyboard back), then the keys a phone's keyboard lacks: `/` for omp's commands, `@` for files, `!` for the shell, the
- * messages sent before with ↑ and ↓, and ⌄ to put the keyboard away. One line of equal keys, nothing scrolls sideways:
- * the box's settings and Pause are behind ＋ (`PlusMenu`). A key keeps the focus where it is, so the keyboard stays up
- * while one is pressed.
+ * the keyboard or the quick panel is up (#2837): the keys a phone's keyboard lacks, `/` for omp's commands, `@` for
+ * files, `!` for the shell, the messages sent before with ↑ and ↓, and ⌄ to put the keyboard away. One line of equal
+ * keys, nothing scrolls sideways: the quick prompts' key sits beside Send (`QuickPromptsKey`), the box's settings and
+ * Pause behind ＋ (`PlusMenu`). A key keeps the focus where it is, so the keyboard stays up while one is pressed.
  */
 export function KeyRow({
   keyboardUp,
-  panelOpen,
-  onPanel,
   onInsert,
   onHistory,
   onHideKeyboard,
 }: {
   /** Whether the box has the focus, so the keyboard is up. */
   readonly keyboardUp: boolean;
-  /** Whether the quick panel is open in the keyboard's place. */
-  readonly panelOpen: boolean;
-  /** Opens the quick panel, or closes it and brings the keyboard back. */
-  readonly onPanel: () => void;
   /** Puts the character at the caret, as typing it would. */
   readonly onInsert: (character: string) => void;
   /** Goes back (-1) or forward (1) through the messages sent before. */
@@ -42,14 +35,6 @@ export function KeyRow({
       onPointerDown={(event) => event.preventDefault()}
       onMouseDown={(event) => event.preventDefault()}
     >
-      <Key
-        tour="quick-prompts-key"
-        label={panelOpen ? "Keyboard" : "Quick prompts"}
-        expanded={panelOpen}
-        onPress={onPanel}
-      >
-        {panelOpen ? <Keyboard /> : <Zap />}
-      </Key>
       <Key label="Commands" onPress={() => onInsert("/")}>
         /
       </Key>
@@ -74,51 +59,82 @@ export function KeyRow({
   );
 }
 
+/**
+ * A key's own press: it acts only on a press that began on it, or on a keyboard's click (`detail` 0, no pointer behind
+ * it). The row comes up under the box when a tap gives the box the focus and moves it up, so that tap's click can end
+ * over a key it never touched (#2837).
+ */
+function useOwnPress(onPress: () => void) {
+  const pressed = useRef(false);
+  return {
+    onPointerDown: () => {
+      pressed.current = true;
+    },
+    onPointerCancel: () => {
+      pressed.current = false;
+    },
+    onClick: (event: MouseEvent<HTMLButtonElement>) => {
+      if (event.detail !== 0 && !pressed.current) return;
+      pressed.current = false;
+      onPress();
+    },
+  };
+}
+
 function Key({
   label,
-  expanded,
   onPress,
   children,
-  tour,
 }: {
   readonly label: string;
-  /** For a key that opens something: whether it is open. */
-  readonly expanded?: boolean;
   readonly onPress: () => void;
   readonly children: ReactNode;
-  /** The key's name for a tour step. */
-  readonly tour?: string;
 }): ReactNode {
-  /**
-   * Whether a pointer went down on this key. The row comes up under the box when a tap gives the box the focus and
-   * moves it up, so that tap's click can end over a key it never touched: only a press that began here, or a
-   * keyboard's click, presses the key.
-   */
-  const pressed = useRef(false);
+  const press = useOwnPress(onPress);
   return (
     <Button
-      data-tour={tour}
       type="button"
       variant="secondary"
       size="sm"
       aria-label={label}
-      aria-expanded={expanded}
       className="font-mono text-base"
-      onPointerDown={() => {
-        pressed.current = true;
-      }}
-      onPointerCancel={() => {
-        pressed.current = false;
-      }}
-      onClick={(event) => {
-        // A keyboard's click has no pointer behind it (`detail` 0).
-        const fromPointer = event.detail !== 0;
-        if (fromPointer && !pressed.current) return;
-        pressed.current = false;
-        onPress();
-      }}
+      {...press}
     >
       {children}
+    </Button>
+  );
+}
+
+/**
+ * The quick prompts' key, beside Send in the phone's box (#2837): ⚡ puts the quick panel in the keyboard's place, ⌨
+ * brings the keyboard back. As the row's keys do, it leaves the focus where it is and acts only on its own press.
+ */
+export function QuickPromptsKey({
+  open,
+  onPress,
+}: {
+  /** Whether the quick panel is open in the keyboard's place. */
+  readonly open: boolean;
+  readonly onPress: () => void;
+}): ReactNode {
+  const press = useOwnPress(onPress);
+  return (
+    <Button
+      data-tour="quick-prompts-key"
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="size-11 shrink-0 text-t2"
+      aria-label={open ? "Keyboard" : "Quick prompts"}
+      aria-expanded={open}
+      {...press}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        press.onPointerDown();
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {open ? <Keyboard /> : <Zap />}
     </Button>
   );
 }

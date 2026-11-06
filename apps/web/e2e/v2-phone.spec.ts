@@ -2,14 +2,17 @@ import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * The new UI on a phone, on real omp: the message box's key row above the keyboard (the box's settings, and the keys a
- * phone's keyboard lacks), full-size Send and Stop beside the text, one working line without a key to press, and the
- * top bar that names the chat and starts a new one.
+ * The new UI on a phone, on real omp: the keys a phone's keyboard lacks in a row that comes up with the keyboard, ＋ and
+ * ⚡ and full-size Send and Stop beside the text, one working line without a key to press, and the top bar that names
+ * the chat and starts a new one.
  */
 realTest.describe("new UI on a phone", () => {
   realTest.setTimeout(240_000);
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
   const keys = (page: Page) => page.getByRole("toolbar", { name: "Keys" });
+  /** ⚡ beside Send: it opens the quick prompts in the keyboard's place. */
+  const zap = (page: Page) =>
+    page.locator("[data-tour='message-box']").getByRole("button", { name: "Quick prompts" });
   /** A sheet's place: its left edge, its width and its bottom edge, in a 390×844 phone. */
   const place = async (sheet: Locator) => {
     const bounds = await sheet.boundingBox();
@@ -53,9 +56,9 @@ realTest.describe("new UI on a phone", () => {
       await page.keyboard.press("Escape");
       await expect(plus).toHaveCount(0);
 
-      // The keys come with the keyboard: seven in one line, nothing scrolling sideways.
+      // The keys come with the keyboard: six in one line, nothing scrolling sideways.
       await box(page).tap();
-      await expect(keys(page).getByRole("button")).toHaveCount(7);
+      await expect(keys(page).getByRole("button")).toHaveCount(6);
       const row = await keys(page).evaluate((element) => ({
         overflow: element.scrollWidth - element.clientWidth,
         rows: new Set(
@@ -153,6 +156,56 @@ realTest.describe("new UI on a phone", () => {
       // A finger's 44 pt, and the box as tall as before: the even room costs the chat nothing.
       expect(send.height).toBeGreaterThanOrEqual(44);
       expect(form.height).toBeLessThanOrEqual(52);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "⚡ sits beside Send in the box, and the keys that come up with the keyboard are the ones a phone lacks",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      await box(page).fill("hello");
+      const quick = await zap(page).boundingBox();
+      const send = await page.getByRole("button", { name: "Send" }).boundingBox();
+      if (quick === null || send === null) throw new Error("the box is not drawn");
+      // Right before Send, on its line, a finger's size.
+      expect(quick.x + quick.width).toBeLessThanOrEqual(send.x);
+      expect(send.x - (quick.x + quick.width)).toBeLessThanOrEqual(8);
+      expect(Math.abs(quick.y + quick.height / 2 - (send.y + send.height / 2))).toBeLessThanOrEqual(
+        1,
+      );
+      expect(Math.min(quick.width, quick.height)).toBeGreaterThanOrEqual(44);
+
+      // The keys come with the keyboard, ⚡ not among them.
+      await box(page).tap();
+      await expect
+        .poll(() =>
+          keys(page)
+            .getByRole("button")
+            .evaluateAll((all) => all.map((key) => key.getAttribute("aria-label"))),
+        )
+        .toEqual([
+          "Commands",
+          "Files",
+          "Shell",
+          "Earlier message",
+          "Later message",
+          "Hide the keyboard",
+        ]);
+
+      // ⚡ puts the quick prompts in the keyboard's place, and ⌨ in its place brings the keyboard back.
+      await zap(page).tap();
+      const panel = page.getByRole("region", { name: "Quick prompts" });
+      await expect(panel).toBeVisible();
+      await expect(box(page)).not.toBeFocused();
+      await page
+        .locator("[data-tour='message-box']")
+        .getByRole("button", { name: "Keyboard", exact: true })
+        .tap();
+      await expect(panel).toHaveCount(0);
+      await expect(box(page)).toBeFocused();
+      await expect(keys(page)).toBeVisible();
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
@@ -358,7 +411,7 @@ realTest.describe("new UI on a phone", () => {
       const { page, context } = await phone(realApp, browser);
       const panel = page.getByRole("region", { name: "Quick prompts" });
       await box(page).tap();
-      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await zap(page).tap();
       await expect(panel).toBeVisible();
       await expect(box(page)).not.toBeFocused();
 
@@ -387,7 +440,7 @@ realTest.describe("new UI on a phone", () => {
       );
       await box(page).fill("");
       await expect(box(page)).toHaveValue("");
-      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await zap(page).tap();
       await panel.getByRole("tab", { name: "Sent" }).tap();
       await panel.getByRole("button", { name: "Continue" }).tap();
       await expect(box(page)).toHaveValue("Continue");
@@ -748,14 +801,17 @@ realTest.describe("new UI on a phone", () => {
       // one, so the first tab's chat is still on the page, hidden.
       const shown = (tour: string) =>
         page.locator(`[data-tour='${tour}']`).filter({ visible: true });
-      // The keys come with the keyboard: the tour asks for a tap on the box, then on ⚡, never its Next, which would
-      // put the keyboard away.
+      // The keys come with the keyboard: the tour asks for a tap on the box. Its Next then puts the keyboard away, and
+      // ⚡ stays beside Send.
       await expect(heading).toHaveText("The box", { timeout: 30_000 });
       await expect(shown("message-box")).toHaveClass(/driver-active-element/);
       await shown("message-box").getByRole("textbox", { name: "Message" }).tap();
       await expect(heading).toHaveText("The keys a phone lacks");
       await expect(shown("phone-keys")).toHaveClass(/driver-active-element/);
-      await shown("phone-keys").getByRole("button", { name: "Quick prompts" }).tap();
+      await popover.getByRole("button", { name: "Next" }).tap();
+      await expect(heading).toHaveText("Your quick prompts");
+      await expect(shown("quick-prompts-key")).toHaveClass(/driver-active-element/);
+      await shown("quick-prompts-key").tap();
       await expect(heading).toHaveText("One tap answers");
       await popover.getByRole("button", { name: "Next" }).tap();
       await expect(heading).toHaveText("＋ for the rest");
@@ -794,7 +850,7 @@ realTest.describe("new UI on a phone", () => {
       await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       // The keys come with the keyboard.
       await box(page).tap();
-      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await zap(page).tap();
       const panel = page.getByRole("region", { name: "Quick prompts" });
       await expect(panel.getByRole("listitem")).toHaveText(["Ship it", "Looks good"]);
 
@@ -804,7 +860,7 @@ realTest.describe("new UI on a phone", () => {
       await page.keyboard.press("Escape");
       await list.getByRole("button", { name: "New chat" }).tap();
       await box(page).tap();
-      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await zap(page).tap();
       await expect(panel.getByRole("listitem").first()).toHaveText("Continue");
       expect(realApp.problems).toEqual([]);
       await context.close();
