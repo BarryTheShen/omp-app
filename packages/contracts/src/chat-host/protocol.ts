@@ -344,6 +344,13 @@ export const SetRoleFallbacksParams = z.object({
 });
 export type SetRoleFallbacksParams = z.infer<typeof SetRoleFallbacksParams>;
 
+/**
+ * A model preset by name (#2838): omp's named snapshot of the role assignments and the default thinking level
+ * (`modelPresets.<name>`). A name is a letter, then letters, digits, `-` or `_`.
+ */
+export const ModelPresetParams = z.object({ name: z.string().min(1).max(64) });
+export type ModelPresetParams = z.infer<typeof ModelPresetParams>;
+
 /** One role of omp's model hub. */
 export interface HubRole {
   readonly role: string;
@@ -399,6 +406,11 @@ export interface ModelHub {
   readonly roles: readonly HubRole[];
   /** The models a role can be given, in the hub's order: those with a role first, then the most recently used. */
   readonly models: readonly HubModel[];
+  /**
+   * omp's model presets (#2838), by name, and the one the current role assignments match (`findActiveModelPreset`);
+   * null when they match none.
+   */
+  readonly presets: { readonly names: readonly string[]; readonly active: string | null };
 }
 
 /** One model of the chat's model menu, as omp names it. */
@@ -804,6 +816,28 @@ export interface ChatHostMethodMap {
     readonly params: SetRoleFallbacksParams;
     readonly result: { readonly status: string };
   };
+  /**
+   * Saves the current role assignments and default thinking level as a preset, as omp's hub and `/modelpreset save` do
+   * (#2838); `status` is omp's line. Refused with omp's message for a name it does not take.
+   */
+  readonly save_model_preset: {
+    readonly params: ModelPresetParams;
+    readonly result: { readonly status: string };
+  };
+  /**
+   * Switches to a preset, as omp's hub does: its roles are written and this chat moves to its default model (#2838).
+   * `status` is omp's line; `clean` is false where it did not apply whole (not found, not available, roles another
+   * settings layer still decides).
+   */
+  readonly apply_model_preset: {
+    readonly params: ModelPresetParams;
+    readonly result: { readonly status: string; readonly clean: boolean };
+  };
+  /** Deletes a preset from the global settings, as `/modelpreset delete` does (#2838); `status` is omp's line. */
+  readonly delete_model_preset: {
+    readonly params: ModelPresetParams;
+    readonly result: { readonly status: string; readonly deleted: boolean };
+  };
   readonly set_thinking_level: {
     readonly params: ThinkingLevelParams;
     readonly result: EmptyParams;
@@ -1121,6 +1155,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   assign_model_role: AssignModelRoleParams,
   clear_model_role: ClearModelRoleParams,
   set_role_fallbacks: SetRoleFallbacksParams,
+  save_model_preset: ModelPresetParams,
+  apply_model_preset: ModelPresetParams,
+  delete_model_preset: ModelPresetParams,
   set_thinking_level: ThinkingLevelParams,
   cycle_thinking_level: EmptyParams,
   get_available_thinking_levels: EmptyParams,

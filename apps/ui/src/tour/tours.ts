@@ -536,6 +536,28 @@ const MODEL_HUB_TOUR: Tour = {
   ],
 };
 
+/** #2838 part 3: presets and roles of one's own in omp's Models. */
+const PRESETS_TOUR: Tour = {
+  id: "model-presets-2026-11-06",
+  title: "Presets and roles of your own",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Models",
+      text: "{modelHub} opens omp's Models. Try it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: `${MODEL_HUB} [data-tour="model-presets"]`,
+      title: "Presets",
+      text: "A preset keeps every role's model and the default thinking level under a name. <b>Save as…</b> keeps them as they are; picking a preset puts them back and moves this chat to its default model. Under the roles, <b>New role…</b> names a role of your own: the first model you give it creates it. {stop} closes Models.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 /** #2838 part 2: a role's fallbacks in omp's Models. */
 const FALLBACKS_TOUR: Tour = {
   id: "role-fallbacks-2026-11-06",
@@ -1870,6 +1892,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-model-presets",
+    when: "2026-11-06T05:34:00-06:00",
+    summary:
+      "omp's Models keeps presets: Save as… names every role's model and the default thinking level as they are, and picking a preset puts them back and moves the chat to its default model; Delete removes one. New role…, under the roles, names a role of your own, and the first model you give it creates it. They are omp's own presets and roles, so the terminal has them too.",
+    tours: [PRESETS_TOUR],
+  },
   {
     id: "2026-11-06-dashboard-stats",
     when: "2026-11-06T05:28:00-06:00",

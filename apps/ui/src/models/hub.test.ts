@@ -75,6 +75,7 @@ describe("the models a role takes", () => {
       model({ modelId: "claude-3-haiku-20240307", name: "Claude Haiku 3" }),
       model({ modelId: "painter", name: "Painter", roles: ["image"] }),
     ],
+    presets: { names: [], active: null },
   };
 
   test("only the ones the role accepts, in the hub's order, matching every word searched", () => {

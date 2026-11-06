@@ -155,5 +155,56 @@ export function defineModelHubChecks(engine: "chromium" | "webkit"): void {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest(
+      "a preset keeps the roles and switches back to them, and a new role takes a model (#2838)",
+      async ({ realApp }) => {
+        await appendFile(
+          join(realApp.agentDir, "config.yml"),
+          ["", "modelRoles:", "  smol: fake/claude-3-haiku-20240307", ""].join("\n"),
+        );
+        const page = await realApp.open({ path: "/" });
+        await newChat(page);
+        await box(page).press("Alt+m");
+        await expect(hub(page)).toBeVisible();
+        const presets = hub(page).getByRole("group", { name: "Presets" });
+        const preset = presets.getByRole("combobox", { name: "Preset" });
+        await presets.getByRole("button", { name: "Save as…" }).click();
+        await presets.getByRole("textbox", { name: "Preset name" }).fill("work");
+        await presets.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(status(page)).toHaveText('Saved model preset "work"');
+        await expect(preset).toHaveValue("work");
+
+        // SMOL takes another model: the roles match no preset now.
+        const smol = roles(page).getByRole("option", { name: /^SMOL Fast: / });
+        await smol.click();
+        await models(page)
+          .getByRole("option", { name: /^Claude Fable 5, fake\/claude-fable-5/ })
+          .click();
+        await expect(status(page)).toHaveText("SMOL model: fake/claude-fable-5");
+        await expect(preset).toHaveValue("");
+        // Back to the preset: SMOL has its model again.
+        await preset.selectOption("work");
+        await expect(status(page)).toHaveText(/^Switched to preset "work" \(fake\//);
+        await expect(smol).toHaveAccessibleName("SMOL Fast: fake/claude-3-haiku-20240307");
+        await presets.getByRole("button", { name: "Delete work" }).click();
+        await expect(status(page)).toHaveText('Deleted model preset "work"');
+        await expect(preset).toBeDisabled();
+
+        // A role of one's own: named, then its first model creates it.
+        await hub(page).getByRole("button", { name: "New role…" }).click();
+        const name = hub(page).getByRole("textbox", { name: "New role's name" });
+        await name.fill("review");
+        await name.press("Enter");
+        await expect(hub(page).getByRole("heading", { name: "Assigning review" })).toBeVisible();
+        await models(page)
+          .getByRole("option", { name: /^Claude Fable 5, fake\/claude-fable-5/ })
+          .click();
+        await expect(
+          roles(page).getByRole("option", { name: "review: fake/claude-fable-5" }),
+        ).toBeVisible();
+        expect(realApp.problems).toEqual([]);
+      },
+    );
   });
 }

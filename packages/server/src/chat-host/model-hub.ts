@@ -8,7 +8,18 @@
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
 import type { Model } from "@oh-my-pi/pi-catalog/types";
-import { acquireModelRoleMutation } from "@oh-my-pi/pi-coding-agent/config/model-presets";
+import {
+  acquireModelRoleMutation,
+  applyModelPreset as applyOmpModelPreset,
+  deleteModelPreset as deleteOmpModelPreset,
+  findActiveModelPreset,
+  formatModelPresetSwitch,
+  getModelPresetNames,
+  isCleanModelPresetSwitch,
+  isValidModelPresetName,
+  modelPresetSavedMessage,
+  saveModelPreset as saveOmpModelPreset,
+} from "@oh-my-pi/pi-coding-agent/config/model-presets";
 import { resolveModelRoleValue } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
 import { getRoleInfo } from "@oh-my-pi/pi-coding-agent/config/model-roles";
 import { cfgModelRoleStorage } from "@oh-my-pi/pi-coding-agent/config/model-settings";
@@ -37,6 +48,7 @@ import type {
   HubModel,
   HubRole,
   ModelHub,
+  ModelPresetParams,
   SetRoleFallbacksParams,
 } from "@omp-app/contracts/chat-host";
 
@@ -144,6 +156,10 @@ export function readModelHub(session: AgentSession): ModelHub {
     current: live ? { provider: live.provider, modelId: live.id } : null,
     roles,
     models,
+    presets: {
+      names: getModelPresetNames(settings),
+      active: findActiveModelPreset(settings) ?? null,
+    },
   };
 }
 
@@ -261,6 +277,55 @@ export function setRoleFallbacks(
         ? `${label} fallbacks: ${params.chain.join(" → ")}`
         : `${label} fallbacks cleared`,
   };
+}
+
+/**
+ * The hub's `onSavePreset` (`selector-controller.ts:1180-1187`, #2838): the current role assignments and default thinking
+ * level as `name`, in omp's words. A name omp does not take is refused with its message, as `/modelpreset save` says it.
+ */
+export function saveModelPreset(
+  session: AgentSession,
+  params: ModelPresetParams,
+): { readonly status: string } {
+  if (!isValidModelPresetName(params.name)) {
+    throw new Error(
+      `Invalid preset name "${params.name}": use a letter, then letters, digits, - or _`,
+    );
+  }
+  saveOmpModelPreset(session.settings, params.name);
+  return { status: modelPresetSavedMessage(session.settings, params.name) };
+}
+
+/**
+ * The hub's `onSwitchPreset` (`selector-controller.ts:1188-1203`, #2838): writes the preset's roles and moves this chat to
+ * its default model, in omp's words; `clean` is false where omp warns instead (not found, unavailable, roles decided
+ * elsewhere).
+ */
+export async function applyModelPreset(
+  session: AgentSession,
+  params: ModelPresetParams,
+): Promise<{ readonly status: string; readonly clean: boolean }> {
+  const result = await applyOmpModelPreset(session.settings, session, params.name);
+  return {
+    status: formatModelPresetSwitch(params.name, result),
+    clean: isCleanModelPresetSwitch(result),
+  };
+}
+
+/** `/modelpreset delete` (`builtin-modes.ts:984-995`, #2838): removes the preset from the global settings, in omp's words. */
+export function deleteModelPreset(
+  session: AgentSession,
+  params: ModelPresetParams,
+): { readonly status: string; readonly deleted: boolean } {
+  const result = deleteOmpModelPreset(session.settings, params.name);
+  if (result === "deleted")
+    return { status: `Deleted model preset "${params.name}"`, deleted: true };
+  if (result === "project")
+    return {
+      status: `Preset "${params.name}" is defined by a project or --config file; remove it there`,
+      deleted: false,
+    };
+  return { status: `Preset not found: ${params.name}`, deleted: false };
 }
 
 /**

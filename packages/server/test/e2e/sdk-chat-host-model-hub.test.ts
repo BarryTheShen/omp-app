@@ -262,6 +262,57 @@ describe("the chat host's model hub methods", () => {
     );
 
     programTest(
+      `${program.name}: a preset saves the roles, is the active one while they match, switches back, and is deleted (#2838)`,
+      async () => {
+        const chat = await chats.start(command, {
+          config: ["modelRoles:", "  smol: fake/claude-3-haiku-20240307", ""].join("\n"),
+        });
+        await chat.client.hello;
+        const presets = async () => (await chat.client.request("get_model_hub", {})).presets;
+        const smolValue = async () =>
+          (await chat.client.request("get_model_hub", {})).roles.find(
+            (each) => each.role === "smol",
+          )?.value;
+        expect(await presets()).toEqual({ names: [], active: null });
+
+        expect(await chat.client.request("save_model_preset", { name: "work" })).toEqual({
+          status: 'Saved model preset "work"',
+        });
+        expect(await presets()).toEqual({ names: ["work"], active: "work" });
+
+        // The roles change: no preset matches them any more.
+        await chat.client.request("assign_model_role", {
+          provider: "fake",
+          modelId: "claude-fable-5",
+          role: "smol",
+        });
+        expect(await smolValue()).toBe("fake/claude-fable-5");
+        expect((await presets()).active).toBeNull();
+
+        // Switching back writes the preset's roles.
+        const applied = await chat.client.request("apply_model_preset", { name: "work" });
+        expect(applied.clean).toBe(true);
+        expect(applied.status).toMatch(/^Switched to preset "work" \(fake\//);
+        expect(await smolValue()).toBe("fake/claude-3-haiku-20240307");
+        expect((await presets()).active).toBe("work");
+
+        await expect(chat.client.request("save_model_preset", { name: "1st" })).rejects.toThrow(
+          'Invalid preset name "1st": use a letter, then letters, digits, - or _',
+        );
+        expect(await chat.client.request("delete_model_preset", { name: "work" })).toEqual({
+          status: 'Deleted model preset "work"',
+          deleted: true,
+        });
+        expect(await presets()).toEqual({ names: [], active: null });
+        expect(await chat.client.request("delete_model_preset", { name: "work" })).toEqual({
+          status: "Preset not found: work",
+          deleted: false,
+        });
+      },
+      60_000,
+    );
+
+    programTest(
       `${program.name}: with project storage default is assigned to the project, and clearing it returns to the global one`,
       async () => {
         const chat = await chats.start(command, {

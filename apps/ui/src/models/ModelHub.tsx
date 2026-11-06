@@ -192,6 +192,167 @@ function moveFocus(event: KeyboardEvent<HTMLElement>): boolean {
   return true;
 }
 
+/** omp's names for presets and roles: a letter, then letters, digits, `-` or `_`. */
+const OMP_NAME = /^[a-zA-Z][\w-]*$/;
+
+/**
+ * omp's model presets (#2838): the one the role assignments match, a switch to another (its roles are written and the
+ * chat moves to its default model), Save as… for the assignments as they are, and Delete for the one picked.
+ */
+function PresetRow({
+  presets,
+  disabled,
+  onAction,
+}: {
+  readonly presets: Hub["presets"];
+  readonly disabled: boolean;
+  readonly onAction: (action: "save" | "apply" | "delete", name: string) => void;
+}): ReactNode {
+  const [naming, setNaming] = useState<string | null>(null);
+  const valid = naming !== null && OMP_NAME.test(naming);
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a named group of the preset controls, not a form's fieldset
+    <div
+      role="group"
+      aria-label="Presets"
+      data-tour="model-presets"
+      className="flex flex-wrap items-center gap-2 border-b border-l2 px-4 py-2"
+    >
+      <span className="text-xs text-t3">Preset</span>
+      <select
+        aria-label="Preset"
+        value={presets.active ?? ""}
+        disabled={disabled || presets.names.length === 0}
+        onChange={(event) => {
+          if (event.target.value !== "") onAction("apply", event.target.value);
+        }}
+        className="h-8 min-w-0 max-w-48 rounded-md bg-transparent px-2 text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset focus-visible:ring-ring"
+      >
+        <option value="">{presets.names.length === 0 ? "No presets yet" : "None matches"}</option>
+        {presets.names.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+      {naming === null ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={disabled}
+          onClick={() => setNaming("")}
+        >
+          Save as…
+        </Button>
+      ) : (
+        <form
+          className="flex items-center gap-1.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!valid) return;
+            onAction("save", naming);
+            setNaming(null);
+          }}
+        >
+          <input
+            aria-label="Preset name"
+            // biome-ignore lint/a11y/noAutofocus: the field was asked for by the click that opened it
+            autoFocus
+            value={naming}
+            placeholder="name"
+            onChange={(event) => setNaming(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              // Esc closes the field, not Models.
+              event.stopPropagation();
+              setNaming(null);
+            }}
+            className="h-8 w-32 rounded-md bg-transparent px-2 text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset placeholder:text-t3 focus-visible:ring-ring"
+          />
+          <Button type="submit" size="sm" disabled={disabled || !valid}>
+            Save
+          </Button>
+        </form>
+      )}
+      {presets.active !== null && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={disabled}
+          onClick={() => onAction("delete", presets.active ?? "")}
+        >
+          Delete {presets.active}
+        </Button>
+      )}
+      {naming !== null && !valid && naming !== "" && (
+        <span className="w-full text-xs text-bad-ink">
+          A preset's name is a letter, then letters, digits, - or _.
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** "New role…": a name of the user's own; giving it a model creates it in omp's settings (#2838). */
+function NewRole({
+  known,
+  onPick,
+}: {
+  readonly known: readonly string[];
+  readonly onPick: (name: string) => void;
+}): ReactNode {
+  const [name, setName] = useState<string | null>(null);
+  if (name === null)
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="self-start"
+        onClick={() => setName("")}
+      >
+        New role…
+      </Button>
+    );
+  const taken = known.includes(name);
+  const valid = OMP_NAME.test(name) && !taken;
+  return (
+    <form
+      className="flex flex-col gap-1"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!valid) return;
+        onPick(name);
+        setName(null);
+      }}
+    >
+      <input
+        aria-label="New role's name"
+        // biome-ignore lint/a11y/noAutofocus: the field was asked for by the click that opened it
+        autoFocus
+        value={name}
+        placeholder="name, then Enter"
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.stopPropagation();
+          setName(null);
+        }}
+        className="h-8 rounded-md bg-transparent px-2 text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset placeholder:text-t3 focus-visible:ring-ring"
+      />
+      {name !== "" && !valid && (
+        <span className="text-xs text-bad-ink">
+          {taken
+            ? "That role is there already."
+            : "A role's name is a letter, then letters, digits, - or _."}
+        </span>
+      )}
+    </form>
+  );
+}
+
 /**
  * omp's model hub (Alt+M) for this pane's chat, its Roles view: the roles on the left with the model each uses (its own,
  * omp's auto-selection, or none), and the picked role's models on the right. A click or Enter on a model gives it to the
@@ -210,6 +371,8 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
   const [scope, setScope] = useState<"project" | "global">("project");
   const [status, setStatus] = useState<readonly string[]>([]);
   const [pending, setPending] = useState(false);
+  /** A role named with "New role…" that omp does not list yet: its first model creates it. */
+  const [created, setCreated] = useState<string | null>(null);
   const rolesRef = useRef<HTMLDivElement>(null);
   const modelsRef = useRef<HTMLDivElement>(null);
   const levelsRef = useRef<HTMLDivElement>(null);
@@ -244,8 +407,28 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
     };
   }, [open, controller]);
 
-  const role = hub?.roles.find((each) => each.role === picked) ?? hub?.roles[0];
-  const models = hub === null || role === undefined ? [] : modelsFor(hub, role.role, query);
+  const listed = hub?.roles.find((each) => each.role === picked);
+  const role: HubRole | undefined =
+    listed ??
+    (created !== null && created === picked
+      ? {
+          role: created,
+          tag: null,
+          name: created,
+          section: "chat",
+          value: null,
+          provenance: "default",
+          model: null,
+          thinkingLevel: null,
+          autoSelected: false,
+          fallbacks: [],
+        }
+      : hub?.roles[0]);
+  // A new role takes the chat models, as Default does (omp's `acceptsChat`).
+  const models =
+    hub === null || role === undefined
+      ? []
+      : modelsFor(hub, listed === undefined ? "default" : role.role, query);
   /** The role's model of its own (not omp's auto-selection), as the hub lists it: its levels are the role's to set. */
   const ownModel = role !== undefined && !role.autoSelected ? role.model : null;
   const own =
@@ -372,71 +555,97 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
             Which model each of omp's roles uses; giving Default a model also switches this chat.
           </DialogDescription>
         </header>
+        {hub !== null && (hub.presets as Hub["presets"] | undefined) !== undefined && (
+          <PresetRow
+            presets={hub.presets}
+            disabled={pending}
+            onAction={(action, name) =>
+              run(async () => {
+                const { status } = await controller.modelPreset(action, name);
+                return [status];
+              })
+            }
+          />
+        )}
         {hub === null ? (
           <p className="flex-1 p-6 text-t3">{problem ?? "Reading the models…"}</p>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <div
-              ref={rolesRef}
-              role="listbox"
-              aria-label="Roles"
-              onKeyDown={onRoleKeys}
-              className="max-h-48 shrink-0 overflow-y-auto border-b border-l2 p-1.5 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0"
-            >
-              {roleGroups(hub).map((group) => (
-                // biome-ignore lint/a11y/useSemanticElements: a listbox's group of options (ARIA), not a fieldset of controls
-                <div key={group.title} role="group" aria-label={group.title}>
-                  <p className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-t3">{group.title}</p>
-                  {group.roles.map((each) => {
-                    const chosen = each.role === role?.role;
-                    const level =
-                      each.thinkingLevel !== null && each.thinkingLevel !== "inherit"
-                        ? ` · ${each.thinkingLevel}`
-                        : "";
-                    return (
-                      <div
-                        key={each.role}
-                        data-role={each.role}
-                        aria-label={`${each.tag === null ? each.name : `${each.tag} ${each.name}`}: ${roleValueText(each)}${level}`}
-                        role="option"
-                        aria-selected={chosen}
-                        tabIndex={chosen ? 0 : -1}
-                        onClick={() => pick(each)}
-                        onKeyDown={(event) => {
-                          if (event.key === " ") {
-                            event.preventDefault();
-                            pick(each);
-                          }
-                        }}
-                        className={`flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                          chosen ? "bg-l2" : "hover:bg-l1"
-                        }`}
-                      >
-                        <span className="flex items-baseline gap-2 text-[0.8125rem]">
-                          <span className="font-mono text-[11px] tracking-wide text-t1">
-                            {each.tag ?? each.name}
-                          </span>
-                          {each.tag !== null && (
-                            <span className={chosen ? "text-t1" : "text-t2"}>{each.name}</span>
-                          )}
-                        </span>
-                        <span
-                          className={`truncate font-mono text-[11px] ${
-                            each.autoSelected || each.model === null
-                              ? chosen
-                                ? "text-t2"
-                                : "text-t3"
-                              : "text-t1"
+            <div className="flex max-h-48 shrink-0 flex-col border-b border-l2 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0">
+              <div
+                ref={rolesRef}
+                role="listbox"
+                aria-label="Roles"
+                onKeyDown={onRoleKeys}
+                className="min-h-0 flex-1 overflow-y-auto p-1.5"
+              >
+                {roleGroups(hub).map((group) => (
+                  // biome-ignore lint/a11y/useSemanticElements: a listbox's group of options (ARIA), not a fieldset of controls
+                  <div key={group.title} role="group" aria-label={group.title}>
+                    <p className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-t3">
+                      {group.title}
+                    </p>
+                    {group.roles.map((each) => {
+                      const chosen = each.role === role?.role;
+                      const level =
+                        each.thinkingLevel !== null && each.thinkingLevel !== "inherit"
+                          ? ` · ${each.thinkingLevel}`
+                          : "";
+                      return (
+                        <div
+                          key={each.role}
+                          data-role={each.role}
+                          aria-label={`${each.tag === null ? each.name : `${each.tag} ${each.name}`}: ${roleValueText(each)}${level}`}
+                          role="option"
+                          aria-selected={chosen}
+                          tabIndex={chosen ? 0 : -1}
+                          onClick={() => pick(each)}
+                          onKeyDown={(event) => {
+                            if (event.key === " ") {
+                              event.preventDefault();
+                              pick(each);
+                            }
+                          }}
+                          className={`flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                            chosen ? "bg-l2" : "hover:bg-l1"
                           }`}
                         >
-                          {roleValueText(each)}
-                          {level}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                          <span className="flex items-baseline gap-2 text-[0.8125rem]">
+                            <span className="font-mono text-[11px] tracking-wide text-t1">
+                              {each.tag ?? each.name}
+                            </span>
+                            {each.tag !== null && (
+                              <span className={chosen ? "text-t1" : "text-t2"}>{each.name}</span>
+                            )}
+                          </span>
+                          <span
+                            className={`truncate font-mono text-[11px] ${
+                              each.autoSelected || each.model === null
+                                ? chosen
+                                  ? "text-t2"
+                                  : "text-t3"
+                                : "text-t1"
+                            }`}
+                          >
+                            {roleValueText(each)}
+                            {level}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-l2 p-1.5">
+                <NewRole
+                  known={hub.roles.map((each) => each.role)}
+                  onPick={(name) => {
+                    setCreated(name);
+                    setPicked(name);
+                    setQuery("");
+                  }}
+                />
+              </div>
             </div>
             {/* min-w-0: a flex child would otherwise grow to its widest content (the level chips) past the dialog. */}
             <section

@@ -1036,6 +1036,28 @@ export class ChatController {
     }
   }
 
+  /**
+   * Saves, switches to or deletes one of omp's model presets, as omp's hub and `/modelpreset` do (#2838): the line omp
+   * shows for it, and whether it went through whole (a switch to a preset that did not fully apply, a delete that
+   * found nothing to delete, is not).
+   */
+  async modelPreset(
+    action: "save" | "apply" | "delete",
+    name: string,
+  ): Promise<{ readonly status: string; readonly clean: boolean }> {
+    try {
+      if (action === "save") {
+        const { status } = await this.#request("save_model_preset", { name });
+        return { status, clean: true };
+      }
+      if (action === "apply") return await this.#request("apply_model_preset", { name });
+      const { status, deleted } = await this.#request("delete_model_preset", { name });
+      return { status, clean: deleted };
+    } catch (failure) {
+      throw olderServer(failure, "keep model presets");
+    }
+  }
+
   /** Answers a dialog omp waits on (an approval, a question). */
   async answer(id: string, answer: HostDialogAnswer): Promise<void> {
     const threadId = this.#threadId;
