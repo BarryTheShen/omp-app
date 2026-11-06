@@ -146,9 +146,26 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
     showProgress: true,
     onNextClick: () => advance?.(),
     onCloseClick: () => stop(),
-    // Driver puts the focus in the popover as it draws it; the box, the list or the pane the person was in keeps it.
-    onPopoverRender: ({ wrapper }) => {
+    // Driver puts the focus in the popover, or in the element it points at, as it draws a step; the box, the list or the
+    // pane the person was in keeps it. A focus taken and given back is not enough on a phone: the box's blur puts the
+    // keyboard away and ends the key row a step points at, and the box's focus given back raises neither (#2837). So
+    // while something outside the popover has the focus, driver finds nothing to focus: it skips what takes no pointer
+    // events, and the two take none until its drawing is done.
+    onPopoverRender: ({ wrapper }, { state }) => {
       wrapper.style.translate = "";
+      const held = document.activeElement;
+      if (held instanceof HTMLElement && held !== document.body && !wrapper.contains(held)) {
+        const shown = [wrapper, state.activeElement].filter(
+          (each): each is HTMLElement => each instanceof HTMLElement,
+        );
+        const before = shown.map((each) => each.style.pointerEvents);
+        for (const each of shown) each.style.pointerEvents = "none";
+        queueMicrotask(() => {
+          shown.forEach((each, at) => {
+            each.style.pointerEvents = before[at] ?? "";
+          });
+        });
+      }
       requestAnimationFrame(() => {
         // On a phone the popover stays out of the home bar's strip (#2816): driver keeps it inside the window only.
         // `translate` moves it up whichever of top or bottom driver placed it by.
