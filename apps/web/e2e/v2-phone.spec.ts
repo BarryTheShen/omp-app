@@ -138,6 +138,27 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
+    "Send sits in the one-line box with the same room above, below and to its right, and the box is no taller",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      await box(page).fill("hello");
+      const form = await page.locator("[data-tour='message-box']").boundingBox();
+      const send = await page.getByRole("button", { name: "Send" }).boundingBox();
+      if (form === null || send === null) throw new Error("the box is not drawn");
+      const above = send.y - form.y;
+      const below = form.y + form.height - (send.y + send.height);
+      const right = form.x + form.width - (send.x + send.width);
+      expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+      expect(Math.abs(right - below)).toBeLessThanOrEqual(1);
+      // A finger's 44 pt, and the box as tall as before: the even room costs the chat nothing.
+      expect(send.height).toBeGreaterThanOrEqual(44);
+      expect(form.height).toBeLessThanOrEqual(52);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "the tap that brings the key row up leaves the focus in the box and presses no key (#2837)",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);

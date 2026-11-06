@@ -993,7 +993,8 @@ export const Composer = memo(function Composer({
           )}
           {pickerInput}
           {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
-          <div className={phone ? "flex items-end gap-1.5 px-1.5 pb-1.5" : undefined}>
+          {/* ＋, the text and Send are a finger's 44 pt each: an even inset keeps Send centred, the box no taller. */}
+          <div className={phone ? "flex items-end gap-1.5 p-[3px]" : undefined}>
             {phone && (
               <PlusMenu
                 open={plusOpen}
