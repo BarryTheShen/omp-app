@@ -138,6 +138,17 @@
     overscroll-behavior: none;
   }
 
+  /*
+   * On a touch screen no box hands a drag on to the box around it, or to the page, once it reaches its end: with the
+   * keyboard up, a drag past the end of the chat panned the whole page and the app shook (`src/viewport.ts`). Set
+   * before any touch starts, which is when iOS 26 reads it (React Aria does the same).
+   */
+  @media (pointer: coarse) {
+    * {
+      overscroll-behavior: contain;
+    }
+  }
+
   body {
     @apply bg-page font-sans text-sm text-foreground antialiased;
     overflow: hidden;
