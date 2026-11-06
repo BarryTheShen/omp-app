@@ -17,10 +17,21 @@ export interface WorkspaceTab {
   readonly layout: SerializedDockview | null;
 }
 
+/** A workspace closed, with the place it had in the strip: Reopen puts it back there (#2831). */
+export interface ClosedTab {
+  readonly tab: WorkspaceTab;
+  readonly index: number;
+}
+
 export interface WorkspaceTabs {
   readonly tabs: readonly WorkspaceTab[];
   readonly active: string;
+  /** The workspaces closed last, oldest first, at most `MAX_CLOSED`; absent in tabs kept before #2831. */
+  readonly closed?: readonly ClosedTab[];
 }
+
+/** How many closed workspaces Reopen can bring back, as a browser keeps recently closed tabs. */
+export const MAX_CLOSED = 10;
 
 /** Where the tabs are kept in this browser. */
 export const TABS_KEY = "omp-app.ui.workspace";
@@ -43,10 +54,35 @@ export function layoutStorage(
   return inDesktopWindow && another ? sessionStorage : localStorage;
 }
 
-const newTab = (): WorkspaceTab => ({ id: crypto.randomUUID(), title: null, layout: null });
+/** A new workspace: one blank window, no name yet. */
+export const blankTab = (): WorkspaceTab => ({
+  id: crypto.randomUUID(),
+  title: null,
+  layout: null,
+});
+
+const isTab = (tab: unknown): tab is WorkspaceTab => {
+  if (typeof tab !== "object" || tab === null) return false;
+  const each = tab as Partial<WorkspaceTab>;
+  return (
+    typeof each.id === "string" &&
+    (each.title === null || typeof each.title === "string") &&
+    (each.firstTitle === undefined ||
+      each.firstTitle === null ||
+      typeof each.firstTitle === "string") &&
+    (each.firstPane === undefined ||
+      each.firstPane === null ||
+      typeof each.firstPane === "string") &&
+    (each.layout === null || (typeof each.layout === "object" && each.layout !== undefined))
+  );
+};
+
+/** Whether a workspace holds nothing: no window shows a chat, a file or the side panel. */
+export const isBlankTab = (tab: WorkspaceTab): boolean =>
+  tab.layout === null || Object.keys(tab.layout.panels ?? {}).length === 0;
 
 export function initialTabs(): WorkspaceTabs {
-  const tab = newTab();
+  const tab = blankTab();
   return { tabs: [tab], active: tab.id };
 }
 
@@ -55,26 +91,24 @@ export function loadTabs(raw: string | null): WorkspaceTabs {
   if (raw === null) return initialTabs();
   try {
     const kept = JSON.parse(raw) as Partial<WorkspaceTabs>;
-    const tabs = Array.isArray(kept.tabs)
-      ? kept.tabs.filter(
-          (tab): tab is WorkspaceTab =>
-            typeof tab === "object" &&
-            tab !== null &&
-            typeof tab.id === "string" &&
-            (tab.title === null || typeof tab.title === "string") &&
-            (tab.firstTitle === undefined ||
-              tab.firstTitle === null ||
-              typeof tab.firstTitle === "string") &&
-            (tab.firstPane === undefined ||
-              tab.firstPane === null ||
-              typeof tab.firstPane === "string") &&
-            (tab.layout === null || (typeof tab.layout === "object" && tab.layout !== undefined)),
-        )
-      : [];
+    const tabs = Array.isArray(kept.tabs) ? kept.tabs.filter(isTab) : [];
     const first = tabs[0];
     if (first === undefined) return initialTabs();
     const active = tabs.some((tab) => tab.id === kept.active) ? (kept.active as string) : first.id;
-    return { tabs, active };
+    const closed = Array.isArray(kept.closed)
+      ? kept.closed
+          .filter(
+            (entry): entry is ClosedTab =>
+              typeof entry === "object" &&
+              entry !== null &&
+              isTab(entry.tab) &&
+              Number.isInteger(entry.index) &&
+              entry.index >= 0 &&
+              !tabs.some((tab) => tab.id === entry.tab.id),
+          )
+          .slice(-MAX_CLOSED)
+      : [];
+    return closed.length > 0 ? { tabs, active, closed } : { tabs, active };
   } catch {
     return initialTabs();
   }
@@ -83,23 +117,66 @@ export function loadTabs(raw: string | null): WorkspaceTabs {
 const indexOf = (state: WorkspaceTabs, id: string): number =>
   state.tabs.findIndex((tab) => tab.id === id);
 
-/** A new tab right after the active one, made active (kitty's new tab). */
-export function addTab(state: WorkspaceTabs): WorkspaceTabs {
-  const tab = newTab();
+/**
+ * Puts a tab right after `after` (the active one when it is gone), made active or left behind it: a new workspace
+ * (kitty's new tab; VS Code's default place for a new tab), or a chat opened in a workspace of its own (#2831).
+ */
+export function insertTab(
+  state: WorkspaceTabs,
+  tab: WorkspaceTab,
+  after: string,
+  activate: boolean,
+): WorkspaceTabs {
+  const at = indexOf(state, after) >= 0 ? indexOf(state, after) : indexOf(state, state.active);
   const tabs = [...state.tabs];
-  tabs.splice(indexOf(state, state.active) + 1, 0, tab);
-  return { tabs, active: tab.id };
+  tabs.splice(at + 1, 0, tab);
+  return { ...state, tabs, active: activate ? tab.id : state.active };
 }
 
-/** Closes a tab; its right neighbour becomes active (else its left one). The last tab is replaced by an empty one. */
-export function closeTab(state: WorkspaceTabs, id: string): WorkspaceTabs {
+/**
+ * Closes a tab. The active one hands over to `owner`, the tab it was opened from, when given and still there, as a
+ * browser goes back to the tab a tab just opened came from (#2831); else to its right neighbour, else its left one.
+ * The last tab is replaced by an empty one. A tab that held something is kept, with its place, for Reopen (#2831); a
+ * blank one is not.
+ */
+export function closeTab(state: WorkspaceTabs, id: string, owner?: string): WorkspaceTabs {
   const index = indexOf(state, id);
   if (index < 0) return state;
+  const closing = state.tabs[index] as WorkspaceTab;
+  const closed = isBlankTab(closing)
+    ? (state.closed ?? [])
+    : [...(state.closed ?? []), { tab: closing, index }].slice(-MAX_CLOSED);
+  const kept = closed.length > 0 ? { closed } : {};
   const tabs = state.tabs.filter((tab) => tab.id !== id);
-  if (tabs.length === 0) return initialTabs();
-  if (state.active !== id) return { tabs, active: state.active };
-  const next = tabs[Math.min(index, tabs.length - 1)] as WorkspaceTab;
-  return { tabs, active: next.id };
+  if (tabs.length === 0) return { ...initialTabs(), ...kept };
+  if (state.active !== id) return { tabs, active: state.active, ...kept };
+  const next =
+    tabs.find((tab) => tab.id === owner) ??
+    (tabs[Math.min(index, tabs.length - 1)] as WorkspaceTab);
+  return { tabs, active: next.id, ...kept };
+}
+
+/**
+ * Brings back the workspace closed last, at its place, made active, as a browser's Ctrl+Shift+T. When only the blank
+ * workspace that closing the last one left is there, the reopened one takes its place. Nothing to reopen: as it was.
+ */
+export function reopenTab(state: WorkspaceTabs): WorkspaceTabs {
+  const last = state.closed?.at(-1);
+  if (last === undefined) return state;
+  const closed = (state.closed ?? []).slice(0, -1);
+  const kept = closed.length > 0 ? { closed } : {};
+  const only = state.tabs.length === 1 ? state.tabs[0] : undefined;
+  if (only !== undefined && isBlankTab(only))
+    return { tabs: [last.tab], active: last.tab.id, ...kept };
+  const tabs = [...state.tabs];
+  tabs.splice(Math.min(last.index, tabs.length), 0, last.tab);
+  return { tabs, active: last.tab.id, ...kept };
+}
+
+/** The tab at `index` (from 0), as a browser's Ctrl+1…8; `last` for Ctrl+9. Past the end: as it was. */
+export function goToTab(state: WorkspaceTabs, index: number | "last"): WorkspaceTabs {
+  const tab = index === "last" ? state.tabs.at(-1) : state.tabs[index];
+  return tab === undefined ? state : { ...state, active: tab.id };
 }
 
 /** The next or the previous tab, wrapping around. */

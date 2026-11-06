@@ -156,12 +156,10 @@ realTest.describe("new UI chat rename and delete", () => {
       await expect(boxes(first)).toHaveAttribute("placeholder", "Message omp", {
         timeout: 120_000,
       });
-      // The pane takes another chat: this tab no longer shows the first one.
-      await chats(first).getByRole("button", { name: "Seeded chat 2" }).click();
-      await expect(transcript(first).getByText("Seeded chat 2")).toBeVisible({ timeout: 60_000 });
-      await expect(boxes(first)).toHaveAttribute("placeholder", "Message omp", {
-        timeout: 120_000,
-      });
+      // Its window closes: this tab no longer shows the chat (a chat picked from the list now opens in a workspace of
+      // its own and leaves the open ones where they are, #2831).
+      await boxes(first).press("Control+Shift+W");
+      await expect(first.locator("[data-blank-window]")).toBeVisible();
 
       const second = await realApp.open({ path: "/" });
       await choose(second, "Seeded chat 1", "Delete…");

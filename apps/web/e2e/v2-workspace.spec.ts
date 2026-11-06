@@ -4,8 +4,8 @@ import { expect, realTest, startNewChat } from "./real-omp";
 /**
  * The new UI's workspaces (#2791) on real omp: tabs on top, always shown, each made of windows; a window is blank, with
  * only New chat, until a chat fills it, and the split keys make blank windows. kitty's keys move, zoom and close windows;
- * a new chat never takes another's place; the list opens chats into windows; layouts are kept across a reload; a phone
- * shows one chat at a time.
+ * a browser's tab keys work the workspaces, and the list opens a chat as a browser opens a link (#2831); layouts are kept
+ * across a reload; a phone shows one chat at a time.
  */
 realTest.describe("new UI workspace", () => {
   realTest.setTimeout(240_000);
@@ -151,7 +151,7 @@ realTest.describe("new UI workspace", () => {
       await opened(page, 1);
       await boxes(page).first().click();
 
-      await page.keyboard.press("Control+Shift+T");
+      await page.keyboard.press("Control+t");
       await expect(workspaces(page)).toHaveCount(2);
       await expect(workspaces(page).nth(1)).toHaveAttribute("aria-selected", "true");
       await expect(boxes(page).filter({ visible: true })).toHaveCount(0);
@@ -201,50 +201,161 @@ realTest.describe("new UI workspace", () => {
     },
   );
 
+  realTest(
+    "in an app window Ctrl+1 to Ctrl+8 go to that workspace and Ctrl+9 to the last; a browser tab leaves them to the browser, and its keys sheet marks the keys the browser keeps (#2831)",
+    async ({ realApp, browser }) => {
+      // A Home Screen app's window, as iOS reports it: the page gets every key there.
+      const app = await browser.newContext();
+      await app.addInitScript(() =>
+        Object.defineProperty(navigator, "standalone", { value: true }),
+      );
+      const page = await realApp.open({ path: "/", context: app });
+      await expect(blankNewChat(page)).toBeVisible({ timeout: 60_000 });
+      await page.keyboard.press("Control+t");
+      await page.keyboard.press("Control+t");
+      await expect(workspaces(page)).toHaveCount(3);
+      await page.keyboard.press("Control+1");
+      await expect(workspaces(page).nth(0)).toHaveAttribute("aria-selected", "true");
+      await page.keyboard.press("Control+9");
+      await expect(workspaces(page).nth(2)).toHaveAttribute("aria-selected", "true");
+      await page.keyboard.press("Control+2");
+      await expect(workspaces(page).nth(1)).toHaveAttribute("aria-selected", "true");
+      // Its keys sheet lists them and marks no key as the browser's.
+      await page.keyboard.press("Control+Slash");
+      const sheet = page.getByRole("dialog", { name: "Keys" });
+      await expect(sheet.getByText("Go to workspace 1 to 8; 9: the last one")).toBeVisible();
+      await expect(sheet.locator("[data-browser-kept]")).toHaveCount(0);
+      await expect(sheet.locator("[data-browser-keeps]")).toHaveCount(0);
+      await app.close();
+
+      // In a browser tab Ctrl+1 is the browser's, and the sheet marks Ctrl+T as the browser's, not Ctrl+O.
+      const tab = await realApp.open({ path: "/" });
+      await expect(blankNewChat(tab)).toBeVisible({ timeout: 60_000 });
+      await tab.keyboard.press("Control+t");
+      await expect(workspaces(tab)).toHaveCount(2);
+      await tab.keyboard.press("Control+1");
+      await tab.waitForTimeout(500);
+      await expect(workspaces(tab).nth(1)).toHaveAttribute("aria-selected", "true");
+      await tab.keyboard.press("Control+Slash");
+      const kept = tab.getByRole("dialog", { name: "Keys" });
+      await expect(kept.locator("[data-browser-keeps]")).toBeVisible();
+      await expect(kept.getByText("Go to workspace 1 to 8; 9: the last one")).toHaveCount(0);
+      const keys = kept.getByRole("region", { name: "Workspaces" }).locator("kbd");
+      await expect(keys.filter({ hasText: /^Ctrl\+T\*/ })).toHaveAttribute("data-browser-kept", "");
+      await expect(keys.filter({ hasText: /^Ctrl\+O$/ })).not.toHaveAttribute(
+        "data-browser-kept",
+        "",
+      );
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest.describe("with three saved chats", () => {
     realTest.use({ seedSessions: 3 });
     const row = (page: Page, n: number) =>
       chats(page).getByRole("button", { name: new RegExp(`^Seeded chat ${n}\\b`) });
 
     realTest(
-      "a click fills a blank window or shows the chat in the focused one, Alt+click beside it, an open chat gets the focus, and a new chat opens beside",
+      "a click fills a blank window, else opens the chat in a workspace of its own; Alt+click beside; an open chat gets the focus; a new chat opens in a workspace of its own, and closing it goes back (#2831)",
       async ({ realApp }) => {
         const page = await realApp.open({ path: "/" });
         await row(page, 1).click();
         await opened(page, 1);
         await expect(blanks(page)).toHaveCount(0);
+        await expect(workspaces(page)).toHaveCount(1);
         await expect(row(page, 1)).toHaveAttribute("aria-current", "true");
         await expect(row(page, 1)).toHaveAccessibleName("Seeded chat 1, open in a window");
 
+        // Alt+click: in a window beside the focused one, in this workspace.
         await row(page, 2).click({ modifiers: ["Alt"] });
         await opened(page, 2);
+        await expect(workspaces(page)).toHaveCount(1);
         await expect(row(page, 2)).toHaveAttribute("aria-current", "true");
         await expect(boxes(page).nth(1)).toBeFocused();
 
+        // An open chat: its window gets the focus.
         await row(page, 1).click();
         await expect(boxes(page)).toHaveCount(2);
         await expect(boxes(page).nth(0)).toBeFocused();
 
-        // A chat from the list shows in the focused window, in place of the chat there, which keeps running.
+        // Another chat opens in a workspace of its own, right after this one and in front; the chats here stay open.
         await row(page, 3).click();
-        await expect(boxes(page)).toHaveCount(2);
-        await expect(row(page, 3)).toHaveAccessibleName("Seeded chat 3, open in a window");
-        await expect(row(page, 1)).toHaveAccessibleName("Seeded chat 1");
-
-        // A new chat never takes another's place: from the palette it opens in a window beside.
-        await page.keyboard.press("Control+K");
-        await page.getByRole("option", { name: "New chat", exact: true }).click();
-        await opened(page, 3);
-        await expect(row(page, 3)).toHaveAccessibleName("Seeded chat 3, open in a window");
+        await expect(workspaces(page)).toHaveCount(2);
+        await expect(workspaces(page).nth(1)).toHaveAttribute("aria-selected", "true");
+        await opened(page, 1);
+        await expect(row(page, 3)).toHaveAttribute("aria-current", "true");
+        await expect(row(page, 1)).toHaveAccessibleName("Seeded chat 1, open in a window");
         await expect(row(page, 2)).toHaveAccessibleName("Seeded chat 2, open in a window");
 
-        // A blank window takes the chat clicked next.
+        // From the first workspace, a new chat (Ctrl+O) opens in a workspace of its own right after it; closing that
+        // one goes back to the first, not on to its neighbour.
+        await workspaces(page).nth(0).click();
+        await expect(workspaces(page).nth(0)).toHaveAttribute("aria-selected", "true");
+        await page.keyboard.press("Control+o");
+        await expect(workspaces(page)).toHaveCount(3);
+        await expect(workspaces(page).nth(1)).toHaveAttribute("aria-selected", "true");
+        await opened(page, 1);
+        await expect(boxes(page)).toBeFocused();
+        await page.keyboard.press("Control+w");
+        await expect(workspaces(page)).toHaveCount(2);
+        await expect(workspaces(page).nth(0)).toHaveAttribute("aria-selected", "true");
+        await expect(boxes(page)).toHaveCount(2);
+
+        // A blank window you're in takes the new chat.
         await page.keyboard.press("Control+Shift+O");
         await expect(blankNewChat(page)).toBeFocused();
-        await row(page, 1).click();
-        await opened(page, 4);
+        await page.keyboard.press("Control+o");
+        await opened(page, 3);
         await expect(blanks(page)).toHaveCount(0);
-        await expect(row(page, 1)).toHaveAccessibleName("Seeded chat 1, open in a window");
+        await expect(workspaces(page)).toHaveCount(2);
+
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
+      "Ctrl+click and a middle click open chats behind, in the order clicked; closing a workspace's only window closes it, and Ctrl+Shift+T brings it back, also after a reload (#2831)",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await row(page, 1).click();
+        await opened(page, 1);
+        await row(page, 2).click({ modifiers: ["Control"] });
+        await row(page, 3).click({ button: "middle" });
+        await expect(workspaces(page)).toHaveCount(3);
+        // This workspace stays in front, as it was.
+        await expect(workspaces(page).nth(0)).toHaveAttribute("aria-selected", "true");
+        await expect(boxes(page)).toHaveCount(1);
+        await expect(row(page, 1)).toHaveAttribute("aria-current", "true");
+        await expect(workspaces(page).nth(1)).toHaveText("Seeded chat 2", { timeout: 60_000 });
+        await expect(workspaces(page).nth(2)).toHaveText("Seeded chat 3", { timeout: 60_000 });
+        await expect(row(page, 3)).toHaveAccessibleName("Seeded chat 3, open in a window");
+
+        // The last workspace's only window closes, and the workspace with it.
+        await workspaces(page).nth(2).click();
+        await opened(page, 1);
+        await boxes(page).click();
+        await page.keyboard.press("Control+Shift+W");
+        await expect(workspaces(page)).toHaveCount(2);
+        await expect(workspaces(page).nth(1)).toHaveAttribute("aria-selected", "true");
+        await expect(row(page, 3)).toHaveAccessibleName("Seeded chat 3");
+
+        // Ctrl+Shift+T brings it back at its place, with its chat.
+        await page.keyboard.press("Control+Shift+T");
+        await expect(workspaces(page)).toHaveCount(3);
+        await expect(workspaces(page).nth(2)).toHaveAttribute("aria-selected", "true");
+        await expect(workspaces(page).nth(2)).toHaveText("Seeded chat 3");
+        await opened(page, 1);
+        await expect(row(page, 3)).toHaveAttribute("aria-current", "true");
+
+        // The closed workspaces are kept with the others: closed again, it still comes back after a reload.
+        await page.keyboard.press("Control+w");
+        await expect(workspaces(page)).toHaveCount(2);
+        await page.reload();
+        await expect(workspaces(page)).toHaveCount(2, { timeout: 60_000 });
+        await opened(page, 1);
+        await page.keyboard.press("Control+Shift+T");
+        await expect(workspaces(page)).toHaveCount(3);
+        await expect(workspaces(page).nth(2)).toHaveText("Seeded chat 3");
 
         expect(realApp.problems).toEqual([]);
       },

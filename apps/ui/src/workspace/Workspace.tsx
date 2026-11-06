@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
 import { forgetNewChatDraft } from "../chat/drafts";
-import { KEYS, keycap } from "../keys/table";
+import { inAppWindow, KEYS, keycap } from "../keys/table";
 import { FilePane } from "../panels/files/FilePane";
 import { isFilePane } from "../panels/files/filePaneParams";
 import {
@@ -66,17 +66,21 @@ import { PaneModeContext } from "./paneMode";
 import { TabStrip } from "./TabStrip";
 import {
   activateTab,
-  addTab,
+  blankTab,
   closeTab,
+  goToTab,
+  insertTab,
   layoutStorage,
   loadTabs,
   moveTab,
   moveTabTo,
   nameAfterChat,
   renameTab,
+  reopenTab,
   saveLayout,
   stepTab,
   TABS_KEY,
+  type WorkspaceTab,
   type WorkspaceTabs,
 } from "./tabs";
 
@@ -118,6 +122,7 @@ export type WorkspaceCommand =
   | "nextTab"
   | "previousTab"
   | "closeTab"
+  | "reopenTab"
   | "renameTab"
   | "moveTabRight"
   | "moveTabLeft";
@@ -128,14 +133,19 @@ export interface FocusedChat {
   readonly composer: ComposerHandle | undefined;
 }
 
+/**
+ * Where a chat opens (#2831), as a browser opens a link: `front`, a click; `behind`, Ctrl+click or a middle click, which
+ * leaves the shown workspace in front; `beside`, Alt+click, in a window beside the focused one.
+ */
+export type OpenHow = "front" | "behind" | "beside";
+
 /** What the sidebar and the palette ask of the workspace. */
 export interface WorkspaceHandle {
   /**
-   * Opens a chat. Where a window shows it already, that window gets the focus; otherwise a blank focused window takes
-   * it, a new chat gets a window beside the focused chat, and a chat from the list shows in the focused window (with
-   * `split`, beside it).
+   * Opens a chat. Where a window shows it already, that window comes to the front. Otherwise a blank focused window
+   * takes it, and otherwise it gets a workspace of its own, as a browser opens a page in a new tab (`OpenHow`).
    */
-  readonly open: (target: ChatTarget, where: "here" | "split") => void;
+  readonly open: (target: ChatTarget, how: OpenHow) => void;
   /** A tour's sandbox: a new workspace with a new chat in its window, so nothing the tour has you try touches yours. */
   readonly sandbox: () => void;
   readonly command: (id: WorkspaceCommand) => void;
@@ -256,8 +266,25 @@ export function Workspace({
   const composers = useMemo(() => new Map<string, ComposerHandle>(), []);
   /** Whether the phone layout zoomed the focused pane, so leaving the phone layout can undo it. */
   const phoneZoomed = useRef(false);
-  /** Tabs made with Ctrl+Shift+T, which open with a new chat. */
-  const freshTabs = useRef(new Set<string>());
+  /** Workspaces just opened for a chat (#2831) or a tour's sandbox: the chat their blank window takes once ready. */
+  const pendingChats = useRef(new Map<string, ChatTarget>());
+  /** The workspaces opened behind from the shown one, so the next goes after the last of them, as a browser's tabs. */
+  const behindChain = useRef<{ readonly from: string; readonly last: string } | null>(null);
+  /**
+   * Each workspace opened in front, with the one it was opened from (#2831): closing it goes back there, as a browser's
+   * tab opened from another, until you go to another workspace yourself (Firefox's `browser.tabs.selectOwnerOnClose`).
+   */
+  const owners = useRef(new Map<string, string>());
+  /** You go to another workspace yourself: closing one no longer goes back to where it was opened from. */
+  const switchTabs = useCallback((change: (state: WorkspaceTabs) => WorkspaceTabs) => {
+    owners.current.clear();
+    setTabs(change);
+  }, []);
+  /** A new workspace in front, right after the shown one, which closing it goes back to. */
+  const openInFront = useCallback((tab: WorkspaceTab) => {
+    owners.current.set(tab.id, tabsRef.current.active);
+    setTabs((state) => insertTab(state, tab, state.active, true));
+  }, []);
   /** Whether a phone has had its new chat for this page load (a phone opens on a new chat). */
   const phoneStarted = useRef(false);
   /** When a pane opens its chat: every pane at once on a desktop, only the pane in front on a phone (#2768). */
@@ -361,8 +388,8 @@ export function Workspace({
   /**
    * A new chat in a window: a blank window given (its New chat), else the focused window when it is blank, else a new
    * window beside the focused chat (`direction`), else wherever dockview puts it. It gets the caret once its message
-   * box is there. A new chat runs in the focused chat's folder (as kitty's new window keeps the current one's), else
-   * the shown folder; a chat from the list belongs to the list's folder.
+   * box is there, unless its workspace is behind (`take`). A new chat runs in the focused chat's folder (as kitty's new
+   * window keeps the current one's), else the folder it names; a chat from the list belongs to the list's folder.
    */
   const addChat = useCallback(
     (
@@ -370,9 +397,11 @@ export function Workspace({
       target: ChatTarget,
       direction?: "right" | "below",
       into?: IDockviewGroupPanel,
+      take = true,
     ) => {
       const reference = chatPaneIn(api);
-      const chatFolder = paramsOf(reference?.params)?.folder ?? folder;
+      const chatFolder =
+        paramsOf(reference?.params)?.folder ?? (target.kind === "new" ? target.folder : folder);
       const focused = api.activeGroup;
       const blank =
         into ??
@@ -395,7 +424,7 @@ export function Workspace({
             ? { position: { referencePanel: reference, direction } }
             : {}),
       });
-      focus.request(id);
+      if (take) focus.request(id);
     },
     [folder, focus, chatPaneIn],
   );
@@ -532,10 +561,14 @@ export function Workspace({
       }
       // A workspace starts as one blank window (#2791), its New chat in reach.
       if (api.groups.length === 0) api.addGroup();
-      // A tour's sandbox opens a workspace with a new chat in its window.
-      if (freshTabs.current.delete(tabId) && api.totalPanels === 0) {
-        addChat(api, { kind: "new", folder }, undefined, api.groups.find(isBlank));
-        onShownRef.current?.();
+      // A chat opened in a workspace of its own (#2831), and a tour's sandbox, fill its blank window; behind, it opens
+      // without taking the caret.
+      const pending = pendingChats.current.get(tabId);
+      pendingChats.current.delete(tabId);
+      if (pending !== undefined && api.totalPanels === 0) {
+        const shown = tabId === tabsRef.current.active;
+        addChat(api, pending, undefined, api.groups.find(isBlank), shown);
+        if (shown) onShownRef.current?.();
       }
       // A phone opens on a new chat in the shown tab, ready to type, with the list a tap away: going through the list
       // to start one is slow on a phone. A new chat already in front stays, with the text kept for it. A reload the app
@@ -642,9 +675,10 @@ export function Workspace({
 
   /**
    * Closes a tab the person asked to close: each chat pane in it goes as if closed itself, so its new chat's kept text
-   * goes too. The panes come from the tab's dockview when it is mounted, else from its saved layout.
+   * goes too. The panes come from the tab's dockview when it is mounted, else from its saved layout. Reopen brings the
+   * tab back with its windows as they are now, or as `layout` has them (as they were before its last window closed).
    */
-  const closeTabAsked = useCallback((id: string) => {
+  const closeTabAsked = useCallback((id: string, layout?: SerializedDockview) => {
     const api = apis.current.get(id);
     const panes =
       api !== undefined
@@ -657,17 +691,71 @@ export function Workspace({
       if (chat !== undefined) void forgetNewChatDraft(chat);
     }
     apis.current.delete(id);
-    setTabs((state) => closeTab(state, id));
+    const back = owners.current.get(id);
+    owners.current.delete(id);
+    const kept =
+      layout ?? (api === undefined ? undefined : keptLayout(api.toJSON(), phoneRef.current));
+    setTabs((state) =>
+      closeTab(kept === undefined ? state : saveLayout(state, id, kept), id, back),
+    );
   }, []);
 
   /**
-   * Opens a chat (#2791). Where a window shows it already, that window comes to the front. Otherwise a blank focused
-   * window takes it. A new chat never takes another's place: it gets a window of its own beside the focused chat (on a
-   * phone, one chat at a time, it shows in place of the one shown). A chat from the list shows in the focused window, in
-   * place of the chat there (which keeps running); with `split`, in a window beside it.
+   * Closes a window the person asked to close: its × or Ctrl+Shift+W. The workspace's only window closing closes the
+   * workspace too, as a browser tab goes with its page, unless it is the only workspace (#2831); Reopen brings it back
+   * with that window. A phone's window only.
+   */
+  const closeWindowAsked = useCallback(
+    (api: DockviewApi, panel: IDockviewPanel) => {
+      const besideSide = (group: IDockviewGroupPanel): boolean =>
+        group.panels.some((each) => each.id === SIDE_PANE);
+      const onlyWindow =
+        !phoneRef.current &&
+        tabsRef.current.tabs.length > 1 &&
+        panel.id !== SIDE_PANE &&
+        api.panels.every((each) => each === panel || each.id === SIDE_PANE) &&
+        api.groups.every((group) => group === panel.group || besideSide(group));
+      const before = onlyWindow ? keptLayout(api.toJSON(), false) : undefined;
+      closePaneAsked(panel);
+      if (before === undefined) return;
+      const tabId = [...apis.current].find(([, each]) => each === api)?.[0];
+      if (tabId !== undefined) closeTabAsked(tabId, before);
+    },
+    [closeTabAsked],
+  );
+
+  /**
+   * A chat in a workspace of its own, right after the shown one (#2831): in front, or behind it, where several opened
+   * from the same workspace line up in the order opened, as a browser's tabs opened from one page. Its blank window
+   * takes the chat once its dockview is ready (`ready`).
+   */
+  const openInWorkspace = useCallback(
+    (target: ChatTarget, behind: boolean) => {
+      const tab = blankTab();
+      pendingChats.current.set(tab.id, target);
+      if (!behind) {
+        behindChain.current = null;
+        openInFront(tab);
+        return;
+      }
+      const from = tabsRef.current.active;
+      const chain = behindChain.current;
+      const after = chain !== null && chain.from === from ? chain.last : from;
+      behindChain.current = { from, last: tab.id };
+      setTabs((state) => insertTab(state, tab, after, false));
+    },
+    [openInFront],
+  );
+
+  /**
+   * Opens a chat as a browser opens a page (#2791, #2831). Where a window shows it already, that window comes to the
+   * front (opened behind, it stays where it is). Otherwise a blank focused window takes it, unless it opens behind,
+   * which leaves the shown workspace as it is. Otherwise `beside` puts it in a window beside the focused one (a phone
+   * shows that one in front), and anything else gets a workspace of its own (`openInWorkspace`). On a phone, one chat
+   * at a time: it shows in place of the one shown.
    */
   const openChat = useCallback(
-    (target: ChatTarget, where: "here" | "split") => {
+    (target: ChatTarget, how: OpenHow) => {
       if (target.kind === "existing") {
         for (const [tabId, api] of apis.current) {
           const panel = api.panels.find((candidate) => {
@@ -675,7 +763,8 @@ export function Workspace({
             return shown?.kind === "existing" && shown.threadId === target.threadId;
           });
           if (panel === undefined) continue;
-          setTabs((state) => activateTab(state, tabId));
+          if (how === "behind") return;
+          if (tabId !== tabsRef.current.active) switchTabs((state) => activateTab(state, tabId));
           panel.api.setActive();
           zoomForPhone(api);
           focusPane(api);
@@ -685,14 +774,11 @@ export function Workspace({
       withActive((api) => {
         const focused = api.activeGroup;
         const panel = chatPaneIn(api);
-        if (focused !== undefined && isBlank(focused)) addChat(api, target, undefined, focused);
-        else if (
-          where === "split" ||
-          panel === undefined ||
-          (target.kind === "new" && !phoneRef.current)
-        )
+        if (focused !== undefined && isBlank(focused) && how !== "behind")
+          addChat(api, target, undefined, focused);
+        else if (how === "beside" || (phoneRef.current && panel === undefined))
           addChat(api, target, "right");
-        else {
+        else if (phoneRef.current && panel !== undefined) {
           // A new chat runs in the folder it names; a chat from the list belongs to the list's folder, a running chat
           // from another folder to its own.
           panel.api.updateParameters({
@@ -702,11 +788,25 @@ export function Workspace({
           } satisfies ChatPanelParams);
           panel.api.setTitle("New chat");
           focus.request(panel.id, true);
+        } else {
+          openInWorkspace(target, how === "behind");
+          return;
         }
         report();
       });
     },
-    [addChat, chatPaneIn, focus, focusPane, folder, report, withActive, zoomForPhone],
+    [
+      addChat,
+      chatPaneIn,
+      focus,
+      focusPane,
+      folder,
+      openInWorkspace,
+      report,
+      switchTabs,
+      withActive,
+      zoomForPhone,
+    ],
   );
 
   /** The workspace's commands: kitty's keys run them, and the palette offers them. */
@@ -714,7 +814,17 @@ export function Workspace({
     () => ({
       splitRight: () => withActive((api) => splitBlank(api, "right")),
       splitDown: () => withActive((api) => splitBlank(api, "below")),
-      newChat: () => openChat({ kind: "new", folder }, "here"),
+      // In the focused chat's folder, as a new window is (`addChat`).
+      newChat: () =>
+        openChat(
+          {
+            kind: "new",
+            folder:
+              paramsOf(chatPaneIn(apis.current.get(tabsRef.current.active))?.params)?.folder ??
+              folder,
+          },
+          "front",
+        ),
       // Zoom the focused window, a blank one too, or back.
       zoom: () =>
         withActive((api) => {
@@ -727,7 +837,7 @@ export function Workspace({
       closePane: () =>
         withActive((api) => {
           const group = api.activeGroup;
-          if (api.activePanel !== undefined) closePaneAsked(api.activePanel);
+          if (api.activePanel !== undefined) closeWindowAsked(api, api.activePanel);
           // A blank window closes too, unless it is the workspace's only one.
           else if (group !== undefined && api.groups.length > 1) api.removeGroup(group);
         }),
@@ -747,27 +857,38 @@ export function Workspace({
         }),
       paneMode: () => setPaneMode(true),
       // A new workspace starts as one blank window (#2791).
-      newTab: () => setTabs((state) => addTab(state)),
-      nextTab: () => setTabs((state) => stepTab(state, 1)),
-      previousTab: () => setTabs((state) => stepTab(state, -1)),
+      newTab: () => openInFront(blankTab()),
+      nextTab: () => switchTabs((state) => stepTab(state, 1)),
+      previousTab: () => switchTabs((state) => stepTab(state, -1)),
       closeTab: () => closeTabAsked(tabsRef.current.active),
+      reopenTab: () => switchTabs((state) => reopenTab(state)),
       renameTab: () => setRenaming(tabsRef.current.active),
       moveTabRight: () => setTabs((state) => moveTab(state, 1)),
       moveTabLeft: () => setTabs((state) => moveTab(state, -1)),
     }),
-    [closeTabAsked, focusPane, folder, openChat, splitBlank, withActive],
+    [
+      chatPaneIn,
+      closeTabAsked,
+      closeWindowAsked,
+      focusPane,
+      folder,
+      openChat,
+      openInFront,
+      splitBlank,
+      switchTabs,
+      withActive,
+    ],
   );
 
   useImperativeHandle(
     ref,
     () => ({
       open: openChat,
-      sandbox: () =>
-        setTabs((state) => {
-          const next = addTab(state);
-          freshTabs.current.add(next.active);
-          return next;
-        }),
+      sandbox: () => {
+        const tab = blankTab();
+        pendingChats.current.set(tab.id, { kind: "new", folder });
+        openInFront(tab);
+      },
       command: (id) => commands[id](),
       forget: (threadId) => {
         // Before the windows move on, so the one that showed it closes it instead of keeping it open.
@@ -823,7 +944,17 @@ export function Workspace({
           report();
         }),
     }),
-    [chatPaneIn, commands, composers, controllers, openChat, report, withActive],
+    [
+      chatPaneIn,
+      commands,
+      composers,
+      controllers,
+      folder,
+      openChat,
+      openInFront,
+      report,
+      withActive,
+    ],
   );
 
   // A divider's drag resizes the panes without selecting their text (`dividers.ts`).
@@ -863,13 +994,26 @@ export function Workspace({
   useHotkeys(KEYS.swapPane.hotkey, commands.swapPane, keys);
   useHotkeys(KEYS.equalize.hotkey, commands.equalize, keys);
   useHotkeys(KEYS.newTab.hotkey, commands.newTab, keys);
+  useHotkeys(KEYS.newChat.hotkey, commands.newChat, keys);
   useHotkeys(KEYS.nextTab.hotkey, commands.nextTab, keys);
   useHotkeys(KEYS.previousTab.hotkey, commands.previousTab, keys);
   useHotkeys(KEYS.closeTab.hotkey, commands.closeTab, keys);
+  useHotkeys(KEYS.reopenTab.hotkey, commands.reopenTab, keys);
   useHotkeys(KEYS.renameTab.hotkey, commands.renameTab, keys);
   useHotkeys(KEYS.moveTabRight.hotkey, commands.moveTabRight, keys);
   useHotkeys(KEYS.moveTabLeft.hotkey, commands.moveTabLeft, keys);
   useHotkeys(KEYS.paneMode.hotkey, commands.paneMode, keys);
+  // Ctrl+1…8 and Ctrl+9 only in an app window: a browser tab keeps them for its own tabs (#2831).
+  const [appWindow] = useState(inAppWindow);
+  useHotkeys(
+    KEYS.goToTab.hotkey,
+    (event) => {
+      const digit = Number(event.code.replace("Digit", ""));
+      if (digit >= 1 && digit <= 8) switchTabs((state) => goToTab(state, digit - 1));
+      else if (digit === 9) switchTabs((state) => goToTab(state, "last"));
+    },
+    { ...keys, enabled: !phone && appWindow },
+  );
   useHotkeys(
     KEYS.focusPane.hotkey,
     (_event, handler) => {
@@ -944,13 +1088,14 @@ export function Workspace({
       composers,
       onPaneChanged: report,
       newChat: (api, group) => addChat(api, { kind: "new", folder }, undefined, group),
+      closePane: closeWindowAsked,
       inView: (paneId) =>
         document.visibilityState === "visible" &&
         document.hasFocus() &&
         apis.current.get(tabsRef.current.active)?.activePanel?.id === paneId,
       openGate,
     }),
-    [client, focus, controllers, composers, report, addChat, folder, openGate],
+    [client, focus, controllers, composers, report, addChat, folder, openGate, closeWindowAsked],
   );
   const labels = new Map(
     tabs.tabs.flatMap((tab) => {
@@ -971,7 +1116,7 @@ export function Workspace({
                 active={tabs.active}
                 labels={labels}
                 renaming={renaming}
-                onActivate={(id) => setTabs((state) => activateTab(state, id))}
+                onActivate={(id) => switchTabs((state) => activateTab(state, id))}
                 onClose={closeTabAsked}
                 onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
                 onRenaming={setRenaming}
@@ -1052,7 +1197,7 @@ const EDGE_SHADE = {
 } as const;
 
 /** The keys that reach everything else, in a blank window. */
-const START_KEYS = [KEYS.palette, KEYS.shortcuts, KEYS.settings] as const;
+const START_KEYS = [KEYS.newChat, KEYS.palette, KEYS.shortcuts, KEYS.settings] as const;
 
 /** How many windows a workspace has, kept current as they come and go. */
 function useWindowCount(api: DockviewApi): number {
@@ -1071,9 +1216,9 @@ function useWindowCount(api: DockviewApi): number {
 
 /**
  * A blank window (#2791): what a workspace starts as, and what a split or a closed chat leaves. It holds only New chat,
- * which starts a chat in it, and a chat dragged from the list fills it. Its × closes it, unless it is the workspace's
- * only window. New chat takes the caret when the window comes to the front, so Enter starts a chat. A phone drags
- * nothing and has no keys to show: there a chat opened from the list fills it.
+ * which starts a chat in it; a chat opened from the list while it is focused, or dragged onto it, fills it (#2831). Its
+ * × closes it, unless it is the workspace's only window. New chat takes the caret when the window comes to the front,
+ * so Enter starts a chat. A phone drags nothing and has no keys to show.
  */
 function BlankWindow({ containerApi, group }: IWatermarkPanelProps): ReactNode {
   const host = use(PaneHostContext);
@@ -1106,11 +1251,7 @@ function BlankWindow({ containerApi, group }: IWatermarkPanelProps): ReactNode {
         </Button>
       )}
       <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-9 opacity-90" />
-      <p className="text-base font-medium text-t1">
-        {phone
-          ? "Start a new chat, or open one from the list."
-          : "Start a new chat, or drag one here from the list."}
-      </p>
+      <p className="text-base font-medium text-t1">Start a new chat, or open one from the list.</p>
       <Button
         ref={newChat}
         data-new-chat=""

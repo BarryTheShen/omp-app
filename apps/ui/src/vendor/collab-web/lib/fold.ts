@@ -1,8 +1,8 @@
 import { createContext } from "react";
 
 /**
- * omp-app's addition: a pane's request to open or fold every tool card or every thinking block at once (Ctrl+O and
- * Ctrl+T). `epoch` counts the requests; 0 means none was made, so each card keeps its own default.
+ * omp-app's addition: a pane's request to open or fold every tool card or every thinking block at once (Alt+O and
+ * Alt+T). `epoch` counts the requests; 0 means none was made, so each card keeps its own default.
  */
 export interface Fold {
 	readonly open: boolean;

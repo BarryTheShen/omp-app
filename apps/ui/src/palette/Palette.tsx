@@ -35,7 +35,7 @@ import type { ChatList } from "../sidebar/useChatList";
 import { previewTheme, setSystemTheme, setThemeChoice, setThemeMode, THEMES } from "../theme/theme";
 import { startTour } from "../tour/runner";
 import { TOURS } from "../tour/tours";
-import type { WorkspaceCommand, WorkspaceHandle } from "../workspace/Workspace";
+import type { OpenHow, WorkspaceCommand, WorkspaceHandle } from "../workspace/Workspace";
 
 const SCOPES = ["All", "Commands", "Files", "Chats", "Models"] as const;
 type Scope = (typeof SCOPES)[number];
@@ -49,7 +49,7 @@ interface Item {
   readonly run: () => void;
 }
 
-/** The workspace's commands in the palette, with their keys (New chat has none: a row of its own). */
+/** The workspace's commands in the palette, with their keys (New chat is a row of its own, with a shorter name). */
 const WORKSPACE_COMMANDS: readonly Exclude<WorkspaceCommand, "newChat">[] = [
   "splitRight",
   "splitDown",
@@ -63,6 +63,7 @@ const WORKSPACE_COMMANDS: readonly Exclude<WorkspaceCommand, "newChat">[] = [
   "previousTab",
   "renameTab",
   "closeTab",
+  "reopenTab",
 ];
 
 /** The theme a palette row is: its key without `theme:`; none for other rows and for "match the system". */
@@ -210,7 +211,7 @@ export function Palette({
   readonly list: ChatList;
   readonly workspace: RefObject<WorkspaceHandle | null>;
   readonly folder: string;
-  readonly onOpenChat: (target: ChatTarget, where: "here" | "split") => void;
+  readonly onOpenChat: (target: ChatTarget, how: OpenHow) => void;
   readonly onShortcuts: () => void;
   /** Opens the goal dialog for a chat. */
   readonly onSetGoal: (controller: ChatController) => void;
@@ -305,10 +306,11 @@ export function Palette({
   const items: readonly Item[] = (() => {
     const all: Item[] = [
       {
-        // A blank focused window takes it; else it opens in a window beside the focused chat (#2791).
+        // A blank focused window takes it; else it opens in a workspace of its own (#2831).
         key: "app:newChat",
         group: "Commands",
         label: "New chat",
+        keys: keycap(KEYS.newChat),
         run: () => close(() => workspace.current?.command("newChat")),
       },
       ...WORKSPACE_COMMANDS.map((id) => ({
@@ -439,7 +441,7 @@ export function Palette({
           close(() =>
             onOpenChat(
               { kind: "existing", threadId: session.id, sessionFile: session.sessionFile },
-              "here",
+              "front",
             ),
           ),
       })),

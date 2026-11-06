@@ -57,7 +57,12 @@ import { useChatList } from "./sidebar/useChatList";
 import { useRunningChats } from "./sidebar/useRunningChats";
 import { setTourReveal } from "./tour/runner";
 import { WhatsNewList } from "./tour/WhatsNewList";
-import { Workspace, type WorkspaceHandle, type WorkspaceView } from "./workspace/Workspace";
+import {
+  type OpenHow,
+  Workspace,
+  type WorkspaceHandle,
+  type WorkspaceView,
+} from "./workspace/Workspace";
 
 /** The settings sheet and omp's settings with it load when it first opens. */
 const SettingsPage = lazy(() =>
@@ -269,8 +274,8 @@ function Shell({
   }, []);
   const showSettings = useCallback(() => openSettings("app"), [openSettings]);
   const showServers = useCallback(() => openSettings("server"), [openSettings]);
-  const openChat = useCallback((target: ChatTarget, where: "here" | "split"): void => {
-    workspace.current?.open(target, where);
+  const openChat = useCallback((target: ChatTarget, how: OpenHow): void => {
+    workspace.current?.open(target, how);
     setShowChat(true);
   }, []);
   /** Stops a running chat (D1); its windows here go blank, as a deleted chat's do, and it stays in its folder's list. */
@@ -482,7 +487,7 @@ function Shell({
               size="icon"
               className="size-11 shrink-0 text-t2"
               aria-label="New chat"
-              onClick={() => openChat({ kind: "new", folder }, "here")}
+              onClick={() => openChat({ kind: "new", folder }, "front")}
             >
               <SquarePen />
             </Button>

@@ -133,7 +133,7 @@ const PANES: Tour = {
     {
       target: CHAT_LIST,
       title: "Several chats at once",
-      text: "Drag a chat from the list onto a blank window to fill it, or near a window's edge to split it. Alt+click a chat to open it beside the one you're in. {equalize} shares the space equally; {resizePane} makes a window bigger or smaller.",
+      text: "Click a chat to open it in a workspace of its own, or in the blank window you're in; Alt+click opens it beside the window you're in. Drag one onto a blank window to fill it, or near a window's edge to split it. {equalize} shares the space equally; {resizePane} makes a window bigger or smaller.",
       action: next,
     },
     {
@@ -1173,14 +1173,14 @@ const WORKSPACES_TOUR: Tour = {
     {
       target: BLANK_WINDOW,
       title: "A blank window",
-      text: "It holds only <b>New chat</b>, which starts a chat in it. Or drag a chat from the list onto it: the chat fills the window.",
+      text: "It holds only <b>New chat</b>, which starts a chat in it. Or click a chat in the list, or drag one onto it: the chat fills the window.",
       action: next,
     },
     {
       target: WORKSPACE,
       centred: true,
       title: "More windows",
-      text: "Press {splitRight} to split: the new window is blank, and {splitDown} splits downward. A new chat never takes another's place: when the window shows a chat, the new one opens beside it.",
+      text: "Press {splitRight} to split: the new window is blank, and {splitDown} splits downward. A new chat never takes another's place: when the window you're in shows a chat, the new one opens in a workspace of its own.",
       action: keys("splitRight"),
     },
     {
@@ -1558,6 +1558,54 @@ const QUEUE_TOUR: Tour = {
   ],
 };
 
+/** #2831: workspaces take a browser's tab keys, and a chat opens as a browser opens a link. */
+const BROWSER_KEYS_TOUR: Tour = {
+  id: "browser-keys-2026-11-05",
+  title: "Workspaces like a browser's tabs",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TABS,
+      title: "Workspaces like tabs",
+      text: "Workspaces take a browser's tab keys: {newTab} opens one, {closeTab} closes it, {reopenTab} brings back the one closed last, and {nextTab} goes to the next. A browser tab keeps some of these for itself; the keys sheet ({shortcuts}) marks them.",
+      action: next,
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "A new chat",
+      text: "Press {newChat}. A blank window you're in takes the new chat; this one shows a chat, so it opens in a workspace of its own.",
+      action: keys("newChat"),
+    },
+    {
+      target: TABS,
+      title: "Back where you were",
+      text: "Close it with {closeTab}: you're back in the workspace you opened it from.",
+      action: keys("closeTab"),
+    },
+    {
+      target: CHAT_LIST,
+      title: "Chats open like links",
+      text: "Click a chat to open it in a workspace of its own, or in the blank window you're in. Ctrl+click it (⌘+click on a Mac or an iPad), or click it with the middle button, to open it behind this workspace; Alt+click opens it beside the window you're in.",
+      action: next,
+    },
+    {
+      target: WORKSPACE,
+      centred: true,
+      title: "Thinking and tool cards",
+      text: "{foldThinking} now shows or hides omp's thinking, and {foldTools} opens or folds every tool card.",
+      action: next,
+    },
+    {
+      target: TABS,
+      title: "Done here",
+      text: "Close the tour's workspace with {closeTab}.",
+      action: keys("closeTab"),
+    },
+  ],
+};
+
 /** An update of the app: when it came, what it added in one line, and the tours that show it. */
 export interface Update {
   readonly id: string;
@@ -1572,6 +1620,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-05-browser-keys",
+    when: "2026-11-05T18:30:00-06:00",
+    summary:
+      "Workspaces work like a browser's tabs: Ctrl+T opens one, Ctrl+W closes it, Ctrl+Shift+T brings back the one closed last, Ctrl+PgDn and Ctrl+PgUp move between them, and in the app's own window Ctrl+1 to Ctrl+9 go to one. Ctrl+O starts a new chat. A chat from the list opens in a workspace of its own, or in the blank window you're in; Ctrl+click opens it behind, Alt+click beside. Closing a workspace's only window closes the workspace. Show thinking and open tool cards moved to Alt+T and Alt+O.",
+    tours: [BROWSER_KEYS_TOUR],
+  },
   {
     id: "2026-11-04-attach-files",
     when: "2026-11-04T23:58:00-06:00",

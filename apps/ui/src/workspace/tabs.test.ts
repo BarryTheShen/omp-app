@@ -1,15 +1,21 @@
+import type { SerializedDockview } from "dockview-react";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import {
-  addTab,
+  blankTab,
   closeTab,
+  goToTab,
   initialTabs,
+  insertTab,
   layoutStorage,
   loadTabs,
+  MAX_CLOSED,
   moveTab,
   moveTabTo,
   nameAfterChat,
   renameTab,
+  reopenTab,
   stepTab,
+  type WorkspaceTab,
   type WorkspaceTabs,
 } from "./tabs";
 
@@ -21,10 +27,10 @@ const three = (): WorkspaceTabs => ({
 
 describe("workspace tabs", () => {
   test("a new tab goes right after the active one and becomes active", () => {
-    const next = addTab(three());
-    expect(ids(next)).toHaveLength(4);
-    expect(ids(next).slice(0, 2)).toEqual(["a", "b"]);
-    expect(next.active).toBe(ids(next)[2]);
+    const tab = blankTab();
+    const next = insertTab(three(), tab, "b", true);
+    expect(ids(next)).toEqual(["a", "b", tab.id, "c"]);
+    expect(next.active).toBe(tab.id);
   });
 
   test("closing the active tab activates its right neighbour, or its left one at the end", () => {
@@ -32,6 +38,14 @@ describe("workspace tabs", () => {
     expect(closeTab({ ...three(), active: "c" }, "c")).toMatchObject({ active: "b" });
     expect(ids(closeTab(three(), "a"))).toEqual(["b", "c"]);
     expect(closeTab(three(), "a").active).toBe("b");
+  });
+
+  test("closing a tab goes back to the one it was opened from while that one is there (#2831)", () => {
+    expect(closeTab(three(), "b", "a").active).toBe("a");
+    // The owner is gone: the right neighbour, as without one.
+    expect(closeTab(three(), "b", "gone").active).toBe("c");
+    // A tab closed behind the active one changes nothing.
+    expect(closeTab(three(), "c", "a").active).toBe("b");
   });
 
   test("closing the last tab leaves one empty tab", () => {
@@ -120,6 +134,84 @@ describe("workspace tabs", () => {
       tabs: [{ id: "x", title: null, firstTitle: 3, layout: null }],
     });
     expect(loadTabs(broken).tabs[0]?.id).not.toBe("x");
+  });
+
+  /** A workspace with one chat's window, as dockview saves it. */
+  const held = (id: string, title: string | null = null): WorkspaceTab => ({
+    id,
+    title,
+    layout: { panels: { [`pane-${id}`]: { id: `pane-${id}` } } } as unknown as SerializedDockview,
+  });
+
+  test("a closed workspace comes back at its place with its windows and name; the last closed first (#2831)", () => {
+    const state: WorkspaceTabs = { tabs: [held("a"), held("b", "Course"), held("c")], active: "b" };
+    const closed = closeTab(closeTab(state, "b"), "a");
+    expect(ids(closed)).toEqual(["c"]);
+    const once = reopenTab(closed);
+    expect(ids(once)).toEqual(["a", "c"]);
+    expect(once.active).toBe("a");
+    const twice = reopenTab(once);
+    expect(ids(twice)).toEqual(["a", "b", "c"]);
+    expect(twice.tabs[1]).toEqual(held("b", "Course"));
+    expect(twice.active).toBe("b");
+    // Nothing left to reopen.
+    expect(reopenTab(twice)).toBe(twice);
+  });
+
+  test("a blank workspace closed is not kept, and only the last ten closed are (#2831)", () => {
+    expect(closeTab(three(), "b").closed).toBeUndefined();
+    let state: WorkspaceTabs = {
+      tabs: Array.from({ length: 12 }, (_, n) => held(`t${n}`)).concat({
+        id: "keep",
+        title: null,
+        layout: null,
+      }),
+      active: "keep",
+    };
+    for (let n = 0; n < 12; n += 1) state = closeTab(state, `t${n}`);
+    expect(state.closed?.map((entry) => entry.tab.id)).toEqual(
+      Array.from({ length: MAX_CLOSED }, (_, n) => `t${n + 2}`),
+    );
+  });
+
+  test("the last workspace closed comes back in place of the blank one its closing left (#2831)", () => {
+    const only: WorkspaceTabs = { tabs: [held("a")], active: "a" };
+    const after = closeTab(only, "a");
+    expect(after.tabs).toHaveLength(1);
+    expect(after.tabs[0]?.id).not.toBe("a");
+    expect(reopenTab(after)).toEqual({ tabs: [held("a")], active: "a" });
+  });
+
+  test("closed workspaces are kept with the tabs; a kept one that is open again or unreadable is dropped (#2831)", () => {
+    const state = closeTab({ tabs: [held("a"), held("b")], active: "a" }, "b");
+    expect(loadTabs(JSON.stringify(state))).toEqual(state);
+    const odd = JSON.stringify({
+      ...state,
+      closed: [
+        { tab: held("a"), index: 0 },
+        { tab: { id: 3 }, index: 0 },
+        { tab: held("z"), index: -1 },
+      ],
+    });
+    expect(loadTabs(odd).closed).toBeUndefined();
+  });
+
+  test("a workspace opened behind goes after the one given and leaves the active one in front (#2831)", () => {
+    const tab = { id: "x", title: null, layout: null };
+    const behind = insertTab(three(), tab, "b", false);
+    expect(ids(behind)).toEqual(["a", "b", "x", "c"]);
+    expect(behind.active).toBe("b");
+    const chained = insertTab(behind, { ...tab, id: "y" }, "x", false);
+    expect(ids(chained)).toEqual(["a", "b", "x", "y", "c"]);
+    expect(insertTab(three(), tab, "b", true).active).toBe("x");
+    // A workspace given that is gone: after the active one.
+    expect(ids(insertTab(three(), tab, "gone", false))).toEqual(["a", "b", "x", "c"]);
+  });
+
+  test("Ctrl+1…8 go to that workspace, Ctrl+9 to the last; past the end nothing changes (#2831)", () => {
+    expect(goToTab(three(), 0).active).toBe("a");
+    expect(goToTab(three(), "last").active).toBe("c");
+    expect(goToTab(three(), 5)).toEqual(three());
   });
 });
 

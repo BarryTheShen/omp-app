@@ -19,6 +19,11 @@ export interface KeyBinding {
   readonly label: string;
   /** A key of the desktop window only: a browser keeps its own use of it, so the app neither binds nor lists it there. */
   readonly desktopOnly?: true;
+  /**
+   * A key of an app window only (the desktop window, an installed web app, a Home Screen app): in a browser tab it is the
+   * browser's own (Ctrl+1…9 go to its tabs), so the app neither binds nor lists it there (#2831).
+   */
+  readonly appWindowOnly?: true;
 }
 
 /**
@@ -93,28 +98,47 @@ const TABLE = {
     label: "Close the window",
   },
   newTab: {
-    hotkey: "ctrl+shift+t",
+    hotkey: "ctrl+t",
     scope: "workspace",
     group: "Workspaces",
     label: "New workspace",
   },
+  newChat: {
+    hotkey: "ctrl+o",
+    scope: "workspace",
+    group: "Workspaces",
+    label: "New chat",
+  },
+  closeTab: {
+    hotkey: "ctrl+w, ctrl+shift+q",
+    scope: "workspace",
+    group: "Workspaces",
+    label: "Close the workspace",
+  },
+  reopenTab: {
+    hotkey: "ctrl+shift+t",
+    scope: "workspace",
+    group: "Workspaces",
+    label: "Reopen the workspace closed last",
+  },
   nextTab: {
-    hotkey: "ctrl+tab, ctrl+shift+right",
+    hotkey: "ctrl+tab, ctrl+pagedown, ctrl+shift+right",
     scope: "workspace",
     group: "Workspaces",
     label: "Next workspace",
   },
   previousTab: {
-    hotkey: "ctrl+shift+tab, ctrl+shift+left",
+    hotkey: "ctrl+shift+tab, ctrl+pageup, ctrl+shift+left",
     scope: "workspace",
     group: "Workspaces",
     label: "Previous workspace",
   },
-  closeTab: {
-    hotkey: "ctrl+shift+q",
+  goToTab: {
+    hotkey: "ctrl+1, ctrl+2, ctrl+3, ctrl+4, ctrl+5, ctrl+6, ctrl+7, ctrl+8, ctrl+9",
     scope: "workspace",
     group: "Workspaces",
-    label: "Close the workspace",
+    label: "Go to workspace 1 to 8; 9: the last one",
+    appWindowOnly: true,
   },
   renameTab: {
     hotkey: "ctrl+shift+alt+t",
@@ -194,13 +218,13 @@ const TABLE = {
   },
 
   foldTools: {
-    hotkey: "ctrl+o",
+    hotkey: "alt+o",
     scope: "pane",
     group: "Transcript",
     label: "Open or fold every tool card",
   },
   foldThinking: {
-    hotkey: "ctrl+t",
+    hotkey: "alt+t",
     scope: "pane",
     group: "Transcript",
     label: "Show or hide thinking",
@@ -349,6 +373,58 @@ export function normalize(chord: string): string {
 export const chords = (binding: Pick<KeyBinding, "hotkey">): readonly string[] =>
   binding.hotkey.split(",").map(normalize);
 
+/**
+ * The keys a browser tab keeps for its own tabs and windows: the page never gets them (Chromium's reserved commands,
+ * `chrome/browser/ui/accelerator_table.cc` `kReservedCommandIds`; Firefox since version 48, Mozilla bug 1291706). They
+ * reach the app in the desktop window, an installed app's window (Chromium reserves no key there,
+ * `browser_command_controller.cc` `IsReservedCommandOrKey`) and a full-screen tab (#2831). ⌘⇧Q is macOS's Log Out,
+ * which its menu takes first.
+ */
+const BROWSER_KEEPS = new Set(
+  [
+    "ctrl+t",
+    "ctrl+w",
+    "ctrl+n",
+    "ctrl+shift+t",
+    "ctrl+shift+w",
+    "ctrl+shift+n",
+    "ctrl+tab",
+    "ctrl+shift+tab",
+    "ctrl+pagedown",
+    "ctrl+pageup",
+    "meta+t",
+    "meta+w",
+    "meta+n",
+    "meta+shift+t",
+    "meta+shift+w",
+    "meta+shift+n",
+    "meta+shift+q",
+  ].map((chord) => normalize(chord)),
+);
+
+/** Whether a browser tab keeps this chord for itself (`BROWSER_KEEPS`). */
+export const browserKeeps = (chord: string): boolean => BROWSER_KEEPS.has(normalize(chord));
+
+/** Whether a browser tab leaves at least one of a binding's keys to the page. */
+export const reachesTab = (binding: Pick<KeyBinding, "hotkey">): boolean =>
+  chords(binding).some((chord) => !browserKeeps(chord));
+
+let appWindow: boolean | undefined;
+
+/**
+ * Whether this page is an app window, which gets every key (#2831): the desktop window, an installed web app's window,
+ * or a Home Screen app. Not a browser tab, which keeps its tab keys (`BROWSER_KEEPS`). A page's window stays what it
+ * is, so this is read once.
+ */
+export function inAppWindow(): boolean {
+  if (typeof window === "undefined") return false;
+  appWindow ??=
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return appWindow;
+}
+
 /** Every key of the app as this device takes it: on an Apple device each Ctrl chord also with ⌘. */
 export const KEYS: { readonly [Id in KeyId]: Omit<KeyBinding, "id"> } = APPLE
   ? (Object.fromEntries(
@@ -384,6 +460,8 @@ const SHOWN: Record<string, string> = {
   equal: "=",
   minus: "-",
   space: "Space",
+  pagedown: "PgDn",
+  pageup: "PgUp",
 };
 
 /** On an Apple keyboard, the keycaps' own signs. */
@@ -398,10 +476,17 @@ const SHOWN_APPLE: Record<string, string> = {
 
 /**
  * How a binding reads on a keycap: its first alternative, `Ctrl+Shift+O`. On an Apple device its first alternative with
- * ⌘, in Apple's signs: `⌘⇧O`.
+ * ⌘, in Apple's signs: `⌘⇧O`. In a browser tab (`tab`), of the alternatives the browser leaves to the page when it
+ * leaves any, so nothing ever names a key that closes the tab (#2831).
  */
-export function keycap(binding: Pick<KeyBinding, "hotkey">, apple = APPLE): string {
-  const all = chords(binding);
+export function keycap(
+  binding: Pick<KeyBinding, "hotkey">,
+  apple = APPLE,
+  tab = !inAppWindow(),
+): string {
+  const every = chords(binding);
+  const reaching = tab ? every.filter((chord) => !browserKeeps(chord)) : every;
+  const all = reaching.length > 0 ? reaching : every;
   const shown =
     (apple ? all.find((chord) => chord.split("+").includes("meta")) : undefined) ?? all[0] ?? "";
   return shown

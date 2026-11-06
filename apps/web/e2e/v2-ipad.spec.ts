@@ -184,17 +184,17 @@ realTest.describe("new UI on a tablet", () => {
       const page = await realApp.open({ path: "/", context });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click({ timeout: 120_000 });
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
-      await page.keyboard.press("Meta+Shift+T");
+      await page.keyboard.press("Meta+t");
       await expect(page.locator("[data-tab]")).toHaveCount(2);
       await page.keyboard.press("Meta+Slash");
       const sheet = page.getByRole("dialog", { name: "Keys" });
-      await expect(sheet.getByText("⌘⇧T", { exact: true })).toBeVisible();
+      await expect(sheet.getByText("⌘O", { exact: true })).toBeVisible();
       await context.close();
 
       const linux = await realApp.open({ path: "/" });
       await chats(linux).getByRole("button", { name: "Seeded chat 1" }).click({ timeout: 120_000 });
       await expect(box(linux)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
-      await linux.keyboard.press("Meta+Shift+T");
+      await linux.keyboard.press("Meta+t");
       await linux.waitForTimeout(500);
       await expect(linux.locator("[data-tab]")).toHaveCount(1);
       expect(realApp.problems).toEqual([]);

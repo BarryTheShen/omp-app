@@ -322,7 +322,7 @@ realTest.describe("new UI message box", () => {
       expect(await newChatKeys(page)).toEqual(kept);
 
       // Closing a tab (Ctrl+Shift+Q) removes the keys of its panes.
-      await page.keyboard.press("Control+Shift+T");
+      await page.keyboard.press("Control+t");
       await expect(tabs).toHaveCount(2);
       await startNewChat(page);
       await expect(box(page).filter({ visible: true })).toHaveAttribute(

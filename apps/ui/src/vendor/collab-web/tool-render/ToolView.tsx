@@ -71,7 +71,7 @@ function useShownAfter(on: boolean, delayMs: number): boolean {
 }
 
 export function ToolView(props: ToolViewProps): ReactNode {
-	// omp-app: a pane's Ctrl+O opens or folds every card; a card drawn later starts as the last request said.
+	// omp-app: a pane's Alt+O opens or folds every card; a card drawn later starts as the last request said.
 	const fold = useContext(FoldContext).tools;
 	const [open, setOpen] = useState(fold.epoch > 0 ? fold.open : (props.defaultOpen ?? false));
 	useEffect(() => {

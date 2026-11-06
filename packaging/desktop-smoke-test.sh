@@ -556,11 +556,11 @@ read -r side _ <<<"$info"
 sleep 5
 # New chat, by keys (#2791): a blank window's New chat has the caret, so Enter starts a chat in it. The sidebar's
 # top-left button is New workspace now. T8's window holds one workspace, one blank window (no test before it opened a
-# chat); T9 opens a new workspace first (Ctrl+Shift+T), one blank window whatever layout its window brought back.
+# chat); T9 opens a new workspace first (Ctrl+T), one blank window whatever layout its window brought back.
 new_chat_by_keys() { # $1: the window; $2: the test's name for a failure; $3: "new-workspace" to open one first
   xdotool windowfocus "$1" 2>/dev/null || true
   if [[ ${3:-} == new-workspace ]]; then
-    xdotool key ctrl+shift+t || fail "$2: could not press Ctrl+Shift+T for a new workspace"
+    xdotool key ctrl+t || fail "$2: could not press Ctrl+T for a new workspace"
     sleep 2
   fi
   xdotool key Return || fail "$2: could not press Enter on the blank window's New chat"

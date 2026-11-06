@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { BINDINGS, collisions, keycap, normalize, withCommand } from "./table";
+import {
+  BINDINGS,
+  browserKeeps,
+  collisions,
+  keycap,
+  normalize,
+  reachesTab,
+  withCommand,
+} from "./table";
 
 describe("the app's keys", () => {
   test("no two bindings that act at once share a key", () => {
@@ -78,5 +86,22 @@ describe("the app's keys", () => {
     expect(keycap({ hotkey: "meta+ctrl+bracketleft, meta+ctrl+bracketright" }, true)).toBe("⌘⌃[");
     expect(keycap({ hotkey: "alt+p" }, true)).toBe("⌥P");
     expect(keycap({ hotkey: withCommand("ctrl+enter") }, true)).toBe("⌘↩");
+  });
+
+  test("in a browser tab a keycap names a key the browser leaves to the page, when the binding has one (#2831)", () => {
+    const closeTab = { hotkey: "ctrl+w, ctrl+shift+q" };
+    expect(keycap(closeTab, false, true)).toBe("Ctrl+Shift+Q");
+    expect(keycap(closeTab, false, false)).toBe("Ctrl+W");
+    // On an Apple device ⌘W is the tab's, and ⌘⇧Q is macOS's Log Out: ⌃⇧Q is the one that reaches the page.
+    expect(keycap({ hotkey: withCommand(closeTab.hotkey) }, true, true)).toBe("⌃⇧Q");
+    expect(keycap({ hotkey: "ctrl+tab, ctrl+pagedown, ctrl+shift+right" }, false, true)).toBe(
+      "Ctrl+Shift+→",
+    );
+    // Only keys the tab keeps: the keycap still names one, and the binding is known not to reach a tab.
+    expect(keycap({ hotkey: "ctrl+t" }, false, true)).toBe("Ctrl+T");
+    expect(reachesTab({ hotkey: "ctrl+t" })).toBe(false);
+    expect(reachesTab(closeTab)).toBe(true);
+    expect(browserKeeps("Shift+Ctrl+T")).toBe(true);
+    expect(browserKeeps("ctrl+o")).toBe(false);
   });
 });

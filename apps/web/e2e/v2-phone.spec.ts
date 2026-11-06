@@ -306,6 +306,10 @@ realTest.describe("new UI on a phone", () => {
         return `${Math.round(area?.width ?? 0)}x${Math.round(area?.height ?? 0)}`;
       };
       await expect.poll(size).toBe("390x844");
+      // Its last frames round to the full size while a row is still a fraction of a pixel short: the zoom ends first.
+      await sheet.evaluate((element) =>
+        Promise.all(element.getAnimations().map((animation) => animation.finished)),
+      );
       const sections = sheet.getByRole("navigation", { name: "Settings sections" });
       const heights = await sections
         .getByRole("button")

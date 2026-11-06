@@ -105,23 +105,23 @@ realTest.describe("new UI chat keys", () => {
   );
 
   realTest(
-    "Ctrl+O opens and folds every tool card; Ctrl+T shows and hides thinking",
+    "Alt+O opens and folds every tool card; Alt+T shows and hides thinking (#2831)",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       await send(page, `call_tool bash ${JSON.stringify({ command: "echo folded-output" })}`);
       const card = transcript(page).getByRole("button", { name: /^bash/ });
       await expect(card).toHaveAttribute("aria-expanded", "false", { timeout: 60_000 });
-      await box(page).press("Control+o");
+      await box(page).press("Alt+o");
       await expect(card).toHaveAttribute("aria-expanded", "true");
-      await box(page).press("Control+o");
+      await box(page).press("Alt+o");
       await expect(card).toHaveAttribute("aria-expanded", "false");
 
       await send(page, "stream_reasoning");
       const thoughts = transcript(page).getByRole("button", { name: "thinking" });
       await expect(thoughts.last()).toHaveAttribute("aria-expanded", "false", { timeout: 60_000 });
-      await box(page).press("Control+t");
+      await box(page).press("Alt+t");
       await expect(thoughts.last()).toHaveAttribute("aria-expanded", "true");
-      await box(page).press("Control+t");
+      await box(page).press("Alt+t");
       await expect(thoughts.last()).toHaveAttribute("aria-expanded", "false");
 
       expect(realApp.problems).toEqual([]);

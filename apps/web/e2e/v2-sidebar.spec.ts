@@ -136,7 +136,7 @@ realTest.describe("new UI chat list and pane keys", () => {
         const box = boxes(page);
         await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
         await expect(box).toBeFocused();
-        // The pane shows a chat now: the next pick and New chat replace it in the same pane.
+        // The window shows a chat now: the next pick and New chat each open in a workspace of their own (#2831).
         await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
         await expect(box).toBeFocused();
         await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
@@ -158,8 +158,9 @@ realTest.describe("new UI chat list and pane keys", () => {
         await boxes(page).press("Enter");
         const transcript = page.getByRole("region", { name: "Transcript" });
         await expect(transcript).toContainText("Steady line 0", { timeout: 90_000 });
-        // omp writes the chat's file only once this reply is done; the chat's row is in the list before that.
-        await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+        // Its window closes and the reply runs on. omp writes the chat's file only once this reply is done; the chat's
+        // row is in the list before that.
+        await boxes(page).press("Control+Shift+W");
         const row = chats(page).getByRole("button", { name: /^long first reply stream_steady/ });
         await expect(row).toHaveAccessibleName("long first reply stream_steady, running", {
           timeout: 10_000,

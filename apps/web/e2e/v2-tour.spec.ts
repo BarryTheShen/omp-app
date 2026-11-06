@@ -103,10 +103,7 @@ realTest.describe("new UI tours", () => {
     await page.keyboard.press("Control+Shift+Enter");
     await expect(heading(page)).toHaveText("Zoom back");
     await page.keyboard.press("Control+Shift+Enter");
-    await expect(heading(page)).toHaveText("Close a window");
-
-    await page.keyboard.press("Control+Shift+W");
-    await expect(shown(page)).toHaveCount(1);
+    // A browser tab keeps Ctrl+Shift+W, which closes the browser's window: the tour leaves out "Close a window" there.
     await expect(heading(page)).toHaveText("Several chats at once");
     await next.click();
     await expect(heading(page)).toHaveText("Light or dark");
@@ -121,6 +118,46 @@ realTest.describe("new UI tours", () => {
 
     expect(realApp.problems).toEqual([]);
   });
+
+  realTest(
+    "the browser keys tour opens a new chat in a workspace of its own, and closing goes back where it was (#2831)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startFromPalette(page, "Workspaces like a browser's tabs");
+      const next = popover(page).getByRole("button", { name: "Next" });
+      await expect(heading(page)).toHaveText("Workspaces like tabs");
+      await expect(tabs(page)).toHaveCount(2);
+      await next.click();
+
+      await expect(heading(page)).toHaveText("A new chat");
+      await opened(page, 1);
+      await page.keyboard.press("Control+o");
+      await expect(tabs(page)).toHaveCount(3);
+      await expect(tabs(page).nth(2)).toHaveAttribute("aria-selected", "true");
+
+      // A browser tab keeps Ctrl+W: the tour names the key that reaches the page.
+      await expect(heading(page)).toHaveText("Back where you were");
+      await expect(popover(page)).toContainText("Ctrl+Shift+Q");
+      await expect(popover(page)).not.toContainText("Ctrl+W");
+      await page.keyboard.press("Control+Shift+Q");
+      await expect(tabs(page)).toHaveCount(2);
+      await expect(tabs(page).nth(1)).toHaveAttribute("aria-selected", "true");
+
+      await expect(heading(page)).toHaveText("Chats open like links");
+      await next.click();
+      await expect(heading(page)).toHaveText("Thinking and tool cards");
+      await expect(popover(page)).toContainText("Alt+T");
+      await next.click();
+      await expect(heading(page)).toHaveText("Done here");
+      await page.keyboard.press("Control+Shift+Q");
+      await expect(popover(page)).toHaveCount(0);
+      // Back in the workspace the tour started from.
+      await expect(tabs(page)).toHaveCount(1);
+      await expect.poll(() => doneTours(page)).toEqual(["browser-keys-2026-11-05"]);
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 
   realTest("Skip and close", async ({ realApp }) => {
     const page = await realApp.open({ path: "/" });

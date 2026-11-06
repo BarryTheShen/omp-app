@@ -68,7 +68,7 @@ export function Row({
 }
 
 function ThinkingBlock({ text, redacted }: { text: string; redacted?: boolean }): ReactNode {
-	// omp-app: a pane's Ctrl+T shows or hides every thinking block; one drawn later starts as the last request said.
+	// omp-app: a pane's Alt+T shows or hides every thinking block; one drawn later starts as the last request said.
 	const fold = useContext(FoldContext).thinking;
 	const [open, setOpen] = useState(fold.epoch > 0 && fold.open);
 	useEffect(() => {

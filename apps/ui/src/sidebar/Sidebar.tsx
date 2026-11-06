@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import {
   type DragEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactNode,
   type RefObject,
@@ -61,7 +62,7 @@ import { useSwipe } from "../swipe";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
-import type { WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
+import type { OpenHow, WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
 import { titleOf } from "./title";
 import type { ChatList } from "./useChatList";
 
@@ -130,7 +131,7 @@ export function Sidebar({
   readonly view: WorkspaceView;
   /** On a phone while a chat is shown; on a desktop while the list is hidden (#2805). */
   readonly hidden: boolean;
-  readonly onOpen: (target: ChatTarget, where: "here" | "split") => void;
+  readonly onOpen: (target: ChatTarget, how: OpenHow) => void;
   /** The pointer rests on a chat: read it ahead, so opening it shows it at once. */
   readonly onPrefetch: (session: SessionFile) => void;
   /** A chat was deleted: the panes that showed it move on. */
@@ -397,13 +398,13 @@ export function Sidebar({
             data-tour="new-chat"
             variant="secondary"
             className="flex-1 gap-2"
-            onClick={() => onOpen({ kind: "new", folder }, "here")}
+            onClick={() => onOpen({ kind: "new", folder }, "front")}
           >
             <SquarePen />
             New chat
           </Button>
           {connection}
-          <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
+          <InboxButton onOpenChat={(target) => onOpen(target, "front")} />
           <Button
             data-tour="settings"
             variant="ghost"
@@ -439,7 +440,7 @@ export function Sidebar({
                 </TooltipTrigger>
                 <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
               </Tooltip>
-              <InboxButton onOpenChat={(target) => onOpen(target, "here")} />
+              <InboxButton onOpenChat={(target) => onOpen(target, "front")} />
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -562,7 +563,7 @@ function ChatRow({
   readonly focused: boolean;
   /** The chat the row opens, and carries when dragged onto the workspace. */
   readonly target: ChatTarget;
-  readonly onOpen: (target: ChatTarget, where: "here" | "split") => void;
+  readonly onOpen: (target: ChatTarget, how: OpenHow) => void;
   /** On a phone the row has no buttons: a touch-and-hold opens its menu, Pin there too. */
   readonly phone: boolean;
   /** None for a chat whose first reply still runs: it has no file to read ahead, pin, rename or delete yet. */
@@ -662,7 +663,11 @@ function ChatRow({
               const held = hold.endsHold();
               const shut = swipe.endsSwipe();
               if (held || shut) return;
-              onOpen(target, event.altKey ? "split" : "here");
+              // As a browser opens a link (#2831): Ctrl or ⌘ in a workspace behind this one, Alt in a window beside.
+              onOpen(
+                target,
+                event.altKey ? "beside" : event.ctrlKey || event.metaKey ? "behind" : "front",
+              );
             }}
             {...(phone
               ? {
@@ -688,6 +693,15 @@ function ChatRow({
                   draggable: true,
                   onDragStart: (event: DragEvent<HTMLButtonElement>) =>
                     startChatDrag(event.dataTransfer, target),
+                  // A middle click opens it in a workspace behind, as a browser's link; it neither scrolls nor pastes.
+                  onMouseDown: (event: MouseEvent<HTMLButtonElement>) => {
+                    if (event.button === 1) event.preventDefault();
+                  },
+                  onAuxClick: (event: MouseEvent<HTMLButtonElement>) => {
+                    if (event.button !== 1) return;
+                    event.preventDefault();
+                    onOpen(target, "behind");
+                  },
                 })}
           >
             {state === "paused" ? (

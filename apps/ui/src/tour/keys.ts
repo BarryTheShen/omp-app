@@ -17,6 +17,8 @@ const CODES: Readonly<Record<string, string>> = {
   left: "ArrowLeft",
   right: "ArrowRight",
   f8: "F8",
+  pagedown: "PageDown",
+  pageup: "PageUp",
 };
 
 const isModifier = (part: string): part is Modifier =>

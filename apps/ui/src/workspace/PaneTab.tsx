@@ -74,7 +74,9 @@ export function PaneTab({ api, containerApi }: IDockviewPanelHeaderProps): React
         onClick={(event) => {
           event.preventDefault();
           const panel = containerApi.getPanel(api.id);
-          if (panel !== undefined) closePaneAsked(panel);
+          if (panel === undefined) return;
+          if (host !== null) host.closePane(containerApi, panel);
+          else closePaneAsked(panel);
         }}
       >
         <svg

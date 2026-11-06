@@ -1,7 +1,7 @@
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import { desktopBridge } from "../desktop/bridge";
-import { KEYS, keycap } from "../keys/table";
+import { inAppWindow, KEYS, keycap, reachesTab } from "../keys/table";
 import { isPhone, isTablet } from "../phone";
 import { safeInsetsNow } from "../safeArea";
 import type { WorkspaceHandle } from "../workspace/Workspace";
@@ -235,11 +235,14 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
       workspace.sandbox();
       await frames(2);
     }
+    // A step whose key a browser tab keeps for itself is left out there: pressing it would close the tab (#2831).
+    const appWindow = inAppWindow();
     const steps = tour.steps.filter(
       (step) =>
         (step.desktopOnly !== true || desktopBridge() !== null) &&
         (step.phoneOnly !== true || isPhone()) &&
-        (step.tabletOnly !== true || isTablet()),
+        (step.tabletOnly !== true || isTablet()) &&
+        (step.action.kind !== "keys" || appWindow || reachesTab(KEYS[step.action.key])),
     );
     for (const [index, step] of steps.entries()) {
       if (stopped) return;

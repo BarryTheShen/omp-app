@@ -294,6 +294,13 @@ export async function startNewChat(page: Page): Promise<void> {
   }
   if ((await blank.count()) === 0) {
     const windows = await shown.locator(".dv-groupview").count();
+    // One window: closing it leaves the workspace's blank window, unless there are other workspaces, where closing a
+    // workspace's only window closes the workspace (#2831): there, as a person would, Ctrl+O starts the chat in a
+    // workspace of its own.
+    if (windows <= 1 && (await page.locator("[data-tab]").count()) > 1) {
+      await page.keyboard.press("Control+o");
+      return;
+    }
     await page.keyboard.press(windows <= 1 ? "Control+Shift+W" : "Control+Shift+O");
     await expect(blank.first()).toBeVisible();
   }

@@ -74,6 +74,8 @@ realTest.describe("new UI reopening and typing ahead", () => {
       });
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(transcript(page).getByText("Seeded chat 1")).toBeVisible({ timeout: 60_000 });
+      // Its window closes, and the blank one left takes the next chat: only that one is open at the reload (#2831).
+      await page.getByRole("textbox", { name: "Message" }).press("Control+Shift+W");
       await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
       await expect(transcript(page).getByText("Seeded chat 2")).toBeVisible({ timeout: 60_000 });
       // A reload ends the chats the page kept open; what this browser kept of each chat stays.

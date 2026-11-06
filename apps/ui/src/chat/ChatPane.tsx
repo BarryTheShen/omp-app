@@ -30,7 +30,7 @@ export interface ComposerRestore {
 }
 
 /**
- * One chat: its transcript, what omp waits on, and the message box. Ctrl+O opens or folds every tool card and Ctrl+T
+ * One chat: its transcript, what omp waits on, and the message box. Alt+O opens or folds every tool card and Alt+T
  * shows or hides every thinking block, anywhere in the pane; Alt+A opens or closes the Agent Hub, as does the agents
  * pill above the box, and a task card's agent opens it on that agent; Ctrl+P and Shift+Ctrl+P switch to the next or
  * previous role's model, as in omp.
@@ -208,8 +208,12 @@ export function ChatPane({
         );
       return;
     }
-    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
-    const which = event.code === "KeyO" ? "tools" : event.code === "KeyT" ? "thinking" : null;
+    // Open or fold every tool card, show or hide thinking: on Alt since Ctrl+O and Ctrl+T are the workspace's (#2831).
+    const which = matchesHotkey(event.nativeEvent, KEYS.foldTools.hotkey)
+      ? "tools"
+      : matchesHotkey(event.nativeEvent, KEYS.foldThinking.hotkey)
+        ? "thinking"
+        : null;
     if (which === null) return;
     event.preventDefault();
     setFolds((current) => ({
