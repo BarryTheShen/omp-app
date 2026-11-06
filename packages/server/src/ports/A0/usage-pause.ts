@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   type ThreadId,
+  type UsageActivityAction,
+  UsageActivityEntry,
   type UsageLimitsResult,
   type UsagePaceResult,
   type UsagePauseHold,
@@ -61,7 +63,12 @@ export interface UsagePauseKept {
   readonly overrides: UsagePauseOverrides;
   /** The held chats in the queue's order (#2836): the first continues first. */
   readonly order: readonly ThreadId[];
+  /** What the usage pause did, oldest first: the last `USAGE_ACTIVITY_KEPT` things (#2836). */
+  readonly activity: readonly UsageActivityEntry[];
 }
+
+/** How many things the usage pause did are kept for the dashboard's activity. */
+export const USAGE_ACTIVITY_KEPT = 200;
 
 /** A held chat in the queue (#2836): its hold, and when it is next to continue if no condition holds it any more. */
 export interface UsageQueued {
@@ -106,6 +113,7 @@ const EMPTY: UsagePauseKept = {
   rules: [],
   overrides: new Map(),
   order: [],
+  activity: [],
 };
 
 /** A condition that holds for a chat, with the rule it is from (none for the chat's own mark). */
@@ -165,6 +173,8 @@ export class UsagePause {
   /** When the last chat continued in its turn: the next waits `USAGE_CONTINUE_STAGGER_MS` from it. */
   #lastContinue = Number.NEGATIVE_INFINITY;
   #dispatch: unknown = null;
+  /** What the usage pause did, oldest first. */
+  #activity: UsageActivityEntry[] = [];
   /** The last usage read and when the server got it, so a mark or rule set or changed is judged at once. */
   #usage: { readonly result: UsageLimitsResult; readonly receivedAt: number } | null = null;
   #tick: unknown = null;
@@ -206,6 +216,7 @@ export class UsagePause {
       ...kept.order.filter((id) => this.#holds.has(id)),
       ...[...this.#holds.keys()].filter((id) => !kept.order.includes(id)),
     ];
+    this.#activity = kept.activity.slice(-USAGE_ACTIVITY_KEPT);
     this.#ticking();
   }
 
@@ -316,14 +327,16 @@ export class UsagePause {
       const hold = this.#holds.get(threadId);
       if (hold === undefined) return;
       this.#putOff(threadId, hold);
-      await this.#release(threadId, "continued_now");
+      await this.#release(threadId, "continued_now", "continued_now");
     });
   }
 
   /** Skips a held chat's continuing: it stays paused, and the rules let it be until it is resumed by hand. */
   skip(threadId: ThreadId): Promise<void> {
     return this.#queue(async () => {
-      if (!this.#holds.has(threadId)) return;
+      const hold = this.#holds.get(threadId);
+      if (hold === undefined) return;
+      this.#log(threadId, "skipped", hold);
       this.#endHold(threadId, "skipped");
     });
   }
@@ -344,7 +357,26 @@ export class UsagePause {
     const hold = this.#holds.get(threadId);
     if (hold === undefined) return;
     this.#putOff(threadId, hold);
+    this.#log(threadId, "resumed_by_hand", hold);
     this.#endHold(threadId, "resumed_elsewhere");
+  }
+
+  /** What the usage pause did, newest first. */
+  activity(): readonly UsageActivityEntry[] {
+    return [...this.#activity].reverse();
+  }
+
+  /** Notes what the usage pause did with a chat, with the condition and rule that held it. */
+  #log(threadId: ThreadId, action: UsageActivityAction, hold: UsagePauseHold | undefined): void {
+    this.#activity.push({
+      at: this.#deps.now(),
+      id: threadId,
+      action,
+      reason: hold?.reason ?? (hold === undefined ? null : "five_hour"),
+      rule: hold?.rule ?? null,
+    });
+    if (this.#activity.length > USAGE_ACTIVITY_KEPT)
+      this.#activity.splice(0, this.#activity.length - USAGE_ACTIVITY_KEPT);
   }
 
   /** A held chat resumed by hand: each condition that holds it does not pause it again until it next starts. */
@@ -515,7 +547,7 @@ export class UsagePause {
           continue;
         }
         // Held again before its turn came.
-        this.#due.delete(threadId);
+        if (this.#due.delete(threadId)) this.#log(threadId, "held_again", hold);
         this.#rehold(threadId, hold, holding);
         continue;
       }
@@ -540,8 +572,10 @@ export class UsagePause {
         until: named.until,
         reason: named.reason,
         ...(named.rule === undefined ? {} : { rule: named.rule }),
+        since: this.#deps.now(),
       };
       this.#holds.set(threadId, next);
+      this.#log(threadId, "paused", next);
       if (!this.#order.includes(threadId)) this.#order.push(threadId);
       const at = earliest(holding);
       if (at !== null) this.#schedule(threadId, at);
@@ -572,14 +606,21 @@ export class UsagePause {
       until: named.until,
       reason: named.reason,
       ...(named.rule === undefined ? {} : { rule: named.rule }),
+      ...(hold.since === undefined ? {} : { since: hold.since }),
     });
     this.#keep();
     this.#notifyHold(threadId);
   }
 
-  /** Ends the chat's hold and resumes it, if the rule holds it and it is still paused. */
-  async #release(threadId: ThreadId, reason: string): Promise<void> {
-    if (!this.#holds.has(threadId)) return;
+  /** Ends the chat's hold and resumes it, if the rule holds it and it is still paused; the activity says so. */
+  async #release(
+    threadId: ThreadId,
+    reason: string,
+    action: "continued" | "continued_now" = "continued",
+  ): Promise<void> {
+    const hold = this.#holds.get(threadId);
+    if (hold === undefined) return;
+    this.#log(threadId, action, hold);
     this.#endHold(threadId, reason);
     if (!this.#deps.isPaused(threadId)) return;
     const resumed = await this.#deps.resume(threadId).catch((failure: unknown) => {
@@ -621,6 +662,7 @@ export class UsagePause {
       const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
       if (holding.length > 0) {
         this.#due.delete(threadId);
+        this.#log(threadId, "held_again", hold);
         this.#rehold(threadId, hold, holding);
         continue;
       }
@@ -718,6 +760,7 @@ export class UsagePause {
       rules: [...this.#rules.values()],
       overrides: new Map([...this.#overrides].map(([id, reasons]) => [id, new Map(reasons)])),
       order: [...this.#order],
+      activity: [...this.#activity],
     };
     this.#saving = this.#saving
       .then(() => this.#deps.save(kept))
@@ -729,7 +772,7 @@ export class UsagePause {
 
 /** A kept hold, or undefined when the file's is not one. */
 function keptHold(hold: Record<string, unknown>): UsagePauseHold | undefined {
-  const { providerId, until, reason, rule } = hold;
+  const { providerId, until, reason, rule, since } = hold;
   if (typeof providerId !== "string" || providerId.length === 0) return undefined;
   if (until !== null && (typeof until !== "number" || !Number.isFinite(until))) return undefined;
   const reasonOk = UsagePauseReason.safeParse(reason);
@@ -738,6 +781,7 @@ function keptHold(hold: Record<string, unknown>): UsagePauseHold | undefined {
     until: until === null ? null : Math.round(until),
     ...(reasonOk.success ? { reason: reasonOk.data } : {}),
     ...(typeof rule === "string" && rule.length > 0 && rule.length <= 64 ? { rule } : {}),
+    ...(typeof since === "number" && Number.isInteger(since) && since >= 0 ? { since } : {}),
   };
 }
 
@@ -764,6 +808,7 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
         readonly rules?: unknown;
         readonly overrides?: Record<string, Record<string, unknown>>;
         readonly order?: unknown;
+        readonly activity?: unknown;
       };
       if (saved.version !== 1 && saved.version !== 2) return EMPTY;
       const marks = new Map<ThreadId, UsagePauseMark>();
@@ -801,7 +846,13 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
       const order = (Array.isArray(saved.order) ? saved.order : []).filter(
         (id: unknown): id is ThreadId => typeof id === "string" && holds.has(id as ThreadId),
       );
-      return { marks, holds, rules, overrides, order };
+      const activity = (Array.isArray(saved.activity) ? saved.activity : []).flatMap(
+        (entry: unknown) => {
+          const parsed = UsageActivityEntry.safeParse(entry);
+          return parsed.success ? [parsed.data] : [];
+        },
+      );
+      return { marks, holds, rules, overrides, order, activity };
     },
     save: async (kept) => {
       await mkdir(dirname(path), { recursive: true });
@@ -815,6 +866,7 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
           [...kept.overrides].map(([id, reasons]) => [id, Object.fromEntries(reasons)]),
         ),
         order: kept.order,
+        activity: kept.activity,
       };
       await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`);
       await rename(temporary, path);

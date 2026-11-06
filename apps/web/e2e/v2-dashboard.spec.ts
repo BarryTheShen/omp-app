@@ -2,9 +2,10 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * The dashboard (#2836) on real omp: it opens from the list's foot and with Ctrl+Shift+D; a rule made on it pauses the
- * chat it lists while the clock is in the rule's hours (omp's `/pause`), the chat says why, the queue lists it and
- * Continue now lets it go; a removed rule leaves no rules.
+ * The dashboard (#2836) on real omp: it opens from its button and with Ctrl+Shift+D; a rule made on it pauses the chat
+ * it lists while the clock is in the rule's hours (omp's `/pause`), the chat says why, the queue lists it with its
+ * prompt cache still warm, Continue now lets it go, and the activity says both, newest first; a removed rule leaves no
+ * rules.
  */
 const dashboard = (page: Page) => page.locator('[data-tour="dashboard"]');
 const paused = (page: Page) => page.locator('[data-tour="paused"]');
@@ -39,7 +40,7 @@ realTest.describe("new UI: the dashboard", () => {
 
       await page.getByRole("button", { name: "Dashboard" }).click();
       await expect(dashboard(page).getByRole("heading", { name: "Dashboard" })).toBeVisible();
-      for (const name of ["Usage windows", "Pace", "Rules", "Queue"])
+      for (const name of ["Usage windows", "Pace", "Rules", "Queue", "Activity"])
         await expect(dashboard(page).getByRole("region", { name })).toBeVisible();
       const rules = dashboard(page).getByRole("region", { name: "Rules" });
       const queue = dashboard(page).getByRole("region", { name: "Queue" });
@@ -63,11 +64,23 @@ realTest.describe("new UI: the dashboard", () => {
         timeout: 30_000,
       });
       await expect(queue).toContainText("Day hours: inside its hours until", { timeout: 30_000 });
+      // The hold began a moment ago.
+      await expect(queue).toContainText("its prompt cache is likely still warm");
 
       // Continue now: the chat goes on out of its turn, and the queue is empty.
       await queue.getByRole("button", { name: "Continue now" }).click();
       await expect(paused(page)).toHaveCount(0, { timeout: 30_000 });
       await expect(queue).toContainText("No chat is held", { timeout: 30_000 });
+
+      // The activity says what happened, newest first.
+      const done = dashboard(page).getByRole("region", { name: "Activity" }).getByRole("listitem");
+      await expect(done.nth(0)).toContainText("Continued now, out of its turn", {
+        timeout: 30_000,
+      });
+      await expect(done.nth(0)).toContainText("Day hours: inside its hours");
+      await expect(done.nth(1)).toContainText("Paused");
+      await expect(done.nth(1)).toContainText("Day hours: inside its hours");
+      await expect(done).toHaveCount(2);
 
       await rules.getByRole("button", { name: "Remove Day hours" }).click();
       await expect(rules).toContainText("No rules yet", { timeout: 30_000 });

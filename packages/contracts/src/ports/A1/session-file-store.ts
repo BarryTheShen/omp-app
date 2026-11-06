@@ -245,8 +245,34 @@ export const UsagePauseHold = z.strictObject({
   until: z.int().nonnegative().nullable(),
   reason: UsagePauseReason.optional(),
   rule: z.string().min(1).max(64).optional(),
+  /** When the hold began (epoch ms; #2836): the dashboard says whether the chat's prompt cache is still warm. */
+  since: z.int().nonnegative().optional(),
 });
 export type UsagePauseHold = z.infer<typeof UsagePauseHold>;
+
+/**
+ * What the usage pause did with a chat (#2836), for the dashboard's activity: it paused it, continued it, held it again
+ * before its turn, or a person resumed it by hand, continued it out of its turn, or skipped its continuing.
+ */
+export const UsageActivityAction = z.enum([
+  "paused",
+  "continued",
+  "held_again",
+  "resumed_by_hand",
+  "continued_now",
+  "skipped",
+]);
+export type UsageActivityAction = z.infer<typeof UsageActivityAction>;
+
+/** One thing the usage pause did, when, with which chat, and the condition and rule that held it (null for none). */
+export const UsageActivityEntry = z.strictObject({
+  at: z.int().nonnegative(),
+  id: ThreadId,
+  action: UsageActivityAction,
+  reason: UsagePauseReason.nullable(),
+  rule: z.string().min(1).max(64).nullable(),
+});
+export type UsageActivityEntry = z.infer<typeof UsageActivityEntry>;
 
 /** A chat marked to pause at `percent` of its provider's 5-hour window, and the hold while the rule pauses it (#2781). */
 export const SessionUsagePause = z.strictObject({

@@ -1201,6 +1201,28 @@ const STATS_TOUR: Tour = {
   ],
 };
 
+/** #2836 D5b: what the rules did, and whether a held chat's prompt cache is still warm. */
+const ACTIVITY_TOUR: Tour = {
+  id: "dashboard-activity-2026-11-06",
+  title: "What the rules did",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "The dashboard",
+      text: "{dashboard} opens the dashboard. Open it.",
+      action: { kind: "appears", selector: DASHBOARD },
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Activity"]`,
+      title: "Activity",
+      text: "<b>Activity</b> lists what the rules did, newest first: each chat they paused, held again or continued, and the ones you continued, skipped or resumed by hand, with the time, the rule and the condition. In the <b>Queue</b>, a held chat says whether its prompt cache is likely still warm (paused under 5 minutes ago) or is written again when it continues.",
+      action: next,
+    },
+  ],
+};
+
 /** #2836 D5: the dashboard. */
 const DASHBOARD_TOUR: Tour = {
   id: "dashboard-2026-11-06",
@@ -1892,6 +1914,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-dashboard-activity",
+    when: "2026-11-06T05:44:00-06:00",
+    summary:
+      "The dashboard's Activity lists what the rules did, newest first: each chat they paused, held again or continued, and the ones you continued, skipped or resumed by hand, with the time, the rule and the condition. A held chat in the Queue says whether its prompt cache is likely still warm (paused under 5 minutes ago) or is written again when it continues.",
+    tours: [ACTIVITY_TOUR],
+  },
   {
     id: "2026-11-06-model-presets",
     when: "2026-11-06T05:34:00-06:00",

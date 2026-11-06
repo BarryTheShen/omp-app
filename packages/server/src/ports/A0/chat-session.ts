@@ -48,6 +48,7 @@ import {
   ThreadId,
   type UiState,
   type UiStateEvent,
+  type UsageActivityResult,
   type UsagePauseHold,
   type UsageQueueResult,
   type UsageRule,
@@ -450,6 +451,7 @@ export class ChatSessionPortRuntime {
     orderUsageQueue: (args) => this.orderUsageQueue(args as OrderUsageQueueArgs),
     continueHeld: (args) => this.continueHeld(args as { threadId: ThreadId }),
     skipHeld: (args) => this.skipHeld(args as { threadId: ThreadId }),
+    usageActivity: () => this.usageActivity(),
     firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
@@ -551,6 +553,11 @@ export class ChatSessionPortRuntime {
   async skipHeld(args: { threadId: ThreadId }): Promise<null> {
     await this.#usagePauseOrFail().skip(this.#aliases.get(args.threadId) ?? args.threadId);
     return null;
+  }
+
+  /** What the usage pause did, newest first (#2836). */
+  usageActivity(): UsageActivityResult {
+    return { entries: [...this.#usagePauseOrFail().activity()] };
   }
 
   /** The chats marked to pause at their usage limit, by folder, and each change with the chat's folder (#2781). */

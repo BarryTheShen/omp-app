@@ -18,7 +18,7 @@ import type { PortCallOptions, PortClient, PortHandlers } from "../../core/envel
 import { definePort, StreamKey, streamKey } from "../../core/envelope";
 import { AppError } from "../../core/errors";
 import { FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
-import { UsagePauseHold, UsagePauseReason } from "../A1/session-file-store";
+import { UsageActivityEntry, UsagePauseHold, UsagePauseReason } from "../A1/session-file-store";
 
 export const ThreadRef = z.object({ threadId: ThreadId }).strict();
 export type ThreadRef = z.infer<typeof ThreadRef>;
@@ -327,6 +327,12 @@ export const UsageQueueResult = z.strictObject({
 });
 export type UsageQueueResult = z.infer<typeof UsageQueueResult>;
 
+/** What the usage pause did, newest first: the last 200 things (#2836). */
+export const UsageActivityResult = z.strictObject({
+  entries: z.array(UsageActivityEntry).max(200),
+});
+export type UsageActivityResult = z.infer<typeof UsageActivityResult>;
+
 /** The held chats in a new order: the first continues first; held chats left out keep their order after them. */
 export const OrderUsageQueueArgs = z.strictObject({ threadIds: z.array(ThreadId).max(500) });
 export type OrderUsageQueueArgs = z.infer<typeof OrderUsageQueueArgs>;
@@ -379,6 +385,8 @@ export const ChatSessionPort = definePort({
     continueHeld: { args: ThreadRef, result: z.null() },
     /** Skips a held chat's continuing: it stays paused, and the rules let it be until it is resumed by hand (#2836). */
     skipHeld: { args: ThreadRef, result: z.null() },
+    /** What the usage pause did, newest first (#2836). */
+    usageActivity: { args: z.strictObject({}), result: UsageActivityResult },
     /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
     firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },

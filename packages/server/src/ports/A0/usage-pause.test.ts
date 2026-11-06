@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   ThreadId,
+  UsageActivityEntry,
   UsageLimitsResult,
   UsagePaceResult,
   UsagePauseHold,
@@ -66,6 +67,7 @@ const NOTHING_KEPT: UsagePauseKept = {
   rules: [],
   overrides: new Map(),
   order: [],
+  activity: [],
 };
 
 /** The test's name for a chat. */
@@ -172,6 +174,7 @@ describe("usage pause (#2781 part 3)", () => {
           providerId: "anthropic",
           until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
           reason: "five_hour",
+          since: timer.now,
         },
       },
     ]);
@@ -228,7 +231,7 @@ describe("usage pause (#2781 part 3)", () => {
   });
 
   test("a read under the chat's limit again ends a hold that has no reset time", async () => {
-    const { running, sent, rule } = setup();
+    const { timer, running, sent, rule } = setup();
     running.set(A, "anthropic");
     await rule.setMark(A, FOLDER, 95);
     await rule.onUsage(usage({ anthropic: { fiveHour: 97, resetsAt: null } }));
@@ -236,6 +239,7 @@ describe("usage pause (#2781 part 3)", () => {
       providerId: "anthropic",
       until: null,
       reason: "five_hour",
+      since: timer.now,
     });
 
     await rule.onUsage(usage({ anthropic: { fiveHour: 96 } }));
@@ -293,6 +297,7 @@ describe("usage pause (#2781 part 3)", () => {
           providerId: "anthropic",
           until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
           reason: "five_hour",
+          since: timer.now,
         },
       },
     ]);
@@ -305,6 +310,7 @@ describe("usage pause (#2781 part 3)", () => {
           providerId: "anthropic",
           until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
           reason: "five_hour",
+          since: timer.now,
         },
       ],
     ]);
@@ -339,11 +345,15 @@ describe("usage pause (#2781 part 3)", () => {
             providerId: "anthropic",
             until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
             reason: "five_hour",
+            since: first.timer.now,
           },
         },
         rules: [],
         overrides: {},
         order: [A],
+        activity: [
+          { at: first.timer.now, id: A, action: "paused", reason: "five_hour", rule: null },
+        ],
       });
 
       // The server is back two hours later: A's resume fell due while it was down.
@@ -553,7 +563,16 @@ describe("usage rules (#2836)", () => {
       expect(kept.rules).toEqual([day]);
       const eleven = Date.UTC(2026, 10, 7, 5, 0);
       expect([...kept.holds]).toEqual([
-        [A, { providerId: "anthropic", until: eleven, reason: "hours", rule: "night" }],
+        [
+          A,
+          {
+            providerId: "anthropic",
+            until: eleven,
+            reason: "hours",
+            rule: "night",
+            since: Date.UTC(2026, 10, 6, 16, 0),
+          },
+        ],
       ]);
       expect([...kept.overrides].map(([id, reasons]) => [id, [...reasons]])).toEqual([
         [B, [["hours", eleven]]],
@@ -646,5 +665,83 @@ describe("the usage queue (#2836)", () => {
     await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
     expect(sent).toEqual(["pause A", "pause B", "pause C", "resume B", "resume A"]);
     expect(paused.has(C)).toBe(true);
+  });
+
+  test("the activity says what the pause did, newest first, with what held each chat, and outlives a restart", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "usage-activity-"));
+    try {
+      const file = usagePauseFile(join(directory, "usage-pause.json"));
+      const { timer, running, paused, saved, rule: pause } = setup();
+      for (const id of [A, B, C]) {
+        running.set(id, "anthropic");
+        await pause.setMark(id, FOLDER, 90);
+      }
+      const start = timer.now;
+      await pause.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: start + HOUR } }));
+      await pause.continueNow(A);
+      await pause.skip(B);
+      await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+      const reset = timer.now;
+      // A minute into the new window the chats running are over the limit again; C is resumed by hand.
+      await timer.advance(60_000);
+      const again = timer.now;
+      await pause.onUsage(usage({ anthropic: { fiveHour: 92, resetsAt: again + 5 * HOUR } }));
+      paused.delete(C);
+      pause.onPauseChanged(C, null);
+      await settle();
+
+      const five = { reason: "five_hour", rule: null } as const;
+      const activity: UsageActivityEntry[] = [
+        { at: again, id: C, action: "resumed_by_hand", ...five },
+        { at: again, id: C, action: "paused", ...five },
+        { at: again, id: A, action: "paused", ...five },
+        { at: reset, id: C, action: "continued", ...five },
+        { at: start, id: B, action: "skipped", ...five },
+        { at: start, id: A, action: "continued_now", ...five },
+        { at: start, id: C, action: "paused", ...five },
+        { at: start, id: B, action: "paused", ...five },
+        { at: start, id: A, action: "paused", ...five },
+      ];
+      expect(pause.activity()).toEqual(activity);
+      // A's hold, newer than its first, began when it was paused again.
+      expect(pause.queue().map(({ id, hold }) => [id, hold.since])).toEqual([[A, again]]);
+
+      const last = saved.at(-1);
+      if (last === undefined) throw new Error("nothing was saved");
+      await file.save(last);
+      pause.close();
+      const second = setup(await file.load());
+      await second.rule.restore();
+      expect(second.rule.activity()).toEqual(activity);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("the activity keeps the last 200 things", async () => {
+    const old = Array.from({ length: 200 }, (_, at) => ({
+      at,
+      id: A,
+      action: "paused" as const,
+      reason: "five_hour" as const,
+      rule: null,
+    }));
+    const { timer, running, rule: pause } = setup({ ...NOTHING_KEPT, activity: old });
+    await pause.restore();
+    running.set(B, "anthropic");
+    await pause.setMark(B, FOLDER, 90);
+    await pause.onUsage(usage({ anthropic: { fiveHour: 95 } }));
+
+    const activity = pause.activity();
+    expect(activity).toHaveLength(200);
+    expect(activity[0]).toEqual({
+      at: timer.now,
+      id: B,
+      action: "paused",
+      reason: "five_hour",
+      rule: null,
+    });
+    // The oldest went.
+    expect(activity.at(-1)?.at).toBe(1);
   });
 });

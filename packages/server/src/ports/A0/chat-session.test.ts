@@ -2897,7 +2897,12 @@ describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
     expect(paramsOf(host, "pause")).toEqual([{}]);
     host.emitEvent({ type: "pause_changed", pausedAt: clock.now });
     await ticks();
-    const hold = { providerId: "anthropic", until: reset + 60_000, reason: "five_hour" as const };
+    const hold = {
+      providerId: "anthropic",
+      until: reset + 60_000,
+      reason: "five_hour" as const,
+      since: clock.now,
+    };
     expect(runtime.usagePauses.usagePausesIn(folder)).toEqual([
       { id: authorityThread, percent: 90, hold },
     ]);

@@ -5,9 +5,12 @@ import {
   type Share,
   SharesPort,
   type ThreadId,
+  type UsageActivityEntry,
+  type UsageActivityResult,
   UsageLimitStore,
   type UsagePaceResult,
   type UsagePauseHold,
+  type UsagePauseReason,
   type UsageQueueResult,
   type UsageRule,
   type UsageRulesResult,
@@ -40,6 +43,7 @@ function problemWords(failure: unknown, later: string, action: string): string {
 
 const RULES_LATER = "Rules come with the next server update.";
 const QUEUE_LATER = "The queue comes with the next server update.";
+const ACTIVITY_LATER = "The activity comes with the next server update.";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat(undefined, {
@@ -170,6 +174,19 @@ function holdWords(hold: UsagePauseHold, rules: readonly UsageRule[], now: numbe
     case "hours":
       return `${by}: inside its hours${until}`;
   }
+}
+
+/** How long a provider keeps a chat's prompt cache by default (Anthropic's 5 minutes); paused longer, it is written again. */
+const CACHE_WARM_MS = 5 * 60_000;
+
+/** Whether a held chat's prompt cache is likely still warm, from when its hold began. */
+function cacheWords(since: number, now: number): string {
+  if (now - since >= CACHE_WARM_MS)
+    return `Paused at ${whenWords(since, now)}: its prompt cache has likely expired, so continuing writes it again once.`;
+  const minutes = Math.floor((now - since) / 60_000);
+  return minutes < 1
+    ? "Paused just now: its prompt cache is likely still warm."
+    : `Paused ${minutes} min ago: its prompt cache is likely still warm.`;
 }
 
 /** A chat's name: as the running chats list has it, else its first characters. */
@@ -572,6 +589,9 @@ function QueueSection({
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-[0.8125rem] font-medium text-t1">{name}</span>
                 <span className="text-xs text-t3">{holdWords(chat.hold, rules, now)}</span>
+                {chat.hold.since !== undefined && (
+                  <span className="text-xs text-t3">{cacheWords(chat.hold.since, now)}</span>
+                )}
                 {chat.continuesAt !== null && (
                   <span className="text-xs text-t2">
                     Continues at {whenWords(chat.continuesAt, now)}
@@ -622,6 +642,81 @@ function QueueSection({
         <p role="alert" className="text-xs text-bad-ink">
           {failure}
         </p>
+      )}
+    </div>
+  );
+}
+
+/** What the pause did, as the activity says it. */
+const ACTIVITY_WORDS: Record<UsageActivityEntry["action"], string> = {
+  paused: "Paused",
+  continued: "Continued in its turn",
+  held_again: "Held again before its turn",
+  resumed_by_hand: "Resumed by hand",
+  continued_now: "Continued now, out of its turn",
+  skipped: "Skipped, left paused for you",
+};
+
+/** The condition that held a chat, in a few words. */
+const REASON_WORDS: Record<UsagePauseReason, string> = {
+  five_hour: "the 5-hour window at its limit",
+  weekly: "the weekly window at its limit",
+  pace: "the 5-hour window heading past its line",
+  hours: "inside its hours",
+};
+
+/** How many of the newest things the activity shows before Show all. */
+const ACTIVITY_SHOWN = 20;
+
+/** What the rules did, newest first: the chat, what happened, when, and the rule and condition that held it. */
+function ActivitySection({
+  activity,
+  running,
+  rules,
+  problem,
+}: {
+  readonly activity: UsageActivityResult | null;
+  readonly running: readonly RunningChat[];
+  readonly rules: readonly UsageRule[];
+  readonly problem: string | null;
+}): ReactNode {
+  const [all, setAll] = useState(false);
+  if (problem !== null) return <p className="text-[0.8125rem] text-t3">{problem}</p>;
+  if (activity === null) return <p className="text-[0.8125rem] text-t3">Reading…</p>;
+  if (activity.entries.length === 0)
+    return <p className="text-[0.8125rem] text-t3">Nothing yet: no rule has paused a chat.</p>;
+  const now = Date.now();
+  const shown = all ? activity.entries : activity.entries.slice(0, ACTIVITY_SHOWN);
+  return (
+    <div className="flex flex-col gap-2">
+      <ol className="flex flex-col">
+        {shown.map((entry, index) => {
+          const by =
+            entry.rule === null
+              ? "Its own limit"
+              : (rules.find((each) => each.id === entry.rule)?.name ?? "A removed rule");
+          const reason = entry.reason === null ? "" : `: ${REASON_WORDS[entry.reason]}`;
+          return (
+            <li
+              key={`${entry.at}-${entry.id}-${entry.action}-${index}`}
+              className="flex flex-col border-b border-l2 py-1.5 last:border-b-0"
+            >
+              <span className="text-[0.8125rem] text-t1">
+                <span className="font-medium">{chatName(entry.id, running)}</span> ·{" "}
+                {ACTIVITY_WORDS[entry.action]}
+              </span>
+              <span className="text-xs text-t3">
+                {whenWords(entry.at, now)} · {by}
+                {reason}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      {!all && activity.entries.length > ACTIVITY_SHOWN && (
+        <Button variant="ghost" size="sm" className="self-start" onClick={() => setAll(true)}>
+          Show all {activity.entries.length}
+        </Button>
       )}
     </div>
   );
@@ -705,12 +800,14 @@ function StatsSection({ client }: { readonly client: AppClient }): ReactNode {
   );
 }
 
-/** The rules and the queue, read together, again every 30 seconds and whenever the running chats change. */
-function useRulesAndQueue(client: AppClient, running: readonly RunningChat[]) {
+/** The rules, the queue and the activity, read together, again every 30 seconds and whenever the running chats change. */
+function useUsageControl(client: AppClient, running: readonly RunningChat[]) {
   const [rules, setRules] = useState<UsageRulesResult | null>(null);
   const [queue, setQueue] = useState<UsageQueueResult | null>(null);
+  const [activity, setActivity] = useState<UsageActivityResult | null>(null);
   const [rulesProblem, setRulesProblem] = useState<string | null>(null);
   const [queueProblem, setQueueProblem] = useState<string | null>(null);
+  const [activityProblem, setActivityProblem] = useState<string | null>(null);
   const [round, setRound] = useState(0);
   const reload = useCallback(() => setRound((value) => value + 1), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new round, or a change of the running chats, reads again
@@ -739,13 +836,24 @@ function useRulesAndQueue(client: AppClient, running: readonly RunningChat[]) {
         (failure: unknown) =>
           alive && setQueueProblem(problemWords(failure, QUEUE_LATER, "read the queue")),
       );
+    session
+      .usageActivity({})
+      .then((found) => {
+        if (!alive) return;
+        setActivity(found);
+        setActivityProblem(null);
+      })
+      .catch(
+        (failure: unknown) =>
+          alive && setActivityProblem(problemWords(failure, ACTIVITY_LATER, "read the activity")),
+      );
     const timer = setTimeout(reload, READ_EVERY_MS);
     return () => {
       alive = false;
       clearTimeout(timer);
     };
   }, [client, round, running, reload]);
-  return { rules, queue, rulesProblem, queueProblem, reload };
+  return { rules, queue, activity, rulesProblem, queueProblem, activityProblem, reload };
 }
 
 function DashboardSheet({
@@ -758,7 +866,9 @@ function DashboardSheet({
   readonly onClose: () => void;
 }): ReactNode {
   const running = useRunningChats(client);
-  const { rules, queue, rulesProblem, queueProblem, reload } = useRulesAndQueue(client, running);
+  const { rules, queue, activity, rulesProblem, queueProblem, activityProblem, reload } =
+    useUsageControl(client, running);
+  const ruleList = rules?.rules.map(({ rule }) => rule) ?? [];
   return (
     <DialogContent
       data-tour="dashboard"
@@ -802,9 +912,17 @@ function DashboardSheet({
             client={client}
             running={running}
             queue={queue}
-            rules={rules?.rules.map(({ rule }) => rule) ?? []}
+            rules={ruleList}
             problem={queueProblem}
             reload={reload}
+          />
+        </Section>
+        <Section title="Activity" hint="What the rules did, newest first.">
+          <ActivitySection
+            activity={activity}
+            running={running}
+            rules={ruleList}
+            problem={activityProblem}
           />
         </Section>
         <Section
@@ -820,7 +938,8 @@ function DashboardSheet({
 
 /**
  * The dashboard (#2836): the accounts' usage windows and their pace, the rules that pause and continue chats on
- * conditions, and the queue of the chats they hold. A page of its own, as the settings are: the whole screen on a phone.
+ * conditions, the queue of the chats they hold, what they did, and omp's statistics. A page of its own, as the settings
+ * are: the whole screen on a phone.
  */
 export function DashboardPage({
   client,
