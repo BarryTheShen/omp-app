@@ -1,3 +1,4 @@
+import type { RoleModel } from "@omp-app/contracts/chat-host";
 import { cn } from "cn";
 import { ChevronDown, ChevronRight, Eye, EyeOff, Star } from "lucide-react";
 import {
@@ -81,13 +82,30 @@ const lastMenu = lastSeen<MenuList>("model-menu", (stored) => {
 const itemValue = (section: string, model: ChatModel): string => `${section}|${modelKey(model)}`;
 const modelOfValue = (value: string): string => value.slice(value.indexOf("|") + 1);
 const HIDDEN_TOGGLE = "toggle|hidden";
+/** A row of the menu's Roles: its value starts so, apart from the models' `section|provider/id`. */
+const ROLE_ROW = "role|";
+const NO_TAGS: readonly string[] = [];
+const NO_ROLE_TAGS: ReadonlyMap<string, readonly string[]> = new Map();
+const NO_ROLES: readonly RoleModel[] = [];
+
+/** For each model (`provider/id`), the roles that use it, in Ctrl+P's order: the tags on the menu's rows. */
+function roleTagsOf(roles: readonly RoleModel[]): ReadonlyMap<string, readonly string[]> {
+  const tags = new Map<string, string[]>();
+  for (const each of roles) {
+    const key = modelKey({ provider: each.provider, id: each.modelId });
+    tags.set(key, [...(tags.get(key) ?? []), each.role]);
+  }
+  return tags;
+}
 
 const sameModel = (a: ChatModel | null, b: ChatModel): boolean =>
   a !== null && a.provider === b.provider && a.id === b.id;
 
 /**
- * The chat's model as a chip; it opens the model menu: a search, the models starred (Favorites), the ones omp used
- * most recently (Recent), then each provider's models newest first; the hidden ones fold away at the end. A star or a
+ * The chat's model as a chip; it opens the model menu: a search, omp's roles that have a model of their own (Roles: a
+ * pick switches this chat to the role's model and level), the models starred (Favorites), the ones omp used most
+ * recently (Recent), then each provider's models newest first, a model's roles tagged beside it; the hidden ones fold
+ * away at the end, and "Roles and models…" at its foot opens omp's model panel at the chat's role (#2838). A star or a
  * hide is the server's, so every device lists the models alike. Its open state is the pane's, so a failed request's
  * "Switch model" opens it too. A model that is a role's other than `default` (Ctrl+P switches between them) is shown
  * with the role: "slow · Claude Opus".
@@ -96,6 +114,7 @@ export function ModelPicker({
   controller,
   model,
   role,
+  roles,
   disabled,
   open,
   onOpenChange,
@@ -104,6 +123,8 @@ export function ModelPicker({
   readonly controller: ChatController;
   readonly model: ChatModel | null;
   readonly role: string | null;
+  /** The roles Ctrl+P switches between, each with its model (the chat's snapshot). */
+  readonly roles: readonly RoleModel[];
   readonly disabled: boolean;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -148,6 +169,9 @@ export function ModelPicker({
                 },
           );
       });
+    // omp's roles, read again too (another chat or omp's terminal may have changed them): the menu shows the ones the
+    // chat read last at once, so no row moves under the highlight when the answer comes. A failed read keeps those.
+    controller.refreshRoles().catch(() => undefined);
     return () => {
       active = false;
     };
@@ -169,6 +193,11 @@ export function ModelPicker({
     [list, saved, query],
   );
   const hiddenShown = showHidden || searching;
+  // The Roles show with two roles or more (with one there is nothing to switch to, as omp's Ctrl+P says), and without a
+  // search, which looks for models.
+  const switchable = roles.length > 1;
+  const listed = switchable && !searching ? roles : NO_ROLES;
+  const tags = useMemo(() => (switchable ? roleTagsOf(roles) : NO_ROLE_TAGS), [switchable, roles]);
 
   // The rows built so far: the first ones when the menu opens or its search changes, then more each time the list
   // scrolls near the last one built (`more`, watched by an IntersectionObserver). Showing the hidden models keeps what
@@ -216,10 +245,24 @@ export function ModelPicker({
     onOpenChange(false);
     void controller.setModel(item).catch(onError);
   };
-  // Alt+S and Alt+H act on the highlighted model while the search keeps the caret.
+  const useRole = (picked: RoleModel): void => {
+    onOpenChange(false);
+    void controller.useRole(picked).catch(onError);
+  };
+  const openPanel = (): void => {
+    onOpenChange(false);
+    controller.modelHubToggle.show(role ?? "default");
+  };
+  // Alt+S and Alt+H act on the highlighted model while the search keeps the caret; a role's row has neither.
   const onKeyDown = (event: KeyboardEvent): void => {
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (highlighted === "" || highlighted === HIDDEN_TOGGLE || saved === null) return;
+    if (
+      highlighted === "" ||
+      highlighted === HIDDEN_TOGGLE ||
+      highlighted.startsWith(ROLE_ROW) ||
+      saved === null
+    )
+      return;
     if (event.code === "KeyS") {
       event.preventDefault();
       toggleStar(modelOfValue(highlighted));
@@ -242,9 +285,11 @@ export function ModelPicker({
         itemKey={key}
         inHidden={inHidden}
         selected={value === highlighted}
+        tourStar={value === starRow}
         starred={saved?.favorites.includes(key) ?? false}
         checked={sameModel(model, item)}
         marks={saved !== null}
+        tags={tags.get(key) ?? NO_TAGS}
         actions={actions}
       />
     );
@@ -257,6 +302,15 @@ export function ModelPicker({
     return [{ key: section.key, heading: section.heading, models }];
   });
   const builtHidden = hiddenShown ? hidden.slice(0, Math.max(0, rows - sectionRows)) : [];
+  // The tour points at the star of the highlighted model's row, or the first model's while a role's row is highlighted.
+  const firstSection = builtSections[0];
+  const firstModel = firstSection?.models[0];
+  const starRow =
+    highlighted !== "" && !highlighted.startsWith(ROLE_ROW) && highlighted !== HIDDEN_TOGGLE
+      ? highlighted
+      : firstSection !== undefined && firstModel !== undefined
+        ? itemValue(firstSection.key, firstModel)
+        : "";
   // Arrow keys held down can outrun the scroll that builds more rows: within 10 rows of the last one built, ↓ and
   // PageDown build more at once, before cmdk moves the highlight.
   const builtValues = builtSections.flatMap((section) =>
@@ -314,6 +368,24 @@ export function ModelPicker({
                   ? `Could not list the models: ${list.message}`
                   : "No model matches."}
             </CommandEmpty>
+            {listed.length > 0 && (
+              <CommandGroup heading="Roles" data-tour="model-roles">
+                {listed.map((each) => (
+                  <CommandItem
+                    key={each.role}
+                    value={`${ROLE_ROW}${each.role}`}
+                    data-checked={each.role === role}
+                    onSelect={() => useRole(each)}
+                  >
+                    <span className="w-16 shrink-0 truncate text-t2">{each.role}</span>
+                    <span className="min-w-0 flex-1 truncate">{each.name}</span>
+                    {each.thinkingLevel !== null && (
+                      <span className="shrink-0 text-[11px] text-t3">{each.thinkingLevel}</span>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
             {builtSections.map((section) => (
               <CommandGroup key={section.key} heading={section.heading}>
                 {section.models.map((item) => row(section.key, item, false))}
@@ -342,20 +414,30 @@ export function ModelPicker({
             )}
             {rows < total && <div ref={setMore} aria-hidden="true" className="h-px" />}
           </CommandList>
-          <p className="border-t border-l2 px-3 py-1.5 text-xs text-t3">
-            {preferences.kind === "unavailable" ? (
-              "This app server cannot keep stars or hidden models yet; it needs an update."
-            ) : (
-              <>
-                <span className="[@media(hover:none)]:hidden">
-                  {`${keycap(KEYS.starModel)} star · ${keycap(KEYS.hideModel)} hide · kept on every device`}
-                </span>
-                <span className="hidden [@media(hover:none)]:inline">
-                  Stars and hidden models are kept on every device
-                </span>
-              </>
-            )}
-          </p>
+          <div className="flex items-center gap-2 border-t border-l2 px-3 py-1 text-xs text-t3">
+            <p className="min-w-0 flex-1">
+              {preferences.kind === "unavailable" ? (
+                "This app server cannot keep stars or hidden models yet; it needs an update."
+              ) : (
+                <>
+                  <span className="[@media(hover:none)]:hidden">
+                    {`${keycap(KEYS.starModel)} star · ${keycap(KEYS.hideModel)} hide · kept on every device`}
+                  </span>
+                  <span className="hidden [@media(hover:none)]:inline">
+                    Stars and hidden models are kept on every device
+                  </span>
+                </>
+              )}
+            </p>
+            <button
+              type="button"
+              data-tour="model-roles-link"
+              className="shrink-0 rounded-sm px-1.5 py-1 text-t2 outline-none hover:bg-l2 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11 tablet:min-h-11"
+              onClick={openPanel}
+            >
+              Roles and models…
+            </button>
+          </div>
         </Command>
       </PopoverContent>
     </Popover>
@@ -372,9 +454,11 @@ const MenuRow = memo(function MenuRow({
   itemKey,
   inHidden,
   selected,
+  tourStar,
   starred,
   checked,
   marks,
+  tags,
   actions,
 }: {
   /** cmdk's value: the section and the model. */
@@ -384,11 +468,15 @@ const MenuRow = memo(function MenuRow({
   readonly itemKey: string;
   readonly inHidden: boolean;
   readonly selected: boolean;
+  /** The tour points at this row's star: the highlighted model's, or the first model's. */
+  readonly tourStar: boolean;
   readonly starred: boolean;
   /** The chat's model. */
   readonly checked: boolean;
   /** Stars and hides can be kept: the server has them. */
   readonly marks: boolean;
+  /** omp's roles that use the model ("slow", "task", …). */
+  readonly tags: readonly string[];
   readonly actions: RefObject<MenuActions>;
 }): ReactNode {
   return (
@@ -403,6 +491,11 @@ const MenuRow = memo(function MenuRow({
         <span className={cn("min-w-0 flex-1 truncate", inHidden && !selected && "text-t3")}>
           {item.name}
         </span>
+        {tags.map((tag) => (
+          <span key={tag} className="shrink-0 rounded-sm bg-l2 px-1 text-[11px] text-t2">
+            {tag}
+          </span>
+        ))}
         <span className="max-w-32 shrink-0 truncate font-mono text-[11px] text-t3 group-data-selected/command-item:text-t2">
           {item.id}
         </span>
@@ -413,9 +506,8 @@ const MenuRow = memo(function MenuRow({
           <RowButton
             label={starred ? `Unstar ${item.name}` : `Star ${item.name}`}
             pressed={starred}
-            shown={starred || selected}
-            // The tour points at the star of the highlighted row, the one shown.
-            tour={selected ? "model-star" : undefined}
+            shown={starred || selected || tourStar}
+            tour={tourStar ? "model-star" : undefined}
             onClick={() => actions.current.toggleStar(itemKey)}
           >
             <Star className={cn("size-3.5", starred && "fill-current text-warn")} />

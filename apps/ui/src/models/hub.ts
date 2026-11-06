@@ -49,9 +49,10 @@ export function windowText(tokens: number | null): string {
   return String(tokens);
 }
 
-/** Whether a pane's Models dialog (omp's Alt+M) is open. */
+/** Whether a pane's Models dialog (omp's Alt+M) is open, and the role it opens at. */
 export class ModelHubToggle {
   #open = false;
+  #role: string | null = null;
   readonly #listeners = new Set<() => void>();
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -63,8 +64,15 @@ export class ModelHubToggle {
 
   readonly getSnapshot = (): boolean => this.#open;
 
-  show(): void {
+  /** Opens it, at `role` when one is given (the model menu's "Roles and models…" names the chat's role). */
+  show(role?: string): void {
+    this.#role = role ?? null;
     this.#set(true);
+  }
+
+  /** The role asked for by the last `show`; null for the dialog's own choice. */
+  roleAsked(): string | null {
+    return this.#role;
   }
 
   hide(): void {
@@ -72,6 +80,7 @@ export class ModelHubToggle {
   }
 
   toggle(): void {
+    if (!this.#open) this.#role = null;
     this.#set(!this.#open);
   }
 

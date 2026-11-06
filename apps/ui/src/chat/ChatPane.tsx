@@ -243,6 +243,7 @@ export function ChatPane({
         closed={snapshot.phase === "ended"}
         model={snapshot.model}
         role={snapshot.role}
+        roles={snapshot.roles}
         roleTrack={snapshot.roleTrack}
         onRoleTrackDone={hideRoleTrack}
         toast={snapshot.toast}

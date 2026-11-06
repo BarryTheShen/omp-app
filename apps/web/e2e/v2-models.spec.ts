@@ -150,4 +150,76 @@ realTest.describe("new UI role models", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "the model menu lists the roles Ctrl+P switches between, a pick uses the role's model and level, a role's model is tagged, and Roles and models… opens omp's panel at the chat's role (#2838)",
+    async ({ realApp }) => {
+      // omp's own order for Ctrl+P (smol, default, slow), each role on a model of its own.
+      await appendFile(
+        join(realApp.agentDir, "config.yml"),
+        [
+          "",
+          "modelRoles:",
+          "  default: fake/fake-model",
+          "  smol: fake/claude-3-haiku-20240307",
+          "  slow: fake/claude-fable-5:low",
+          "",
+        ].join("\n"),
+      );
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      const thinking = page.getByRole("button", { name: /^Thinking: / });
+      await expect(chip(page)).toHaveAccessibleName("Model: Fake Model");
+      // A new chat starts at high: the role's own level is another.
+      await expect(thinking).toHaveAccessibleName("Thinking: high");
+
+      // The roles in Ctrl+P's order, each with its model and the level it names.
+      await chip(page).click();
+      const roles = page.getByRole("group", { name: "Roles", exact: true });
+      await expect(roles.getByRole("option")).toHaveText(
+        [/^smol\s*Claude Haiku 3$/, /^default\s*Fake Model$/, /^slow\s*Claude Fable 5\s*low$/],
+        { timeout: 30_000 },
+      );
+      const slow = roles.getByRole("option", { name: /^slow/ });
+      // Below, a role's model carries the role's name; the search finds a model further down the list.
+      const search = page.getByPlaceholder("Find a model");
+      const fake = page.getByRole("group", { name: "fake", exact: true });
+      await search.fill("fable 5");
+      await expect(fake.getByRole("option", { name: /^Claude Fable 5\b/ })).toHaveText(
+        /^Claude Fable 5\s*slow\s*claude-fable-5$/,
+      );
+      await search.fill("fake model");
+      await expect(fake.getByRole("option", { name: /^Fake Model\b/ })).toHaveText(
+        /^Fake Model\s*default\s*fake-model$/,
+      );
+      await search.fill("");
+
+      // A pick switches the chat to the role's model at the role's level, and the chip names the role.
+      await slow.click();
+      await expect(chip(page)).toHaveAccessibleName("Model: Claude Fable 5 (slow)");
+      await expect(thinking).toHaveAccessibleName("Thinking: low");
+      await chip(page).click();
+      await expect(slow).toHaveAttribute("data-checked", "true");
+
+      // Roles and models…, at the menu's foot, opens omp's panel at the chat's role.
+      await page.getByRole("button", { name: "Roles and models…" }).click();
+      const panel = page.getByRole("dialog", { name: "Models" });
+      await expect(panel).toBeVisible();
+      await expect(page.getByPlaceholder("Find a model")).toBeHidden();
+      await expect(panel.locator('[data-role="slow"]')).toHaveAttribute("aria-selected", "true");
+
+      // Settings → Model has it too: Settings closes, and the panel opens at the chat's role.
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const settings = page.getByRole("dialog", { name: "Settings" });
+      await settings.getByRole("button", { name: /^Model(,|$)/ }).click();
+      await settings.getByRole("button", { name: "Roles and models…" }).click();
+      await expect(settings).toBeHidden();
+      await expect(panel).toBeVisible();
+      await expect(panel.locator('[data-role="slow"]')).toHaveAttribute("aria-selected", "true");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

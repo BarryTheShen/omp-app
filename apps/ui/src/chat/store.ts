@@ -7,6 +7,7 @@ import type {
   GoalAnswer,
   HostDialogRequest,
   PlanModeStatus,
+  RoleModel,
   SubagentSnapshot,
   UiOpenUrlEvent,
 } from "@omp-app/contracts/chat-host";
@@ -157,6 +158,9 @@ export interface ChatSnapshot {
   readonly signIn: SignInPage | null;
   /** The role whose model the chat runs (omp's `smol`, `default`, `slow`, …); null when none, or the server cannot tell. */
   readonly role: string | null;
+  /** The roles Ctrl+P switches between, in its order, each with its model (`get_role_models`); empty when the server
+   * cannot tell. The model menu lists them (#2838). */
+  readonly roles: readonly RoleModel[];
   readonly roleTrack: RoleTrack | null;
 }
 
@@ -197,6 +201,7 @@ const EMPTY: ChatSnapshot = {
   goal: null,
   signIn: null,
   role: null,
+  roles: [],
   roleTrack: null,
 };
 
@@ -343,6 +348,7 @@ export class ChatStore {
   #goal: GoalAnswer["goal"] = null;
   #signIn: SignInPage | null = null;
   #role: string | null = null;
+  #roles: readonly RoleModel[] = EMPTY.roles;
   #roleTrack: RoleTrack | null = null;
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -533,9 +539,10 @@ export class ChatStore {
     this.#publish();
   }
 
-  /** The live model's role as omp reports it (`get_role_models`); null for none, or a server without roles. */
-  setRole(role: string | null): void {
+  /** The live model's role and the roles Ctrl+P switches between, as omp reports them (`get_role_models`). */
+  setRole(role: string | null, roles: readonly RoleModel[]): void {
     this.#role = role;
+    this.#roles = roles;
     this.#publish();
   }
 
@@ -1141,6 +1148,7 @@ export class ChatStore {
       goal: this.#goal,
       signIn: this.#signIn,
       role: this.#role,
+      roles: this.#roles,
       roleTrack: this.#roleTrack,
     };
     for (const listener of this.#listeners) listener();

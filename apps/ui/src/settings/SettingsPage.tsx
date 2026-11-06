@@ -10,6 +10,7 @@ import type { ChatController } from "../chat/controller";
 import { AppPage } from "./AppPage";
 import { loadSettingsData, type SettingDef, type SettingsData, type SettingsTab } from "./data";
 import { McpServers } from "./McpServers";
+import { ModelRoles } from "./ModelRoles";
 import { changedHere, type Entries, inForce, matches, sections, shown, valueText } from "./model";
 import { SettingControl, wide } from "./SettingControl";
 import { SignIn } from "./SignIn";
@@ -307,6 +308,8 @@ function SettingsSheet({
                     <SignIn controller={controller} />
                   ) : tab.id === "tools" ? (
                     <McpServers controller={controller} />
+                  ) : tab.id === "model" ? (
+                    <ModelRoles controller={controller} onClose={onClose} />
                   ) : null
                 }
               />

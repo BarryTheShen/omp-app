@@ -48,6 +48,7 @@ import type {
   ChatActivity,
   ChatModel,
   ChatQueue,
+  ChatSnapshot,
   ChatToast,
   SentMessage,
   RoleTrack as Track,
@@ -109,6 +110,7 @@ export const Composer = memo(function Composer({
   closed,
   model,
   role,
+  roles,
   roleTrack,
   onRoleTrackDone,
   toast,
@@ -141,6 +143,8 @@ export const Composer = memo(function Composer({
   readonly model: ChatModel | null;
   /** The role whose model the chat runs (omp's `smol`, `slow`, …); the chip names it, `default` aside. */
   readonly role: string | null;
+  /** The roles Ctrl+P switches between, each with its model: the model menu lists them. */
+  readonly roles: ChatSnapshot["roles"];
   /** After Ctrl+P, the roles in their order for a moment; `onRoleTrackDone` ends it. */
   readonly roleTrack: Track | null;
   readonly onRoleTrackDone: (id: number) => void;
@@ -680,6 +684,7 @@ export const Composer = memo(function Composer({
         controller={controller}
         model={model}
         role={role}
+        roles={roles}
         disabled={disabled}
         open={modelPickerOpen}
         onOpenChange={onModelPickerOpenChange}

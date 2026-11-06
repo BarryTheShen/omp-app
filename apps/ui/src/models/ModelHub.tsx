@@ -84,6 +84,9 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
     setProblem(null);
     setStatus([]);
     setQuery("");
+    // Opened from the model menu's "Roles and models…": at the chat's role.
+    const asked = controller.modelHubToggle.roleAsked();
+    if (asked !== null) setPicked(asked);
     controller
       .modelHub()
       .then((read) => {

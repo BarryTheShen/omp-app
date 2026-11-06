@@ -519,6 +519,37 @@ const MODEL_HUB_TOUR: Tour = {
   ],
 };
 
+/**
+ * #2838: omp's roles in the model menu, and its model panel from there. Like the model menu's tour, the steps inside
+ * the menu act there (a click on the tour's Next lands outside the menu and closes it).
+ */
+const ROLES_MENU_TOUR: Tour = {
+  id: "roles-menu-2026-11-06",
+  title: "Roles in the model menu",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("model"),
+      title: "The model menu",
+      text: "Click or tap the model. With two roles or more, the roles {nextRole} switches between (smol, default, slow, …) are at the top of the menu: a pick switches this chat to the role's model and the thinking level it names. In the list below, a model a role uses carries the role's name.",
+      action: { kind: "appears", selector: MODEL_MENU },
+    },
+    {
+      target: part("model-roles-link"),
+      title: "Roles and models",
+      text: "<b>Roles and models…</b> opens omp's model panel at this chat's role: which model and thinking level each role uses, for this project or everywhere. Settings → Model has it too, and on a computer {modelHub}. Click or tap it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: MODEL_HUB,
+      title: "omp's model panel",
+      text: "The roles are on the left, the picked role's models on the right: choosing one gives it to the role. Close the panel when you're done.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 const AGENTS_PROGRESS_TOUR: Tour = {
   id: "agents-progress-2026-10-30",
   title: "Agents and progress",
@@ -1668,6 +1699,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-roles-menu",
+    when: "2026-11-06T01:05:00-06:00",
+    summary:
+      "omp's roles are in the model menu: the roles Ctrl+P switches between are listed at its top, each with its model and the thinking level it names, and a pick switches the chat to that role. A model a role uses carries the role's name in the list. Roles and models…, at the menu's foot and in Settings → Model, opens omp's model panel at the chat's role, where every role's model is set.",
+    tours: [ROLES_MENU_TOUR],
+  },
   {
     id: "2026-11-06-phone-top",
     when: "2026-11-06T00:38:00-06:00",

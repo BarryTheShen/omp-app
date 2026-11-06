@@ -43,7 +43,9 @@ import {
   type ProviderAccounts,
   type QueuedMessage,
   type QueueName,
+  type RoleModel,
   type SubagentSnapshot,
+  ThinkingLevelParams,
 } from "@omp-app/contracts/chat-host";
 import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
@@ -927,13 +929,33 @@ export class ChatController {
     );
   }
 
-  /** The live model's role and the roles' order (`get_role_models`); a server that predates them gives none. */
+  /**
+   * Switches the chat to a role's model, with the thinking level the role names, as omp's role switch does (only this
+   * chat; the settings stay): the model menu's Roles (#2838). The chip then names the role, as omp tells it from the
+   * model: two roles on one model are told apart only by omp's own switch, which this server cannot ask for by name.
+   */
+  async useRole(role: RoleModel): Promise<void> {
+    await this.setModel({ provider: role.provider, id: role.modelId, name: role.name });
+    const level = ThinkingLevelParams.safeParse({ level: role.thinkingLevel });
+    if (level.success && level.data.level !== "inherit") await this.setThinking(level.data.level);
+    await this.#refreshRole();
+  }
+
+  /** Reads the roles again (the model menu opening): another chat or omp's terminal may have changed them. */
+  async refreshRoles(): Promise<void> {
+    if (!this.#noRoles) await this.#refreshRole();
+  }
+
+  /**
+   * The live model's role, the roles Ctrl+P switches between and their order (`get_role_models`); a server that
+   * predates them gives none.
+   */
   async #refreshRole(): Promise<void> {
     try {
       const roles = await this.#request("get_role_models", {});
       if (this.#disposed) return;
       this.#roleOrder = roles.order;
-      this.store.setRole(roles.current);
+      this.store.setRole(roles.current, roles.roles);
     } catch (failure) {
       if (!(failure instanceof AppFailure && failure.appError.code === "invalid_args"))
         throw failure;
