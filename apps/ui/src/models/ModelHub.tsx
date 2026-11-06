@@ -20,7 +20,18 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatController } from "../chat/controller";
 import { lastSeen } from "../lastSeen";
-import { assignLevel, modelsFor, roleGroups, roleValueText, windowText } from "./hub";
+import { SignInProgress } from "../settings/SignInProgress";
+import {
+  assignLevel,
+  type HubList,
+  KIND_LABELS,
+  kindsIn,
+  modelsFor,
+  modelsIn,
+  roleGroups,
+  roleValueText,
+  windowText,
+} from "./hub";
 
 /** The hub as the dialog showed it last for a folder (its project settings are the folder's), for this page. */
 const keptHub = (folder: string) => lastSeen<Hub>(`model-hub:${folder}`);
@@ -539,6 +550,294 @@ function CompactionLimit({
   );
 }
 
+/** A list of the Models view by its entry: `recent`, `all`, or `provider:<id>`. */
+function listOf(entry: string): HubList {
+  if (entry === "recent") return { kind: "recent" };
+  if (entry.startsWith("provider:"))
+    return { kind: "provider", id: entry.slice("provider:".length) };
+  return { kind: "all" };
+}
+
+/**
+ * omp's Models view (#2838): its lists on the left (Recent, All models, the providers signed in with their counts, then
+ * those not signed in) and the list's models on the right, by kind and search. A picked model's roles are chips under
+ * the list, pressed where the role uses it: a chip gives the role the model, or clears the role. A provider not signed
+ * in says how to sign in to it, and one with a sign-in page signs in from here.
+ */
+function ModelBrowser({
+  hub,
+  controller,
+  disabled,
+  query,
+  onQuery,
+  onAssign,
+  onClear,
+  onSignedIn,
+}: {
+  readonly hub: Hub;
+  readonly controller: ChatController;
+  readonly disabled: boolean;
+  readonly query: string;
+  readonly onQuery: (query: string) => void;
+  readonly onAssign: (role: HubRole, model: HubModel) => void;
+  readonly onClear: (role: HubRole) => void;
+  readonly onSignedIn: () => void;
+}): ReactNode {
+  const providers = hub.providers ?? [];
+  const [entry, setEntry] = useState("all");
+  const [kind, setKind] = useState("all");
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState<string | null>(null);
+  const [signInProblem, setSignInProblem] = useState<string | null>(null);
+  const list = listOf(entry);
+  const provider =
+    list.kind === "provider" ? providers.find((each) => each.id === list.id) : undefined;
+  const kinds = kindsIn(modelsIn(hub, list, "all", ""));
+  const shownKind = kinds.includes(kind) ? kind : "all";
+  const models = modelsIn(hub, list, shownKind, query);
+  const picked = hub.models.find((model) => keyOf(model) === chosen);
+
+  const open = (next: string): void => {
+    setEntry(next);
+    setChosen(null);
+    setSignInProblem(null);
+  };
+  const signIn = (id: string): void => {
+    setSigningIn(id);
+    setSignInProblem(null);
+    controller
+      .login(id)
+      .then(({ cancelled }) => {
+        if (!cancelled) onSignedIn();
+      })
+      .catch((failure: unknown) =>
+        setSignInProblem(`Could not sign in to ${id}: ${failureText(failure)}`),
+      )
+      .finally(() => setSigningIn(null));
+  };
+  const row = (id: string, label: string, count: number | null): ReactNode => (
+    <div
+      key={id}
+      data-list={id}
+      role="option"
+      aria-selected={entry === id}
+      aria-label={count === null ? label : `${label}, ${count}`}
+      tabIndex={entry === id ? 0 : -1}
+      onClick={() => open(id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open(id);
+        }
+      }}
+      className={`flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[0.8125rem] outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        entry === id ? "bg-l2 text-t1" : "text-t2 hover:bg-l1"
+      }`}
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {count !== null && (
+        // On the picked row's shade the dim text would fall under the contrast line (dark theme): full text there.
+        <span className={`shrink-0 text-xs tabular-nums ${entry === id ? "text-t1" : "text-t3"}`}>
+          {count}
+        </span>
+      )}
+    </div>
+  );
+  const signedIn = providers.filter((each) => !each.locked);
+  const locked = providers.filter((each) => each.locked);
+  const heading = (text: string): ReactNode => (
+    <p className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-t3">{text}</p>
+  );
+  return (
+    <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+      <div
+        role="listbox"
+        aria-label="Lists"
+        onKeyDown={(event) => {
+          if (event.altKey || event.ctrlKey || event.metaKey || !moveFocus(event)) return;
+          const next = (document.activeElement as HTMLElement | null)?.dataset.list;
+          if (next !== undefined) open(next);
+        }}
+        className="max-h-48 shrink-0 overflow-y-auto border-b border-l2 p-1.5 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0"
+      >
+        {row("recent", "Recent", hub.recent?.length ?? 0)}
+        {row("all", "All models", hub.models.length)}
+        {signedIn.length > 0 && (
+          // biome-ignore lint/a11y/useSemanticElements: a listbox's group of options (ARIA), not a fieldset of controls
+          <div role="group" aria-label="Providers">
+            {heading("Providers")}
+            {signedIn.map((each) => row(`provider:${each.id}`, each.id, each.models))}
+          </div>
+        )}
+        {locked.length > 0 && (
+          // biome-ignore lint/a11y/useSemanticElements: a listbox's group of options (ARIA), not a fieldset of controls
+          <div role="group" aria-label="Not signed in">
+            {heading("Not signed in")}
+            {locked.map((each) => row(`provider:${each.id}`, each.id, null))}
+          </div>
+        )}
+      </div>
+      <section
+        aria-label="The list's models"
+        className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3"
+      >
+        {provider?.locked === true ? (
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-[0.8125rem] text-t1">{provider.id} is not signed in.</p>
+            {provider.signIn?.kind === "oauth" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={signingIn !== null}
+                onClick={() => signIn(provider.id)}
+              >
+                {signingIn === null ? `Sign in to ${provider.id}` : "Waiting…"}
+              </Button>
+            ) : (
+              <p className="text-xs text-t3">
+                {provider.signIn?.kind === "env"
+                  ? `Set ${provider.signIn.vars.join(" or ")} to sign in.`
+                  : "Add an API key in omp's config to sign in."}
+              </p>
+            )}
+            {signingIn !== null && <SignInProgress controller={controller} name={signingIn} />}
+            {signInProblem !== null && (
+              <p role="alert" className="text-xs text-bad-ink">
+                {signInProblem}
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            {kinds.length > 0 && (
+              <ToggleGroup
+                aria-label="Kind"
+                className="flex-wrap"
+                value={[shownKind]}
+                onValueChange={(value: string[]) => {
+                  const next = value[0];
+                  if (next !== undefined) setKind(next);
+                }}
+              >
+                {["all", ...kinds].map((each) => (
+                  <ToggleGroupItem key={each} value={each} size="sm" className="h-6 px-2 text-xs">
+                    {each === "all" ? "All" : (KIND_LABELS[each] ?? each)}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            )}
+            <input
+              type="search"
+              aria-label="Search models"
+              placeholder="Search models"
+              value={query}
+              onChange={(event) => onQuery(event.target.value)}
+              className="h-8 rounded-md bg-transparent px-2.5 text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset placeholder:text-t3 focus-visible:ring-ring"
+            />
+            <div
+              role="listbox"
+              aria-label="Models"
+              onKeyDown={(event) => {
+                if (!event.altKey && !event.ctrlKey && !event.metaKey) moveFocus(event);
+              }}
+              className="min-h-0 flex-1 overflow-y-auto"
+            >
+              {models.length === 0 && (
+                <p className="px-2.5 py-2 text-[0.8125rem] text-t3">
+                  {list.kind === "recent" && query === "" && shownKind === "all"
+                    ? "No model used yet."
+                    : "No model matches."}
+                </p>
+              )}
+              {models.map((model, index) => {
+                const key = keyOf(model);
+                const inUse = hub.current !== null && key === keyOf(hub.current);
+                const uses = hub.roles
+                  .filter(
+                    (role) =>
+                      role.model !== null && !role.autoSelected && keyOf(role.model) === key,
+                  )
+                  .map((role) => role.tag ?? role.name);
+                const tabbable = picked === undefined ? index === 0 : key === chosen;
+                return (
+                  <div
+                    key={key}
+                    role="option"
+                    aria-selected={key === chosen}
+                    aria-label={`${model.name}, ${key}${inUse ? ", in use" : ""}`}
+                    tabIndex={tabbable ? 0 : -1}
+                    onClick={() => setChosen(key)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setChosen(key);
+                      }
+                    }}
+                    className={`flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 outline-none hover:bg-l1 focus-visible:bg-l1 focus-visible:ring-2 focus-visible:ring-ring ${
+                      key === chosen ? "bg-l1" : ""
+                    }`}
+                  >
+                    <span className="min-w-0 truncate text-[0.8125rem] text-t1">{model.name}</span>
+                    <span className="min-w-0 truncate font-mono text-[11px] text-t3 max-sm:hidden">
+                      {key}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] text-t3 sm:hidden">
+                      {model.provider}
+                    </span>
+                    <span className="flex-1" />
+                    {uses.length > 0 && (
+                      <span className="shrink-0 font-mono text-[11px] text-accent-ink">
+                        {uses.join(" ")}
+                      </span>
+                    )}
+                    {inUse && <span className="shrink-0 text-xs text-accent-ink">in use</span>}
+                    <span className="w-12 shrink-0 text-right text-xs text-t3 tabular-nums">
+                      {windowText(model.contextWindow)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {picked !== undefined && (
+              // biome-ignore lint/a11y/useSemanticElements: a named group of the picked model's role chips, not a form's fieldset
+              <div
+                role="group"
+                aria-label={`Roles for ${picked.name}`}
+                className="flex flex-wrap items-center gap-1.5 border-t border-l2 pt-2"
+              >
+                <span className="text-xs text-t3">{picked.name} for</span>
+                {hub.roles
+                  .filter((role) => picked.roles.includes(role.role))
+                  .map((role) => {
+                    const has =
+                      role.model !== null &&
+                      !role.autoSelected &&
+                      keyOf(role.model) === keyOf(picked);
+                    return (
+                      <Button
+                        key={role.role}
+                        type="button"
+                        size="sm"
+                        variant={has ? "default" : "outline"}
+                        aria-pressed={has}
+                        disabled={disabled}
+                        className="h-6 px-2 font-mono text-[11px]"
+                        onClick={() => (has ? onClear(role) : onAssign(role, picked))}
+                      >
+                        {role.tag ?? role.name}
+                      </Button>
+                    );
+                  })}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
 /**
  * omp's model hub (Alt+M) for this pane's chat, its Roles view: the roles on the left with the model each uses (its own,
  * omp's auto-selection, or none), and the picked role's models on the right. A click or Enter on a model gives it to the
@@ -559,6 +858,8 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
   const [pending, setPending] = useState(false);
   /** A role named with "New role…" that omp does not list yet: its first model creates it. */
   const [created, setCreated] = useState<string | null>(null);
+  /** omp's two views (#2838): the roles and their models, or every model by list and kind. */
+  const [view, setView] = useState<"roles" | "models">("roles");
   const rolesRef = useRef<HTMLDivElement>(null);
   const modelsRef = useRef<HTMLDivElement>(null);
   const levelsRef = useRef<HTMLDivElement>(null);
@@ -575,7 +876,10 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
     setQuery("");
     // Opened from the model menu's "Roles and models…": at the chat's role.
     const asked = controller.modelHubToggle.roleAsked();
-    if (asked !== null) setPicked(asked);
+    if (asked !== null) {
+      setPicked(asked);
+      setView("roles");
+    }
     controller
       .modelHub()
       .then((read) => {
@@ -641,20 +945,24 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
       .finally(() => setPending(false));
   };
 
-  /** Gives the picked role this model, keeping its level where the model can apply it (omp's rule). */
-  const assign = (model: HubModel, level?: string): void => {
-    if (role === undefined) return;
+  /** Gives a role this model, keeping its level where the model can apply it (omp's rule), or the level given. */
+  const assignTo = (target: HubRole, model: HubModel, level?: string): void => {
     run(async () => {
       const result = await controller.assignRole({
         provider: model.provider,
         modelId: model.modelId,
-        role: role.role,
-        thinkingLevel: (level ?? assignLevel(role, model)) as Level,
+        role: target.role,
+        thinkingLevel: (level ?? assignLevel(target, model)) as Level,
         ...scoped,
       });
       // omp's hub says nothing when it did not apply the model.
       return result.applied ? [result.status] : [];
     });
+  };
+
+  /** Gives the picked role this model. */
+  const assign = (model: HubModel, level?: string): void => {
+    if (role !== undefined) assignTo(role, model, level);
   };
 
   const clear = (): void => {
@@ -741,12 +1049,32 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
         <header
           ref={headerRef}
           tabIndex={-1}
-          className="flex items-center gap-3 border-b border-l2 px-4 py-3 outline-none"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-l2 px-4 py-3 outline-none"
         >
           <DialogTitle className="text-sm font-semibold text-t1">Models</DialogTitle>
-          <DialogDescription className="text-xs text-t3">
+          <DialogDescription className="min-w-0 flex-1 text-xs text-t3">
             Which model each of omp's roles uses; giving Default a model also switches this chat.
           </DialogDescription>
+          {/* A host before the Models view (#2838) sends no providers: the roles alone. */}
+          {hub?.providers !== undefined && (
+            <ToggleGroup
+              aria-label="View"
+              value={[view]}
+              onValueChange={(value: string[]) => {
+                const next = value[0];
+                if (next !== "roles" && next !== "models") return;
+                setView(next);
+                setQuery("");
+              }}
+            >
+              <ToggleGroupItem value="roles" size="sm" className="h-6 px-2 text-xs">
+                Roles
+              </ToggleGroupItem>
+              <ToggleGroupItem value="models" size="sm" className="h-6 px-2 text-xs">
+                Models
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
         </header>
         {hub !== null && (hub.presets as Hub["presets"] | undefined) !== undefined && (
           <PresetRow
@@ -762,6 +1090,19 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
         )}
         {hub === null ? (
           <p className="flex-1 p-6 text-t3">{problem ?? "Reading the models…"}</p>
+        ) : view === "models" && hub.providers !== undefined ? (
+          <ModelBrowser
+            hub={hub}
+            controller={controller}
+            disabled={pending}
+            query={query}
+            onQuery={setQuery}
+            onAssign={assignTo}
+            onClear={(target) => run(() => controller.clearRole({ role: target.role, ...scoped }))}
+            onSignedIn={() => {
+              reload().catch((failure: unknown) => setProblem(failureText(failure)));
+            }}
+          />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
             <div className="flex max-h-48 shrink-0 flex-col border-b border-l2 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0">

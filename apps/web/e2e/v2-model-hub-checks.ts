@@ -264,5 +264,54 @@ export function defineModelHubChecks(engine: "chromium" | "webkit"): void {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest(
+      "the Models view lists omp's models by provider and kind, and a model's role chips give it a role and clear it (#2838)",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await newChat(page);
+        await box(page).press("Alt+m");
+        await expect(hub(page)).toBeVisible();
+        await hub(page)
+          .getByRole("group", { name: "View" })
+          .getByRole("button", { name: "Models" })
+          .click();
+        const lists = hub(page).getByRole("listbox", { name: "Lists" });
+        await expect(lists.getByRole("option", { name: /^All models, \d+$/ })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+        // The fake provider, signed in, with its count.
+        await lists.getByRole("option", { name: /^fake, \d+$/ }).click();
+        await hub(page)
+          .getByRole("group", { name: "Kind" })
+          .getByRole("button", { name: "Chat" })
+          .click();
+        const haiku = models(page).getByRole("option", {
+          name: /^Claude Haiku 3, fake\/claude-3-haiku-20240307/,
+        });
+        await haiku.click();
+
+        const chips = hub(page).getByRole("group", { name: "Roles for Claude Haiku 3" });
+        const smol = chips.getByRole("button", { name: "SMOL" });
+        await expect(smol).toHaveAttribute("aria-pressed", "false");
+        await smol.click();
+        await expect(status(page)).toHaveText("SMOL model: fake/claude-3-haiku-20240307");
+        await expect(smol).toHaveAttribute("aria-pressed", "true");
+        await expect(haiku).toContainText("SMOL");
+        // Pressed again, it clears the role: omp's auto-selection again.
+        await smol.click();
+        await expect(status(page)).toHaveText("SMOL role cleared — auto-selection applies");
+        await expect(smol).toHaveAttribute("aria-pressed", "false");
+
+        // Back to the roles.
+        await hub(page)
+          .getByRole("group", { name: "View" })
+          .getByRole("button", { name: "Roles" })
+          .click();
+        await expect(roles(page)).toBeVisible();
+        expect(realApp.problems).toEqual([]);
+      },
+    );
   });
 }

@@ -393,6 +393,48 @@ describe("the chat host's model hub methods", () => {
     );
 
     programTest(
+      `${program.name}: the hub lists omp's providers with how to sign in, the recent models, and each model's kind (#2838)`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const hub = await chat.client.request("get_model_hub", {});
+        const providers = hub.providers ?? [];
+        // The fake provider is signed in, with its available models.
+        expect(providers.find((each) => each.id === "fake")).toEqual({
+          id: "fake",
+          models: hub.models.filter((model) => model.provider === "fake").length,
+          locked: false,
+          signIn: null,
+        });
+        // Signed in first, then not signed in, each by name; one not signed in says how to sign in.
+        const ids = (locked: boolean) =>
+          providers.filter((each) => each.locked === locked).map((each) => each.id);
+        const byName = (list: string[]) => [...list].sort((a, b) => a.localeCompare(b));
+        expect(providers.map((each) => each.id)).toEqual([
+          ...byName(ids(false)),
+          ...byName(ids(true)),
+        ]);
+        for (const provider of providers) {
+          if (provider.locked) expect(provider.signIn).not.toBeNull();
+          else expect(provider.signIn).toBeNull();
+        }
+        expect(hub.models.find((model) => model.modelId === "fake-model")?.kind).toBe("chat");
+
+        // Each switch goes to the front of omp's history; omp stamps them in whole seconds.
+        await chat.client.request("set_model", {
+          provider: "fake",
+          modelId: "claude-3-haiku-20240307",
+        });
+        await Bun.sleep(1_100);
+        await chat.client.request("set_model", { provider: "fake", modelId: "claude-fable-5" });
+        const recent = (await chat.client.request("get_model_hub", {})).recent ?? [];
+        expect(recent.slice(0, 2)).toEqual(["fake/claude-fable-5", "fake/claude-3-haiku-20240307"]);
+        expect(recent.length).toBeLessThanOrEqual(15);
+      },
+      60_000,
+    );
+
+    programTest(
       `${program.name}: with project storage default is assigned to the project, and clearing it returns to the global one`,
       async () => {
         const chat = await chats.start(command, {

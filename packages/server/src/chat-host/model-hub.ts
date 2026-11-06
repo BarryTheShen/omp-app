@@ -6,8 +6,10 @@
  * border. Where omp shows a status line the methods return it; where omp shows an error they throw it.
  */
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
+import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
+import { providerEntry } from "@oh-my-pi/pi-catalog/compat/providers";
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
-import type { Model } from "@oh-my-pi/pi-catalog/types";
+import { type Model, modelKind } from "@oh-my-pi/pi-catalog/types";
 import {
   acquireModelRoleMutation,
   applyModelPreset as applyOmpModelPreset,
@@ -52,11 +54,77 @@ import type {
   ClearModelRoleParams,
   CompactionPointParams,
   HubModel,
+  HubProvider,
   HubRole,
+  HubSignIn,
   ModelHub,
   ModelPresetParams,
   SetRoleFallbacksParams,
 } from "@omp-app/contracts/chat-host";
+
+/** How many recently used models omp's hub lists (`RECENT_LIMIT`, `model-hub.ts:319`). */
+const RECENT_LIMIT = 15;
+
+/**
+ * omp's sidebar providers (`model-hub.ts:659-751`, #2838): those with available models, with their counts, and the
+ * discoverable ones that have a sign-in stored or need none; then the catalog's others, not signed in, each with how to
+ * sign in (`3457-3470`). Optional local endpoints never reached stay out, and a `--models` scope has none not signed in.
+ */
+function hubProviders(
+  session: AgentSession,
+  disabledProviders: () => readonly string[],
+  allModels: ReadonlyArray<Model>,
+  availableModels: ReadonlyArray<Model>,
+  scoped: boolean,
+): HubProvider[] {
+  const registry = session.modelRegistry;
+  let disabled: ReadonlySet<string>;
+  try {
+    disabled = new Set(disabledProviders());
+  } catch {
+    disabled = new Set();
+  }
+  const counts = new Map<string, number>();
+  for (const model of availableModels)
+    counts.set(model.provider, (counts.get(model.provider) ?? 0) + 1);
+  const unlocked = new Set(counts.keys());
+  const locked = new Set<string>();
+  if (!scoped) {
+    for (const model of allModels)
+      if (!unlocked.has(model.provider) && !disabled.has(model.provider))
+        locked.add(model.provider);
+    for (const provider of registry.getDiscoverableProviders()) {
+      if (unlocked.has(provider) || disabled.has(provider)) continue;
+      // Discoverable without a stored sign-in: catalog-backed providers stay locked; keyless endpoints show, unless
+      // they are optional ones discovery never reached.
+      const authenticated = registry.authStorage.keys.source(provider) !== undefined;
+      if (!authenticated && locked.has(provider)) continue;
+      if (!authenticated) {
+        const discovery = registry.getProviderDiscoveryState(provider);
+        if (
+          discovery?.optional &&
+          (discovery.status === "idle" || discovery.status === "unavailable")
+        )
+          continue;
+      }
+      locked.delete(provider);
+      unlocked.add(provider);
+    }
+  }
+  const oauth = new Set(getOAuthProviders().map((provider) => provider.id));
+  const signIn = (id: string): HubSignIn => {
+    if (oauth.has(id)) return { kind: "oauth" };
+    const vars = providerEntry(id)?.envVars ?? [];
+    return vars.length > 0 ? { kind: "env", vars: [...vars] } : { kind: "config" };
+  };
+  const byName = (a: string, b: string): number => a.localeCompare(b);
+  return [
+    ...[...unlocked]
+      .sort(byName)
+      .map((id) => ({ id, models: counts.get(id) ?? 0, locked: false, signIn: null })),
+    ...[...locked].sort(byName).map((id) => ({ id, models: 0, locked: true, signIn: signIn(id) })),
+  ];
+}
 
 /**
  * The available model with this provider and id. One that is not in the catalog yet waits for omp's background
@@ -164,8 +232,17 @@ export function readModelHub(session: AgentSession): ModelHub {
         source: point.source,
         draft: point.draft ?? null,
       },
+      kind: modelKind(model),
     };
   });
+  // The available models in omp's most-recent order (`model-hub.ts:645-651`).
+  const bySelector = new Map(items.map((item) => [item.selector, item.model]));
+  const recent: string[] = [];
+  for (const selector of source.mruOrder) {
+    const model = bySelector.get(selector);
+    if (model !== undefined) recent.push(`${model.provider}/${model.id}`);
+    if (recent.length >= RECENT_LIMIT) break;
+  }
   const live = session.model;
   return {
     storage: cfgModelRoleStorage.get(settings),
@@ -176,6 +253,14 @@ export function readModelHub(session: AgentSession): ModelHub {
       names: getModelPresetNames(settings),
       active: findActiveModelPreset(settings) ?? null,
     },
+    recent,
+    providers: hubProviders(
+      session,
+      () => source.disabledProviders,
+      allModels,
+      availableModels,
+      scoped.length > 0,
+    ),
   };
 }
 

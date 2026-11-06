@@ -421,6 +421,28 @@ export interface HubModel {
   readonly roles: readonly string[];
   /** Where auto-compaction triggers for the model (#2838); absent from hosts before it. */
   readonly compaction?: HubCompactionPoint;
+  /**
+   * What the model is for, as omp's hub tabs it (`modelKind`): `chat`, `tiny`, `image`, `tts`, `stt`, `search`, `judge`,
+   * `embedding`, `rerank` or `video` (#2838); absent from hosts before it.
+   */
+  readonly kind?: string;
+}
+
+/** How to sign in to a provider omp's hub shows as not signed in (`model-hub.ts:3457-3470`). */
+export type HubSignIn =
+  | { readonly kind: "oauth" }
+  | { readonly kind: "env"; readonly vars: readonly string[] }
+  | { readonly kind: "config" };
+
+/** A provider in omp's model hub's sidebar (#2838). */
+export interface HubProvider {
+  readonly id: string;
+  /** How many of its models are available (none for a provider not signed in). */
+  readonly models: number;
+  /** Not signed in: its models are in omp's catalog, and none is available. */
+  readonly locked: boolean;
+  /** How to sign in to it when locked; null when signed in. */
+  readonly signIn: HubSignIn | null;
 }
 
 /** What omp's model hub shows. */
@@ -438,6 +460,13 @@ export interface ModelHub {
    * null when they match none.
    */
   readonly presets: { readonly names: readonly string[]; readonly active: string | null };
+  /** The available models omp used most recently, newest first, at most 15, as `provider/id` (#2838); absent from hosts before it. */
+  readonly recent?: readonly string[];
+  /**
+   * omp's sidebar providers (#2838): those signed in, by name, then those not signed in, by name; absent from hosts
+   * before it.
+   */
+  readonly providers?: readonly HubProvider[];
 }
 
 /** One model of the chat's model menu, as omp names it. */

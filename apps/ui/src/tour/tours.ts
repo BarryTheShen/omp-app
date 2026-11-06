@@ -602,6 +602,28 @@ const COMPACTION_LIMIT_TOUR: Tour = {
   ],
 };
 
+/** #2838 part 5: omp's Models view in the app's Models. */
+const MODELS_VIEW_TOUR: Tour = {
+  id: "models-view-2026-11-06",
+  title: "Every model, by provider and kind",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Models",
+      text: "{modelHub} opens omp's Models. Try it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: `${MODEL_HUB} [aria-label="View"]`,
+      title: "Roles or models",
+      text: "<b>Models</b> lists every model omp has, as its Models view does: Recent, All models and each provider with its count, then the providers not signed in, with how to sign in (Sign in, for one with a sign-in page). Kind tabs and the search narrow the list. Pick a model, then a role under the list to give it that role; a lit role clears it. {stop} closes Models.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 /**
  * #2838: omp's roles in the model menu, and its model panel from there. Like the model menu's tour, the steps inside
  * the menu act there (a click on the tour's Next lands outside the menu and closes it).
@@ -1936,6 +1958,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-models-view",
+    when: "2026-11-06T06:06:00-06:00",
+    summary:
+      "omp's Models has its Models view: the Models tab lists Recent, All models and each provider with its count, then the providers not signed in, with how to sign in to each (Sign in, for one with a sign-in page). Kind tabs and the search narrow the list, and a picked model's roles, under the list, give it a role or clear one.",
+    tours: [MODELS_VIEW_TOUR],
+  },
   {
     id: "2026-11-06-compaction-limit",
     when: "2026-11-06T05:52:00-06:00",

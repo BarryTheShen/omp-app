@@ -19,14 +19,60 @@ export function roleValueText(role: HubRole): string {
   return role.autoSelected ? `auto → ${selector}` : selector;
 }
 
+/** Whether a model's name or `provider/id` holds every word of a search. */
+function matches(model: HubModel, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = `${model.name} ${model.provider}/${model.modelId}`.toLowerCase();
+  return words.every((word) => text.includes(word));
+}
+
 /** The models a role takes, in the hub's order, matching every word of the search in their name or `provider/id`. */
 export function modelsFor(hub: ModelHub, role: string, query: string): readonly HubModel[] {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  return hub.models.filter((model) => {
-    if (!model.roles.includes(role)) return false;
-    const text = `${model.name} ${model.provider}/${model.modelId}`.toLowerCase();
-    return words.every((word) => text.includes(word));
-  });
+  return hub.models.filter((model) => model.roles.includes(role) && matches(model, query));
+}
+
+/** omp's kinds of model, in its tab order, with its labels (`MODEL_KINDS`, `model-hub.ts:304-316`). */
+export const KIND_LABELS: Readonly<Record<string, string>> = {
+  chat: "Chat",
+  tiny: "Tiny",
+  image: "Image",
+  tts: "TTS",
+  stt: "STT",
+  search: "Search",
+  judge: "Judge",
+  embedding: "Embedding",
+  rerank: "Rerank",
+  video: "Video",
+};
+
+/** A list of omp's Models view (#2838): the recent models, all of them, or one provider's. */
+export type HubList =
+  | { readonly kind: "recent" }
+  | { readonly kind: "all" }
+  | { readonly kind: "provider"; readonly id: string };
+
+/** A list's models in its order (the recent ones newest first), of one kind or every kind (`all`), matching the search. */
+export function modelsIn(
+  hub: ModelHub,
+  list: HubList,
+  kind: string,
+  query: string,
+): readonly HubModel[] {
+  const listed =
+    list.kind === "recent"
+      ? (hub.recent ?? []).flatMap((key) =>
+          hub.models.filter((model) => `${model.provider}/${model.modelId}` === key),
+        )
+      : list.kind === "provider"
+        ? hub.models.filter((model) => model.provider === list.id)
+        : hub.models;
+  return listed.filter((model) => (kind === "all" || model.kind === kind) && matches(model, query));
+}
+
+/** The kinds the models are of, in omp's tab order. */
+export function kindsIn(models: readonly HubModel[]): readonly string[] {
+  const present = new Set(models.map((model) => model.kind));
+  return Object.keys(KIND_LABELS).filter((kind) => present.has(kind));
 }
 
 /** The roles in the hub's two groups, as omp lists them: the chat roles, then the other kinds of model. */
