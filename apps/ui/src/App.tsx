@@ -551,7 +551,7 @@ function Shell({
           </SidePaneContext>
         </div>
       </main>
-      {!phone && <PanelRail />}
+      {!phone && <PanelRail onDashboard={showDashboard} />}
       <Palette
         open={palette}
         onOpenChange={setPalette}

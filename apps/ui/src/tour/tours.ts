@@ -1830,7 +1830,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-06-dashboard",
     when: "2026-11-06T05:05:00-06:00",
     summary:
-      "The dashboard (Ctrl+Shift+D, or the gauge beside Settings): your usage windows and their pace; rules that pause the chats you pick while a condition holds (a window at a percent, the pace heading past a line before the reset, hours of the day) and continue them once none does; and the queue of the chats they hold, which continue one at a time, three minutes apart. A chat you resume by hand while it is held now runs on until the condition next starts.",
+      "The dashboard (Ctrl+Shift+D, or the gauge at the foot of the rail on the right; on a phone, beside Settings at the foot of the chat list): your usage windows and their pace; rules that pause the chats you pick while a condition holds (a window at a percent, the pace heading past a line before the reset, hours of the day) and continue them once none does; and the queue of the chats they hold, which continue one at a time, three minutes apart. A chat you resume by hand while it is held now runs on until the condition next starts.",
     tours: [DASHBOARD_TOUR],
   },
   {

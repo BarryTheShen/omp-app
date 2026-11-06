@@ -1,3 +1,4 @@
+import { Gauge } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -7,9 +8,10 @@ import { PANELS } from "./registry";
 
 /**
  * The side panel's opener, along the window's right edge where the panel opens: one button per panel. A click shows the
- * panel on that one, or hides it when it shows that one already; the button of the panel shown is pressed.
+ * panel on that one, or hides it when it shows that one already; the button of the panel shown is pressed. Under them,
+ * the dashboard (#2836).
  */
-export function PanelRail(): ReactNode {
+export function PanelRail({ onDashboard }: { readonly onDashboard: () => void }): ReactNode {
   const { open, panel } = usePanelState();
   return (
     <nav
@@ -43,6 +45,27 @@ export function PanelRail(): ReactNode {
           </Tooltip>
         );
       })}
+      <div aria-hidden="true" className="my-0.5 h-px w-5 shrink-0 bg-l2" />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              data-tour="dashboard-button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Dashboard"
+              aria-keyshortcuts="Control+Shift+D"
+              className="text-t3 hover:text-t1 tablet:size-11"
+              onClick={onDashboard}
+            />
+          }
+        >
+          <Gauge />
+        </TooltipTrigger>
+        <TooltipContent side="left">
+          Dashboard: usage, pace, rules and the queue · {keycap(KEYS.dashboard)}
+        </TooltipContent>
+      </Tooltip>
     </nav>
   );
 }

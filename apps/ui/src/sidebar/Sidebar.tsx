@@ -464,26 +464,6 @@ export function Sidebar({
                 <TooltipTrigger
                   render={
                     <Button
-                      data-tour="dashboard-button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Dashboard"
-                      aria-keyshortcuts="Control+Shift+D"
-                      className="text-t3 hover:text-t1 tablet:size-11"
-                      onClick={onDashboard}
-                    />
-                  }
-                >
-                  <Gauge />
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  Dashboard: usage, pace, rules and the queue · {keycap(KEYS.dashboard)}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
                       data-tour="settings"
                       variant="ghost"
                       size="icon-sm"
