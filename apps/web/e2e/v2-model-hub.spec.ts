@@ -60,7 +60,9 @@ realTest.describe("new UI model hub, palette and tour", () => {
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
       await page.getByRole("button", { name: "More" }).tap();
       await page
         .locator("[data-tour='plus-sheet']")

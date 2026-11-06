@@ -2,14 +2,14 @@ import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * The new UI on a phone, on real omp: the keys a phone's keyboard lacks in a row that comes up with the keyboard, ＋ and
- * ⚡ and full-size Send and Stop beside the text, one working line without a key to press, and the top bar that names
- * the chat and starts a new one.
+ * The new UI on a phone, on real omp: ＋ and ⚡ and full-size Send and Stop beside the text, nothing between the box and
+ * the keyboard, one working line without a key to press, and the top bar that names the chat and starts a new one.
  */
 realTest.describe("new UI on a phone", () => {
   realTest.setTimeout(240_000);
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
-  const keys = (page: Page) => page.getByRole("toolbar", { name: "Keys" });
+  /** The box once the chat is open: on a phone it names the model and its level; before omp names one, "Message omp". */
+  const ready = /^(Fake Model|Message omp)/;
   /** ⚡ beside Send: it opens the quick prompts in the keyboard's place. */
   const zap = (page: Page) =>
     page.locator("[data-tour='message-box']").getByRole("button", { name: "Quick prompts" });
@@ -30,17 +30,16 @@ realTest.describe("new UI on a phone", () => {
       hasTouch: true,
     });
     const page = await realApp.open({ path: "/", context });
-    await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+    await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
     return { page, context };
   }
 
   realTest(
-    "＋ holds the box's settings, files and quick prompts; the keys come with the keyboard, in one line; Send is a full-size target beside the text (#2837)",
+    "＋ holds the box's settings, files and quick prompts; the empty box names the model and its level; Send is a full-size target beside the text (#2837)",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
-      // With the keyboard down the chat has the room: no key row, and the empty box names the model and its level.
-      await expect(keys(page)).toHaveCount(0);
-      await expect(box(page)).toHaveAttribute("placeholder", "Message Fake Model · high");
+      // The model and its level are behind ＋, and the empty box names them.
+      await expect(box(page)).toHaveAttribute("placeholder", "Fake Model · high");
       await expect(page.getByRole("button", { name: /^Model: / })).toHaveCount(0);
       const send = page.getByRole("button", { name: "Send" });
       expect((await send.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
@@ -55,44 +54,6 @@ realTest.describe("new UI on a phone", () => {
       await expect(plus.getByRole("button", { name: "Plan", exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(plus).toHaveCount(0);
-
-      // The keys come with the keyboard: six in one line, nothing scrolling sideways.
-      await box(page).tap();
-      await expect(keys(page).getByRole("button")).toHaveCount(6);
-      const row = await keys(page).evaluate((element) => ({
-        overflow: element.scrollWidth - element.clientWidth,
-        rows: new Set(
-          [...element.querySelectorAll("button")].map((key) =>
-            Math.round(key.getBoundingClientRect().top),
-          ),
-        ).size,
-        narrowest: Math.min(
-          ...[...element.querySelectorAll("button")].map(
-            (key) => key.getBoundingClientRect().width,
-          ),
-        ),
-      }));
-      expect(row.overflow).toBe(0);
-      expect(row.rows).toBe(1);
-      expect(row.narrowest).toBeGreaterThanOrEqual(44);
-
-      // `/` goes in the box as typed, the box keeps the focus, and omp's commands are listed.
-      await keys(page).getByRole("button", { name: "Commands" }).tap();
-      await expect(box(page)).toHaveValue("/");
-      await expect(box(page)).toBeFocused();
-
-      // A message sent comes back with ↑.
-      await box(page).fill("count_reply phone");
-      await send.tap();
-      await expect(page.getByText("count-1 phone")).toBeVisible({ timeout: 60_000 });
-      await box(page).tap();
-      await keys(page).getByRole("button", { name: "Earlier message" }).tap();
-      await expect(box(page)).toHaveValue("count_reply phone");
-
-      // ⌄ puts the keyboard away, and the keys go with it.
-      await keys(page).getByRole("button", { name: "Hide the keyboard" }).tap();
-      await expect(box(page)).not.toBeFocused();
-      await expect(keys(page)).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
@@ -162,9 +123,20 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
-    "⚡ sits beside Send in the box, and the keys that come up with the keyboard are the ones a phone lacks",
+    "⚡ sits beside Send, and a tap on the box brings nothing up between it and the keyboard",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
+      // The keyboard has / @ and !: a tap on the box moves nothing, and no row comes up under it.
+      const form = page.locator("[data-tour='message-box']");
+      const before = await form.boundingBox();
+      await box(page).tap();
+      await page.evaluate(
+        () =>
+          new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(0)))),
+      );
+      expect(await form.boundingBox()).toEqual(before);
+      await expect(box(page)).toBeFocused();
+
       await box(page).fill("hello");
       const quick = await zap(page).boundingBox();
       const send = await page.getByRole("button", { name: "Send" }).boundingBox();
@@ -177,23 +149,6 @@ realTest.describe("new UI on a phone", () => {
       );
       expect(Math.min(quick.width, quick.height)).toBeGreaterThanOrEqual(44);
 
-      // The keys come with the keyboard, ⚡ not among them.
-      await box(page).tap();
-      await expect
-        .poll(() =>
-          keys(page)
-            .getByRole("button")
-            .evaluateAll((all) => all.map((key) => key.getAttribute("aria-label"))),
-        )
-        .toEqual([
-          "Commands",
-          "Files",
-          "Shell",
-          "Earlier message",
-          "Later message",
-          "Hide the keyboard",
-        ]);
-
       // ⚡ puts the quick prompts in the keyboard's place, and ⌨ in its place brings the keyboard back.
       await zap(page).tap();
       const panel = page.getByRole("region", { name: "Quick prompts" });
@@ -205,31 +160,6 @@ realTest.describe("new UI on a phone", () => {
         .tap();
       await expect(panel).toHaveCount(0);
       await expect(box(page)).toBeFocused();
-      await expect(keys(page)).toBeVisible();
-      expect(realApp.problems).toEqual([]);
-      await context.close();
-    },
-  );
-
-  realTest(
-    "the tap that brings the key row up leaves the focus in the box and presses no key (#2837)",
-    async ({ realApp, browser }) => {
-      const { page, context } = await phone(realApp, browser);
-      // A new chat's box has the focus without a keyboard; a tap on it brings the key row up under it, which moves the
-      // box up. The tap's mouse press comes after the finger lifts, at the same point, over the keys now. Held here until
-      // the row is up, a real touch shows it every time (Chromium's own touch events, so its own tap follows).
-      await expect(box(page)).toBeFocused();
-      const bounds = await box(page).boundingBox();
-      if (bounds === null) throw new Error("the box is not drawn");
-      const point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-      const touch = await context.newCDPSession(page);
-      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
-      await expect(keys(page)).toBeVisible();
-      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-      await page.waitForTimeout(300);
-      await expect(box(page)).toBeFocused();
-      await page.keyboard.type("first line");
-      await expect(box(page)).toHaveValue("first line");
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
@@ -324,7 +254,7 @@ realTest.describe("new UI on a phone", () => {
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       const topBar = page.locator('[data-tour="phone-top-bar"]');
       // Nothing kept yet: the top bar has ⓘ.
       await expect(topBar.getByRole("button", { name: "Details", exact: true })).toBeVisible();
@@ -577,7 +507,7 @@ realTest.describe("new UI on a phone", () => {
       await sheet.getByRole("button", { name: "Done" }).tap();
 
       await page.getByRole("button", { name: "New chat" }).first().tap();
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await page.getByRole("button", { name: "Details" }).tap();
       const details = page.getByRole("region", { name: "Chat details" });
       for (const panel of ["Progress", "Files"]) {
@@ -674,7 +604,7 @@ realTest.describe("new UI on a phone", () => {
           .getByText("Seeded chat 1", { exact: true });
         await expect(message).toBeVisible({ timeout: 60_000 });
         // Edit is offered once the chat's omp is ready and idle.
-        await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+        await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
         // No small buttons under it on a phone.
         await expect(page.getByRole("button", { name: "Copy this message" })).toHaveCount(0);
         await message.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true });
@@ -776,7 +706,7 @@ realTest.describe("new UI on a phone", () => {
   });
 
   realTest(
-    "the phone's tour, started from the list, shows the chat and points at the keys, the quick panel and the top bar",
+    "the phone's tour, started from the list, shows the chat and points at ⚡, the quick panel, ＋ and the top bar",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
       const popover = page.locator(".driver-popover");
@@ -801,15 +731,8 @@ realTest.describe("new UI on a phone", () => {
       // one, so the first tab's chat is still on the page, hidden.
       const shown = (tour: string) =>
         page.locator(`[data-tour='${tour}']`).filter({ visible: true });
-      // The keys come with the keyboard: the tour asks for a tap on the box. Its Next then puts the keyboard away, and
-      // ⚡ stays beside Send.
-      await expect(heading).toHaveText("The box", { timeout: 30_000 });
-      await expect(shown("message-box")).toHaveClass(/driver-active-element/);
-      await shown("message-box").getByRole("textbox", { name: "Message" }).tap();
-      await expect(heading).toHaveText("The keys a phone lacks");
-      await expect(shown("phone-keys")).toHaveClass(/driver-active-element/);
-      await popover.getByRole("button", { name: "Next" }).tap();
-      await expect(heading).toHaveText("Your quick prompts");
+      // The tour asks for a tap on ⚡, never its Next, so the quick panel is open for the step after.
+      await expect(heading).toHaveText("Your quick prompts", { timeout: 30_000 });
       await expect(shown("quick-prompts-key")).toHaveClass(/driver-active-element/);
       await shown("quick-prompts-key").tap();
       await expect(heading).toHaveText("One tap answers");
@@ -847,9 +770,7 @@ realTest.describe("new UI on a phone", () => {
       await expect(field).toHaveValue("Ship it\nLooks good");
       await page.keyboard.press("Escape");
       await list.getByRole("button", { name: "New chat" }).tap();
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
-      // The keys come with the keyboard.
-      await box(page).tap();
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await zap(page).tap();
       const panel = page.getByRole("region", { name: "Quick prompts" });
       await expect(panel.getByRole("listitem")).toHaveText(["Ship it", "Looks good"]);
@@ -937,7 +858,7 @@ realTest.describe("new UI on a phone", () => {
       });
       const page = await realApp.open({ path: "/", context });
       await startNewChat(page);
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       for (const panes of [2, 3]) {
         await page.keyboard.press("Control+Shift+O");
         // The split is a blank window with the caret on its New chat.
@@ -946,7 +867,7 @@ realTest.describe("new UI on a phone", () => {
       }
       await expect(box(page)).toHaveCount(3);
       for (const each of await box(page).all())
-        await expect(each).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+        await expect(each).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await page.waitForTimeout(1_000);
 
       // The same browser as a phone: it comes back with its panes, but only the chat in front opens. Counted from the
@@ -960,7 +881,7 @@ realTest.describe("new UI on a phone", () => {
       );
       await page.setViewportSize({ width: 390, height: 844 });
       await page.reload();
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await page.waitForTimeout(3_000);
       expect(opens).toBe(1);
       expect(realApp.problems).toEqual([]);
@@ -1002,7 +923,7 @@ realTest.describe("new UI on a phone", () => {
         });
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await box(page).fill("count_reply first");
       await page.getByRole("button", { name: "Send" }).tap();
       await expect(page.getByText("count-1 first")).toBeVisible({ timeout: 60_000 });
@@ -1064,7 +985,7 @@ realTest.describe("new UI on a phone", () => {
         });
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await expect.poll(() => links[0]?.dead ?? false, { timeout: 30_000 }).toBe(true);
 
       await page.evaluate(() =>
@@ -1136,7 +1057,7 @@ realTest.describe("new UI on a phone", () => {
         };
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       // A new build goes live: the app's page names another entry script.
       await page.route(/\/$/, async (route) => {
         const response = await route.fetch();
@@ -1191,7 +1112,7 @@ realTest.describe("new UI on a phone", () => {
         };
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await box(page).fill("count_reply kept");
       await page.getByRole("button", { name: "Send" }).tap();
       const reply = page.getByRole("region", { name: "Transcript" }).getByText(/count-\d+ kept/);
@@ -1217,19 +1138,19 @@ realTest.describe("new UI on a phone", () => {
       await page.unroute(/\/$/);
       await banner.getByRole("button", { name: "Reload" }).tap();
       await expect(reply).toBeVisible({ timeout: 120_000 });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 60_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 60_000 });
 
       // Opened again by itself within the hour (iOS reloads a Home Screen app it put away): back to the same chat.
       await page.reload();
       await expect(reply).toBeVisible({ timeout: 120_000 });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 60_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 60_000 });
 
       // Opened again two hours after the app was last up: a new chat, as a launch.
       await context.addInitScript(() =>
         localStorage.setItem("omp-app:last-up", String(Date.now() - 2 * 60 * 60 * 1000)),
       );
       await page.reload();
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       await expect(reply).toHaveCount(0);
       await context.close();
     },
@@ -1243,7 +1164,7 @@ realTest.describe("new UI on a phone", () => {
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
       // On a phone What's new is in Settings → App, reached from the list.
       await page.getByRole("button", { name: "Chats", exact: true }).tap();
       await page
@@ -1289,12 +1210,11 @@ realTest.describe("new UI on a phone", () => {
           barTop: Math.round(edge('[data-tour="phone-top-bar"]')?.top ?? 0),
           stripHeight: Math.round(Number.parseFloat(strip.height)),
           // The first message right under the top bar (its row keeps its own spacing), and with the keyboard down the
-          // box, the lowest thing on the screen (the keys come with the keyboard), right on the home bar's strip.
+          // box, the lowest thing on the screen, right on the home bar's strip.
           aboveChat: Math.round(
             (edge('[data-index="0"]')?.top ?? 0) -
               (edge('[data-tour="phone-top-bar"]')?.bottom ?? 0),
           ),
-          keys: document.querySelector('[role="toolbar"][aria-label="Keys"]') !== null,
           belowBox: Math.round(window.innerHeight - 34 - (form?.bottom ?? 0)),
         };
       });
@@ -1305,7 +1225,6 @@ realTest.describe("new UI on a phone", () => {
         barTop: 62,
         stripHeight: 62,
         aboveChat: 0,
-        keys: false,
         belowBox: 0,
       });
 

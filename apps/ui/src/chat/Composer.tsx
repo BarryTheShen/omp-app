@@ -37,12 +37,12 @@ import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
-import { KeyRow, QuickPromptsKey } from "./KeyRow";
 import { ModelPicker } from "./ModelPicker";
 import { PausedRow } from "./PausedRow";
 import { PlusMenu } from "./PlusMenu";
 import { QueuedMessages } from "./QueuedMessages";
 import { QuickPanel } from "./QuickPanel";
+import { QuickPromptsKey } from "./QuickPromptsKey";
 import { RoleTrack } from "./RoleTrack";
 import { withRestored } from "./restored";
 import type {
@@ -79,9 +79,6 @@ function insertText(box: HTMLTextAreaElement, text: string): boolean {
 /** A typed `/pause` (omp's takes no arguments and ignores any). */
 const PAUSE_TEXT = /^\/pause(?:\s|$)/;
 
-/** How long the phone's keys stay after the keyboard went: about as long as iOS takes to put the keyboard away. */
-const KEYS_LINGER_MS = 300;
-
 /** What the palette can do with a pane's message box. */
 export interface ComposerHandle {
   /** Puts text at the caret (over a selection), then the caret after it. */
@@ -103,8 +100,8 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
  * Files pasted, dropped or picked with the paperclip go with the next message: pictures to the model, any other file
  * uploaded to the chat's own folder and named in the message (#2830). The text is kept as it is typed (`drafts.ts`), and
  * only the text that was sent leaves the box. On a phone the return key adds a line, and the button sends (or, while omp
- * works, queues what is typed); ＋ holds the box's settings (`PlusMenu`), ⚡ beside Send the quick prompts
- * (`QuickPromptsKey`), and the keys a phone lacks come up with the keyboard in the row under the box (`KeyRow`).
+ * works, queues what is typed); ＋ holds the box's settings (`PlusMenu`) and ⚡ beside Send the quick prompts
+ * (`QuickPromptsKey`). Nothing comes up between the box and the phone's keyboard: the keyboard has `/`, `@` and `!`.
  */
 export const Composer = memo(function Composer({
   controller,
@@ -194,30 +191,9 @@ export const Composer = memo(function Composer({
   /** The uploads still running, by file: taking a file out of the box cancels its upload. */
   const uploads = useRef(new Map<string, AbortController>());
   const [dragging, setDragging] = useState(false);
-  /** Whether the box has the focus. */
-  const [focused, setFocused] = useState(false);
-  /**
-   * Whether the box has the focus from a tap: on it, or on a key or a prompt that puts the caret back in it. iOS raises
-   * its keyboard only then, not for a focus the page gives the box by itself (a chat that opens), so only then is the
-   * keyboard up. A blur ends it.
-   */
-  const [tapped, setTapped] = useState(false);
   /** Whether the phone's quick panel is open, in the keyboard's place. */
   const [panel, setPanel] = useState(false);
   const phone = usePhone();
-  const keyboardUp = focused && tapped;
-  // The keys come with the keyboard or the quick panel, and leave a moment after both went: a tap that takes the focus
-  // from the box (Send in some browsers) ends where it started, not on what moved under it once the keys were gone.
-  const keysWanted = keyboardUp || panel;
-  const [keysShown, setKeysShown] = useState(false);
-  useEffect(() => {
-    if (keysWanted) {
-      setKeysShown(true);
-      return;
-    }
-    const timer = setTimeout(() => setKeysShown(false), KEYS_LINGER_MS);
-    return () => clearTimeout(timer);
-  }, [keysWanted]);
   /** Whether the phone's ＋ sheet is open (`PlusMenu`). */
   const [plusOpen, setPlusOpen] = useState(false);
   // On a phone the model chip is in the ＋ sheet: what opens the model menu (a failed request's "Switch model") opens
@@ -788,10 +764,13 @@ export const Composer = memo(function Composer({
       <TooltipContent>Attach files, or drop them on the box</TooltipContent>
     </Tooltip>
   );
-  /** On a phone the model and its level are behind ＋: the empty box names them ("Message Claude Opus 5.5 · high"). */
+  /**
+   * On a phone the model and its level are behind ＋: the empty box names them ("Claude Opus 5.5 · high"), on one line
+   * beside ⚡ and Send.
+   */
   const readyPlaceholder =
     phone && model !== null
-      ? `Message ${model.name.length > 24 ? `${model.name.slice(0, 23)}…` : model.name}${
+      ? `${model.name.length > 24 ? `${model.name.slice(0, 23)}…` : model.name}${
           thinkingLevel !== null && thinkingLevel !== "off" ? ` · ${thinkingLevel}` : ""
         }`
       : "Message omp";
@@ -936,7 +915,7 @@ export const Composer = memo(function Composer({
             />
           )}
           {(attachments.length > 0 || files.length > 0) && (
-            // A phone keeps them on one row that scrolls sideways, as the key row does: the box stays low.
+            // A phone keeps them on one row that scrolls sideways: the box stays low.
             <ul
               aria-label="Attachments"
               className="flex flex-wrap gap-2 px-3 pt-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-2 max-sm:pt-2 max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
@@ -994,7 +973,7 @@ export const Composer = memo(function Composer({
           )}
           {pickerInput}
           {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
-          {/* ＋, the text and Send are a finger's 44 pt each: an even inset keeps Send centred, the box no taller. */}
+          {/* ＋, the text, ⚡ and Send are a finger's 44 pt each: an even inset keeps them centred, the box no taller. */}
           <div className={phone ? "flex items-end gap-1.5 p-[3px]" : undefined}>
             {phone && (
               <PlusMenu
@@ -1019,7 +998,7 @@ export const Composer = memo(function Composer({
             )}
             <textarea
               ref={boxRef}
-              className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] py-[11px] text-base leading-snug" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[0.875rem] leading-normal"}`}
+              className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] min-w-0 py-[11px] text-base leading-snug placeholder:truncate" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[0.875rem] leading-normal"}`}
               aria-label="Message"
               placeholder={
                 closed
@@ -1030,16 +1009,8 @@ export const Composer = memo(function Composer({
               }
               value={text}
               rows={phone ? 1 : 2}
-              onFocus={() => {
-                setFocused(true);
-                // The keyboard takes the quick panel's place.
-                setPanel(false);
-              }}
-              onBlur={() => {
-                setFocused(false);
-                setTapped(false);
-              }}
-              onPointerDown={() => setTapped(true)}
+              // The keyboard takes the quick panel's place.
+              onFocus={() => setPanel(false)}
               onChange={(event) => {
                 setError(null);
                 // Typing makes what is in the box the text, wherever Up and Down had got to.
@@ -1073,7 +1044,6 @@ export const Composer = memo(function Composer({
                   if (panel) {
                     setPanel(false);
                     // Within the tap, so the keyboard comes back up.
-                    setTapped(true);
                     boxRef.current?.focus({ preventScroll: true });
                   } else {
                     setPanel(true);
@@ -1099,34 +1069,12 @@ export const Composer = memo(function Composer({
             </div>
           )}
         </form>
-        {/* With the keyboard or the quick panel up: one line of keys. With both down the chat gets the room. */}
-        {phone && keysShown && (
-          <KeyRow
-            keyboardUp={keyboardUp}
-            onInsert={(character) => {
-              // Within the tap, so a phone brings its keyboard up for what follows.
-              setTapped(true);
-              boxRef.current?.focus({ preventScroll: true });
-              insertRef.current(character);
-            }}
-            onHistory={(step) => {
-              const box = boxRef.current;
-              if (box === null) return;
-              // The key goes through the sent messages wherever the caret is, as the arrows do from the box's edge.
-              const edge = step < 0 ? 0 : box.value.length;
-              box.setSelectionRange(edge, edge);
-              browse(step, box);
-            }}
-            onHideKeyboard={() => boxRef.current?.blur()}
-          />
-        )}
         {phone && panel && (
           <QuickPanel
             history={history}
             disabled={disabled || sending}
             onSend={sendPrompt}
             onPut={(prompt) => {
-              setTapped(true);
               boxRef.current?.focus({ preventScroll: true });
               insertRef.current(prompt);
             }}

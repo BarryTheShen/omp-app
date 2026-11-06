@@ -48,7 +48,7 @@ realTest.describe("new UI on a phone, drags with the keyboard up", () => {
     );
 
   realTest(
-    "with the keyboard up a drag no box can take is stopped; the chat, the key row sideways and the box's own drags go on",
+    "with the keyboard up a drag no box can take is stopped; the chat and the box's own drags go on",
     async ({ realApp, browser }) => {
       const context = await browser.newContext({
         viewport: { width: 390, height: 844 },
@@ -84,7 +84,9 @@ realTest.describe("new UI on a phone, drags with the keyboard up", () => {
       });
       const page = await realApp.open({ path: "/", context });
       const box = page.getByRole("textbox", { name: "Message" });
-      await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
       expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
       await box.fill("long_reply_probe");
       await page.getByRole("button", { name: "Send" }).tap();
@@ -99,7 +101,7 @@ realTest.describe("new UI on a phone, drags with the keyboard up", () => {
         .toBe(true);
       const topBar = '[data-tour="phone-top-bar"]';
       const chat = 'section[aria-label="Transcript"] .tl-item p';
-      const keyRow = '[role="toolbar"][aria-label="Keys"] button';
+      const quickKey = '[data-tour="quick-prompts-key"]';
       // The chat scrolls, and at its end it hands nothing on to the page.
       expect(await drag(page, chat, 0, -60)).toBe(false);
       expect(await drag(page, chat, 0, 60)).toBe(false);
@@ -108,9 +110,9 @@ realTest.describe("new UI on a phone, drags with the keyboard up", () => {
           .locator('section[aria-label="Transcript"]')
           .evaluate((section) => getComputedStyle(section).overscrollBehaviorY),
       ).toBe("contain");
-      // The key row is one line that does not scroll (#2837): a drag on it either way would pan the page.
-      expect(await drag(page, keyRow, -80, 3)).toBe(true);
-      expect(await drag(page, keyRow, 2, -50)).toBe(true);
+      // Nothing scrolls on ⚡ beside Send: a drag on it either way would pan the page.
+      expect(await drag(page, quickKey, -80, 3)).toBe(true);
+      expect(await drag(page, quickKey, 2, -50)).toBe(true);
       // Nothing scrolls in the top bar: a drag there would pan the page.
       expect(await drag(page, topBar, 0, -50)).toBe(true);
       // iOS moves the caret and the selection with a finger on the focused box.

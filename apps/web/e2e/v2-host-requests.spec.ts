@@ -353,7 +353,9 @@ realTest.describe("new UI approvals and questions", () => {
       });
       const page = await realApp.open({ path: "/", context });
       const box = page.getByRole("textbox", { name: "Message" });
-      await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
       await box.fill("ask_three");
       await page.getByRole("button", { name: "Send" }).tap();
       const questions = page.getByRole("dialog", { name: "Questions from omp" });

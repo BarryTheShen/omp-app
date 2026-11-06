@@ -10,7 +10,7 @@ function elapsed(ms: number): string {
 /**
  * What omp is doing, how long it has been at it, and how to stop it: Esc, where there is a key for it (`stopKey`; a
  * phone has none, and its Stop button is beside the box). Pause (`onPause`) holds every agent at its next step, as omp's
- * `/pause`; a phone has it in its key row.
+ * `/pause`; a phone has it in its ＋ sheet.
  *
  * The line is a grid so that the dot and the time keep their room: the step's name gives way first (its column can
  * shrink to nothing).

@@ -18,7 +18,7 @@ const PAUSE_WORDS =
 
 /**
  * The chat is paused (omp's `/pause`): how long, and how to go on. Resume, or Esc, Enter or Space in the empty box, as
- * in omp (`resumeKey`; a phone has no such keys, and its key row has Resume). A chat its usage pause holds says why and
+ * in omp (`resumeKey`; a phone has no such keys, and its ＋ sheet has Resume). A chat its usage pause holds says why and
  * when it goes on (`reason`, #2781 part 3).
  */
 export function PausedRow({

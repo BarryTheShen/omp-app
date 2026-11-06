@@ -276,7 +276,9 @@ realTest.describe("new UI side panel", () => {
       });
       const page = await realApp.open({ path: "/", context });
       const box = page.getByRole("textbox", { name: "Message" });
-      await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      await expect(box).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
 
       await page.getByRole("button", { name: "Details" }).tap();
       const details = page.getByRole("region", { name: "Chat details" });

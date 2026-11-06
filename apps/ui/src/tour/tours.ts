@@ -916,21 +916,7 @@ const PHONE_TOUR: Tour = {
   title: "Your phone's controls",
   minutes: 1,
   sandbox: true,
-  // The box's step waits for a tap on the box, which brings the keyboard and the keys; a Next takes the focus from the
-  // box, so the keys go after their step, and ⚡'s step points beside Send, where it stays.
   steps: [
-    {
-      target: MESSAGE_BOX,
-      title: "The box",
-      text: "Tap the box: the keys a phone lacks come up with the keyboard, right under it.",
-      action: { kind: "appears", selector: part("phone-keys") },
-    },
-    {
-      target: part("phone-keys"),
-      title: "The keys a phone lacks",
-      text: "<b>/</b> commands, <b>@</b> files, <b>!</b> the shell, <b>↑ ↓</b> for what you sent, and <b>⌄</b> to put the keyboard away. A key leaves the keyboard up.",
-      action: next,
-    },
     {
       target: part("quick-prompts-key"),
       title: "Your quick prompts",
@@ -946,7 +932,7 @@ const PHONE_TOUR: Tour = {
     {
       target: part("plus"),
       title: "＋ for the rest",
-      text: "<b>＋</b> holds a photo or file, the quick prompts, and this chat's model, thinking level, plan mode and goal. With the keyboard down the keys go, the chat gets the room, and the empty box names the model and its level.",
+      text: "<b>＋</b> holds a photo or file, the quick prompts, and this chat's model, thinking level, plan mode and goal. The empty box names the model and its level.",
       action: next,
     },
     {
@@ -958,10 +944,10 @@ const PHONE_TOUR: Tour = {
   ],
 };
 
-/** #2837: on a phone, ＋ holds what the box does besides typing, and the keys come with the keyboard. */
+/** #2837: on a phone, ＋ holds what the box does besides typing. */
 const PHONE_PLUS_TOUR: Tour = {
   id: "phone-plus-2026-11-06",
-  title: "＋ and the keys on the phone",
+  title: "＋ on the phone",
   minutes: 1,
   sandbox: true,
   steps: [
@@ -977,13 +963,6 @@ const PHONE_PLUS_TOUR: Tour = {
       title: "One sheet",
       text: "Pick what you need: the model and the thinking level open their own lists over it. Tap above the sheet to close it.",
       action: { kind: "disappears", selector: PLUS_SHEET },
-      phoneOnly: true,
-    },
-    {
-      target: MESSAGE_BOX,
-      title: "The keys come with the keyboard",
-      text: "With the keyboard down the chat gets the room, and the empty box names the model and its level. Tap the box: the keys a phone lacks come up with the keyboard, in one line.",
-      action: { kind: "appears", selector: part("phone-keys") },
       phoneOnly: true,
     },
   ],
@@ -1989,10 +1968,10 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
-    id: "2026-11-06-quick-prompts-key",
-    when: "2026-11-06T10:32:00-06:00",
+    id: "2026-11-06-phone-no-keys",
+    when: "2026-11-06T11:15:00-06:00",
     summary:
-      "On a phone, ⚡ sits beside Send: it puts your quick prompts in the keyboard's place, and ⌨ brings the keyboard back. The keys that come up with the keyboard keep / @ ! ↑ ↓ ⌄, each one wider, and Send sits centred in the box.",
+      "On a phone, nothing comes up between the message box and your keyboard any more: the row of keys is gone, as your keyboard has / @ and !. ⚡ beside Send puts your quick prompts in the keyboard's place, where Sent brings back what you sent, and ⌨ brings the keyboard back. The empty box names the model and its level on one line, and Send sits centred in the box.",
     tours: [PHONE_QUICK_KEY_TOUR],
   },
   {

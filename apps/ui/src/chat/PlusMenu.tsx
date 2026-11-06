@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 /**
- * The phone's ＋ beside the message box (#2837): one sheet for what the box does besides typing, so the key row keeps to
- * one line and shows only with the keyboard. Pause or Resume while omp works or the chat is paused, Photo or file (the
+ * The phone's ＋ beside the message box (#2837): one sheet for what the box does besides typing, so nothing comes up
+ * between the box and the keyboard. Pause or Resume while omp works or the chat is paused, Photo or file (the
  * device's picker: the photo library, the camera, Files), the quick prompts, then the box's settings (model, thinking,
  * plan mode, goal), whose own menus open over it. Its open state is the box's: the model menu opened from elsewhere
  * opens the sheet, where the model's chip is.
