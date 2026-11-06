@@ -1985,7 +1985,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-extension-widgets",
-    when: "2026-11-06T16:00:00-06:00",
+    when: "2026-11-06T15:03:00-06:00",
     summary:
       "omp's extensions can show lines next to the message box, as in omp's terminal: above it, or below it when they ask, changed and cleared as the extension goes. A chat you open later shows what its extensions show now.",
     tours: [EXTENSION_WIDGETS_TOUR],
