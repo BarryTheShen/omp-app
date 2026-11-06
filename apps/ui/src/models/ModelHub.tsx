@@ -1,6 +1,7 @@
 import type {
   AssignModelRoleParams,
   ModelHub as Hub,
+  HubCompactionPoint,
   HubModel,
   HubRole,
 } from "@omp-app/contracts/chat-host";
@@ -353,6 +354,191 @@ function NewRole({
   );
 }
 
+/** omp's note beside its compaction field when it has nothing else to say: what the field reads (`model-hub.ts:321`). */
+const COMPACTION_HINT = "400k base · f400k fixed · 80% · empty resets";
+
+/** A token count as omp's hub writes one: 340K, 1.05M. */
+const tokenText = (tokens: number): string =>
+  tokens.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 });
+
+/** Where the model compacts its chats now, and what decides it. */
+function compactionWords(model: HubModel, point: HubCompactionPoint): string {
+  const where =
+    point.tokens !== null
+      ? `Compacts at ${tokenText(point.tokens)}${point.basis === null ? "" : ` · ${point.basis}`}`
+      : model.contextWindow === null
+        ? "Its window is unknown, so omp does not compact it by itself"
+        : "Auto-compaction is off";
+  const by =
+    point.source === keyOf(model)
+      ? "its own limit"
+      : point.source === "global"
+        ? "omp's compaction setting"
+        : point.source === "default"
+          ? "omp's default"
+          : `the limit for ${point.source}`;
+  return `${where} (${by})`;
+}
+
+/**
+ * The role's model's compaction limit (#2838), as omp's hub sets it from a role's row (K): where the model compacts and
+ * what decides it; Compaction limit… opens a field with the model's own entry and omp's line for what is typed. A limit
+ * that opens the model's larger window shows omp's warning first, and Save anyway writes it.
+ */
+function CompactionLimit({
+  controller,
+  model,
+  point,
+  disabled,
+  onSaved,
+}: {
+  readonly controller: ChatController;
+  readonly model: HubModel;
+  readonly point: HubCompactionPoint;
+  readonly disabled: boolean;
+  readonly onSaved: (status: string) => void;
+}): ReactNode {
+  const [text, setText] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    readonly value: string;
+    readonly line: string | null;
+  } | null>(null);
+  const [warning, setWarning] = useState<{
+    readonly value: string;
+    readonly message: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // omp's line for the typed text, asked once the typing pauses.
+  useEffect(() => {
+    if (text === null || text.trim() === "") return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      controller
+        .previewCompactionPoint(model.provider, model.modelId, text)
+        .then((line) => alive && setPreview({ value: text, line }))
+        .catch(() => alive && setPreview({ value: text, line: null }));
+    }, 150);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [controller, model.provider, model.modelId, text]);
+
+  const close = (): void => {
+    setText(null);
+    setPreview(null);
+    setWarning(null);
+    setError(null);
+  };
+  const confirming = warning !== null && warning.value === text;
+  const save = (): void => {
+    if (text === null || saving) return;
+    setSaving(true);
+    controller
+      .setCompactionPoint({
+        provider: model.provider,
+        modelId: model.modelId,
+        input: text,
+        confirmed: confirming,
+      })
+      .then((result) => {
+        if (result.kind === "confirm") {
+          setError(null);
+          setWarning({ value: text, message: result.message });
+          return;
+        }
+        close();
+        onSaved(result.status);
+      })
+      .catch((failure: unknown) => {
+        setWarning(null);
+        setError(failureText(failure));
+      })
+      .finally(() => setSaving(false));
+  };
+
+  // omp's order: the last refusal, a warning still to accept, its line for the typed text, else what the field reads.
+  const notice =
+    error !== null
+      ? { text: error, tone: "text-bad-ink" }
+      : confirming
+        ? { text: warning.message, tone: "text-warn-ink" }
+        : text !== null && text.trim() !== "" && preview?.value === text && preview.line !== null
+          ? { text: preview.line, tone: "text-t2" }
+          : { text: COMPACTION_HINT, tone: "text-t3" };
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a named group of the limit's line and its field, not a form's fieldset
+    <div
+      role="group"
+      aria-label="Compaction limit"
+      data-tour="compaction-limit"
+      className="flex flex-col gap-1.5 rounded-md border border-l2 px-2.5 py-2"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-xs text-t3">{compactionWords(model, point)}</p>
+        {text === null && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-keyshortcuts="k"
+                  disabled={disabled}
+                  onClick={() => setText(point.draft ?? "")}
+                />
+              }
+            >
+              Compaction limit…
+            </TooltipTrigger>
+            <TooltipContent>When this model's chats compact (K)</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+      {text !== null && (
+        <form
+          className="flex flex-wrap items-center gap-1.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save();
+          }}
+        >
+          <input
+            aria-label={`Compaction limit for ${model.name}`}
+            // biome-ignore lint/a11y/noAutofocus: the field was asked for by the click that opened it
+            autoFocus
+            value={text}
+            placeholder="400k"
+            onChange={(event) => {
+              setText(event.target.value);
+              setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              // Esc closes the field, not Models.
+              event.stopPropagation();
+              close();
+            }}
+            className="h-8 w-28 rounded-md bg-transparent px-2 font-mono text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset placeholder:text-t3 focus-visible:ring-ring"
+          />
+          <Button type="submit" size="sm" disabled={disabled || saving}>
+            {confirming ? "Save anyway" : "Save"}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          <p aria-live="polite" className={`w-full text-xs ${notice.tone}`}>
+            {notice.text}
+          </p>
+        </form>
+      )}
+    </div>
+  );
+}
+
 /**
  * omp's model hub (Alt+M) for this pane's chat, its Roles view: the roles on the left with the model each uses (its own,
  * omp's auto-selection, or none), and the picked role's models on the right. A click or Enter on a model gives it to the
@@ -377,6 +563,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
   const modelsRef = useRef<HTMLDivElement>(null);
   const levelsRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
+  const compactionRef = useRef<HTMLDivElement>(null);
 
   // omp's hub reads the settings again each time it opens: another chat or omp's terminal may have changed them. Until
   // the read answers, the dialog shows the hub it showed last.
@@ -502,6 +689,9 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
         levels?.querySelector<HTMLElement>('[aria-pressed="true"]') ??
         levels?.querySelector<HTMLElement>("button")
       )?.focus();
+    } else if (event.key === "k") {
+      event.preventDefault();
+      compactionRef.current?.querySelector<HTMLElement>('[aria-keyshortcuts="k"]')?.click();
     }
   };
 
@@ -516,6 +706,9 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
   };
 
   const roleModel = role?.model ?? null;
+  /** The role's model as the hub lists it, with where it compacts (a host before #2838 part 4 sends no compaction). */
+  const roleEntry =
+    roleModel === null ? undefined : hub?.models.find((each) => keyOf(each) === keyOf(roleModel));
   const tabbable =
     (roleModel === null ? undefined : models.find((each) => keyOf(each) === keyOf(roleModel))) ??
     models[0];
@@ -706,6 +899,18 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
                       </Tooltip>
                     )}
                   </div>
+                  {roleEntry?.compaction !== undefined && (
+                    <div ref={compactionRef}>
+                      <CompactionLimit
+                        key={keyOf(roleEntry)}
+                        controller={controller}
+                        model={roleEntry}
+                        point={roleEntry.compaction}
+                        disabled={pending}
+                        onSaved={(status) => run(async () => [status])}
+                      />
+                    </div>
+                  )}
                   {/* A host older than fallbacks sends none: the block waits for its update (#2838). */}
                   {(role.fallbacks as readonly string[] | undefined) !== undefined && (
                     <Fallbacks

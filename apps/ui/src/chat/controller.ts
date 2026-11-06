@@ -30,6 +30,7 @@ import {
   type ChatHostMethod,
   type ChatHostMethodMap,
   type ClearModelRoleParams,
+  type CompactionPointParams,
   type GoalParams,
   type HostDialogAnswer,
   isHostDialogRequest,
@@ -1055,6 +1056,41 @@ export class ChatController {
       return { status, clean: deleted };
     } catch (failure) {
       throw olderServer(failure, "keep model presets");
+    }
+  }
+
+  /** omp's line for a typed compaction limit of a model, as its hub shows it beside the field (#2838); null for text omp does not read. */
+  async previewCompactionPoint(
+    provider: string,
+    modelId: string,
+    input: string,
+  ): Promise<string | null> {
+    try {
+      const { preview } = await this.#request("preview_compaction_point", {
+        provider,
+        modelId,
+        input,
+      });
+      return preview;
+    } catch (failure) {
+      throw olderServer(failure, "set compaction limits");
+    }
+  }
+
+  /**
+   * Sets or removes a model's own compaction limit, as omp's hub does (#2838): omp's line once saved, or its warning
+   * when the limit opens the model's larger window, which is written once sent again `confirmed`.
+   */
+  async setCompactionPoint(
+    params: CompactionPointParams,
+  ): Promise<
+    | { readonly kind: "saved"; readonly status: string }
+    | { readonly kind: "confirm"; readonly message: string }
+  > {
+    try {
+      return await this.#request("set_compaction_point", params);
+    } catch (failure) {
+      throw olderServer(failure, "set compaction limits");
     }
   }
 

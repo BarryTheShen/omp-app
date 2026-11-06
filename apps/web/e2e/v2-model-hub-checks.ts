@@ -206,5 +206,63 @@ export function defineModelHubChecks(engine: "chromium" | "webkit"): void {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest(
+      "a model's compaction limit shows omp's line for what is typed, is saved, refused past the window, and removed (#2838)",
+      async ({ realApp }) => {
+        await appendFile(
+          join(realApp.agentDir, "config.yml"),
+          ["", "modelRoles:", "  smol: fake/claude-3-haiku-20240307", ""].join("\n"),
+        );
+        const page = await realApp.open({ path: "/" });
+        await newChat(page);
+        await box(page).press("Alt+m");
+        await expect(hub(page)).toBeVisible();
+        // SMOL's model, Claude Haiku 3, has a 200K window.
+        const smol = roles(page).getByRole("option", { name: /^SMOL Fast: / });
+        await smol.click();
+        const limit = hub(page).getByRole("group", { name: "Compaction limit" });
+        await expect(limit).toContainText("(omp's default)");
+
+        await limit.getByRole("button", { name: "Compaction limit…" }).click();
+        const field = limit.getByRole("textbox", { name: "Compaction limit for Claude Haiku 3" });
+        await expect(field).toBeFocused();
+        await expect(limit).toContainText("400k base · f400k fixed · 80% · empty resets");
+        await field.fill("f150k");
+        // omp's line for what is typed, before anything is written.
+        await expect(limit).toContainText("150K");
+        await expect(limit).not.toContainText("400k base");
+        await limit.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(status(page)).toHaveText(
+          /^Compaction limit for fake\/claude-3-haiku-20240307: fixed at 150,000 tokens/,
+        );
+        await expect(field).toBeHidden();
+        await expect(limit).toContainText("(its own limit)");
+
+        // K on the role opens the field with the model's own entry; a fixed point past the window is refused beside it.
+        await smol.click();
+        await page.keyboard.press("k");
+        await expect(field).toHaveValue("f150k");
+        await field.fill("f300k");
+        await field.press("Enter");
+        await expect(limit).toContainText("200K window");
+        await expect(field).toBeVisible();
+        // Esc closes the field, not Models.
+        await field.press("Escape");
+        await expect(field).toBeHidden();
+        await expect(hub(page)).toBeVisible();
+        await expect(limit).toContainText("(its own limit)");
+
+        // Empty removes the model's own limit: omp's default again.
+        await limit.getByRole("button", { name: "Compaction limit…" }).click();
+        await field.fill("");
+        await field.press("Enter");
+        await expect(status(page)).toHaveText(
+          /^Compaction limit for fake\/claude-3-haiku-20240307: reset/,
+        );
+        await expect(limit).toContainText("(omp's default)");
+        expect(realApp.problems).toEqual([]);
+      },
+    );
   });
 }

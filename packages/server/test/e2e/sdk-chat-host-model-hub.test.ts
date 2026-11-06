@@ -57,6 +57,28 @@ async function savedChain(
   );
 }
 
+/** Waits for omp to save a model's compaction entry into a settings file; null is an absent entry. */
+async function savedThreshold(
+  file: string,
+  key: string,
+  expected: number | string | null,
+): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let seen: number | string | null = null;
+  while (Date.now() < deadline) {
+    const text = await Bun.file(file)
+      .text()
+      .catch(() => "");
+    const settings: {
+      compaction?: { modelThresholds?: Record<string, number | string> };
+    } | null = parse(text);
+    seen = settings?.compaction?.modelThresholds?.[key] ?? null;
+    if (seen === expected) return;
+    await Bun.sleep(100);
+  }
+  throw new Error(`${file} holds ${key}'s compaction limit: ${seen}, not ${expected}`);
+}
+
 describe("the chat host's model hub methods", () => {
   for (const program of PROGRAMS) {
     const programTest = program.command === undefined ? test.skip : realTest;
@@ -308,6 +330,64 @@ describe("the chat host's model hub methods", () => {
           status: "Preset not found: work",
           deleted: false,
         });
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a model's compaction limit is previewed, written to compaction.modelThresholds and removed (#2838)`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const file = settingsFiles(chat).global;
+        const haiku = { provider: "fake", modelId: "claude-3-haiku-20240307" };
+        const key = `${haiku.provider}/${haiku.modelId}`;
+        const point = async () =>
+          (await chat.client.request("get_model_hub", {})).models.find(
+            (each) => `${each.provider}/${each.modelId}` === key,
+          )?.compaction;
+        // No entry of its own: omp's own policy decides.
+        const before = await point();
+        expect(before).toMatchObject({ source: "default", draft: null });
+
+        // omp's line for typed text, before anything is written; none for text omp does not read.
+        const preview = await chat.client.request("preview_compaction_point", {
+          ...haiku,
+          input: "f150k",
+        });
+        expect(preview.preview).toContain("150K");
+        expect(
+          await chat.client.request("preview_compaction_point", { ...haiku, input: "lots" }),
+        ).toEqual({ preview: null });
+        expect(await point()).toEqual(before);
+
+        const saved = await chat.client.request("set_compaction_point", {
+          ...haiku,
+          input: "f150k",
+        });
+        expect(saved).toEqual({
+          kind: "saved",
+          status: `Compaction limit for ${key}: fixed at 150,000 tokens · ${preview.preview}`,
+        });
+        expect(await point()).toMatchObject({ tokens: 150_000, source: key, draft: "f150k" });
+        await savedThreshold(file, key, "f150000");
+
+        await expect(
+          chat.client.request("set_compaction_point", { ...haiku, input: "lots" }),
+        ).rejects.toThrow('Invalid compaction point "lots"');
+        // A fixed trigger must stay under the model's window (200K): refused, and the entry stays.
+        await expect(
+          chat.client.request("set_compaction_point", { ...haiku, input: "f300k" }),
+        ).rejects.toThrow();
+        expect((await point())?.draft).toBe("f150k");
+
+        const removed = await chat.client.request("set_compaction_point", { ...haiku, input: "" });
+        expect(removed).toMatchObject({ kind: "saved" });
+        expect(removed.kind === "saved" && removed.status).toMatch(
+          new RegExp(`^Compaction limit for ${key}: reset`),
+        );
+        expect(await point()).toEqual(before);
+        await savedThreshold(file, key, null);
       },
       60_000,
     );

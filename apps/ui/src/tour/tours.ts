@@ -580,6 +580,28 @@ const FALLBACKS_TOUR: Tour = {
   ],
 };
 
+/** #2838 part 4: a model's compaction limit in omp's Models. */
+const COMPACTION_LIMIT_TOUR: Tour = {
+  id: "compaction-limit-2026-11-06",
+  title: "When a model's chats compact",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Models",
+      text: "{modelHub} opens omp's Models. Try it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: `${MODEL_HUB} [data-tour="compaction-limit"]`,
+      title: "Compaction limit",
+      text: "This line says when chats on the picked role's model compact, and what decides it. <b>Compaction limit…</b> (or K on the role) sets the model's own limit: a token base the policy scales (400k), a fixed point (f400k) or a share of the window (80%); omp says where that compacts as you type, and empty goes back to omp's setting. A limit that opens the model's larger window asks first. {stop} closes Models.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 /**
  * #2838: omp's roles in the model menu, and its model panel from there. Like the model menu's tour, the steps inside
  * the menu act there (a click on the tour's Next lands outside the menu and closes it).
@@ -1914,6 +1936,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-compaction-limit",
+    when: "2026-11-06T05:52:00-06:00",
+    summary:
+      "omp's Models sets a model's compaction limit, as K does in omp's terminal: the picked role's model says when its chats compact and what decides it, and Compaction limit… takes a token base (400k), a fixed point (f400k) or a share of the window (80%), with omp's word on where that compacts as you type; empty goes back to omp's setting. A limit that opens the model's larger window asks first.",
+    tours: [COMPACTION_LIMIT_TOUR],
+  },
   {
     id: "2026-11-06-dashboard-activity",
     when: "2026-11-06T05:44:00-06:00",

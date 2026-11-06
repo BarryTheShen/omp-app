@@ -32,6 +32,8 @@ export const CHAT_HOST_METHOD_NAMES = [
   "save_model_preset",
   "apply_model_preset",
   "delete_model_preset",
+  "preview_compaction_point",
+  "set_compaction_point",
   "set_thinking_level",
   "cycle_thinking_level",
   "get_available_thinking_levels",

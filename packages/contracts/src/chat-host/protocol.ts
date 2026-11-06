@@ -351,6 +351,31 @@ export type SetRoleFallbacksParams = z.infer<typeof SetRoleFallbacksParams>;
 export const ModelPresetParams = z.object({ name: z.string().min(1).max(64) });
 export type ModelPresetParams = z.infer<typeof ModelPresetParams>;
 
+/**
+ * A model's own compaction limit (#2838), as omp's model hub edits it: `input` is the typed text, a token base the
+ * compaction policy scales (`400k`), a fixed trigger (`f400k`), a percentage of the window (`80%`), or empty to remove
+ * the model's own entry. `confirmed` acknowledges omp's warning for a limit that opens the model's extended window.
+ */
+export const CompactionPointParams = z.object({
+  provider: z.string().min(1),
+  modelId: z.string().min(1),
+  input: z.string().max(64),
+  confirmed: z.boolean().optional(),
+});
+export type CompactionPointParams = z.infer<typeof CompactionPointParams>;
+
+/** Where auto-compaction triggers for one model, as omp's model hub shows it (`describeModelCompactionPoint`). */
+export interface HubCompactionPoint {
+  /** Context tokens that trigger auto-compaction; null when auto-compaction is off or the window is unknown. */
+  readonly tokens: number | null;
+  /** Why it triggers there, in omp's words: `fixed`, `85% of 400K base`, `80% of window`; null with no tokens. */
+  readonly basis: string | null;
+  /** What sets it: the model's own `provider/id` entry, another matching `compaction.modelThresholds` key, `global` or `default`. */
+  readonly source: string;
+  /** The model's own entry as one types it (`90k`, `f400k`, `80%`); null when it has none. */
+  readonly draft: string | null;
+}
+
 /** One role of omp's model hub. */
 export interface HubRole {
   readonly role: string;
@@ -394,6 +419,8 @@ export interface HubModel {
   readonly thinkingLevels: readonly string[];
   /** The roles that accept the model (omp's `getRoleInfo(role).accepts`). */
   readonly roles: readonly string[];
+  /** Where auto-compaction triggers for the model (#2838); absent from hosts before it. */
+  readonly compaction?: HubCompactionPoint;
 }
 
 /** What omp's model hub shows. */
@@ -838,6 +865,25 @@ export interface ChatHostMethodMap {
     readonly params: ModelPresetParams;
     readonly result: { readonly status: string; readonly deleted: boolean };
   };
+  /**
+   * omp's live line for a typed compaction limit (#2838), as its hub shows it beside the field: `compacts at 340K · 85%
+   * of 400K base`, `resets: …` for empty input; null for text that does not parse or fit.
+   */
+  readonly preview_compaction_point: {
+    readonly params: CompactionPointParams;
+    readonly result: { readonly preview: string | null };
+  };
+  /**
+   * Sets or removes a model's own compaction limit, as omp's hub does (#2838): `saved` with omp's line, or `confirm`
+   * with omp's warning when the limit opens the model's extended window, written once sent again `confirmed`. Refused
+   * with omp's message for text it does not take.
+   */
+  readonly set_compaction_point: {
+    readonly params: CompactionPointParams;
+    readonly result:
+      | { readonly kind: "saved"; readonly status: string }
+      | { readonly kind: "confirm"; readonly message: string };
+  };
   readonly set_thinking_level: {
     readonly params: ThinkingLevelParams;
     readonly result: EmptyParams;
@@ -1158,6 +1204,8 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   save_model_preset: ModelPresetParams,
   apply_model_preset: ModelPresetParams,
   delete_model_preset: ModelPresetParams,
+  preview_compaction_point: CompactionPointParams,
+  set_compaction_point: CompactionPointParams,
   set_thinking_level: ThinkingLevelParams,
   cycle_thinking_level: EmptyParams,
   get_available_thinking_levels: EmptyParams,

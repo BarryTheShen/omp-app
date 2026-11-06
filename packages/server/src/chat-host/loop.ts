@@ -94,8 +94,10 @@ import {
   clearModelRole,
   deleteModelPreset,
   findModel,
+  previewCompactionPoint,
   readModelHub,
   saveModelPreset,
+  setCompactionPoint,
   setRoleFallbacks,
 } from "./model-hub";
 import { readModelMenu } from "./model-menu";
@@ -559,6 +561,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     save_model_preset: async (params) => saveModelPreset(session, params),
     apply_model_preset: (params) => applyModelPreset(session, params),
     delete_model_preset: async (params) => deleteModelPreset(session, params),
+    preview_compaction_point: (params) => previewCompactionPoint(session, params),
+    set_compaction_point: (params) => setCompactionPoint(session, params),
     set_thinking_level: async ({ level }) => {
       // omp's own parser turns the name into its level (an `Effort` member, `off`, `inherit` or `auto`).
       const parsed = parseConfiguredThinkingLevel(level);

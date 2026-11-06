@@ -1,9 +1,9 @@
 /**
- * The chat host's model hub methods (`get_model_hub`, `assign_model_role`, `clear_model_role`): what omp's model hub
- * (Alt+M) shows and does with roles, taken from omp 18.12.6 rule for rule. The rows are the hub's own
- * (`pi-tui/src/overlays/model-hub.ts`, `model-browser.ts`) and the two writes are the hub's callbacks
- * (`modes/controllers/selector-controller.ts:947-1116`), minus the terminal's status line and editor border. Where omp
- * shows a status line the methods return it; where omp shows an error they throw it.
+ * The chat host's model hub methods (`get_model_hub`, `assign_model_role`, `clear_model_role`, and the fallbacks,
+ * presets and compaction limits of #2838): what omp's model hub (Alt+M) shows and does with roles, taken from omp 18.12.6
+ * rule for rule. The rows are the hub's own (`pi-tui/src/overlays/model-hub.ts`, `model-browser.ts`) and the writes are
+ * the hub's callbacks (`modes/controllers/selector-controller.ts:947-1203`), minus the terminal's status line and editor
+ * border. Where omp shows a status line the methods return it; where omp shows an error they throw it.
  */
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
@@ -26,6 +26,11 @@ import { cfgModelRoleStorage } from "@oh-my-pi/pi-coding-agent/config/model-sett
 import { createModelBrowserSource } from "@oh-my-pi/pi-coding-agent/modes/model-browser-source";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import {
+  describeModelCompactionPoint,
+  previewModelCompactionPoint,
+  setModelCompactionPoint,
+} from "@oh-my-pi/pi-coding-agent/session/model-compaction-threshold";
+import {
   cfgDefaultThinkingLevel,
   cfgRetryFallbackChains,
 } from "@oh-my-pi/pi-coding-agent/session/settings";
@@ -45,6 +50,7 @@ import {
 import type {
   AssignModelRoleParams,
   ClearModelRoleParams,
+  CompactionPointParams,
   HubModel,
   HubRole,
   ModelHub,
@@ -141,15 +147,25 @@ export function readModelHub(session: AgentSession): ModelHub {
   // The hub's own order: models with a role first, then the most recently used, then by provider and recency.
   const items = buildBrowserItems(availableModels);
   sortModelItems(items, { roles: assignments, mruOrder: source.mruOrder });
-  const models: HubModel[] = items.map(({ model }) => ({
-    provider: model.provider,
-    modelId: model.id,
-    name: model.name,
-    contextWindow: model.contextWindow ?? null,
-    reasoning: Boolean(model.reasoning),
-    thinkingLevels: thinkingOptionsFor(model).map((level) => `${level}`),
-    roles: [...infos].filter(([, info]) => info.accepts(model)).map(([role]) => role),
-  }));
+  const models: HubModel[] = items.map(({ model }) => {
+    // Where auto-compaction triggers, as the hub's preview shows it (`model-browser-source.ts:89`).
+    const point = describeModelCompactionPoint(settings, model);
+    return {
+      provider: model.provider,
+      modelId: model.id,
+      name: model.name,
+      contextWindow: model.contextWindow ?? null,
+      reasoning: Boolean(model.reasoning),
+      thinkingLevels: thinkingOptionsFor(model).map((level) => `${level}`),
+      roles: [...infos].filter(([, info]) => info.accepts(model)).map(([role]) => role),
+      compaction: {
+        tokens: point.tokens ?? null,
+        basis: point.basis ?? null,
+        source: point.source,
+        draft: point.draft ?? null,
+      },
+    };
+  });
   const live = session.model;
   return {
     storage: cfgModelRoleStorage.get(settings),
@@ -326,6 +342,53 @@ export function deleteModelPreset(
       deleted: false,
     };
   return { status: `Preset not found: ${params.name}`, deleted: false };
+}
+
+/** The available model a compaction limit is for; omp's hub only offers those. */
+async function compactionModel(session: AgentSession, params: CompactionPointParams) {
+  const model = await findModel(session, params.provider, params.modelId);
+  if (!model) throw new Error(`Model not found: ${params.provider}/${params.modelId}`);
+  return model;
+}
+
+/** The hub's `previewCompactionPoint` (`selector-controller.ts:1173-1179`, #2838): omp's line for the typed limit. */
+export async function previewCompactionPoint(
+  session: AgentSession,
+  params: CompactionPointParams,
+): Promise<{ readonly preview: string | null }> {
+  const model = await compactionModel(session, params);
+  const tiers = session.modelRegistry.contextWindowTiers(model);
+  return {
+    preview: previewModelCompactionPoint(session.settings, model, params.input, tiers) ?? null,
+  };
+}
+
+/**
+ * The hub's `onCompactionPointChange` (`selector-controller.ts:1145-1172`, #2838): writes the model's own entry in
+ * `compaction.modelThresholds`, or returns omp's warning when it opens the model's extended window and is not
+ * `confirmed`. The entry can move the model between its window tiers, so omp's window policies are applied again
+ * before the hub is read, as omp's hub does before it refreshes.
+ */
+export async function setCompactionPoint(
+  session: AgentSession,
+  params: CompactionPointParams,
+): Promise<
+  | { readonly kind: "saved"; readonly status: string }
+  | { readonly kind: "confirm"; readonly message: string }
+> {
+  const model = await compactionModel(session, params);
+  const tiers = session.modelRegistry.contextWindowTiers(model);
+  const update = setModelCompactionPoint(session.settings, model, params.input, {
+    ...(tiers === undefined ? {} : { tiers }),
+    confirmed: params.confirmed === true,
+  });
+  if (update.kind === "confirm") return { kind: "confirm", message: update.message };
+  await session.modelRegistry.reapplyModelPolicies();
+  const summary = update.summary === undefined ? "" : ` · ${update.summary}`;
+  return {
+    kind: "saved",
+    status: `Compaction limit for ${model.provider}/${model.id}: ${update.described}${summary}`,
+  };
 }
 
 /**
