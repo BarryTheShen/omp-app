@@ -100,4 +100,59 @@ realTest.describe("new UI commands, mentions and shell runs", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+  realTest.describe("an extension that adds to the `@` menu", () => {
+    // As in omp's terminal: the extension stacks a provider at session start, offering notes after an `@word`.
+    realTest.use({
+      // Without it the fake provider's setup turns off omp's own discovery, which loads the agent folder's extensions.
+      serverEnv: { FAKE_OPENAI_ENABLE_RULES: "1" },
+      seedExtensions: {
+        "notes.ts": `export default function notes(pi) {
+  pi.on("session_start", async (_event, ctx) => {
+    ctx.ui.addAutocompleteProvider((current) => ({
+      ...current,
+      async getSuggestions(lines, line, col, signal) {
+        const at = /@(\\w+)$/.exec(lines[line].slice(0, col));
+        if (!at || !"lab report".includes(at[1].toLowerCase())) return current.getSuggestions(lines, line, col, signal);
+        return { prefix: at[0], items: [{ value: "n1", label: "Lab report", description: "note from Notes" }] };
+      },
+      applyCompletion(lines, line, col, item, prefix) {
+        const next = [...lines];
+        const insert = "@[" + item.label + "](note:" + item.value + ") ";
+        next[line] = lines[line].slice(0, col - prefix.length) + insert + lines[line].slice(col);
+        return { lines: next, cursorLine: line, cursorCol: col - prefix.length + insert.length };
+      },
+    }));
+  });
+}
+`,
+      },
+    });
+
+    realTest(
+      "its rows follow the folder's files, and taking one puts its text in the box",
+      async ({ realApp }) => {
+        const page = await newChat(realApp);
+        const box = page.getByRole("textbox", { name: "Message" });
+
+        await box.pressSequentially("read @lab");
+        const menu = page.getByRole("listbox", { name: "Files and more to mention" });
+        const note = menu.getByRole("option", { name: /Lab report.*note from Notes/ });
+        await expect(note).toBeVisible({ timeout: 30_000 });
+        await note.click();
+        await expect(box).toHaveValue("read @[Lab report](note:n1) ");
+        await expect(menu).toHaveCount(0);
+
+        // A word the extension does not know: the folder's files alone, under their usual name.
+        await box.fill("");
+        await box.pressSequentially("look at @pars");
+        const files = page.getByRole("listbox", { name: "Files to mention" });
+        await expect(files.getByRole("option", { name: /src\/parser\.ts/ })).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect(files.getByRole("option")).toHaveCount(1);
+
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+  });
 });

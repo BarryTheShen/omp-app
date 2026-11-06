@@ -714,6 +714,24 @@ export interface ChatHostCommand {
   readonly source: "builtin" | "skill" | "extension" | "custom" | "mcp_prompt" | "file";
 }
 
+/**
+ * `extension_completions`: the rows omp's extensions offer for the message box's text at the caret (their autocomplete
+ * providers, `ctx.ui.addAutocompleteProvider`), for the `@` menu after the folder's files.
+ */
+export const ExtensionCompletionsParams = z.object({
+  text: z.string().max(100_000),
+  caret: z.int().nonnegative(),
+});
+export type ExtensionCompletionsParams = z.infer<typeof ExtensionCompletionsParams>;
+
+/** One row an extension offers, with the box's text and caret once the row is taken. */
+export interface ExtensionCompletion {
+  readonly label: string;
+  readonly detail?: string;
+  readonly text: string;
+  readonly caret: number;
+}
+
 /** `bash` (the `!` command, and `!!` with `excludeFromContext`, #839): omp runs it and records it in the chat. */
 export const BashParams = z.object({
   command: z.string().min(1),
@@ -760,6 +778,11 @@ export interface ChatHostMethodMap {
   };
   /** The chat's scratch folder (omp's `local://`), where files attached to a message are put for omp's tools. */
   readonly local_folder: { readonly params: EmptyParams; readonly result: LocalFolder };
+  /** The rows extensions offer for the box's text at the caret (none when no extension adds to the menus). */
+  readonly extension_completions: {
+    readonly params: ExtensionCompletionsParams;
+    readonly result: { readonly items: readonly ExtensionCompletion[] };
+  };
   /**
    * Holds every agent of the chat (main, subagents, advisor) at its next step, as omp's `/pause` does: a model reply or
    * tool already under way finishes, nothing new starts. Pausing a paused chat keeps the first time.
@@ -1212,6 +1235,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   promote_queued_message: PromoteQueuedMessageParams,
   abort_and_restore_queue: EmptyParams,
   local_folder: EmptyParams,
+  extension_completions: ExtensionCompletionsParams,
   pause: EmptyParams,
   resume: EmptyParams,
   get_available_commands: EmptyParams,

@@ -31,6 +31,7 @@ import {
   type ChatHostMethodMap,
   type ClearModelRoleParams,
   type CompactionPointParams,
+  type ExtensionCompletion,
   type GoalParams,
   type HostDialogAnswer,
   isHostDialogRequest,
@@ -1170,6 +1171,19 @@ export class ChatController {
       .port(FileSearchPort)
       .search({ folder: this.folder, query, limit: 30 });
     return found.results;
+  }
+
+  /**
+   * Rows omp's extensions offer for the box's text at the caret, as in omp's terminal menu: none when no extension adds
+   * any, and none from a chat or server that predates them (the menu then shows the files alone).
+   */
+  async extensionCompletions(text: string, caret: number): Promise<readonly ExtensionCompletion[]> {
+    if (this.#threadId === null) return [];
+    try {
+      return (await this.#request("extension_completions", { text, caret })).items;
+    } catch {
+      return [];
+    }
   }
 
   /** A `!` or `$` run: omp runs it and records it in the chat; its start and end, with omp's result, come as events. */

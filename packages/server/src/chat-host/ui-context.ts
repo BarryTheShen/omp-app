@@ -19,6 +19,7 @@ import {
   getExtensionUISelectOptionLabel,
   timedOutAskDialogResult,
 } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
+import type { AutocompleteProviderFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { type Theme, theme } from "@oh-my-pi/pi-tui/theme";
 import {
   type AskAnswer,
@@ -469,7 +470,12 @@ export class HostUIContext implements ExtensionUIContext {
     return undefined as never;
   }
 
-  addAutocompleteProvider(): void {}
+  /** Extensions' providers for the box's menus, in the order added; asked by `extension_completions` (`completions.ts`). */
+  readonly completionProviders: AutocompleteProviderFactory[] = [];
+
+  addAutocompleteProvider(factory: AutocompleteProviderFactory): void {
+    this.completionProviders.push(factory);
+  }
 
   setEditorComponent(): void {}
 

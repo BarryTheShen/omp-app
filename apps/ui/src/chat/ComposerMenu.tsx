@@ -1,13 +1,15 @@
-import { File, Folder, SquareSlash } from "lucide-react";
+import { File, Folder, Puzzle, SquareSlash } from "lucide-react";
 import type { ReactNode } from "react";
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/components/ui/command";
 
 /** One row of the `/` or `@` menu. */
 export interface MenuItem {
   readonly key: string;
-  readonly kind: "command" | "file" | "directory";
+  readonly kind: "command" | "file" | "directory" | "extension";
   readonly label: string;
   readonly detail?: string | undefined;
+  /** An extension's row: the box's text and caret once it is taken. */
+  readonly result?: { readonly text: string; readonly caret: number } | undefined;
 }
 
 /**
@@ -52,6 +54,8 @@ export function ComposerMenu({
               <SquareSlash className="text-t3" />
             ) : item.kind === "directory" ? (
               <Folder className="text-t3" />
+            ) : item.kind === "extension" ? (
+              <Puzzle className="text-t3" />
             ) : (
               <File className="text-t3" />
             )}

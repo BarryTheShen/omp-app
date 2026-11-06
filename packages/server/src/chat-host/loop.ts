@@ -79,6 +79,7 @@ import {
   SIGN_IN_ADDRESS_PROMPT,
 } from "@omp-app/contracts/chat-host";
 import { BtwController } from "./btw";
+import { extensionCompletions, stackProviders } from "./completions";
 import { SessionEventStream } from "./events";
 import { GoalController } from "./goal";
 import { pageMessages, selectEntries } from "./history";
@@ -502,6 +503,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       };
     },
     local_folder: async () => localFolder(session),
+    extension_completions: async ({ text, caret }) => ({
+      items: await extensionCompletions(stackProviders(ui.completionProviders), text, caret),
+    }),
     get_available_commands: async () => ({ commands: await listCommands() }),
     bash: async ({ command, excludeFromContext }) =>
       shellRun(await session.executeBash(command, undefined, { excludeFromContext })),

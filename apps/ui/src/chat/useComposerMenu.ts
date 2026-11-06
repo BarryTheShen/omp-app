@@ -1,5 +1,5 @@
 import type { FileSearchCandidate } from "@omp-app/contracts";
-import type { ChatHostCommand } from "@omp-app/contracts/chat-host";
+import type { ChatHostCommand, ExtensionCompletion } from "@omp-app/contracts/chat-host";
 import { useEffect, useMemo, useState } from "react";
 import { lastSeen } from "../lastSeen";
 import type { MenuItem } from "./ComposerMenu";
@@ -52,6 +52,11 @@ export function useComposerMenu(
     readonly query: string;
     readonly found: readonly FileSearchCandidate[];
   } | null>(null);
+  /** omp's extensions' rows for this exact text and caret (a note app's pages, say), shown after the files. */
+  const [extensionRows, setExtensionRows] = useState<{
+    readonly at: string;
+    readonly rows: readonly ExtensionCompletion[];
+  } | null>(null);
   const [active, setActive] = useState(0);
 
   const wantsCommands = open && trigger.kind === "command" && !read;
@@ -92,6 +97,21 @@ export function useComposerMenu(
     };
   }, [fileQuery, controller]);
 
+  const extensionAt = fileQuery === null ? null : `${caret}:${text}`;
+  useEffect(() => {
+    if (extensionAt === null) return;
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      controller
+        .extensionCompletions(text, caret)
+        .then((rows) => alive && setExtensionRows({ at: extensionAt, rows }));
+    }, SEARCH_PAUSE_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [extensionAt, controller, text, caret]);
+
   const items = useMemo<readonly MenuItem[]>(() => {
     if (!open) return [];
     if (trigger.kind === "command")
@@ -103,12 +123,23 @@ export function useComposerMenu(
           label: `/${command.name}`,
           detail: command.description,
         }));
-    return (files?.found ?? []).map((candidate) => ({
+    const found: MenuItem[] = (files?.found ?? []).map((candidate) => ({
       key: candidate.path,
       kind: candidate.kind,
       label: candidate.kind === "directory" ? `${candidate.path}/` : candidate.path,
     }));
-  }, [open, trigger, commands, files]);
+    const offered = extensionRows?.at === `${caret}:${text}` ? extensionRows.rows : [];
+    return [
+      ...found,
+      ...offered.map((row, index) => ({
+        key: `extension:${index}:${row.label}`,
+        kind: "extension" as const,
+        label: row.label,
+        detail: row.detail,
+        result: { text: row.text, caret: row.caret },
+      })),
+    ];
+  }, [open, trigger, commands, files, extensionRows, text, caret]);
 
   // A new trigger or a new list starts at its first row.
   const itemKeys = items.map((item) => item.key).join("\n");
@@ -120,7 +151,12 @@ export function useComposerMenu(
   const searching = trigger.kind === "file" && files?.query !== trigger.query;
   const menu: ComposerMenuState = {
     kind: trigger.kind,
-    label: trigger.kind === "command" ? "omp's commands" : "Files to mention",
+    label:
+      trigger.kind === "command"
+        ? "omp's commands"
+        : items.some((item) => item.kind === "extension")
+          ? "Files and more to mention"
+          : "Files to mention",
     items,
     active: Math.min(active, Math.max(0, items.length - 1)),
     empty:
@@ -140,6 +176,7 @@ export function useComposerMenu(
     pick: (index) => {
       const item = items[index];
       if (item === undefined) return null;
+      if (item.kind === "extension") return item.result ?? null;
       const replacement =
         item.kind === "command"
           ? `${item.label} `
