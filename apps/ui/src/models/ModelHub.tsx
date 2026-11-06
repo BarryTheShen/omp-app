@@ -679,7 +679,8 @@ function ModelBrowser({
       </div>
       <section
         aria-label="The list's models"
-        className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3"
+        // On a phone the panel scrolls as one, the list at its full height: nested lists would leave the models no room.
+        className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3 max-sm:overflow-y-auto"
       >
         {provider?.locked === true ? (
           <div className="flex flex-col items-start gap-2">
@@ -741,7 +742,7 @@ function ModelBrowser({
               onKeyDown={(event) => {
                 if (!event.altKey && !event.ctrlKey && !event.metaKey) moveFocus(event);
               }}
-              className="min-h-0 flex-1 overflow-y-auto"
+              className="min-h-0 flex-1 overflow-y-auto max-sm:flex-none max-sm:overflow-visible"
             >
               {models.length === 0 && (
                 <p className="px-2.5 py-2 text-[0.8125rem] text-t3">
@@ -804,9 +805,13 @@ function ModelBrowser({
               <div
                 role="group"
                 aria-label={`Roles for ${picked.name}`}
-                className="flex flex-wrap items-center gap-1.5 border-t border-l2 pt-2"
+                // On a phone, one row that scrolls sideways, kept at the panel's foot while the list scrolls; a
+                // scrolling row may otherwise shrink under its chips' height.
+                className="flex flex-wrap items-center gap-1.5 border-t border-l2 pt-2 max-sm:sticky max-sm:bottom-0 max-sm:shrink-0 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:bg-popover max-sm:pb-1"
               >
-                <span className="text-xs text-t3">{picked.name} for</span>
+                <span className="shrink-0 whitespace-nowrap text-xs text-t3">
+                  {picked.name} for
+                </span>
                 {hub.roles
                   .filter((role) => picked.roles.includes(role.role))
                   .map((role) => {
@@ -822,7 +827,7 @@ function ModelBrowser({
                         variant={has ? "default" : "outline"}
                         aria-pressed={has}
                         disabled={disabled}
-                        className="h-6 px-2 font-mono text-[11px]"
+                        className="h-6 shrink-0 px-2 font-mono text-[11px]"
                         onClick={() => (has ? onClear(role) : onAssign(role, picked))}
                       >
                         {role.tag ?? role.name}
@@ -1052,7 +1057,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
           className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-l2 px-4 py-3 outline-none"
         >
           <DialogTitle className="text-sm font-semibold text-t1">Models</DialogTitle>
-          <DialogDescription className="min-w-0 flex-1 text-xs text-t3">
+          <DialogDescription className="min-w-0 flex-1 text-xs text-t3 max-sm:sr-only">
             Which model each of omp's roles uses; giving Default a model also switches this chat.
           </DialogDescription>
           {/* A host before the Models view (#2838) sends no providers: the roles alone. */}
@@ -1184,7 +1189,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
             {/* min-w-0: a flex child would otherwise grow to its widest content (the level chips) past the dialog. */}
             <section
               aria-label="Role's model"
-              className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3"
+              className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3 max-sm:overflow-y-auto"
             >
               {role !== undefined && (
                 <>
@@ -1282,7 +1287,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
                     role="listbox"
                     aria-label="Models"
                     onKeyDown={onModelKeys}
-                    className="min-h-0 flex-1 overflow-y-auto"
+                    className="min-h-0 flex-1 overflow-y-auto max-sm:flex-none max-sm:overflow-visible"
                   >
                     {models.length === 0 && (
                       <p className="px-2.5 py-2 text-[0.8125rem] text-t3">
