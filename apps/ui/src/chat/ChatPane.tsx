@@ -283,6 +283,7 @@ export function ChatPane({
         todos={snapshot.todos}
         planMode={snapshot.planMode}
         goal={snapshot.goal}
+        widgets={snapshot.widgets}
       />
       {hub !== null && (
         <AgentHub

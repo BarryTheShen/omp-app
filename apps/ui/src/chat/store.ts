@@ -1,5 +1,10 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
-import type { ChatSessionEvent, ProcessStatus, UsagePauseHold } from "@omp-app/contracts";
+import type {
+  ChatSessionEvent,
+  ProcessStatus,
+  UiStateEvent,
+  UsagePauseHold,
+} from "@omp-app/contracts";
 import type {
   ChatEvent,
   ChatHostImage,
@@ -10,8 +15,10 @@ import type {
   RoleModel,
   SubagentSnapshot,
   UiOpenUrlEvent,
+  UiWidgetEvent,
 } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
+import { stripAnsi } from "../vendor/collab-web/tool-render/util";
 
 /**
  * A chat's usage pause (#2781 part 3): the share of its provider's 5-hour window it is marked to pause at (null when it
@@ -164,6 +171,8 @@ export interface ChatSnapshot {
   readonly goal: GoalAnswer["goal"];
   /** The page a sign-in waits on (omp's `ui_open_url`), until the sign-in ends. */
   readonly signIn: SignInPage | null;
+  /** The lines extensions show beside the message box (omp's `ctx.ui.setWidget`, #2842), in the order they were set. */
+  readonly widgets: readonly ExtensionWidget[];
   /** The role whose model the chat runs (omp's `smol`, `default`, `slow`, …); null when none, or the server cannot tell. */
   readonly role: string | null;
   /** The roles Ctrl+P switches between, in its order, each with its model (`get_role_models`); empty when the server
@@ -177,6 +186,33 @@ export interface ChatSnapshot {
  * page of omp's own computer (`localhost`), which the device in use cannot open when that is another one.
  */
 export type SignInPage = Omit<UiOpenUrlEvent, "type" | "launchUrl">;
+
+/** An extension's lines (omp's widget), above or below the message box, without terminal colour codes. */
+export interface ExtensionWidget {
+  readonly key: string;
+  readonly lines: readonly string[];
+  readonly placement: "aboveEditor" | "belowEditor";
+}
+
+/**
+ * The widgets after an extension set or cleared one, as omp's terminal keeps them (`setHookWidget`): a widget set again
+ * goes to the end, above the box by default; no lines clear it.
+ */
+function withWidget(
+  widgets: readonly ExtensionWidget[],
+  event: UiWidgetEvent,
+): readonly ExtensionWidget[] {
+  const others = widgets.filter((widget) => widget.key !== event.widgetKey);
+  if (event.widgetLines === undefined || event.widgetLines.length === 0) return others;
+  return [
+    ...others,
+    {
+      key: event.widgetKey,
+      lines: event.widgetLines.map(stripAnsi),
+      placement: event.widgetPlacement ?? "aboveEditor",
+    },
+  ];
+}
 
 const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
 
@@ -208,6 +244,7 @@ const EMPTY: ChatSnapshot = {
   proposal: null,
   goal: null,
   signIn: null,
+  widgets: [],
   role: null,
   roles: [],
   roleTrack: null,
@@ -355,6 +392,7 @@ export class ChatStore {
   #proposal: PlanProposal | null = null;
   #goal: GoalAnswer["goal"] = null;
   #signIn: SignInPage | null = null;
+  #widgets: readonly ExtensionWidget[] = [];
   #role: string | null = null;
   #roles: readonly RoleModel[] = EMPTY.roles;
   #roleTrack: RoleTrack | null = null;
@@ -627,6 +665,18 @@ export class ChatStore {
     this.#publish();
   }
 
+  /**
+   * What the chat's extensions show as the server keeps it when the chat opens (its `uiState`: the latest of each),
+   * read once the subscription holds, so a change since comes as an event.
+   */
+  restoreUiState(state: readonly UiStateEvent[]): void {
+    this.#widgets = state.reduce<readonly ExtensionWidget[]>(
+      (widgets, event) => (event.type === "ui_widget" ? withWidget(widgets, event) : widgets),
+      [],
+    );
+    this.#publish();
+  }
+
   addRequest(request: HostDialogRequest): void {
     if (this.#requests.some((open) => open.id === request.id)) return;
     this.#requests = [...this.#requests, request];
@@ -722,8 +772,9 @@ export class ChatStore {
           this.#stopWorking();
           this.#dropPending();
           this.#compacting = false;
-          // A process that has ended waits on nothing.
+          // A process that has ended waits on nothing, and its extensions show nothing.
           this.#requests = [];
+          this.#widgets = [];
         }
         break;
       case "shell":
@@ -915,6 +966,9 @@ export class ChatStore {
           url: event.url,
           ...(event.instructions === undefined ? {} : { instructions: event.instructions }),
         };
+        return false;
+      case "ui_widget":
+        this.#widgets = withWidget(this.#widgets, event);
         return false;
       case "subagent_lifecycle": {
         const { payload } = event;
@@ -1155,6 +1209,7 @@ export class ChatStore {
       proposal: this.#proposal,
       goal: this.#goal,
       signIn: this.#signIn,
+      widgets: this.#widgets,
       role: this.#role,
       roles: this.#roles,
       roleTrack: this.#roleTrack,

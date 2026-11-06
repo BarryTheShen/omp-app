@@ -891,6 +891,63 @@ describe("ChatStore", () => {
     } as unknown as ChatSessionEvent);
     expect(store.getSnapshot().entries.map((entry) => entry.id)).toEqual(["b1"]);
   });
+
+  test("an extension's widget shows without colour codes, moves to the end when set again, and goes when cleared, when the chat's process ends, or when the state read at open lacks it (#2842)", () => {
+    const store = new ChatStore();
+    const widgets = () =>
+      store
+        .getSnapshot()
+        .widgets.map((widget) => `${widget.placement} ${widget.key}: ${widget.lines.join(" | ")}`);
+    // The store publishes a live event at the next frame.
+    const settle = () => vi.advanceTimersToNextFrame();
+    store.apply(
+      event({
+        type: "ui_widget",
+        widgetKey: "notes",
+        widgetLines: ["\u001b[36m📎 2 blocks from Lab notes\u001b[39m"],
+      }),
+    );
+    store.apply(
+      event({
+        type: "ui_widget",
+        widgetKey: "hint",
+        widgetLines: ["Below"],
+        widgetPlacement: "belowEditor",
+      }),
+    );
+    settle();
+    expect(widgets()).toEqual([
+      "aboveEditor notes: 📎 2 blocks from Lab notes",
+      "belowEditor hint: Below",
+    ]);
+
+    // Set again: its new lines, at the end, as omp's terminal orders them.
+    store.apply(event({ type: "ui_widget", widgetKey: "notes", widgetLines: ["one", "two"] }));
+    settle();
+    expect(widgets()).toEqual(["belowEditor hint: Below", "aboveEditor notes: one | two"]);
+
+    // No lines clear it.
+    store.apply(event({ type: "ui_widget", widgetKey: "hint" }));
+    settle();
+    expect(widgets()).toEqual(["aboveEditor notes: one | two"]);
+
+    // The state the server keeps, read when the chat opens, replaces what this page had.
+    store.restoreUiState([
+      { type: "ui_status", statusKey: "build", statusText: "Running" },
+      {
+        type: "ui_widget",
+        widgetKey: "build",
+        widgetLines: ["Building…"],
+        widgetPlacement: "belowEditor",
+      },
+    ]);
+    expect(widgets()).toEqual(["belowEditor build: Building…"]);
+
+    // The process that ran the extensions ended: nothing of theirs shows.
+    store.apply({ kind: "process", status: "exited" } as unknown as ChatSessionEvent);
+    settle();
+    expect(widgets()).toEqual([]);
+  });
 });
 
 describe("applyDelta", () => {

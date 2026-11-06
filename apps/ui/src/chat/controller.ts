@@ -405,6 +405,13 @@ export class ChatController {
           this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
       })
       .catch(unshown("The questions waiting in this chat are not shown"));
+    // What the chat's extensions show beside the box (#2842): the server keeps the latest of each, and a change since the
+    // read comes as an event, as the dialogs' do.
+    onTheLink(() => chat.uiState({ threadId: opened.threadId }))
+      .then((state) => {
+        if (!this.#disposed) this.store.restoreUiState(state.map((item) => item.event));
+      })
+      .catch(unshown("What this chat's extensions show is not shown"));
     onTheLink(() => this.#followAgents(opened.threadId)).catch(
       unshown("This chat's subagents are not shown"),
     );

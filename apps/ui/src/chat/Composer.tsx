@@ -37,6 +37,7 @@ import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
+import { ExtensionWidgets } from "./ExtensionWidgets";
 import { ModelPicker } from "./ModelPicker";
 import { PausedRow } from "./PausedRow";
 import { PlusMenu } from "./PlusMenu";
@@ -51,6 +52,7 @@ import type {
   ChatQueue,
   ChatSnapshot,
   ChatToast,
+  ExtensionWidget,
   SentMessage,
   RoleTrack as Track,
 } from "./store";
@@ -132,6 +134,7 @@ export const Composer = memo(function Composer({
   todos,
   planMode,
   goal,
+  widgets,
 }: {
   readonly controller: ChatController;
   readonly working: boolean;
@@ -175,6 +178,8 @@ export const Composer = memo(function Composer({
   /** omp's plan mode (a chip turns it on and off) and the chat's goal (a chip shows it). */
   readonly planMode: PlanModeStatus | null;
   readonly goal: GoalAnswer["goal"];
+  /** The lines extensions show beside the box (omp's widgets, #2842), above or below it. */
+  readonly widgets: readonly ExtensionWidget[];
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
@@ -881,6 +886,7 @@ export const Composer = memo(function Composer({
             {status}
           </p>
         )}
+        <ExtensionWidgets widgets={widgets} placement="aboveEditor" />
         <form
           data-tour="message-box"
           className={`relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
@@ -1069,6 +1075,7 @@ export const Composer = memo(function Composer({
             </div>
           )}
         </form>
+        <ExtensionWidgets widgets={widgets} placement="belowEditor" />
         {phone && panel && (
           <QuickPanel
             history={history}

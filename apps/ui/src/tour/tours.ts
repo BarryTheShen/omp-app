@@ -992,6 +992,22 @@ const PHONE_QUICK_KEY_TOUR: Tour = {
   ],
 };
 
+/** #2842: an omp extension's lines beside the message box. */
+const EXTENSION_WIDGETS_TOUR: Tour = {
+  id: "extension-widgets-2026-11-06",
+  title: "Your extensions' lines",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Lines from your extensions",
+      text: "An omp extension can show a few lines next to the message box, as in omp's terminal: above it, or below it when it asks, such as which notes go with your next message. It changes or clears them as it goes.",
+      action: next,
+    },
+  ],
+};
+
 const PROVIDER_ACCOUNTS = part("provider-accounts");
 
 const PROVIDER_ACCOUNTS_TOUR: Tour = {
@@ -1967,6 +1983,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-extension-widgets",
+    when: "2026-11-06T16:00:00-06:00",
+    summary:
+      "omp's extensions can show lines next to the message box, as in omp's terminal: above it, or below it when they ask, changed and cleared as the extension goes. A chat you open later shows what its extensions show now.",
+    tours: [EXTENSION_WIDGETS_TOUR],
+  },
   {
     id: "2026-11-06-phone-no-keys",
     when: "2026-11-06T10:49:00-06:00",
