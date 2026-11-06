@@ -1990,7 +1990,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-quick-prompts-key",
-    when: "2026-11-06T11:15:00-06:00",
+    when: "2026-11-06T10:32:00-06:00",
     summary:
       "On a phone, ⚡ sits beside Send: it puts your quick prompts in the keyboard's place, and ⌨ brings the keyboard back. The keys that come up with the keyboard keep / @ ! ↑ ↓ ⌄, each one wider, and Send sits centred in the box.",
     tours: [PHONE_QUICK_KEY_TOUR],
