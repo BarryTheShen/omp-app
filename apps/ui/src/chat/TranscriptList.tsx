@@ -217,9 +217,12 @@ const READER_SCROLL_MS = 1_000;
  * when it comes back, and with Jump to latest. TanStack's own following decides from how far the view is from the end
  * at the moment output arrives, and that distance is wrong while rows grew and their new height is not measured yet: in
  * the desktop window, without the focus, the view was left 100 to 240 px short for good, with no input. So after every
- * render, a reader who follows and is not at the end is taken there, unless the reader's own scroll or a smooth jump is
- * under way. Returns `follow`, which starts following (Jump to latest), whether the reader follows, for the trace, and
- * the same as state, for Jump to latest: it is offered only to a reader who does not follow (#2821).
+ * render, a reader who follows and is not at the end itself is taken there, unless the reader's own scroll or a smooth
+ * jump is under way. Near the end (`AT_END_PX`) decides only whether a reader's scroll follows: a view short of the end
+ * by less stayed short for a whole reply (30 px, when a message's copy shown as it was sent and the working line gave
+ * way to omp's copy and the reply in one render, which TanStack does not take for new output). Returns `follow`, which
+ * starts following (Jump to latest), whether the reader follows, for the trace, and the same as state, for Jump to
+ * latest: it is offered only to a reader who does not follow (#2821).
  */
 function useFollowLatest(
   scrollRef: RefObject<HTMLDivElement | null>,
@@ -279,7 +282,9 @@ function useFollowLatest(
 
   // After every render: rows added or measured, the box resized, a scroll ended.
   useLayoutEffect(() => {
-    if (!following.current || instance.isAtEnd()) return;
+    const element = scrollRef.current;
+    if (!following.current || element === null) return;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight <= 1) return;
     if (performance.now() - lastReader.current < READER_SCROLL_MS) return;
     const state = (instance as unknown as { scrollState?: { behavior?: string } | null })
       .scrollState;
