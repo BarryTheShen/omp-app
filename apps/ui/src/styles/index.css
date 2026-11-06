@@ -115,7 +115,12 @@
 
   /*
    * The safe areas (the notch, the status bar, the home indicator, the rounded corners), 0 on a desktop.
-   * `--status-inset` is the status bar's own; `--safe-top`, where the screens start, is lower on a phone (below).
+   *
+   * `--blur-band`: iOS 26 and later lay their own blur (the scroll edge effect of Liquid Glass) over about 35 pt under
+   * the status bar of a Home Screen app, above the page, and no CSS turns it off; what sits there is smeared. The chat
+   * and the other screens keep that room (the most room for the chat, the blur over their top bar's top accepted); the
+   * phone's chat list starts this much lower, so its top stays sharp. ChatGPT's header starts 1rem lower for the same
+   * reason. 0 where no status bar is over the page (a browser tab): the `min()` is 0 there.
    */
   :root {
     --status-inset: env(safe-area-inset-top, 0px);
@@ -123,19 +128,7 @@
     --safe-right: env(safe-area-inset-right, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-left: env(safe-area-inset-left, 0px);
-  }
-
-  /*
-   * A phone's screens start 1.25rem below the status bar of a Home Screen app. iOS 26 and later lay their own blur (the
-   * scroll edge effect of Liquid Glass) over about 35 pt under the status bar, above the page, and no CSS turns it off:
-   * it smeared the top bar's buttons and title. ChatGPT's header starts 1rem lower for the same reason; 1.25rem clears
-   * the buttons' icons, 14 px into the bar. The band keeps the screens' colour (the strip below), so the blur over it
-   * shows nothing. Where no status bar is over the page (a browser tab) nothing moves: the `min()` is 0 there.
-   */
-  @media (max-width: 639px) {
-    :root {
-      --safe-top: calc(var(--status-inset) + min(1.25rem, var(--status-inset) * 1000));
-    }
+    --blur-band: min(1.25rem, var(--status-inset) * 1000);
   }
 
   /*
@@ -177,10 +170,7 @@
       var(--safe-left);
   }
 
-  /*
-   * A solid strip over the status bar, and on a phone the band under it (`--safe-top`), so what iOS blurs there is one
-   * colour. 0 high wherever there is no status bar over the page.
-   */
+  /* A solid strip over the status bar, so what iOS blurs there is one colour. 0 high where no status bar is over it. */
   #root::before {
     content: "";
     position: fixed;

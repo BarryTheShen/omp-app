@@ -1106,7 +1106,7 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
-    "the strips behind the status bar and the home bar take the screen's colour, the top bar starts below the band iOS blurs, and no empty band is left above or below the chat",
+    "the strips behind the status bar and the home bar take the screen's colour, the chat starts right under the status bar and the chat list below the band iOS blurs, and no empty band is left above or below the chat",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
       // An iPhone's status bar and home bar (62 at the top, 34 at the bottom), through the app's own variables: a test
@@ -1126,8 +1126,8 @@ realTest.describe("new UI on a phone", () => {
           chat: getComputedStyle(document.querySelector("main") as Element).backgroundColor,
           top: strip.backgroundColor,
           bottom: getComputedStyle(document.body).backgroundColor,
-          // iOS blurs about 35 pt under the status bar, over the page: the top bar starts 20 px lower, and the strip
-          // covers the status bar and that band in the screen's colour.
+          // The chat takes the room iOS blurs under the status bar: its top bar starts right under it, and the strip
+          // covers the status bar alone.
           barTop: Math.round(edge('[data-tour="phone-top-bar"]')?.top ?? 0),
           stripHeight: Math.round(Number.parseFloat(strip.height)),
           // The first message right under the top bar (its row keeps its own spacing), and the key row, the lowest
@@ -1143,14 +1143,24 @@ realTest.describe("new UI on a phone", () => {
         chat: shown.chat,
         top: shown.chat,
         bottom: shown.chat,
-        barTop: 82,
-        stripHeight: 82,
+        barTop: 62,
+        stripHeight: 62,
         aboveChat: 0,
         belowKeys: 0,
       });
 
-      // Settings covers the screen: the strip over its top takes its colour.
+      // The chat list starts 20 px lower, below the band iOS blurs (about 35 pt under the status bar), with its own
+      // 8 px of room above its first row.
       await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      const list = page.getByRole("navigation", { name: "Chats" });
+      await expect(list).toBeVisible();
+      expect(
+        await list.evaluate((nav) =>
+          Math.round(nav.firstElementChild?.getBoundingClientRect().top ?? 0),
+        ),
+      ).toBe(90);
+
+      // Settings covers the screen: the strip over its top takes its colour.
       await page
         .getByRole("navigation", { name: "Chats" })
         .getByRole("button", { name: "Settings" })

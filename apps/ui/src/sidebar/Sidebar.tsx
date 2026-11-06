@@ -318,7 +318,12 @@ export function Sidebar({
     <nav
       aria-label="Chats"
       // On a short screen (a phone held sideways) the list keeps a few chats in view and the column scrolls to its foot.
-      className={cn("relative flex min-h-0 flex-col p-2 short:overflow-y-auto", hidden && "hidden")}
+      // On a phone it starts below the band iOS blurs under the status bar (`--blur-band`), so its top stays sharp.
+      className={cn(
+        "relative flex min-h-0 flex-col p-2 short:overflow-y-auto",
+        phone && "pt-[calc(0.5rem+var(--blur-band))]",
+        hidden && "hidden",
+      )}
       // A finger landing anywhere but on the open row shuts it, as a phone's lists do.
       onPointerDownCapture={(event) => {
         if (swiped === null) return;

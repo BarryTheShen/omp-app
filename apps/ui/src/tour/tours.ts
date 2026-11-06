@@ -1670,9 +1670,9 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-phone-top",
-    when: "2026-11-06T01:10:00-06:00",
+    when: "2026-11-06T00:38:00-06:00",
     summary:
-      "On a phone, omp's to-do list and the chat's agents moved from the row above the message box into the top bar: the button where ⓘ was shows how far the list got and how many agents are running, and a tap opens them. In the Home Screen app the top bar starts a little lower, below the band iOS blurs under the status bar, so its buttons and title stay sharp. The chat starts right under the top bar, and the empty bands above and below it are gone.",
+      "On a phone, omp's to-do list and the chat's agents moved from the row above the message box into the top bar: the button where ⓘ was shows how far the list got and how many agents are running, and a tap opens them. The chat starts right under the status bar, and the empty bands above and below it are gone. The chat list starts a little lower, below the band iOS blurs under the status bar of the Home Screen app, so its top stays sharp.",
     tours: [PHONE_TOP_TOUR],
   },
   {
