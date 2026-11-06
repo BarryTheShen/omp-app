@@ -11,7 +11,7 @@ realTest.describe("new UI workspace", () => {
   realTest.setTimeout(240_000);
   const boxes = (page: Page) => page.getByRole("textbox", { name: "Message" });
   const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
-  const shown = (page: Page) => page.locator("[data-tab]:not([hidden])");
+  const shown = (page: Page) => page.locator("[data-tab]:not([data-hidden])");
   const blanks = (page: Page) => shown(page).locator("[data-blank-window]");
   const blankNewChat = (page: Page) => blanks(page).getByRole("button", { name: "New chat" });
   const workspaces = (page: Page) =>

@@ -698,7 +698,7 @@ const PAUSE_LIST_TOUR: Tour = {
 };
 
 /** The shown tab holds more than one pane. */
-const SPLIT_TAB = "[data-tab][data-split]:not([hidden])";
+const SPLIT_TAB = "[data-tab][data-split]:not([data-hidden])";
 
 const ARRANGE_TOUR: Tour = {
   id: "arrange-2026-10-30",

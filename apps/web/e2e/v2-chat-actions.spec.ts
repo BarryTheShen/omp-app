@@ -133,7 +133,7 @@ realTest.describe("new UI chat rename and delete", () => {
       });
       await expect(transcript(page).getByText("Seeded chat 1")).toHaveCount(0);
       // Its window stays, blank, with New chat (#2791).
-      await expect(page.locator("[data-tab]:not([hidden]) [data-blank-window]")).toBeVisible({
+      await expect(page.locator("[data-tab]:not([data-hidden]) [data-blank-window]")).toBeVisible({
         timeout: 30_000,
       });
       await expect(boxes(page)).toHaveCount(0);

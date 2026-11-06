@@ -33,7 +33,7 @@ realTest.describe("new UI palette", () => {
     await search(page).press("Enter");
     await expect(palette(page)).toBeHidden();
     // The split is a blank window (#2791), which the chat opened next fills.
-    const blank = page.locator("[data-tab]:not([hidden]) [data-blank-window]");
+    const blank = page.locator("[data-tab]:not([data-hidden]) [data-blank-window]");
     await expect(blank).toHaveCount(1, { timeout: 30_000 });
     await expect(box(page)).toHaveCount(1);
 

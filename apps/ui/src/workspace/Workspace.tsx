@@ -1129,8 +1129,16 @@ export function Workspace({
               {tabs.tabs.map((tab) => (
                 <div
                   key={tab.id}
-                  className="absolute inset-0"
-                  hidden={tab.id !== tabs.active}
+                  // A workspace not shown keeps its size, only out of sight, of the pointer, of the keys and of a screen
+                  // reader (#2832): hidden with `display: none`, its windows and lists were measured at 0 and back at
+                  // every switch, and a chat's list then drew its rows for a scroll place it no longer had (a blank
+                  // chat after a few quick Ctrl+Tabs while it streamed).
+                  className={
+                    tab.id === tabs.active ? "absolute inset-0" : "invisible absolute inset-0"
+                  }
+                  data-hidden={tab.id === tabs.active ? undefined : ""}
+                  aria-hidden={tab.id === tabs.active ? undefined : true}
+                  inert={tab.id !== tabs.active}
                   data-tab={tab.id}
                   // Several panes side by side or stacked: the tour that has you drag a chat into a split waits for it.
                   data-split={(apis.current.get(tab.id)?.totalPanels ?? 0) > 1 ? "" : undefined}

@@ -16,7 +16,7 @@ realTest.describe("new UI chats running in other folders", () => {
   const elsewhere = (page: Page) =>
     chats(page).getByRole("region", { name: "Running in other folders" });
   const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
-  const blank = (page: Page) => page.locator("[data-tab]:not([hidden]) [data-blank-window]");
+  const blank = (page: Page) => page.locator("[data-tab]:not([data-hidden]) [data-blank-window]");
 
   /** Opens a folder by its typed path through the folder menu's "Open a folder…". */
   async function openFolder(page: Page, typed: string): Promise<void> {

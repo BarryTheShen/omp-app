@@ -95,7 +95,7 @@ realTest.describe("new UI tours", () => {
     await opened(page, 1);
     await page.keyboard.press("Control+Shift+O");
     // The split is a blank window beside the chat.
-    await expect(page.locator("[data-tab]:not([hidden]) [data-blank-window]")).toHaveCount(1);
+    await expect(page.locator("[data-tab]:not([data-hidden]) [data-blank-window]")).toHaveCount(1);
     await expect(heading(page)).toHaveText("Move between windows");
     await popover(page).getByRole("button", { name: "Skip" }).click();
 

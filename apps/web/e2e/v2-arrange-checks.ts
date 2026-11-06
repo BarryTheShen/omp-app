@@ -34,7 +34,7 @@ const place = async (locator: Locator) => {
 };
 
 /** The tab shown now: dockview's whole layout, whose edges hold the window's guides. */
-const shownTab = (page: Page) => page.locator("[data-tab]:not([hidden])");
+const shownTab = (page: Page) => page.locator("[data-tab]:not([data-hidden])");
 
 /** A point of a pane's content, as fractions of its box (where dockview takes a drop on it). */
 async function pointIn(target: Locator, fx: number, fy: number) {

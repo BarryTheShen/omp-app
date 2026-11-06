@@ -280,7 +280,7 @@ export async function startNewChat(page: Page): Promise<void> {
   const listButton = page
     .getByRole("navigation", { name: "Chats" })
     .getByRole("button", { name: "New chat" });
-  const shown = page.locator("[data-tab]:not([hidden])");
+  const shown = page.locator("[data-tab]:not([data-hidden])");
   const blank = shown.locator("[data-blank-window]").getByRole("button", { name: "New chat" });
   const focusedBlank = shown
     .locator(".dv-active-group [data-blank-window]")
