@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ThreadId, UsageLimitsResult, UsagePauseHold } from "@omp-app/contracts";
+import type {
+  ThreadId,
+  UsageLimitsResult,
+  UsagePaceResult,
+  UsagePauseHold,
+  UsageRule,
+} from "@omp-app/contracts";
 import type { ProcessTimer } from "../../process/omp-process";
 import {
   USAGE_PAUSE_AFTER_START_MS,
@@ -52,8 +58,18 @@ async function settle(): Promise<void> {
   for (let round = 0; round < 5; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+const NOTHING_KEPT: UsagePauseKept = {
+  marks: new Map(),
+  holds: new Map(),
+  rules: [],
+  overrides: new Map(),
+};
+
+/** The rules' hours in a time zone with daylight saving: Central time. */
+const ZONE = "America/Chicago";
+
 /** The chats that run (and on which provider), which are paused, and every pause and resume sent, in order. */
-function setup(kept: UsagePauseKept = { marks: new Map(), holds: new Map() }) {
+function setup(kept: UsagePauseKept = NOTHING_KEPT, pace?: () => UsagePaceResult) {
   const timer = new FakeTimer();
   const running = new Map<ThreadId, string>();
   const paused = new Set<ThreadId>();
@@ -81,6 +97,9 @@ function setup(kept: UsagePauseKept = { marks: new Map(), holds: new Map() }) {
       return true;
     },
     isPaused: (threadId) => paused.has(threadId),
+    folderOf: () => FOLDER,
+    timeZone: ZONE,
+    ...(pace === undefined ? {} : { pace }),
   });
   rule.onChange((threadId, _folder, percent, hold) => changes.push([threadId, percent, hold]));
   return { timer, running, paused, sent, saved, changes, rule };
@@ -143,7 +162,11 @@ describe("usage pause (#2781 part 3)", () => {
       {
         id: A,
         percent: 95,
-        hold: { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS },
+        hold: {
+          providerId: "anthropic",
+          until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
+          reason: "five_hour",
+        },
       },
     ]);
 
@@ -203,7 +226,11 @@ describe("usage pause (#2781 part 3)", () => {
     running.set(A, "anthropic");
     await rule.setMark(A, FOLDER, 95);
     await rule.onUsage(usage({ anthropic: { fiveHour: 97, resetsAt: null } }));
-    expect(rule.marksIn(FOLDER)[0]?.hold).toEqual({ providerId: "anthropic", until: null });
+    expect(rule.marksIn(FOLDER)[0]?.hold).toEqual({
+      providerId: "anthropic",
+      until: null,
+      reason: "five_hour",
+    });
 
     await rule.onUsage(usage({ anthropic: { fiveHour: 96 } }));
     expect(sent).toEqual(["pause A"]);
@@ -256,12 +283,24 @@ describe("usage pause (#2781 part 3)", () => {
       {
         id: B,
         percent: 90,
-        hold: { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS },
+        hold: {
+          providerId: "anthropic",
+          until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
+          reason: "five_hour",
+        },
       },
     ]);
     expect(changes.slice(-2)).toEqual([
       [A, null, null],
-      [B, 90, { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS }],
+      [
+        B,
+        90,
+        {
+          providerId: "anthropic",
+          until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
+          reason: "five_hour",
+        },
+      ],
     ]);
     // The moved chat is not paused in this fake: the reset sends nothing for it.
     await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
@@ -287,9 +326,17 @@ describe("usage pause (#2781 part 3)", () => {
 
       const text = await readFile(join(directory, "usage-pause.json"), "utf8");
       expect(JSON.parse(text)).toEqual({
-        version: 1,
+        version: 2,
         marks: { [A]: { percent: 90, folder: FOLDER }, [B]: { percent: 95, folder: FOLDER } },
-        holds: { [A]: { providerId: "anthropic", until: reset + USAGE_PAUSE_RESUME_GRACE_MS } },
+        holds: {
+          [A]: {
+            providerId: "anthropic",
+            until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
+            reason: "five_hour",
+          },
+        },
+        rules: [],
+        overrides: {},
       });
 
       // The server is back two hours later: A's resume fell due while it was down.
@@ -303,6 +350,220 @@ describe("usage pause (#2781 part 3)", () => {
       expect(second.sent).toEqual([]);
       await second.timer.advance(1);
       expect(second.sent).toEqual(["resume A"]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+/** A rule for `chats` with the given conditions, the rest unused. */
+function rule(chats: readonly ThreadId[], conditions: Partial<UsageRule>): UsageRule {
+  return {
+    id: "night",
+    name: "Night work",
+    chats: [...chats],
+    fiveHourAt: null,
+    weeklyAt: null,
+    paceAt: null,
+    hours: null,
+    enabled: true,
+    ...conditions,
+  };
+}
+
+/** The pace of anthropic's 5-hour window: how full it would be at its reset, as the server's readings say. */
+function paceOf(atReset: () => number | null): () => UsagePaceResult {
+  return () => ({
+    windows: [
+      {
+        providerId: "anthropic",
+        label: "5 Hour",
+        perHour: 20,
+        fullAt: null,
+        atReset: atReset(),
+        readings: 12,
+      },
+    ],
+  });
+}
+
+const MINUTE = 60_000;
+
+describe("usage rules (#2836)", () => {
+  test("a rule's hours pause its chats when they start and continue them when they end, past midnight", async () => {
+    const { timer, running, sent, rule: pause } = setup();
+    // Friday 6 November 2026, 22:58 in Chicago.
+    timer.now = Date.UTC(2026, 10, 7, 4, 58);
+    running.set(A, "anthropic");
+    await pause.setRule(rule([A], { hours: { from: "23:00", to: "08:00" } }));
+    expect(sent).toEqual([]);
+
+    await timer.advance(2 * MINUTE);
+    expect(sent).toEqual(["pause A"]);
+    const eight = Date.UTC(2026, 10, 7, 14, 0);
+    expect(pause.rules()[0]?.held).toEqual([{ id: A, reason: "hours", until: eight }]);
+
+    await timer.advance(eight - timer.now - 1);
+    expect(sent).toEqual(["pause A"]);
+    await timer.advance(1);
+    expect(sent).toEqual(["pause A", "resume A"]);
+    expect(pause.rules()[0]?.held).toEqual([]);
+  });
+
+  test("a rule pauses at its percent of the weekly window and continues a minute after the window resets", async () => {
+    const { timer, running, sent, rule: pause } = setup();
+    running.set(A, "anthropic");
+    await pause.setRule(rule([A], { weeklyAt: 90 }));
+    const reset = timer.now + 3 * HOUR;
+
+    await pause.onUsage(usage({ anthropic: { fiveHour: 10, weekly: 89, resetsAt: reset } }));
+    expect(sent).toEqual([]);
+    await pause.onUsage(usage({ anthropic: { fiveHour: 10, weekly: 91, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+    expect(pause.rules()[0]?.held).toEqual([
+      { id: A, reason: "weekly", until: reset + USAGE_PAUSE_RESUME_GRACE_MS },
+    ]);
+
+    await timer.advance(3 * HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A", "resume A"]);
+  });
+
+  test("a rule's pace pauses a chat heading past its percent, and continues it only 5 points under", async () => {
+    let atReset: number | null = 92;
+    const {
+      timer,
+      running,
+      sent,
+      rule: pause,
+    } = setup(
+      NOTHING_KEPT,
+      paceOf(() => atReset),
+    );
+    running.set(A, "anthropic");
+    await pause.setRule(rule([A], { paceAt: 80 }));
+    const reset = timer.now + 2 * HOUR;
+
+    await pause.onUsage(usage({ anthropic: { fiveHour: 50, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+    expect(pause.rules()[0]?.held).toEqual([
+      { id: A, reason: "pace", until: reset + USAGE_PAUSE_RESUME_GRACE_MS },
+    ]);
+
+    // Under 80 but not 5 under: it stays held, so it does not pause and continue on every reading.
+    atReset = 78;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 51, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+    atReset = 74;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 51, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A", "resume A"]);
+  });
+
+  test("a stale reading continues nothing: a chat held for its pace waits for a fresh one", async () => {
+    let atReset: number | null = 92;
+    const {
+      timer,
+      running,
+      sent,
+      rule: pause,
+    } = setup(
+      NOTHING_KEPT,
+      paceOf(() => atReset),
+    );
+    running.set(A, "anthropic");
+    const reset = timer.now + 4 * HOUR;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 50, resetsAt: reset } }));
+    await pause.setRule(rule([A], { paceAt: 80 }));
+    expect(sent).toEqual(["pause A"]);
+
+    // Twenty minutes without a reading, and the pace's hour of readings has run out: no pace, but nothing fresh.
+    await timer.advance(20 * MINUTE);
+    atReset = null;
+    await pause.setRule(rule([A], { paceAt: 80, name: "Night work, renamed" }));
+    expect(sent).toEqual(["pause A"]);
+    atReset = 60;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 52, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A", "resume A"]);
+  });
+
+  test("a chat resumed by hand while over its limit is not paused again until its window resets", async () => {
+    const { timer, running, paused, sent, rule: pause } = setup();
+    running.set(A, "anthropic");
+    await pause.setMark(A, FOLDER, 90);
+    const reset = timer.now + HOUR;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 92, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+
+    paused.delete(A);
+    pause.onPauseChanged(A, null);
+    await pause.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+
+    // The next window reaching the limit pauses it again.
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    await pause.onUsage(usage({ anthropic: { fiveHour: 93, resetsAt: timer.now + 5 * HOUR } }));
+    expect(sent).toEqual(["pause A", "pause A"]);
+  });
+
+  test("a disabled or removed rule continues the chats it held; enabled again, it holds them again", async () => {
+    const { timer, running, sent, rule: pause } = setup();
+    // 10:00 in Chicago, inside the rule's day hours.
+    timer.now = Date.UTC(2026, 10, 6, 16, 0);
+    running.set(A, "anthropic");
+    running.set(B, "anthropic");
+    const day = rule([A, B], { hours: { from: "08:00", to: "23:00" } });
+    await pause.setRule(day);
+    expect(sent).toEqual(["pause A", "pause B"]);
+
+    await pause.setRule({ ...day, enabled: false });
+    expect(sent).toEqual(["pause A", "pause B", "resume A", "resume B"]);
+    await pause.setRule({ ...day, chats: [B] });
+    expect(sent).toEqual(["pause A", "pause B", "resume A", "resume B", "pause B"]);
+    await pause.removeRule(day.id);
+    expect(sent).toEqual(["pause A", "pause B", "resume A", "resume B", "pause B", "resume B"]);
+    expect(pause.rules()).toEqual([]);
+  });
+
+  test("rules, holds and hand resumes outlive a restart, and a file from before the rules still loads", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "usage-rules-"));
+    try {
+      const path = join(directory, "usage-pause.json");
+      const file = usagePauseFile(path);
+      const first = setup();
+      first.timer.now = Date.UTC(2026, 10, 6, 16, 0);
+      first.running.set(A, "anthropic");
+      first.running.set(B, "anthropic");
+      const day = rule([A, B], { hours: { from: "08:00", to: "23:00" } });
+      await first.rule.setRule(day);
+      first.paused.delete(B);
+      first.rule.onPauseChanged(B, null);
+      await settle();
+      const last = first.saved.at(-1);
+      if (last === undefined) throw new Error("nothing was saved");
+      await file.save(last);
+      first.rule.close();
+
+      const kept = await file.load();
+      expect(kept.rules).toEqual([day]);
+      const eleven = Date.UTC(2026, 10, 7, 5, 0);
+      expect([...kept.holds]).toEqual([
+        [A, { providerId: "anthropic", until: eleven, reason: "hours", rule: "night" }],
+      ]);
+      expect([...kept.overrides].map(([id, reasons]) => [id, [...reasons]])).toEqual([
+        [B, [["hours", eleven]]],
+      ]);
+
+      await Bun.write(
+        path,
+        JSON.stringify({
+          version: 1,
+          marks: { [A]: { percent: 90, folder: FOLDER } },
+          holds: { [A]: { providerId: "anthropic", until: null } },
+        }),
+      );
+      const before = await file.load();
+      expect([...before.marks]).toEqual([[A, { percent: 90, folder: FOLDER }]]);
+      expect([...before.holds]).toEqual([[A, { providerId: "anthropic", until: null }]]);
+      expect(before.rules).toEqual([]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

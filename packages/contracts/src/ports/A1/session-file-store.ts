@@ -228,13 +228,23 @@ export const SessionContinuingResult = z.strictObject({
 export type SessionContinuingResult = z.infer<typeof SessionContinuingResult>;
 
 /**
- * The usage pause holding a chat (#2781): the provider whose 5-hour window reached the chat's limit, and until when
- * (epoch ms: the window's reset plus a minute; null when omp gave no reset time, so the chat resumes at the first read
- * below its limit).
+ * Why a usage rule holds a chat (#2836): its provider's 5-hour window or weekly window at the rule's percent, the 5-hour
+ * window's pace heading past it before the reset, or the clock in the rule's hours.
+ */
+export const UsagePauseReason = z.enum(["five_hour", "weekly", "pace", "hours"]);
+export type UsagePauseReason = z.infer<typeof UsagePauseReason>;
+
+/**
+ * The usage pause holding a chat (#2781): the provider of the chat's model, and until when (epoch ms: when the condition
+ * that holds it is expected to end, as a window's reset plus a minute or the end of the rule's hours; null when nothing
+ * says, so a reading under the limit continues it). `reason` and `rule` (#2836): what holds it, and the rule's id (none
+ * for a chat's own mark); a hold kept before rules has neither and is a mark's 5-hour hold.
  */
 export const UsagePauseHold = z.strictObject({
   providerId: z.string().min(1).max(128),
   until: z.int().nonnegative().nullable(),
+  reason: UsagePauseReason.optional(),
+  rule: z.string().min(1).max(64).optional(),
 });
 export type UsagePauseHold = z.infer<typeof UsagePauseHold>;
 

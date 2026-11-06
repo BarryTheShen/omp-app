@@ -18,6 +18,7 @@ import type { PortCallOptions, PortClient, PortHandlers } from "../../core/envel
 import { definePort, StreamKey, streamKey } from "../../core/envelope";
 import { AppError } from "../../core/errors";
 import { FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
+import { UsagePauseReason } from "../A1/session-file-store";
 
 export const ThreadRef = z.object({ threadId: ThreadId }).strict();
 export type ThreadRef = z.infer<typeof ThreadRef>;
@@ -256,6 +257,62 @@ export const SetUsagePauseArgs = z.strictObject({
 });
 export type SetUsagePauseArgs = z.infer<typeof SetUsagePauseArgs>;
 
+/** A time of day, `HH:MM` on a 24-hour clock, in the server's time zone. */
+export const ClockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export type ClockTime = z.infer<typeof ClockTime>;
+
+/**
+ * A usage rule (#2836): it pauses the chats it lists, at their next step as omp's `/pause`, while any of its conditions
+ * holds, and continues them once none does. A condition left null is not used, and a rule has at least one:
+ * - `fiveHourAt`, `weeklyAt`: the chat's provider's 5-hour or weekly window at or past this percent;
+ * - `paceAt`: the 5-hour window, at its pace of the last hour, would end past this percent at its reset;
+ * - `hours`: the clock between `from` and `to` (a `from` later than `to` runs past midnight).
+ * A chat paused by hand is left alone; one resumed by hand while held stays running until that condition next starts.
+ */
+export const UsageRule = z
+  .strictObject({
+    id: z.string().min(1).max(64),
+    name: z.string().min(1).max(120),
+    chats: z.array(ThreadId).max(500),
+    fiveHourAt: z.int().min(1).max(100).nullable(),
+    weeklyAt: z.int().min(1).max(100).nullable(),
+    paceAt: z.int().min(1).max(100).nullable(),
+    hours: z
+      .strictObject({ from: ClockTime, to: ClockTime })
+      .refine((hours) => hours.from !== hours.to, "The hours start and end at the same time.")
+      .nullable(),
+    enabled: z.boolean(),
+  })
+  .refine(
+    (rule) =>
+      rule.fiveHourAt !== null ||
+      rule.weeklyAt !== null ||
+      rule.paceAt !== null ||
+      rule.hours !== null,
+    "A rule needs a condition.",
+  );
+export type UsageRule = z.infer<typeof UsageRule>;
+
+/** A chat a usage rule holds: why, and until when it is expected to (epoch ms; null when a reading will say). */
+export const UsageRuleHeld = z.strictObject({
+  id: ThreadId,
+  reason: UsagePauseReason,
+  until: z.int().nonnegative().nullable(),
+});
+export type UsageRuleHeld = z.infer<typeof UsageRuleHeld>;
+
+/** The usage rules, each with the chats it holds now, and the time zone their hours are in. */
+export const UsageRulesResult = z.strictObject({
+  rules: z
+    .array(z.strictObject({ rule: UsageRule, held: z.array(UsageRuleHeld).max(500) }))
+    .max(200),
+  timeZone: z.string().min(1).max(64),
+});
+export type UsageRulesResult = z.infer<typeof UsageRulesResult>;
+
+export const RemoveUsageRuleArgs = z.strictObject({ id: z.string().min(1).max(64) });
+export type RemoveUsageRuleArgs = z.infer<typeof RemoveUsageRuleArgs>;
+
 /** Chats a page lists as running before omp has written their file, and whose first message another page sent (#2825). */
 export const FirstPromptsArgs = z.strictObject({ threadIds: z.array(ThreadId).max(100) });
 export type FirstPromptsArgs = z.infer<typeof FirstPromptsArgs>;
@@ -287,6 +344,12 @@ export const ChatSessionPort = definePort({
     cancelContinue: { args: ThreadRef, result: z.null() },
     /** Marks a chat to pause at its own share of its provider's 5-hour limit, or unmarks it (#2781). */
     setUsagePause: { args: SetUsagePauseArgs, result: z.null() },
+    /** The usage rules and the chats each holds (#2836). */
+    usageRules: { args: z.strictObject({}), result: UsageRulesResult },
+    /** Adds a usage rule, or replaces the one with its id; it is judged at once (#2836). */
+    setUsageRule: { args: UsageRule, result: z.null() },
+    /** Removes a usage rule: the chats it held continue, unless another rule holds them (#2836). */
+    removeUsageRule: { args: RemoveUsageRuleArgs, result: z.null() },
     /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
     firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },

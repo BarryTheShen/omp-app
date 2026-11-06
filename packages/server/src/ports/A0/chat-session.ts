@@ -33,6 +33,7 @@ import {
   type PauseAllArgs,
   type PauseAllResult,
   type PrepareNewChatArgs,
+  type RemoveUsageRuleArgs,
   RequestId,
   SessionFilePath,
   type SessionRenameArgs,
@@ -47,6 +48,8 @@ import {
   type UiState,
   type UiStateEvent,
   type UsagePauseHold,
+  type UsageRule,
+  type UsageRulesResult,
 } from "@omp-app/contracts";
 import {
   type ChatEvent,
@@ -398,6 +401,8 @@ export class ChatSessionPortRuntime {
             pause: (threadId) => this.#holdAgents(threadId, "pause"),
             resume: (threadId) => this.#holdAgents(threadId, "resume"),
             isPaused: (threadId) => (context.processRegistry.pausedOf(threadId) ?? null) !== null,
+            folderOf: (threadId) => context.processRegistry.folderOf(threadId),
+            ...(context.usagePace === undefined ? {} : { pace: context.usagePace }),
             ...(context.logger === undefined ? {} : { logger: context.logger }),
           });
     const usagePause = this.#usagePause;
@@ -436,6 +441,9 @@ export class ChatSessionPortRuntime {
     pauseAll: (args) => this.pauseAll(args as PauseAllArgs),
     cancelContinue: (args) => this.cancelContinue(args as { threadId: ThreadId }),
     setUsagePause: (args) => this.setUsagePause(args as SetUsagePauseArgs),
+    usageRules: () => this.usageRules(),
+    setUsageRule: (args) => this.setUsageRule(args as UsageRule),
+    removeUsageRule: (args) => this.removeUsageRule(args as RemoveUsageRuleArgs),
     firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
@@ -476,6 +484,41 @@ export class ChatSessionPortRuntime {
     const folder = this.#context.processRegistry.folderOf(threadId);
     if (folder === undefined) throw notFound("Open the chat, then set its usage pause.");
     await usagePause.setMark(threadId, folder, args.percent);
+    return null;
+  }
+
+  /** The usage pause, or the reason this server has none. */
+  #usagePauseOrFail(): UsagePause {
+    if (this.#usagePause !== undefined) return this.#usagePause;
+    throw new AppFailure({
+      code: "unavailable",
+      message: "This app server can't pause chats at a usage limit.",
+      retryable: false,
+    });
+  }
+
+  /** The usage rules, each with the chats it holds, and the time zone of their hours (#2836). */
+  usageRules(): UsageRulesResult {
+    const usagePause = this.#usagePauseOrFail();
+    return {
+      rules: usagePause.rules().map(({ rule, held }) => ({ rule, held: [...held] })),
+      timeZone: usagePause.timeZone,
+    };
+  }
+
+  /** Adds a usage rule or replaces the one with its id; chats are named by the ids the pages know (#2836). */
+  async setUsageRule(rule: UsageRule): Promise<null> {
+    const usagePause = this.#usagePauseOrFail();
+    await usagePause.setRule({
+      ...rule,
+      chats: [...new Set(rule.chats.map((id) => this.#aliases.get(id) ?? id))],
+    });
+    return null;
+  }
+
+  /** Removes a usage rule; the chats it held continue unless another rule holds them (#2836). */
+  async removeUsageRule(args: RemoveUsageRuleArgs): Promise<null> {
+    await this.#usagePauseOrFail().removeRule(args.id);
     return null;
   }
 

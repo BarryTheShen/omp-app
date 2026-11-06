@@ -8,6 +8,7 @@ import type {
   ThreadId,
   UsableModel,
   UsageLimitsResult,
+  UsagePaceResult,
 } from "@omp-app/contracts";
 import type { Logger } from "../../logging";
 import type { FileWatchRegistry } from "../../modules/A1/fs/file-watch-registry";
@@ -90,12 +91,14 @@ export interface A0PortContext {
   /** The clock and timer of those continues; the real ones when absent (tests move them by hand). */
   readonly usageResumeClock?: { readonly now: () => number; readonly timer: ProcessTimer };
   /**
-   * Where the app keeps the chats marked to pause at their usage limit and the holds on them (#2781 part 3;
-   * `<app data>/usage-pause.json`). Absent: no chat pauses at a usage limit.
+   * Where the app keeps the chats marked to pause at their usage limit, the usage rules (#2836) and the holds on them
+   * (#2781 part 3; `<app data>/usage-pause.json`). Absent: no chat pauses at a usage limit.
    */
   readonly usagePauseFile?: string;
   /** The server's own usage reads (the usage watch), which the usage pause judges; absent: it never pauses a chat. */
   readonly usageLimits?: {
     readonly subscribe: (listener: (result: UsageLimitsResult) => void) => () => void;
   };
+  /** Each window's pace from the server's readings (#2836), for the rules' pace condition; absent: it never holds. */
+  readonly usagePace?: () => UsagePaceResult;
 }

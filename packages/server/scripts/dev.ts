@@ -432,6 +432,7 @@ export async function createCompositionServer(
     usageResumeFile: join(appDataDir, "usage-resume.json"),
     usagePauseFile: join(appDataDir, "usage-pause.json"),
     usageLimits: usageLimitStore,
+    usagePace: () => usageReadings.pace(),
     leaseProbe:
       options.leaseProbe ??
       sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),

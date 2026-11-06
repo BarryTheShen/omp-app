@@ -2897,11 +2897,13 @@ describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
     expect(paramsOf(host, "pause")).toEqual([{}]);
     host.emitEvent({ type: "pause_changed", pausedAt: clock.now });
     await ticks();
-    const hold = { providerId: "anthropic", until: reset + 60_000 };
+    const hold = { providerId: "anthropic", until: reset + 60_000, reason: "five_hour" as const };
     expect(runtime.usagePauses.usagePausesIn(folder)).toEqual([
       { id: authorityThread, percent: 90, hold },
     ]);
 
+    // The timer fires a minute after the reset, and the clock says so.
+    clock.now = reset + 60_000;
     timer.fireAll();
     await ticks();
     expect(paramsOf(host, "resume")).toEqual([{}]);

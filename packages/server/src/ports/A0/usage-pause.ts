@@ -1,15 +1,40 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ThreadId, UsageLimitsResult, UsagePauseHold } from "@omp-app/contracts";
+import {
+  type ThreadId,
+  type UsageLimitsResult,
+  type UsagePaceResult,
+  type UsagePauseHold,
+  UsagePauseReason,
+  UsageRule,
+  type UsageRuleHeld,
+} from "@omp-app/contracts";
 import type { Logger } from "../../logging/logger";
 import type { ProcessTimer } from "../../process/omp-process";
+import {
+  FIVE_HOUR_MS,
+  fullestWindow,
+  type HeldFor,
+  type Holding,
+  holdingConditions,
+  inHours,
+  type ProviderReading,
+  RESUME_GRACE_MS,
+  type UsageConditions,
+  WEEK_MS,
+  windowOf,
+} from "./usage-rules";
 
-/** The window the usage pause watches: each provider's 5-hour window (#2781). */
-export const USAGE_PAUSE_WINDOW_MS = 5 * 3_600_000;
+/** The window a chat's own mark watches: its provider's 5-hour window (#2781). */
+export const USAGE_PAUSE_WINDOW_MS = FIVE_HOUR_MS;
 /** A held chat resumes this long after its window's reset, once the provider counts the new window. */
-export const USAGE_PAUSE_RESUME_GRACE_MS = 60_000;
+export const USAGE_PAUSE_RESUME_GRACE_MS = RESUME_GRACE_MS;
 /** A resume due while the server was down runs this long after the server is back, once the chats' hosts reconnected. */
 export const USAGE_PAUSE_AFTER_START_MS = 30_000;
+/** How often the rules with hours are judged, so their chats pause and continue on the minute (#2836). */
+export const USAGE_RULES_TICK_MS = 60_000;
+/** A hand resume of a chat held for a reason with no expected end keeps it running this long at most. */
+const OVERRIDE_FALLBACK_MS = FIVE_HOUR_MS;
 
 /** A chat's mark: pause at `percent` of its provider's 5-hour window; `folder` lists it with the folder's chats. */
 export interface UsagePauseMark {
@@ -17,10 +42,18 @@ export interface UsagePauseMark {
   readonly folder: string;
 }
 
-/** What is kept on disk: the marks, and the holds the rule has not ended yet. */
+/**
+ * Hand resumes (#2836): for each chat resumed by hand while held, each condition that held it and until when it does
+ * not pause the chat again (epoch ms: when that condition next starts, as a window's reset or the next day's hours).
+ */
+export type UsagePauseOverrides = ReadonlyMap<ThreadId, ReadonlyMap<UsagePauseReason, number>>;
+
+/** What is kept on disk: the marks, the rules, the holds not ended yet, and the hand resumes still running. */
 export interface UsagePauseKept {
   readonly marks: ReadonlyMap<ThreadId, UsagePauseMark>;
   readonly holds: ReadonlyMap<ThreadId, UsagePauseHold>;
+  readonly rules: readonly UsageRule[];
+  readonly overrides: UsagePauseOverrides;
 }
 
 export interface UsagePauseDeps {
@@ -35,10 +68,16 @@ export interface UsagePauseDeps {
   readonly resume: (threadId: ThreadId) => Promise<boolean>;
   /** Whether the chat is paused now, whoever paused it (the pause the chat's host reports). */
   readonly isPaused: (threadId: ThreadId) => boolean;
+  /** The folder of a chat the server runs: a rule's chat has no mark to say it (#2836). */
+  readonly folderOf?: (threadId: ThreadId) => string | undefined;
+  /** Each window's pace from the server's readings (#2836): a rule's pace condition reads its 5-hour window's. */
+  readonly pace?: () => UsagePaceResult;
+  /** The time zone of the rules' hours: the server's own unless given. */
+  readonly timeZone?: string;
   readonly logger?: Logger;
 }
 
-/** Hears a chat's mark or hold change: `percent` null when it is no longer marked, `hold` null while it is not held. */
+/** Hears a chat's mark or hold change: `percent` null when it is not marked, `hold` null while it is not held. */
 export type UsagePauseListener = (
   threadId: ThreadId,
   folder: string,
@@ -46,50 +85,66 @@ export type UsagePauseListener = (
   hold: UsagePauseHold | null,
 ) => void;
 
-const EMPTY: UsagePauseKept = { marks: new Map(), holds: new Map() };
+const EMPTY: UsagePauseKept = {
+  marks: new Map(),
+  holds: new Map(),
+  rules: [],
+  overrides: new Map(),
+};
 
-/** The provider's 5-hour window in a usage read, by its length: providers label it differently. */
-function fiveHourWindow(
-  result: UsageLimitsResult,
-  providerId: string,
-): { readonly usedPercent: number; readonly resetsAt: string | null } | undefined {
-  if (result.state !== "ready") return undefined;
-  return result.providers
-    .find((provider) => provider.providerId === providerId)
-    ?.windows.find((window) => window.durationMs === USAGE_PAUSE_WINDOW_MS);
+/** A condition that holds for a chat, with the rule it is from (none for the chat's own mark). */
+type RuleHolding = Holding & { readonly rule: string | undefined };
+
+/** What a hold holds its chat for, and until when it expected that (a hold kept before rules is a mark's 5-hour one). */
+function heldFor(hold: UsagePauseHold): HeldFor {
+  return { reason: hold.reason ?? "five_hour", until: hold.until };
 }
 
-/** The fullest 5-hour window of any provider in the read: below every mark, no chat needs its provider asked. */
-function fullestFiveHour(result: UsageLimitsResult): number {
-  if (result.state !== "ready") return 0;
-  let fullest = 0;
-  for (const provider of result.providers) {
-    for (const window of provider.windows) {
-      if (window.durationMs === USAGE_PAUSE_WINDOW_MS)
-        fullest = Math.max(fullest, window.usedPercent);
-    }
+/** Of the conditions that hold, the one a hold names: the one expected to last longest, an open-ended one first. */
+function longest(holding: readonly RuleHolding[]): RuleHolding | undefined {
+  let best: RuleHolding | undefined;
+  for (const candidate of holding) {
+    if (best === undefined) best = candidate;
+    else if (best.until !== null && (candidate.until === null || candidate.until > best.until))
+      best = candidate;
   }
-  return fullest;
+  return best;
+}
+
+/** Of the conditions that hold, when the first is expected to end: then the chat is judged again. */
+function earliest(holding: readonly RuleHolding[]): number | null {
+  let first: number | null = null;
+  for (const { until } of holding) {
+    if (until !== null && (first === null || until < first)) first = until;
+  }
+  return first;
 }
 
 /**
- * The usage pause (#2781 part 3). Only the chats marked for it pause, each at its own share of its provider's 5-hour
- * window (95% unless set otherwise): on each usage read, a marked chat that runs and is not paused already is paused
- * (omp's `/pause`: its agents hold at their next step) once the window of the provider its model runs on is at or past
- * its limit, and the rule keeps a hold on it. A hold ends at the window's reset plus `USAGE_PAUSE_RESUME_GRACE_MS`, or
- * at the first read below the chat's limit again (a reset omp gave no time for, or a limit raised), and the chat
- * resumes. A chat that was paused already is left alone, and one resumed by anyone else meanwhile ends its hold, so a
- * pause or resume of the reader's own is never undone. Unmarking a held chat resumes it. Marks and holds are kept on
- * disk; a resume that fell due while the server was down runs `USAGE_PAUSE_AFTER_START_MS` after it is back.
+ * The usage pause (#2781 part 3) and the usage rules (#2836). A chat pauses (omp's `/pause`: its agents hold at their
+ * next step) while a condition holds that it is marked or listed for: its own mark (its provider's 5-hour window at the
+ * mark's percent, 95% unless set otherwise), or a rule's (the 5-hour or weekly window at a percent, the 5-hour window's
+ * pace heading past a percent before its reset, the clock in given hours). The pause keeps a hold on it, which names the
+ * condition expected to last longest, and the chat continues once no condition holds: at a reading under the limits, at
+ * a window's reset plus `USAGE_PAUSE_RESUME_GRACE_MS` (read or not), at the end of the hours. A reading older than
+ * `STALE_READING_MS` continues nothing. A chat that was paused already is left alone; one resumed by anyone else while
+ * held ends its hold, and the conditions that held it do not pause it again until they next start (a window's reset, the
+ * next day's hours). Unmarking a chat, or taking it out of every rule, continues it. Marks, rules, holds and hand
+ * resumes are kept on disk; a resume that fell due while the server was down runs `USAGE_PAUSE_AFTER_START_MS` after it
+ * is back.
  */
 export class UsagePause {
   readonly #deps: UsagePauseDeps;
+  readonly #zone: string;
   readonly #marks = new Map<ThreadId, UsagePauseMark>();
+  readonly #rules = new Map<string, UsageRule>();
   readonly #holds = new Map<ThreadId, UsagePauseHold>();
+  readonly #overrides = new Map<ThreadId, Map<UsagePauseReason, number>>();
   readonly #timers = new Map<ThreadId, unknown>();
   readonly #listeners = new Set<UsagePauseListener>();
-  /** The last usage read, so a mark set or changed is judged at once. */
-  #usage: UsageLimitsResult | null = null;
+  /** The last usage read and when the server got it, so a mark or rule set or changed is judged at once. */
+  #usage: { readonly result: UsageLimitsResult; readonly receivedAt: number } | null = null;
+  #tick: unknown = null;
   /** Judgments run one after another: each asks chats for their provider and pauses or resumes them. */
   #judging: Promise<void> = Promise.resolve();
   #saving: Promise<void> = Promise.resolve();
@@ -97,21 +152,34 @@ export class UsagePause {
 
   constructor(deps: UsagePauseDeps) {
     this.#deps = deps;
+    this.#zone = deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
 
-  /** Takes up the marks and holds kept before the server started. */
+  /** The time zone of the rules' hours. */
+  get timeZone(): string {
+    return this.#zone;
+  }
+
+  /** Takes up the marks, rules, holds and hand resumes kept before the server started. */
   async restore(): Promise<void> {
     const kept = await this.#deps.load().catch((failure: unknown) => {
       this.#deps.logger?.warn("usage_pause.load_failed", { error: String(failure) });
       return EMPTY;
     });
     for (const [threadId, mark] of kept.marks) this.#marks.set(threadId, mark);
-    const earliest = this.#deps.now() + USAGE_PAUSE_AFTER_START_MS;
+    for (const rule of kept.rules) this.#rules.set(rule.id, rule);
+    const now = this.#deps.now();
+    for (const [threadId, reasons] of kept.overrides) {
+      const live = new Map([...reasons].filter(([, until]) => until > now));
+      if (live.size > 0) this.#overrides.set(threadId, live);
+    }
+    const earliest = now + USAGE_PAUSE_AFTER_START_MS;
     for (const [threadId, hold] of kept.holds) {
-      if (!this.#marks.has(threadId)) continue;
+      if (!this.#watched(threadId)) continue;
       this.#holds.set(threadId, hold);
       if (hold.until !== null) this.#schedule(threadId, Math.max(hold.until, earliest));
     }
+    this.#ticking();
   }
 
   /** The chats of a folder that are marked, with their limits and holds. */
@@ -125,6 +193,18 @@ export class UsagePause {
       .map(([id, mark]) => ({ id, percent: mark.percent, hold: this.#holds.get(id) ?? null }));
   }
 
+  /** The rules, each with the chats it holds now and why. */
+  rules(): readonly { readonly rule: UsageRule; readonly held: readonly UsageRuleHeld[] }[] {
+    return [...this.#rules.values()].map((rule) => ({
+      rule,
+      held: [...this.#holds].flatMap(([id, hold]) =>
+        hold.rule === rule.id
+          ? [{ id, reason: hold.reason ?? "five_hour", until: hold.until }]
+          : [],
+      ),
+    }));
+  }
+
   /**
    * Marks the chat to pause at `percent` of its provider's 5-hour window, or unmarks it (`null`). The new limit is
    * judged against the last read at once: a lower one can pause the chat now, a higher one can end its hold.
@@ -136,38 +216,88 @@ export class UsagePause {
         if (mark === undefined) return;
         this.#marks.delete(threadId);
         this.#deps.logger?.info("usage_pause.unmarked", { threadId });
-        await this.#release(threadId, "unmarked", mark.folder);
-        this.#keep();
-        this.#notify(threadId, mark.folder);
-        return;
+      } else {
+        this.#marks.set(threadId, { percent, folder });
+        this.#deps.logger?.info("usage_pause.marked", { threadId, percent });
       }
-      this.#marks.set(threadId, { percent, folder });
-      this.#deps.logger?.info("usage_pause.marked", { threadId, percent });
       this.#keep();
       this.#notify(threadId, folder);
-      if (this.#usage !== null) await this.#judge(this.#usage, [threadId]);
+      await this.#judge([threadId]);
     });
   }
 
-  /** A fresh usage read: marked chats at or past their limit pause, held ones under it again resume. */
-  onUsage(result: UsageLimitsResult): Promise<void> {
-    if (result.state !== "ready") return Promise.resolve();
-    this.#usage = result;
-    return this.#queue(() => this.#judge(result, [...this.#marks.keys()]));
+  /** Adds a rule, or replaces the one with its id, and judges its chats (and those it no longer lists) at once. */
+  setRule(rule: UsageRule): Promise<void> {
+    const parsed = UsageRule.parse(rule);
+    return this.#queue(async () => {
+      const before = this.#rules.get(parsed.id);
+      this.#rules.set(parsed.id, parsed);
+      this.#deps.logger?.info("usage_pause.rule_set", {
+        rule: parsed.id,
+        chats: parsed.chats.length,
+      });
+      this.#keep();
+      this.#ticking();
+      await this.#judge([...new Set([...(before?.chats ?? []), ...parsed.chats])]);
+    });
   }
 
-  /** The chat's pause changed: a held chat running again was resumed by someone else, so the rule lets it be. */
+  /** Removes a rule: the chats it held continue, unless another rule or their mark holds them. */
+  removeRule(id: string): Promise<void> {
+    return this.#queue(async () => {
+      const rule = this.#rules.get(id);
+      if (rule === undefined) return;
+      this.#rules.delete(id);
+      this.#deps.logger?.info("usage_pause.rule_removed", { rule: id });
+      this.#keep();
+      this.#ticking();
+      await this.#judge(rule.chats);
+    });
+  }
+
+  /** A fresh usage read: chats a condition holds for pause, held ones none holds for any more continue. */
+  onUsage(result: UsageLimitsResult): Promise<void> {
+    if (result.state !== "ready") return Promise.resolve();
+    this.#usage = { result, receivedAt: this.#deps.now() };
+    return this.#queue(() => this.#judge(this.#watchedChats()));
+  }
+
+  /**
+   * The chat's pause changed. A held chat running again was resumed by someone else: the rule lets it be, and the
+   * conditions that held it do not pause it again until they next start.
+   */
   onPauseChanged(threadId: ThreadId, pausedAt: number | null): void {
-    if (pausedAt !== null || !this.#holds.has(threadId)) return;
+    if (pausedAt !== null) return;
+    const hold = this.#holds.get(threadId);
+    if (hold === undefined) return;
+    const now = this.#deps.now();
+    const reasons = this.#overrides.get(threadId) ?? new Map<UsagePauseReason, number>();
+    for (const holding of this.#holding(threadId, hold.providerId, heldFor(hold), now)) {
+      reasons.set(holding.reason, holding.until ?? now + OVERRIDE_FALLBACK_MS);
+    }
+    if (reasons.size > 0) this.#overrides.set(threadId, reasons);
     this.#endHold(threadId, "resumed_elsewhere");
   }
 
-  /** The chat moved to omp's new id for it: its mark and hold go with it. */
+  /** The chat moved to omp's new id for it: its mark, its place in the rules, its hold and hand resumes go with it. */
   move(from: ThreadId, to: ThreadId): void {
     const mark = this.#marks.get(from);
-    if (mark === undefined) return;
-    this.#marks.delete(from);
-    this.#marks.set(to, mark);
+    if (mark !== undefined) {
+      this.#marks.delete(from);
+      this.#marks.set(to, mark);
+    }
+    for (const rule of this.#rules.values()) {
+      if (rule.chats.includes(from))
+        this.#rules.set(rule.id, {
+          ...rule,
+          chats: rule.chats.map((id) => (id === from ? to : id)),
+        });
+    }
+    const overrides = this.#overrides.get(from);
+    if (overrides !== undefined) {
+      this.#overrides.delete(from);
+      this.#overrides.set(to, overrides);
+    }
     const hold = this.#holds.get(from);
     if (hold !== undefined) {
       this.#holds.delete(from);
@@ -176,8 +306,10 @@ export class UsagePause {
       if (hold.until !== null) this.#schedule(to, hold.until);
     }
     this.#keep();
-    this.#notify(from, mark.folder, null, null);
-    this.#notify(to, mark.folder);
+    const folder = mark?.folder ?? this.#deps.folderOf?.(to);
+    if (folder === undefined) return;
+    this.#notify(from, folder, null, null);
+    this.#notify(to, folder);
   }
 
   /** Calls `listener` each time a chat's mark or hold changes; the returned function stops it. */
@@ -188,58 +320,177 @@ export class UsagePause {
     };
   }
 
-  /** Stops every timer; the marks and holds stay on disk for the next start. */
+  /** Stops every timer; the marks, rules and holds stay on disk for the next start. */
   close(): void {
     this.#closed = true;
     for (const handle of this.#timers.values()) this.#deps.timer.clearTimeout(handle);
     this.#timers.clear();
+    if (this.#tick !== null) this.#deps.timer.clearTimeout(this.#tick);
+    this.#tick = null;
   }
 
-  async #judge(result: UsageLimitsResult, threadIds: readonly ThreadId[]): Promise<void> {
-    const fullest = fullestFiveHour(result);
+  /** Whether the chat is marked or listed by a rule. */
+  #watched(threadId: ThreadId): boolean {
+    return (
+      this.#marks.has(threadId) ||
+      [...this.#rules.values()].some((rule) => rule.chats.includes(threadId))
+    );
+  }
+
+  /** The chats a mark or rule watches, and those still held. */
+  #watchedChats(): ThreadId[] {
+    const chats = new Set<ThreadId>([...this.#marks.keys(), ...this.#holds.keys()]);
+    for (const rule of this.#rules.values()) for (const id of rule.chats) chats.add(id);
+    return [...chats];
+  }
+
+  /** The conditions the chat is marked or listed for: its mark's, and each enabled rule's that lists it. */
+  #conditionsOf(
+    threadId: ThreadId,
+  ): { readonly rule: string | undefined; readonly conditions: UsageConditions }[] {
+    const mark = this.#marks.get(threadId);
+    return [
+      ...(mark === undefined
+        ? []
+        : [
+            {
+              rule: undefined,
+              conditions: { fiveHourAt: mark.percent, weeklyAt: null, paceAt: null, hours: null },
+            },
+          ]),
+      ...[...this.#rules.values()]
+        .filter((rule) => rule.enabled && rule.chats.includes(threadId))
+        .map((rule) => ({ rule: rule.id, conditions: rule })),
+    ];
+  }
+
+  /** The provider's windows in the last reading and its 5-hour window's pace. */
+  #reading(providerId: string): ProviderReading | undefined {
+    if (this.#usage === null) return undefined;
+    const { result, receivedAt } = this.#usage;
+    const fiveHour = windowOf(result, providerId, FIVE_HOUR_MS);
+    const weekly = windowOf(result, providerId, WEEK_MS);
+    if (fiveHour === undefined && weekly === undefined) return undefined;
+    const pace =
+      fiveHour === undefined
+        ? undefined
+        : this.#deps
+            .pace?.()
+            .windows.find(
+              (window) => window.providerId === providerId && window.label === fiveHour.label,
+            );
+    return { fiveHour, weekly, atReset: pace?.atReset ?? null, receivedAt };
+  }
+
+  /** The conditions that hold for the chat on `providerId` at `now`, less those a hand resume put off. */
+  #holding(
+    threadId: ThreadId,
+    providerId: string,
+    heldFor: HeldFor | null,
+    now: number,
+  ): RuleHolding[] {
+    const reading = this.#reading(providerId);
+    const overrides = this.#overrides.get(threadId);
+    return this.#conditionsOf(threadId).flatMap(({ rule, conditions }) =>
+      holdingConditions(conditions, reading, now, this.#zone, heldFor)
+        .filter(({ reason }) => (overrides?.get(reason) ?? 0) <= now)
+        .map((holding) => ({ ...holding, rule })),
+    );
+  }
+
+  /** Whether any condition the chat is listed for could hold now, whatever its provider: else its provider is not asked. */
+  #mayHold(threadId: ThreadId, now: number): boolean {
+    const result = this.#usage?.result;
+    const fiveHour = result === undefined ? 0 : fullestWindow(result, FIVE_HOUR_MS);
+    const weekly = result === undefined ? 0 : fullestWindow(result, WEEK_MS);
+    return this.#conditionsOf(threadId).some(
+      ({ conditions }) =>
+        (conditions.hours !== null && inHours(now, conditions.hours, this.#zone)) ||
+        (conditions.fiveHourAt !== null && fiveHour >= conditions.fiveHourAt) ||
+        (conditions.weeklyAt !== null && weekly >= conditions.weeklyAt) ||
+        (conditions.paceAt !== null && result !== undefined && this.#deps.pace !== undefined),
+    );
+  }
+
+  async #judge(threadIds: readonly ThreadId[]): Promise<void> {
     for (const threadId of threadIds) {
       if (this.#closed) return;
-      const mark = this.#marks.get(threadId);
-      if (mark === undefined) continue;
+      const now = this.#deps.now();
+      const overrides = this.#overrides.get(threadId);
+      if (overrides !== undefined) {
+        for (const [reason, until] of overrides) if (until <= now) overrides.delete(reason);
+        if (overrides.size === 0) this.#overrides.delete(threadId);
+      }
       const hold = this.#holds.get(threadId);
       if (hold !== undefined) {
-        const window = fiveHourWindow(result, hold.providerId);
-        // Under the chat's limit again: the window was reset, or the limit raised.
-        if (window !== undefined && window.usedPercent < mark.percent) {
-          await this.#release(threadId, "under_limit", mark.folder);
+        const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
+        if (holding.length === 0) {
+          await this.#release(threadId, "clear");
+          continue;
         }
+        this.#rehold(threadId, hold, holding);
         continue;
       }
-      if (fullest < mark.percent || this.#deps.isPaused(threadId)) continue;
+      if (
+        !this.#watched(threadId) ||
+        this.#deps.isPaused(threadId) ||
+        !this.#mayHold(threadId, now)
+      )
+        continue;
       const providerId = await this.#deps.providerOf(threadId).catch(() => null);
       if (providerId === null) continue;
-      const window = fiveHourWindow(result, providerId);
-      if (window === undefined || window.usedPercent < mark.percent) continue;
+      const holding = this.#holding(threadId, providerId, null, now);
+      const named = longest(holding);
+      if (named === undefined) continue;
       const paused = await this.#deps.pause(threadId).catch((failure: unknown) => {
         this.#deps.logger?.warn("usage_pause.pause_failed", { threadId, error: String(failure) });
         return false;
       });
-      if (!paused || !this.#marks.has(threadId)) continue;
-      const reset = window.resetsAt === null ? Number.NaN : Date.parse(window.resetsAt);
-      const until = Number.isFinite(reset) ? reset + USAGE_PAUSE_RESUME_GRACE_MS : null;
-      this.#holds.set(threadId, { providerId, until });
-      if (until !== null) this.#schedule(threadId, until);
+      if (!paused || !this.#watched(threadId)) continue;
+      const next: UsagePauseHold = {
+        providerId,
+        until: named.until,
+        reason: named.reason,
+        ...(named.rule === undefined ? {} : { rule: named.rule }),
+      };
+      this.#holds.set(threadId, next);
+      const at = earliest(holding);
+      if (at !== null) this.#schedule(threadId, at);
       this.#deps.logger?.info("usage_pause.held", {
         threadId,
         providerId,
-        usedPercent: window.usedPercent,
-        percent: mark.percent,
-        until: until === null ? null : new Date(until).toISOString(),
+        reason: named.reason,
+        rule: named.rule ?? null,
+        until: named.until === null ? null : new Date(named.until).toISOString(),
       });
       this.#keep();
-      this.#notify(threadId, mark.folder);
+      this.#notifyHold(threadId);
     }
   }
 
+  /** A held chat some condition still holds: the hold names the one expected to last longest, judged again at the first end. */
+  #rehold(threadId: ThreadId, hold: UsagePauseHold, holding: readonly RuleHolding[]): void {
+    const named = longest(holding);
+    if (named === undefined) return;
+    const at = earliest(holding);
+    if (at !== null) this.#schedule(threadId, at);
+    else this.#clearTimer(threadId);
+    if (hold.reason === named.reason && hold.rule === named.rule && hold.until === named.until)
+      return;
+    this.#holds.set(threadId, {
+      providerId: hold.providerId,
+      until: named.until,
+      reason: named.reason,
+      ...(named.rule === undefined ? {} : { rule: named.rule }),
+    });
+    this.#keep();
+    this.#notifyHold(threadId);
+  }
+
   /** Ends the chat's hold and resumes it, if the rule holds it and it is still paused. */
-  async #release(threadId: ThreadId, reason: string, folder: string): Promise<void> {
+  async #release(threadId: ThreadId, reason: string): Promise<void> {
     if (!this.#holds.has(threadId)) return;
-    this.#endHold(threadId, reason, folder);
+    this.#endHold(threadId, reason);
     if (!this.#deps.isPaused(threadId)) return;
     const resumed = await this.#deps.resume(threadId).catch((failure: unknown) => {
       this.#deps.logger?.warn("usage_pause.resume_failed", { threadId, error: String(failure) });
@@ -248,25 +499,22 @@ export class UsagePause {
     this.#deps.logger?.info("usage_pause.resumed", { threadId, reason, resumed });
   }
 
-  #endHold(threadId: ThreadId, reason: string, folder?: string): void {
+  #endHold(threadId: ThreadId, reason: string): void {
     if (!this.#holds.delete(threadId)) return;
     this.#clearTimer(threadId);
     this.#deps.logger?.info("usage_pause.hold_ended", { threadId, reason });
     this.#keep();
-    const at = folder ?? this.#marks.get(threadId)?.folder;
-    if (at !== undefined) this.#notify(threadId, at);
+    this.#notifyHold(threadId);
   }
 
+  /** Judges the chat again at `at`: a condition expected to end then, or a resume due while the server was down. */
   #schedule(threadId: ThreadId, at: number): void {
     if (this.#closed) return;
     this.#clearTimer(threadId);
     const handle = this.#deps.timer.setTimeout(
       () => {
         this.#timers.delete(threadId);
-        void this.#queue(async () => {
-          const folder = this.#marks.get(threadId)?.folder;
-          if (folder !== undefined) await this.#release(threadId, "reset", folder);
-        });
+        void this.#queue(() => this.#judge([threadId]));
       },
       Math.max(0, at - this.#deps.now()),
     );
@@ -280,12 +528,37 @@ export class UsagePause {
     this.#timers.delete(threadId);
   }
 
+  /** While a rule has hours, every chat is judged each minute, so it pauses as the hours start. */
+  #ticking(): void {
+    const needed = [...this.#rules.values()].some((rule) => rule.enabled && rule.hours !== null);
+    if (!needed || this.#closed) {
+      if (this.#tick !== null) this.#deps.timer.clearTimeout(this.#tick);
+      this.#tick = null;
+      return;
+    }
+    if (this.#tick !== null) return;
+    const now = this.#deps.now();
+    this.#tick = this.#deps.timer.setTimeout(
+      () => {
+        this.#tick = null;
+        void this.#queue(() => this.#judge(this.#watchedChats())).then(() => this.#ticking());
+      },
+      USAGE_RULES_TICK_MS - (now % USAGE_RULES_TICK_MS),
+    );
+  }
+
   #queue(work: () => Promise<void>): Promise<void> {
     const next = this.#judging.then(work).catch((failure: unknown) => {
       this.#deps.logger?.warn("usage_pause.failed", { error: String(failure) });
     });
     this.#judging = next;
     return next;
+  }
+
+  /** Tells the listeners the chat's hold changed, in its folder: its mark's, or the one the server runs it in. */
+  #notifyHold(threadId: ThreadId): void {
+    const folder = this.#marks.get(threadId)?.folder ?? this.#deps.folderOf?.(threadId);
+    if (folder !== undefined) this.#notify(threadId, folder);
   }
 
   #notify(
@@ -297,9 +570,14 @@ export class UsagePause {
     for (const listener of [...this.#listeners]) listener(threadId, folder, percent, hold);
   }
 
-  /** Writes the marks and holds after the writes before it, so the file holds the last ones. */
+  /** Writes the marks, rules, holds and hand resumes after the writes before it, so the file holds the last ones. */
   #keep(): void {
-    const kept: UsagePauseKept = { marks: new Map(this.#marks), holds: new Map(this.#holds) };
+    const kept: UsagePauseKept = {
+      marks: new Map(this.#marks),
+      holds: new Map(this.#holds),
+      rules: [...this.#rules.values()],
+      overrides: new Map([...this.#overrides].map(([id, reasons]) => [id, new Map(reasons)])),
+    };
     this.#saving = this.#saving
       .then(() => this.#deps.save(kept))
       .catch((failure: unknown) => {
@@ -308,9 +586,25 @@ export class UsagePause {
   }
 }
 
+/** A kept hold, or undefined when the file's is not one. */
+function keptHold(hold: Record<string, unknown>): UsagePauseHold | undefined {
+  const { providerId, until, reason, rule } = hold;
+  if (typeof providerId !== "string" || providerId.length === 0) return undefined;
+  if (until !== null && (typeof until !== "number" || !Number.isFinite(until))) return undefined;
+  const reasonOk = UsagePauseReason.safeParse(reason);
+  return {
+    providerId,
+    until: until === null ? null : Math.round(until),
+    ...(reasonOk.success ? { reason: reasonOk.data } : {}),
+    ...(typeof rule === "string" && rule.length > 0 && rule.length <= 64 ? { rule } : {}),
+  };
+}
+
 /**
- * The usage pause's file: `{ "version": 1, "marks": { "<thread id>": { "percent": 95, "folder": "…" } }, "holds":
- * { "<thread id>": { "providerId": "anthropic", "until": <epoch ms or null> } } }`.
+ * The usage pause's file: `{ "version": 2, "marks": { "<thread id>": { "percent": 95, "folder": "…" } }, "holds":
+ * { "<thread id>": { "providerId": "anthropic", "until": <epoch ms or null>, "reason": "five_hour", "rule": "…" } },
+ * "rules": [<UsageRule>…], "overrides": { "<thread id>": { "<reason>": <epoch ms> } } }`. A version 1 file (marks and
+ * holds only, before the rules) is read as one with no rules.
  */
 export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "save"> {
   return {
@@ -325,12 +619,11 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
       const saved = JSON.parse(text) as {
         readonly version?: unknown;
         readonly marks?: Record<string, { readonly percent?: unknown; readonly folder?: unknown }>;
-        readonly holds?: Record<
-          string,
-          { readonly providerId?: unknown; readonly until?: unknown }
-        >;
+        readonly holds?: Record<string, Record<string, unknown>>;
+        readonly rules?: unknown;
+        readonly overrides?: Record<string, Record<string, unknown>>;
       };
-      if (saved.version !== 1) return EMPTY;
+      if (saved.version !== 1 && saved.version !== 2) return EMPTY;
       const marks = new Map<ThreadId, UsagePauseMark>();
       for (const [threadId, mark] of Object.entries(saved.marks ?? {})) {
         const { percent, folder } = mark;
@@ -346,23 +639,36 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
       }
       const holds = new Map<ThreadId, UsagePauseHold>();
       for (const [threadId, hold] of Object.entries(saved.holds ?? {})) {
-        const { providerId, until } = hold;
-        if (typeof providerId !== "string" || providerId.length === 0) continue;
-        if (until !== null && (typeof until !== "number" || !Number.isFinite(until))) continue;
-        holds.set(threadId as ThreadId, {
-          providerId,
-          until: until === null ? null : Math.round(until),
-        });
+        const kept = keptHold(hold);
+        if (kept !== undefined) holds.set(threadId as ThreadId, kept);
       }
-      return { marks, holds };
+      const rules = (Array.isArray(saved.rules) ? saved.rules : []).flatMap((rule: unknown) => {
+        const parsed = UsageRule.safeParse(rule);
+        return parsed.success ? [parsed.data] : [];
+      });
+      const overrides = new Map<ThreadId, Map<UsagePauseReason, number>>();
+      for (const [threadId, reasons] of Object.entries(saved.overrides ?? {})) {
+        const kept = new Map<UsagePauseReason, number>();
+        for (const [reason, until] of Object.entries(reasons)) {
+          const parsed = UsagePauseReason.safeParse(reason);
+          if (parsed.success && typeof until === "number" && Number.isFinite(until))
+            kept.set(parsed.data, until);
+        }
+        if (kept.size > 0) overrides.set(threadId as ThreadId, kept);
+      }
+      return { marks, holds, rules, overrides };
     },
     save: async (kept) => {
       await mkdir(dirname(path), { recursive: true });
       const temporary = `${path}.${process.pid}.tmp`;
       const file = {
-        version: 1,
+        version: 2,
         marks: Object.fromEntries(kept.marks),
         holds: Object.fromEntries(kept.holds),
+        rules: kept.rules,
+        overrides: Object.fromEntries(
+          [...kept.overrides].map(([id, reasons]) => [id, Object.fromEntries(reasons)]),
+        ),
       };
       await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`);
       await rename(temporary, path);
