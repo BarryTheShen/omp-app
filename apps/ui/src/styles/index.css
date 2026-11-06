@@ -149,11 +149,13 @@
   }
 
   /*
-   * On a touch screen no box hands a drag on to the box around it, or to the page, once it reaches its end: with the
-   * keyboard up, a drag past the end of the chat panned the whole page and the app shook (`src/viewport.ts`). Set
-   * before any touch starts, which is when iOS 26 reads it (React Aria does the same).
+   * On a phone no box hands a drag on to the box around it, or to the page, once it reaches its end: with the keyboard
+   * up, a drag past the end of the chat panned the whole page and the app shook (`src/viewport.ts`). Set before any
+   * touch starts, which is when iOS 26 reads it (React Aria does the same). Not on a tablet's computer layout: there
+   * a trackpad's scroll that starts over a box that only clips (overflow hidden, a card, a cut row) went nowhere in
+   * Safari's engine, which counts such a box as one that scrolls, so Settings stopped scrolling over its cards.
    */
-  @media (pointer: coarse) {
+  @media (pointer: coarse) and (max-width: 639px) {
     * {
       overscroll-behavior: contain;
     }
