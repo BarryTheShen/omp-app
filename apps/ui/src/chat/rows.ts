@@ -1,4 +1,5 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import { silentAbort } from "../vendor/collab-web/components/transcript/Transcript";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ChatNotice, ChatSnapshot } from "./store";
 
@@ -82,7 +83,12 @@ function drawn(entry: SessionEntry): boolean {
       // `custom` is omp's own message kind (a background job's notice), live before the file holds it.
       const role: string = entry.message.role;
       if (role === "custom") return (entry.message as { display?: unknown }).display === true;
-      return role === "user" || role === "assistant";
+      // A reply omp stopped itself before it said anything (a plan's review) has nothing to draw.
+      if (role === "assistant") {
+        const reply = entry.message as AssistantMessage;
+        return reply.content.length > 0 || !silentAbort(reply);
+      }
+      return role === "user";
     }
     case "custom_message":
       return entry.customType === "collab-prompt" || entry.display === true;

@@ -254,18 +254,26 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);
   const subagents = new SubagentRoster(chat.subagentEventBus, emit);
-  const plan = new PlanMode(
-    session,
-    (message) => emit({ type: "notice", level: "warning", message, source: "plan-mode" }),
-    (status) => emit({ type: "plan_mode_changed", ...status }),
-  );
-  const live = new LiveVoice(session, emit);
   /** Built-in commands whose work outlives their prompt's answer (`/mcp reauth`'s browser wait): stopped by an abort. */
   const builtinCommands = new Set<AbortController>();
   const abortBuiltinCommands = (): void => {
     for (const controller of builtinCommands) controller.abort(new Error(USER_INTERRUPT_LABEL));
     builtinCommands.clear();
   };
+  /** The user's Stop: the run, and built-in commands' waits, end. */
+  const interrupt = async (): Promise<void> => {
+    // Before the abort, so the stopped run's own `agent_end` schedules no goal turn.
+    goal.stopForHostAbort();
+    abortBuiltinCommands();
+    await session.abort({ reason: USER_INTERRUPT_LABEL });
+  };
+  const plan = new PlanMode(
+    session,
+    (message) => emit({ type: "notice", level: "warning", message, source: "plan-mode" }),
+    (status) => emit({ type: "plan_mode_changed", ...status }),
+    interrupt,
+  );
+  const live = new LiveVoice(session, emit);
 
   // omp lists only commands with a text-mode handler; its `/pause` has the terminal's pause screen only, and the app
   // serves it here (`pause`, `resume`, a typed `/pause` in `admitPrompt`).
@@ -366,6 +374,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     goal.observe(event);
     results.observe(event);
     settle.observe(event);
+    plan.observe(event);
   });
   // A pause, whoever engaged it, reaches every viewer. The gate is the process's, and this process serves one chat.
   const stopPauseEvents = agentPauseGate.onChange(() =>
@@ -463,10 +472,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     ) => Promise<ChatHostMethodMap[M]["result"]>;
   } = {
     abort: async () => {
-      // Before the abort, so the stopped run's own `agent_end` schedules no goal turn.
-      goal.stopForHostAbort();
-      abortBuiltinCommands();
-      await session.abort({ reason: USER_INTERRUPT_LABEL });
+      await interrupt();
       return {};
     },
     pause: async () => {
@@ -494,9 +500,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       // As omp's Escape: the queue is taken back before the abort, so neither the stopped run nor the abort's own drain
       // of the queue can send it (`rpc-mode.ts:1963-1972`).
       const restored = session.clearQueue({ forInterrupt: true });
-      goal.stopForHostAbort();
-      abortBuiltinCommands();
-      await session.abort({ reason: USER_INTERRUPT_LABEL });
+      await interrupt();
       return {
         steering: restored.steering.map(queuedMessage),
         followUp: restored.followUp.map(queuedMessage),

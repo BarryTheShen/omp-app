@@ -191,6 +191,17 @@ function AttachedFiles({ files, host }: { files: readonly SentFile[]; host?: Too
 	);
 }
 
+/** omp's mark on a reply it stopped itself (pi-tui `SILENT_ABORT_MARKER`), as when a plan's review opens. */
+const SILENT_ABORT_MARKER = "__omp.silent_abort__";
+/** The same in the reply's error id: pi-ai's `AIError.Flag.SilentAbort` bit, which the wire's type leaves out. */
+const SILENT_ABORT_FLAG = 0x0200_0000;
+
+/** omp-app: a reply omp stopped itself is no failure to show (omp's `isSilentAbort`, pi-tui `chat/messages.ts`). */
+export function silentAbort(message: AssistantMessage): boolean {
+	const errorId = (message as AssistantMessage & { readonly errorId?: number }).errorId ?? 0;
+	return message.errorMessage === SILENT_ABORT_MARKER || (errorId & SILENT_ABORT_FLAG) !== 0;
+}
+
 export function AssistantBody({
 	message,
 	results,
@@ -236,7 +247,7 @@ export function AssistantBody({
 		}
 	});
 	const stop = message.stopReason;
-	const failed = !pending && (stop === "error" || stop === "aborted");
+	const failed = !pending && (stop === "error" || stop === "aborted") && !silentAbort(message);
 	return (
 		<>
 			{blocks}

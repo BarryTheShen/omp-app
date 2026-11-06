@@ -14,7 +14,10 @@ import {
   cfgPlanEnabled,
 } from "@oh-my-pi/pi-coding-agent/plan-mode/settings";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
 import { isMCPToolName } from "@oh-my-pi/pi-coding-agent/tools/builtin-names";
+import { writeDeviceDispatch } from "@oh-my-pi/pi-coding-agent/tools/resolve";
+import { PROPOSE_DEVICE_NAME } from "@oh-my-pi/pi-tui/tools/resolve";
 import { prompt } from "@oh-my-pi/pi-utils";
 import type { ApprovePlanResult, PlanFile, PlanModeStatus } from "@omp-app/contracts/chat-host";
 import approvedPlanPrompt from "../../node_modules/@oh-my-pi/pi-coding-agent/src/prompts/system/plan-mode-approved.md" with {
@@ -31,6 +34,8 @@ export class PlanMode {
   readonly #warn: (message: string) => void;
   /** Tells every page the status after plan mode turned on or off (#2812): omp's own state sends no event. */
   readonly #changed: (status: PlanModeStatus) => void;
+  /** Stops the running turn as the user's Stop does. */
+  readonly #interrupt: () => Promise<void>;
   /** The tools before plan mode turned on, for the way back (the terminal's `#planModePreviousToolPresentation`). */
   #toolsBefore: { readonly enabled: string[]; readonly mounted: string[] } | undefined;
   /** Plan mode was on before in this session: omp tells the model it is coming back to a plan (`reentry`). */
@@ -40,10 +45,12 @@ export class PlanMode {
     session: AgentSession,
     warn: (message: string) => void,
     changed: (status: PlanModeStatus) => void,
+    interrupt: () => Promise<void>,
   ) {
     this.#session = session;
     this.#warn = warn;
     this.#changed = changed;
+    this.#interrupt = interrupt;
   }
 
   status(): PlanModeStatus {
@@ -55,11 +62,16 @@ export class PlanMode {
     };
   }
 
-  /** omp's `/plan`. Refused while work runs (the terminal steers or aborts instead), and while a goal is active. */
+  /**
+   * omp's `/plan` and Alt+Shift+P (`handlePlanModeCommand`, `interactive-mode.ts:6093-6161`), refused while a goal is
+   * active. While omp works, as there: turned on, plan mode steers the running turn into it (`#enter`); turned off, it
+   * stops the turn first (`#exitPlanMode` with `interruptActiveTurn`, 5274-5295), since that turn plans with tools
+   * plan mode is taking away and would only be told to go on planning.
+   */
   async set(enabled: boolean): Promise<PlanModeStatus> {
-    this.#refuseWhileBusy("Switch plan mode");
-    if (enabled && !this.#session.getPlanModeState()?.enabled) {
-      if (!cfgPlanEnabled.get(this.#session.settings)) {
+    const session = this.#session;
+    if (enabled && !session.getPlanModeState()?.enabled) {
+      if (!cfgPlanEnabled.get(session.settings)) {
         throw new HostMethodError(
           "plan_disabled",
           "Plan mode is turned off in omp's settings (plan.enabled).",
@@ -73,8 +85,31 @@ export class PlanMode {
       }
     }
     if (enabled) await this.#enter();
-    else await this.#leave({ persist: true });
+    else if (session.getPlanModeState()?.enabled && session.isStreaming) {
+      // Inside omp's mode-exit teardown, so a message queued during the stopped turn starts once the tools are back.
+      await session.runModeExitTeardown(async () => {
+        await this.#interrupt();
+        await this.#leave({ persist: true });
+      });
+    } else await this.#leave({ persist: true });
     return this.status();
+  }
+
+  /**
+   * The model proposed its plan (a `write` to `xd://propose`). As at omp's review (`event-controller.ts:2229-2268`,
+   * `handlePlanApproval`), the turn stops at once, with no "aborted" line, so the model does not go on under the
+   * review (omp's plan prompt would have it plan on) and the plan can be approved.
+   */
+  observe(event: AgentSessionEvent): void {
+    if (event.type !== "tool_execution_end" || event.isError) return;
+    const dispatch = writeDeviceDispatch(event.toolName, event.result);
+    if (dispatch?.tool !== PROPOSE_DEVICE_NAME || dispatch.mode !== "execute") return;
+    if (!this.#session.getPlanModeState()?.enabled) return;
+    void this.#stopSilently().catch((error: unknown) =>
+      this.#warn(
+        `Could not stop the turn for the plan's review: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
   }
 
   /** A plan file's text: the one named, else plan mode's, else the approved plan's, else `local://PLAN.md`. */
@@ -90,12 +125,12 @@ export class PlanMode {
   }
 
   /**
-   * omp's "Approve and keep context" (`#approvePlan`, `interactive-mode.ts:5893-6083`). Answered once omp admitted the
-   * run on the plan; the run's events reach the app like any turn's.
+   * omp's "Approve and keep context" (`#approvePlan`, `interactive-mode.ts:5893-6083`). A turn still going stops first,
+   * silently, as when omp's review opens. Answered once omp admitted the run on the plan; the run's events reach the
+   * app like any turn's.
    */
   async approve(planFilePath: string, title: string): Promise<ApprovePlanResult> {
     const session = this.#session;
-    this.#refuseWhileBusy("Approve the plan");
     if (!session.getPlanModeState()?.enabled) {
       throw new HostMethodError(
         "plan_mode_off",
@@ -105,6 +140,7 @@ export class PlanMode {
     const planContent = await readPlanFile(planFilePath, this.#pathOptions());
     if (planContent === null)
       throw new HostMethodError("plan_missing", `There is no plan at ${planFilePath}.`);
+    if (session.isBusyForSnapshot) await this.#stopSilently();
     await this.#leave({ persist: true, forceRead: true });
     session.setPlanReferencePath(planFilePath);
     let autosavedPath: string | undefined;
@@ -264,12 +300,16 @@ export class PlanMode {
     };
   }
 
-  #refuseWhileBusy(action: string): void {
-    if (this.#session.isBusyForSnapshot) {
-      throw new HostMethodError(
-        "session_busy",
-        `omp is still working in this chat. ${action} once it has finished.`,
-      );
+  /**
+   * omp's stop for a plan's review (`#abortPlanApprovalTurnSilently`, `interactive-mode.ts:6084-6091`): the stopped
+   * reply is marked a silent abort, which is no failure to show.
+   */
+  async #stopSilently(): Promise<void> {
+    this.#session.markPlanInternalAbortPending();
+    try {
+      await this.#session.abort();
+    } finally {
+      this.#session.clearPlanInternalAbortPending();
     }
   }
 }

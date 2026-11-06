@@ -180,6 +180,25 @@ describe("buildRows", () => {
     );
   });
 
+  test("a reply omp stopped itself before it said anything draws no row; one the user stopped still does", () => {
+    const stopped = (id: string, errorMessage: string) =>
+      message(id, {
+        role: "assistant",
+        content: [],
+        stopReason: "aborted",
+        errorMessage,
+        timestamp: T,
+      });
+    const rows = buildRows({
+      ...idle,
+      entries: [
+        stopped("plan-review", "__omp.silent_abort__"),
+        stopped("stop", "Interrupted by user"),
+      ],
+    });
+    expect(rows.map((row) => (row.kind === "entry" ? row.entry.id : row.kind))).toEqual(["stop"]);
+  });
+
   test("a saved `!` run is a run box with its command, output and exit; a run in progress follows the rest", () => {
     const rows = buildRows({
       ...idle,

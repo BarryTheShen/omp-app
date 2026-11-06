@@ -56,6 +56,15 @@ async function promptToEnd(chat: Chat, text: string): Promise<void> {
   await chat.nextAfter(mark, (event) => event.type === "prompt_result");
 }
 
+/** Waits until `check` holds, reading again every 100 ms. */
+async function until(check: () => Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + 60_000;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
+    await Bun.sleep(100);
+  }
+}
+
 describe("plan mode on the chat host", () => {
   for (const program of PROGRAMS) {
     const programTest = program.command === undefined ? test.skip : realTest;
@@ -119,6 +128,80 @@ describe("plan mode on the chat host", () => {
         expect(all.slice(start + 1).some((message) => message.role === "assistant")).toBe(true);
         expect((await chat.client.request("get_state", {})).sessionName).toBe("Fix the login");
         expect(await modes(chat)).toEqual(["plan", "none"]);
+      },
+      120_000,
+    );
+
+    programTest(
+      `${program.name}: while omp works, plan mode turns off and on at once, a proposal ends its turn, and Approve runs the plan`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        // Off while a turn runs, as omp's `/plan`: the turn stops, plan mode ends, and nothing starts by itself after.
+        await chat.client.request("set_plan_mode", { enabled: true });
+        let mark = chat.events.length;
+        await chat.client.request("prompt", { text: "stream_held" });
+        await chat.nextAfter(mark, (event) => event.type === "message_update");
+        expect(await chat.client.request("set_plan_mode", { enabled: false })).toEqual({
+          enabled: false,
+          available: true,
+        });
+        await chat.nextAfter(mark, (event) => event.type === "prompt_result");
+        expect(await modes(chat)).toEqual(["plan", "none"]);
+
+        // A proposal ends its turn: the model says nothing after it, and omp sends no reminder to plan on.
+        await chat.client.request("set_plan_mode", { enabled: true });
+        await promptToEnd(chat, "plan_propose");
+        let all = await messages(chat);
+        const proposed = all.findIndex(
+          (message) => message.role === "toolResult" && message.toolCallId === "call_plan_propose",
+        );
+        expect(proposed).toBeGreaterThanOrEqual(0);
+        const after = all.slice(proposed + 1);
+        expect(after.some((message) => message.role === "developer")).toBe(false);
+        expect(
+          after.some((message) => message.role === "assistant" && textOf(message.content) !== ""),
+        ).toBe(false);
+
+        // Approve while omp works: the turn stops, plan mode ends, and the run on the plan starts and answers.
+        mark = chat.events.length;
+        await chat.client.request("prompt", { text: "stream_held" });
+        await chat.nextAfter(mark, (event) => event.type === "message_update");
+        expect(
+          await chat.client.request("approve_plan", {
+            planFilePath: PLAN_FILE,
+            title: "fix-the-login",
+          }),
+        ).toEqual({ planFilePath: PLAN_FILE });
+        expect(await chat.client.request("get_plan_mode", {})).toEqual({
+          enabled: false,
+          available: true,
+        });
+        await until(async () => {
+          all = await messages(chat);
+          const start = all.findIndex(
+            (message) =>
+              message.role === "developer" &&
+              message.synthetic === true &&
+              textOf(message.content).includes("# Fix the login"),
+          );
+          return start >= 0 && all.slice(start + 1).some((message) => message.role === "assistant");
+        }, "the run on the plan");
+
+        await until(
+          async () => !(await chat.client.request("get_state", {})).isStreaming,
+          "the run on the plan to end",
+        );
+
+        // On while a turn runs: plan mode is on at once, and the turn is told (omp steers its notice in).
+        mark = chat.events.length;
+        await chat.client.request("prompt", { text: "stream_held" });
+        await chat.nextAfter(mark, (event) => event.type === "message_update");
+        expect(await chat.client.request("set_plan_mode", { enabled: true })).toMatchObject({
+          enabled: true,
+        });
+        await chat.client.request("abort", {});
+        await chat.nextAfter(mark, (event) => event.type === "prompt_result");
       },
       120_000,
     );
@@ -216,16 +299,6 @@ describe("plan mode on the chat host", () => {
         await expect(chat.client.request("get_plan", {})).rejects.toMatchObject({
           code: "plan_missing",
         });
-
-        await chat.client.request("prompt", { text: "stream_held" });
-        await chat.next((event) => event.type === "message_update");
-        await expect(chat.client.request("set_plan_mode", { enabled: true })).rejects.toMatchObject(
-          {
-            code: "session_busy",
-          },
-        );
-        await chat.client.request("abort", {});
-        await chat.next((event) => event.type === "prompt_result");
 
         await chat.client.request("goal", { op: "create", objective: "Ship the release" });
         await expect(chat.client.request("set_plan_mode", { enabled: true })).rejects.toMatchObject(
