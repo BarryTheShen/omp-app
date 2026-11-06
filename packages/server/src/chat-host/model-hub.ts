@@ -14,7 +14,10 @@ import { getRoleInfo } from "@oh-my-pi/pi-coding-agent/config/model-roles";
 import { cfgModelRoleStorage } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import { createModelBrowserSource } from "@oh-my-pi/pi-coding-agent/modes/model-browser-source";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
+import {
+  cfgDefaultThinkingLevel,
+  cfgRetryFallbackChains,
+} from "@oh-my-pi/pi-coding-agent/session/settings";
 import {
   buildBrowserItems,
   resolveRoleAssignments,
@@ -34,6 +37,7 @@ import type {
   HubModel,
   HubRole,
   ModelHub,
+  SetRoleFallbacksParams,
 } from "@omp-app/contracts/chat-host";
 
 /**
@@ -119,6 +123,7 @@ export function readModelHub(session: AgentSession): ModelHub {
         : null,
       thinkingLevel: assigned ? `${assigned.thinkingLevel}` : null,
       autoSelected: assigned?.autoSelected ?? false,
+      fallbacks: [...(source.fallbackChains[role] ?? [])],
     };
   });
   // The hub's own order: models with a role first, then the most recently used, then by provider and recency.
@@ -232,6 +237,30 @@ export async function assignModelRole(
   } finally {
     releaseDefaultMutation?.();
   }
+}
+
+/**
+ * The hub's `onFallbackChainChange` (`selector-controller.ts:1117-1129`, #2838): writes the role's chain to omp's
+ * `retry.fallbackChains`, or clears it when empty, and says so in omp's words.
+ */
+export function setRoleFallbacks(
+  session: AgentSession,
+  params: SetRoleFallbacksParams,
+): { readonly status: string } {
+  const settings = session.settings;
+  cfgRetryFallbackChains.setEntry(
+    settings,
+    params.role,
+    params.chain.length > 0 ? params.chain : undefined,
+  );
+  const info = getRoleInfo(params.role, settings);
+  const label = info?.tag ?? info?.name ?? params.role;
+  return {
+    status:
+      params.chain.length > 0
+        ? `${label} fallbacks: ${params.chain.join(" → ")}`
+        : `${label} fallbacks cleared`,
+  };
 }
 
 /**

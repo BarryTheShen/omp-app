@@ -28,6 +28,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "get_model_menu",
   "assign_model_role",
   "clear_model_role",
+  "set_role_fallbacks",
   "set_thinking_level",
   "cycle_thinking_level",
   "get_available_thinking_levels",

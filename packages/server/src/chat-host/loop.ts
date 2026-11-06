@@ -88,7 +88,13 @@ import { cancelJob, inspectJob, listJobs } from "./jobs";
 import { LiveVoice } from "./live";
 import { localFolder } from "./local-folder";
 import { HostMethodError } from "./method-error";
-import { assignModelRole, clearModelRole, findModel, readModelHub } from "./model-hub";
+import {
+  assignModelRole,
+  clearModelRole,
+  findModel,
+  readModelHub,
+  setRoleFallbacks,
+} from "./model-hub";
 import { readModelMenu } from "./model-menu";
 import type { LineWriter } from "./output";
 import { PlanMode } from "./plan";
@@ -546,6 +552,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     get_model_menu: async () => readModelMenu(session),
     assign_model_role: (params) => assignModelRole(session, params),
     clear_model_role: (params) => clearModelRole(session, params),
+    set_role_fallbacks: async (params) => setRoleFallbacks(session, params),
     set_thinking_level: async ({ level }) => {
       // omp's own parser turns the name into its level (an `Effort` member, `off`, `inherit` or `auto`).
       const parsed = parseConfiguredThinkingLevel(level);

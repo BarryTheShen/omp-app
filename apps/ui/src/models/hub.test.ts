@@ -12,6 +12,7 @@ function role(patch: Partial<HubRole> & Pick<HubRole, "role">): HubRole {
     model: null,
     thinkingLevel: null,
     autoSelected: false,
+    fallbacks: [],
     ...patch,
   };
 }

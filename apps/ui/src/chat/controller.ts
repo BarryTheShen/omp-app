@@ -1026,6 +1026,16 @@ export class ChatController {
     }
   }
 
+  /** Sets a role's fallback chain, as omp's hub does (#2838): an empty chain clears it; the line omp shows for it. */
+  async setRoleFallbacks(role: string, chain: readonly string[]): Promise<string> {
+    try {
+      const { status } = await this.#request("set_role_fallbacks", { role, chain: [...chain] });
+      return status;
+    } catch (failure) {
+      throw olderServer(failure, "change fallbacks");
+    }
+  }
+
   /** Answers a dialog omp waits on (an approval, a question). */
   async answer(id: string, answer: HostDialogAnswer): Promise<void> {
     const threadId = this.#threadId;

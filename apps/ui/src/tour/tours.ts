@@ -536,6 +536,28 @@ const MODEL_HUB_TOUR: Tour = {
   ],
 };
 
+/** #2838 part 2: a role's fallbacks in omp's Models. */
+const FALLBACKS_TOUR: Tour = {
+  id: "role-fallbacks-2026-11-06",
+  title: "Fallbacks for a role",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Models",
+      text: "{modelHub} opens omp's Models. Try it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: `${MODEL_HUB} [data-tour="role-fallbacks"]`,
+      title: "Fallbacks",
+      text: "When the picked role's model fails (an outage, a usage limit), omp tries these models instead, in order. <b>Add a fallback…</b> adds one of the models the role takes; the arrows change the order and × removes one. omp keeps them in its own settings, so the terminal uses them too. {stop} closes Models.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 /**
  * #2838: omp's roles in the model menu, and its model panel from there. Like the model menu's tour, the steps inside
  * the menu act there (a click on the tour's Next lands outside the menu and closes it).
@@ -1826,6 +1848,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-role-fallbacks",
+    when: "2026-11-06T05:20:00-06:00",
+    summary:
+      "omp's Models (Alt+M, or Roles and models… in the model menu) sets each role's fallbacks: the models omp tries, in order, when the role's model fails. Add one from the models the role takes, change the order, or remove one; omp keeps them in its settings, so the terminal uses them too.",
+    tours: [FALLBACKS_TOUR],
+  },
   {
     id: "2026-11-06-dashboard",
     when: "2026-11-06T05:05:00-06:00",

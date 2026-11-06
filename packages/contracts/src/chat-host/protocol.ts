@@ -334,6 +334,16 @@ export const ClearModelRoleParams = z.object({
 });
 export type ClearModelRoleParams = z.infer<typeof ClearModelRoleParams>;
 
+/**
+ * A role's fallback chain (#2838), as omp's model hub sets it (`onFallbackChainChange`): the models omp's retry falls
+ * back to, in order, when the role's model fails (`retry.fallbackChains[role]`). An empty chain clears it.
+ */
+export const SetRoleFallbacksParams = z.object({
+  role: z.string().min(1),
+  chain: z.array(z.string().min(1)).max(32),
+});
+export type SetRoleFallbacksParams = z.infer<typeof SetRoleFallbacksParams>;
+
 /** One role of omp's model hub. */
 export interface HubRole {
   readonly role: string;
@@ -356,6 +366,11 @@ export interface HubRole {
   readonly thinkingLevel: string | null;
   /** True when `model` is omp's auto-selection, not the role's setting. */
   readonly autoSelected: boolean;
+  /**
+   * The models omp's retry falls back to when the role's model fails, in order (`retry.fallbackChains[role]`): model
+   * selectors, `provider/id` with `:level` where one names it, or `provider/*` (#2838).
+   */
+  readonly fallbacks: readonly string[];
 }
 
 /** One model of omp's model hub. */
@@ -781,6 +796,14 @@ export interface ChatHostMethodMap {
     readonly params: ClearModelRoleParams;
     readonly result: { readonly status: string; readonly switchedTo: string | null };
   };
+  /**
+   * Sets a role's fallback chain, as the hub's `onFallbackChainChange` does (#2838): an empty chain clears it. `status`
+   * is omp's line, "… fallbacks: a → b" or "… fallbacks cleared".
+   */
+  readonly set_role_fallbacks: {
+    readonly params: SetRoleFallbacksParams;
+    readonly result: { readonly status: string };
+  };
   readonly set_thinking_level: {
     readonly params: ThinkingLevelParams;
     readonly result: EmptyParams;
@@ -1097,6 +1120,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_model_menu: EmptyParams,
   assign_model_role: AssignModelRoleParams,
   clear_model_role: ClearModelRoleParams,
+  set_role_fallbacks: SetRoleFallbacksParams,
   set_thinking_level: ThinkingLevelParams,
   cycle_thinking_level: EmptyParams,
   get_available_thinking_levels: EmptyParams,

@@ -35,6 +35,28 @@ async function savedRole(file: string, role: string, expected: string | null): P
   throw new Error(`${file} holds ${role}: ${seen}, not ${expected}`);
 }
 
+/** Waits for omp to save a role's fallback chain into a settings file; null is an absent chain. */
+async function savedChain(
+  file: string,
+  role: string,
+  expected: readonly string[] | null,
+): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let seen: readonly string[] | null = null;
+  while (Date.now() < deadline) {
+    const text = await Bun.file(file)
+      .text()
+      .catch(() => "");
+    const settings: { retry?: { fallbackChains?: Record<string, string[]> } } | null = parse(text);
+    seen = settings?.retry?.fallbackChains?.[role] ?? null;
+    if (JSON.stringify(seen) === JSON.stringify(expected)) return;
+    await Bun.sleep(100);
+  }
+  throw new Error(
+    `${file} holds ${role}'s fallbacks: ${JSON.stringify(seen)}, not ${JSON.stringify(expected)}`,
+  );
+}
+
 describe("the chat host's model hub methods", () => {
   for (const program of PROGRAMS) {
     const programTest = program.command === undefined ? test.skip : realTest;
@@ -196,6 +218,45 @@ describe("the chat host's model hub methods", () => {
         });
         await savedRole(settingsFiles(chat).global, "default", null);
         expect((await chat.client.request("get_state", {})).model?.id).toBe("fake-model");
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a role's fallback chain is listed, written to retry.fallbackChains and cleared (#2838)`,
+      async () => {
+        // No chain in the starting settings: the harness writes its own `retry` block, and a second one would repeat the key.
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const file = settingsFiles(chat).global;
+        const fallbacksOf = async (role: string) =>
+          (await chat.client.request("get_model_hub", {})).roles.find((each) => each.role === role)
+            ?.fallbacks;
+        expect(await fallbacksOf("default")).toEqual([]);
+
+        const smol = ["fake/claude-3-haiku-20240307"];
+        expect(
+          await chat.client.request("set_role_fallbacks", { role: "smol", chain: smol }),
+        ).toEqual({
+          status: `SMOL fallbacks: ${smol[0]}`,
+        });
+        const chain = ["fake/claude-3-haiku-20240307", "fake/claude-3-5-sonnet-20240620:low"];
+        const set = await chat.client.request("set_role_fallbacks", { role: "default", chain });
+        expect(set).toEqual({ status: `DEFAULT fallbacks: ${chain.join(" → ")}` });
+        expect(await fallbacksOf("default")).toEqual(chain);
+        expect(await fallbacksOf("smol")).toEqual(smol);
+        await savedChain(file, "default", chain);
+
+        const cleared = await chat.client.request("set_role_fallbacks", {
+          role: "default",
+          chain: [],
+        });
+        expect(cleared).toEqual({ status: "DEFAULT fallbacks cleared" });
+        expect(await fallbacksOf("default")).toEqual([]);
+        await savedChain(file, "default", null);
+        // The other role's chain is left as it was.
+        expect(await fallbacksOf("smol")).toEqual(smol);
+        await savedChain(file, "smol", smol);
       },
       60_000,
     );

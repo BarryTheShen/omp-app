@@ -4,7 +4,7 @@ import type {
   HubModel,
   HubRole,
 } from "@omp-app/contracts/chat-host";
-import { Check } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, X } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -31,6 +31,145 @@ const keyOf = (model: { readonly provider: string; readonly modelId: string }): 
   `${model.provider}/${model.modelId}`;
 
 type Level = NonNullable<AssignModelRoleParams["thinkingLevel"]>;
+
+/** The thinking levels a fallback selector can end with (`provider/id:low`). */
+const SELECTOR_LEVELS = new Set([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "inherit",
+  "auto",
+]);
+
+/** A fallback selector as words: its model's name, with its level where it names one; the selector itself otherwise. */
+function selectorName(selector: string, hub: Hub): string {
+  const exact = hub.models.find((model) => keyOf(model) === selector);
+  if (exact !== undefined) return exact.name;
+  const cut = selector.lastIndexOf(":");
+  const level = cut > 0 ? selector.slice(cut + 1) : "";
+  if (!SELECTOR_LEVELS.has(level)) return selector;
+  const model = hub.models.find((each) => keyOf(each) === selector.slice(0, cut));
+  return model === undefined ? selector : `${model.name} · ${level}`;
+}
+
+/**
+ * A role's fallback chain (#2838), as omp's hub keeps it: the models omp's retry falls back to, in order, when the role's
+ * model fails. Earlier, later and remove change the order; "Add a fallback…" adds one of the models the role takes.
+ */
+function Fallbacks({
+  role,
+  hub,
+  disabled,
+  onChange,
+}: {
+  readonly role: HubRole;
+  readonly hub: Hub;
+  readonly disabled: boolean;
+  readonly onChange: (chain: readonly string[]) => void;
+}): ReactNode {
+  const chain = role.fallbacks;
+  const label = role.tag ?? role.name;
+  const candidates = modelsFor(hub, role.role, "").filter(
+    (model) =>
+      !chain.includes(keyOf(model)) && (role.model === null || keyOf(model) !== keyOf(role.model)),
+  );
+  const move = (index: number, by: -1 | 1): void => {
+    const next = [...chain];
+    const [taken] = next.splice(index, 1);
+    if (taken === undefined) return;
+    next.splice(index + by, 0, taken);
+    onChange(next);
+  };
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a named group of the chain's rows and its add list, not a form's fieldset
+    <div
+      role="group"
+      aria-label="Fallbacks"
+      data-tour="role-fallbacks"
+      className="flex flex-col gap-1 rounded-md border border-l2 px-2.5 py-2"
+    >
+      <p className="text-xs text-t3">
+        {chain.length === 0
+          ? `No fallbacks: when ${label}'s model fails, omp retries it alone.`
+          : `When ${label}'s model fails, omp tries these, in order:`}
+      </p>
+      {chain.length > 0 && (
+        <ol className="flex flex-col">
+          {chain.map((selector, index) => {
+            const name = selectorName(selector, hub);
+            // The same selector twice (a chain edited by hand) gets a key of its own each time.
+            const earlier = chain.slice(0, index).filter((each) => each === selector).length;
+            return (
+              <li
+                key={`${selector}#${earlier}`}
+                className="flex min-h-8 items-center gap-1 text-[0.8125rem]"
+              >
+                <span className="w-4 shrink-0 text-right text-xs text-t3 tabular-nums">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-t1" title={selector}>
+                  {name}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`${name} earlier`}
+                  disabled={disabled || index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <ArrowUp />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`${name} later`}
+                  disabled={disabled || index === chain.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <ArrowDown />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove ${name}`}
+                  disabled={disabled}
+                  onClick={() => onChange(chain.filter((_, at) => at !== index))}
+                >
+                  <X />
+                </Button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {candidates.length > 0 && (
+        <select
+          aria-label="Add a fallback"
+          value=""
+          disabled={disabled}
+          onChange={(event) => {
+            if (event.target.value !== "") onChange([...chain, event.target.value]);
+          }}
+          className="h-8 rounded-md bg-transparent px-2 text-[0.8125rem] text-t2 outline-none ring-1 ring-l2 ring-inset focus-visible:ring-ring"
+        >
+          <option value="">Add a fallback…</option>
+          {candidates.map((model) => (
+            <option key={keyOf(model)} value={keyOf(model)}>
+              {model.name} ({keyOf(model)})
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
 
 /** Moves the focus among a list's options with the arrows, Home and End; true when the key was one of them. */
 function moveFocus(event: KeyboardEvent<HTMLElement>): boolean {
@@ -358,6 +497,17 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
                       </Tooltip>
                     )}
                   </div>
+                  {/* A host older than fallbacks sends none: the block waits for its update (#2838). */}
+                  {(role.fallbacks as readonly string[] | undefined) !== undefined && (
+                    <Fallbacks
+                      role={role}
+                      hub={hub}
+                      disabled={pending}
+                      onChange={(chain) =>
+                        run(async () => [await controller.setRoleFallbacks(role.role, chain)])
+                      }
+                    />
+                  )}
                   <input
                     type="search"
                     aria-label="Search models"

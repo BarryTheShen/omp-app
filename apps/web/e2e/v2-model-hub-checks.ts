@@ -110,5 +110,50 @@ export function defineModelHubChecks(engine: "chromium" | "webkit"): void {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest(
+      "a role's fallbacks are added, moved and removed, and omp keeps them (#2838)",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await newChat(page);
+        await box(page).press("Alt+m");
+        await expect(hub(page)).toBeVisible();
+        const defaultRole = roles(page).getByRole("option", { name: /^DEFAULT Default: / });
+        await defaultRole.click();
+        const fallbacks = hub(page).getByRole("group", { name: "Fallbacks" });
+        const rows = fallbacks.getByRole("listitem");
+        await expect(fallbacks).toContainText("No fallbacks: when DEFAULT's model fails");
+
+        const add = fallbacks.getByRole("combobox", { name: "Add a fallback" });
+        await add.selectOption("fake/claude-3-haiku-20240307");
+        await expect(status(page)).toHaveText("DEFAULT fallbacks: fake/claude-3-haiku-20240307");
+        await add.selectOption("fake/claude-fable-5");
+        await expect(status(page)).toHaveText(
+          "DEFAULT fallbacks: fake/claude-3-haiku-20240307 → fake/claude-fable-5",
+        );
+        await expect(rows).toHaveText([/Claude Haiku 3/, /Claude Fable 5/]);
+        await fallbacks.getByRole("button", { name: "Claude Fable 5 earlier" }).click();
+        await expect(status(page)).toHaveText(
+          "DEFAULT fallbacks: fake/claude-fable-5 → fake/claude-3-haiku-20240307",
+        );
+        await expect(rows).toHaveText([/Claude Fable 5/, /Claude Haiku 3/]);
+
+        // omp kept the chain: after a reload the hub reads it back.
+        await page.keyboard.press("Escape");
+        await expect(hub(page)).toBeHidden();
+        await page.reload();
+        await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await box(page).press("Alt+m");
+        await defaultRole.click();
+        await expect(rows).toHaveText([/Claude Fable 5/, /Claude Haiku 3/], { timeout: 30_000 });
+
+        await fallbacks.getByRole("button", { name: "Remove Claude Fable 5" }).click();
+        await expect(status(page)).toHaveText("DEFAULT fallbacks: fake/claude-3-haiku-20240307");
+        await fallbacks.getByRole("button", { name: "Remove Claude Haiku 3" }).click();
+        await expect(status(page)).toHaveText("DEFAULT fallbacks cleared");
+        await expect(fallbacks).toContainText("No fallbacks");
+        expect(realApp.problems).toEqual([]);
+      },
+    );
   });
 }
