@@ -33,6 +33,11 @@ export const USAGE_PAUSE_RESUME_GRACE_MS = RESUME_GRACE_MS;
 export const USAGE_PAUSE_AFTER_START_MS = 30_000;
 /** How often the rules with hours are judged, so their chats pause and continue on the minute (#2836). */
 export const USAGE_RULES_TICK_MS = 60_000;
+/**
+ * Held chats no condition holds any more continue one at a time, this far apart, in the queue's order, so a window
+ * that resets is not spent in one burst (#2836).
+ */
+export const USAGE_CONTINUE_STAGGER_MS = 3 * 60_000;
 /** A hand resume of a chat held for a reason with no expected end keeps it running this long at most. */
 const OVERRIDE_FALLBACK_MS = FIVE_HOUR_MS;
 
@@ -48,12 +53,22 @@ export interface UsagePauseMark {
  */
 export type UsagePauseOverrides = ReadonlyMap<ThreadId, ReadonlyMap<UsagePauseReason, number>>;
 
-/** What is kept on disk: the marks, the rules, the holds not ended yet, and the hand resumes still running. */
+/** What is kept on disk: the marks, the rules, the holds not ended yet, their order, and the hand resumes still running. */
 export interface UsagePauseKept {
   readonly marks: ReadonlyMap<ThreadId, UsagePauseMark>;
   readonly holds: ReadonlyMap<ThreadId, UsagePauseHold>;
   readonly rules: readonly UsageRule[];
   readonly overrides: UsagePauseOverrides;
+  /** The held chats in the queue's order (#2836): the first continues first. */
+  readonly order: readonly ThreadId[];
+}
+
+/** A held chat in the queue (#2836): its hold, and when it is next to continue if no condition holds it any more. */
+export interface UsageQueued {
+  readonly id: ThreadId;
+  readonly hold: UsagePauseHold;
+  /** When it continues (epoch ms), once its turn comes; null while a condition still holds it. */
+  readonly continuesAt: number | null;
 }
 
 export interface UsagePauseDeps {
@@ -90,6 +105,7 @@ const EMPTY: UsagePauseKept = {
   holds: new Map(),
   rules: [],
   overrides: new Map(),
+  order: [],
 };
 
 /** A condition that holds for a chat, with the rule it is from (none for the chat's own mark). */
@@ -140,8 +156,15 @@ export class UsagePause {
   readonly #rules = new Map<string, UsageRule>();
   readonly #holds = new Map<ThreadId, UsagePauseHold>();
   readonly #overrides = new Map<ThreadId, Map<UsagePauseReason, number>>();
-  readonly #timers = new Map<ThreadId, unknown>();
+  readonly #timers = new Map<ThreadId, { readonly handle: unknown; readonly at: number }>();
   readonly #listeners = new Set<UsagePauseListener>();
+  /** The held chats in the queue's order; a new hold joins at the end. */
+  #order: ThreadId[] = [];
+  /** Held chats no condition holds any more, waiting for their turn to continue. */
+  readonly #due = new Set<ThreadId>();
+  /** When the last chat continued in its turn: the next waits `USAGE_CONTINUE_STAGGER_MS` from it. */
+  #lastContinue = Number.NEGATIVE_INFINITY;
+  #dispatch: unknown = null;
   /** The last usage read and when the server got it, so a mark or rule set or changed is judged at once. */
   #usage: { readonly result: UsageLimitsResult; readonly receivedAt: number } | null = null;
   #tick: unknown = null;
@@ -179,6 +202,10 @@ export class UsagePause {
       this.#holds.set(threadId, hold);
       if (hold.until !== null) this.#schedule(threadId, Math.max(hold.until, earliest));
     }
+    this.#order = [
+      ...kept.order.filter((id) => this.#holds.has(id)),
+      ...[...this.#holds.keys()].filter((id) => !kept.order.includes(id)),
+    ];
     this.#ticking();
   }
 
@@ -255,6 +282,52 @@ export class UsagePause {
     });
   }
 
+  /** The held chats in the queue's order, each with its hold and, once no condition holds it, when it continues. */
+  queue(): readonly UsageQueued[] {
+    const now = this.#deps.now();
+    let turn = Math.max(now, this.#lastContinue + USAGE_CONTINUE_STAGGER_MS);
+    return this.#order.flatMap((id): UsageQueued[] => {
+      const hold = this.#holds.get(id);
+      if (hold === undefined) return [];
+      if (!this.#due.has(id)) return [{ id, hold, continuesAt: null }];
+      const at = turn;
+      turn += USAGE_CONTINUE_STAGGER_MS;
+      return [{ id, hold, continuesAt: at }];
+    });
+  }
+
+  /** Puts the held chats in this order; those it leaves out keep theirs after them. */
+  setOrder(threadIds: readonly ThreadId[]): Promise<void> {
+    return this.#queue(async () => {
+      const first = threadIds.filter(
+        (id, index) => this.#holds.has(id) && threadIds.indexOf(id) === index,
+      );
+      this.#order = [...first, ...this.#order.filter((id) => !first.includes(id))];
+      this.#keep();
+    });
+  }
+
+  /**
+   * Continues a held chat now, out of its turn: as a hand resume, the conditions that hold it do not pause it again
+   * until they next start.
+   */
+  continueNow(threadId: ThreadId): Promise<void> {
+    return this.#queue(async () => {
+      const hold = this.#holds.get(threadId);
+      if (hold === undefined) return;
+      this.#putOff(threadId, hold);
+      await this.#release(threadId, "continued_now");
+    });
+  }
+
+  /** Skips a held chat's continuing: it stays paused, and the rules let it be until it is resumed by hand. */
+  skip(threadId: ThreadId): Promise<void> {
+    return this.#queue(async () => {
+      if (!this.#holds.has(threadId)) return;
+      this.#endHold(threadId, "skipped");
+    });
+  }
+
   /** A fresh usage read: chats a condition holds for pause, held ones none holds for any more continue. */
   onUsage(result: UsageLimitsResult): Promise<void> {
     if (result.state !== "ready") return Promise.resolve();
@@ -270,13 +343,18 @@ export class UsagePause {
     if (pausedAt !== null) return;
     const hold = this.#holds.get(threadId);
     if (hold === undefined) return;
+    this.#putOff(threadId, hold);
+    this.#endHold(threadId, "resumed_elsewhere");
+  }
+
+  /** A held chat resumed by hand: each condition that holds it does not pause it again until it next starts. */
+  #putOff(threadId: ThreadId, hold: UsagePauseHold): void {
     const now = this.#deps.now();
     const reasons = this.#overrides.get(threadId) ?? new Map<UsagePauseReason, number>();
     for (const holding of this.#holding(threadId, hold.providerId, heldFor(hold), now)) {
       reasons.set(holding.reason, holding.until ?? now + OVERRIDE_FALLBACK_MS);
     }
     if (reasons.size > 0) this.#overrides.set(threadId, reasons);
-    this.#endHold(threadId, "resumed_elsewhere");
   }
 
   /** The chat moved to omp's new id for it: its mark, its place in the rules, its hold and hand resumes go with it. */
@@ -323,17 +401,19 @@ export class UsagePause {
   /** Stops every timer; the marks, rules and holds stay on disk for the next start. */
   close(): void {
     this.#closed = true;
-    for (const handle of this.#timers.values()) this.#deps.timer.clearTimeout(handle);
+    for (const timer of this.#timers.values()) this.#deps.timer.clearTimeout(timer.handle);
     this.#timers.clear();
     if (this.#tick !== null) this.#deps.timer.clearTimeout(this.#tick);
     this.#tick = null;
+    if (this.#dispatch !== null) this.#deps.timer.clearTimeout(this.#dispatch);
+    this.#dispatch = null;
   }
 
-  /** Whether the chat is marked or listed by a rule. */
+  /** Whether the chat is marked or listed by an enabled rule. */
   #watched(threadId: ThreadId): boolean {
     return (
       this.#marks.has(threadId) ||
-      [...this.#rules.values()].some((rule) => rule.chats.includes(threadId))
+      [...this.#rules.values()].some((rule) => rule.enabled && rule.chats.includes(threadId))
     );
   }
 
@@ -423,11 +503,19 @@ export class UsagePause {
       }
       const hold = this.#holds.get(threadId);
       if (hold !== undefined) {
-        const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
-        if (holding.length === 0) {
-          await this.#release(threadId, "clear");
+        // Unmarked, or out of every enabled rule: it continues at once, out of the queue.
+        if (!this.#watched(threadId)) {
+          await this.#release(threadId, "unwatched");
           continue;
         }
+        const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
+        if (holding.length === 0) {
+          // Its turn comes after this pass, in the queue's order.
+          this.#due.add(threadId);
+          continue;
+        }
+        // Held again before its turn came.
+        this.#due.delete(threadId);
         this.#rehold(threadId, hold, holding);
         continue;
       }
@@ -454,6 +542,7 @@ export class UsagePause {
         ...(named.rule === undefined ? {} : { rule: named.rule }),
       };
       this.#holds.set(threadId, next);
+      if (!this.#order.includes(threadId)) this.#order.push(threadId);
       const at = earliest(holding);
       if (at !== null) this.#schedule(threadId, at);
       this.#deps.logger?.info("usage_pause.held", {
@@ -466,6 +555,7 @@ export class UsagePause {
       this.#keep();
       this.#notifyHold(threadId);
     }
+    await this.#continueNext();
   }
 
   /** A held chat some condition still holds: the hold names the one expected to last longest, judged again at the first end. */
@@ -502,29 +592,79 @@ export class UsagePause {
   #endHold(threadId: ThreadId, reason: string): void {
     if (!this.#holds.delete(threadId)) return;
     this.#clearTimer(threadId);
+    this.#order = this.#order.filter((id) => id !== threadId);
+    this.#due.delete(threadId);
     this.#deps.logger?.info("usage_pause.hold_ended", { threadId, reason });
     this.#keep();
     this.#notifyHold(threadId);
   }
 
-  /** Judges the chat again at `at`: a condition expected to end then, or a resume due while the server was down. */
+  /**
+   * Continues the first due chat in the queue's order that no condition holds any more, if no chat continued in the last
+   * `USAGE_CONTINUE_STAGGER_MS`; the others wait their turn, and one held again meanwhile stays held.
+   */
+  async #continueNext(): Promise<void> {
+    if (this.#due.size === 0) return;
+    const now = this.#deps.now();
+    const wait = this.#lastContinue + USAGE_CONTINUE_STAGGER_MS - now;
+    if (wait > 0) {
+      this.#dispatchIn(wait);
+      return;
+    }
+    for (const threadId of [...this.#order]) {
+      if (!this.#due.has(threadId)) continue;
+      const hold = this.#holds.get(threadId);
+      if (hold === undefined) {
+        this.#due.delete(threadId);
+        continue;
+      }
+      const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
+      if (holding.length > 0) {
+        this.#due.delete(threadId);
+        this.#rehold(threadId, hold, holding);
+        continue;
+      }
+      this.#lastContinue = now;
+      await this.#release(threadId, "clear");
+      break;
+    }
+    if (this.#due.size > 0) this.#dispatchIn(USAGE_CONTINUE_STAGGER_MS);
+  }
+
+  /** Continues the next due chat in `ms`. */
+  #dispatchIn(ms: number): void {
+    if (this.#closed || this.#dispatch !== null) return;
+    this.#dispatch = this.#deps.timer.setTimeout(() => {
+      this.#dispatch = null;
+      void this.#queue(() => this.#continueNext());
+    }, ms);
+  }
+
+  /**
+   * Judges the chat again at `at`: a condition expected to end then, or a resume due while the server was down. Chats due
+   * at the same moment (one window's reset) are judged together, so the queue's order decides which continues first.
+   */
   #schedule(threadId: ThreadId, at: number): void {
     if (this.#closed) return;
     this.#clearTimer(threadId);
     const handle = this.#deps.timer.setTimeout(
       () => {
         this.#timers.delete(threadId);
-        void this.#queue(() => this.#judge([threadId]));
+        const now = this.#deps.now();
+        const together = [threadId];
+        for (const [id, timer] of this.#timers) if (timer.at <= now) together.push(id);
+        for (const id of together) this.#clearTimer(id);
+        void this.#queue(() => this.#judge(together));
       },
       Math.max(0, at - this.#deps.now()),
     );
-    this.#timers.set(threadId, handle);
+    this.#timers.set(threadId, { handle, at });
   }
 
   #clearTimer(threadId: ThreadId): void {
-    const handle = this.#timers.get(threadId);
-    if (handle === undefined) return;
-    this.#deps.timer.clearTimeout(handle);
+    const timer = this.#timers.get(threadId);
+    if (timer === undefined) return;
+    this.#deps.timer.clearTimeout(timer.handle);
     this.#timers.delete(threadId);
   }
 
@@ -577,6 +717,7 @@ export class UsagePause {
       holds: new Map(this.#holds),
       rules: [...this.#rules.values()],
       overrides: new Map([...this.#overrides].map(([id, reasons]) => [id, new Map(reasons)])),
+      order: [...this.#order],
     };
     this.#saving = this.#saving
       .then(() => this.#deps.save(kept))
@@ -622,6 +763,7 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
         readonly holds?: Record<string, Record<string, unknown>>;
         readonly rules?: unknown;
         readonly overrides?: Record<string, Record<string, unknown>>;
+        readonly order?: unknown;
       };
       if (saved.version !== 1 && saved.version !== 2) return EMPTY;
       const marks = new Map<ThreadId, UsagePauseMark>();
@@ -656,7 +798,10 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
         }
         if (kept.size > 0) overrides.set(threadId as ThreadId, kept);
       }
-      return { marks, holds, rules, overrides };
+      const order = (Array.isArray(saved.order) ? saved.order : []).filter(
+        (id: unknown): id is ThreadId => typeof id === "string" && holds.has(id as ThreadId),
+      );
+      return { marks, holds, rules, overrides, order };
     },
     save: async (kept) => {
       await mkdir(dirname(path), { recursive: true });
@@ -669,6 +814,7 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
         overrides: Object.fromEntries(
           [...kept.overrides].map(([id, reasons]) => [id, Object.fromEntries(reasons)]),
         ),
+        order: kept.order,
       };
       await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`);
       await rename(temporary, path);

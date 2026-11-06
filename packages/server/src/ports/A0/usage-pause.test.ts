@@ -11,6 +11,7 @@ import type {
 } from "@omp-app/contracts";
 import type { ProcessTimer } from "../../process/omp-process";
 import {
+  USAGE_CONTINUE_STAGGER_MS,
   USAGE_PAUSE_AFTER_START_MS,
   USAGE_PAUSE_RESUME_GRACE_MS,
   USAGE_PAUSE_WINDOW_MS,
@@ -21,6 +22,7 @@ import {
 
 const A = "01a18633-f642-75c0-b0bd-ad38cbbf851a" as ThreadId;
 const B = "01a18633-f642-75c0-b0bd-ad38cbbf851b" as ThreadId;
+const C = "01a18633-f642-75c0-b0bd-ad38cbbf851c" as ThreadId;
 const FOLDER = "/work/project";
 const HOUR = 3_600_000;
 
@@ -63,7 +65,11 @@ const NOTHING_KEPT: UsagePauseKept = {
   holds: new Map(),
   rules: [],
   overrides: new Map(),
+  order: [],
 };
+
+/** The test's name for a chat. */
+const nameOf = (threadId: ThreadId): string => (threadId === A ? "A" : threadId === B ? "B" : "C");
 
 /** The rules' hours in a time zone with daylight saving: Central time. */
 const ZONE = "America/Chicago";
@@ -87,13 +93,13 @@ function setup(kept: UsagePauseKept = NOTHING_KEPT, pace?: () => UsagePaceResult
     pause: async (threadId) => {
       if (!running.has(threadId)) return false;
       paused.add(threadId);
-      sent.push(`pause ${threadId === A ? "A" : "B"}`);
+      sent.push(`pause ${nameOf(threadId)}`);
       return true;
     },
     resume: async (threadId) => {
       if (!running.has(threadId)) return false;
       paused.delete(threadId);
-      sent.push(`resume ${threadId === A ? "A" : "B"}`);
+      sent.push(`resume ${nameOf(threadId)}`);
       return true;
     },
     isPaused: (threadId) => paused.has(threadId),
@@ -337,6 +343,7 @@ describe("usage pause (#2781 part 3)", () => {
         },
         rules: [],
         overrides: {},
+        order: [A],
       });
 
       // The server is back two hours later: A's resume fell due while it was down.
@@ -567,5 +574,77 @@ describe("usage rules (#2836)", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the usage queue (#2836)", () => {
+  test("after a reset, held chats continue one at a time, three minutes apart, in the queue's order", async () => {
+    const { timer, running, sent, rule: pause } = setup();
+    for (const id of [A, B]) {
+      running.set(id, "anthropic");
+      await pause.setMark(id, FOLDER, 90);
+    }
+    const reset = timer.now + HOUR;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A", "pause B"]);
+    await pause.setOrder([B, A]);
+    expect(pause.queue().map(({ id, continuesAt }) => [id, continuesAt])).toEqual([
+      [B, null],
+      [A, null],
+    ]);
+
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A", "pause B", "resume B"]);
+    expect(pause.queue().map(({ id, continuesAt }) => [id, continuesAt])).toEqual([
+      [A, timer.now + USAGE_CONTINUE_STAGGER_MS],
+    ]);
+    await timer.advance(USAGE_CONTINUE_STAGGER_MS - 1);
+    expect(sent).toEqual(["pause A", "pause B", "resume B"]);
+    await timer.advance(1);
+    expect(sent).toEqual(["pause A", "pause B", "resume B", "resume A"]);
+    expect(pause.queue()).toEqual([]);
+  });
+
+  test("a chat waiting for its turn that the new window holds again stays held", async () => {
+    const { timer, running, sent, rule: pause } = setup();
+    for (const id of [A, B]) {
+      running.set(id, "anthropic");
+      await pause.setMark(id, FOLDER, 90);
+    }
+    const reset = timer.now + HOUR;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: reset } }));
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A", "pause B", "resume A"]);
+
+    // A used the new window up before B's turn.
+    await pause.onUsage(usage({ anthropic: { fiveHour: 91, resetsAt: timer.now + 5 * HOUR } }));
+    await timer.advance(USAGE_CONTINUE_STAGGER_MS);
+    expect(sent).toEqual(["pause A", "pause B", "resume A", "pause A"]);
+    expect(pause.queue().map(({ id, continuesAt }) => [id, continuesAt])).toEqual([
+      [B, null],
+      [A, null],
+    ]);
+  });
+
+  test("Continue now continues a held chat out of its turn; Skip leaves it paused and the rules let it be", async () => {
+    const { timer, running, paused, sent, rule: pause } = setup();
+    for (const id of [A, B, C]) {
+      running.set(id, "anthropic");
+      await pause.setMark(id, FOLDER, 90);
+    }
+    const reset = timer.now + HOUR;
+    await pause.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A", "pause B", "pause C"]);
+
+    await pause.continueNow(B);
+    await pause.skip(C);
+    expect(sent).toEqual(["pause A", "pause B", "pause C", "resume B"]);
+    expect(paused.has(C)).toBe(true);
+    expect(pause.queue().map(({ id }) => id)).toEqual([A]);
+    // Still over the limit: B was continued by hand and C is the reader's now; neither is paused or held again.
+    await pause.onUsage(usage({ anthropic: { fiveHour: 97, resetsAt: reset } }));
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A", "pause B", "pause C", "resume B", "resume A"]);
+    expect(paused.has(C)).toBe(true);
   });
 });

@@ -30,6 +30,7 @@ import {
   type ModelChoice,
   type OpenHostRequests,
   type OpenThreadArgs,
+  type OrderUsageQueueArgs,
   type PauseAllArgs,
   type PauseAllResult,
   type PrepareNewChatArgs,
@@ -48,6 +49,7 @@ import {
   type UiState,
   type UiStateEvent,
   type UsagePauseHold,
+  type UsageQueueResult,
   type UsageRule,
   type UsageRulesResult,
 } from "@omp-app/contracts";
@@ -444,6 +446,10 @@ export class ChatSessionPortRuntime {
     usageRules: () => this.usageRules(),
     setUsageRule: (args) => this.setUsageRule(args as UsageRule),
     removeUsageRule: (args) => this.removeUsageRule(args as RemoveUsageRuleArgs),
+    usageQueue: () => this.usageQueue(),
+    orderUsageQueue: (args) => this.orderUsageQueue(args as OrderUsageQueueArgs),
+    continueHeld: (args) => this.continueHeld(args as { threadId: ThreadId }),
+    skipHeld: (args) => this.skipHeld(args as { threadId: ThreadId }),
     firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
@@ -519,6 +525,31 @@ export class ChatSessionPortRuntime {
   /** Removes a usage rule; the chats it held continue unless another rule holds them (#2836). */
   async removeUsageRule(args: RemoveUsageRuleArgs): Promise<null> {
     await this.#usagePauseOrFail().removeRule(args.id);
+    return null;
+  }
+
+  /** The held chats in the queue's order, and when each continues (#2836). */
+  usageQueue(): UsageQueueResult {
+    return { chats: [...this.#usagePauseOrFail().queue()] };
+  }
+
+  /** Puts the held chats in a new order, named by the ids the pages know (#2836). */
+  async orderUsageQueue(args: OrderUsageQueueArgs): Promise<null> {
+    await this.#usagePauseOrFail().setOrder(
+      args.threadIds.map((id) => this.#aliases.get(id) ?? id),
+    );
+    return null;
+  }
+
+  /** Continues a held chat now, out of its turn (#2836). */
+  async continueHeld(args: { threadId: ThreadId }): Promise<null> {
+    await this.#usagePauseOrFail().continueNow(this.#aliases.get(args.threadId) ?? args.threadId);
+    return null;
+  }
+
+  /** Skips a held chat's continuing: it stays paused, and the rules let it be (#2836). */
+  async skipHeld(args: { threadId: ThreadId }): Promise<null> {
+    await this.#usagePauseOrFail().skip(this.#aliases.get(args.threadId) ?? args.threadId);
     return null;
   }
 

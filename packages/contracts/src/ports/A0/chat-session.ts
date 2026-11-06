@@ -18,7 +18,7 @@ import type { PortCallOptions, PortClient, PortHandlers } from "../../core/envel
 import { definePort, StreamKey, streamKey } from "../../core/envelope";
 import { AppError } from "../../core/errors";
 import { FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
-import { UsagePauseReason } from "../A1/session-file-store";
+import { UsagePauseHold, UsagePauseReason } from "../A1/session-file-store";
 
 export const ThreadRef = z.object({ threadId: ThreadId }).strict();
 export type ThreadRef = z.infer<typeof ThreadRef>;
@@ -310,6 +310,27 @@ export const UsageRulesResult = z.strictObject({
 });
 export type UsageRulesResult = z.infer<typeof UsageRulesResult>;
 
+/**
+ * The held chats in the queue's order (#2836): each with its hold and, once no condition holds it any more, when it
+ * continues (epoch ms; chats continue one at a time, a few minutes apart, so a reset window is not spent at once).
+ */
+export const UsageQueueResult = z.strictObject({
+  chats: z
+    .array(
+      z.strictObject({
+        id: ThreadId,
+        hold: UsagePauseHold,
+        continuesAt: z.int().nonnegative().nullable(),
+      }),
+    )
+    .max(500),
+});
+export type UsageQueueResult = z.infer<typeof UsageQueueResult>;
+
+/** The held chats in a new order: the first continues first; held chats left out keep their order after them. */
+export const OrderUsageQueueArgs = z.strictObject({ threadIds: z.array(ThreadId).max(500) });
+export type OrderUsageQueueArgs = z.infer<typeof OrderUsageQueueArgs>;
+
 export const RemoveUsageRuleArgs = z.strictObject({ id: z.string().min(1).max(64) });
 export type RemoveUsageRuleArgs = z.infer<typeof RemoveUsageRuleArgs>;
 
@@ -350,6 +371,14 @@ export const ChatSessionPort = definePort({
     setUsageRule: { args: UsageRule, result: z.null() },
     /** Removes a usage rule: the chats it held continue, unless another rule holds them (#2836). */
     removeUsageRule: { args: RemoveUsageRuleArgs, result: z.null() },
+    /** The held chats in the queue's order, and when each continues (#2836). */
+    usageQueue: { args: z.strictObject({}), result: UsageQueueResult },
+    /** Puts the held chats in a new order (#2836). */
+    orderUsageQueue: { args: OrderUsageQueueArgs, result: z.null() },
+    /** Continues a held chat now, out of its turn; the conditions that held it wait until they next start (#2836). */
+    continueHeld: { args: ThreadRef, result: z.null() },
+    /** Skips a held chat's continuing: it stays paused, and the rules let it be until it is resumed by hand (#2836). */
+    skipHeld: { args: ThreadRef, result: z.null() },
     /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
     firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },
