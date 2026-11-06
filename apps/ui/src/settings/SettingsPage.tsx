@@ -1,7 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import type { ConfigWriteLayer, ConfigWriteValue, FolderPath } from "@omp-app/contracts";
 import { ChevronLeft, ChevronRight, Search, TriangleAlert } from "lucide-react";
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -104,6 +104,13 @@ function SettingsSheet({
   const [tabId, setTabId] = useState<string | null>(phone && place === "app" ? null : APP_TAB);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
+  /** The page's scroller: a section, and a search, open at its top, not where the page before was scrolled to. */
+  const pageRef = useRef<HTMLDivElement>(null);
+  const searching = needle !== "";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new section, or a search begun or ended, starts at the top
+  useEffect(() => {
+    pageRef.current?.scrollTo({ top: 0 });
+  }, [tabId, searching]);
 
   const byKey = useMemo(() => new Map((data?.settings ?? []).map((def) => [def.key, def])), [data]);
   const read = (key: string): unknown => {
@@ -274,7 +281,10 @@ function SettingsSheet({
               </>
             )}
           </header>
-          <div className={`min-h-0 flex-1 overflow-y-auto pb-8 ${phone ? "px-3" : "px-5"}`}>
+          <div
+            ref={pageRef}
+            className={`min-h-0 flex-1 overflow-y-auto pb-8 ${phone ? "px-3" : "px-5"}`}
+          >
             {(problem ?? config.problem) !== null && (
               <p role="alert" className="pt-4 text-sm text-bad-ink">
                 {problem ?? `The settings could not be read: ${config.problem}`}

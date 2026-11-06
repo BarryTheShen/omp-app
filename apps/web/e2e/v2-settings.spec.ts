@@ -75,6 +75,34 @@ realTest.describe("new UI settings", () => {
   );
 
   realTest(
+    "a section opens at its top, wherever the one before was scrolled to",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await openSettings(page);
+      const scrolled = () =>
+        page.evaluate(() => {
+          const scroller = [...document.querySelectorAll<HTMLElement>('[role="dialog"] *')].find(
+            (each) =>
+              /(auto|scroll)/.test(getComputedStyle(each).overflowY) &&
+              each.scrollHeight > each.clientHeight + 1 &&
+              each.clientHeight > 300,
+          );
+          return scroller?.scrollTop ?? -1;
+        });
+      const text = sheet(page).getByText("How this app looks");
+      const at = await text.boundingBox();
+      if (at === null) throw new Error("the App page is not drawn");
+      await page.mouse.move(at.x + 20, at.y + at.height / 2);
+      await page.mouse.wheel(0, 600);
+      await expect.poll(scrolled).toBeGreaterThan(0);
+      await tab(page, "Model").click();
+      await expect(sheet(page).getByRole("heading", { name: "Model", exact: true })).toBeVisible();
+      await expect.poll(scrolled).toBe(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "a switch, a choice, a menu and a number are written to omp's file, marked with Reset, and kept after a restart",
     async ({ realApp }) => {
       let page = await realApp.open({ path: "/" });
