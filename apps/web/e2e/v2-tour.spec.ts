@@ -19,7 +19,7 @@ realTest.describe("new UI tours", () => {
   const opened = async (page: Page, count: number) => {
     await expect(shown(page)).toHaveCount(count, { timeout: 60_000 });
     for (let index = 0; index < count; index += 1)
-      await expect(shown(page).nth(index)).toHaveAttribute("placeholder", "Message omp", {
+      await expect(shown(page).nth(index)).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
   };

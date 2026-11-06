@@ -152,7 +152,7 @@ realTest.describe("new UI side panel", () => {
 
       // The focused chat's numbers, as omp's /session counts them.
       await startNewChat(page);
-      await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
+      await expect(boxes(page).first()).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
       await send(page, 0, "hello", 1);
@@ -167,7 +167,7 @@ realTest.describe("new UI side panel", () => {
       // A new window's chat is focused: its own numbers; back in the first window, the first chat's.
       await page.keyboard.press("Control+Shift+O");
       await page.keyboard.press("Enter");
-      await expect(boxes(page).nth(1)).toHaveAttribute("placeholder", "Message omp", {
+      await expect(boxes(page).nth(1)).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
       await expect(user).toHaveText("0", { timeout: 30_000 });
@@ -183,7 +183,7 @@ realTest.describe("new UI side panel", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
-      await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
+      await expect(boxes(page).first()).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
       // The fake model streams this reply for about a minute.
@@ -207,7 +207,7 @@ realTest.describe("new UI side panel", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
-      await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
+      await expect(boxes(page).first()).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
       await page.keyboard.press("Control+Alt+KeyB");
@@ -276,7 +276,7 @@ realTest.describe("new UI side panel", () => {
       });
       const page = await realApp.open({ path: "/", context });
       const box = page.getByRole("textbox", { name: "Message" });
-      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
 
       await page.getByRole("button", { name: "Details" }).tap();
       const details = page.getByRole("region", { name: "Chat details" });

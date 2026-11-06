@@ -14,7 +14,7 @@ realTest.describe("new UI chat list and pane keys", () => {
 
   async function newChat(page: Page): Promise<void> {
     await startNewChat(page);
-    await expect(boxes(page).first()).toHaveAttribute("placeholder", "Message omp", {
+    await expect(boxes(page).first()).toHaveAttribute("placeholder", /^Message /, {
       timeout: 120_000,
     });
   }
@@ -139,7 +139,7 @@ realTest.describe("new UI chat list and pane keys", () => {
         // The window shows a chat now: the next pick and New chat each open in a workspace of their own (#2831).
         await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
         await expect(box).toBeFocused();
-        await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
         await startNewChat(page);
         await expect(box).toBeFocused();
         await page.keyboard.type("typed at once");
@@ -234,7 +234,7 @@ realTest.describe("new UI chat list: the chat's title from omp", () => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" }).first();
-      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       // A task: omp leaves a greeting or an acknowledgement unnamed (`isLowSignalTitleInput`).
       await box.fill("rename the export button in the toolbar");
       await box.press("Enter");
@@ -253,7 +253,7 @@ realTest.describe("new UI chat list: the chat's title from omp", () => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
       const box = page.getByRole("textbox", { name: "Message" }).first();
-      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await box.fill("rename the export button in the toolbar");
       await box.press("Enter");
       const workspace = page

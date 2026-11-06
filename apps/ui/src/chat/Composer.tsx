@@ -40,6 +40,7 @@ import type { ChatController } from "./controller";
 import { KeyRow } from "./KeyRow";
 import { ModelPicker } from "./ModelPicker";
 import { PausedRow } from "./PausedRow";
+import { PlusMenu } from "./PlusMenu";
 import { QueuedMessages } from "./QueuedMessages";
 import { QuickPanel } from "./QuickPanel";
 import { RoleTrack } from "./RoleTrack";
@@ -77,6 +78,9 @@ function insertText(box: HTMLTextAreaElement, text: string): boolean {
 
 /** A typed `/pause` (omp's takes no arguments and ignores any). */
 const PAUSE_TEXT = /^\/pause(?:\s|$)/;
+
+/** How long the phone's keys stay after the keyboard went: about as long as iOS takes to put the keyboard away. */
+const KEYS_LINGER_MS = 300;
 
 /** What the palette can do with a pane's message box. */
 export interface ComposerHandle {
@@ -189,11 +193,37 @@ export const Composer = memo(function Composer({
   /** The uploads still running, by file: taking a file out of the box cancels its upload. */
   const uploads = useRef(new Map<string, AbortController>());
   const [dragging, setDragging] = useState(false);
-  /** Whether the box has the focus: on a phone the keyboard is up then, and the key row offers to put it away. */
+  /** Whether the box has the focus. */
   const [focused, setFocused] = useState(false);
+  /**
+   * Whether the box has the focus from a tap: on it, or on a key or a prompt that puts the caret back in it. iOS raises
+   * its keyboard only then, not for a focus the page gives the box by itself (a chat that opens), so only then is the
+   * keyboard up. A blur ends it.
+   */
+  const [tapped, setTapped] = useState(false);
   /** Whether the phone's quick panel is open, in the keyboard's place. */
   const [panel, setPanel] = useState(false);
   const phone = usePhone();
+  const keyboardUp = focused && tapped;
+  // The keys come with the keyboard or the quick panel, and leave a moment after both went: a tap that takes the focus
+  // from the box (Send in some browsers) ends where it started, not on what moved under it once the keys were gone.
+  const keysWanted = keyboardUp || panel;
+  const [keysShown, setKeysShown] = useState(false);
+  useEffect(() => {
+    if (keysWanted) {
+      setKeysShown(true);
+      return;
+    }
+    const timer = setTimeout(() => setKeysShown(false), KEYS_LINGER_MS);
+    return () => clearTimeout(timer);
+  }, [keysWanted]);
+  /** Whether the phone's ＋ sheet is open (`PlusMenu`). */
+  const [plusOpen, setPlusOpen] = useState(false);
+  // On a phone the model chip is in the ＋ sheet: what opens the model menu (a failed request's "Switch model") opens
+  // the sheet too, so the menu has its chip.
+  useEffect(() => {
+    if (phone && modelPickerOpen) setPlusOpen(true);
+  }, [phone, modelPickerOpen]);
   // Paused by its usage pause (#2781 part 3): the paused row says at which limit and when the chat goes on.
   const pauseReason = useSyncExternalStore(controller.store.subscribe, () => {
     const usagePause = controller.store.getSnapshot().usagePause;
@@ -668,18 +698,19 @@ export const Composer = memo(function Composer({
     send(modified ? "followUp" : "auto");
   };
 
-  /** The box's settings: on a desktop under the text, on a phone in the key row above the keyboard. */
+  /** omp's `!` or `$` mode while the text starts with one: with the settings on a desktop, above the text on a phone. */
+  const shellBadge = shell !== null && (
+    <span
+      data-tour="shell-mode"
+      className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1"
+    >
+      {shell.method}
+      {shell.excludeFromContext ? " · not in context" : ""}
+    </span>
+  );
+  /** The box's settings: on a desktop under the text, on a phone in the ＋ sheet (`PlusMenu`). */
   const settings = (
     <>
-      {shell !== null && (
-        <span
-          data-tour="shell-mode"
-          className="min-w-0 truncate rounded-md bg-l2 px-2 py-0.5 font-mono text-xs text-t1 max-sm:flex max-sm:min-h-11 max-sm:items-center"
-        >
-          {shell.method}
-          {shell.excludeFromContext ? " · not in context" : ""}
-        </span>
-      )}
       <ModelPicker
         controller={controller}
         model={model}
@@ -718,46 +749,51 @@ export const Composer = memo(function Composer({
           : null);
   /**
    * Files from the device's own picker, on every device (#2783, #2830): any kind, as dropping or pasting takes. On an
-   * iPhone the picker offers the photo library, the camera and Files; a photo comes as JPEG (Safari converts HEIC).
+   * iPhone the picker offers the photo library, the camera and Files; a photo comes as JPEG (Safari converts HEIC). A
+   * computer has its button under the text; a phone has it in the ＋ sheet (`PlusMenu`).
    */
-  const pickerButton = (
-    <Button
-      type="button"
-      variant="ghost"
-      size={phone ? "icon" : "icon-sm"}
-      className={phone ? "size-11 shrink-0 text-t2" : "text-t3 hover:text-t1 tablet:size-11"}
-      aria-label="Attach files"
-      data-tour="attach-files"
-      disabled={closed}
-      onClick={() => picker.current?.click()}
-    >
-      <Paperclip />
-    </Button>
+  const pickerInput = (
+    <input
+      ref={picker}
+      type="file"
+      multiple
+      hidden
+      aria-label="Files to attach"
+      onChange={(event) => {
+        const picked = [...(event.currentTarget.files ?? [])];
+        event.currentTarget.value = "";
+        if (picked.length > 0) addFiles(picked);
+      }}
+    />
   );
   const attachButton = (
-    <>
-      {phone ? (
-        pickerButton
-      ) : (
-        <Tooltip>
-          <TooltipTrigger render={pickerButton} />
-          <TooltipContent>Attach files, or drop them on the box</TooltipContent>
-        </Tooltip>
-      )}
-      <input
-        ref={picker}
-        type="file"
-        multiple
-        hidden
-        aria-label="Files to attach"
-        onChange={(event) => {
-          const picked = [...(event.currentTarget.files ?? [])];
-          event.currentTarget.value = "";
-          if (picked.length > 0) addFiles(picked);
-        }}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-t3 hover:text-t1 tablet:size-11"
+            aria-label="Attach files"
+            data-tour="attach-files"
+            disabled={closed}
+            onClick={() => picker.current?.click()}
+          >
+            <Paperclip />
+          </Button>
+        }
       />
-    </>
+      <TooltipContent>Attach files, or drop them on the box</TooltipContent>
+    </Tooltip>
   );
+  /** On a phone the model and its level are behind ＋: the empty box names them ("Message Claude Opus 5.5 · high"). */
+  const readyPlaceholder =
+    phone && model !== null
+      ? `Message ${model.name.length > 24 ? `${model.name.slice(0, 23)}…` : model.name}${
+          thinkingLevel !== null && thinkingLevel !== "off" ? ` · ${thinkingLevel}` : ""
+        }`
+      : "Message omp";
   /** Something to send: text, pictures or files. */
   const typed = text.trim().length > 0 || attachments.length > 0 || files.length > 0;
   /**
@@ -955,8 +991,30 @@ export const Composer = memo(function Composer({
               ))}
             </ul>
           )}
+          {pickerInput}
+          {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
           <div className={phone ? "flex items-end gap-1.5 px-1.5 pb-1.5" : undefined}>
-            {phone && attachButton}
+            {phone && (
+              <PlusMenu
+                open={plusOpen}
+                onOpenChange={setPlusOpen}
+                settings={settings}
+                closed={closed}
+                onAttach={() => picker.current?.click()}
+                onQuickPrompts={() => {
+                  setPanel(true);
+                  boxRef.current?.blur();
+                }}
+                {...(working || pausedAt !== null
+                  ? {
+                      pause: {
+                        paused: pausedAt !== null,
+                        onPress: pausedAt !== null ? resume : pause,
+                      },
+                    }
+                  : {})}
+              />
+            )}
             <textarea
               ref={boxRef}
               className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] py-[11px] text-base leading-snug" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[0.875rem] leading-normal"}`}
@@ -966,7 +1024,7 @@ export const Composer = memo(function Composer({
                   ? "This chat could not be opened"
                   : disabled
                     ? "Opening the chat…"
-                    : "Message omp"
+                    : readyPlaceholder
               }
               value={text}
               rows={phone ? 1 : 2}
@@ -975,7 +1033,11 @@ export const Composer = memo(function Composer({
                 // The keyboard takes the quick panel's place.
                 setPanel(false);
               }}
-              onBlur={() => setFocused(false)}
+              onBlur={() => {
+                setFocused(false);
+                setTapped(false);
+              }}
+              onPointerDown={() => setTapped(true)}
               onChange={(event) => {
                 setError(null);
                 // Typing makes what is in the box the text, wherever Up and Down had got to.
@@ -1007,6 +1069,7 @@ export const Composer = memo(function Composer({
           {!phone && (
             <div className="flex items-center gap-1 px-2 pb-2">
               {attachButton}
+              {shellBadge}
               {settings}
               <span
                 className="min-w-0 flex-1 truncate px-1 text-right text-xs text-t3"
@@ -1018,15 +1081,16 @@ export const Composer = memo(function Composer({
             </div>
           )}
         </form>
-        {phone && (
+        {/* With the keyboard or the quick panel up: one line of keys. With both down the chat gets the room. */}
+        {phone && keysShown && (
           <KeyRow
-            settings={settings}
-            keyboardUp={focused}
+            keyboardUp={keyboardUp}
             panelOpen={panel}
             onPanel={() => {
               if (panel) {
                 setPanel(false);
                 // Within the tap, so the keyboard comes back up.
+                setTapped(true);
                 boxRef.current?.focus({ preventScroll: true });
               } else {
                 setPanel(true);
@@ -1035,6 +1099,7 @@ export const Composer = memo(function Composer({
             }}
             onInsert={(character) => {
               // Within the tap, so a phone brings its keyboard up for what follows.
+              setTapped(true);
               boxRef.current?.focus({ preventScroll: true });
               insertRef.current(character);
             }}
@@ -1047,11 +1112,6 @@ export const Composer = memo(function Composer({
               browse(step, box);
             }}
             onHideKeyboard={() => boxRef.current?.blur()}
-            {...(working || pausedAt !== null
-              ? {
-                  pause: { paused: pausedAt !== null, onPress: pausedAt !== null ? resume : pause },
-                }
-              : {})}
           />
         )}
         {phone && panel && (
@@ -1060,6 +1120,7 @@ export const Composer = memo(function Composer({
             disabled={disabled || sending}
             onSend={sendPrompt}
             onPut={(prompt) => {
+              setTapped(true);
               boxRef.current?.focus({ preventScroll: true });
               insertRef.current(prompt);
             }}

@@ -27,25 +27,53 @@ realTest.describe("new UI on a phone", () => {
       hasTouch: true,
     });
     const page = await realApp.open({ path: "/", context });
-    await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+    await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
     return { page, context };
   }
 
   realTest(
-    "the key row holds the box's settings and the keys a phone lacks; Send is a full-size target beside the text",
+    "＋ holds the box's settings, files and quick prompts; the keys come with the keyboard, in one line; Send is a full-size target beside the text (#2837)",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
-      // The settings left the box for the key row.
-      await expect(keys(page).getByRole("button", { name: /^Model: / })).toBeVisible();
-      await expect(keys(page).getByRole("button", { name: /^Thinking: / })).toBeVisible();
-      await expect(
-        page.locator("form[data-tour='message-box']").getByRole("button", { name: /^Model: / }),
-      ).toHaveCount(0);
+      // With the keyboard down the chat has the room: no key row, and the empty box names the model and its level.
+      await expect(keys(page)).toHaveCount(0);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message Fake Model · high");
+      await expect(page.getByRole("button", { name: /^Model: / })).toHaveCount(0);
       const send = page.getByRole("button", { name: "Send" });
       expect((await send.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 
-      // `/` goes in the box as typed, the box keeps the focus, and omp's commands are listed.
+      // ＋ holds the rest: files, the quick prompts, and the box's settings.
+      await page.getByRole("button", { name: "More" }).tap();
+      const plus = page.locator("[data-tour='plus-sheet']");
+      await expect(plus.getByRole("button", { name: "Photo or file" })).toBeVisible();
+      await expect(plus.getByRole("button", { name: "Quick prompts" })).toBeVisible();
+      await expect(plus.getByRole("button", { name: /^Model: / })).toBeVisible();
+      await expect(plus.getByRole("button", { name: /^Thinking: / })).toBeVisible();
+      await expect(plus.getByRole("button", { name: "Plan", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(plus).toHaveCount(0);
+
+      // The keys come with the keyboard: seven in one line, nothing scrolling sideways.
       await box(page).tap();
+      await expect(keys(page).getByRole("button")).toHaveCount(7);
+      const row = await keys(page).evaluate((element) => ({
+        overflow: element.scrollWidth - element.clientWidth,
+        rows: new Set(
+          [...element.querySelectorAll("button")].map((key) =>
+            Math.round(key.getBoundingClientRect().top),
+          ),
+        ).size,
+        narrowest: Math.min(
+          ...[...element.querySelectorAll("button")].map(
+            (key) => key.getBoundingClientRect().width,
+          ),
+        ),
+      }));
+      expect(row.overflow).toBe(0);
+      expect(row.rows).toBe(1);
+      expect(row.narrowest).toBeGreaterThanOrEqual(44);
+
+      // `/` goes in the box as typed, the box keeps the focus, and omp's commands are listed.
       await keys(page).getByRole("button", { name: "Commands" }).tap();
       await expect(box(page)).toHaveValue("/");
       await expect(box(page)).toBeFocused();
@@ -54,15 +82,14 @@ realTest.describe("new UI on a phone", () => {
       await box(page).fill("count_reply phone");
       await send.tap();
       await expect(page.getByText("count-1 phone")).toBeVisible({ timeout: 60_000 });
+      await box(page).tap();
       await keys(page).getByRole("button", { name: "Earlier message" }).tap();
       await expect(box(page)).toHaveValue("count_reply phone");
 
-      // ⌄ puts the keyboard away, and goes with it.
-      await box(page).tap();
-      const hide = keys(page).getByRole("button", { name: "Hide the keyboard" });
-      await hide.tap();
+      // ⌄ puts the keyboard away, and the keys go with it.
+      await keys(page).getByRole("button", { name: "Hide the keyboard" }).tap();
       await expect(box(page)).not.toBeFocused();
-      await expect(hide).toHaveCount(0);
+      await expect(keys(page)).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
@@ -75,11 +102,12 @@ realTest.describe("new UI on a phone", () => {
       const details = await page.getByRole("button", { name: "Details" }).boundingBox();
       if (details === null) throw new Error("no Details button");
 
-      // The model menu, a popover on a computer, is a sheet across the foot of the screen.
-      await keys(page)
-        .getByRole("button", { name: /^Model: / })
-        .tap();
-      const sheet = page.locator("[data-slot='popover-content']");
+      // The model menu, a popover on a computer, is a sheet across the foot of the screen, over ＋'s.
+      await page.getByRole("button", { name: "More" }).tap();
+      const plus = page.locator("[data-tour='plus-sheet']");
+      await plus.getByRole("button", { name: /^Model: / }).tap();
+      const sheet = page.locator("[data-slot='popover-content'][data-tour='model-menu']");
+      await expect(sheet).toBeVisible();
       await expect.poll(() => place(sheet)).toEqual([0, 390, 844]);
       // Its models are full-size rows, and so are their Star and Hide.
       const model = sheet.getByRole("option").first();
@@ -91,6 +119,9 @@ realTest.describe("new UI on a phone", () => {
       await page.touchscreen.tap(details.x + details.width / 2, details.y + details.height / 2);
       await expect(sheet).toHaveCount(0);
       await expect(page.getByRole("region", { name: "Chat details" })).toHaveCount(0);
+      // ＋'s sheet under it closes as any sheet does.
+      if ((await plus.count()) > 0) await page.keyboard.press("Escape");
+      await expect(plus).toHaveCount(0);
 
       // A reply's thinking and its tool open with a tap: rows 44 px tall or more.
       await box(page).fill("run_bash");
@@ -195,7 +226,7 @@ realTest.describe("new UI on a phone", () => {
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       const topBar = page.locator('[data-tour="phone-top-bar"]');
       // Nothing kept yet: the top bar has ⓘ.
       await expect(topBar.getByRole("button", { name: "Details", exact: true })).toBeVisible();
@@ -448,7 +479,7 @@ realTest.describe("new UI on a phone", () => {
       await sheet.getByRole("button", { name: "Done" }).tap();
 
       await page.getByRole("button", { name: "New chat" }).first().tap();
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await page.getByRole("button", { name: "Details" }).tap();
       const details = page.getByRole("region", { name: "Chat details" });
       for (const panel of ["Progress", "Files"]) {
@@ -545,7 +576,7 @@ realTest.describe("new UI on a phone", () => {
           .getByText("Seeded chat 1", { exact: true });
         await expect(message).toBeVisible({ timeout: 60_000 });
         // Edit is offered once the chat's omp is ready and idle.
-        await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
         // No small buttons under it on a phone.
         await expect(page.getByRole("button", { name: "Copy this message" })).toHaveCount(0);
         await message.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true });
@@ -672,12 +703,18 @@ realTest.describe("new UI on a phone", () => {
       // one, so the first tab's chat is still on the page, hidden.
       const shown = (tour: string) =>
         page.locator(`[data-tour='${tour}']`).filter({ visible: true });
-      await expect(heading).toHaveText("The keys a phone lacks", { timeout: 30_000 });
+      // The keys come with the keyboard: the tour asks for a tap on the box, then on ⚡, never its Next, which would
+      // put the keyboard away.
+      await expect(heading).toHaveText("The box", { timeout: 30_000 });
+      await expect(shown("message-box")).toHaveClass(/driver-active-element/);
+      await shown("message-box").getByRole("textbox", { name: "Message" }).tap();
+      await expect(heading).toHaveText("The keys a phone lacks");
       await expect(shown("phone-keys")).toHaveClass(/driver-active-element/);
-      await popover.getByRole("button", { name: "Next" }).tap();
-      await expect(heading).toHaveText("Quick prompts");
-      await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
+      await shown("phone-keys").getByRole("button", { name: "Quick prompts" }).tap();
       await expect(heading).toHaveText("One tap answers");
+      await popover.getByRole("button", { name: "Next" }).tap();
+      await expect(heading).toHaveText("＋ for the rest");
+      await expect(shown("plus")).toHaveClass(/driver-active-element/);
       await popover.getByRole("button", { name: "Next" }).tap();
       await expect(heading).toHaveText("Your chats");
       await expect(shown("phone-top-bar")).toHaveClass(/driver-active-element/);
@@ -709,7 +746,9 @@ realTest.describe("new UI on a phone", () => {
       await expect(field).toHaveValue("Ship it\nLooks good");
       await page.keyboard.press("Escape");
       await list.getByRole("button", { name: "New chat" }).tap();
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+      // The keys come with the keyboard.
+      await box(page).tap();
       await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
       const panel = page.getByRole("region", { name: "Quick prompts" });
       await expect(panel.getByRole("listitem")).toHaveText(["Ship it", "Looks good"]);
@@ -719,6 +758,7 @@ realTest.describe("new UI on a phone", () => {
       await expect(field).toHaveValue(/^Continue\nSure\n/);
       await page.keyboard.press("Escape");
       await list.getByRole("button", { name: "New chat" }).tap();
+      await box(page).tap();
       await keys(page).getByRole("button", { name: "Quick prompts" }).tap();
       await expect(panel.getByRole("listitem").first()).toHaveText("Continue");
       expect(realApp.problems).toEqual([]);
@@ -727,22 +767,31 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
-    "the paperclip beside the text takes a photo or any file from the phone's own picker (#2783, #2830), with targets of 44 pt",
+    "＋'s Photo or file takes a photo or any file from the phone's own picker (#2783, #2830, #2837), with targets of 44 pt",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
-      const button = page.getByRole("button", { name: "Attach files" });
-      await expect(button).toBeVisible();
-      const bounds = await button.boundingBox();
+      const plus = page.getByRole("button", { name: "More" });
+      const bounds = await plus.boundingBox();
       expect(Math.min(bounds?.width ?? 0, bounds?.height ?? 0)).toBeGreaterThanOrEqual(44);
-      // The picker is not limited to pictures: an iPhone offers the photo library, the camera and Files.
+      await plus.tap();
+      const row = page
+        .locator("[data-tour='plus-sheet']")
+        .getByRole("button", { name: "Photo or file" });
+      expect((await row.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      // The row opens the phone's own picker, which is not limited to pictures: an iPhone offers the photo library, the
+      // camera and Files.
       const picker = page.getByLabel("Files to attach");
       expect(await picker.getAttribute("accept")).toBeNull();
+      const chooser = page.waitForEvent("filechooser");
+      await row.tap();
+      const opened = await chooser;
+      await expect(page.locator("[data-tour='plus-sheet']")).toHaveCount(0);
       // A one-pixel PNG and a small PDF, as the picker would hand them over.
       const png = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
         "base64",
       );
-      await picker.setInputFiles([
+      await opened.setFiles([
         { name: "photo.png", mimeType: "image/png", buffer: png },
         { name: "report.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") },
       ]);
@@ -779,7 +828,7 @@ realTest.describe("new UI on a phone", () => {
       });
       const page = await realApp.open({ path: "/", context });
       await startNewChat(page);
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       for (const panes of [2, 3]) {
         await page.keyboard.press("Control+Shift+O");
         // The split is a blank window with the caret on its New chat.
@@ -788,7 +837,7 @@ realTest.describe("new UI on a phone", () => {
       }
       await expect(box(page)).toHaveCount(3);
       for (const each of await box(page).all())
-        await expect(each).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await expect(each).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await page.waitForTimeout(1_000);
 
       // The same browser as a phone: it comes back with its panes, but only the chat in front opens. Counted from the
@@ -802,7 +851,7 @@ realTest.describe("new UI on a phone", () => {
       );
       await page.setViewportSize({ width: 390, height: 844 });
       await page.reload();
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await page.waitForTimeout(3_000);
       expect(opens).toBe(1);
       expect(realApp.problems).toEqual([]);
@@ -844,7 +893,7 @@ realTest.describe("new UI on a phone", () => {
         });
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await box(page).fill("count_reply first");
       await page.getByRole("button", { name: "Send" }).tap();
       await expect(page.getByText("count-1 first")).toBeVisible({ timeout: 60_000 });
@@ -906,7 +955,7 @@ realTest.describe("new UI on a phone", () => {
         });
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await expect.poll(() => links[0]?.dead ?? false, { timeout: 30_000 }).toBe(true);
 
       await page.evaluate(() =>
@@ -978,7 +1027,7 @@ realTest.describe("new UI on a phone", () => {
         };
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       // A new build goes live: the app's page names another entry script.
       await page.route(/\/$/, async (route) => {
         const response = await route.fetch();
@@ -1033,7 +1082,7 @@ realTest.describe("new UI on a phone", () => {
         };
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await box(page).fill("count_reply kept");
       await page.getByRole("button", { name: "Send" }).tap();
       const reply = page.getByRole("region", { name: "Transcript" }).getByText(/count-\d+ kept/);
@@ -1059,19 +1108,19 @@ realTest.describe("new UI on a phone", () => {
       await page.unroute(/\/$/);
       await banner.getByRole("button", { name: "Reload" }).tap();
       await expect(reply).toBeVisible({ timeout: 120_000 });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 60_000 });
 
       // Opened again by itself within the hour (iOS reloads a Home Screen app it put away): back to the same chat.
       await page.reload();
       await expect(reply).toBeVisible({ timeout: 120_000 });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 60_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 60_000 });
 
       // Opened again two hours after the app was last up: a new chat, as a launch.
       await context.addInitScript(() =>
         localStorage.setItem("omp-app:last-up", String(Date.now() - 2 * 60 * 60 * 1000)),
       );
       await page.reload();
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       await expect(reply).toHaveCount(0);
       await context.close();
     },
@@ -1085,7 +1134,7 @@ realTest.describe("new UI on a phone", () => {
         hasTouch: true,
       });
       const page = await realApp.open({ path: "/", context });
-      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
       // On a phone What's new is in Settings → App, reached from the list.
       await page.getByRole("button", { name: "Chats", exact: true }).tap();
       await page
@@ -1120,7 +1169,7 @@ realTest.describe("new UI on a phone", () => {
       const shown = await page.evaluate(() => {
         const edge = (selector: string) =>
           document.querySelector(selector)?.getBoundingClientRect();
-        const keyRow = edge('[role="toolbar"][aria-label="Keys"]');
+        const form = edge('[data-tour="message-box"]');
         const strip = getComputedStyle(document.getElementById("root") as Element, "::before");
         return {
           chat: getComputedStyle(document.querySelector("main") as Element).backgroundColor,
@@ -1130,13 +1179,14 @@ realTest.describe("new UI on a phone", () => {
           // covers the status bar alone.
           barTop: Math.round(edge('[data-tour="phone-top-bar"]')?.top ?? 0),
           stripHeight: Math.round(Number.parseFloat(strip.height)),
-          // The first message right under the top bar (its row keeps its own spacing), and the key row, the lowest
-          // thing on the screen, right on the home bar's strip.
+          // The first message right under the top bar (its row keeps its own spacing), and with the keyboard down the
+          // box, the lowest thing on the screen (the keys come with the keyboard), right on the home bar's strip.
           aboveChat: Math.round(
             (edge('[data-index="0"]')?.top ?? 0) -
               (edge('[data-tour="phone-top-bar"]')?.bottom ?? 0),
           ),
-          belowKeys: Math.round(window.innerHeight - 34 - (keyRow?.bottom ?? 0)),
+          keys: document.querySelector('[role="toolbar"][aria-label="Keys"]') !== null,
+          belowBox: Math.round(window.innerHeight - 34 - (form?.bottom ?? 0)),
         };
       });
       expect(shown).toEqual({
@@ -1146,7 +1196,8 @@ realTest.describe("new UI on a phone", () => {
         barTop: 62,
         stripHeight: 62,
         aboveChat: 0,
-        belowKeys: 0,
+        keys: false,
+        belowBox: 0,
       });
 
       // The chat list starts 20 px lower, below the band iOS blurs (about 35 pt under the status bar), with its own

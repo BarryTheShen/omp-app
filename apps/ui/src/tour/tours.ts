@@ -151,6 +151,19 @@ const PANES: Tour = {
   ],
 };
 
+/**
+ * On a phone the box's settings, photos and files are behind ＋ (#2837): a tour that points at one taps ＋ first. The
+ * sheet stays open while the tour goes on inside it.
+ */
+const PLUS_SHEET = part("plus-sheet");
+const PLUS_STEP: TourStep = {
+  target: part("plus"),
+  title: "＋",
+  text: "On a phone the box's settings, photos and files are behind <b>＋</b>. Tap it.",
+  action: { kind: "appears", selector: PLUS_SHEET },
+  phoneOnly: true,
+};
+
 const MESSAGE_BOX_TOUR: Tour = {
   id: "message-box-2026-10-30",
   title: "The message box",
@@ -181,6 +194,7 @@ const MESSAGE_BOX_TOUR: Tour = {
       text: "Clear the box and type <b>!</b>: it becomes a shell command that runs without the model; <b>$</b> runs Python. Clear it again afterwards.",
       action: { kind: "appears", selector: part("shell-mode") },
     },
+    PLUS_STEP,
     {
       target: part("model"),
       title: "The model",
@@ -384,6 +398,7 @@ const MODELS_AND_ROLES: Tour = {
   minutes: 1,
   sandbox: true,
   steps: [
+    PLUS_STEP,
     {
       target: part("model"),
       title: "Roles",
@@ -417,6 +432,7 @@ const MODEL_MENU_TOUR: Tour = {
   minutes: 1,
   sandbox: true,
   steps: [
+    PLUS_STEP,
     {
       target: part("model"),
       title: "The model menu",
@@ -529,6 +545,7 @@ const ROLES_MENU_TOUR: Tour = {
   minutes: 1,
   sandbox: true,
   steps: [
+    PLUS_STEP,
     {
       target: part("model"),
       title: "The model menu",
@@ -810,17 +827,19 @@ const PHONE_TOUR: Tour = {
   title: "Your phone's controls",
   minutes: 1,
   sandbox: true,
+  // Its steps on the key row act on the keys: the tour's Next would take the focus from the box, so the keyboard and
+  // the keys with it would go.
   steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "The box",
+      text: "Tap the box: the keys a phone lacks come up with the keyboard, right under it.",
+      action: { kind: "appears", selector: part("phone-keys") },
+    },
     {
       target: part("phone-keys"),
       title: "The keys a phone lacks",
-      text: "Under the box: <b>⚡</b> quick prompts, the model, the thinking level and plan mode, then <b>/</b> commands, <b>@</b> files, <b>!</b> the shell, and <b>↑ ↓</b> for what you sent. A key leaves the keyboard up; the row scrolls sideways.",
-      action: next,
-    },
-    {
-      target: part("quick-prompts-key"),
-      title: "Quick prompts",
-      text: "<b>⚡</b> puts your quick prompts where the keyboard was, and <b>⌨</b> brings the keyboard back. Open them.",
+      text: "<b>⚡</b> quick prompts, <b>/</b> commands, <b>@</b> files, <b>!</b> the shell, <b>↑ ↓</b> for what you sent, and <b>⌄</b> to put the keyboard away. A key leaves the keyboard up. Tap <b>⚡</b>: your quick prompts take the keyboard's place, and <b>⌨</b> brings it back.",
       action: { kind: "appears", selector: part("quick-panel") },
     },
     {
@@ -830,10 +849,47 @@ const PHONE_TOUR: Tour = {
       action: next,
     },
     {
+      target: part("plus"),
+      title: "＋ for the rest",
+      text: "<b>＋</b> holds a photo or file, the quick prompts, and this chat's model, thinking level, plan mode and goal. With the keyboard down the keys go, the chat gets the room, and the empty box names the model and its level.",
+      action: next,
+    },
+    {
       target: part("phone-top-bar"),
       title: "Your chats",
       text: "The app opens on a new chat. <b>Chats</b> opens the list, and the pencil starts another chat. In the list, hold a chat to pin, rename or delete it.",
       action: next,
+    },
+  ],
+};
+
+/** #2837: on a phone, ＋ holds what the box does besides typing, and the keys come with the keyboard. */
+const PHONE_PLUS_TOUR: Tour = {
+  id: "phone-plus-2026-11-06",
+  title: "＋ and the keys on the phone",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("plus"),
+      title: "＋ beside the box",
+      text: "On a phone, <b>＋</b> holds a photo or file, the quick prompts, and this chat's model, thinking level, plan mode and goal. Tap it.",
+      action: { kind: "appears", selector: PLUS_SHEET },
+      phoneOnly: true,
+    },
+    {
+      target: PLUS_SHEET,
+      title: "One sheet",
+      text: "Pick what you need: the model and the thinking level open their own lists over it. Tap above the sheet to close it.",
+      action: { kind: "disappears", selector: PLUS_SHEET },
+      phoneOnly: true,
+    },
+    {
+      target: MESSAGE_BOX,
+      title: "The keys come with the keyboard",
+      text: "With the keyboard down the chat gets the room, and the empty box names the model and its level. Tap the box: the keys a phone lacks come up with the keyboard, in one line.",
+      action: { kind: "appears", selector: part("phone-keys") },
+      phoneOnly: true,
     },
   ],
 };
@@ -1419,6 +1475,7 @@ const THINKING_MENU_TOUR: Tour = {
   minutes: 1,
   sandbox: true,
   steps: [
+    PLUS_STEP,
     {
       target: part("thinking"),
       title: "Thinking levels",
@@ -1441,6 +1498,7 @@ const ATTACH_FILES_TOUR: Tour = {
   minutes: 1,
   sandbox: false,
   steps: [
+    PLUS_STEP,
     {
       target: ATTACH_FILES,
       title: "Attach files",
@@ -1457,6 +1515,7 @@ const ATTACH_IMAGES_TOUR: Tour = {
   minutes: 1,
   sandbox: false,
   steps: [
+    PLUS_STEP,
     {
       target: ATTACH_FILES,
       title: "Attach a photo",
@@ -1491,6 +1550,28 @@ const PORTS_TOUR: Tour = {
       target: PORTS_PANEL,
       title: "A page of your own",
       text: "An HTML file open in <b>Files</b> has <b>Share as a page</b>: then <b>Open in browser</b> shows it with its styles, scripts and pictures. Shared pages are listed here too, with <b>Stop sharing</b>.",
+      action: next,
+    },
+  ],
+};
+
+/** #2836 D1: the chats' services first, the machine's other ports folded away; an ended share says so. */
+const SHARING_TOUR: Tour = {
+  id: "sharing-2026-11-06",
+  title: "Your chats' services first",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Ports",
+      text: "Click <b>Ports</b> on this rail.",
+      action: { kind: "appears", selector: PORTS_PANEL },
+    },
+    {
+      target: PORTS_PANEL,
+      title: "Your chats' services first",
+      text: "The services your chats started, and the ones shared, come first. Every other port listening on the machine is folded under <b>Other services on this machine</b>. A share whose service stopped says so, here and in the chat's line, instead of offering a link that goes nowhere.",
       action: next,
     },
   ],
@@ -1700,8 +1781,22 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-06-phone-plus",
+    when: "2026-11-06T04:25:00-06:00",
+    summary:
+      "On a phone, ＋ beside the message box holds a photo or file, the quick prompts, Pause while omp works, and this chat's model, thinking level, plan mode and goal. The keys a phone lacks come up with the keyboard, in one line, and go with it, so the chat has the room while you read; the empty box names the model and its level.",
+    tours: [PHONE_PLUS_TOUR],
+  },
+  {
+    id: "2026-11-06-sharing",
+    when: "2026-11-06T01:15:00-06:00",
+    summary:
+      "Ports lists the services your chats started, and the shared ones, first; every other port on the machine folds away under Other services on this machine. A share whose service stopped says so, in Ports and in the chat's line, instead of offering a link that goes nowhere, and a page in Files offers Share as a page again. With the next server update a chat's service is shared once it has run for 5 seconds (no rows that come and go), omp's browser relay is never shared, and /stats is shared by itself.",
+    tours: [SHARING_TOUR],
+  },
+  {
     id: "2026-11-06-roles-menu",
-    when: "2026-11-06T01:05:00-06:00",
+    when: "2026-11-06T01:00:00-06:00",
     summary:
       "omp's roles are in the model menu: the roles Ctrl+P switches between are listed at its top, each with its model and the thinking level it names, and a pick switches the chat to that role. A model a role uses carries the role's name in the list. Roles and models…, at the menu's foot and in Settings → Model, opens omp's model panel at the chat's role, where every role's model is set.",
     tours: [ROLES_MENU_TOUR],
