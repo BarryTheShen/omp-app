@@ -138,6 +138,30 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
+    "the tap that brings the key row up leaves the focus in the box and presses no key (#2837)",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      // A new chat's box has the focus without a keyboard; a tap on it brings the key row up under it, which moves the
+      // box up. The tap's mouse press comes after the finger lifts, at the same point, over the keys now. Held here until
+      // the row is up, a real touch shows it every time (Chromium's own touch events, so its own tap follows).
+      await expect(box(page)).toBeFocused();
+      const bounds = await box(page).boundingBox();
+      if (bounds === null) throw new Error("the box is not drawn");
+      const point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      const touch = await context.newCDPSession(page);
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+      await expect(keys(page)).toBeVisible();
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await page.waitForTimeout(300);
+      await expect(box(page)).toBeFocused();
+      await page.keyboard.type("first line");
+      await expect(box(page)).toHaveValue("first line");
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "the return key adds a line and only Send sends (#2769); a long message leaves the chat in view (#2770)",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);
