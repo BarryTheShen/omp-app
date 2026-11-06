@@ -176,6 +176,12 @@ const TABLE = {
     group: "App",
     label: "Open the settings",
   },
+  dashboard: {
+    hotkey: "ctrl+shift+d, meta+shift+d",
+    scope: "workspace",
+    group: "App",
+    label: "Open the dashboard",
+  },
   sidePanel: {
     hotkey: "ctrl+alt+b",
     scope: "workspace",

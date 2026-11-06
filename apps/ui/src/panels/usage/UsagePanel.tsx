@@ -278,8 +278,11 @@ function LimitBar({
   );
 }
 
-/** The signed-in accounts' usage limits as omp reports them, read when the panel opens and every minute after. */
-function AccountsSection({ client }: { readonly client: AppClient }): ReactNode {
+/**
+ * The signed-in accounts' usage limits as omp reports them, read when the panel opens and every minute after; the
+ * dashboard shows them too (#2836).
+ */
+export function AccountsSection({ client }: { readonly client: AppClient }): ReactNode {
   const [result, setResult] = useState<UsageLimitsResult | null>(() => lastAccounts.get() ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -360,6 +363,8 @@ function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNo
   const [draft, setDraft] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Marked to pause at its own percent; a chat a usage rule holds without a mark has none (#2836). */
+  const marked = usagePause !== null && usagePause.percent !== null;
   const shown = draft ?? String(usagePause?.percent ?? USAGE_PAUSE_DEFAULT_PERCENT);
 
   const set = (percent: number | null): void => {
@@ -381,8 +386,8 @@ function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNo
       setProblem("Type a whole number from 1 to 100.");
       return;
     }
-    if (usagePause !== null && percent !== usagePause.percent) set(percent);
-    else if (usagePause !== null) setDraft(null);
+    if (marked && percent !== usagePause.percent) set(percent);
+    else if (marked) setDraft(null);
   };
 
   return (
@@ -394,7 +399,7 @@ function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNo
         Pause this chat at its usage limit
         <Switch
           id={fieldId}
-          checked={usagePause !== null}
+          checked={marked}
           disabled={!saved || busy}
           onCheckedChange={(on) => {
             if (!on) {

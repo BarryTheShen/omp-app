@@ -63,6 +63,7 @@ const AGENT_HUB = '[aria-label="Agent Hub"]';
 const PALETTE = part("palette");
 const KEY_LIST = part("keys");
 const SETTINGS_SHEET = part("settings-sheet");
+const DASHBOARD = part("dashboard");
 
 const PANES: Tour = {
   id: "workspace-2026-10-30",
@@ -1134,6 +1135,34 @@ const ZOOM_TOUR: Tour = {
   ],
 };
 
+/** #2836 D5: the dashboard. */
+const DASHBOARD_TOUR: Tour = {
+  id: "dashboard-2026-11-06",
+  title: "Your dashboard",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "The dashboard",
+      text: "Your usage windows and their pace, the rules that pause chats on conditions, and the chats they hold. {dashboard} opens it from anywhere. Open it.",
+      action: { kind: "appears", selector: DASHBOARD },
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Rules"]`,
+      title: "Rules",
+      text: "A rule pauses the chats you pick while a condition holds: a window at a percent, the pace heading past a line before the window resets, or hours of the day. They stop at their next step and continue once none holds. A chat you resume by hand runs on until the condition next starts.",
+      action: next,
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Queue"]`,
+      title: "The queue",
+      text: "The chats the rules hold, in the order they continue: one at a time, three minutes apart, so a window that resets is not spent at once. <b>Continue now</b> lets one go out of its turn; <b>Skip</b> leaves it paused for you.",
+      action: next,
+    },
+  ],
+};
+
 /** #2836 D1b: an HTML file the chat writes opens as a page, from the write's card. */
 const PAGE_FROM_CHAT_TOUR: Tour = {
   id: "page-from-chat-2026-11-06",
@@ -1797,6 +1826,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-dashboard",
+    when: "2026-11-06T05:05:00-06:00",
+    summary:
+      "The dashboard (Ctrl+Shift+D, or the gauge beside Settings): your usage windows and their pace; rules that pause the chats you pick while a condition holds (a window at a percent, the pace heading past a line before the reset, hours of the day) and continue them once none does; and the queue of the chats they hold, which continue one at a time, three minutes apart. A chat you resume by hand while it is held now runs on until the condition next starts.",
+    tours: [DASHBOARD_TOUR],
+  },
   {
     id: "2026-11-06-page-from-chat",
     when: "2026-11-06T04:25:00-06:00",

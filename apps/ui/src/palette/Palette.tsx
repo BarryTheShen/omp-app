@@ -200,6 +200,7 @@ export function Palette({
   onShortcuts,
   onSetGoal,
   onSettings,
+  onDashboard,
   onServers,
   onNewWindow,
   onInbox,
@@ -216,6 +217,8 @@ export function Palette({
   /** Opens the goal dialog for a chat. */
   readonly onSetGoal: (controller: ChatController) => void;
   readonly onSettings: () => void;
+  /** Opens the dashboard: usage windows, pace, rules and the queue (#2836). */
+  readonly onDashboard: () => void;
   /** Opens the settings at the desktop window's servers, the cursor in the link field. */
   readonly onServers: () => void;
   /** Opens another desktop window, in the desktop window only. */
@@ -376,6 +379,14 @@ export function Palette({
         label: KEYS.settings.label,
         keys: keycap(KEYS.settings),
         run: () => close(onSettings),
+      },
+      {
+        key: "app:dashboard",
+        group: "Commands",
+        label: KEYS.dashboard.label,
+        detail: "Usage windows, pace, the rules that pause chats, and the queue",
+        keys: keycap(KEYS.dashboard),
+        run: () => close(onDashboard),
       },
       {
         key: "app:sidePanel",

@@ -493,8 +493,11 @@ export class ChatController {
       (change) => {
         if (change.id !== this.#threadId) return;
         heard = true;
+        // A chat a usage rule holds has a hold and no mark (#2836); neither, and it has no usage pause.
         this.store.setUsagePause(
-          change.percent === null ? null : { percent: change.percent, hold: change.hold },
+          change.percent === null && change.hold === null
+            ? null
+            : { percent: change.percent, hold: change.hold },
         );
       },
     );

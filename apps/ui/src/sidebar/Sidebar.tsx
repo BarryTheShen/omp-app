@@ -11,6 +11,7 @@ import {
   CircleStop,
   Clock,
   Ellipsis,
+  Gauge,
   PanelLeftClose,
   Pause,
   PencilLine,
@@ -113,6 +114,7 @@ export function Sidebar({
   onDeleted,
   onStopRunning,
   onSettings,
+  onDashboard,
   onWhatsNew,
   workspace,
   phone,
@@ -139,6 +141,8 @@ export function Sidebar({
   /** Ends a running chat's process (D1); refused with the reason when another tab has it open. */
   readonly onStopRunning: (id: ThreadId) => Promise<void>;
   readonly onSettings: () => void;
+  /** Opens the dashboard: usage windows, pace, rules and the queue (#2836). */
+  readonly onDashboard: () => void;
   /** Opens the What's new list: every update and its tours. */
   readonly onWhatsNew: () => void;
   /** For the What's new card, which starts a tour in the workspace. */
@@ -411,6 +415,16 @@ export function Sidebar({
           {connection}
           <InboxButton onOpenChat={(target) => onOpen(target, "front")} />
           <Button
+            data-tour="dashboard-button"
+            variant="ghost"
+            size="icon"
+            aria-label="Dashboard"
+            className="text-t2"
+            onClick={onDashboard}
+          >
+            <Gauge />
+          </Button>
+          <Button
             data-tour="settings"
             variant="ghost"
             size="icon"
@@ -446,6 +460,26 @@ export function Sidebar({
                 <TooltipContent side="top">What's new: every update and its tours</TooltipContent>
               </Tooltip>
               <InboxButton onOpenChat={(target) => onOpen(target, "front")} />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      data-tour="dashboard-button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Dashboard"
+                      aria-keyshortcuts="Control+Shift+D"
+                      className="text-t3 hover:text-t1 tablet:size-11"
+                      onClick={onDashboard}
+                    />
+                  }
+                >
+                  <Gauge />
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Dashboard: usage, pace, rules and the queue · {keycap(KEYS.dashboard)}
+                </TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger
                   render={

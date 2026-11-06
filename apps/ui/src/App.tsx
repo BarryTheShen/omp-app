@@ -70,6 +70,11 @@ const SettingsPage = lazy(() =>
   import("./settings/SettingsPage").then((module) => ({ default: module.SettingsPage })),
 );
 
+/** The dashboard (#2836) loads when it first opens. */
+const DashboardPage = lazy(() =>
+  import("./dashboard/DashboardPage").then((module) => ({ default: module.DashboardPage })),
+);
+
 type Connection =
   | { readonly kind: "connecting" }
   | { readonly kind: "no-link" }
@@ -254,6 +259,9 @@ function Shell({
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   /** The chat focused when the settings opened: provider sign-in runs in it. */
   const [settingsChat, setSettingsChat] = useState<ChatController | null>(null);
+  const [dashboard, setDashboard] = useState(false);
+  /** Loaded once opened, as the settings are. */
+  const [dashboardLoaded, setDashboardLoaded] = useState(false);
   // A tour's step whose element is on the phone's other screen brings that screen in front: the chat, or the list, out
   // from under the settings and What's new (#2823).
   useEffect(() => {
@@ -310,9 +318,22 @@ function Shell({
   }, []);
   const showShortcuts = useCallback(() => setShortcuts(true), []);
   const showWhatsNew = useCallback(() => setWhatsNew(true), []);
+  const showDashboard = useCallback(() => {
+    setDashboardLoaded(true);
+    setDashboard(true);
+  }, []);
   const anywhere = { enableOnFormTags: true, preventDefault: true } as const;
   useHotkeys(KEYS.palette.hotkey, () => setPalette((open) => !open), anywhere);
   useHotkeys(KEYS.shortcuts.hotkey, () => setShortcuts((open) => !open), anywhere);
+  useHotkeys(
+    KEYS.dashboard.hotkey,
+    () => {
+      if (dashboard) setDashboard(false);
+      else showDashboard();
+    },
+    anywhere,
+    [dashboard, showDashboard],
+  );
   // The desktop window opens another window; a browser keeps its own use of the key. A refusal passes as a toast, as
   // the failure of any action just taken does.
   const newWindow = useCallback(() => {
@@ -435,6 +456,7 @@ function Shell({
         onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
+        onDashboard={showDashboard}
         onStopRunning={stopRunning}
         onWhatsNew={showWhatsNew}
         workspace={workspace}
@@ -541,6 +563,7 @@ function Shell({
         onShortcuts={showShortcuts}
         onSetGoal={setGoalFor}
         onSettings={showSettings}
+        onDashboard={showDashboard}
         onServers={showServers}
         onNewWindow={newWindow}
         onInbox={showInbox}
@@ -563,6 +586,16 @@ function Shell({
               setSettings(false);
               showWhatsNew();
             }}
+          />
+        </Suspense>
+      )}
+      {dashboardLoaded && (
+        <Suspense fallback={null}>
+          <DashboardPage
+            client={client}
+            phone={phone}
+            open={dashboard}
+            onOpenChange={setDashboard}
           />
         </Suspense>
       )}

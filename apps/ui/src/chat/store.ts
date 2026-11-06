@@ -13,16 +13,21 @@ import type {
 } from "@omp-app/contracts/chat-host";
 import type { ActiveTool, ConnectionPhase } from "../vendor/collab-web/lib/types";
 
-/** A chat's usage pause (#2781 part 3): the share of its provider's 5-hour window it pauses at, and the rule's hold. */
+/**
+ * A chat's usage pause (#2781 part 3): the share of its provider's 5-hour window it is marked to pause at (null when it
+ * is not marked and a usage rule holds it, #2836), and the hold on it.
+ */
 export interface ChatUsagePause {
-  readonly percent: number;
+  readonly percent: number | null;
   readonly hold: UsagePauseHold | null;
 }
 
 function usagePauseKey(usagePause: ChatUsagePause | null): string {
   if (usagePause === null) return "";
   const { percent, hold } = usagePause;
-  return hold === null ? `${percent}` : `${percent}:${hold.providerId}:${hold.until ?? "-"}`;
+  return hold === null
+    ? `${percent}`
+    : `${percent}:${hold.providerId}:${hold.until ?? "-"}:${hold.reason ?? ""}:${hold.rule ?? ""}`;
 }
 
 /** The chat's model, as the message box names it. */
