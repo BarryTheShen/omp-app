@@ -2,6 +2,8 @@ import type { AppClient } from "@omp-app/client";
 import {
   ChatSessionPort,
   type RunningChat,
+  type Share,
+  SharesPort,
   type ThreadId,
   UsageLimitStore,
   type UsagePaceResult,
@@ -10,14 +12,15 @@ import {
   type UsageRule,
   type UsageRulesResult,
 } from "@omp-app/contracts";
-import { ArrowDown, ArrowUp, ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useId, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { follow } from "../follow";
 import { AccountsSection } from "../panels/usage/UsagePanel";
+import { useShareLink } from "../shares/link";
 import { useRunningChats } from "../sidebar/useRunningChats";
 
 const failureText = (failure: unknown): string =>
@@ -26,13 +29,17 @@ const failureText = (failure: unknown): string =>
 /** What a call says when the server is older than the dashboard: the part comes with the next server update. */
 const OLD_SERVER = /Unknown method/;
 
-/** The words for a call that failed: the server's own, or that it comes with the next server update. */
-function problemWords(doing: string, failure: unknown): string {
+/**
+ * The words for a call that failed: `later` when the server is older than the part ("Rules come with the next server
+ * update."), else "Could not `action`: " and the server's own words.
+ */
+function problemWords(failure: unknown, later: string, action: string): string {
   const text = failureText(failure);
-  return OLD_SERVER.test(text)
-    ? `${doing} comes with the next server update.`
-    : `Could not ${doing.toLowerCase()}: ${text}`;
+  return OLD_SERVER.test(text) ? later : `Could not ${action}: ${text}`;
 }
+
+const RULES_LATER = "Rules come with the next server update.";
+const QUEUE_LATER = "The queue comes with the next server update.";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat(undefined, {
@@ -87,7 +94,13 @@ function PaceSection({ client }: { readonly client: AppClient }): ReactNode {
           setPace(found);
           setProblem(null);
         })
-        .catch((failure: unknown) => alive && setProblem(problemWords("The pace", failure)));
+        .catch(
+          (failure: unknown) =>
+            alive &&
+            setProblem(
+              problemWords(failure, "The pace comes with the next server update.", "read the pace"),
+            ),
+        );
     };
     read();
     const stop = follow(client.subscribe(UsageLimitStore, "changed"), read);
@@ -274,7 +287,7 @@ function RuleEditor({
         hours: hoursOn ? { from, to } : null,
       });
     } catch (failure) {
-      setProblem(problemWords("Saving rules", failure));
+      setProblem(problemWords(failure, RULES_LATER, "save the rule"));
       setSaving(false);
     }
   };
@@ -414,7 +427,7 @@ function RulesSection({
   const act = (work: Promise<unknown>): void => {
     work
       .then(reload)
-      .catch((caught: unknown) => setFailure(problemWords("Changing rules", caught)));
+      .catch((caught: unknown) => setFailure(problemWords(caught, RULES_LATER, "change the rule")));
   };
   if (problem !== null) return <p className="text-[0.8125rem] text-t3">{problem}</p>;
   if (rules === null) return <p className="text-[0.8125rem] text-t3">Reading…</p>;
@@ -525,7 +538,9 @@ function QueueSection({
   const act = (work: Promise<unknown>): void => {
     work
       .then(reload)
-      .catch((caught: unknown) => setFailure(problemWords("Changing the queue", caught)));
+      .catch((caught: unknown) =>
+        setFailure(problemWords(caught, QUEUE_LATER, "change the queue")),
+      );
   };
   if (problem !== null) return <p className="text-[0.8125rem] text-t3">{problem}</p>;
   if (queue === null) return <p className="text-[0.8125rem] text-t3">Reading…</p>;
@@ -612,6 +627,84 @@ function QueueSection({
   );
 }
 
+/** The share's one-time link into omp's statistics on this device; an ended share takes the section back to its button. */
+function StatsLink({
+  client,
+  share,
+  onEnded,
+}: {
+  readonly client: AppClient;
+  readonly share: Share;
+  readonly onEnded: () => void;
+}): ReactNode {
+  const { url, used, ended } = useShareLink(client, share.id);
+  useEffect(() => {
+    if (ended) onEnded();
+  }, [ended, onEnded]);
+  if (url === null)
+    return (
+      <Button variant="secondary" className="self-start" disabled>
+        <ExternalLink /> Open omp's statistics
+      </Button>
+    );
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={used}
+      className={`${buttonVariants({ variant: "secondary" })} self-start`}
+    >
+      <ExternalLink /> Open omp's statistics
+    </a>
+  );
+}
+
+/**
+ * omp's statistics (#2836 D6), as `/stats` shows them: the server runs omp's own page and shares it, so it opens here
+ * on an address of its own. Its first start reads every chat, so it can take a minute.
+ */
+function StatsSection({ client }: { readonly client: AppClient }): ReactNode {
+  const [share, setShare] = useState<Share | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const ended = useCallback(() => setShare(null), []);
+  const start = (): void => {
+    setStarting(true);
+    setProblem(null);
+    client
+      .port(SharesPort)
+      .shareStats({})
+      .then(setShare)
+      .catch((failure: unknown) =>
+        setProblem(
+          problemWords(
+            failure,
+            "omp's statistics come with the next server update.",
+            "start omp's statistics",
+          ),
+        ),
+      )
+      .finally(() => setStarting(false));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      {share === null ? (
+        <Button variant="secondary" className="self-start" disabled={starting} onClick={start}>
+          {starting ? "Starting omp's statistics…" : "Show omp's statistics"}
+        </Button>
+      ) : (
+        <StatsLink client={client} share={share} onEnded={ended} />
+      )}
+      {problem !== null && (
+        <p role="alert" className="text-xs text-bad-ink">
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** The rules and the queue, read together, again every 30 seconds and whenever the running chats change. */
 function useRulesAndQueue(client: AppClient, running: readonly RunningChat[]) {
   const [rules, setRules] = useState<UsageRulesResult | null>(null);
@@ -631,7 +724,10 @@ function useRulesAndQueue(client: AppClient, running: readonly RunningChat[]) {
         setRules(found);
         setRulesProblem(null);
       })
-      .catch((failure: unknown) => alive && setRulesProblem(problemWords("Rules", failure)));
+      .catch(
+        (failure: unknown) =>
+          alive && setRulesProblem(problemWords(failure, RULES_LATER, "read the rules")),
+      );
     session
       .usageQueue({})
       .then((found) => {
@@ -639,7 +735,10 @@ function useRulesAndQueue(client: AppClient, running: readonly RunningChat[]) {
         setQueue(found);
         setQueueProblem(null);
       })
-      .catch((failure: unknown) => alive && setQueueProblem(problemWords("The queue", failure)));
+      .catch(
+        (failure: unknown) =>
+          alive && setQueueProblem(problemWords(failure, QUEUE_LATER, "read the queue")),
+      );
     const timer = setTimeout(reload, READ_EVERY_MS);
     return () => {
       alive = false;
@@ -707,6 +806,12 @@ function DashboardSheet({
             problem={queueProblem}
             reload={reload}
           />
+        </Section>
+        <Section
+          title="Statistics"
+          hint="omp's own statistics: requests, costs, models, tools and errors, as /stats shows them."
+        >
+          <StatsSection client={client} />
         </Section>
       </div>
     </DialogContent>

@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FolderPath, ListeningService, Share, SharesList, ThreadId } from "@omp-app/contracts";
 import type { PortHandlerContext } from "../../../registry/ports";
-import { createSharesRuntime, END_AFTER_MS, SHARE_AFTER_MS, type SharesRuntime } from "./shares";
+import {
+  createSharesRuntime,
+  END_AFTER_MS,
+  SHARE_AFTER_MS,
+  type SharesPortContext,
+  type SharesRuntime,
+} from "./shares";
 
 const T1 = "thread-one" as ThreadId;
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -31,7 +37,11 @@ const service = (port: number, extra: Partial<ListeningService> = {}): Listening
 });
 
 /** A runtime over a listed set of services, a phone that is paired, the events it published, and its clock. */
-function runtime(listed: { services: ListeningService[] }, clock = { at: 1_000_000 }) {
+function runtime(
+  listed: { services: ListeningService[] },
+  clock = { at: 1_000_000 },
+  extra: Pick<SharesPortContext, "stats"> = {},
+) {
   let removed: ((deviceId: string) => void) | null = null;
   const events: { stream: string; payload: unknown }[] = [];
   let version = 0;
@@ -62,6 +72,7 @@ function runtime(listed: { services: ListeningService[] }, clock = { at: 1_000_0
       }
       return String(version);
     },
+    ...extra,
   });
   cleanups.push(() => shares.stop());
   const call = (method: string, args: unknown, connectionId = "c-phone") =>
@@ -93,6 +104,38 @@ describe("shares (#2788)", () => {
     expect(await shown.text()).toBe("hello");
     const list = (await call("list", {})) as SharesList;
     expect(list.shares.map((entry) => entry.openedBy)).toEqual([["Phone"]]);
+  });
+
+  test("omp's statistics page is started when first asked and shared as a service of its own (#2836 D6)", async () => {
+    const port = upstream();
+    const { call } = runtime(
+      { services: [service(port, { program: "omp", command: "omp stats" })] },
+      undefined,
+      { stats: { start: async () => port } },
+    );
+    const share = (await call("shareStats", {})) as Share;
+    expect(share).toMatchObject({ kind: "service", port, automatic: false, threadId: null });
+    // Asked again, the same share.
+    expect(((await call("shareStats", {})) as Share).id).toBe(share.id);
+    const { url } = (await call("open", { id: share.id })) as { url: string };
+    const { cookie } = await enter(url);
+    expect(await (await fetch(share.url, { headers: { cookie } })).text()).toBe("hello");
+  });
+
+  test("a server that does not run the statistics page, or whose page did not start, says so", async () => {
+    const { call } = runtime({ services: [] });
+    await expect(Promise.resolve(call("shareStats", {}))).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "This app server does not run omp's statistics page.",
+      },
+    });
+    const broken = runtime({ services: [] }, undefined, {
+      stats: { start: () => Promise.reject(new Error("omp's statistics page did not start.")) },
+    });
+    await expect(Promise.resolve(broken.call("shareStats", {}))).rejects.toMatchObject({
+      appError: { code: "unavailable", message: "omp's statistics page did not start." },
+    });
   });
 
   test("a service on the never-share list, or one not listening, is not shared", async () => {

@@ -83,6 +83,11 @@ export const SharesPort = definePort({
       args: z.object({ folder: FolderPath, path: WorkspaceRelativePath }).strict(),
       result: Share,
     },
+    /**
+     * omp's statistics page (#2836 D6): the server runs omp's own (`omp stats`) on this machine when first asked, and
+     * shares it as a service, so it opens on the paired devices at an address of its own.
+     */
+    shareStats: { args: EmptyArgs, result: Share },
     /** A one-time address that signs this device in to the share and opens it. */
     open: { args: ShareIdArgs, result: z.object({ url: z.string() }).strict() },
     stop: { args: ShareIdArgs, result: z.null() },

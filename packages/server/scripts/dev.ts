@@ -80,6 +80,7 @@ import {
   createDevicesPortRegistration,
   createRunningChatsRuntime,
   createSharesRuntime,
+  OmpStats,
 } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -681,6 +682,8 @@ export async function createCompositionServer(
   const devices = await openDevicePairing({ appDataDir, logger });
   let appAddress = "";
   let appPort: number | undefined;
+  // omp's statistics page, run when the dashboard first opens it (#2836 D6).
+  const ompStats = new OmpStats({ command: ompCmd, env, logger });
   // Pages and services of this machine opened to the paired devices (#2788).
   const shares = createSharesRuntime({
     pairing: devices,
@@ -696,6 +699,7 @@ export async function createCompositionServer(
     ...(env.OMP_APP_SHARE_ADDRESS === undefined
       ? {}
       : { address: () => env.OMP_APP_SHARE_ADDRESS ?? null }),
+    stats: ompStats,
     logger,
   });
   // The chats that run, from every folder, and an event each time that changes (D1).
@@ -877,6 +881,7 @@ export async function createCompositionServer(
           memoryStore.dispose();
           devices.desk.dispose();
           shares.stop();
+          ompStats.stop();
           usageLimitStore.dispose();
           runningChats.stop();
           await browserRuntime.stop();

@@ -1157,6 +1157,28 @@ const ZOOM_TOUR: Tour = {
   ],
 };
 
+/** #2836 D6: omp's statistics on the dashboard. */
+const STATS_TOUR: Tour = {
+  id: "dashboard-stats-2026-11-06",
+  title: "omp's statistics",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "The dashboard",
+      text: "{dashboard} opens the dashboard. Open it.",
+      action: { kind: "appears", selector: DASHBOARD },
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Statistics"]`,
+      title: "omp's statistics",
+      text: "<b>Show omp's statistics</b> starts omp's own statistics page on the server (what /stats shows: requests, costs, models, tools and errors) and shares it; <b>Open omp's statistics</b> then opens it here, on a phone too. Its first start reads every chat, so it can take a minute.",
+      action: next,
+    },
+  ],
+};
+
 /** #2836 D5: the dashboard. */
 const DASHBOARD_TOUR: Tour = {
   id: "dashboard-2026-11-06",
@@ -1848,6 +1870,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-dashboard-stats",
+    when: "2026-11-06T05:28:00-06:00",
+    summary:
+      "The dashboard shows omp's own statistics, as /stats shows them (requests, costs, models, tools and errors): Show omp's statistics starts omp's page on the server, and Open omp's statistics opens it here, on a phone too.",
+    tours: [STATS_TOUR],
+  },
   {
     id: "2026-11-06-role-fallbacks",
     when: "2026-11-06T05:20:00-06:00",

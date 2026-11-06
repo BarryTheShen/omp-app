@@ -47,6 +47,8 @@ export interface SharesPortContext {
   /** For tests: the services and their signature, instead of the machine's. */
   readonly readServices?: () => Promise<ListeningService[]>;
   readonly signature?: () => Promise<string>;
+  /** omp's statistics page, started when first asked (#2836 D6); absent: this server does not run it. */
+  readonly stats?: { readonly start: () => Promise<number> };
 }
 
 /** The machine's Tailscale address: an IPv4 address in 100.64.0.0/10. */
@@ -259,6 +261,34 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
           `${service.program ?? "This program"} on port ${port} is never shared: it is on the never-share list.`,
         );
       return shown(await shareService(service, false));
+    },
+    shareStats: async (): Promise<Share> => {
+      const stats = context.stats;
+      if (stats === undefined)
+        throw failure("unavailable", "This app server does not run omp's statistics page.");
+      const port = await stats.start().catch((error: unknown) => {
+        throw failure("unavailable", error instanceof Error ? error.message : String(error));
+      });
+      // omp names its page as it starts listening; the machine's sockets show it a moment later.
+      for (let tries = 0; tries < 20; tries += 1) {
+        const service = (await services()).find((candidate) => candidate.port === port);
+        if (service !== undefined) return shown(await shareService(service, false));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return shown(
+        await shareService(
+          {
+            port,
+            address: "127.0.0.1",
+            program: "omp",
+            command: "omp stats",
+            startedAt: null,
+            threadId: null,
+            neverShare: false,
+          },
+          false,
+        ),
+      );
     },
     sharePage: async (args: unknown): Promise<Share> => {
       const { folder, path } = args as { folder: FolderPath; path: WorkspaceRelativePath };

@@ -79,4 +79,36 @@ realTest.describe("new UI: the dashboard", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest.describe("omp's statistics", () => {
+    // Shares open at the machine's Tailscale address; the test machine has none, so they listen on 127.0.0.1 here, as in
+    // the ports specs.
+    realTest.use({ serverEnv: { OMP_APP_SHARE_ADDRESS: "127.0.0.1" } });
+
+    realTest(
+      "omp's statistics open from the dashboard, through a share of their own (#2836 D6)",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await startNewChat(page);
+        await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+          "placeholder",
+          "Message omp",
+          { timeout: 120_000 },
+        );
+        await page.getByRole("button", { name: "Dashboard" }).click();
+        const stats = dashboard(page).getByRole("region", { name: "Statistics" });
+        await stats.getByRole("button", { name: "Show omp's statistics" }).click();
+        // omp's page starts on the server and builds itself the first time.
+        const open = stats.getByRole("link", { name: "Open omp's statistics" });
+        await expect(open).toBeVisible({ timeout: 120_000 });
+        const [shown] = await Promise.all([
+          page.context().waitForEvent("page", { timeout: 30_000 }),
+          open.click(),
+        ]);
+        await expect(shown).toHaveTitle("omp stats", { timeout: 60_000 });
+        await shown.close();
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+  });
 });
