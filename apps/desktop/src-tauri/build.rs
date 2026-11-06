@@ -3,6 +3,8 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "read_clipboard_png",
+            "list_clipboard_files",
+            "read_clipboard_file",
             "servers",
             "connect_server",
             "open_server",

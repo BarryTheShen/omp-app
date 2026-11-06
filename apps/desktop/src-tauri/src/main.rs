@@ -39,6 +39,8 @@ fn main() {
         .manage(server::Shared::default())
         .invoke_handler(tauri::generate_handler![
             clipboard::read_clipboard_png,
+            clipboard::list_clipboard_files,
+            clipboard::read_clipboard_file,
             commands::servers,
             commands::connect_server,
             commands::open_server,

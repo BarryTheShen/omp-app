@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The app's server pages in the app's windows (the first, and the ones it opens later) may read a picture from the clipboard, list and open the servers the app knows, open another window, show a desktop notification, and zoom the window; nothing else.",
+  "description": "The app's server pages in the app's windows (the first, and the ones it opens later) may read a picture and the files a file manager copied from the clipboard, list and open the servers the app knows, open another window, show a desktop notification, and zoom the window; nothing else.",
   "windows": ["main", "window-*"],
   "local": false,
   "remote": {
@@ -9,6 +9,8 @@
   },
   "permissions": [
     "allow-read-clipboard-png",
+    "allow-list-clipboard-files",
+    "allow-read-clipboard-file",
     "allow-servers",
     "allow-connect-server",
     "allow-open-server",

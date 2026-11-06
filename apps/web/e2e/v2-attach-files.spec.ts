@@ -127,3 +127,49 @@ realTest(
     expect(realApp.problems).toEqual([]);
   },
 );
+
+realTest(
+  "a file a file manager copied pastes into the box as a file, not as its path; text with a picture of it stays text (#2833)",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(240_000);
+    const page = await openApp(realApp, { uploads: false });
+    await startNewChat(page);
+    await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+    const paste = (parts: {
+      readonly file: { readonly name: string; readonly type: string; readonly text: string };
+      readonly uriList: string;
+      readonly text: string;
+    }) =>
+      box(page).evaluate((element, { file, uriList, text }) => {
+        const data = new DataTransfer();
+        data.items.add(new File([file.text], file.name, { type: file.type }));
+        if (uriList !== "") data.setData("text/uri-list", uriList);
+        data.setData("text/plain", text);
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+        );
+      }, parts);
+
+    // A file manager's copy, as a browser hands it to the page: the file, its address, and its path as text.
+    await paste({
+      file: { name: "copied 2833.txt", type: "text/plain", text: MARKER },
+      uriList: "file:///home/someone/copied%202833.txt",
+      text: "/home/someone/copied 2833.txt",
+    });
+    const attached = page.getByRole("list", { name: "Attachments" });
+    await expect(
+      attached.getByRole("listitem").filter({ hasText: "copied 2833.txt" }),
+    ).toContainText("21 B", { timeout: 30_000 });
+    await expect(box(page)).toHaveValue("");
+
+    // A spreadsheet's cells come as text with a picture of them: the text is what was meant, no file is attached.
+    await paste({
+      file: { name: "image.png", type: "image/png", text: "not a picture" },
+      uriList: "",
+      text: "first cell\tsecond cell",
+    });
+    await page.waitForTimeout(1000);
+    await expect(attached.getByRole("listitem")).toHaveCount(1);
+    expect(realApp.problems).toEqual([]);
+  },
+);

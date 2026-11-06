@@ -8,6 +8,25 @@
 /** The largest file a message takes, in bytes: the server's upload limit (`MAX_UPLOAD_BYTES`). */
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
+const lines = (value: string): readonly string[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+
+/**
+ * Whether a paste holds files a file manager copied (#2833): their `file://` addresses (`text/uri-list`), or, as GNOME
+ * Files gives a page its copied files, their paths as its only text, one per line. Text copied from a page or a program
+ * is neither, and goes in as text.
+ */
+export function pastesCopiedFiles(uriList: string, text: string): boolean {
+  if (lines(uriList).some((line) => line.startsWith("file://"))) return true;
+  const paths = lines(text);
+  return (
+    paths.length > 0 && paths.every((line) => line.startsWith("file://") || line.startsWith("/"))
+  );
+}
+
 /** A file in the message box, waiting to be sent. */
 export interface AttachedFile {
   readonly id: string;

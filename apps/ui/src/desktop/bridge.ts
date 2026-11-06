@@ -1,8 +1,8 @@
 /**
  * The desktop window's commands. Tauri's bridge is on the window's pages only; a browser has none. The window's engine
- * (WebKitGTK) gives a page nothing for a copied picture in its paste event, so the window reads the picture itself
- * (`apps/desktop/src-tauri/src/clipboard.rs`); the window also opens other servers and shows desktop notifications
- * (`commands.rs` there).
+ * (WebKitGTK) gives a page nothing for a copied picture in its paste event, and a file a file manager copied may come as
+ * its path alone, so the window reads them itself (`apps/desktop/src-tauri/src/clipboard.rs`); the window also opens
+ * other servers and shows desktop notifications (`commands.rs` there).
  */
 export interface Bridge {
   readonly invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -23,6 +23,66 @@ export async function readDesktopClipboardPicture(sequence: number): Promise<Fil
   const bytes = await bridge.invoke("read_clipboard_png");
   if (!(bytes instanceof ArrayBuffer) || bytes.byteLength === 0) return null;
   return new File([bytes], `Pasted image ${sequence}.png`, { type: "image/png" });
+}
+
+/** A file a file manager copied, as the desktop window lists it: its name and its size in bytes. */
+export interface CopiedFile {
+  readonly name: string;
+  readonly size: number;
+}
+
+/** A picture's type by its name's extension, for the types omp's models read; empty for any other file. */
+const PICTURE_TYPES: Readonly<Record<string, string>> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+const isCopiedFile = (entry: unknown): entry is CopiedFile =>
+  typeof entry === "object" &&
+  entry !== null &&
+  typeof (entry as CopiedFile).name === "string" &&
+  typeof (entry as CopiedFile).size === "number";
+
+/**
+ * The files a file manager copied, read by the desktop window (#2833), as files the message box takes (a picture with
+ * its type, so it goes to the model as one picked does). A file larger than `maxBytes` is not read: it comes back in
+ * `tooLarge`. Null outside the window. A desktop app older than this rejects with the words for it.
+ */
+export async function readDesktopClipboardFiles(maxBytes: number): Promise<{
+  readonly files: readonly File[];
+  readonly tooLarge: readonly CopiedFile[];
+} | null> {
+  const bridge = desktopBridge();
+  if (bridge === null) return null;
+  let listed: unknown;
+  try {
+    listed = await bridge.invoke("list_clipboard_files");
+  } catch (failure) {
+    const reason = refusalText(failure);
+    // A desktop app that predates the command refuses it as one its capabilities do not list (Tauri's ACL).
+    if (/not allowed by ACL|not found/i.test(reason))
+      throw new Error(
+        "This desktop app is older than pasting copied files: install the latest one.",
+      );
+    throw new Error(reason);
+  }
+  const files: File[] = [];
+  const tooLarge: CopiedFile[] = [];
+  for (const [index, entry] of (Array.isArray(listed) ? listed : []).entries()) {
+    if (!isCopiedFile(entry)) continue;
+    if (entry.size > maxBytes) {
+      tooLarge.push(entry);
+      continue;
+    }
+    const bytes = await bridge.invoke("read_clipboard_file", { index });
+    if (!(bytes instanceof ArrayBuffer)) continue;
+    const type = PICTURE_TYPES[entry.name.split(".").at(-1)?.toLowerCase() ?? ""] ?? "";
+    files.push(new File([bytes], entry.name, { type }));
+  }
+  return { files, tooLarge };
 }
 
 /**

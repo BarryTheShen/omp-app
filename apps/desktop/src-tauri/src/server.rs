@@ -63,8 +63,10 @@ const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// The window's commands a page may call (see `clipboard.rs`, `commands.rs` and `capabilities/default.json`): this
 /// computer's server has them from that file, a server on another computer from `grant_page_commands`, so the two lists
 /// are the same (a test checks it).
-const PAGE_PERMISSIONS: [&str; 8] = [
+const PAGE_PERMISSIONS: [&str; 10] = [
     "allow-read-clipboard-png",
+    "allow-list-clipboard-files",
+    "allow-read-clipboard-file",
     "allow-servers",
     "allow-connect-server",
     "allow-open-server",

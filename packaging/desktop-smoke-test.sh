@@ -20,6 +20,8 @@
 # More windows: Ctrl+Shift+N (a page command of the window) and a second launch with `--new-window` open another window
 # on the same server; a window that is not the last closes alone, and the last one's close ends the app (T11).
 # Undo in the window: Ctrl+Z takes text typed in the message box out again, which WebKitGTK alone does not (T12, #2792).
+# Pasting a file a file manager copied (T13, #2833): the clipboard holds its address and its path as GNOME Files puts
+# them there, and Ctrl+V in the message box uploads the file into the chat's folder.
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -684,6 +686,75 @@ shot "$wid" undo-undone
 changed=$(differing "$shots/undo-typed.png" "$shots/undo-undone.png")
 [[ $changed -gt 300 ]] || fail "T12: Ctrl+Z left the message box as it was ($changed pixels changed)"
 note "T12 Ctrl+Z took the typed text out of the message box ($changed pixels changed)"
+note "== T13: Ctrl+V in the message box pastes a file a file manager copied, into the chat's folder (#2833)"
+copied="$work/clip/copied notes 2833.txt"
+mkdir -p "$work/clip"
+printf 'pasted from the file manager\n' >"$copied"
+# GNOME Files puts a copied file on the clipboard as its address (text/uri-list) and its path as text. Python's ctypes and
+# GTK's own library serve them here (no clipboard tool in the image); the helper keeps serving until it is stopped.
+clip_helper="$work/clip-serve.py"
+cat >"$clip_helper" <<'PY'
+import ctypes, pathlib, sys
+path = sys.argv[1]
+uri = pathlib.Path(path).as_uri().encode()
+gtk = ctypes.CDLL("libgtk-3.so.0")
+gdk = ctypes.CDLL("libgdk-3.so.0")
+gtk.gtk_init(None, None)
+gdk.gdk_atom_intern_static_string.restype = ctypes.c_void_p
+gdk.gdk_atom_intern_static_string.argtypes = [ctypes.c_char_p]
+gtk.gtk_clipboard_get.restype = ctypes.c_void_p
+gtk.gtk_clipboard_get.argtypes = [ctypes.c_void_p]
+clipboard = gtk.gtk_clipboard_get(gdk.gdk_atom_intern_static_string(b"CLIPBOARD"))
+class TargetEntry(ctypes.Structure):
+    _fields_ = [("target", ctypes.c_char_p), ("flags", ctypes.c_uint), ("info", ctypes.c_uint)]
+names = [(b"text/uri-list", 0), (b"UTF8_STRING", 1), (b"text/plain;charset=utf-8", 1), (b"text/plain", 1), (b"STRING", 1)]
+targets = (TargetEntry * len(names))(*[TargetEntry(name, 0, info) for name, info in names])
+uris = (ctypes.c_char_p * 2)(uri, None)
+GET = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p)
+CLEAR = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)
+gtk.gtk_selection_data_set_uris.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_char_p)]
+gtk.gtk_selection_data_set_text.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+gtk.gtk_selection_data_get_target.restype = ctypes.c_void_p
+gtk.gtk_selection_data_get_target.argtypes = [ctypes.c_void_p]
+gdk.gdk_atom_name.restype = ctypes.c_char_p
+gdk.gdk_atom_name.argtypes = [ctypes.c_void_p]
+def get(_clipboard, data, info, _user):
+    # What the window asked for, for a failure's message.
+    print("asked", gdk.gdk_atom_name(gtk.gtk_selection_data_get_target(data)).decode(), flush=True)
+    if info == 0:
+        gtk.gtk_selection_data_set_uris(data, uris)
+    else:
+        gtk.gtk_selection_data_set_text(data, path.encode(), -1)
+def clear(_clipboard, _user):
+    gtk.gtk_main_quit()
+get_func, clear_func = GET(get), CLEAR(clear)
+gtk.gtk_clipboard_set_with_data.restype = ctypes.c_int
+gtk.gtk_clipboard_set_with_data.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, GET, CLEAR, ctypes.c_void_p]
+if not gtk.gtk_clipboard_set_with_data(clipboard, targets, len(names), get_func, clear_func, None):
+    sys.exit("the clipboard was not taken")
+print("serving", flush=True)
+gtk.gtk_main()
+PY
+python3 "$clip_helper" "$copied" >"$work/clip-serve.log" 2>&1 &
+clip_pid=$!
+for _ in $(seq 1 20); do grep -q serving "$work/clip-serve.log" 2>/dev/null && break; sleep 0.5; done
+grep -q serving "$work/clip-serve.log" || fail "T13: the clipboard helper did not start: $(tr '\n' ' ' <"$work/clip-serve.log")"
+xdotool windowfocus "$wid" 2>/dev/null || true
+xdotool mousemove --window "$wid" 709 719 click 1 || fail "T13: could not click the message box"
+sleep 1
+xdotool key --clearmodifiers ctrl+v || fail "T13: could not press Ctrl+V"
+uploaded=""
+for _ in $(seq 1 40); do
+  uploaded=$(find "$work/agent" -type f -name 'copied notes 2833.txt' 2>/dev/null | head -n 1)
+  [[ -n $uploaded ]] && break
+  sleep 0.5
+done
+shot "$wid" paste-file
+kill "$clip_pid" 2>/dev/null
+wait "$clip_pid" 2>/dev/null
+[[ -n $uploaded ]] || fail "T13: Ctrl+V with a copied file put nothing in the chat's folder (no 'copied notes 2833.txt' under the agent folder in 20 s; the clipboard helper: $(tr '\n' ' ' <"$work/clip-serve.log"))"
+cmp -s "$copied" "$uploaded" || fail "T13: the file in the chat's folder differs from the one copied"
+note "T13 Ctrl+V uploaded the copied file into the chat's folder, the same bytes: ${uploaded#"$work/"}"
 close_window "$wid"
 wait_gone "$p" 40 || fail "T9: the app did not exit after its window closed"
 wait "$p"

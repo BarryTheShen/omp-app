@@ -19,7 +19,11 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentsPill } from "../agents/AgentsPill";
 import { btwQuestion } from "../btw/btw";
-import { desktopBridge, readDesktopClipboardPicture } from "../desktop/bridge";
+import {
+  desktopBridge,
+  readDesktopClipboardFiles,
+  readDesktopClipboardPicture,
+} from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { isImeEnter } from "../keys/ime";
 import { sizeText } from "../panels/files/transfer";
@@ -27,7 +31,7 @@ import { showPanel } from "../panels/panel-state";
 import { usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
 import { TodoPill } from "../todos/TodoPill";
-import { type AttachedFile, MAX_FILE_BYTES } from "./attachedFiles";
+import { type AttachedFile, MAX_FILE_BYTES, pastesCopiedFiles } from "./attachedFiles";
 import { type Attachment, readImages } from "./attachments";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
@@ -58,6 +62,16 @@ const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 const MB = 1024 * 1024;
+
+/** Why a file larger than the server takes is not attached. */
+const tooLargeText = (name: string, size: number): string =>
+  `${name} is not attached: a file can be up to ${MAX_FILE_BYTES / MB} MB, and this one is ${(size / MB).toFixed(1)} MB.`;
+
+/** Puts text at the box's caret as a paste does, so that it can be undone. */
+function insertText(box: HTMLTextAreaElement, text: string): boolean {
+  box.focus();
+  return document.execCommand("insertText", false, text);
+}
 
 /** A typed `/pause` (omp's takes no arguments and ignores any). */
 const PAUSE_TEXT = /^\/pause(?:\s|$)/;
@@ -222,9 +236,7 @@ export const Composer = memo(function Composer({
   const upload = (file: File): void => {
     const shown = file.name === "" ? "The pasted file" : file.name;
     if (file.size > MAX_FILE_BYTES) {
-      setError(
-        `${shown} is not attached: a file can be up to ${MAX_FILE_BYTES / MB} MB, and this one is ${(file.size / MB).toFixed(1)} MB.`,
-      );
+      setError(tooLargeText(shown, file.size));
       return;
     }
     const id = crypto.randomUUID();
@@ -279,6 +291,42 @@ export const Composer = memo(function Composer({
   };
   /** Pictures read from the desktop window's clipboard so far, which names the next one. */
   const windowPastes = useRef(0);
+  /**
+   * A paste the desktop window's engine left without what was copied (#2833): it gives a copied picture as nothing at
+   * all, and the files a file manager copied as nothing or as their paths. The window reads its clipboard: the copied
+   * files, else the picture. With neither, the text it gave goes in as the paste would have put it. A desktop app too old
+   * to read files reads the picture only.
+   */
+  const pasteFromWindow = (box: HTMLTextAreaElement, text: string): void => {
+    void (async () => {
+      let read: Awaited<ReturnType<typeof readDesktopClipboardFiles>> = null;
+      try {
+        read = await readDesktopClipboardFiles(MAX_FILE_BYTES);
+      } catch (failure) {
+        if (text !== "") {
+          insertText(box, text);
+          setError(`Could not paste the copied file: ${errorText(failure)}`);
+          return;
+        }
+      }
+      if (read !== null && (read.files.length > 0 || read.tooLarge.length > 0)) {
+        if (read.files.length > 0) addFiles(read.files);
+        const [large] = read.tooLarge;
+        if (large !== undefined) setError(tooLargeText(large.name, large.size));
+        return;
+      }
+      if (text !== "") {
+        insertText(box, text);
+        return;
+      }
+      try {
+        const file = await readDesktopClipboardPicture(++windowPastes.current);
+        if (file !== null) addFiles([file]);
+      } catch (failure) {
+        setError(`Could not paste the picture: ${errorText(failure)}`);
+      }
+    })();
+  };
 
   const update = (next: string): void => {
     textRef.current = next;
@@ -930,24 +978,20 @@ export const Composer = memo(function Composer({
               onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
               onKeyDown={onKeyDown}
               onPaste={(event) => {
-                const files = [...event.clipboardData.files];
-                // Text copied from a page goes in as text, as before.
-                if (event.clipboardData.getData("text/plain") !== "") return;
-                if (files.length > 0) {
+                const data = event.clipboardData;
+                const files = [...data.files];
+                const text = data.getData("text/plain");
+                // A file manager's copy: its files' addresses, and their paths as text (#2833). Text copied from a page
+                // or a program goes in as text, as before, also when a picture of it comes along (a spreadsheet's).
+                const copied = pastesCopiedFiles(data.getData("text/uri-list"), text);
+                if (files.length > 0 && (text === "" || copied)) {
                   event.preventDefault();
                   addFiles(files);
                   return;
                 }
-                // In the desktop window a copied picture comes as nothing at all: the window reads its clipboard.
-                if (desktopBridge() === null) return;
+                if (desktopBridge() === null || (text !== "" && !copied)) return;
                 event.preventDefault();
-                readDesktopClipboardPicture(++windowPastes.current)
-                  .then((file) => {
-                    if (file !== null) addFiles([file]);
-                  })
-                  .catch((failure: unknown) =>
-                    setError(`Could not paste the picture: ${errorText(failure)}`),
-                  );
+                pasteFromWindow(event.currentTarget, text);
               }}
             />
             {phone && sendOrStop}
