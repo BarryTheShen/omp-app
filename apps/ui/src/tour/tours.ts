@@ -190,7 +190,7 @@ const MESSAGE_BOX_TOUR: Tour = {
     {
       target: part("thinking"),
       title: "Thinking",
-      text: "{thinkingLevel} steps through thinking levels (or click the ring). Try it.",
+      text: "{thinkingLevel} steps to the next thinking level; a click on the level lists them all to pick one. Try the key.",
       action: keys("thinkingLevel"),
     },
     {
@@ -1355,6 +1355,30 @@ const COMMAND_KEYS_TOUR: Tour = {
 
 const ATTACH_FILES = part("attach-files");
 
+const THINKING_MENU = '[data-slot="dropdown-menu-content"]';
+
+/** #2837: the thinking level is a menu of the levels the model offers. */
+const THINKING_MENU_TOUR: Tour = {
+  id: "thinking-menu-2026-11-06",
+  title: "Pick the thinking level",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("thinking"),
+      title: "Thinking levels",
+      text: "Click or tap the thinking level: the menu lists every level this model offers, the one in use checked. Try it.",
+      action: { kind: "appears", selector: THINKING_MENU },
+    },
+    {
+      target: THINKING_MENU,
+      title: "Pick one",
+      text: "Pick any level, or close the menu. On a computer {thinkingLevel} still steps to the next one.",
+      action: { kind: "disappears", selector: THINKING_MENU },
+    },
+  ],
+};
+
 /** #2783, #2830: photos and any other file from the device's picker, on a computer and a phone. */
 const ATTACH_FILES_TOUR: Tour = {
   id: "attach-files-2026-11-05",
@@ -1620,6 +1644,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-thinking-menu",
+    when: "2026-11-06T00:22:00-06:00",
+    summary:
+      "The thinking level in the message box is a menu now: click or tap it to see every level the model offers and pick one, instead of stepping through them. Shift+Tab still steps to the next.",
+    tours: [THINKING_MENU_TOUR],
+  },
   {
     id: "2026-11-05-browser-keys",
     when: "2026-11-05T18:24:00-06:00",

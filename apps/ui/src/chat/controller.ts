@@ -90,6 +90,9 @@ export interface ChatUsage {
   readonly tokensPerSecond: number | null;
 }
 
+/** A thinking level by its name, as omp's `set_thinking_level` takes it ("off", "low", …). */
+export type ThinkingLevelName = ChatHostMethodMap["set_thinking_level"]["params"]["level"];
+
 export type ChatTarget =
   | {
       readonly kind: "existing";
@@ -868,6 +871,18 @@ export class ChatController {
   async cycleThinking(): Promise<void> {
     const result = await this.#request("cycle_thinking_level", {});
     if (result !== null) this.store.setThinkingLevel(result.level);
+  }
+
+  /** The thinking levels omp offers for the chat's model: `off`, then the model's own, in their order. */
+  async thinkingLevels(): Promise<readonly ThinkingLevelName[]> {
+    const { levels } = await this.#request("get_available_thinking_levels", {});
+    return levels.map((level): ThinkingLevelName => `${level}`);
+  }
+
+  /** Sets omp's thinking level for the chat's model to one of `thinkingLevels`. */
+  async setThinking(level: ThinkingLevelName): Promise<void> {
+    await this.#request("set_thinking_level", { level });
+    this.store.setThinkingLevel(level);
   }
 
   /** The chat's background jobs, running and recent (the Jobs tab); null when omp keeps none for it. */

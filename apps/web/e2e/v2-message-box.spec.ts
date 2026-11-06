@@ -132,11 +132,22 @@ realTest.describe("new UI message box", () => {
       await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
 
+      // A click lists the levels omp offers for the model, the current one checked; one pick sets another (#2837).
       const thinking = page.getByRole("button", { name: /^Thinking: / });
       await expect(thinking).toBeVisible();
-      const before = await thinking.getAttribute("aria-label");
+      const current = ((await thinking.getAttribute("aria-label")) ?? "").replace("Thinking: ", "");
       await thinking.click();
-      await expect(thinking).not.toHaveAttribute("aria-label", before ?? "");
+      const levels = page.getByRole("menuitemradio");
+      await expect(levels.first()).toHaveText("off");
+      const names = await levels.allTextContents();
+      expect(names.length).toBeGreaterThan(2);
+      await expect(page.getByRole("menuitemradio", { name: current, checked: true })).toBeVisible();
+      const picked = names.findLast((name) => name !== current) ?? "off";
+      await page.getByRole("menuitemradio", { name: picked }).click();
+      await expect(thinking).toHaveAccessibleName(`Thinking: ${picked}`);
+      // The key still steps to the next level.
+      await box(page).press("Shift+Tab");
+      await expect(thinking).not.toHaveAccessibleName(`Thinking: ${picked}`);
 
       const model = page.getByRole("button", { name: /^Model: / });
       await expect(model).toHaveAccessibleName("Model: Fake Model");

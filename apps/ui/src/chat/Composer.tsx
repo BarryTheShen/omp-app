@@ -5,7 +5,7 @@ import type {
   GoalAnswer,
   PlanModeStatus,
 } from "@omp-app/contracts/chat-host";
-import { ArrowUp, Brain, FileText, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react";
 import {
   type KeyboardEvent,
   memo,
@@ -52,6 +52,7 @@ import type {
   SentMessage,
   RoleTrack as Track,
 } from "./store";
+import { ThinkingMenu } from "./ThinkingMenu";
 import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
 import { holdReason } from "./usagePause";
@@ -685,7 +686,7 @@ export const Composer = memo(function Composer({
         onError={(failure) => setError(`Could not change it: ${errorText(failure)}`)}
       />
       {thinkingLevel !== null && (
-        <ThinkingChip
+        <ThinkingMenu
           controller={controller}
           level={thinkingLevel}
           disabled={disabled}
@@ -1061,39 +1062,3 @@ export const Composer = memo(function Composer({
     </div>
   );
 });
-
-/** omp's thinking level for the model; a click moves to the next level omp offers. */
-function ThinkingChip({
-  controller,
-  level,
-  disabled,
-  onError,
-}: {
-  readonly controller: ChatController;
-  readonly level: string;
-  readonly disabled: boolean;
-  readonly onError: (failure: unknown) => void;
-}): ReactNode {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            data-tour="thinking"
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-t2 hover:text-t1 tablet:h-11"
-            aria-label={`Thinking: ${level}`}
-            disabled={disabled}
-            onClick={() => void controller.cycleThinking().catch(onError)}
-          />
-        }
-      >
-        <Brain />
-        {level}
-      </TooltipTrigger>
-      <TooltipContent>Thinking level. Click for the next one.</TooltipContent>
-    </Tooltip>
-  );
-}
