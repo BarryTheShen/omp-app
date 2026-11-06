@@ -125,3 +125,20 @@
     inset: -16px 0;
   }
 }
+
+/*
+ * A workspace not shown (#2832) keeps its layout but paints nothing (#2834). Its container is `visibility: hidden`, but
+ * dockview marks the views it shows with a class named `visible`, which Tailwind's `visible` utility sets to
+ * `visibility: visible`: the windows and dividers of a workspace not shown then showed through the one in front (thin
+ * lines across it). So everything in it is hidden, whatever its own rules say, and at once: a transition of every
+ * property (the buttons' `transition-all`) would keep it visible for its duration, and a transition beats `!important`.
+ */
+/* biome-ignore lint/style/noDescendingSpecificity: an !important declaration wins whatever the selectors' order */
+[data-tab][data-hidden] *,
+[data-tab][data-hidden] *::before,
+[data-tab][data-hidden] *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: it must win over dockview's and Tailwind's own visibility rules */
+  visibility: hidden !important;
+  /* biome-ignore lint/complexity/noImportantStyles: no transition may keep a part of it visible for a moment */
+  transition: none !important;
+}

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, startNewChat } from "./real-omp";
 
 /** A saved chat of `turns` question and answer turns, long enough that its list draws only the rows near the view. */
 function longChat(turns: number): Record<string, unknown>[] {
@@ -101,6 +101,48 @@ export function defineWorkspaceSwitch(engine: string): void {
         }
         expect(blank).toEqual([]);
         await box.press("Escape");
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
+      "a workspace not shown paints nothing: its windows and dividers stay out of sight (#2834)",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await page.setViewportSize({ width: 1280, height: 860 });
+        await startNewChat(page);
+        const box = page.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        // A split: the chat and a blank window beside it, a divider between them.
+        await page.keyboard.press("Control+Shift+O");
+        const shownBlank = page.locator("[data-tab]:not([data-hidden]) [data-blank-window]");
+        await expect(shownBlank).toHaveCount(1);
+        await page.keyboard.press("Control+t");
+        const tabs = page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab");
+        await expect(tabs).toHaveCount(2);
+        await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+        const seen = await page.evaluate(() => {
+          const hidden = [...document.querySelectorAll<HTMLElement>("[data-tab][data-hidden]")];
+          let visible = 0;
+          for (const tab of hidden)
+            for (const element of [tab, ...tab.querySelectorAll<HTMLElement>("*")])
+              for (const part of [null, "::before", "::after"])
+                if (getComputedStyle(element, part).visibility === "visible") visible += 1;
+          return {
+            hidden: hidden.length,
+            dividers: hidden.reduce((sum, tab) => sum + tab.querySelectorAll(".dv-sash").length, 0),
+            visible,
+          };
+        });
+        // The workspace behind holds its split, and nothing of it, the divider included, is visible.
+        expect(seen.hidden).toBe(1);
+        expect(seen.dividers).toBeGreaterThan(0);
+        expect(seen.visible).toBe(0);
+        // In front again, its chat and its blank window show.
+        await page.keyboard.press("Control+Tab");
+        await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+        await expect(box).toBeVisible();
+        await expect(shownBlank).toBeVisible();
         expect(realApp.problems).toEqual([]);
       },
     );

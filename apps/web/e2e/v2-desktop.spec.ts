@@ -20,19 +20,29 @@ type Call = [string, Record<string, unknown> | null];
 
 /**
  * The window's command bridge, faked where Tauri puts it on the window's pages (`window.__TAURI_INTERNALS__`): it
- * records each command with its arguments and answers as the window does; the link "not a link" is refused.
+ * records each command with its arguments and answers as the window does; the link "not a link" is refused. The files a
+ * file manager copied are `window.copiedFiles` (none unless a test puts some there).
  */
 const fakeWindow = (target: Page) =>
   target.addInitScript(
     ({ png, servers, refusal }) => {
       const calls: [string, unknown][] = [];
       const bytes = Uint8Array.from(atob(png), (char) => char.charCodeAt(0));
+      const copied = (): { name: string; text: string }[] =>
+        (window as unknown as { copiedFiles?: { name: string; text: string }[] }).copiedFiles ?? [];
       Object.assign(window, {
         windowCalls: calls,
         __TAURI_INTERNALS__: {
           invoke: async (command: string, args?: Record<string, unknown>) => {
             calls.push([command, args ?? null]);
             if (command === "read_clipboard_png") return bytes.buffer;
+            if (command === "list_clipboard_files")
+              return copied().map((file) => ({ name: file.name, size: file.text.length }));
+            if (command === "read_clipboard_file") {
+              const file = copied()[Number(args?.index)];
+              if (file === undefined) throw "The clipboard no longer holds that file.";
+              return new TextEncoder().encode(file.text).buffer;
+            }
             if (command === "servers") return servers;
             if (command === "connect_server" && args?.link === "not a link") throw refusal;
             return null;
@@ -85,9 +95,53 @@ realTest.describe("new UI in the desktop window", () => {
 
       await paste("plain words");
       expect(await calls()).toEqual([]);
+      // Nothing at all: the window is asked for copied files first, then for a picture (#2833).
       await paste("");
       await expect(page.getByRole("button", { name: "Remove Pasted image 1.png" })).toBeVisible();
-      expect(await calls()).toEqual(["read_clipboard_png"]);
+      expect(await calls()).toEqual(["list_clipboard_files", "read_clipboard_png"]);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a file a file manager copied, pasted in the window, is read from the window's clipboard and uploaded; a copied path alone goes in as text (#2833)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
+      const box = await newChat(page);
+      const calls = async () => (await windowCalls(page)).map(([command]) => command);
+      // WebKitGTK's paste event for a file manager's copy: the file's path as text, or nothing.
+      const paste = (text: string) =>
+        box.evaluate((element, value) => {
+          const data = new DataTransfer();
+          if (value !== "") data.setData("text/plain", value);
+          element.dispatchEvent(
+            new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+          );
+        }, text);
+
+      // A path copied as text, with no file on the clipboard: the path goes in as text.
+      await paste("/home/someone/notes 2833.txt");
+      await expect(box).toHaveValue("/home/someone/notes 2833.txt");
+      expect(await calls()).toEqual(["list_clipboard_files"]);
+      await box.fill("");
+
+      // The file itself on the clipboard: it is read and uploaded to the chat's folder, its path not typed.
+      await page.evaluate(() =>
+        Object.assign(window, {
+          copiedFiles: [{ name: "notes 2833.txt", text: "copied from the file manager\n" }],
+        }),
+      );
+      await paste("/home/someone/notes 2833.txt");
+      const attached = page.getByRole("list", { name: "Attachments" });
+      await expect(
+        attached.getByRole("listitem").filter({ hasText: "notes 2833.txt" }),
+      ).toContainText("29 B", { timeout: 30_000 });
+      await expect(box).toHaveValue("");
+      expect(await calls()).toEqual([
+        "list_clipboard_files",
+        "list_clipboard_files",
+        "read_clipboard_file",
+      ]);
       expect(realApp.problems).toEqual([]);
     },
   );
