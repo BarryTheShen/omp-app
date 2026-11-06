@@ -1969,7 +1969,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-phone-no-keys",
-    when: "2026-11-06T11:15:00-06:00",
+    when: "2026-11-06T10:49:00-06:00",
     summary:
       "On a phone, nothing comes up between the message box and your keyboard any more: the row of keys is gone, as your keyboard has / @ and !. ⚡ beside Send puts your quick prompts in the keyboard's place, where Sent brings back what you sent, and ⌨ brings the keyboard back. The empty box names the model and its level on one line, and Send sits centred in the box.",
     tours: [PHONE_QUICK_KEY_TOUR],
