@@ -1,7 +1,8 @@
 import { cn } from "cn";
 import { ExternalLink, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, use, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { LiteContext } from "../lite/LiteContext";
 import type { ShellRunView } from "./rows";
 import type { ChatNotice } from "./store";
 
@@ -75,7 +76,8 @@ const NOTICE_TEXT: Record<Exclude<ChatNotice["level"], "status">, string> = {
 /**
  * What a built-in command printed, or omp's notification, kept until it is dismissed; omp's status lines stay dim. A
  * service this chat started that was shared (#2788) has Open: a one-time link into it on this device; once its share
- * ended (the service stopped), the row says so instead (#2836).
+ * ended (the service stopped), the row says so instead (#2836). In the lite view a warning or an error is one line, as a
+ * status line is, so a side panel's chat keeps its room (#2844).
  */
 export function NoticeRow({
   notice,
@@ -86,8 +88,27 @@ export function NoticeRow({
   readonly onDismiss: (id: number) => void;
   readonly onShareOpened?: (shareId: string) => void;
 }): ReactNode {
-  if (notice.level === "status") return <StatusLine text={notice.text} />;
+  const lite = use(LiteContext);
+  if (notice.level === "status") return <OneLine text={notice.text} tone="status" />;
   const share = notice.share;
+  if (lite && share === undefined && (notice.level === "warning" || notice.level === "error"))
+    return (
+      <div
+        role={notice.level === "error" ? "alert" : "status"}
+        className="flex w-full min-w-0 items-center gap-1"
+      >
+        <OneLine text={notice.text} tone={notice.level} />
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Dismiss"
+          className="text-t3"
+          onClick={() => onDismiss(notice.id)}
+        >
+          <X />
+        </Button>
+      </div>
+    );
   return (
     <div
       role={notice.level === "error" ? "alert" : "status"}
@@ -131,18 +152,33 @@ export function NoticeRow({
   );
 }
 
+/** A one-line row's colour: a status line dim, as omp's terminal shows it; a warning and an error in their inks. */
+const ONE_LINE_TONE = {
+  status: "text-t3 hover:text-t2",
+  warning: "text-warn-ink",
+  error: "text-bad-ink",
+} as const;
+
 /**
  * One of omp's status lines too long for a toast, as omp's terminal shows it: a dim line in the chat, here cut to one
- * line (the tools omp mounted at its start fill many). A click shows all of it.
+ * line (the tools omp mounted at its start fill many); and, in the lite view, a warning or an error. A click shows all
+ * of it.
  */
-function StatusLine({ text }: { readonly text: string }): ReactNode {
+function OneLine({
+  text,
+  tone,
+}: {
+  readonly text: string;
+  readonly tone: keyof typeof ONE_LINE_TONE;
+}): ReactNode {
   const [whole, setWhole] = useState(false);
   return (
     <button
       type="button"
       aria-expanded={whole}
       className={cn(
-        "w-full min-w-0 rounded-md px-1 text-left font-sans text-[0.8125rem] text-t3 outline-none hover:text-t2 focus-visible:ring-2 focus-visible:ring-ring",
+        "w-full min-w-0 rounded-md px-1 text-left font-sans text-[0.8125rem] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        ONE_LINE_TONE[tone],
         whole ? "whitespace-pre-wrap break-words" : "truncate",
       )}
       onClick={() => setWhole((shown) => !shown)}

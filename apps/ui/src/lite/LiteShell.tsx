@@ -22,6 +22,7 @@ import { watchLink } from "../linkCheck";
 import { titleOf } from "../sidebar/title";
 import { type ChatList, useChatList } from "../sidebar/useChatList";
 import { chatCache } from "../workspace/chatCache";
+import { LiteContext } from "./LiteContext";
 import { fullAppAddress } from "./lite";
 
 /** How many chats the switcher offers: the folder's most recent ones. */
@@ -87,7 +88,9 @@ export function LiteShell({
   return (
     <div data-app-root="true" className="flex h-full min-w-0 flex-col bg-panel">
       <ConnectionBanner client={client} />
-      <LiteChats key={folder} client={client} folder={folder} />
+      <LiteContext value>
+        <LiteChats key={folder} client={client} folder={folder} />
+      </LiteContext>
     </div>
   );
 }

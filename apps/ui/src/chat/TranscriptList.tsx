@@ -4,6 +4,7 @@ import { ArrowDown } from "lucide-react";
 import {
   type ReactNode,
   type RefObject,
+  use,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,6 +13,7 @@ import {
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { LiteContext } from "../lite/LiteContext";
 import { useFollowTrace } from "../perf/followTrace";
 import { usePhone } from "../phone";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
@@ -320,8 +322,15 @@ export function TranscriptList({
   readonly label?: string;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, shell, notices } =
-    snapshot;
+  const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, shell } = snapshot;
+  // The lite view (#2844) leaves out omp's status lines: at each start they list the tools it mounted, which would fill
+  // an empty chat in a side panel. A warning or an error stays.
+  const lite = use(LiteContext);
+  const notices = useMemo(
+    () =>
+      lite ? snapshot.notices.filter((notice) => notice.level !== "status") : snapshot.notices,
+    [lite, snapshot.notices],
+  );
   const rows = useMemo(
     () =>
       buildRows({ entries, stream, streamDone, activeTools, working, shell, notices, hasOlder }),

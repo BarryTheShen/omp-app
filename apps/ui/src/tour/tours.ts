@@ -992,6 +992,23 @@ const PHONE_QUICK_KEY_TOUR: Tour = {
   ],
 };
 
+/** #2844: the lite view in its host's look. It is a page of its own, so the step stands alone. */
+const LITE_HOST_LOOK_TOUR: Tour = {
+  id: "lite-host-look-2026-11-06",
+  title: "The side panel in your notes app's look",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "In your notes app's look",
+      text: "In another app's side panel the chat takes that app's look: the colours, font and text size it puts in the address (<b>bg</b>, <b>surface</b>, <b>fg</b>, <b>muted</b>, <b>border</b>, <b>accent</b>, <b>font</b>, <b>fontSize</b>). The list of tools omp mounts when a chat starts stays out of it; a warning or an error shows as one line.",
+      action: next,
+      centred: true,
+    },
+  ],
+};
+
 /** Math drawn by KaTeX: nothing to point at in a sandbox chat, so the step stands alone. */
 const MATH_DRAWN_TOUR: Tour = {
   id: "math-drawn-2026-11-06",
@@ -2017,6 +2034,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-lite-host-look",
+    when: "2026-11-06T22:45:00-06:00",
+    summary:
+      "In another app's side panel, the chat takes that app's look: the colours, font and text size it puts in the address (bg, surface, fg, muted, border, accent, font, fontSize), from the first paint. The list of tools omp mounts when a chat starts stays out of it, and a warning or an error from the start shows as one line. The full app is unchanged.",
+    tours: [LITE_HOST_LOOK_TOUR],
+  },
   {
     id: "2026-11-06-math-drawn",
     when: "2026-11-06T20:21:00-06:00",

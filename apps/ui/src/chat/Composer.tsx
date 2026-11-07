@@ -1004,7 +1004,7 @@ export const Composer = memo(function Composer({
             )}
             <textarea
               ref={boxRef}
-              className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] min-w-0 py-[11px] text-base leading-snug placeholder:truncate" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[0.875rem] leading-normal"}`}
+              className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] min-w-0 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug placeholder:truncate" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal"}`}
               aria-label="Message"
               placeholder={
                 closed

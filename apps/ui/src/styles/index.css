@@ -273,6 +273,25 @@
 .tr-root.tl-scroll {
   padding-block: 0;
   padding-inline: 16px;
+  /* The framing app's text size in the lite view (#2844); collab-web's 14 px everywhere else. */
+  font-size: var(--host-text-size, 14px);
+}
+
+/* Headings keep their steps above the text: collab-web's 17, 15, 14 and 13 px to its 14. */
+.tr-root.tl-scroll .tr-md h1 {
+  font-size: calc(var(--host-text-size, 14px) * 17 / 14);
+}
+
+.tr-root.tl-scroll .tr-md h2 {
+  font-size: calc(var(--host-text-size, 14px) * 15 / 14);
+}
+
+.tr-root.tl-scroll .tr-md h3 {
+  font-size: var(--host-text-size, 14px);
+}
+
+.tr-root.tl-scroll .tr-md :is(h4, h5, h6) {
+  font-size: calc(var(--host-text-size, 14px) * 13 / 14);
 }
 
 /* A grid at every width: collab-web turns rows into flex columns under 640 px, where the bubbles would not align. */

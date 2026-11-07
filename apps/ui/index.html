@@ -41,6 +41,13 @@
         }
         document.documentElement.dataset.theme = theme;
         document.documentElement.classList.toggle("dark", dark);
+        // The framing app's background from the first paint (#2844), by src/lite/hostLook.ts's rule for `bg`; the rest of
+        // its look follows when the app starts.
+        const bg = lite ? (new URLSearchParams(location.search).get("bg") ?? "").trim() : "";
+        if (bg !== "" && bg.length <= 200 && CSS.supports("color", bg)) {
+          document.documentElement.style.setProperty("--page", bg);
+          document.documentElement.style.setProperty("--panel", bg);
+        }
       })();
     </script>
     <script>
