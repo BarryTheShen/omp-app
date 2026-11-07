@@ -2002,7 +2002,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-lite-view",
-    when: "2026-11-06T21:30:00-06:00",
+    when: "2026-11-06T19:27:00-06:00",
     summary:
       "The app can sit in another app's side panel, such as your notes app's: its address followed by /lite shows one chat and its message box, with your recent chats in the title's menu, New chat, and a button that opens the chat in the full app. It takes the light or dark look the other app asks for. Only the pages named on the computer the app runs on may show it.",
     tours: [LITE_VIEW_TOUR],
