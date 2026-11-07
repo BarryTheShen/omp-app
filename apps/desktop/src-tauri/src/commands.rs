@@ -1,6 +1,6 @@
 //! The window's commands for the app's own pages: the servers it can open, a new window, and a desktop notification.
-//! They are granted to this computer's server's pages (`capabilities/default.json`) and to the pages of the server on
-//! another computer a window opens (`server::grant_page_commands`), in every window; no other site gets them.
+//! They are granted, by exact origin, to the pages of this computer's server and of the server on another computer a
+//! window opens (`server::grant_page_commands`), in every window; no other site gets them.
 
 use std::collections::HashMap;
 use std::thread;

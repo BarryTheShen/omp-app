@@ -7,6 +7,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 /// The pages' storage WebKitGTK keeps under a data folder: localStorage, the older databases (IndexedDB among them), and
@@ -92,6 +93,13 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Makes `folder` if it is missing, then this account's alone (0700): it holds the cookie with the key a server paired
+/// the window with, which another account on this computer must not read. A folder made before is changed too.
+pub fn make_private(folder: &Path) -> io::Result<()> {
+    fs::create_dir_all(folder)?;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +110,21 @@ mod tests {
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(&folder).unwrap();
         folder
+    }
+
+    #[test]
+    fn the_windows_folder_is_this_accounts_alone_also_one_made_before() {
+        let root = scratch("private");
+        let fresh = root.join("omp-app").join("desktop-window");
+        make_private(&fresh).unwrap();
+        let mode = |folder: &Path| fs::metadata(folder).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&fresh), 0o700);
+        let earlier = root.join("earlier");
+        fs::create_dir_all(&earlier).unwrap();
+        fs::set_permissions(&earlier, fs::Permissions::from_mode(0o755)).unwrap();
+        make_private(&earlier).unwrap();
+        assert_eq!(mode(&earlier), 0o700);
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

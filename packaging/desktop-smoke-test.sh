@@ -425,6 +425,10 @@ wait_log 'omp\.probe status=ok' 30 || fail "T1: the server's log has no healthy 
 note "T1 the window opened and the app loaded (it connected to its server), and the server's omp probe was healthy"
 [[ $(ps -o sid= -p "$side" | tr -d ' ') == "$side" ]] || fail "T1: the server is not in a session of its own"
 note "T1 the server runs in a session of its own"
+# The window's web data holds the cookie with the key a server paired it with: this account's alone.
+web_data="$HOME/.local/share/omp-app/desktop-window"
+[[ $(stat -c %a "$web_data" 2>/dev/null) == 700 ]] || fail "T1: the window's data folder is $(stat -c %a "$web_data" 2>&1), not 700"
+note "T1 the window's data folder is this account's alone (700)"
 sleep 4
 shot "$wid" app-window
 close_window "$wid" || fail "T1: could not send the close request"

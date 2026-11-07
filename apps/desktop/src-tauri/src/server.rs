@@ -60,9 +60,9 @@ const STARTING_PAGE: &str = "starting.html";
 const ERROR_PAGE: &str = "error.html";
 /// The page for "the server on another computer did not answer", served from apps/desktop/ui.
 const REMOTE_ERROR_PAGE: &str = "remote-error.html";
-/// The window's commands a page may call (see `clipboard.rs`, `commands.rs` and `capabilities/default.json`): this
-/// computer's server has them from that file, a server on another computer from `grant_page_commands`, so the two lists
-/// are the same (a test checks it).
+/// The window's commands a page may call (see `clipboard.rs` and `commands.rs`): the pages of this computer's server and
+/// of the server on another computer a window opens get them from `grant_page_commands`, by their exact origin; no other
+/// page has any.
 const PAGE_PERMISSIONS: [&str; 10] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",
@@ -97,6 +97,9 @@ struct State {
     /// Its pages are that window's own, besides the bundled pages and this computer's server. A window without an
     /// entry opens this computer's server.
     remote_origins: HashMap<String, String>,
+    /// The origin of this computer's server, `http://127.0.0.1:<port>`, once a window opened it (see `note_local`). Only
+    /// that port is the app's: a page another program serves on this computer is a link like any other.
+    local_origin: Option<String>,
     /// The origins given the page commands so far (see `grant_page_commands`).
     granted: Vec<String>,
     /// The window that had the focus last (see `windows::pick`).
@@ -405,8 +408,21 @@ fn open_local(app: AppHandle, label: String) {
     });
 }
 
-/// Gives the window's page commands to the pages of `origin`, once per origin. No other site gets anything (this
-/// computer's server has them from `capabilities/default.json`).
+/// Notes `address`, this computer's server, before a window opens it: its origin becomes the windows' own pages on this
+/// computer (see `is_app_address`) and gets the window's commands. A server started again on another port moves both.
+fn note_local(app: &AppHandle, address: &Url) {
+    let origin = address.origin().ascii_serialization();
+    with_state(app, |state| state.local_origin = Some(origin.clone()));
+    grant_page_commands(app, &origin);
+}
+
+/// The origin of this computer's server the windows open; None before one opened it.
+fn local_origin(app: &AppHandle) -> Option<String> {
+    with_state(app, |state| state.local_origin.clone())
+}
+
+/// Gives the window's page commands to the pages of `origin`, once per origin: this computer's server (`note_local`) or
+/// a server on another computer (`open_remote_page`). No other site gets anything.
 fn grant_page_commands(app: &AppHandle, origin: &str) {
     let number = with_state(app, |state| {
         if state.granted.iter().any(|granted| granted == origin) {
@@ -418,7 +434,7 @@ fn grant_page_commands(app: &AppHandle, origin: &str) {
     let Some(number) = number else {
         return;
     };
-    let mut capability = CapabilityBuilder::new(format!("remote-server-{number}"))
+    let mut capability = CapabilityBuilder::new(format!("server-pages-{number}"))
         .remote(format!("{origin}/*"))
         .local(false)
         .window(windows::MAIN)
@@ -599,6 +615,13 @@ fn web_data_folder(app: &AppHandle) -> Option<PathBuf> {
             let data_home = std::env::var_os("XDG_DATA_HOME");
             let home = std::env::var_os("HOME");
             let folder = webdata::folder(data_home.as_deref(), home.as_deref())?;
+            // It holds the cookie with the key a server paired the window with: this account's alone.
+            if let Err(error) = webdata::make_private(&folder) {
+                eprintln!(
+                    "omp app: the window's data folder {} could not be made private: {error}",
+                    folder.display()
+                );
+            }
             let identifier = app.config().identifier.clone();
             let program = gtk::glib::prgname().map(|name| name.to_string());
             let executable = std::env::current_exe().ok().and_then(|path| {
@@ -640,7 +663,8 @@ fn new_window<'a>(
         .min_inner_size(640.0, 480.0)
         .on_navigation(move |target| {
             let remote = remote_origin_of(&handle, &owner);
-            let inside = is_app_address(target, remote.as_deref());
+            let local = local_origin(&handle);
+            let inside = is_app_address(target, remote.as_deref(), local.as_deref());
             if !inside {
                 open_externally(target);
             }
@@ -699,10 +723,11 @@ fn open_window_on(app: &AppHandle, address: &Url, origin: Option<String>) {
     with_state(app, |state| taken.extend(state.closing.iter().cloned()));
     let label = windows::next_label(&taken);
     // Known before the page loads, which `on_navigation` checks against it.
-    if let Some(origin) = origin {
-        with_state(app, |state| {
+    match origin {
+        Some(origin) => with_state(app, |state| {
             state.remote_origins.insert(label.clone(), origin);
-        });
+        }),
+        None => note_local(app, address),
     }
     let page = WebviewUrl::External(window_url(address, &label));
     match build_window(app, &label, page) {
@@ -834,6 +859,10 @@ fn open_server_page(app: &AppHandle, label: &str, url: Url) {
     if with_state(app, |state| state.quitting) {
         return;
     }
+    // This computer's server (a server on another computer is https): its port is the windows' own from now on.
+    if url.scheme() == "http" {
+        note_local(app, &url);
+    }
     // The app page is where the command palette opens. Without GStreamer's plugin cache, the first palette
     // open would stall while the scan runs, so the page waits here for the launch scan to finish.
     app.state::<RegistryScan>().wait(REGISTRY_SCAN_WAIT);
@@ -922,16 +951,18 @@ fn show_remote_error(app: &AppHandle, label: &str, host: &str, problem: Option<&
     });
 }
 
-/// The app's own pages: the bundled pages, this computer's server, and the server on another computer the window
-/// opens (`remote`, its origin). Everything else is a link.
-fn is_app_address(url: &Url, remote: Option<&str>) -> bool {
+/// The app's own pages: the bundled pages, this computer's server (`local`, its origin `http://127.0.0.1:<port>`), and
+/// the server on another computer the window opens (`remote`, its origin). Everything else is a link, also a page that
+/// another program serves on this computer.
+fn is_app_address(url: &Url, remote: Option<&str>, local: Option<&str>) -> bool {
+    let origin = url.origin().ascii_serialization();
     match url.scheme() {
         "tauri" | "about" => true,
-        "http" => url.host_str() == Some("127.0.0.1"),
-        "https" => remote.is_some_and(|origin| url.origin().ascii_serialization() == origin),
+        "http" => local.is_some_and(|local| origin == local),
+        "https" => remote.is_some_and(|remote| origin == remote),
         // The web app saves a file (the debug log) through a blob link. The address after `blob:` is the
         // app's own page's address, so the link is the app's own.
-        "blob" => Url::parse(url.path()).is_ok_and(|inner| is_app_address(&inner, remote)),
+        "blob" => Url::parse(url.path()).is_ok_and(|inner| is_app_address(&inner, remote, local)),
         _ => false,
     }
 }
@@ -966,42 +997,44 @@ mod tests {
     }
 
     #[test]
-    fn a_server_on_another_computer_gets_the_same_commands_as_this_computers_server() {
-        let capability: serde_json::Value =
-            serde_json::from_str(include_str!("../capabilities/default.json"))
-                .expect("the capability file parses");
-        let mut local: Vec<&str> = capability["permissions"]
-            .as_array()
-            .expect("the capability lists its permissions")
-            .iter()
-            .map(|permission| permission.as_str().expect("each permission is a name"))
-            .collect();
-        let mut remote = PAGE_PERMISSIONS.to_vec();
-        local.sort_unstable();
-        remote.sort_unstable();
-        assert_eq!(remote, local);
-    }
-
-    #[test]
-    fn the_app_and_its_blob_links_are_app_addresses_and_other_links_are_not() {
-        let is_app = |text: &str| is_app_address(&url(text), None);
+    fn this_computers_server_and_its_blob_links_are_app_addresses_and_other_pages_here_are_not() {
+        let local = Some("http://127.0.0.1:27183");
+        let is_app = |text: &str| is_app_address(&url(text), None, local);
+        assert!(is_app("http://127.0.0.1:27183/?folder=a#token=t"));
         assert!(is_app("blob:http://127.0.0.1:27183/x"));
+        assert!(
+            !is_app("http://127.0.0.1:8080/"),
+            "a page another program serves on this computer"
+        );
+        assert!(!is_app("blob:http://127.0.0.1:8080/x"));
+        assert!(
+            !is_app("http://localhost:27183/"),
+            "the same port by another name"
+        );
         assert!(!is_app("blob:https://example.com/x"));
         assert!(!is_app("http://example.com"));
+        let page = url("http://127.0.0.1:27183/");
+        assert!(
+            !is_app_address(&page, None, None),
+            "before a window opened this computer's server"
+        );
     }
 
     #[test]
     fn the_kept_servers_pages_are_app_addresses_and_other_sites_are_not() {
         let remote = Some("https://devbox.tail1234.ts.net");
         let page = url("https://devbox.tail1234.ts.net/x");
-        assert!(is_app_address(&page, remote));
-        assert!(!is_app_address(&page, None), "only while the link is kept");
+        assert!(is_app_address(&page, remote, None));
+        assert!(
+            !is_app_address(&page, None, None),
+            "only while the link is kept"
+        );
         let blob = url("blob:https://devbox.tail1234.ts.net/x");
-        assert!(is_app_address(&blob, remote));
+        assert!(is_app_address(&blob, remote, None));
         let other = url("https://example.com/");
-        assert!(!is_app_address(&other, remote));
+        assert!(!is_app_address(&other, remote, None));
         let plain = url("http://devbox.tail1234.ts.net/x");
-        assert!(!is_app_address(&plain, remote));
+        assert!(!is_app_address(&plain, remote, None));
     }
 
     #[test]

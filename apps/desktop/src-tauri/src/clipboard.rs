@@ -1,8 +1,8 @@
 //! The clipboard's picture and files, for the composer. The window's engine (WebKitGTK) gives a page nothing for a
 //! copied picture in its paste event, and a file a file manager copied may come as its path alone, so the window reads
 //! them itself, through GTK's clipboard, which works on X11 and on Wayland. Only the app's own pages may call the
-//! commands (see `capabilities/`), and a page reads only the files the person copied, by their place in the clipboard's
-//! list.
+//! commands (see `server::grant_page_commands`), and a page reads only the files the person copied, by their place in
+//! the clipboard's list.
 
 use std::path::PathBuf;
 
