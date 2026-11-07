@@ -2053,7 +2053,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-lite-assistant",
-    when: "2026-11-06T23:30:00-06:00",
+    when: "2026-11-07T00:30:00-06:00",
     summary:
       "In another app's side panel on a computer, the chat keeps a computer's layout at any width: the desktop message box with the model, thinking level, plan mode, attach, / and @, at a computer's sizes (a phone keeps the phone's). Its empty chat greets you as that app's assistant: the app can set the greeting, suggestions you click to send and the box's text (greeting, suggest, placeholder), with no folder or keys; the header is one line in its muted colour, at its text size.",
     tours: [LITE_ASSISTANT_TOUR],
