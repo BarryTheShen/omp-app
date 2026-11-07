@@ -2036,7 +2036,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-lite-host-look",
-    when: "2026-11-06T22:45:00-06:00",
+    when: "2026-11-06T20:32:00-06:00",
     summary:
       "In another app's side panel, the chat takes that app's look: the colours, font and text size it puts in the address (bg, surface, fg, muted, border, accent, font, fontSize), from the first paint. The list of tools omp mounts when a chat starts stays out of it, and a warning or an error from the start shows as one line. The full app is unchanged.",
     tours: [LITE_HOST_LOOK_TOUR],
