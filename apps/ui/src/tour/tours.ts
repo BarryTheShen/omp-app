@@ -992,6 +992,23 @@ const PHONE_QUICK_KEY_TOUR: Tour = {
   ],
 };
 
+/** A side panel that names its app: that app's context and line stay in the panel. A page of its own: one step. */
+const LITE_HOST_NAME_TOUR: Tour = {
+  id: "lite-host-name-2026-11-07",
+  title: "Your notes app's context stays in its panel",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Only from its side panel",
+      text: "A message you send from your notes app's side panel takes along what that app has open, when its extension adds it, and the line saying so shows in that panel. Messages from the full app don't take it along, and the full app doesn't show that line.",
+      action: next,
+      centred: true,
+    },
+  ],
+};
+
 /** #2845: the lite view at a computer's layout, and its assistant's start. A page of its own: the step stands alone. */
 const LITE_ASSISTANT_TOUR: Tour = {
   id: "lite-assistant-2026-11-06",
@@ -2051,6 +2068,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-lite-host-name",
+    when: "2026-11-07T02:01:00-06:00",
+    summary:
+      "A side panel in another app can name that app in its address (host): what that app's extensions add to your messages, such as the page you have open there, then goes only with messages sent from its panel, and their line about it shows only there. Messages from the full app carry nothing of it.",
+    tours: [LITE_HOST_NAME_TOUR],
+  },
   {
     id: "2026-11-06-lite-assistant",
     when: "2026-11-07T00:30:00-06:00",
