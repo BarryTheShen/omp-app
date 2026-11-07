@@ -132,6 +132,8 @@ export interface UiWidgetEvent {
   readonly widgetKey: string;
   readonly widgetLines?: readonly string[];
   readonly widgetPlacement?: ExtensionWidgetOptions["placement"];
+  /** The app whose lite view alone shows it (`setWidget(key, lines, { host })`); every view shows one without. */
+  readonly widgetHost?: string;
 }
 
 export interface UiTitleEvent {

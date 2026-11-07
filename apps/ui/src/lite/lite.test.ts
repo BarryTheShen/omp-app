@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { liteChoices } from "./lite";
+import { liteChoices, liteHost } from "./lite";
 
 describe("liteChoices", () => {
   test("the framing app's greeting, suggestions and placeholder, as the issue gives them", () => {
@@ -37,5 +37,22 @@ describe("liteChoices", () => {
       liteChoices(`?suggest=${["a", " b ", "a", long, "c", "d", "e", "f"].join("|")}`).suggestions,
     ).toEqual(["a", "b", "c", "d", "e"]);
     expect(liteChoices(`?suggest=${"s".repeat(60)}`).suggestions).toEqual(["s".repeat(60)]);
+  });
+});
+
+describe("liteHost", () => {
+  test("the framing app's name, when it is one", () => {
+    expect(liteHost("?theme=dark&host=siyuan")).toBe("siyuan");
+    expect(liteHost("?host=my-notes2")).toBe("my-notes2");
+    expect(liteHost("?host=a".concat("b".repeat(31)))).toBe(`a${"b".repeat(31)}`);
+  });
+
+  test("none, or one that is not an app's name: none", () => {
+    expect(liteHost("")).toBeNull();
+    expect(liteHost("?host=")).toBeNull();
+    expect(liteHost("?host=SiYuan")).toBeNull();
+    expect(liteHost("?host=2notes")).toBeNull();
+    expect(liteHost("?host=my%20notes")).toBeNull();
+    expect(liteHost(`?host=a${"b".repeat(32)}`)).toBeNull();
   });
 });

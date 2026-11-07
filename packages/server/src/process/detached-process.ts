@@ -541,15 +541,22 @@ export function spawnDetachedOmpProcess(options: DetachedOmpProcessOptions): Omp
 /**
  * Whether a host an earlier server left running is restarted on this server's build once its chat settles (D2): it runs
  * another omp, or an older build of the app, which answers fewer of the methods this server's own host answers (its
- * check's evidence; with none, only omp's version is compared). A newer host answering more is kept.
+ * check's evidence; with none, only omp's version is compared) or lacks one of its features (`CHAT_HOST_FEATURES`). A
+ * newer host answering more is kept.
  */
 export function restartsWhenSettled(
-  hello: Pick<ChatHostHello, "ompVersion" | "methods">,
-  own: { readonly ompVersion: string; readonly methods: ReadonlySet<string> },
+  hello: Pick<ChatHostHello, "ompVersion" | "methods" | "features">,
+  own: {
+    readonly ompVersion: string;
+    readonly methods: ReadonlySet<string>;
+    readonly features: ReadonlySet<string>;
+  },
 ): boolean {
   if (hello.ompVersion !== own.ompVersion) return true;
   const answered = new Set<string>(hello.methods);
-  return [...own.methods].some((method) => !answered.has(method));
+  if ([...own.methods].some((method) => !answered.has(method))) return true;
+  const able = new Set<string>(hello.features ?? []);
+  return [...own.features].some((feature) => !able.has(feature));
 }
 
 /**

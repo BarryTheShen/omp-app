@@ -27,6 +27,7 @@ import {
   type ChatHostHostMethodMap,
   type ChatHostResponse,
   HOST_METHOD_ANSWERS,
+  MessageHost,
   type SelectDialog,
   type SignInLink,
   type UiEvent,
@@ -244,6 +245,12 @@ export class HostUIContext implements ExtensionUIContext {
   readonly supportsEditor = true;
   /** Set by `set_ask_dialog`. Off, omp asks with selects and editors. */
   askDialogEnabled = false;
+  /**
+   * The app the message being read was sent from (a message's `host`, such as the lite view's `siyuan`), while the
+   * extensions' `input` hooks run (`loop.ts` readMessage); null otherwise, and for a message from the full app. Not in
+   * omp's interface: an extension reads it as `ctx.ui.messageHost`, and its absence tells it the chat is not in the app.
+   */
+  messageHost: string | null = null;
   readonly #requests: HostRequests;
   readonly #emit: (event: UiEvent) => void;
   /** The statuses, widgets and title on show, by key, for a server that attaches later (`shown`, D2). */
@@ -423,10 +430,18 @@ export class HostUIContext implements ExtensionUIContext {
     );
   }
 
-  /** Lines only; a widget that is a component stays terminal-only, as in omp's RPC mode. */
-  setWidget(key: string, content: unknown, options?: ExtensionWidgetOptions): void {
+  /**
+   * Lines only; a widget that is a component stays terminal-only, as in omp's RPC mode. Besides omp's placement, the
+   * options may name the app whose lite view alone shows the widget (`host`, as a message's `host` names it).
+   */
+  setWidget(
+    key: string,
+    content: unknown,
+    options?: ExtensionWidgetOptions & { readonly host?: unknown },
+  ): void {
     if (content !== undefined && !Array.isArray(content)) return;
     const lines = content as string[] | undefined;
+    const host = MessageHost.safeParse(options?.host);
     this.#show(
       `widget:${key}`,
       {
@@ -434,6 +449,7 @@ export class HostUIContext implements ExtensionUIContext {
         widgetKey: key,
         ...(lines !== undefined ? { widgetLines: lines } : {}),
         ...(options?.placement !== undefined ? { widgetPlacement: options.placement } : {}),
+        ...(host.success ? { widgetHost: host.data } : {}),
       },
       !lines?.length,
     );

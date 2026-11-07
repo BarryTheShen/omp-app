@@ -1,4 +1,4 @@
-import type { ThreadId } from "@omp-app/contracts";
+import { MESSAGE_HOST_PATTERN, type ThreadId } from "@omp-app/contracts";
 
 /**
  * The lite view's address (#2843): the server serves the app's page there, and only there may the pages it is told of
@@ -58,3 +58,17 @@ export function liteChoices(search: string): LiteChoices {
     placeholder: text("placeholder", MAX_PLACEHOLDER),
   };
 }
+
+/**
+ * The app that frames the lite view (`?host=siyuan`): each message sent from it carries the name, so that app's
+ * extensions add what it has open only to messages sent from its side panel, and their lines for it show only here.
+ * Null without one, or for one that is not an app's name (lowercase letters, digits and dashes, 32 at most).
+ */
+export function liteHost(search: string): string | null {
+  const value = new URLSearchParams(search).get("host");
+  return value !== null && MESSAGE_HOST_PATTERN.test(value) ? value : null;
+}
+
+/** This page's app: the lite view's `host`, read once at load; null in the full app, and outside a browser. */
+export const pageHost: string | null =
+  typeof window !== "undefined" && isLiteView() ? liteHost(window.location.search) : null;

@@ -192,6 +192,8 @@ export interface ExtensionWidget {
   readonly key: string;
   readonly lines: readonly string[];
   readonly placement: "aboveEditor" | "belowEditor";
+  /** The app whose lite view alone shows it (`setWidget(…, { host })`); every view shows one without. */
+  readonly host?: string;
 }
 
 /**
@@ -210,6 +212,7 @@ function withWidget(
       key: event.widgetKey,
       lines: event.widgetLines.map(stripAnsi),
       placement: event.widgetPlacement ?? "aboveEditor",
+      ...(event.widgetHost !== undefined ? { host: event.widgetHost } : {}),
     },
   ];
 }

@@ -56,6 +56,7 @@ import { USER_TODO_EDIT_CUSTOM_TYPE } from "@oh-my-pi/pi-coding-agent/tools/todo
 import { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
 import { parseConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import {
+  CHAT_HOST_FEATURES,
   CHAT_HOST_METHODS,
   CHAT_HOST_PROTOCOL_VERSION,
   type ChatEvent,
@@ -297,6 +298,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     protocol: CHAT_HOST_PROTOCOL_VERSION,
     ompVersion: options.ompVersion,
     methods: [...CHAT_HOST_METHODS],
+    features: [...CHAT_HOST_FEATURES],
     session: {
       id: session.sessionId,
       file: session.sessionFile ?? null,
@@ -955,7 +957,14 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     let { text, images } = params;
     const runner = session.extensionRunner;
     if (runner?.hasHandlers("input")) {
-      const input = await runner.emitInput(text, images, "rpc");
+      // The hooks may ask which app sent the message (`ctx.ui.messageHost`), only while they read it.
+      ui.messageHost = params.host ?? null;
+      let input: Awaited<ReturnType<typeof runner.emitInput>>;
+      try {
+        input = await runner.emitInput(text, images, "rpc");
+      } finally {
+        ui.messageHost = null;
+      }
       if (!isCurrent()) return { kind: "cancelled" };
       if (input.handled) return { kind: "local" };
       if (input.text !== undefined) text = input.text;

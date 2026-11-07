@@ -145,4 +145,19 @@ describe("what is on show, for a server that attaches later", () => {
     // Every change still reached the server attached then; a component widget stays terminal-only.
     expect(events.length).toBe(11);
   });
+
+  test("a widget may name the app whose lite view alone shows it; a host that is not an app's name is left out", () => {
+    const { ui, events } = harness();
+    ui.setWidget("selection", ["Looking at: Notes"], { host: "siyuan" });
+    ui.setWidget("other", ["Everywhere"], { host: "Not a name!" });
+    expect(events).toEqual([
+      {
+        type: "ui_widget",
+        widgetKey: "selection",
+        widgetLines: ["Looking at: Notes"],
+        widgetHost: "siyuan",
+      },
+      { type: "ui_widget", widgetKey: "other", widgetLines: ["Everywhere"] },
+    ]);
+  });
 });

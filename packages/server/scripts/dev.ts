@@ -10,7 +10,7 @@ import {
   SessionFilePath,
   ThreadId,
 } from "@omp-app/contracts";
-import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
+import { CHAT_HOST_FEATURES, CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
 import serverPackage from "../package.json";
 import { EDGE_RELAY_PORT, EdgeRelay } from "../src/browser/edge-relay";
 import { findChrome, SERVER_BROWSER_PORT, ServerBrowser } from "../src/browser/server-browser";
@@ -30,6 +30,7 @@ import {
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
 import { openDevicePairing } from "../src/devices";
+import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { openLaunchHistory } from "../src/launch-history";
 import {
   buildDebugReport,
@@ -103,7 +104,6 @@ import {
   systemdUserScopes,
 } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
-import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
@@ -492,6 +492,7 @@ export async function createCompositionServer(
         .filter((each) => each.status === "available")
         .map((each) => each.command),
     ),
+    features: new Set<string>(CHAT_HOST_FEATURES),
   };
   if (detachedHosts) {
     const found = await adoptRunningHosts({

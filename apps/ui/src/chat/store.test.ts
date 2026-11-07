@@ -921,10 +921,18 @@ describe("ChatStore", () => {
       "belowEditor hint: Below",
     ]);
 
-    // Set again: its new lines, at the end, as omp's terminal orders them.
-    store.apply(event({ type: "ui_widget", widgetKey: "notes", widgetLines: ["one", "two"] }));
+    // Set again: its new lines, at the end, as omp's terminal orders them; a widget may name the app it belongs to.
+    store.apply(
+      event({
+        type: "ui_widget",
+        widgetKey: "notes",
+        widgetLines: ["one", "two"],
+        widgetHost: "siyuan",
+      }),
+    );
     settle();
     expect(widgets()).toEqual(["belowEditor hint: Below", "aboveEditor notes: one | two"]);
+    expect(store.getSnapshot().widgets.map((widget) => widget.host)).toEqual([undefined, "siyuan"]);
 
     // No lines clear it.
     store.apply(event({ type: "ui_widget", widgetKey: "hint" }));

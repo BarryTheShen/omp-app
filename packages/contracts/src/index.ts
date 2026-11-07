@@ -6,6 +6,7 @@ export * from "./core/errors";
 export * from "./core/fixtures";
 export * from "./core/ids";
 export * from "./core/inventory";
+export * from "./core/message-host";
 export * from "./core/modules";
 export * from "./core/omp";
 export * from "./core/pasted-block";

@@ -209,34 +209,52 @@ describe("an attached host's output", () => {
 });
 
 describe("which adopted hosts are restarted between turns", () => {
-  const own = { ompVersion: "18.12.6", methods: new Set(["prompt", "get_state", "get_jobs"]) };
+  const own = {
+    ompVersion: "18.12.6",
+    methods: new Set(["prompt", "get_state", "get_jobs"]),
+    features: new Set(["message_host"]),
+  };
+  const current = { ompVersion: "18.12.6", features: ["message_host"] };
 
   test("a host on this build is kept; one on another omp, or an older build answering fewer methods, is restarted", () => {
     expect(
-      restartsWhenSettled(
-        { ompVersion: "18.12.6", methods: ["prompt", "get_state", "get_jobs"] },
-        own,
-      ),
+      restartsWhenSettled({ ...current, methods: ["prompt", "get_state", "get_jobs"] }, own),
     ).toBe(false);
     expect(
       restartsWhenSettled(
-        { ompVersion: "18.12.5", methods: ["prompt", "get_state", "get_jobs"] },
+        { ...current, ompVersion: "18.12.5", methods: ["prompt", "get_state", "get_jobs"] },
         own,
       ),
     ).toBe(true);
+    expect(restartsWhenSettled({ ...current, methods: ["prompt", "get_state"] }, own)).toBe(true);
+  });
+
+  test("an older build answering the same methods but lacking a feature of this build is restarted", () => {
+    const methods = ["prompt", "get_state", "get_jobs"];
+    // Built before the feature list: it sends none.
+    expect(restartsWhenSettled({ ompVersion: "18.12.6", methods }, own)).toBe(true);
+    expect(restartsWhenSettled({ ompVersion: "18.12.6", methods, features: [] }, own)).toBe(true);
+    // A newer build with a feature this one lacks is kept.
     expect(
-      restartsWhenSettled({ ompVersion: "18.12.6", methods: ["prompt", "get_state"] }, own),
-    ).toBe(true);
+      restartsWhenSettled(
+        { ompVersion: "18.12.6", methods, features: ["message_host", "later"] },
+        own,
+      ),
+    ).toBe(false);
   });
 
   test("a newer host answering more is kept, and with no check to compare, only omp's version counts", () => {
     expect(
       restartsWhenSettled(
-        { ompVersion: "18.12.6", methods: ["prompt", "get_state", "get_jobs", "newer"] },
+        { ...current, methods: ["prompt", "get_state", "get_jobs", "newer"] },
         own,
       ),
     ).toBe(false);
-    const unchecked = { ompVersion: "18.12.6", methods: new Set<string>() };
+    const unchecked = {
+      ompVersion: "18.12.6",
+      methods: new Set<string>(),
+      features: new Set<string>(),
+    };
     expect(restartsWhenSettled({ ompVersion: "18.12.6", methods: ["prompt"] }, unchecked)).toBe(
       false,
     );

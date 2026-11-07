@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { pageHost } from "../lite/lite";
 import type { ExtensionWidget } from "./store";
 
 /** omp's terminal draws this many lines of a widget at most, then says it was cut (`MAX_WIDGET_LINES`). */
@@ -7,7 +8,8 @@ const MAX_LINES = 10;
 /**
  * The lines omp's extensions show beside the message box (omp's `ctx.ui.setWidget`, #2842), above or below it as each
  * asked, in the order they were set; a widget set again moves to the end, as in omp's terminal. The lines are text, in
- * the terminal's monospace so an extension's columns line up.
+ * the terminal's monospace so an extension's columns line up. A widget that names an app (`host`) shows only in that
+ * app's lite view, such as what a notes app has open, which is sent only with messages from its side panel.
  */
 export function ExtensionWidgets({
   widgets,
@@ -16,7 +18,10 @@ export function ExtensionWidgets({
   readonly widgets: readonly ExtensionWidget[];
   readonly placement: ExtensionWidget["placement"];
 }): ReactNode {
-  const shown = widgets.filter((widget) => widget.placement === placement);
+  const shown = widgets.filter(
+    (widget) =>
+      widget.placement === placement && (widget.host === undefined || widget.host === pageHost),
+  );
   if (shown.length === 0) return null;
   return (
     <section

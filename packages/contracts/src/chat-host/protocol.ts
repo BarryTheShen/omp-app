@@ -23,6 +23,7 @@ import type { Goal } from "@oh-my-pi/pi-tui/tools/goal";
 import type { TodoStatus } from "@oh-my-pi/pi-tui/tools/todo";
 import { z } from "zod";
 import { type ParseResult, parseJson } from "../core/errors";
+import { MESSAGE_HOST_PATTERN } from "../core/message-host";
 import type { UiAnsweredEvent, UiEvent } from "./dialogs";
 import {
   HostToolUpdateParams,
@@ -60,6 +61,17 @@ export * from "./subagents";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
 
+/**
+ * What a host can do beyond its methods, for a server that adopts it (D2): a host that lacks one of this build's is an
+ * older build, restarted on this one once its chat is idle (`restartsWhenSettled`). `message_host`: the extensions'
+ * `input` hooks read which app a message was sent from (`ctx.ui.messageHost`), and a widget may belong to one app's
+ * lite view (`setWidget(key, lines, { host })`).
+ */
+export const CHAT_HOST_FEATURES = ["message_host"] as const;
+
+/** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */
+export const MessageHost = z.string().regex(MESSAGE_HOST_PATTERN);
+
 const RequestId = z.string().min(1);
 
 /**
@@ -96,6 +108,8 @@ export const ChatHostHello = z.object({
   ompVersion: z.string(),
   /** The methods this host answers; a method not listed gets `unknown_method`. */
   methods: z.array(z.string()),
+  /** What the host can do beyond its methods (`CHAT_HOST_FEATURES`); none from a host built before the list. */
+  features: z.array(z.string()).optional(),
   session: z.object({ id: z.string(), file: z.string().nullable(), cwd: z.string() }),
   /** The host's process id: a server that attached to a running host (D2) can end it when it does not hand back. */
   pid: z.int().optional(),
@@ -189,6 +203,11 @@ export const PromptParams = z.object({
   images: z.array(ChatHostImage).optional(),
   /** How a prompt sent while a reply streams is queued; without it, such a prompt fails as busy, as in omp. */
   streamingBehavior: z.enum(["steer", "followUp"]).optional(),
+  /**
+   * The app the message was sent from: the lite view's `host` (`/lite?host=siyuan`), so an extension adds what that app
+   * has open only to messages sent from it (`ctx.ui.messageHost` in its `input` hook). None from the full app.
+   */
+  host: MessageHost.optional(),
 });
 export type PromptParams = z.infer<typeof PromptParams>;
 

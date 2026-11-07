@@ -54,6 +54,7 @@ import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { follow } from "../follow";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { lastSeen } from "../lastSeen";
+import { pageHost } from "../lite/lite";
 import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
 import { keepBothName } from "../panels/files/names";
@@ -635,7 +636,12 @@ export class ChatController {
     if (this.target.kind === "new" && this.#threadId !== null)
       // Named as the server names it: what was typed, or the files' names when only files were sent (#2830).
       noteFirstPrompt(this.#threadId, firstPromptTextOf(text));
-    const message = { text, ...(images.length > 0 ? { images: [...images] } : {}) };
+    // From another app's side panel, the message names that app, for its extensions (`host`, the lite view's).
+    const message = {
+      text,
+      ...(images.length > 0 ? { images: [...images] } : {}),
+      ...(pageHost !== null ? { host: pageHost } : {}),
+    };
     const behind = { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } as const;
     if (this.store.getSnapshot().working) {
       await this.#request("prompt", { ...message, ...behind });
