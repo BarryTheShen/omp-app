@@ -1077,6 +1077,22 @@ const LITE_VIEW_TOUR: Tour = {
   ],
 };
 
+/** #2846: `@` mentions of names with spaces, quoted or as words. */
+const MENTION_SPACES_TOUR: Tour = {
+  id: "mention-spaces-2026-11-07",
+  title: "Names with spaces after @",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Names with spaces",
+      text: "Type <b>@</b> and a name that has spaces, such as a file or a note: the menu keeps searching past each space while something matches, and closes once nothing does. <b>@\"</b> starts a name in quotes, as in omp's terminal. The row you pick replaces all you typed.",
+      action: next,
+    },
+  ],
+};
+
 /** #2842: an omp extension's lines beside the message box. */
 const EXTENSION_WIDGETS_TOUR: Tour = {
   id: "extension-widgets-2026-11-06",
@@ -2068,6 +2084,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-mention-spaces",
+    when: "2026-11-07T02:07:00-06:00",
+    summary:
+      "The @ menu takes names with spaces: @\"lecture 3 keeps it open up to the closing quote, as in omp's terminal, and words with a space between them (@lecture 3) keep it searching while something matches. The row you pick replaces all you typed, and a file with spaces goes in quoted.",
+    tours: [MENTION_SPACES_TOUR],
+  },
   {
     id: "2026-11-07-lite-host-name",
     when: "2026-11-07T02:01:00-06:00",
