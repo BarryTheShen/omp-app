@@ -1,13 +1,5 @@
 import type { QuestionRecord } from "@omp-app/contracts/chat-host";
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { type KeyboardEvent, type ReactNode, useId, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -38,23 +30,14 @@ const CHOICE_ROW = "flex items-start gap-2.5 max-sm:py-[13px]";
 const nameOf = (record: QuestionRecord): string => record.header ?? record.question;
 
 /**
- * The questions the chat's agent asked without waiting, in the BTW panel: each open one as a card to answer when there is
- * time, then the answered and skipped ones, folded to their answer.
+ * The questions the chat's agent asked without waiting, in the Questions panel: each open one as a card to answer when
+ * there is time, then the answered and skipped ones, folded to their answer.
  */
 export function QuestionsTab({ controller }: { readonly controller: ChatController }): ReactNode {
-  const { records, focused } = useSyncExternalStore(
+  const { records } = useSyncExternalStore(
     controller.questions.subscribe,
     controller.questions.getSnapshot,
   );
-  const listRef = useRef<HTMLDivElement>(null);
-
-  // A question asked to be brought into view (the arrival notice) is scrolled to once it is drawn.
-  useEffect(() => {
-    if (focused === null || records === null) return;
-    const card = listRef.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(focused)}"]`);
-    card?.scrollIntoView({ block: "nearest" });
-    controller.questions.focused();
-  }, [focused, records, controller]);
 
   if (records === null)
     return <p className="px-4 py-3 text-[0.8125rem] text-t3">Reading the questions…</p>;
@@ -70,10 +53,7 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
     );
   const { open, answered } = inPanelOrder(records);
   return (
-    <div
-      ref={listRef}
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 text-[0.8125rem]"
-    >
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 text-[0.8125rem]">
       {open.length === 0 && (
         <p className="px-1 text-t3">Nothing waits for you. Answered questions are below.</p>
       )}

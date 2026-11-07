@@ -3,9 +3,10 @@ import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * Questions omp asks without waiting (the chat host's `ask_async` tool), in the new UI on real omp: omp asks and its
- * turn goes on; the chat says so and the rail's BTW button counts them; the BTW panel opens on Questions for you, a card
- * each, with the agent's context; an answer goes into the chat as the person's message and omp answers it; a skipped
- * question tells omp to decide; the answers are there again after a reload.
+ * turn goes on; the chat says so and the rail's Questions button counts them; the Questions panel opens on Questions for
+ * you, a card each, with the agent's context; an answer goes into the chat as the person's message and omp answers it; a
+ * skipped question tells omp to decide; the answers are there again after a reload. `/btw` brings the side questions
+ * forward, also while questions wait.
  */
 
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
@@ -13,7 +14,7 @@ const transcript = (page: Page) => page.getByRole("region", { name: "Transcript"
 const panel = (page: Page) =>
   page
     .getByRole("complementary", { name: "Side panel" })
-    .getByRole("tabpanel", { name: "BTW history" });
+    .getByRole("tabpanel", { name: "Questions" });
 const rail = (page: Page) => page.getByRole("navigation", { name: "Side panel" });
 
 const ASK = {
@@ -44,7 +45,7 @@ realTest.describe("questions omp asks without waiting", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "wait in the BTW panel while omp works on; each answer goes to the chat as the person's message",
+    "wait in the Questions panel while omp works on; each answer goes to the chat as the person's message",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -59,8 +60,8 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(
         transcript(page).getByText("tool said: Asked 3 questions", { exact: false }),
       ).toBeVisible({ timeout: 90_000 });
-      // The rail's BTW button counts the questions.
-      await rail(page).getByRole("button", { name: "BTW history, 3 questions for you" }).click();
+      // The rail's Questions button counts the questions.
+      await rail(page).getByRole("button", { name: "Questions, 3 waiting for you" }).click();
       await expect(panel(page).getByRole("tab", { name: "Questions for you 3" })).toHaveAttribute(
         "aria-selected",
         "true",
@@ -95,7 +96,7 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(answered).toContainText("Public copy");
       await expect(answered).toContainText("Note: keep issues off");
       await expect(
-        rail(page).getByRole("button", { name: "BTW history, 2 questions for you" }),
+        rail(page).getByRole("button", { name: "Questions, 2 waiting for you" }),
       ).toBeVisible();
 
       // Several choices of a question that takes them.
@@ -135,14 +136,14 @@ realTest.describe("questions omp asks without waiting", () => {
         }),
       ).toContainText("Skipped");
       await expect(
-        rail(page).getByRole("button", { name: "BTW history", exact: true }),
+        rail(page).getByRole("button", { name: "Questions", exact: true }),
       ).toBeVisible();
 
       // After a reload, the questions are there with their answers.
       await page.reload();
       await expect(box(page)).toBeVisible({ timeout: 60_000 });
       if (!(await panel(page).isVisible())) {
-        await rail(page).getByRole("button", { name: "BTW history", exact: true }).click();
+        await rail(page).getByRole("button", { name: "Questions", exact: true }).click();
       }
       await panel(page).getByRole("tab", { name: "Questions for you" }).click();
       await expect(panel(page).getByRole("article", { name: "Answered: Publish" })).toContainText(
@@ -151,6 +152,51 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(panel(page).getByRole("article", { name: "Answered: Days" })).toContainText(
         "Monday, Wednesday",
       );
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "/btw brings the side questions forward, also while a question waits for you",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const one = { questions: [{ id: "color", question: "Which color?" }] };
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(one)}`);
+      await box(page).press("Enter");
+      await expect(
+        transcript(page).getByText("tool said: Asked 1 question (color).", { exact: false }),
+      ).toBeVisible({ timeout: 90_000 });
+      // The panel opens on the question that waits.
+      await rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }).click();
+      const forYou = panel(page).getByRole("tab", { name: "Questions for you 1" });
+      const side = panel(page).getByRole("tab", { name: "Side questions" });
+      await expect(forYou).toHaveAttribute("aria-selected", "true");
+
+      // A side question shows on the Side questions tab, and its answer comes there.
+      await box(page).fill("/btw What is this chat about?");
+      await box(page).press("Enter");
+      await expect(side).toHaveAttribute("aria-selected", "true");
+      await expect(
+        panel(page)
+          .getByRole("region", { name: "Side question" })
+          .getByRole("article", { name: "Question" }),
+      ).toContainText("pong", { timeout: 60_000 });
+
+      // After a look at the question, `/btw` alone opens the side questions again; the question still waits.
+      await forYou.click();
+      await expect(
+        panel(page).getByRole("article", { name: "Question: Which color?" }),
+      ).toBeVisible();
+      await box(page).fill("/btw");
+      await box(page).press("Enter");
+      await expect(box(page)).toHaveValue("/btw ");
+      await box(page).press("Enter");
+      await expect(side).toHaveAttribute("aria-selected", "true");
+      await expect(
+        rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }),
+      ).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

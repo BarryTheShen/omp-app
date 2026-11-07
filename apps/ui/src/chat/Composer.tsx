@@ -466,11 +466,13 @@ export const Composer = memo(function Composer({
     }
     setWaitingToSend(null);
     if (working) setJustQueued(true);
-    // omp's `/btw`: a side question, answered beside the chat in the side panel's BTW history; `/btw` alone opens it.
+    // omp's `/btw`: a side question, answered beside the chat on the Questions panel's Side questions tab; `/btw` alone
+    // opens that tab.
     const aside = btwQuestion(value);
     if (aside !== null) {
       if (aside === "") {
         update("");
+        controller.btw.reveal();
         showPanel("btw");
         return;
       }
@@ -484,7 +486,7 @@ export const Composer = memo(function Composer({
           update(
             now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now,
           );
-          controller.btw.select(record.id);
+          controller.btw.reveal(record.id);
           showPanel("btw");
         })
         .catch((failure: unknown) => setError(`Not asked: ${errorText(failure)}`))

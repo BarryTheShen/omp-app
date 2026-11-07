@@ -290,7 +290,7 @@ realTest.describe("new UI side panel", () => {
         "Agents",
         "Progress",
         "Jobs",
-        "BTW history",
+        "Questions",
         "Files",
         "Ports",
         "Browser",

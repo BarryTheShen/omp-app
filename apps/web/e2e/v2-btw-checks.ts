@@ -2,10 +2,11 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the side panel's BTW history beside the
- * chat, which stays usable, and is answered there, out of the chat; a follow-up joins its topic; putting the history
- * away while an answer still comes says so, and the chat says when it is ready; Stop answer cancels one and keeps what
- * came; the history is there again after a reload. In Chromium and in WebKit, the desktop window's engine.
+ * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the side panel's Questions panel on its Side
+ * questions tab (omp's BTW history) beside the chat, which stays usable, and is answered there, out of the chat; a
+ * follow-up joins its topic; putting the history away while an answer still comes says so, and the chat says when it is
+ * ready; Stop answer cancels one and keeps what came; the history is there again after a reload. In Chromium and in
+ * WebKit, the desktop window's engine.
  */
 
 export const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
@@ -13,10 +14,12 @@ const transcript = (page: Page) => page.getByRole("region", { name: "Transcript"
 export const history = (page: Page) =>
   page
     .getByRole("complementary", { name: "Side panel" })
-    .getByRole("tabpanel", { name: "BTW history" });
-/** The rail's button for the BTW history: it shows the history, or puts it away when it shows. */
+    .getByRole("tabpanel", { name: "Questions" });
+/** The rail's button for the Questions panel: it shows the panel, or puts it away when it shows. */
 const railButton = (page: Page) =>
-  page.getByRole("navigation", { name: "Side panel" }).getByRole("button", { name: "BTW history" });
+  page
+    .getByRole("navigation", { name: "Side panel" })
+    .getByRole("button", { name: "Questions", exact: true });
 const topics = (page: Page) => history(page).getByRole("listbox", { name: "Side questions" });
 const thread = (page: Page) => history(page).getByRole("region", { name: "Side question" });
 
@@ -38,7 +41,7 @@ export function defineBtwChecks(engine: "chromium" | "webkit"): void {
       realTest.setTimeout(240_000);
 
       realTest(
-        "a side question is answered in the BTW history beside the chat, out of the chat, and a follow-up joins it",
+        "a side question is answered in the Questions panel beside the chat, out of the chat, and a follow-up joins it",
         async ({ realApp }) => {
           const page = await realApp.open({ path: "/" });
           await newChat(page);

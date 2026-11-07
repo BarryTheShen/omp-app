@@ -108,6 +108,18 @@ describe("the side questions' store", () => {
     expect(btw.getSnapshot().records?.[0]?.answer).toBe("streamed");
   });
 
+  test("/btw asks the panel for the side questions, on the topic just asked, until the panel brings them forward", () => {
+    const { btw } = store();
+    btw.setRecords([topic("old", T), topic("new", T + 1_000)]);
+    btw.reveal("old");
+    expect(btw.getSnapshot()).toMatchObject({ selected: "old", wanted: true });
+    btw.revealed();
+    expect(btw.getSnapshot()).toMatchObject({ selected: "old", wanted: false });
+    // `/btw` alone asks again and keeps the topic shown.
+    btw.reveal();
+    expect(btw.getSnapshot()).toMatchObject({ selected: "old", wanted: true });
+  });
+
   test("says an answer asked here is ready when it ends while the BTW history is put away", () => {
     const { btw, said } = store();
     btw.apply({ type: "btw_record", record: topic("mine", T) });

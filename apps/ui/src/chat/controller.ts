@@ -144,7 +144,7 @@ export class ChatController {
   readonly store = new ChatStore();
   /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them show as toasts. */
   readonly btw = new BtwStore((text) => this.store.toast(text, "info"));
-  /** The questions the chat's agent asked without waiting (`ask_async`), for the BTW panel; a new one is said in a toast. */
+  /** The questions the chat's agent asked without waiting (`ask_async`), for the Questions panel; a new one is said in a toast. */
   readonly questions = new QuestionsStore((text) => this.store.toast(text, "info"));
   /** Whether this pane's Models dialog (omp's Alt+M) is open. */
   readonly modelHubToggle = new ModelHubToggle();
@@ -411,7 +411,7 @@ export class ChatController {
           this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
       })
       .catch(unshown("The questions waiting in this chat are not shown"));
-    // The questions the agent asked without waiting, for the BTW panel and the rail's count. A chat still on an omp from
+    // The questions the agent asked without waiting, for the Questions panel and the rail's count. A chat still on an omp from
     // before them has none to show.
     onTheLink(() => this.loadQuestions()).catch(() => undefined);
     // What the chat's extensions show beside the box (#2842): the server keeps the latest of each, and a change since the

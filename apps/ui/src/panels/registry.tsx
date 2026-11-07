@@ -78,7 +78,7 @@ export const PANELS: readonly Panel[] = [
   },
   {
     id: "btw",
-    title: "BTW history",
+    title: "Questions",
     icon: MessageCircleQuestion,
     render: ({ chat }) => <BtwPanel chat={chat} />,
   },

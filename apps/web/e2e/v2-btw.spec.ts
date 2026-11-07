@@ -8,7 +8,7 @@ realTest.describe("new UI side questions tour", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "the Side questions tour waits for /btw to open the BTW history, then shows where to find it",
+    "the Side questions tour waits for /btw to open the Questions panel, then shows where to find it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       const popover = page.locator(".driver-popover");

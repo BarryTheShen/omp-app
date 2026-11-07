@@ -468,7 +468,7 @@ const SIDE_QUESTIONS: Tour = {
     {
       target: MESSAGE_BOX,
       title: "Ask on the side",
-      text: "Type <b>/btw</b>, take it from the menu with Enter, and press Enter again: the side panel opens on the BTW history, where omp keeps this chat's side questions.",
+      text: "Type <b>/btw</b>, take it from the menu with Enter, and press Enter again: the side panel opens on <b>Questions</b>, on its <b>Side questions</b> tab, where omp keeps this chat's side questions.",
       action: { kind: "appears", selector: BTW_PANEL },
     },
     {
@@ -486,7 +486,7 @@ const SIDE_QUESTIONS: Tour = {
   ],
 };
 
-/** Questions omp asks without waiting, answered in the BTW panel. */
+/** Questions omp asks without waiting, answered in the Questions panel. */
 const ASYNC_QUESTIONS_TOUR: Tour = {
   id: "async-questions-2026-11-07",
   title: "Questions omp asks without waiting",
@@ -496,7 +496,7 @@ const ASYNC_QUESTIONS_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "Questions for you",
-      text: "omp can ask you something it does not need at once, and keep working. The question waits in the <b>BTW</b> panel, under <b>Questions for you</b>, with what omp wants you to know; its button on this rail counts the questions waiting in the chat you are in. Pick a choice or write your own, add a note if you like, and <b>Send answer</b>: it goes into the chat as your message, between omp's steps. <b>Skip</b> leaves it to omp.",
+      text: "omp can ask you something it does not need at once, and keep working. The question waits in the <b>Questions</b> panel, under <b>Questions for you</b>, with what omp wants you to know; its button on this rail counts the questions waiting in the chat you are in. Pick a choice or write your own, add a note if you like, and <b>Send answer</b>: it goes into the chat as your message, between omp's steps. <b>Skip</b> leaves it to omp.",
       action: next,
     },
   ],
@@ -687,7 +687,7 @@ const AGENTS_PROGRESS_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "Four panels",
-      text: "<b>Usage</b>; <b>Agents</b>: the chat's subagents (a click opens the Agent Hub on one); <b>Progress</b>: its goal, omp's todo list and plan mode; and <b>BTW history</b>: its side questions. They follow the chat you are in.",
+      text: "<b>Usage</b>; <b>Agents</b>: the chat's subagents (a click opens the Agent Hub on one); <b>Progress</b>: its goal, omp's todo list and plan mode; and <b>Questions</b>: its side questions, and what omp asks you. They follow the chat you are in.",
       action: next,
     },
     {
@@ -747,7 +747,7 @@ const SIDE_RAIL_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "One button per panel",
-      text: "The side panel's buttons are on this rail at the right edge, where the panel opens: <b>Usage</b>, <b>Agents</b>, <b>Progress</b> and the new <b>BTW history</b>. A button opens the panel on its panel; the same button again puts it away. Click <b>BTW history</b>, the last one.",
+      text: "The side panel's buttons are on this rail at the right edge, where the panel opens: <b>Usage</b>, <b>Agents</b>, <b>Progress</b> and <b>Questions</b>, among others. A button opens the panel on its panel; the same button again puts it away. Click <b>Questions</b>, the one with the question mark.",
       action: { kind: "appears", selector: BTW_PANEL },
     },
     {
@@ -2104,7 +2104,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-07-async-questions",
     when: "2026-11-07T13:07:00-06:00",
     summary:
-      "omp can ask you questions without waiting for the answers, and keep working: each waits in the BTW panel's new Questions for you tab, with omp's context and its choices or a box to write in, and a note if you like; the rail's BTW button counts them. Your answer goes into the chat as your message, between omp's steps; Skip leaves it to omp.",
+      "omp can ask you questions without waiting for the answers, and keep working: each waits in the Questions panel's Questions for you tab, with omp's context and its choices or a box to write in, and a note if you like; the rail's Questions button counts them. Your answer goes into the chat as your message, between omp's steps; Skip leaves it to omp.",
     tours: [ASYNC_QUESTIONS_TOUR],
   },
   {

@@ -1,7 +1,7 @@
 /**
  * Questions an agent asks without waiting (the chat host's `ask_async` tool): each is kept in the chat's session, shown
- * in the page's BTW panel, and answered there whenever the person has time; the answer goes back into the chat as the
- * person's message.
+ * in the page's Questions panel, and answered there whenever the person has time; the answer goes back into the chat
+ * as the person's message.
  */
 import { z } from "zod";
 

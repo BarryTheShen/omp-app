@@ -78,11 +78,13 @@ export interface BtwSnapshot {
   readonly selected: string | null;
   /** Counts the chat's moves to another session: the BTW history reads that session's side questions. */
   readonly session: number;
+  /** `/btw` asked for the side questions: the panel brings them forward, then says so (`revealed`). */
+  readonly wanted: boolean;
 }
 
 /**
- * A chat pane's side questions (omp's `/btw`), shown in the side panel's BTW history. Their answers stream into this
- * store, not into the chat's: a piece of a side answer redraws the BTW history only.
+ * A chat pane's side questions (omp's `/btw`), shown on the Questions panel's Side questions tab (omp's BTW history).
+ * Their answers stream into this store, not into the chat's: a piece of a side answer redraws that tab only.
  */
 export class BtwStore {
   #records: readonly BtwRecord[] | null = null;
@@ -90,9 +92,11 @@ export class BtwStore {
   #session = 0;
   /** Whether the BTW history shows this chat's side questions now. */
   #shown = false;
+  /** `/btw` asked for the side questions, and the panel has not brought them forward yet. */
+  #wanted = false;
   /** Topics asked from this pane: an answer of theirs that ends while the history is put away is said, as omp does. */
   readonly #asked = new Set<string>();
-  #snapshot: BtwSnapshot = { records: null, selected: null, session: 0 };
+  #snapshot: BtwSnapshot = { records: null, selected: null, session: 0, wanted: false };
   readonly #listeners = new Set<() => void>();
   readonly #say: (text: string) => void;
 
@@ -169,6 +173,23 @@ export class BtwStore {
   }
 
   /**
+   * omp's `/btw`: the panel brings the side questions forward, on topic `id` when one was just asked, also while
+   * questions wait for the person on its other tab.
+   */
+  reveal(id?: string): void {
+    if (id !== undefined) this.#selected = id;
+    this.#wanted = true;
+    this.#publish();
+  }
+
+  /** The panel brought the side questions forward. */
+  revealed(): void {
+    if (!this.#wanted) return;
+    this.#wanted = false;
+    this.#publish();
+  }
+
+  /**
    * The BTW history shows this chat's side questions, or no longer does (the panel closed, or another tab or another
    * pane's chat took it): an answer of this pane's still coming goes on, and omp's words say so.
    */
@@ -209,6 +230,7 @@ export class BtwStore {
       records: this.#records,
       selected: this.#selected,
       session: this.#session,
+      wanted: this.#wanted,
     };
     for (const listener of [...this.#listeners]) listener();
   }

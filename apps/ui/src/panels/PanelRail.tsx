@@ -8,7 +8,7 @@ import type { QuestionsSnapshot } from "../questions/questions";
 import { hidePanel, showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
 
-const NO_QUESTIONS: QuestionsSnapshot = { records: null, open: 0, focused: null };
+const NO_QUESTIONS: QuestionsSnapshot = { records: null, open: 0 };
 const noSubscription = (): (() => void) => () => undefined;
 const noQuestions = (): QuestionsSnapshot => NO_QUESTIONS;
 
@@ -29,7 +29,7 @@ export function PanelRail({
   chat,
   onDashboard,
 }: {
-  /** The focused pane's chat: the BTW button counts its questions that wait for an answer. */
+  /** The focused pane's chat: the Questions button counts its questions that wait for an answer. */
   readonly chat: ChatController | null;
   readonly onDashboard: () => void;
 }): ReactNode {
@@ -46,10 +46,7 @@ export function PanelRail({
       {PANELS.map((item) => {
         const shown = open && item.id === panel;
         const count = item.id === "btw" ? waiting : 0;
-        const label =
-          count > 0
-            ? `${item.title}, ${count === 1 ? "1 question" : `${count} questions`} for you`
-            : item.title;
+        const label = count > 0 ? `${item.title}, ${count} waiting for you` : item.title;
         return (
           <Tooltip key={item.id}>
             <TooltipTrigger

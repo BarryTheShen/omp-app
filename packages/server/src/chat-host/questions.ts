@@ -1,9 +1,9 @@
 /**
  * Questions the chat's agent asks without waiting (the `ask_async` tool). Each is saved in the chat's session file as an
- * `omp-app/question` entry and shown in the page's BTW panel; the person answers when they have time, and the answer goes
- * back into the chat as their message, the way a typed one goes (`sendAnswer` in `loop.ts`). Answers and skips are
- * `omp-app/question-answer` entries. Custom entries never reach the model, so the question reaches it as the tool call
- * and the answer as a message.
+ * `omp-app/question` entry and shown in the page's Questions panel; the person answers when they have time, and the
+ * answer goes back into the chat as their message, the way a typed one goes (`sendAnswer` in `loop.ts`). Answers and
+ * skips are `omp-app/question-answer` entries. Custom entries never reach the model, so the question reaches it as the
+ * tool call and the answer as a message.
  */
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { TSchema } from "@oh-my-pi/pi-ai";
@@ -26,8 +26,8 @@ const ANSWER_ENTRY = "omp-app/question-answer";
 const RESERVED_LABELS = new Set(["Other (type your own)", "Chat about this", "Next →"]);
 
 export const ASK_ASYNC_DESCRIPTION = [
-  "Ask the user questions without waiting for the answers. Each question appears in the app's BTW panel beside this",
-  "chat, with your context; the user answers when they have time, and each answer arrives later in this chat as a",
+  "Ask the user questions without waiting for the answers. Each question appears in the app's Questions panel beside",
+  "this chat, with your context; the user answers when they have time, and each answer arrives later in this chat as a",
   'message from the user that starts with "Answer to your question" (or "Skipped your question").',
   "The tool returns at once: keep working on what does not depend on the answers, and do not ask the same question",
   "again. Give `options` for multiple choice (the user can always write their own answer instead), or leave them out",

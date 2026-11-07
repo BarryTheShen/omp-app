@@ -30,7 +30,7 @@ export const SidePaneContext = createContext<SidePaneHost | null>(null);
 
 /**
  * The workspace tab shown, as its dockview: every tab's panes stay mounted, and a side pane in a hidden tab draws
- * nothing (the BTW panel tells its chat whether its answers are seen).
+ * nothing (the Questions panel tells its chat whether its side answers are seen).
  */
 export const ShownTabContext = createContext<DockviewApi | null>(null);
 
@@ -38,9 +38,9 @@ export const ShownTabContext = createContext<DockviewApi | null>(null);
 export const panelOf = (id: string) => PANELS.find((item) => item.id === id) ?? PANELS[0];
 
 /**
- * The side panel as a pane of the workspace: one panel at a time (Usage, Agents, Progress, Jobs, BTW history) for the chat of
- * the pane focused last, resized, moved and closed like a chat's pane. The rail at the window's right edge picks the
- * panel; the side panel's key shows or hides it.
+ * The side panel as a pane of the workspace: one panel at a time (Usage, Agents, Progress, Jobs, Questions, Files, Ports,
+ * Browser) for the chat of the pane focused last, resized, moved and closed like a chat's pane. The rail at the window's
+ * right edge picks the panel; the side panel's key shows or hides it.
  */
 export function SidePane({
   params,

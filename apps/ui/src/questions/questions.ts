@@ -5,18 +5,16 @@ export interface QuestionsSnapshot {
   readonly records: readonly QuestionRecord[] | null;
   /** How many wait for an answer. */
   readonly open: number;
-  /** The question to bring into view, once: the arrival notice's button asks for it. */
-  readonly focused: string | null;
 }
 
-const EMPTY: QuestionsSnapshot = { records: null, open: 0, focused: null };
+const EMPTY: QuestionsSnapshot = { records: null, open: 0 };
 
 /** What the arrival notice says: the person may be looking at another chat or another app. */
 export const ASKED_NOTICE =
-  "omp asked you a question. Answer it in the BTW panel when you have time.";
+  "omp asked you a question. Answer it in the Questions panel when you have time.";
 
 /**
- * The questions a chat's agent asked without waiting (`ask_async`), for the BTW panel and the rail's count: read with
+ * The questions a chat's agent asked without waiting (`ask_async`), for the Questions panel and the rail's count: read with
  * `get_questions` and kept current by the chat host's `question_record` events. A question that arrives while the chat
  * is live is said once, by `say`.
  */
@@ -38,7 +36,7 @@ export class QuestionsStore {
 
   /** The questions as the host listed them. */
   setRecords(records: readonly QuestionRecord[]): void {
-    this.#publish([...records], this.#snapshot.focused);
+    this.#publish([...records]);
   }
 
   /** A record as the host sent it (asked, answered or skipped): it takes its own place, or joins at the end. */
@@ -49,7 +47,6 @@ export class QuestionsStore {
       at === -1
         ? [...records, record]
         : records.map((known, index) => (index === at ? record : known)),
-      this.#snapshot.focused,
     );
   }
 
@@ -62,24 +59,14 @@ export class QuestionsStore {
     return true;
   }
 
-  /** Brings a question into view in the BTW panel. */
-  focus(id: string): void {
-    this.#publish(this.#snapshot.records, id);
-  }
-
-  /** The panel brought it into view. */
-  focused(): void {
-    if (this.#snapshot.focused !== null) this.#publish(this.#snapshot.records, null);
-  }
-
   /** The chat moved to another session: its questions are read again. */
   reset(): void {
-    this.#publish(null, null);
+    this.#publish(null);
   }
 
-  #publish(records: readonly QuestionRecord[] | null, focused: string | null): void {
+  #publish(records: readonly QuestionRecord[] | null): void {
     const open = records?.filter((record) => record.answer === null).length ?? 0;
-    this.#snapshot = { records, open, focused };
+    this.#snapshot = { records, open };
     for (const listener of [...this.#listeners]) listener();
   }
 }

@@ -243,7 +243,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // history that cannot be saved as omp's `notice`.
   const btw = new BtwController(session, emit, log);
   // Questions the agent asks without waiting (`questions.ts`, the `ask_async` tool): saved in the session, shown in the
-  // page's BTW panel, and answered from there into the chat (`sendAnswer`).
+  // page's Questions panel, and answered from there into the chat (`sendAnswer`).
   const questions = new QuestionsController(session, emit, (message, sequence) =>
     sendAnswer(message, sequence),
   );
