@@ -24,6 +24,7 @@ import {
   WorkspaceRelativePath,
 } from "@omp-app/contracts";
 import {
+  type AnswerQuestionParams,
   type AssignModelRoleParams,
   type ChatHostCommand,
   type ChatHostImage,
@@ -43,6 +44,7 @@ import {
   type ModelHub,
   type PlanFile,
   type ProviderAccounts,
+  type QuestionRecord,
   type QueuedMessage,
   type QueueName,
   type RoleModel,
@@ -61,6 +63,7 @@ import { keepBothName } from "../panels/files/names";
 import { downloadBytes, readFileBytes, uploadBlob } from "../panels/files/transfer";
 import { clientTags, frameMarks, watchFrames } from "../perf/frames";
 import { isPhone } from "../phone";
+import { QuestionsStore } from "../questions/questions";
 import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
@@ -141,6 +144,8 @@ export class ChatController {
   readonly store = new ChatStore();
   /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them show as toasts. */
   readonly btw = new BtwStore((text) => this.store.toast(text, "info"));
+  /** The questions the chat's agent asked without waiting (`ask_async`), for the BTW panel; a new one is said in a toast. */
+  readonly questions = new QuestionsStore((text) => this.store.toast(text, "info"));
   /** Whether this pane's Models dialog (omp's Alt+M) is open. */
   readonly modelHubToggle = new ModelHubToggle();
   /** This pane's Agent Hub: closed, or open on a subagent or on the list alone. */
@@ -406,6 +411,9 @@ export class ChatController {
           this.store.restoreRequests(open.map((item) => item.request).filter(isHostDialogRequest));
       })
       .catch(unshown("The questions waiting in this chat are not shown"));
+    // The questions the agent asked without waiting, for the BTW panel and the rail's count. A chat still on an omp from
+    // before them has none to show.
+    onTheLink(() => this.loadQuestions()).catch(() => undefined);
     // What the chat's extensions show beside the box (#2842): the server keeps the latest of each, and a change since the
     // read comes as an event, as the dialogs' do.
     onTheLink(() => chat.uiState({ threadId: opened.threadId }))
@@ -1178,6 +1186,41 @@ export class ChatController {
     }
   }
 
+  /** Reads the questions the chat's agent asked without waiting (`ask_async`), open and answered. */
+  async loadQuestions(): Promise<void> {
+    try {
+      const { questions } = await this.#request("get_questions", {});
+      if (!this.#disposed) this.questions.setRecords(questions);
+    } catch (failure) {
+      throw olderQuestions(failure);
+    }
+  }
+
+  /** Answers one: the answer goes to the agent as the person's message; resolves with the question, answered. */
+  async answerQuestion(
+    id: string,
+    answer: Omit<AnswerQuestionParams, "id">,
+  ): Promise<QuestionRecord> {
+    try {
+      const { record } = await this.#request("answer_question", { id, ...answer });
+      this.questions.put(record);
+      return record;
+    } catch (failure) {
+      throw olderQuestions(failure);
+    }
+  }
+
+  /** Skips one: the agent is told to decide it itself. */
+  async skipQuestion(id: string): Promise<QuestionRecord> {
+    try {
+      const { record } = await this.#request("skip_question", { id });
+      this.questions.put(record);
+      return record;
+    } catch (failure) {
+      throw olderQuestions(failure);
+    }
+  }
+
   /** Files and folders of the chat's folder that match an `@` mention. */
   async searchFiles(query: string): Promise<readonly FileSearchCandidate[]> {
     const found = await this.client
@@ -1335,9 +1378,12 @@ export class ChatController {
       this.#sessionFile = payload.sessionFile;
       if (this.target.kind === "new") this.#draft.keepFor(payload.threadId);
       this.btw.reset();
+      this.questions.reset();
+      void this.loadQuestions().catch(() => undefined);
     }
-    // A side question's answer redraws its sheet only, not the chat.
+    // A side question's answer redraws its sheet only, not the chat; so does a question asked without waiting.
     if (payload.kind === "event" && this.btw.apply(payload.event)) return;
+    if (payload.kind === "event" && this.questions.apply(payload.event, this.#live)) return;
     this.store.apply(payload);
     // The server's replay of the chat's history is not news.
     if (this.#live) {
@@ -1499,6 +1545,16 @@ function olderServer(failure: unknown, cannot: string): unknown {
   return failure instanceof AppFailure && failure.appError.code === "invalid_args"
     ? new Error(`This app server cannot ${cannot} yet; it needs an update.`)
     : failure;
+}
+
+/** A chat whose omp predates questions without waiting, or a server that does: said in words a person acts on. */
+function olderQuestions(failure: unknown): unknown {
+  if (failure instanceof AppFailure && failure.appError.omp?.code === "unknown_method") {
+    return new Error(
+      "This chat still runs the omp from before the update, which keeps no questions. It moves to the new one once this reply ends.",
+    );
+  }
+  return olderServer(failure, "keep questions");
 }
 
 /** The words for a chat still on an omp from before pause: the server moves it to the new omp once its reply ends. */

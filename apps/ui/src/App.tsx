@@ -565,7 +565,7 @@ function Shell({
           </SidePaneContext>
         </div>
       </main>
-      {!phone && <PanelRail onDashboard={showDashboard} />}
+      {!phone && <PanelRail chat={focusedChat} onDashboard={showDashboard} />}
       <Palette
         open={palette}
         onOpenChange={setPalette}

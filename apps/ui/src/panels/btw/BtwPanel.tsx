@@ -17,6 +17,7 @@ import {
   Markdown,
   StreamingMarkdown,
 } from "../../vendor/collab-web/components/transcript/Markdown";
+import { QuestionsTab } from "./QuestionCard";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -160,16 +161,111 @@ function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number 
 }
 
 /**
- * omp's BTW history in the side panel, beside the chat it belongs to (the focused pane's): the chat's side questions,
- * newest first, and the one picked as a short document with its follow-ups. Stop answer (X) cancels an answer, Copy
- * answer (C) copies it, Follow up (F, or Enter in the list) asks more in the same topic.
+ * The BTW panel, beside the chat it belongs to (the focused pane's), in two tabs: the questions the chat's agent asked
+ * without waiting (Questions for you), and omp's BTW history of side questions. It opens on the questions when one
+ * waits.
  */
 export function BtwPanel({ chat }: { readonly chat: ChatController | null }): ReactNode {
   if (chat === null)
     return (
       <p className="px-4 py-3 text-[0.8125rem] text-t3">Open a chat to see its side questions.</p>
     );
-  return <BtwHistory controller={chat} />;
+  return <BtwTabs controller={chat} />;
+}
+
+type BtwTab = "questions" | "side";
+
+function BtwTabs({ controller }: { readonly controller: ChatController }): ReactNode {
+  const { records, open, focused } = useSyncExternalStore(
+    controller.questions.subscribe,
+    controller.questions.getSnapshot,
+  );
+  const [picked, setPicked] = useState<BtwTab | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  // Another chat focused: its own tab is decided again (React's way of resetting state for a new prop).
+  const [owner, setOwner] = useState(controller);
+  if (owner !== controller) {
+    setOwner(controller);
+    setPicked(null);
+    setProblem(null);
+  }
+
+  // The questions are read each time the panel shows, as the side questions are.
+  useEffect(() => {
+    let alive = true;
+    controller
+      .loadQuestions()
+      .catch((failure: unknown) => alive && setProblem(failureText(failure)));
+    return () => {
+      alive = false;
+    };
+  }, [controller]);
+
+  // Once the questions are known, the panel stays on the tab it opened on until the person picks one; a question asked
+  // to be brought into view opens its tab.
+  const known = records !== null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: decided once a chat's questions are first known
+  useEffect(() => {
+    if (known && picked === null) setPicked(open > 0 ? "questions" : "side");
+  }, [known, picked]);
+  useEffect(() => {
+    if (focused !== null) setPicked("questions");
+  }, [focused]);
+  const tab: BtwTab = picked ?? (open > 0 ? "questions" : "side");
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div role="tablist" aria-label="BTW" className="flex shrink-0 gap-1 border-b border-l2 p-1.5">
+        <TabButton selected={tab === "questions"} onClick={() => setPicked("questions")}>
+          Questions for you
+          {open > 0 && (
+            <>
+              {" "}
+              <span className="ml-1 rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground">
+                {open}
+              </span>
+            </>
+          )}
+        </TabButton>
+        <TabButton selected={tab === "side"} onClick={() => setPicked("side")}>
+          Side questions
+        </TabButton>
+      </div>
+      {tab === "questions" ? (
+        problem !== null && records === null ? (
+          <p className="px-4 py-3 text-[0.8125rem] text-t3">{problem}</p>
+        ) : (
+          <QuestionsTab controller={controller} />
+        )
+      ) : (
+        <BtwHistory controller={controller} />
+      )}
+    </div>
+  );
+}
+
+function TabButton({
+  selected,
+  onClick,
+  children,
+}: {
+  readonly selected: boolean;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`flex items-center rounded-md px-2.5 py-1 text-[0.8125rem] outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        selected ? "bg-l2 text-t1" : "text-t3 hover:bg-l1 hover:text-t1"
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 function BtwHistory({ controller }: { readonly controller: ChatController }): ReactNode {
