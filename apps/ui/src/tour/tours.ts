@@ -486,6 +486,22 @@ const SIDE_QUESTIONS: Tour = {
   ],
 };
 
+/** Questions omp asks without waiting, answered in the BTW panel. */
+const ASYNC_QUESTIONS_TOUR: Tour = {
+  id: "async-questions-2026-11-07",
+  title: "Questions omp asks without waiting",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Questions for you",
+      text: "omp can ask you something it does not need at once, and keep working. The question waits in the <b>BTW</b> panel, under <b>Questions for you</b>, with what omp wants you to know; its button on this rail counts the questions waiting in the chat you are in. Pick a choice or write your own, add a note if you like, and <b>Send answer</b>: it goes into the chat as your message, between omp's steps. <b>Skip</b> leaves it to omp.",
+      action: next,
+    },
+  ],
+};
+
 const SIDE_PANEL_TOUR: Tour = {
   id: "side-panel-2026-10-30",
   title: "Side panel and usage",
@@ -2084,6 +2100,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-async-questions",
+    when: "2026-11-07T13:07:00-06:00",
+    summary:
+      "omp can ask you questions without waiting for the answers, and keep working: each waits in the BTW panel's new Questions for you tab, with omp's context and its choices or a box to write in, and a note if you like; the rail's BTW button counts them. Your answer goes into the chat as your message, between omp's steps; Skip leaves it to omp.",
+    tours: [ASYNC_QUESTIONS_TOUR],
+  },
   {
     id: "2026-11-07-mention-spaces",
     when: "2026-11-07T02:07:00-06:00",
