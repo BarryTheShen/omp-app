@@ -2019,7 +2019,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-06-math-drawn",
-    when: "2026-11-06T21:00:00-06:00",
+    when: "2026-11-06T20:21:00-06:00",
     summary:
       "Math in replies is drawn in its own fonts, the same on every device: a boxed result has its frame, a brace spans what it is under, and roots, integrals and fractions are drawn whole instead of in the browser's own math font.",
     tours: [MATH_DRAWN_TOUR],
