@@ -502,6 +502,22 @@ const ASYNC_QUESTIONS_TOUR: Tour = {
   ],
 };
 
+/** The side panel's BTW history became Questions. */
+const QUESTIONS_PANEL_TOUR: Tour = {
+  id: "questions-panel-2026-11-07",
+  title: "The Questions panel",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Questions",
+      text: "The side panel's <b>BTW history</b> is now <b>Questions</b>: the questions omp asks you, under <b>Questions for you</b>, and your <b>/btw</b> side questions, under <b>Side questions</b>. Its button on this rail counts the questions waiting for you, and <b>/btw</b> opens it on your side questions, also while questions wait.",
+      action: next,
+    },
+  ],
+};
+
 const SIDE_PANEL_TOUR: Tour = {
   id: "side-panel-2026-10-30",
   title: "Side panel and usage",
@@ -2100,6 +2116,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-questions-panel",
+    when: "2026-11-07T13:52:00-06:00",
+    summary:
+      "The side panel's BTW history is now called Questions: the questions omp asks you and your /btw side questions, each on its own tab; its rail button counts the questions waiting for you. /btw now opens it on your side questions, with the answer, also while questions wait for you.",
+    tours: [QUESTIONS_PANEL_TOUR],
+  },
   {
     id: "2026-11-07-async-questions",
     when: "2026-11-07T13:07:00-06:00",
