@@ -16,7 +16,8 @@
     <title>omp</title>
     <script>
       // The kept theme before the first paint; src/theme/theme.ts keeps it current afterwards (same keys and rule): the
-      // choice, the mode of a chosen theme, and the light and the dark theme that "system" follows.
+      // choice, the mode of a chosen theme, and the light and the dark theme that "system" follows. The lite view (#2843)
+      // keeps no choice: the mode its framing page asks for (`?theme=`), else the system's (`startLiteTheme`).
       (() => {
         const read = (key) => {
           try {
@@ -25,11 +26,15 @@
             return null;
           }
         };
-        const choice = read("omp-app.ui.theme") ?? "tern-dark";
+        const lite = location.pathname === "/lite";
+        const asked = lite ? new URLSearchParams(location.search).get("theme") : null;
+        const choice = lite ? "system" : (read("omp-app.ui.theme") ?? "tern-dark");
         let theme = choice;
         let dark = read("omp-app.ui.theme.mode") !== "light";
         if (choice === "system") {
-          dark = !matchMedia("(prefers-color-scheme: light)").matches;
+          dark =
+            asked === "dark" ||
+            (asked !== "light" && !matchMedia("(prefers-color-scheme: light)").matches);
           theme =
             read(dark ? "omp-app.ui.theme.dark" : "omp-app.ui.theme.light") ??
             (dark ? "tern-dark" : "tern-light");

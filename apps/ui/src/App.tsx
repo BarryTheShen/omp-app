@@ -36,6 +36,8 @@ import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS, keycap } from "./keys/table";
 import { watchLink } from "./linkCheck";
+import { LiteShell } from "./lite/LiteShell";
+import { isLiteView } from "./lite/lite";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
 import { RequestPrompt } from "./pairing/RequestPrompt";
@@ -58,6 +60,7 @@ import { useChatList } from "./sidebar/useChatList";
 import { useRunningChats } from "./sidebar/useRunningChats";
 import { setTourReveal } from "./tour/runner";
 import { WhatsNewList } from "./tour/WhatsNewList";
+import { takeLinkChat } from "./workspace/linkChat";
 import {
   type OpenHow,
   Workspace,
@@ -179,6 +182,9 @@ export function App(): ReactNode {
   if (connection.kind === "connecting") {
     return <Note>Connecting…</Note>;
   }
+  // The lite view (#2843): one chat for another app's side panel, on the same connection and sign-in.
+  if (isLiteView())
+    return <LiteShell client={connection.client} launchFolder={connection.folder} />;
   return <Shell client={connection.client} launchFolder={connection.folder} />;
 }
 
@@ -196,6 +202,13 @@ function Shell({
   const choice = useFolder(client, launchFolder);
   const { folder } = choice;
   const list = useChatList(client, folder);
+  /** A chat the address named (`#chat=<id>`, the lite view's "Open in the full app"), with its file if the list has it. */
+  const [linkedChat] = useState<ChatTarget | null>(() => {
+    const id = takeLinkChat();
+    if (id === null) return null;
+    const saved = list.sessions.find((session) => session.id === id);
+    return { kind: "existing", threadId: id, sessionFile: saved?.sessionFile ?? null };
+  });
   // The chats that run on the server, from every folder (D1).
   const running = useRunningChats(client);
   const [view, setView] = useState<WorkspaceView>(NOTHING_OPEN);
@@ -532,6 +545,7 @@ function Shell({
               phone={phone}
               onView={setView}
               onShown={showChatView}
+              linkedChat={linkedChat}
               stripLeading={
                 listHidden ? (
                   <Button

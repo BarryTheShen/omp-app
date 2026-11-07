@@ -205,6 +205,7 @@ export function Workspace({
   onView,
   onShown,
   stripLeading,
+  linkedChat = null,
   ref,
 }: {
   readonly client: AppClient;
@@ -215,6 +216,11 @@ export function Workspace({
   readonly onShown?: () => void;
   /** Before the workspace tabs: Show the chat list while it is hidden (#2805). */
   readonly stripLeading?: ReactNode;
+  /**
+   * A chat the address named (`#chat=<id>`: the lite view's "Open in the full app", #2843): it opens in front once the
+   * shown workspace is ready, as a click in the list opens it.
+   */
+  readonly linkedChat?: ChatTarget | null;
   readonly ref: Ref<WorkspaceHandle>;
 }): ReactNode {
   const onShownRef = useRef(onShown);
@@ -260,7 +266,7 @@ export function Workspace({
    * Counts the tabs' dockviews as they become ready: the shown tab's, read from `apis` while drawing, is known only then,
    * and a side pane restored with the tab's layout draws once it knows its tab is the one shown (#2773).
    */
-  const [, setReadyApis] = useState(0);
+  const [readyApis, setReadyApis] = useState(0);
   const focus = useMemo(() => new PaneFocus(), []);
   const controllers = useMemo(() => new Map<string, ChatController>(), []);
   const composers = useMemo(() => new Map<string, ComposerHandle>(), []);
@@ -808,6 +814,16 @@ export function Workspace({
       zoomForPhone,
     ],
   );
+
+  // The chat the address named opens once the shown workspace's windows are back: before, it could not tell whether a
+  // window shows it already, nor take a blank one.
+  const linked = useRef(linkedChat);
+  useEffect(() => {
+    const target = linked.current;
+    if (target === null || readyApis === 0 || !apis.current.has(tabsRef.current.active)) return;
+    linked.current = null;
+    openChat(target, "front");
+  }, [readyApis, openChat]);
 
   /** The workspace's commands: kitty's keys run them, and the palette offers them. */
   const commands = useMemo<Record<WorkspaceCommand, () => void>>(

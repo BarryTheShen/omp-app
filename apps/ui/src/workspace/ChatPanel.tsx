@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import { type FolderPath, firstPromptTextOf } from "@omp-app/contracts";
+import type { FolderPath } from "@omp-app/contracts";
 import type {
   DockviewApi,
   IDockviewGroupPanel,
@@ -19,9 +19,8 @@ import {
 } from "react";
 import { ChatPane } from "../chat/ChatPane";
 import type { ComposerHandle } from "../chat/Composer";
+import { useChatTitle } from "../chat/chatTitle";
 import { ChatController, type ChatTarget } from "../chat/controller";
-import { userText } from "../chat/MessageActions";
-import { useSavedTitle } from "../chat/savedTitles";
 import { inbox } from "../inbox/inbox";
 import { chatCache } from "./chatCache";
 import type { OpenGate } from "./openGate";
@@ -134,8 +133,6 @@ export interface PaneHost {
 
 export const PaneHostContext = createContext<PaneHost | null>(null);
 
-const TITLE_CHARACTERS = 60;
-
 /**
  * One chat pane in dockview: the chat's controller for as long as the pane shows that chat. A chat the page kept open
  * (`chatCache`) is taken from there and shown as it is now; the pane gives its chat back when it moves on.
@@ -241,14 +238,8 @@ function PaneChat({
   readonly inView: () => boolean;
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
-  // What was typed (or the files' names, #2830), as the chat list names a chat by its first message.
-  const first = snapshot.entries
-    .map(userText)
-    .map((text) => (text === null ? null : firstPromptTextOf(text)))
-    .find((text): text is string => text !== null && text !== "");
-  // The name the chat list shows once the chat is saved (omp's name for it, #2829), else its first message.
-  const savedTitle = useSavedTitle(controller.threadId);
-  const title = (savedTitle ?? first ?? "New chat").slice(0, TITLE_CHARACTERS);
+  // The name the chat list shows once the chat is saved, else its first message.
+  const title = useChatTitle(controller, snapshot.entries);
   const waiting = snapshot.requests.length > 0;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a question or approval arriving or ending is news for the sidebar

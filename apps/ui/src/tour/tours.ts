@@ -992,6 +992,23 @@ const PHONE_QUICK_KEY_TOUR: Tour = {
   ],
 };
 
+/** #2843: the lite view, one chat for another app's side panel. It is a page of its own, so the step stands alone. */
+const LITE_VIEW_TOUR: Tour = {
+  id: "lite-view-2026-11-06",
+  title: "A chat in another app's side panel",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "One chat, in another app's side panel",
+      text: "Another app, such as your notes app, can show a chat of this app in its side panel: point it at this app's address followed by <b>/lite</b>. It has the chat and its message box, your recent chats in its title's menu, New chat, and a button that opens the chat here. Only the pages named on the computer the app runs on may show it.",
+      action: next,
+      centred: true,
+    },
+  ],
+};
+
 /** #2842: an omp extension's lines beside the message box. */
 const EXTENSION_WIDGETS_TOUR: Tour = {
   id: "extension-widgets-2026-11-06",
@@ -1983,6 +2000,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-lite-view",
+    when: "2026-11-06T21:30:00-06:00",
+    summary:
+      "The app can sit in another app's side panel, such as your notes app's: its address followed by /lite shows one chat and its message box, with your recent chats in the title's menu, New chat, and a button that opens the chat in the full app. It takes the light or dark look the other app asks for. Only the pages named on the computer the app runs on may show it.",
+    tours: [LITE_VIEW_TOUR],
+  },
   {
     id: "2026-11-06-extension-widgets",
     when: "2026-11-06T15:03:00-06:00",
