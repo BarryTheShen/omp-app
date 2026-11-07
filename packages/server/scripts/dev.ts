@@ -103,6 +103,7 @@ import {
   systemdUserScopes,
 } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
+import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
@@ -206,6 +207,8 @@ export async function createCompositionServer(
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
   // A bad value stops the start before anything runs: the app must never listen for an address it cannot check.
   const remote = parseRemoteOrigin(env[REMOTE_ORIGIN_ENV]);
+  // The pages that may frame the lite view (#2843); a bad one stops the start the same way.
+  const frameAncestors = parseFrameAncestors(env[FRAME_ANCESTORS_ENV]);
   // omp's own command line, built by the app (#2586): it answers omp's commands, runs every chat on the chat host's own
   // protocol (SDK plan H5.4a) and the check of what a chat answers (H5.6a). Never an omp installed on the computer.
   const chatHostBinary = options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN;
@@ -832,6 +835,7 @@ export async function createCompositionServer(
     logger,
     earlierLaunchTokens: launchHistory.earlier,
     ...(remote === undefined ? {} : { remote }),
+    ...(frameAncestors.length === 0 ? {} : { frameAncestors }),
     devices,
   });
   appAddress = remote?.origin ?? server.url;
@@ -844,6 +848,7 @@ export async function createCompositionServer(
     health: health.status,
     detail: health.detail,
     remote: remote?.origin ?? "none",
+    frame_ancestors: frameAncestors.length === 0 ? "none" : frameAncestors.join(" "),
   });
   const stats = startStatsSampler({
     logger,

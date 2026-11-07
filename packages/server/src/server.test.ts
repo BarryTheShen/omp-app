@@ -478,6 +478,51 @@ describe("A0.6 upgrade and static serving", () => {
       await app.stop();
     }
   });
+  test("only the lite view may be framed, by the pages OMP_APP_FRAME_ANCESTORS names; with none, by no page (#2843)", async () => {
+    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const framing = async (url: string) => {
+      const response = await fetch(url);
+      return {
+        status: response.status,
+        page: (await response.text()).includes("v2 static fixture"),
+        csp: response.headers.get("content-security-policy"),
+        xfo: response.headers.get("x-frame-options"),
+      };
+    };
+    const refused = { status: 200, page: true, csp: "frame-ancestors 'none'", xfo: "DENY" };
+    const named = createAppServer({
+      port: 0,
+      staticRoot: fixtures,
+      uiRoot: `${fixtures}/ui`,
+      origins: ["http://allowed.test"],
+      frameAncestors: ["https://notes.tail1234.ts.net:8443", "http://127.0.0.1:9000"],
+    });
+    const none = createAppServer({
+      port: 0,
+      staticRoot: fixtures,
+      uiRoot: `${fixtures}/ui`,
+      origins: ["http://allowed.test"],
+    });
+    try {
+      // The lite view is the new UI's page, which the named pages may frame (and no browser refuses for X-Frame-Options).
+      expect(await framing(`${named.url}/lite?theme=dark`)).toEqual({
+        status: 200,
+        page: true,
+        csp: "frame-ancestors https://notes.tail1234.ts.net:8443 http://127.0.0.1:9000",
+        xfo: null,
+      });
+      // Every other page of the app still refuses every frame.
+      expect(await framing(`${named.url}/`)).toEqual(refused);
+      expect((await framing(`${named.url}/assets/app-fixture.js`)).csp).toBe(
+        "frame-ancestors 'none'",
+      );
+      // With no page named, the lite view refuses every frame too.
+      expect(await framing(`${none.url}/lite`)).toEqual(refused);
+    } finally {
+      await named.stop();
+      await none.stop();
+    }
+  });
   test("a built asset is kept for good and goes gzipped to a browser that takes gzip; the page is never kept", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({

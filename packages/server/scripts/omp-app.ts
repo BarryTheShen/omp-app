@@ -46,6 +46,7 @@ import {
 } from "../src/logging";
 import { ompCommand } from "../src/omp-host/chat-command";
 import { appDataFolder, handBackHosts, hostsFolder } from "../src/process";
+import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { type CompositionServer, createCompositionServer } from "./dev";
 
@@ -325,6 +326,7 @@ const folder = existingFolder(args.folder ?? process.cwd());
 const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
 try {
   parseRemoteOrigin(Bun.env[REMOTE_ORIGIN_ENV]);
+  parseFrameAncestors(Bun.env[FRAME_ANCESTORS_ENV]);
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

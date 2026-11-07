@@ -398,7 +398,10 @@ realTest.describe("new UI workspace", () => {
         { timeout: 60_000 },
       );
       await expect(boxes(page)).toHaveCount(1);
-      await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      // A phone's box names the model once the chat is open (V193).
+      await expect(boxes(page)).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
       expect(realApp.problems).toEqual([]);
     });
 
@@ -411,7 +414,7 @@ realTest.describe("new UI workspace", () => {
         // The chat, not the list: a new one, ready to type.
         await expect(chats(page)).toBeHidden();
         await expect(boxes(page)).toHaveCount(1, { timeout: 60_000 });
-        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", {
+        await expect(boxes(page)).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
           timeout: 120_000,
         });
         await expect(welcome).toBeVisible();
@@ -428,7 +431,7 @@ realTest.describe("new UI workspace", () => {
           localStorage.setItem("omp-app:last-up", String(Date.now() - 2 * 60 * 60 * 1000)),
         );
         await page.reload();
-        await expect(boxes(page)).toHaveAttribute("placeholder", "Message omp", {
+        await expect(boxes(page)).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
           timeout: 120_000,
         });
         await expect(welcome).toBeVisible();

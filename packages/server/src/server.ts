@@ -42,6 +42,11 @@ export interface AppServerOptions {
   readonly staticRoot?: string;
   /** The new UI's built folder, served at the app's root (default: `apps/ui/dist` in the working folder). */
   readonly uiRoot?: string;
+  /**
+   * The pages that may show the lite view (`/lite`, #2843) in a frame (`OMP_APP_FRAME_ANCESTORS`, see
+   * `frame-ancestors.ts`); none by default, and no other page of the app may ever be framed.
+   */
+  readonly frameAncestors?: readonly string[];
   readonly registry?: PortRegistry;
   /** Where connections and failed calls are recorded; nothing is logged without one. */
   readonly logger?: Logger;
@@ -171,12 +176,26 @@ function safeStaticPath(root: string, pathname: string): string | undefined {
 }
 
 /** Sent with every static response: the app must not be framed by another page, sniffed or referred. */
-const STATIC_HEADERS = {
+const STATIC_HEADERS: Readonly<Record<string, string>> = {
   "Content-Security-Policy": "frame-ancestors 'none'",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
-} as const;
+};
+
+/** The lite view (#2843): the new UI's page in a shell made for another app's side panel. */
+const LITE_PATH = "/lite";
+
+/**
+ * The lite view's headers: the pages `frameAncestors` names may frame it, and only those (CSP, which every browser
+ * takes over `X-Frame-Options`, which names no page; it is left out so no older browser refuses them). With none
+ * named, the static headers: no page may frame it.
+ */
+function liteHeaders(frameAncestors: readonly string[]): Readonly<Record<string, string>> {
+  if (frameAncestors.length === 0) return STATIC_HEADERS;
+  const { "X-Frame-Options": _refused, ...rest } = STATIC_HEADERS;
+  return { ...rest, "Content-Security-Policy": `frame-ancestors ${frameAncestors.join(" ")}` };
+}
 
 /** Where the old UI is served while it stays: the new UI is the app's root. */
 const OLD_PREFIX = "/old";
@@ -206,20 +225,23 @@ function acceptsGzip(request: Request): boolean {
  * for good. Text goes gzipped, as a stream, to a browser that takes it, so a large script costs a quarter of the time
  * over a slow link and the server never holds one in memory.
  */
-async function serveStatic(root: string, pathname: string, request: Request): Promise<Response> {
+async function serveStatic(
+  root: string,
+  pathname: string,
+  request: Request,
+  framing: Readonly<Record<string, string>> = STATIC_HEADERS,
+): Promise<Response> {
   const path = safeStaticPath(root, pathname);
-  if (path === undefined) return new Response("Bad path", { status: 400, headers: STATIC_HEADERS });
+  if (path === undefined) return new Response("Bad path", { status: 400, headers: framing });
   const file = Bun.file(path);
-  if (!(await file.exists()))
-    return new Response("Not found", { status: 404, headers: STATIC_HEADERS });
+  if (!(await file.exists())) return new Response("Not found", { status: 404, headers: framing });
   const cache = path.endsWith("/index.html")
     ? { "Cache-Control": "no-store" }
     : /\/assets\/[^/]+$/.test(path)
       ? KEPT_FOR_GOOD
       : {};
-  if (!COMPRESSIBLE.test(path))
-    return new Response(file, { headers: { ...STATIC_HEADERS, ...cache } });
-  const headers = { ...STATIC_HEADERS, ...cache, Vary: "Accept-Encoding" };
+  if (!COMPRESSIBLE.test(path)) return new Response(file, { headers: { ...framing, ...cache } });
+  const headers = { ...framing, ...cache, Vary: "Accept-Encoding" };
   if (!acceptsGzip(request)) return new Response(file, { headers });
   return new Response(file.stream().pipeThrough(new CompressionStream("gzip")), {
     headers: { ...headers, "Content-Type": file.type, "Content-Encoding": "gzip" },
@@ -253,6 +275,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   });
   const staticRoot = options.staticRoot ?? `${process.cwd()}/apps/web/dist`;
   const uiRoot = options.uiRoot ?? `${process.cwd()}/apps/ui/dist`;
+  const framedBy = liteHeaders(options.frameAncestors ?? []);
   const port = requestedPort(options);
   const origins = options.origins;
   const devices = options.devices;
@@ -343,6 +366,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       }
       if (url.pathname === FORMER_UI_PREFIX || url.pathname.startsWith(`${FORMER_UI_PREFIX}/`)) {
         return redirect(`${url.pathname.slice(FORMER_UI_PREFIX.length) || "/"}${url.search}`);
+      }
+      // The lite view: the new UI's page, which a page `frameAncestors` names may frame.
+      if (url.pathname === LITE_PATH) {
+        return renewed(request, await serveStatic(uiRoot, "/index.html", request, framedBy));
       }
       // The new UI first; a file it does not have may be one of the old UI's own pages or files, served as before.
       const page = await serveStatic(uiRoot, url.pathname, request);
