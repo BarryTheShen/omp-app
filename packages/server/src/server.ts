@@ -124,10 +124,20 @@ function forbiddenUpgrade(): Response {
 }
 
 /**
+ * Whether a request came through a proxy such as `tailscale serve`, which sets `X-Forwarded-For` and
+ * `X-Forwarded-Host` on every request it passes on, over anything the client sent (tailscale `ipn/ipnlocal/serve.go`
+ * `addProxyForwardedHeaders`). Such a request is from another computer whatever its Host and Origin say.
+ */
+function throughProxy(request: Request): boolean {
+  return request.headers.has("x-forwarded-for") || request.headers.has("x-forwarded-host");
+}
+
+/**
  * Returns an HTTP rejection for a bad Host, a close decision after upgrade for auth failures, or who was let in: a
  * paired device's key (its cookie), else the launch link's token. The key comes first, so a page that holds both is its
- * device. A server that pairs devices takes the token from its own computer's pages only (the loopback addresses): a
- * page at the Tailscale address pairs instead, so one with the token and no key is told it is not paired.
+ * device. The token is taken from the server's own computer only: a page at the Tailscale address pairs instead, so one
+ * with the token and no key is told it is not paired, and so is any request that came through a proxy, whatever Host
+ * and Origin it names.
  */
 export function authorizeWebSocketUpgrade(
   request: Request,
@@ -147,6 +157,7 @@ export function authorizeWebSocketUpgrade(
   if (policy.deviceForKey !== undefined && (candidate === "" || remotePage)) {
     return { closeCode: 4401, reason: "not paired" };
   }
+  if (throughProxy(request)) return { closeCode: 4401, reason: "not paired" };
   if (candidate !== "" && constantTimeEqual(policy.token, candidate)) return { deviceId: null };
   const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;
   return { closeCode: 4401, reason: expired ? "expired token" : "invalid token" };
@@ -157,9 +168,13 @@ function fromAppPage(request: Request, policy: UpgradePolicy): boolean {
   return hostAllowed(request, policy) && originAllowed(request.headers.get("origin"), policy);
 }
 
-/** Whether a request came to the loopback address from no web page: a program on the server's own computer. */
+/** Whether a request came to the loopback address from no web page and no proxy: a program on the server's own computer. */
 function fromThisComputer(request: Request, port: number): boolean {
-  return hostAllowed(request, { token: "", port }) && request.headers.get("origin") === null;
+  return (
+    hostAllowed(request, { token: "", port }) &&
+    request.headers.get("origin") === null &&
+    !throughProxy(request)
+  );
 }
 
 function safeStaticPath(root: string, pathname: string): string | undefined {
@@ -320,6 +335,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   bunServer = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port,
+    // Only `/pair/*` takes a body, a few hundred bytes; files and messages go over the WebSocket.
+    maxRequestBodySize: 64 * 1024,
     fetch: async (request, server) => {
       const url = new URL(request.url);
       if (devices !== undefined) {
@@ -365,7 +382,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         return serveStatic(staticRoot, url.pathname.slice(OLD_PREFIX.length), request);
       }
       if (url.pathname === FORMER_UI_PREFIX || url.pathname.startsWith(`${FORMER_UI_PREFIX}/`)) {
-        return redirect(`${url.pathname.slice(FORMER_UI_PREFIX.length) || "/"}${url.search}`);
+        // One leading slash only: `/v2//elsewhere.example` must not become a link to another site.
+        const rest = url.pathname.slice(FORMER_UI_PREFIX.length).replace(/^\/+/, "");
+        return redirect(`/${rest}${url.search}`);
       }
       // The lite view: the new UI's page, which a page `frameAncestors` names may frame.
       if (url.pathname === LITE_PATH) {
@@ -411,7 +430,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
       },
       message: (socket, message) => {
-        socket.data.session?.receive(message);
+        // A frame that throws must not reach the process's last-resort handler, which ends the server.
+        try {
+          socket.data.session?.receive(message);
+        } catch (error) {
+          options.logger?.error("connection.frame_failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       },
       close: (socket) => {
         if (socket.data.session !== undefined) dispatcher.close(socket.data.session);

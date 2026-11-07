@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FolderPath, ListeningService, Share, SharesList, ThreadId } from "@omp-app/contracts";
@@ -225,11 +225,16 @@ describe("shares (#2788)", () => {
     expect((await fetch(share.url, { headers: { cookie } })).status).toBe(403);
   });
 
-  test("an HTML file opens as a page from its folder; no other file, and none outside the folder", async () => {
+  test("an HTML file opens as a page from its folder; no other file, and none outside the folder, also through a link", async () => {
     const folder = await mkdtemp(join(tmpdir(), "omp-app-share-"));
+    const outside = await mkdtemp(join(tmpdir(), "omp-app-share-outside-"));
     cleanups.push(() => rm(folder, { recursive: true, force: true }));
+    cleanups.push(() => rm(outside, { recursive: true, force: true }));
     await writeFile(join(folder, "guide.html"), "<p>guide</p>");
     await writeFile(join(folder, "notes.txt"), "notes");
+    await mkdir(join(outside, "site"));
+    await writeFile(join(outside, "site/index.html"), "<p>not this chat's</p>");
+    await symlink(join(outside, "site"), join(folder, "linked"));
     const { call } = runtime({ services: [] });
     const share = (await call("sharePage", {
       folder: folder as FolderPath,
@@ -246,6 +251,12 @@ describe("shares (#2788)", () => {
     ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
     await expect(
       Promise.resolve(call("sharePage", { folder: folder as FolderPath, path: "../x.html" })),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    // A folder link inside the chat's folder that points elsewhere would share that other folder.
+    await expect(
+      Promise.resolve(
+        call("sharePage", { folder: folder as FolderPath, path: "linked/index.html" }),
+      ),
     ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
   });
 });

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
@@ -124,6 +124,32 @@ describe("adoptRunningHosts", () => {
     expect(current.received.some((line) => line.method === "hand_back")).toBe(false);
     expect(existsSync(dead)).toBe(false);
     expect(existsSync(`${dead}.log`)).toBe(false);
+  });
+
+  test("attaches to nothing in a hosts folder other users may enter: one of them could have put a socket there", async () => {
+    const dir = await hostsDir();
+    const host = fakeHost(join(dir, "a.sock"));
+    const adopted: string[] = [];
+    const adopt = (process: OmpProcess, hello: { session: { id: string } }) => {
+      adopted.push(hello.session.id);
+      void process.release?.();
+    };
+    const options = {
+      hostsDir: dir,
+      protocol: CHAT_HOST_PROTOCOL_VERSION,
+      adopt,
+      handingBack: () => undefined,
+    };
+    await chmod(dir, 0o755);
+    expect(await adoptRunningHosts(options)).toEqual({ adopted: 0, handedBack: 0 });
+    expect(await handBackHosts({ hostsDir: dir, waitMs: 100 })).toEqual({
+      handedBack: 0,
+      finishing: 0,
+    });
+    expect(host.received).toEqual([]);
+    await chmod(dir, 0o700);
+    expect(await adoptRunningHosts(options)).toEqual({ adopted: 1, handedBack: 0 });
+    expect(adopted).toEqual([host.id]);
   });
 
   test("leaves a socket whose host says no hello (one another server holds)", async () => {

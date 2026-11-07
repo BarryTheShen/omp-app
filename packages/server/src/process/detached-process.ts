@@ -20,6 +20,7 @@ import {
   type ChatHostHello,
   parseHostLine,
 } from "@omp-app/contracts/chat-host";
+import { hostsFolderIsPrivate } from "./hosts-folder";
 import {
   buildChatEnv,
   homeFolderArguments,
@@ -227,6 +228,11 @@ class DetachedOmpProcess implements OmpProcess {
     const processId = OmpProcessIdSchema.parse(crypto.randomUUID());
     this.#processId = processId;
     await mkdir(options.hostsDir, { recursive: true, mode: 0o700 });
+    if (!hostsFolderIsPrivate(options.hostsDir))
+      throw failure(
+        "omp_exited",
+        `The chat hosts' folder ${options.hostsDir} is not this user's alone; another user may have made it.`,
+      );
     const socketPath = join(options.hostsDir, `${processId}.sock`);
     this.#socketPath = socketPath;
     let child: Bun.Subprocess;
@@ -575,6 +581,7 @@ export async function adoptRunningHosts(options: {
   readonly onFailed?: (threadId: ThreadId, error: unknown) => void;
 }): Promise<{ readonly adopted: number; readonly handedBack: number }> {
   let names: string[];
+  if (!hostsFolderIsPrivate(options.hostsDir)) return { adopted: 0, handedBack: 0 };
   try {
     names = await readdir(options.hostsDir);
   } catch {
@@ -624,6 +631,7 @@ export async function handBackHosts(options: {
   readonly onAsked?: (count: number) => void;
 }): Promise<{ readonly handedBack: number; readonly finishing: number }> {
   let names: string[];
+  if (!hostsFolderIsPrivate(options.hostsDir)) return { handedBack: 0, finishing: 0 };
   try {
     names = await readdir(options.hostsDir);
   } catch {

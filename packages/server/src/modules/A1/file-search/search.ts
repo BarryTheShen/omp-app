@@ -3,6 +3,7 @@ import { lstat, readdir, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { FileSearchCandidate, FileSearchKind, FileSearchResult } from "@omp-app/contracts";
 import { type AbortSignalLike, AppFailure } from "@omp-app/contracts";
+import { GIT_SAFE_CONFIG } from "../git/git";
 
 export const DEFAULT_FILE_SEARCH_LIMIT = 50;
 export const MAX_FILE_SEARCH_LIMIT = 200;
@@ -536,7 +537,7 @@ async function runGitText(
 ): Promise<GitTextResult> {
   let child: Bun.Subprocess;
   try {
-    child = Bun.spawn([options.gitBinary ?? "git", ...args], {
+    child = Bun.spawn([options.gitBinary ?? "git", ...GIT_SAFE_CONFIG, ...args], {
       cwd,
       env: processEnvironment(options.env),
       stdout: "pipe",
@@ -592,6 +593,7 @@ async function runGitList(
     child = Bun.spawn(
       [
         options.gitBinary ?? "git",
+        ...GIT_SAFE_CONFIG,
         "ls-files",
         "--cached",
         "--others",

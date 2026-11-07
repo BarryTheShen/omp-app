@@ -291,6 +291,37 @@ describe("A0.6 dispatcher", () => {
     );
   });
 
+  test("a name every object has (toString, constructor) is no port's method: unknown, and the connection goes on", async () => {
+    const { dispatcher } = createDispatcher();
+    const socket = createSocket("connection-8");
+    const session = dispatcher.open(socket);
+    hello(session);
+    for (const method of ["toString", "constructor", "hasOwnProperty"]) {
+      session.receive(
+        JSON.stringify({ type: "call", id: method, port: "A0.test", method, args: null }),
+      );
+    }
+    session.receive(
+      JSON.stringify({
+        type: "call",
+        id: "echo",
+        port: "A0.test",
+        method: "echo",
+        args: { value: "still here" },
+      }),
+    );
+    await settle();
+    expect(
+      resultFrames(socket).map((frame) => [frame.id, frame.ok ? "ok" : frame.error.code]),
+    ).toEqual([
+      ["toString", "not_found"],
+      ["constructor", "not_found"],
+      ["hasOwnProperty", "not_found"],
+      ["echo", "ok"],
+    ]);
+    expect(socket.closed).toEqual([]);
+  });
+
   test("tells every port which connection closed, exactly once, and a failing port stops no other", async () => {
     const released: string[] = [];
     const failing: PortRegistration = {
@@ -435,6 +466,26 @@ describe("A0.6 upgrade and static serving", () => {
     expect(authorizeWebSocketUpgrade(request("right"), policy)).toEqual({ deviceId: null });
   });
 
+  test("the printed token counts on this computer only: through a proxy such as `tailscale serve` it lets nothing in", () => {
+    const request = (headers: Record<string, string> = {}) =>
+      new Request("http://127.0.0.1:4317/ws?token=right", {
+        headers: { origin: "http://127.0.0.1:4317", host: "127.0.0.1:4317", ...headers },
+      });
+    const policy = { token: "right", origins: ["http://127.0.0.1:4317"], port: 4317 };
+    expect(authorizeWebSocketUpgrade(request(), policy)).toEqual({ deviceId: null });
+    // `tailscale serve` sets both on everything it passes on, whatever Host and Origin the other computer chose.
+    const proxied: Record<string, string>[] = [
+      { "x-forwarded-for": "100.64.0.7" },
+      { "x-forwarded-host": "127.0.0.1:4317" },
+    ];
+    for (const headers of proxied) {
+      expect(authorizeWebSocketUpgrade(request(headers), policy)).toEqual({
+        closeCode: 4401,
+        reason: "not paired",
+      });
+    }
+  });
+
   test("binds loopback, serves the static root and exposes a random token", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({
@@ -473,6 +524,8 @@ describe("A0.6 upgrade and static serving", () => {
       expect(await location("/v2?folder=a")).toBe("/?folder=a");
       expect(await location("/v2/?folder=a")).toBe("/?folder=a");
       expect(await location("/v2/assets/a.js")).toBe("/assets/a.js");
+      // Never `//elsewhere.example/x`, which a browser takes for another site.
+      expect(await location("/v2//elsewhere.example/x")).toBe("/elsewhere.example/x");
       expect((await fetch(`${app.url}/missing.js`)).status).toBe(404);
     } finally {
       await app.stop();

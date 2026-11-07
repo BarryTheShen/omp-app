@@ -62,7 +62,7 @@ describe("the services a share can open (#2788)", () => {
         listen(3, "0100007F:20C0", 4) + // 127.0.0.1:8384, syncthing
         listen(4, "0100007F:10DD", 5) + // 127.0.0.1:4317, the app
         listen(5, "01004064:2328", 6) + // 100.64.0.1:9000, the private network only
-        listen(6, "0100007F:1B58", 7), // 127.0.0.1:7000, another user's
+        listen(6, "0100007F:1B58", 7), // 127.0.0.1:7000, another user's: its program cannot be read, so never shared
     );
     await writeFile(
       join(root, "net/tcp6"),
@@ -95,7 +95,7 @@ describe("the services a share can open (#2788)", () => {
     ).toEqual([
       [3000, "python3", T2, false],
       [5173, "vite", T1, false],
-      [7000, null, null, false],
+      [7000, null, null, true],
       [8384, "syncthing", null, true],
     ]);
   });

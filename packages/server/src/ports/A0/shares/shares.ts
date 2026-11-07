@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import { basename, dirname, resolve, sep } from "node:path";
 import {
@@ -292,8 +292,13 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
     },
     sharePage: async (args: unknown): Promise<Share> => {
       const { folder, path } = args as { folder: FolderPath; path: WorkspaceRelativePath };
-      const root = resolve(folder);
-      const file = resolve(root, path);
+      const asked = resolve(resolve(folder), path);
+      if (!asked.startsWith(resolve(folder) + sep))
+        throw failure("invalid_args", "That file is not in the folder.");
+      // Real paths too: a folder link inside the chat's folder must not share a folder outside it.
+      const root = await realpath(resolve(folder)).catch(() => null);
+      const file = root === null ? null : await realpath(asked).catch(() => null);
+      if (root === null || file === null) throw failure("not_found", "That file is not there.");
       if (!file.startsWith(root + sep))
         throw failure("invalid_args", "That file is not in the folder.");
       if (!/\.html?$/i.test(file))
@@ -307,7 +312,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
           entry.share.kind === "page" &&
           entry.share.folder !== null &&
           entry.share.path !== null &&
-          resolve(entry.share.folder, entry.share.path) === file,
+          resolve(entry.share.folder, entry.share.path) === asked,
       );
       if (existing !== undefined) return shown(existing);
       const id = randomUUID();

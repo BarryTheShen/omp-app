@@ -350,6 +350,14 @@ function normalizeTimeout(value: number | undefined): number {
   return Math.max(1, Math.floor(value));
 }
 
+/** Settings that keep a folder's own git config from running programs while the app reads its state. */
+export const GIT_SAFE_CONFIG = [
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.hooksPath=/dev/null",
+] as const;
+
 async function runGit(
   cwd: string,
   args: readonly string[],
@@ -382,7 +390,8 @@ async function runGit(
 
   let child: Bun.Subprocess;
   try {
-    child = Bun.spawn([command, ...args], {
+    // A folder's own `.git/config` may name programs git runs (an fsmonitor, hooks): reading a folder never runs them.
+    child = Bun.spawn([command, ...GIT_SAFE_CONFIG, ...args], {
       cwd,
       env,
       stdout: "pipe",

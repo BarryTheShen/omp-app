@@ -248,10 +248,15 @@ export class DispatcherSession {
       this.#sendError(frame.id, notFound(`Unknown port ${frame.port}`));
       return;
     }
-    const method = (
-      registration.port.methods as Record<string, { args: z.ZodType; result: z.ZodType }>
-    )[frame.method];
-    const handler = registration.handlers[frame.method];
+    // Own members only: `toString` or `constructor` would otherwise be found on the object's prototype.
+    const methods = registration.port.methods as Record<
+      string,
+      { args: z.ZodType; result: z.ZodType }
+    >;
+    const method = Object.hasOwn(methods, frame.method) ? methods[frame.method] : undefined;
+    const handler = Object.hasOwn(registration.handlers, frame.method)
+      ? registration.handlers[frame.method]
+      : undefined;
     if (method === undefined || handler === undefined) {
       this.#sendError(frame.id, notFound(`Unknown method ${frame.port}.${frame.method}`));
       return;

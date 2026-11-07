@@ -115,8 +115,10 @@ export async function listServices(sources: ServiceSources): Promise<ListeningSe
       command: socket.command,
       startedAt: socket.startedAt,
       threadId,
+      // A program this user cannot read is another user's: it is never shared, so a paired device never reaches it.
       neverShare:
-        (socket.program !== null && neverShare.has(socket.program)) ||
+        socket.program === null ||
+        neverShare.has(socket.program) ||
         NEVER_SHARE_COMMANDS.some((pattern) => pattern.test(socket.command ?? "")),
     });
   }

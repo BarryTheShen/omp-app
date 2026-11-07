@@ -211,6 +211,22 @@ describe("readWorkspaceState", () => {
     expect(state.status).toBe("ready");
     expect(after).toEqual(before);
   });
+
+  test("runs no program a repository's own config names (an fsmonitor, hooks) while reading it", async () => {
+    const folder = await committedRepository();
+    const ran = join(folder, "..", `${folder.split("/").at(-1)}-ran`);
+    temporaryRoots.push(ran);
+    const program = join(folder, "monitor.sh");
+    await Bun.write(program, `#!/bin/sh\ntouch '${ran}'\n`);
+    await chmod(program, 0o755);
+    await git(folder, ["config", "core.fsmonitor", program]);
+    await Bun.write(join(folder, "tracked.txt"), "changed\n");
+
+    const state = await readWorkspaceState(folder);
+
+    expect(state.status).toBe("ready");
+    expect(await Bun.file(ran).exists()).toBe(false);
+  });
 });
 
 async function temporaryDirectory(): Promise<string> {

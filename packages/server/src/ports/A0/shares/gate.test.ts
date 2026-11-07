@@ -40,6 +40,7 @@ function service(): number {
         headers: {
           "x-seen-cookie": request.headers.get("cookie") ?? "",
           "x-seen-host": request.headers.get("host") ?? "",
+          "x-seen-origin": request.headers.get("origin") ?? "",
         },
       });
     },
@@ -137,13 +138,16 @@ describe("a share's gate (#2788)", () => {
     expect((await fetch(gate.url, { headers: { cookie } })).status).toBe(403);
   });
 
-  test("a page's files come from its folder only: not above it, also not through a link", async () => {
+  test("a page's files come from its folder only: not above it, not through a link, and none of its hidden files", async () => {
     const base = await mkdtemp(join(tmpdir(), "omp-app-page-"));
     folders.push(base);
     const root = join(base, "guide");
     await mkdir(join(root, "css"), { recursive: true });
+    await mkdir(join(root, ".git"));
     await writeFile(join(root, "exam.html"), "<h1>Exam guide</h1>");
     await writeFile(join(root, "css/site.css"), "h1 { color: red }");
+    await writeFile(join(root, ".env"), "TOKEN=not-for-the-page");
+    await writeFile(join(root, ".git/config"), "[core]");
     await writeFile(join(base, "secret.txt"), "not for the page");
     await symlink(join(base, "secret.txt"), join(root, "link.txt"));
     const gate = await gateFor({ kind: "page", root, entry: "exam.html" });
@@ -156,6 +160,9 @@ describe("a share's gate (#2788)", () => {
     expect((await get("/%2e%2e/secret.txt")).status).toBe(404);
     expect((await get("/..%2fsecret.txt")).status).toBe(404);
     expect((await get("/link.txt")).status).toBe(404);
+    expect((await get("/.env")).status).toBe(404);
+    expect((await get("/.git/config")).status).toBe(404);
+    expect((await get("/css/%2e%2e/.env")).status).toBe(404);
   });
 
   test("a WebSocket passes both ways once signed in", async () => {
@@ -173,6 +180,75 @@ describe("a share's gate (#2788)", () => {
     });
     socket.close();
     expect(echoed).toBe("ping through the gate");
+  });
+
+  test("another page's request is refused and a link followed from anywhere opens; the share's own pages are the service's", async () => {
+    const upstream = service();
+    const gate = await gateFor({ kind: "service", port: upstream, address: "127.0.0.1" });
+    const cookie = await signIn(gate);
+    const own = gate.url.slice(0, -1);
+    const send = (method: "GET" | "POST", headers: Record<string, string>) =>
+      fetch(gate.url, {
+        method,
+        headers: { cookie, ...headers },
+        ...(method === "POST" ? { body: "x" } : {}),
+      });
+    // Another share on this address differs only by port, the same site to a browser: its pages' requests carry this
+    // share's cookie.
+    const elsewhere = "http://127.0.0.1:1";
+    expect(
+      (
+        await send("POST", {
+          "sec-fetch-site": "same-site",
+          "sec-fetch-mode": "cors",
+          origin: elsewhere,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await send("GET", { "sec-fetch-site": "same-site", "sec-fetch-mode": "no-cors" })).status,
+    ).toBe(403);
+    // A browser without Fetch Metadata: its Origin tells.
+    expect((await send("POST", { origin: elsewhere })).status).toBe(403);
+    // A link followed from another page, or an address typed in, opens the share.
+    expect(
+      (await send("GET", { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" })).status,
+    ).toBe(200);
+    expect(
+      (await send("GET", { "sec-fetch-site": "none", "sec-fetch-mode": "navigate" })).status,
+    ).toBe(200);
+    // The share's own page reaches the service as one of the service's own.
+    const posted = await send("POST", {
+      "sec-fetch-site": "same-origin",
+      "sec-fetch-mode": "cors",
+      origin: own,
+    });
+    expect(posted.status).toBe(200);
+    expect(posted.headers.get("x-seen-origin")).toBe(`http://localhost:${upstream}`);
+    // Any other Origin goes on as it came, for the service to judge.
+    const other = await send("GET", { origin: "http://elsewhere.example" });
+    expect(other.headers.get("x-seen-origin")).toBe("http://elsewhere.example");
+  });
+
+  test("a WebSocket opens from the share's own pages only", async () => {
+    const upstream = service();
+    const gate = await gateFor({ kind: "service", port: upstream, address: "127.0.0.1" });
+    const cookie = await signIn(gate);
+    const opens = (origin: string) =>
+      new Promise<boolean>((done) => {
+        const socket = new WebSocket(`${gate.url.replace("http", "ws")}ws`, {
+          headers: { cookie, origin },
+        } as unknown as string[]);
+        // Resolved first: Bun calls `onclose` inside `close()`.
+        socket.onopen = () => {
+          done(true);
+          socket.close();
+        };
+        socket.onerror = () => done(false);
+        socket.onclose = () => done(false);
+      });
+    expect(await opens(gate.url.slice(0, -1))).toBe(true);
+    expect(await opens("http://127.0.0.1:1")).toBe(false);
   });
 
   test("a reply sent without a type gets the one a browser would give it, so a page shows instead of downloading", async () => {

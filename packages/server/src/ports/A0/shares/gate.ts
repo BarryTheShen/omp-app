@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import {
   SHARE_COOKIE_PREFIX,
   SHARE_ENTER_PATH,
@@ -152,7 +152,10 @@ export async function openGate(options: GateOptions): Promise<Gate> {
     else headers.delete("cookie");
     if (target.kind === "service") {
       headers.set("host", `localhost:${target.port}`);
-      if (headers.has("origin")) headers.set("origin", `http://localhost:${target.port}`);
+      // The share's own pages are the service's own: their Origin becomes its local one, so its own checks pass. Any other
+      // Origin goes on as it came, for the service to judge.
+      if (headers.get("origin") === `http://${url.host}`)
+        headers.set("origin", `http://localhost:${target.port}`);
     }
     headers.set("x-forwarded-host", url.host);
     headers.set("x-forwarded-proto", "http");
@@ -168,13 +171,18 @@ export async function openGate(options: GateOptions): Promise<Gate> {
       return page(400, "Not found", "That address is not a file of this page.");
     }
     const inside = (path: string): boolean => path === pageRoot || path.startsWith(pageRoot + sep);
+    // A hidden file or folder (`.env`, `.git`) beside the page is not part of it.
+    const shown = (path: string): boolean =>
+      !relative(pageRoot, path)
+        .split(sep)
+        .some((part) => part.startsWith("."));
     let file: string;
     try {
       file = await realpath(resolve(pageRoot, `.${wanted}`));
-      if (!inside(file)) throw new Error("outside");
+      if (!inside(file) || !shown(file)) throw new Error("outside");
       if ((await stat(file)).isDirectory()) {
         file = await realpath(join(file, "index.html"));
-        if (!inside(file)) throw new Error("outside");
+        if (!inside(file) || !shown(file)) throw new Error("outside");
       }
     } catch {
       return page(404, "Not found", "That address is not a file of this page.");
@@ -182,6 +190,26 @@ export async function openGate(options: GateOptions): Promise<Gate> {
     return new Response(Bun.file(file), {
       headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
     });
+  };
+
+  /**
+   * Whether a page of another origin made the request: shares on this address differ only by port, which browsers count
+   * as the same site, so one share's page would send the others' cookies along. Only a GET or HEAD navigation (a link
+   * the person followed) may come from elsewhere, and a WebSocket only from this share's own pages. Fetch Metadata
+   * when the browser sends it, else the Origin header.
+   */
+  const fromAnotherPage = (request: Request, url: URL): boolean => {
+    const own = `http://${url.host}`;
+    const origin = request.headers.get("origin");
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket")
+      return origin !== null && origin !== own;
+    const reading = request.method === "GET" || request.method === "HEAD";
+    const site = request.headers.get("sec-fetch-site");
+    if (site !== null) {
+      const navigation = request.headers.get("sec-fetch-mode") === "navigate" && reading;
+      return site !== "same-origin" && site !== "none" && !navigation;
+    }
+    return origin !== null && origin !== own && !reading;
   };
 
   const proxy = async (request: Request, url: URL): Promise<Response> => {
@@ -280,6 +308,14 @@ export async function openGate(options: GateOptions): Promise<Gate> {
           "Referrer-Policy": "no-referrer",
         },
       });
+    }
+    if (fromAnotherPage(request, url)) {
+      refused("another page");
+      return page(
+        403,
+        "Open this from the app",
+        "Another page asked for this share. Open it from the app's Ports panel, or the link in the chat.",
+      );
     }
     if (sessionOf(request) === null) {
       refused("not signed in");

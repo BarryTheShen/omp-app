@@ -2,6 +2,7 @@ import type { SignInLink } from "@omp-app/contracts/chat-host";
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { signInHref } from "./signInHref";
 
 /**
  * A sign-in's page (#2784): opened in a browser tab, or copied, to be opened in any browser, on any device; wherever the
@@ -15,6 +16,7 @@ export function SignInPage({
   readonly instructions?: string | undefined;
 }): ReactNode {
   const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
+  const href = signInHref(link.url);
   useEffect(() => {
     if (copied !== "copied") return;
     const timer = setTimeout(() => setCopied(null), 2000);
@@ -23,15 +25,21 @@ export function SignInPage({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <a
-          href={link.url}
-          target="_blank"
-          rel="noreferrer"
-          className={buttonVariants({ size: "sm" })}
-        >
-          <ExternalLink />
-          Open {link.name}'s sign-in page
-        </a>
+        {href !== null ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonVariants({ size: "sm" })}
+          >
+            <ExternalLink />
+            Open {link.name}'s sign-in page
+          </a>
+        ) : (
+          <span className="text-sm text-t2">
+            {link.name}'s sign-in address is not a web page the app opens: {link.url}
+          </span>
+        )}
         <Button
           type="button"
           size="sm"
