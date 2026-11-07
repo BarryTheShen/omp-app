@@ -36,6 +36,12 @@ import { type JobDetail, JobIdParams, type JobList, JobsParams } from "./jobs";
 import { type LiveEvent, LiveMuteParams, LiveStartParams } from "./live";
 import { CHAT_HOST_METHOD_NAMES, type ChatHostMethodName } from "./method-names";
 import {
+  AnswerQuestionParams,
+  type QuestionRecord,
+  type QuestionRecordEvent,
+  SkipQuestionParams,
+} from "./questions";
+import {
   SteerSubagentParams,
   type SubagentEvent,
   SubagentIdParams,
@@ -57,6 +63,7 @@ export * from "./host-requests";
 export * from "./host-tools";
 export * from "./jobs";
 export * from "./live";
+export * from "./questions";
 export * from "./subagents";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
@@ -843,6 +850,24 @@ export interface ChatHostMethodMap {
     readonly params: EmptyParams;
     readonly result: { readonly records: readonly BtwHistoryRecord[] };
   };
+  /** The questions the chat's agent asked with `ask_async`, open and answered, in the order asked. */
+  readonly get_questions: {
+    readonly params: EmptyParams;
+    readonly result: { readonly questions: readonly QuestionRecord[] };
+  };
+  /**
+   * Answers one of them: the answer is saved, then goes to the agent as the person's message, the way a typed one does
+   * (between its steps while it works, else as a new message). An answered or skipped question cannot be answered.
+   */
+  readonly answer_question: {
+    readonly params: AnswerQuestionParams;
+    readonly result: { readonly record: QuestionRecord };
+  };
+  /** Skips one: saved, and the agent is told to go on without the answer. */
+  readonly skip_question: {
+    readonly params: SkipQuestionParams;
+    readonly result: { readonly record: QuestionRecord };
+  };
   /**
    * The roles Ctrl+P walks: omp's `cycleOrder` setting, the roles of it that resolve to an available model (omp skips the
    * others, and `default` falls back to the live model), and the one the live model is (null when none is).
@@ -1268,6 +1293,9 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   btw: BtwParams,
   btw_cancel: BtwCancelParams,
   get_btw_history: EmptyParams,
+  get_questions: EmptyParams,
+  answer_question: AnswerQuestionParams,
+  skip_question: SkipQuestionParams,
   get_model_hub: EmptyParams,
   get_model_menu: EmptyParams,
   assign_model_role: AssignModelRoleParams,
@@ -1484,6 +1512,7 @@ export type ChatEvent =
   | LiveEvent
   | BtwDeltaEvent
   | BtwRecordEvent
+  | QuestionRecordEvent
   | PauseChangedEvent
   | PlanModeChangedEvent;
 

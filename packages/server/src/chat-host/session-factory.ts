@@ -124,6 +124,7 @@ import {
 } from "@oh-my-pi/pi-utils/dirs";
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
+import { AskAsyncTool } from "./questions";
 
 /** One chat's session, ready for the loop. */
 export interface ChatSession {
@@ -131,6 +132,8 @@ export interface ChatSession {
   readonly setToolUIContext: CreateAgentSessionResult["setToolUIContext"];
   readonly mcpManager: MCPManager | undefined;
   readonly subagentEventBus: EventBus;
+  /** The app's `ask_async` tool in the session; the loop gives it the chat's questions. */
+  readonly askAsync: AskAsyncTool;
 }
 
 /** Where omp's launch notices go: omp prints them on stderr in a protocol mode, and so does the chat host. */
@@ -344,8 +347,11 @@ export async function createChatSession(
     );
   }
 
+  // The app's own tool, beside omp's: questions the agent asks without waiting (`questions.ts`).
+  const askAsync = new AskAsyncTool();
   const created = await createAgentSession({
     ...sessionOptions,
+    customTools: [askAsync.definition],
     eventBus,
     subagentEventBus,
     preloadedExtensions: extensions,
@@ -395,6 +401,7 @@ export async function createChatSession(
     setToolUIContext: created.setToolUIContext,
     mcpManager: created.mcpManager,
     subagentEventBus,
+    askAsync,
   };
 }
 
