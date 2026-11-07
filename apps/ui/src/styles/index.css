@@ -12,6 +12,27 @@
  * it almost none (#2815).
  */
 @custom-variant short (@media (max-height: 700px));
+/*
+ * The phone's layout is below Tailwind's `sm` breakpoint (40rem, 640 px), except where the page keeps a computer's
+ * layout at any width: the lite view on a computer (#2845, `data-desk` on the root, set by index.html's boot script).
+ * There `max-sm` never applies and `sm` always does. No element pairs these with `md`, so redefining them reorders
+ * nothing that competes.
+ */
+@custom-variant max-sm {
+  @media (width < 40rem) {
+    &:where(:root:not([data-desk]) *) {
+      @slot;
+    }
+  }
+}
+@custom-variant sm {
+  @media (width >= 40rem) {
+    @slot;
+  }
+  &:where(:root[data-desk] *) {
+    @slot;
+  }
+}
 
 /*
  * A row of tabs or chips that scrolls sideways (#2802), with `useSidewaysRow` (`src/sidewaysRow.ts`): no scroll bar, which
@@ -545,49 +566,52 @@
  * `!important`.
  */
 @media (max-width: 639px) {
-  /*
+  /* Not where the page keeps a computer's layout at any width (#2845, `data-desk`). */
+  :where(:root:not([data-desk])) {
+    /*
    * The message box's foot: with the keyboard down, the home bar's inset under it is room enough; with it up
    * (`--app-bottom` 0), a small gap above the keyboard.
    */
-  .composer-foot {
-    padding-bottom: max(0px, calc(0.5rem - var(--app-bottom, var(--safe-bottom))));
-  }
+    .composer-foot {
+      padding-bottom: max(0px, calc(0.5rem - var(--app-bottom, var(--safe-bottom))));
+    }
 
-  [data-slot="popover-positioner"],
-  [data-slot="dropdown-menu-positioner"],
-  [data-slot="select-positioner"] {
-    /* biome-ignore lint/complexity/noImportantStyles: only !important wins over Base UI's inline placement */
-    position: fixed !important;
-    /* biome-ignore lint/complexity/noImportantStyles: only !important wins over Base UI's inline placement */
-    inset: auto 0 calc(100% - var(--app-height, 100%)) 0 !important;
-    /* biome-ignore lint/complexity/noImportantStyles: only !important wins over Base UI's inline placement */
-    transform: none !important;
-  }
+    [data-slot="popover-positioner"],
+    [data-slot="dropdown-menu-positioner"],
+    [data-slot="select-positioner"] {
+      /* biome-ignore lint/complexity/noImportantStyles: only !important wins over Base UI's inline placement */
+      position: fixed !important;
+      /* biome-ignore lint/complexity/noImportantStyles: only !important wins over Base UI's inline placement */
+      inset: auto 0 calc(100% - var(--app-height, 100%)) 0 !important;
+      /* biome-ignore lint/complexity/noImportantStyles: only !important wins over Base UI's inline placement */
+      transform: none !important;
+    }
 
-  [data-slot="popover-content"],
-  [data-slot="dropdown-menu-content"],
-  [data-slot="dropdown-menu-sub-content"],
-  [data-slot="select-content"] {
-    width: 100%;
-    max-width: none;
-    max-height: calc(var(--app-height, 100dvh) * 0.7);
-    overflow-y: auto;
-    border-radius: 1rem 1rem 0 0;
-    padding-bottom: max(0.5rem, var(--app-bottom, var(--safe-bottom)));
-    --tw-enter-translate-y: 100%;
-    --tw-exit-translate-y: 100%;
-    --tw-enter-translate-x: 0;
-    --tw-exit-translate-x: 0;
-    --tw-enter-scale: 1;
-    --tw-exit-scale: 1;
-  }
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"] {
+      width: 100%;
+      max-width: none;
+      max-height: calc(var(--app-height, 100dvh) * 0.7);
+      overflow-y: auto;
+      border-radius: 1rem 1rem 0 0;
+      padding-bottom: max(0.5rem, var(--app-bottom, var(--safe-bottom)));
+      --tw-enter-translate-y: 100%;
+      --tw-exit-translate-y: 100%;
+      --tw-enter-translate-x: 0;
+      --tw-exit-translate-x: 0;
+      --tw-enter-scale: 1;
+      --tw-exit-scale: 1;
+    }
 
-  /* A menu's or a select's rows keep clear of the screen's edges, which the sheet now reaches. */
-  [data-slot="dropdown-menu-content"],
-  [data-slot="dropdown-menu-sub-content"],
-  [data-slot="select-content"] {
-    padding-top: 0.5rem;
-    padding-inline: 0.75rem;
+    /* A menu's or a select's rows keep clear of the screen's edges, which the sheet now reaches. */
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"] {
+      padding-top: 0.5rem;
+      padding-inline: 0.75rem;
+    }
   }
 }
 
@@ -596,17 +620,19 @@
  * and a chat's tool, thinking and job rows, which open with a tap (27 and 19 px before).
  */
 @media (max-width: 639px), (pointer: coarse) {
-  [data-slot="dropdown-menu-item"],
-  [data-slot="dropdown-menu-checkbox-item"],
-  [data-slot="dropdown-menu-radio-item"],
-  [data-slot="dropdown-menu-sub-trigger"],
-  [data-slot="select-item"],
-  [data-slot="command-item"] {
-    min-height: 44px;
-  }
+  :where(:root:not([data-desk])) {
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-radio-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="select-item"],
+    [data-slot="command-item"] {
+      min-height: 44px;
+    }
 
-  .tr-root :is(.tv-head, .tr-think-head, .tr-job-head) {
-    min-height: 44px;
+    .tr-root :is(.tv-head, .tr-think-head, .tr-job-head) {
+      min-height: 44px;
+    }
   }
 }
 
@@ -616,36 +642,38 @@
  * their drawn size; the target around them (shadcn's `after:` area, 32 px high before) grows to 44 px.
  */
 @media (max-width: 639px) {
-  :is(
-    [data-slot="button"],
-    [data-slot="dropdown-menu-trigger"],
-    [data-slot="popover-trigger"],
-    [data-slot="select-trigger"],
-    [data-slot="alert-dialog-action"],
-    [data-slot="alert-dialog-cancel"],
-    [data-slot="dialog-close"],
-    [data-slot="tooltip-trigger"],
-    [data-slot="toggle"],
-    [data-slot="toggle-group-item"],
-    [data-slot="input"],
-    [data-slot="input-group"],
-    [data-slot="command-input"]
-  ) {
-    min-height: 44px;
-  }
+  :where(:root:not([data-desk])) {
+    :is(
+        [data-slot="button"],
+        [data-slot="dropdown-menu-trigger"],
+        [data-slot="popover-trigger"],
+        [data-slot="select-trigger"],
+        [data-slot="alert-dialog-action"],
+        [data-slot="alert-dialog-cancel"],
+        [data-slot="dialog-close"],
+        [data-slot="tooltip-trigger"],
+        [data-slot="toggle"],
+        [data-slot="toggle-group-item"],
+        [data-slot="input"],
+        [data-slot="input-group"],
+        [data-slot="command-input"]
+      ) {
+      min-height: 44px;
+    }
 
-  [data-size^="icon"]:is(
-    [data-slot="button"],
-    [data-slot="dropdown-menu-trigger"],
-    [data-slot="popover-trigger"],
-    [data-slot="dialog-close"],
-    [data-slot="tooltip-trigger"]
-  ) {
-    min-width: 44px;
-  }
+    [data-size^="icon"]:is(
+        [data-slot="button"],
+        [data-slot="dropdown-menu-trigger"],
+        [data-slot="popover-trigger"],
+        [data-slot="dialog-close"],
+        [data-slot="tooltip-trigger"]
+      ) {
+      min-width: 44px;
+    }
 
-  :is([data-slot="checkbox"], [data-slot="switch"], [data-slot="radio-group-item"])::after {
-    inset-block: calc((100% - 44px) / 2);
-    inset-inline: min(-12px, calc((100% - 44px) / 2));
+    :is([data-slot="checkbox"], [data-slot="switch"], [data-slot="radio-group-item"])::after {
+      inset-block: calc((100% - 44px) / 2);
+      inset-inline: min(-12px, calc((100% - 44px) / 2));
+    }
   }
 }

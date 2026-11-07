@@ -48,6 +48,10 @@
           document.documentElement.style.setProperty("--page", bg);
           document.documentElement.style.setProperty("--panel", bg);
         }
+        // The lite view on a computer keeps a computer's layout at any width (#2845): another app's side panel is always
+        // narrower than the phone's breakpoint. Only a touch screen as the main pointer gets the phone's there. The page's
+        // CSS (`max-sm`, `sm` and the phone's blocks in styles/index.css) and src/phone.ts read this.
+        if (lite && !matchMedia("(pointer: coarse)").matches) document.documentElement.dataset.desk = "";
       })();
     </script>
     <script>

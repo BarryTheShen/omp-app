@@ -2,7 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import type { FolderPath, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
 import { Check, ChevronDown, SquareArrowOutUpRight, SquarePen } from "lucide-react";
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,13 +23,15 @@ import { titleOf } from "../sidebar/title";
 import { type ChatList, useChatList } from "../sidebar/useChatList";
 import { chatCache } from "../workspace/chatCache";
 import { LiteContext } from "./LiteContext";
-import { fullAppAddress } from "./lite";
+import { fullAppAddress, liteChoices } from "./lite";
 
 /** How many chats the switcher offers: the folder's most recent ones. */
 const RECENT_CHATS = 12;
 
 /** The header's buttons: a finger's size on a phone's width and on a tablet, the full app's small size otherwise. */
 const HEADER_BUTTON = "size-9 shrink-0 text-t2 max-sm:size-11 tablet:size-11";
+/** The header's icons, at the framing app's text size (#2845): 16 px at the app's own 14. */
+const HEADER_ICON = "size-[calc(var(--host-text-size,14px)*8/7)]";
 
 /** The chat shown: `key` tells one opening from the next, as a new chat has no id until its first message. */
 interface Shown {
@@ -83,12 +85,14 @@ export function LiteShell({
   readonly launchFolder: FolderPath;
 }): ReactNode {
   const { folder } = useFolder(client, launchFolder);
+  // The framing app's greeting, suggestions and placeholder (#2845), read once.
+  const choices = useMemo(() => liteChoices(window.location.search), []);
   // A link that stopped answering shows as such and is opened again (#2789), as in the full app.
   useEffect(() => watchLink(client), [client]);
   return (
     <div data-app-root="true" className="flex h-full min-w-0 flex-col bg-panel">
       <ConnectionBanner client={client} />
-      <LiteContext value>
+      <LiteContext value={choices}>
         <LiteChats key={folder} client={client} folder={folder} />
       </LiteContext>
     </div>
@@ -156,12 +160,13 @@ function LiteChat({
   const threadId = controller.threadId;
   return (
     <>
-      <header className="flex h-11 shrink-0 items-center gap-1 px-1">
+      {/* One line in the framing app's muted colour and text size (#2845): the chat's name, New chat, the full app. */}
+      <header className="flex h-11 shrink-0 items-center gap-1 px-1 text-t2">
         <h1 className="flex min-w-0 flex-1">
           <DropdownMenu>
             <DropdownMenuTrigger
               title="Recent chats"
-              className="flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-t1 outline-none hover:bg-l1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 max-sm:min-h-11 tablet:min-h-11"
+              className="flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-lg px-2 text-[length:var(--host-text-size,0.875rem)] font-medium text-t2 outline-none hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 max-sm:min-h-11 tablet:min-h-11"
             >
               <span className="truncate">{title}</span>
               <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-t3" />
@@ -191,7 +196,7 @@ function LiteChat({
           title="New chat"
           onClick={onNew}
         >
-          <SquarePen />
+          <SquarePen className={HEADER_ICON} />
         </Button>
         <a
           href={fullAppAddress(threadId)}
@@ -201,7 +206,7 @@ function LiteChat({
           title="Open in the full app"
           className={cn(buttonVariants({ variant: "ghost", size: "icon" }), HEADER_BUTTON)}
         >
-          <SquareArrowOutUpRight />
+          <SquareArrowOutUpRight className={HEADER_ICON} />
         </a>
       </header>
       <ChatPane controller={controller} />

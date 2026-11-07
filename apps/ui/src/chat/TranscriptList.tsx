@@ -314,8 +314,11 @@ export function TranscriptList({
   readonly snapshot: ChatSnapshot;
   readonly onNearTop: () => void;
   readonly actions: RowActions;
-  /** A new chat's greeting while it is empty; null for a saved chat, which shows its entries as they load. */
-  readonly welcome: { readonly folder: string } | null;
+  /**
+   * A new chat's greeting while it is empty, and what a suggestion row does when picked (the lite view's, #2845); null
+   * for a saved chat, which shows its entries as they load.
+   */
+  readonly welcome: { readonly folder: string; readonly onSuggest: (text: string) => void } | null;
   /** What the tool cards may open (a task card's subagents, in the Agent Hub). */
   readonly host?: ToolRenderHost;
   /** The list's name for a screen reader. */
@@ -325,7 +328,7 @@ export function TranscriptList({
   const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, shell } = snapshot;
   // The lite view (#2844) leaves out omp's status lines: at each start they list the tools it mounted, which would fill
   // an empty chat in a side panel. A warning or an error stays.
-  const lite = use(LiteContext);
+  const lite = use(LiteContext) !== null;
   const notices = useMemo(
     () =>
       lite ? snapshot.notices.filter((notice) => notice.level !== "status") : snapshot.notices,
@@ -423,7 +426,9 @@ export function TranscriptList({
           })}
         </div>
       </section>
-      {empty && welcome !== null && <Welcome folder={welcome.folder} />}
+      {empty && welcome !== null && (
+        <Welcome folder={welcome.folder} onSuggest={welcome.onSuggest} />
+      )}
       {!empty && !atEnd && !follows && (
         // Only for a reader who left the end; on a phone a round button in the corner, clear of the text being read.
         <Button
@@ -453,9 +458,30 @@ function folderTail(folder: string): string {
   return parts.length <= 2 ? folder : `…/${parts.slice(-2).join("/")}`;
 }
 
-/** A new chat's first screen: where omp will work, and the keys of the message box (a phone's return key adds a line). */
-function Welcome({ folder }: { readonly folder: string }): ReactNode {
+/** The greeting of an empty chat where the framing app sets none. */
+const GREETING = "What are we working on?";
+
+/**
+ * A new chat's first screen: where omp will work, and the keys of the message box (a phone's return key adds a line).
+ * In the lite view, another app's assistant (#2845), the framing app's greeting and suggestions instead.
+ */
+function Welcome({
+  folder,
+  onSuggest,
+}: {
+  readonly folder: string;
+  readonly onSuggest: (text: string) => void;
+}): ReactNode {
   const phone = usePhone();
+  const lite = use(LiteContext);
+  if (lite !== null)
+    return (
+      <LiteWelcome
+        greeting={lite.greeting ?? GREETING}
+        suggestions={lite.suggestions}
+        onSuggest={onSuggest}
+      />
+    );
   const keys: readonly (readonly [string, string])[] = [
     ["/", "commands"],
     ["@", "files"],
@@ -465,7 +491,7 @@ function Welcome({ folder }: { readonly folder: string }): ReactNode {
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
       <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-9 opacity-90" />
-      <p className="text-base font-medium text-t1">What are we working on?</p>
+      <p className="text-base font-medium text-t1">{GREETING}</p>
       <p className="max-w-full truncate font-mono text-xs text-t3">{folderTail(folder)}</p>
       <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-t3">
         {keys.map(([key, label]) => (
@@ -477,6 +503,47 @@ function Welcome({ folder }: { readonly folder: string }): ReactNode {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * The lite view's empty chat (#2845): the framing app's greeting, at its text size, and the suggestions it passed as
+ * rows; a row picked is sent as the message. No folder and no keys: there it is that app's assistant, not a terminal.
+ */
+function LiteWelcome({
+  greeting,
+  suggestions,
+  onSuggest,
+}: {
+  readonly greeting: string;
+  readonly suggestions: readonly string[];
+  readonly onSuggest: (text: string) => void;
+}): ReactNode {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-9 opacity-90" />
+      <p className="text-[length:calc(var(--host-text-size,14px)*8/7)] font-medium text-t1">
+        {greeting}
+      </p>
+      {suggestions.length > 0 && (
+        <ul
+          aria-label="Suggestions"
+          className="pointer-events-auto flex w-full max-w-80 flex-col gap-1.5"
+        >
+          {suggestions.map((text) => (
+            <li key={text}>
+              <button
+                type="button"
+                className="w-full rounded-lg border border-l2 bg-card px-3 py-2 text-left text-[length:var(--host-text-size,14px)] text-t1 outline-none hover:bg-l1 focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => onSuggest(text)}
+              >
+                {text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

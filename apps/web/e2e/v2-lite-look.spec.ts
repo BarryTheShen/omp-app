@@ -23,6 +23,7 @@ const SHOWN = {
   bg: "rgb(30, 30, 30)",
   surface: "rgb(44, 44, 44)",
   fg: "rgb(218, 218, 218)",
+  muted: "rgb(154, 160, 166)",
   border: "rgb(72, 72, 72)",
   accent: "rgb(53, 117, 240)",
 };
@@ -58,8 +59,14 @@ realTest.describe("new UI lite view in its host's look", () => {
         SHOWN.surface,
       );
       expect(await style(page, "[data-tour='message-box']", "border-top-color")).toBe(SHOWN.border);
+      // The header in the host's muted colour (#2845), the greeting in its text colour.
       const title = page.getByTitle("Recent chats");
-      expect(await title.evaluate((element) => getComputedStyle(element).color)).toBe(SHOWN.fg);
+      expect(await title.evaluate((element) => getComputedStyle(element).color)).toBe(SHOWN.muted);
+      expect(
+        await page
+          .getByText("What are we working on?")
+          .evaluate((element) => getComputedStyle(element).color),
+      ).toBe(SHOWN.fg);
       expect(await title.evaluate((element) => getComputedStyle(element).fontFamily)).toBe(
         HOST.font,
       );
@@ -88,7 +95,7 @@ realTest.describe("new UI lite view in its host's look", () => {
       expect(await style(page, ".tr-root", "font-size")).toBe("14px");
       expect(
         await page
-          .getByTitle("Recent chats")
+          .getByText("What are we working on?")
           .evaluate((element) => getComputedStyle(element).color),
       ).toBe(SHOWN.fg);
       expect(realApp.problems).toEqual([]);

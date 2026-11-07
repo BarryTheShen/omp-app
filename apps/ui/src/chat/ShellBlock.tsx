@@ -88,7 +88,7 @@ export function NoticeRow({
   readonly onDismiss: (id: number) => void;
   readonly onShareOpened?: (shareId: string) => void;
 }): ReactNode {
-  const lite = use(LiteContext);
+  const lite = use(LiteContext) !== null;
   if (notice.level === "status") return <OneLine text={notice.text} tone="status" />;
   const share = notice.share;
   if (lite && share === undefined && (notice.level === "warning" || notice.level === "error"))

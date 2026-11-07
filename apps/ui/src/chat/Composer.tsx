@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
   memo,
   type ReactNode,
+  use,
   useEffect,
   useRef,
   useState,
@@ -26,6 +27,7 @@ import {
 } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { isImeEnter } from "../keys/ime";
+import { LiteContext } from "../lite/LiteContext";
 import { sizeText } from "../panels/files/transfer";
 import { showPanel } from "../panels/panel-state";
 import { usePhone } from "../phone";
@@ -81,10 +83,16 @@ function insertText(box: HTMLTextAreaElement, text: string): boolean {
 /** A typed `/pause` (omp's takes no arguments and ignores any). */
 const PAUSE_TEXT = /^\/pause(?:\s|$)/;
 
-/** What the palette can do with a pane's message box. */
+/** What the palette, and the lite view's suggestions, can do with a pane's message box. */
 export interface ComposerHandle {
   /** Puts text at the caret (over a selection), then the caret after it. */
   readonly insert: (text: string) => void;
+  /**
+   * A suggestion picked (the lite view's empty chat, #2845): with nothing in the box it is sent as the message, as Enter
+   * sends it (a chat still opening sends it once open); with something typed it goes in at the caret, and what was
+   * typed stays.
+   */
+  readonly suggest: (text: string) => void;
 }
 
 /** An image omp gave back (an edited message's), as the box holds it. */
@@ -199,6 +207,8 @@ export const Composer = memo(function Composer({
   /** Whether the phone's quick panel is open, in the keyboard's place. */
   const [panel, setPanel] = useState(false);
   const phone = usePhone();
+  /** The lite view's choices (#2845): the framing app's placeholder; null in the full app. */
+  const lite = use(LiteContext);
   /** Whether the phone's ＋ sheet is open (`PlusMenu`). */
   const [plusOpen, setPlusOpen] = useState(false);
   // On a phone the model chip is in the ＋ sheet: what opens the model menu (a failed request's "Switch model") opens
@@ -217,6 +227,7 @@ export const Composer = memo(function Composer({
   /** Where Up and Down are in the history, and what the box held before; null while not going through it. */
   const browsing = useRef<{ readonly index: number; readonly kept: string } | null>(null);
   const insertRef = useRef<(inserted: string) => void>(() => undefined);
+  const suggestRef = useRef<(text: string) => void>(() => undefined);
   insertRef.current = (inserted) => {
     const value = textRef.current;
     const box = boxRef.current;
@@ -232,7 +243,10 @@ export const Composer = memo(function Composer({
   };
   useEffect(() => {
     if (onHandle === undefined) return;
-    onHandle({ insert: (inserted) => insertRef.current(inserted) });
+    onHandle({
+      insert: (inserted) => insertRef.current(inserted),
+      suggest: (text) => suggestRef.current(text),
+    });
     return () => onHandle(null);
   }, [onHandle]);
   // Text asked into this chat from elsewhere (the Files panel's Mention in chat) goes in at the caret, as `@` does.
@@ -513,6 +527,18 @@ export const Composer = memo(function Composer({
       .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`))
       .finally(() => setSending(false));
   };
+  suggestRef.current = (suggestion) => {
+    const typed =
+      textRef.current.trim() !== "" ||
+      attachmentsRef.current.length > 0 ||
+      filesRef.current.length > 0;
+    if (typed) {
+      insertRef.current(suggestion);
+      return;
+    }
+    update(suggestion);
+    send("auto");
+  };
 
   /** A file of the box still uploading: a message sent meanwhile waits for it. */
   const uploading = files.some((file) => file.progress !== null);
@@ -770,15 +796,16 @@ export const Composer = memo(function Composer({
     </Tooltip>
   );
   /**
-   * On a phone the model and its level are behind ＋: the empty box names them ("Claude Opus 5.5 · high"), on one line
-   * beside ⚡ and Send.
+   * The framing app's text in the lite view (#2845). On a phone the model and its level are behind ＋: the empty box
+   * names them ("Claude Opus 5.5 · high"), on one line beside ⚡ and Send.
    */
   const readyPlaceholder =
-    phone && model !== null
+    lite?.placeholder ??
+    (phone && model !== null
       ? `${model.name.length > 24 ? `${model.name.slice(0, 23)}…` : model.name}${
           thinkingLevel !== null && thinkingLevel !== "off" ? ` · ${thinkingLevel}` : ""
         }`
-      : "Message omp";
+      : "Message omp");
   /** Something to send: text, pictures or files. */
   const typed = text.trim().length > 0 || attachments.length > 0 || files.length > 0;
   /**
@@ -1061,7 +1088,8 @@ export const Composer = memo(function Composer({
             {phone && sendOrStop}
           </div>
           {!phone && (
-            <div className="flex items-center gap-1 px-2 pb-2">
+            // A narrow window (the lite view in another app's side panel, #2845) wraps the chips onto a second line.
+            <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
               {attachButton}
               {shellBadge}
               {settings}

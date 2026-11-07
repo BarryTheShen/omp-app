@@ -1,7 +1,9 @@
 import { createContext } from "react";
+import type { LiteChoices } from "./lite";
 
 /**
- * Whether the chat shows in the lite view (#2843), another app's side panel: there the transcript leaves out omp's
- * start-up status lines, and a warning or an error is one line (#2844). False in the full app.
+ * The lite view's choices when the chat shows there (#2843), in another app's side panel; null in the full app. There
+ * the transcript leaves out omp's start-up status lines and a warning or an error is one line (#2844), and the empty
+ * chat and the message box take the framing app's greeting, suggestions and placeholder (#2845).
  */
-export const LiteContext = createContext(false);
+export const LiteContext = createContext<LiteChoices | null>(null);

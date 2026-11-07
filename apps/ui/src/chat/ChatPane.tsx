@@ -159,8 +159,23 @@ export function ChatPane({
     }),
     [controller, canEdit, snapshot.continuesAt],
   );
+  /** The message box's handle: the lite view's suggestions are sent through it, as Enter sends. */
+  const composer = useRef<ComposerHandle | null>(null);
+  const keepComposer = useCallback(
+    (handle: ComposerHandle | null) => {
+      composer.current = handle;
+      onComposer?.(handle);
+    },
+    [onComposer],
+  );
   const welcome = useMemo(
-    () => (controller.isNew ? { folder: controller.folder } : null),
+    () =>
+      controller.isNew
+        ? {
+            folder: controller.folder,
+            onSuggest: (text: string) => composer.current?.suggest(text),
+          }
+        : null,
     [controller],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -276,7 +291,7 @@ export function ChatPane({
         restore={restore}
         history={history}
         approval={approval}
-        onHandle={onComposer}
+        onHandle={keepComposer}
         agentsRunning={agentsRunning}
         agentsTotal={snapshot.agents.length}
         onOpenAgents={openAgents}

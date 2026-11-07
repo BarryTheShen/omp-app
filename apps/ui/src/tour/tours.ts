@@ -992,6 +992,23 @@ const PHONE_QUICK_KEY_TOUR: Tour = {
   ],
 };
 
+/** #2845: the lite view at a computer's layout, and its assistant's start. A page of its own: the step stands alone. */
+const LITE_ASSISTANT_TOUR: Tour = {
+  id: "lite-assistant-2026-11-06",
+  title: "The side panel as your notes app's assistant",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "A computer's chat in the side panel",
+      text: "On a computer the side panel keeps the full chat at any width: the message box with the model, thinking level, plan mode, attach, <b>/</b> and <b>@</b>, at a computer's sizes. Its empty chat greets you as the notes app's assistant: the app can set the greeting, suggestions you click to send, and the box's text.",
+      action: next,
+      centred: true,
+    },
+  ],
+};
+
 /** #2844: the lite view in its host's look. It is a page of its own, so the step stands alone. */
 const LITE_HOST_LOOK_TOUR: Tour = {
   id: "lite-host-look-2026-11-06",
@@ -2034,6 +2051,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-lite-assistant",
+    when: "2026-11-06T23:30:00-06:00",
+    summary:
+      "In another app's side panel on a computer, the chat keeps a computer's layout at any width: the desktop message box with the model, thinking level, plan mode, attach, / and @, at a computer's sizes (a phone keeps the phone's). Its empty chat greets you as that app's assistant: the app can set the greeting, suggestions you click to send and the box's text (greeting, suggest, placeholder), with no folder or keys; the header is one line in its muted colour, at its text size.",
+    tours: [LITE_ASSISTANT_TOUR],
+  },
   {
     id: "2026-11-06-lite-host-look",
     when: "2026-11-06T20:32:00-06:00",

@@ -163,9 +163,9 @@
 	font-variant-numeric: tabular-nums;
 }
 
-/* A phone: everything tapped is 44 pt high (#2816). */
+/* A phone: everything tapped is 44 pt high (#2816); not where the page keeps a computer's layout (#2845). */
 @media (max-width: 639px) {
-	.tr-file {
+	:where(:root:not([data-desk])) .tr-file {
 		height: 44px;
 	}
 }
