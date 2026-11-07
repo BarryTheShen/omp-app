@@ -575,13 +575,28 @@ export const Composer = memo(function Composer({
     [controller],
   );
 
-  /** Puts the menu's row into the text, and the caret after it. */
-  const take = (index: number): void => {
-    const next = menu.pick(index);
-    if (next === null) return;
+  /** Puts the box a menu row leaves into the box, and the caret after the row's text. */
+  const put = (next: { readonly text: string; readonly caret: number }): void => {
     update(next.text);
     setCaret(next.caret);
     requestAnimationFrame(() => boxRef.current?.setSelectionRange(next.caret, next.caret));
+  };
+
+  /**
+   * Puts the menu's row into the text. A row of a mention with spaces whose answer is still coming is put in once the
+   * answer still has it, and only if the box was not changed meanwhile (#2846).
+   */
+  const take = (index: number): void => {
+    const next = menu.pick(index);
+    if (next === null) return;
+    if (next instanceof Promise) {
+      const typed = textRef.current;
+      void next.then((later) => {
+        if (later !== null && textRef.current === typed) put(later);
+      });
+      return;
+    }
+    put(next);
   };
 
   /**
