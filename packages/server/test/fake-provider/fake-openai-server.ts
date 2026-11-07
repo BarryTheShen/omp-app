@@ -185,6 +185,18 @@ const STREAMED_STEADY_REPLY = Array.from(
 ).join("\n");
 
 /**
+ * A reply whose math needs more than glyphs: a boxed result inline, and a display equation with a brace under a sum
+ * and a fraction (`apps/web/e2e/v2-math-checks.ts`).
+ */
+const MATH_SHAPES_REPLY = [
+  "The result is $\\boxed{E = mc^2}$ in a box.",
+  "",
+  "$$\\underbrace{a + b + c}_{\\text{three terms}} = \\frac{n(n+1)}{2}$$",
+  "",
+  "That is all of the shapes.",
+].join("\n");
+
+/**
  * A reply with math in every form a model writes: `$...$`, `$$...$$`, `\(...\)` and `\[...\]`, two prices in prose
  * (which stay text), and a code block (which stays code). The e2e spec `apps/web/e2e/fix-1167-math.spec.ts` counts on it.
  */
@@ -760,6 +772,7 @@ function reply(request: Request): Reply {
       thinking: "I need to ask which tools to run.",
     };
   if (prompt.includes("stream_math")) return { text: STREAMED_MATH_REPLY, streamed: true };
+  if (prompt.includes("math_shapes")) return { text: MATH_SHAPES_REPLY };
   if (prompt.includes("ask_user"))
     return {
       tool: "ask",

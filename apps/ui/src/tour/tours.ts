@@ -992,6 +992,23 @@ const PHONE_QUICK_KEY_TOUR: Tour = {
   ],
 };
 
+/** Math drawn by KaTeX: nothing to point at in a sandbox chat, so the step stands alone. */
+const MATH_DRAWN_TOUR: Tour = {
+  id: "math-drawn-2026-11-06",
+  title: "Math, drawn whole",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Math, drawn whole",
+      text: "Math in replies is drawn in its own fonts, the same on every device: a boxed result has its frame, a brace spans what it is under, and roots, integrals and fractions are drawn whole.",
+      action: next,
+      centred: true,
+    },
+  ],
+};
+
 /** #2843: the lite view, one chat for another app's side panel. It is a page of its own, so the step stands alone. */
 const LITE_VIEW_TOUR: Tour = {
   id: "lite-view-2026-11-06",
@@ -2000,6 +2017,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-06-math-drawn",
+    when: "2026-11-06T21:00:00-06:00",
+    summary:
+      "Math in replies is drawn in its own fonts, the same on every device: a boxed result has its frame, a brace spans what it is under, and roots, integrals and fractions are drawn whole instead of in the browser's own math font.",
+    tours: [MATH_DRAWN_TOUR],
+  },
   {
     id: "2026-11-06-lite-view",
     when: "2026-11-06T19:27:00-06:00",

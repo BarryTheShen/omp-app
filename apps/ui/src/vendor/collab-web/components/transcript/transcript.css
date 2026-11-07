@@ -613,11 +613,12 @@
 	border-radius: var(--radius-sm);
 }
 
-/* Math is native MathML (see transcript/math.ts): it must opt out of the
- * `pre-wrap` on `.tr-md p`/`li`. Display equations scroll inside `.tr-math`
- * rather than inside the `math` element, whose ink overflows its own box; the
- * vertical padding absorbs that ink so the box never scrolls vertically. */
-.tr-md math {
+/* Math is KaTeX's HTML (see transcript/math.ts): it opts out of the `pre-wrap`
+ * on `.tr-md p`/`li`. A display equation scrolls sideways inside `.tr-math`;
+ * the vertical padding takes the ink that reaches past its box (a brace's
+ * label, a radical's overline), so the box never scrolls vertically, and
+ * KaTeX's own margin around a display equation gives way to the wrapper's. */
+.tr-md .katex {
 	white-space: normal;
 }
 
@@ -626,6 +627,10 @@
 	margin: 4px 0;
 	padding-block: 0.5em;
 	overflow-x: auto;
+}
+
+.tr-md .tr-math > .katex-display {
+	margin: 0;
 }
 
 /* ---- compact variant (agent drawer) ---- */

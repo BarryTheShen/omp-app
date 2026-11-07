@@ -77,17 +77,18 @@ function renderMath(token: Tokens.Generic): string | false {
 	try {
 		const math = renderToString(token.text, {
 			displayMode: token.display,
-			// KaTeX's HTML output needs katex.min.css, which bundles to ~940 KB
-			// gzipped here because Bun inlines its 60 @font-face sources.
-			output: "mathml",
+			// KaTeX's drawn output with its MathML beside it, hidden, for screen
+			// readers. MathML alone left Chromium without `\boxed`'s frame and with
+			// a small `\underbrace` brace. katex.min.css (main.tsx) has the fonts as
+			// files of their own, each fetched the first time a formula uses it.
+			output: "htmlAndMathml",
 			throwOnError: false,
 			// `trust: false` refuses \href, \htmlClass, \includegraphics.
 			strict: false,
 			trust: false,
 		});
-		// A display equation gets a wrapper to scroll in (`.tr-math`), because
-		// scrolling the `math` element itself traps a few pixels of vertical scroll:
-		// its ink — fraction bars, radical overlines — overflows its own box.
+		// A display equation gets a wrapper to scroll in (`.tr-math`), so a wide one
+		// scrolls on its own instead of widening the message.
 		return token.display ? `<span class="tr-math">${math}</span>` : math;
 	} catch {
 		// KaTeX threw outside its own error handling (e.g. macro expansion limit):
