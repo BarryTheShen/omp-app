@@ -518,6 +518,22 @@ const QUESTIONS_PANEL_TOUR: Tour = {
   ],
 };
 
+/** The answers to one ask go to omp together. */
+const ANSWERS_TOGETHER_TOUR: Tour = {
+  id: "answers-together-2026-11-07",
+  title: "Answers go together",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Answers go together",
+      text: "When omp asks you several questions at once, your answers wait in <b>Questions</b> under <b>Ready to send</b>, where <b>Change</b> still changes them. They go to omp together, as one message, once you have answered or skipped every question it asked; <b>Send now</b> sends the ready ones sooner.",
+      action: next,
+    },
+  ],
+};
+
 const SIDE_PANEL_TOUR: Tour = {
   id: "side-panel-2026-10-30",
   title: "Side panel and usage",
@@ -2116,6 +2132,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-answers-together",
+    when: "2026-11-07T18:52:00-06:00",
+    summary:
+      "Your answers to omp's questions now go together: when omp asks several at once, each answer waits under Ready to send, where you can still change it, and once every question has an answer or a skip they go to omp as one message, not one each. Send now sends the ready ones sooner.",
+    tours: [ANSWERS_TOGETHER_TOUR],
+  },
   {
     id: "2026-11-07-questions-panel",
     when: "2026-11-07T13:52:00-06:00",
