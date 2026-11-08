@@ -1,10 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
-// Builders run e2e in parallel worktrees, so each run picks its own port (E2E_PORT) and never reuses
-// a server it did not start: a busy port fails loudly instead of testing someone else's build.
-const port = Number(process.env.E2E_PORT ?? 4173);
-const origin = `http://127.0.0.1:${port}`;
-
+// Every spec starts its own app server on a free port (`e2e/real-omp.ts`) and opens the page by its full address, so the
+// config has no web server and no base URL. The server serves the built UI (`bun run build` at the repo root).
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
@@ -19,16 +16,9 @@ export default defineConfig({
   reporter: "list",
   use: {
     actionTimeout: 60_000,
-    baseURL: origin,
     channel: "chrome",
     headless: true,
     navigationTimeout: 60_000,
     trace: "on-first-retry",
-  },
-  webServer: {
-    command: `bun run preview --host 127.0.0.1 --port ${port} --strictPort`,
-    url: origin,
-    reuseExistingServer: false,
-    timeout: 120_000,
   },
 });

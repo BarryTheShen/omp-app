@@ -59,23 +59,8 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** The built web app: next to the installed command, or in a source checkout. */
-function webRoot(): string {
-  const candidates = [
-    Bun.env.OMP_APP_WEB_ROOT,
-    resolve(dirname(process.execPath), "../share/omp-app/web"),
-    resolve(import.meta.dir, "../../../apps/web/dist"),
-  ];
-  for (const candidate of candidates) {
-    if (candidate && existsSync(resolve(candidate, "index.html"))) return resolve(candidate);
-  }
-  return fail(
-    "the app's web files were not found. Reinstall the package, or run `bun run build` in a source checkout.",
-  );
-}
-
-/** The new UI's built files (served at the root), found the same way; without them the root serves the old UI's files. */
-function uiRoot(): string | undefined {
+/** The built web app (served at the root): next to the installed command, or in a source checkout. */
+function uiRoot(): string {
   const candidates = [
     Bun.env.OMP_APP_UI_ROOT,
     resolve(dirname(process.execPath), "../share/omp-app/ui"),
@@ -84,7 +69,9 @@ function uiRoot(): string | undefined {
   for (const candidate of candidates) {
     if (candidate && existsSync(resolve(candidate, "index.html"))) return resolve(candidate);
   }
-  return undefined;
+  return fail(
+    "the app's web files were not found. Reinstall the package, or run `bun run build` in a source checkout.",
+  );
 }
 
 /** The chat host the packages install beside the command: omp's own command line, built by the app (#2586). */
@@ -347,7 +334,6 @@ if (chatHost !== undefined && !existsSync(chatHost)) {
 // this computer only; every other device pairs.
 const launchToken = await keepLaunchToken(launchTokenFile(logDir));
 if (!launchToken.kept) logger.warn("launch-token.not-saved", { detail: launchToken.reason });
-const builtUi = uiRoot();
 let started: StartResult<CompositionServer>;
 try {
   started = await startOrAttach({
@@ -355,8 +341,7 @@ try {
     start: () =>
       createCompositionServer({
         port,
-        staticRoot: webRoot(),
-        ...(builtUi === undefined ? {} : { uiRoot: builtUi }),
+        uiRoot: uiRoot(),
         chatHostBinary: chatHost,
         newChatsReady: true,
         cwd: folder,

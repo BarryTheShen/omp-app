@@ -93,7 +93,6 @@ async function startServerWithFailingWatches(): Promise<{
     agentDir,
     appDataDir,
     ompBin,
-    staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     fileWatch: registry,
   });
   servers.push(server);

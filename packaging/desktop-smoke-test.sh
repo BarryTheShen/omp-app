@@ -418,8 +418,8 @@ read -r side base <<<"$info"
 [[ $(readlink "/proc/$app_pid/exe") == "$app" ]] || fail "T1: the window process is not the package's binary"
 [[ $(readlink "/proc/$side/exe") == "$sidecar_bin" ]] || fail "T1: the server is not the package's server binary"
 cmp -s "$work/index-$side.html" "$root/usr/lib/omp-app-desktop/ui/index.html" || fail "T1: the page at the root is not the package's new UI"
-curl -sf "$base/old/" -o "$work/web-$side.html" || fail "T1: the server does not serve the old UI at /old/"
-cmp -s "$work/web-$side.html" "$root/usr/lib/omp-app-desktop/web/index.html" || fail "T1: the page at /old/ is not the package's old UI"
+old=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$base/old/")
+[[ $old == "308 $base/" ]] || fail "T1: the server does not answer /old/ with a 308 to the root (got: $old)"
 wait_log 'connection.open' 60 || fail "T1: the window never connected to its server, so the app did not load"
 wait_log 'omp\.probe status=ok' 30 || fail "T1: the server's log has no healthy omp probe, so the omp the package holds did not start"
 note "T1 the window opened and the app loaded (it connected to its server), and the server's omp probe was healthy"
@@ -475,7 +475,7 @@ for variant in web server; do
   broken="$work/broken-$variant"
   dpkg-deb -x "$deb" "$broken" || fail "T3 $variant: cannot extract the package"
   if [[ $variant == web ]]; then
-    rm -f "$broken/usr/lib/omp-app-desktop/web/index.html"
+    rm -f "$broken/usr/lib/omp-app-desktop/ui/index.html"
   else
     rm -f "$broken/usr/bin/omp-app-desktop-server"
   fi

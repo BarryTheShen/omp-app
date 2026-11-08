@@ -486,11 +486,10 @@ describe("A0.6 upgrade and static serving", () => {
     }
   });
 
-  test("binds loopback, serves the static root and exposes a random token", async () => {
+  test("binds loopback, serves the new UI at the root and exposes a random token", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({
       port: 0,
-      staticRoot: fixtures,
       uiRoot: `${fixtures}/ui`,
       origins: ["http://allowed.test"],
     });
@@ -505,27 +504,32 @@ describe("A0.6 upgrade and static serving", () => {
       await app.stop();
     }
   });
-  test("serves the new UI at the root and the old one under /old/, and sends old addresses on with their query", async () => {
+  test("sends the removed old UI's addresses (/old and everything under it) and the former /v2 ones on to the root, with their query", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({
       port: 0,
-      staticRoot: fixtures,
       uiRoot: `${fixtures}/ui`,
       origins: ["http://allowed.test"],
     });
-    const location = async (path: string) =>
-      (await fetch(`${app.url}${path}`, { redirect: "manual" })).headers.get("location");
+    const answer = async (path: string) => {
+      const response = await fetch(`${app.url}${path}`, { redirect: "manual" });
+      return `${response.status} ${response.headers.get("location")}`;
+    };
     try {
       expect(await (await fetch(`${app.url}/`)).text()).toContain("v2 static fixture");
-      expect(await (await fetch(`${app.url}/old/`)).text()).toContain("A0.6 static fixture");
-      // A file only the old UI has, such as one of its own pages, is still served at the root.
-      expect(await (await fetch(`${app.url}/old-page.html`)).text()).toContain("old page fixture");
-      expect(await location("/old?folder=a")).toBe("/old/?folder=a");
-      expect(await location("/v2?folder=a")).toBe("/?folder=a");
-      expect(await location("/v2/?folder=a")).toBe("/?folder=a");
-      expect(await location("/v2/assets/a.js")).toBe("/assets/a.js");
+      // The old UI is gone: its address and every address under it answer 308 to the root, the query kept.
+      expect(await answer("/old")).toBe("308 /");
+      expect(await answer("/old/")).toBe("308 /");
+      expect(await answer("/old?folder=a")).toBe("308 /?folder=a");
+      expect(await answer("/old/?folder=a")).toBe("308 /?folder=a");
+      expect(await answer("/old/assets/x.js")).toBe("308 /");
+      // Only `/old` and what is under it: another name that starts with it is an ordinary address.
+      expect((await fetch(`${app.url}/older.html`)).status).toBe(404);
+      expect(await answer("/v2?folder=a")).toBe("308 /?folder=a");
+      expect(await answer("/v2/?folder=a")).toBe("308 /?folder=a");
+      expect(await answer("/v2/assets/a.js")).toBe("308 /assets/a.js");
       // Never `//elsewhere.example/x`, which a browser takes for another site.
-      expect(await location("/v2//elsewhere.example/x")).toBe("/elsewhere.example/x");
+      expect(await answer("/v2//elsewhere.example/x")).toBe("308 /elsewhere.example/x");
       expect((await fetch(`${app.url}/missing.js`)).status).toBe(404);
     } finally {
       await app.stop();
@@ -545,14 +549,12 @@ describe("A0.6 upgrade and static serving", () => {
     const refused = { status: 200, page: true, csp: "frame-ancestors 'none'", xfo: "DENY" };
     const named = createAppServer({
       port: 0,
-      staticRoot: fixtures,
       uiRoot: `${fixtures}/ui`,
       origins: ["http://allowed.test"],
       frameAncestors: ["https://notes.tail1234.ts.net:8443", "http://127.0.0.1:9000"],
     });
     const none = createAppServer({
       port: 0,
-      staticRoot: fixtures,
       uiRoot: `${fixtures}/ui`,
       origins: ["http://allowed.test"],
     });
@@ -580,7 +582,6 @@ describe("A0.6 upgrade and static serving", () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({
       port: 0,
-      staticRoot: fixtures,
       uiRoot: `${fixtures}/ui`,
       origins: ["http://allowed.test"],
     });
@@ -615,7 +616,6 @@ describe("A0.6 upgrade and static serving", () => {
   test("accepts a tokenized loopback WebSocket and sends the C0 welcome", async () => {
     const app = createAppServer({
       port: 0,
-      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
       token: "right",
       origins: ["http://allowed.test"],
     });
@@ -657,7 +657,6 @@ describe("A0.6 upgrade and static serving", () => {
   test("closes unauthorized upgraded sockets with typed auth codes and no welcome", async () => {
     const app = createAppServer({
       port: 0,
-      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
       token: "right",
       origins: ["http://allowed.test"],
     });
@@ -693,7 +692,6 @@ describe("A0.6 upgrade and static serving", () => {
     const remote = { origin: "https://devbox.tail1234.ts.net", host: "devbox.tail1234.ts.net" };
     const app = createAppServer({
       port: 0,
-      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
       token: "right",
       remote,
     });

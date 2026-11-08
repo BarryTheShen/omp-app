@@ -11,8 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
-    "test": "bun test",
-    "build-inventory": "bun scripts/build-inventory.ts"
+    "test": "bun test"
   },
   "dependencies": {
     "@oh-my-pi/pi-agent-core": "18.12.6",

@@ -5,7 +5,8 @@
  * `packages/server/scripts/dev.ts`, real omp, and the fake model in
  * `packages/server/test/fake-provider/fake-openai-server.ts`) in a temporary home, so nothing touches `~/.omp`.
  *
- * Run with `OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts` from `apps/web`: the global setup (`global-setup.ts`)
+ * Run with `OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts` from `apps/web`, after `bun run build` at the repo root
+ * (the server serves `apps/ui/dist`): the global setup (`global-setup.ts`)
  * builds the app's chat host once per lockfile, the omp every live test runs. The fake model
  * answers by keyword in the last user message: `ask_user` makes omp ask "Which database?",
  * `run_bash` makes it run `echo fixture-tool`, `make_todos` makes it write a two-item todo list,
@@ -102,17 +103,6 @@ export interface SeedEntries {
   readonly entries: readonly Record<string, unknown>[];
 }
 
-/**
- * A launch link, which the server prints for the new UI (at its root), as the same link for the old UI under `/old/`,
- * where `realApp.open()` opens it. For a spec that goes to a link by hand, after `realApp.restartServer()` or with a
- * token of its own, and still means the old UI.
- */
-export function oldUiLink(link: string): string {
-  const address = new URL(link);
-  address.pathname = "/old/";
-  return address.toString();
-}
-
 export interface OpenOptions {
   /** Runs before the app loads, for example to add an init script; its result is ignored. */
   readonly beforeLoad?: (page: Page) => Promise<unknown>;
@@ -120,7 +110,7 @@ export interface OpenOptions {
   readonly expectApp?: boolean;
   /** Opens the page in this browser context (the same profile, so localStorage is shared) instead of a new one. */
   readonly context?: BrowserContext;
-  /** The app's path to open with the launch link: `/` for the new UI (default: the old UI, under `/old/`). */
+  /** The app's path to open with the launch link (default: `/`, the app's root). */
   readonly path?: string;
   /**
    * The address's fragment in place of the launch link's `#token=…`: `""` opens the bare address, as a device that is
@@ -533,7 +523,6 @@ const server = await createCompositionServer({
   ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
   chatWrapper: ${options.chatWrapper === undefined ? "undefined" : JSON.stringify(options.chatWrapper)},
   ompArgs: ${options.noModel || !options.defaultModel ? "[]" : '["--model", "fake/fake-model"]'},
-  staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
   fileWatch,
   idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
   logger: createLogger({ dir: ${JSON.stringify(join(root, "logs"))} }),
@@ -713,7 +702,7 @@ export const realTest = test.extend<{
       }
       if (seedWorkspace.gitRepo) execFileSync("git", ["init", "-q"], { cwd: folder });
     }
-    // A no-model run has no provider key, so omp has no model and says so (see chat-no-model.spec.ts).
+    // A no-model run has no provider key, so omp has no model and says so.
     const inherited: NodeJS.ProcessEnv = { ...process.env };
     if (noModel)
       for (const key of Object.keys(inherited)) if (key.endsWith("_API_KEY")) delete inherited[key];
@@ -766,7 +755,7 @@ export const realTest = test.extend<{
         page.on("pageerror", (error) => problems.push(`page error: ${error.message}`));
         await options.beforeLoad?.(page);
         const address = new URL(url);
-        address.pathname = options.path ?? "/old/";
+        address.pathname = options.path ?? "/";
         if (options.hash !== undefined) address.hash = options.hash;
         await page.goto(address.toString());
         if (options.expectApp !== false) {

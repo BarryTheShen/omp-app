@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!**/inventory.json", "!apps/ui/src/vendor"]
+    "includes": ["**", "!apps/ui/src/vendor"]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": { "enabled": true, "rules": { "preset": "recommended" } },
@@ -11,7 +11,7 @@
   "css": { "parser": { "tailwindDirectives": true } },
   "overrides": [
     {
-      "includes": ["apps/web/public/favicon.svg", "apps/ui/public/favicon.svg"],
+      "includes": ["apps/ui/public/favicon.svg"],
       "linter": { "rules": { "a11y": { "noSvgWithoutTitle": "off" } } }
     },
     {

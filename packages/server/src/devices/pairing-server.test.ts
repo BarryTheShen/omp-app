@@ -27,7 +27,6 @@ async function serve(): Promise<{ app: AppServer; pairing: DevicePairing; origin
   const app = createAppServer({
     port: 0,
     token: "launch-token",
-    staticRoot: FIXTURES,
     uiRoot: `${FIXTURES}/ui`,
     remote: REMOTE,
     devices: pairing,

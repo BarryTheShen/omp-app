@@ -1,6 +1,0 @@
-/* A display formula wider than the message scrolls sideways inside the message; it never widens the page. */
-.katex-display {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-}

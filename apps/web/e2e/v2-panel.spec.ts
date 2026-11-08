@@ -12,7 +12,7 @@ import { expect, REAL_OMP, realTest, startNewChat } from "./real-omp";
 const MINUTE = 60_000;
 
 /**
- * `omp usage --json`'s shape (as `fix-1163-usage-bars.spec.ts` builds it), each reset set from the time the spec starts:
+ * `omp usage --json`'s shape, each reset set from the time the spec starts:
  * anthropic's two windows, cursor's month, and openai-codex's "5 hours" window for two accounts.
  */
 function usageFixture(now: number): unknown {

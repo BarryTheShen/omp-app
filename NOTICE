@@ -1,4 +1,4 @@
-The logo in `apps/web/public/favicon.svg` is a copy of omp's
+The logo in `apps/ui/public/favicon.svg` is a copy of omp's
 `packages/collab-web/public/favicon.svg`, distributed under the MIT License.
 omp app is an independent interface, not made or endorsed by Stencil Labs, Inc.
 

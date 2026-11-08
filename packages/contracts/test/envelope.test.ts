@@ -23,7 +23,7 @@ const clientFrames: ClientFrame[] = [
   { type: "call", id, port: "A1.configStore", method: "read", args: { key: "compaction.enabled" } },
   { type: "cancel", id },
   { type: "subscribe", id, stream: "A0.session/event/01a10931-thread", afterSeq: 41 },
-  { type: "subscribe", id, stream: "R1.catalog/changed//home/folder" },
+  { type: "subscribe", id, stream: "A1.catalog/changed//home/folder" },
   { type: "unsubscribe", id, stream: "A0.session/event" },
 ];
 

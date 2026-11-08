@@ -99,7 +99,6 @@ async function startServer(
     appDataDir,
     // The fake is the chat host: it answers omp's commands, and the probe's and the chats' requests.
     chatHostBinary: ompBin,
-    staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     ...(capabilityProbeSettings === undefined ? {} : { capabilityProbeSettings }),
     ...(leaseProbe === undefined ? {} : { leaseProbe }),
   });
@@ -177,7 +176,6 @@ describe("the omp the app runs", () => {
       homeDir: home,
       agentDir,
       appDataDir,
-      staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
       chatHostBinary: chatHost,
     });
     servers.push(server);

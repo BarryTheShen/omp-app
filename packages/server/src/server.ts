@@ -38,8 +38,6 @@ export interface AppServerOptions {
   readonly capabilities?: CapabilityMapType;
   readonly replayLimit?: number;
   readonly replay?: EventReplayHub;
-  /** The old UI's built folder: served under `/old/` while it stays, and for any file the new UI does not have. */
-  readonly staticRoot?: string;
   /** The new UI's built folder, served at the app's root (default: `apps/ui/dist` in the working folder). */
   readonly uiRoot?: string;
   /**
@@ -212,7 +210,7 @@ function liteHeaders(frameAncestors: readonly string[]): Readonly<Record<string,
   return { ...rest, "Content-Security-Policy": `frame-ancestors ${frameAncestors.join(" ")}` };
 }
 
-/** Where the old UI is served while it stays: the new UI is the app's root. */
+/** Where the old UI was served before it was removed: `/old` and everything under it is sent to the app's root. */
 const OLD_PREFIX = "/old";
 /** Where the new UI was served before it became the root; links to it are sent on. */
 const FORMER_UI_PREFIX = "/v2";
@@ -288,7 +286,6 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     welcome,
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
-  const staticRoot = options.staticRoot ?? `${process.cwd()}/apps/web/dist`;
   const uiRoot = options.uiRoot ?? `${process.cwd()}/apps/ui/dist`;
   const framedBy = liteHeaders(options.frameAncestors ?? []);
   const port = requestedPort(options);
@@ -377,9 +374,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method not allowed", { status: 405 });
       }
-      if (url.pathname === OLD_PREFIX) return redirect(`${OLD_PREFIX}/${url.search}`);
-      if (url.pathname.startsWith(`${OLD_PREFIX}/`)) {
-        return serveStatic(staticRoot, url.pathname.slice(OLD_PREFIX.length), request);
+      if (url.pathname === OLD_PREFIX || url.pathname.startsWith(`${OLD_PREFIX}/`)) {
+        return redirect(`/${url.search}`);
       }
       if (url.pathname === FORMER_UI_PREFIX || url.pathname.startsWith(`${FORMER_UI_PREFIX}/`)) {
         // One leading slash only: `/v2//elsewhere.example` must not become a link to another site.
@@ -390,9 +386,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       if (url.pathname === LITE_PATH) {
         return renewed(request, await serveStatic(uiRoot, "/index.html", request, framedBy));
       }
-      // The new UI first; a file it does not have may be one of the old UI's own pages or files, served as before.
+      // The new UI's own files; one it does not have is a 404.
       const page = await serveStatic(uiRoot, url.pathname, request);
-      if (page.status === 404) return serveStatic(staticRoot, url.pathname, request);
       return url.pathname === "/" || url.pathname === "/index.html" ? renewed(request, page) : page;
     },
     websocket: {

@@ -6,7 +6,7 @@
 # The package holds the "omp app" window (/usr/bin/omp-app-desktop), the server that window starts
 # (/usr/bin/omp-app-desktop-server: the omp-app command's server, compiled with Bun), the chat host that runs every
 # chat and answers omp's own commands (omp's own command line, built from the pinned package:
-# /usr/lib/omp-app-desktop/chat-host), the built web app (/usr/lib/omp-app-desktop/web) and an
+# /usr/lib/omp-app-desktop/chat-host), the built web app (/usr/lib/omp-app-desktop/ui) and an
 # applications-menu entry. The server runs the omp it holds, so omp needs no separate install. The
 # package shares no file with the omp-app command package (packaging/build-deb.sh), so both can be
 # installed. The prerequisites are in apps/desktop/README.md.
@@ -26,13 +26,12 @@ package="omp-app-desktop_${version}_amd64.deb"
 out="$root/dist/desktop"
 cd "$root"
 
-# The web apps and the server come from this checkout. Tauri bundles them: the web app and the new UI as resources
-# (resources/web, resources/ui), the server as the sidecar named by tauri.conf.json (binaries/...-<target triple>).
+# The web app and the server come from this checkout. Tauri bundles them: the web app as a resource (resources/ui),
+# the server as the sidecar named by tauri.conf.json (binaries/...-<target triple>).
 bun run build
 triple=$(rustc -vV | sed -n 's/^host: //p')
 rm -rf "$crate/resources" "$crate/binaries"
 mkdir -p "$crate/resources" "$crate/binaries"
-cp -r apps/web/dist "$crate/resources/web"
 cp -r apps/ui/dist "$crate/resources/ui"
 bun build --compile --minify --target=bun-linux-x64 \
   --define "OMP_APP_VERSION=\"$version\"" \
@@ -67,7 +66,7 @@ cp "$built" "$out/$package"
 }
 paths=$(dpkg-deb -c "$out/$package" | awk '{ print $NF }')
 for path in usr/bin/omp-app-desktop usr/bin/omp-app-desktop-server \
-  usr/lib/omp-app-desktop/web/index.html usr/lib/omp-app-desktop/chat-host \
+  usr/lib/omp-app-desktop/ui/index.html usr/lib/omp-app-desktop/chat-host \
   usr/share/applications/omp-app-desktop.desktop; do
   grep -Fxq "$path" <<<"$paths" || {
     echo "the package has no $path" >&2

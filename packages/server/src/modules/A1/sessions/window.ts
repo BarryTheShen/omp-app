@@ -10,7 +10,7 @@ const OUTPUT_HEAD_BYTES = 48 * 1024;
 const OUTPUT_TAIL_BYTES = 16 * 1024;
 /** The serialized entries of one window: about 4 MB, well under the 5 MB first-frame goal. */
 export const DEFAULT_WINDOW_BYTES = 4 * 1024 * 1024;
-/** The largest saved picture a window carries: no card draws a bigger one (apps/web U3/tool-card/result-image.ts). */
+/** The largest saved picture a window carries: no card draws a bigger one. */
 export const IMAGE_BLOB_MAX_BYTES = 4 * 1024 * 1024;
 /** omp saves a picture beside the session and keeps `blob:sha256:<hex>` in place of its bytes. */
 const IMAGE_BLOB_REF = /^blob:sha256:([0-9a-f]{64})$/;

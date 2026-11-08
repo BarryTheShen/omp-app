@@ -1,6 +1,6 @@
 import { type AppClient, createAppClient } from "@omp-app/client";
 
-/** Where the tab keeps the launch token; the old UI uses the same key, so both read one token. */
+/** Where the tab keeps the launch token. */
 const TOKEN_KEY = "omp-app.websocket-token";
 
 /**

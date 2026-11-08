@@ -133,7 +133,6 @@ describe("A0.9 real omp composition", () => {
         agentDir,
         appDataDir,
         ompArgs: ["--model", "fake/fake-model"],
-        staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
       });
       servers.push(server);
 

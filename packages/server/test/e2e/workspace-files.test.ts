@@ -69,7 +69,6 @@ async function startServer(): Promise<{ server: CompositionServer; folder: Folde
     agentDir,
     appDataDir,
     ompBin,
-    staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
   });
   servers.push(server);
   return { server, folder };

@@ -1,7 +1,7 @@
 /**
  * The app's own wire between browser and server: protocol `omp-app/1`, one JSON object per
- * frame, every frame validated with the schemas below. Ports (`definePort`) are the only way
- * modules talk across it; A0 builds the server dispatcher and the browser proxy from them.
+ * frame, every frame validated with the schemas below. Ports (`definePort`) are the only way the
+ * browser and the server call each other across it; A0 builds the server dispatcher and the browser proxy from them.
  *
  * Flow: the client sends `hello`; the server answers `welcome`. Every `call`, `subscribe` and
  * `unsubscribe` carries an `id` and gets exactly one `result` with that id. `cancel` names a
@@ -16,19 +16,20 @@ import { z } from "zod";
 import { type CapabilityKey, CapabilityMap } from "./capabilities";
 import { AppError, type ParseResult, parseJson } from "./errors";
 import { RequestId } from "./ids";
-import { MODULE_IDS, type ModuleId } from "./modules";
 
 export const APP_PROTOCOL = "omp-app/1";
 
 /** Lower camel case: `listSessions`, `sessionEvent`. */
 const MEMBER_NAME = /^[a-z][A-Za-z0-9]*$/;
-const PORT_NAME = new RegExp(`^(?:${MODULE_IDS.join("|")})\\.[a-z][A-Za-z0-9]*$`);
+/** The groups a port name starts with: the folders under `src/ports/`. */
+const PORT_MODULES = ["A0", "A1"] as const;
+const PORT_NAME = new RegExp(`^(?:${PORT_MODULES.join("|")})\\.[a-z][A-Za-z0-9]*$`);
 
-/** `<ModuleId>.<name>`, for example `A1.configStore`. The module prefix is the port's owner. */
-export type PortName = `${ModuleId}.${string}`;
+/** `<group>.<name>`, for example `A1.configStore`. */
+export type PortName = `${(typeof PORT_MODULES)[number]}.${string}`;
 export const PortName = z.custom<PortName>(
   (value) => typeof value === "string" && PORT_NAME.test(value),
-  "expected <ModuleId>.<lowerCamelName>",
+  "expected <A0|A1>.<lowerCamelName>",
 );
 
 /**

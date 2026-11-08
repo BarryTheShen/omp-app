@@ -130,7 +130,6 @@ async function setup(handbackMs: string) {
       agentDir,
       appDataDir,
       ompArgs: ["--model", "fake/fake-model"],
-      staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     });
     servers.push(server);
     const client = createAppClient({

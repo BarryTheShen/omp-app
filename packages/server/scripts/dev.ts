@@ -110,7 +110,6 @@ import { type AppServer, createAppServer } from "../src/server";
 
 export interface CompositionServerOptions {
   readonly port?: number;
-  readonly staticRoot?: string;
   /** The new UI's built folder, served at the root (default: `apps/ui/dist` of this checkout). */
   readonly uiRoot?: string;
   /**
@@ -819,7 +818,6 @@ export async function createCompositionServer(
     browserRuntime.registration,
     ...createA1PortRegistrations(a1Context),
   ]);
-  const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
   const uiRoot = options.uiRoot ?? resolve(import.meta.dir, "../../..", "apps/ui/dist");
   const launchHistory = openLaunchHistory(appDataDir, logger);
   const server = createAppServer({
@@ -830,7 +828,6 @@ export async function createCompositionServer(
     omp,
     capabilities,
     replay,
-    staticRoot,
     uiRoot,
     registry,
     logger,

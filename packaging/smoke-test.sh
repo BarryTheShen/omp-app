@@ -79,12 +79,9 @@ script=$(grep -o -E '/assets/[^"]+\.js' "$work/ui.html" | head -1)
 [[ -n $script ]] || { echo "FAIL: the new UI's page names no script" >&2; exit 1; }
 curl -sf -o /dev/null "$base$script" || { echo "FAIL: the new UI's script $script is not served" >&2; exit 1; }
 
-# The old UI under /old/ while it stays: its own page, and its script, named relative to the page.
-curl -sf "$base/old/" -o "$work/web.html" || { echo "FAIL: /old/ serves no page" >&2; exit 1; }
-cmp -s "$work/web.html" "$work/root/usr/share/omp-app/web/index.html" || { echo "FAIL: /old/ is not the package's old UI" >&2; exit 1; }
-script=$(grep -o -E '\./assets/[^"]+\.js' "$work/web.html" | head -1)
-[[ -n $script ]] || { echo "FAIL: the old UI's page names no script" >&2; exit 1; }
-curl -sf -o /dev/null "$base/old/${script#./}" || { echo "FAIL: the old UI's script $script is not served under /old/" >&2; exit 1; }
+# The old UI is gone: /old/ sends the address on to the root with a 308.
+old=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$base/old/")
+[[ $old == "308 $base/" ]] || { echo "FAIL: /old/ does not answer 308 to the root (got: $old)" >&2; exit 1; }
 
 second=$("$app" --no-open)
 grep -q 'already running' <<<"$second" || { echo "FAIL: a second launch did not find the first" >&2; echo "$second" >&2; exit 1; }

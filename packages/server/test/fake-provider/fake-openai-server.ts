@@ -160,7 +160,7 @@ const STREAMED_CODE_REPLY = [
 ].join("\n");
 /**
  * A fenced TypeScript block longer than the code view's short-block limit (2,048 characters), so it is coloured in the
- * background as it grows. The e2e spec builds the same rows (`apps/web/e2e/code-view-stream.spec.ts`).
+ * background as it grows.
  */
 const STREAMED_LONG_CODE_REPLY = [
   "Here is the long streamed block:",
@@ -198,7 +198,7 @@ const MATH_SHAPES_REPLY = [
 
 /**
  * A reply with math in every form a model writes: `$...$`, `$$...$$`, `\(...\)` and `\[...\]`, two prices in prose
- * (which stay text), and a code block (which stays code). The e2e spec `apps/web/e2e/fix-1167-math.spec.ts` counts on it.
+ * (which stay text), and a code block (which stays code).
  */
 const STREAMED_MATH_REPLY = [
   "The total energy is $E = KE + V$, where $V$ is the potential energy.",

@@ -459,15 +459,11 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
         .ok_or("the home folder was not found")?;
     let paths = app.path();
     let resources = paths.resource_dir().map_err(|error| error.to_string())?;
-    let web_root = resources.join("web");
     let ui_root = resources.join("ui");
     let chat_host = resources.join("chat-host");
     // The server would fall back to other folders if these were missing; that must not happen.
-    if !web_root.join("index.html").is_file() {
-        return Err(format!("the web app is not in {}", web_root.display()));
-    }
     if !ui_root.join("index.html").is_file() {
-        return Err(format!("the new UI is not in {}", ui_root.display()));
+        return Err(format!("the web app is not in {}", ui_root.display()));
     }
     if !chat_host.is_file() {
         return Err(format!(
@@ -484,7 +480,6 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
     command
         .args([folder.as_os_str(), OsStr::new("--no-open")])
         .current_dir(&folder)
-        .env("OMP_APP_WEB_ROOT", &web_root)
         .env("OMP_APP_UI_ROOT", &ui_root)
         // omp is the chat host that ships with the app, never one installed on this computer.
         .env("OMP_APP_CHAT_HOST_BIN", &chat_host)
