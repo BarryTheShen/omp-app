@@ -2,6 +2,8 @@
 
 A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent: a desktop window for Linux and a web app for your other devices. omp stays the engine; this app is its interface.
 
+![A chat in omp app: omp runs a project's tests, finds why three fail, changes one line and runs them again](docs/images/chat.png)
+
 ## What it does
 
 - **Workspaces of chats.** Chats open in tabs, and each tab splits into windows that you arrange by dragging. Closing a window leaves its chat running.
@@ -16,6 +18,19 @@ A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent: a d
 - **Your other devices,** over Tailscale. The server listens on this computer only; each device pairs once with a code or by being allowed from a paired device.
 - **omp in the terminal on the same chats.** `omp-app tui` opens omp's own terminal app on the app's chats, so you can go on in either.
 - **Guided tours and What's new.** Click-through tours of the basics, and a list of every update with the tours it brought.
+
+<table>
+  <tr>
+    <td><img src="docs/images/questions.png" alt="The Questions panel beside a chat: one answer is ready to send while the other question waits, with omp's context and its recommended choice"></td>
+    <td width="27%"><img src="docs/images/phone.png" alt="The same chat on a phone"></td>
+  </tr>
+  <tr>
+    <td>omp's questions wait in the Questions panel while it keeps working; your answers go to it together.</td>
+    <td>The phone layout, as a Home Screen app.</td>
+  </tr>
+</table>
+
+The screenshots show a made-up project, with omp on Claude Haiku 5.5.
 
 ## Install
 
