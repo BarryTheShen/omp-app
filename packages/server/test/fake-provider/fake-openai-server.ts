@@ -500,10 +500,14 @@ function reply(request: Request): Reply {
     return { text: `context ${seen ? "has" : "lacks"} ${word}` };
   }
   // `call_tool <name> <json arguments>`: one call of any tool the session offers (a host tool, `read` of a host URI),
-  // then the usual "tool said" answer above.
+  // then the usual "tool said" answer above. Each call gets an id of its own, as omp gives each call one.
   const toolProbe = /call_tool\s+(\S+)\s+(\{.*\})/.exec(prompt);
   if (toolProbe?.[1] !== undefined && toolProbe[2] !== undefined) {
-    return { tool: toolProbe[1], args: JSON.parse(toolProbe[2]) as Record<string, unknown> };
+    return {
+      tool: toolProbe[1],
+      args: JSON.parse(toolProbe[2]) as Record<string, unknown>,
+      id: `call_${toolProbe[1]}_${messages.length}`,
+    };
   }
   // The turn a `usage_limit_after_job` result starts (#2781) is refused once, with the provider's wait in the error, and
   // answered after. A plain 400, so omp does not retry it itself: what continues the chat is the app.

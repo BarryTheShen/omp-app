@@ -72,9 +72,10 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * What a host can do beyond its methods, for a server that adopts it (D2): a host that lacks one of this build's is an
  * older build, restarted on this one once its chat is idle (`restartsWhenSettled`). `message_host`: the extensions'
  * `input` hooks read which app a message was sent from (`ctx.ui.messageHost`), and a widget may belong to one app's
- * lite view (`setWidget(key, lines, { host })`).
+ * lite view (`setWidget(key, lines, { host })`). `answers_together`: the answers to `ask_async` questions wait until
+ * every open question of the chat has one, whichever ask it came from, then go together.
  */
-export const CHAT_HOST_FEATURES = ["message_host"] as const;
+export const CHAT_HOST_FEATURES = ["message_host", "answers_together"] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */
 export const MessageHost = z.string().regex(MESSAGE_HOST_PATTERN);

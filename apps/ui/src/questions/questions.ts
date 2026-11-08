@@ -73,7 +73,7 @@ export class QuestionsStore {
 
 /**
  * The questions as the panel lists them: the open ones in the order asked, then the answers that wait to go with the
- * rest of their ask (in the order asked), then the answers that went to omp, newest first.
+ * rest (in the order asked), then the answers that went to omp, newest first.
  */
 export function inPanelOrder(records: readonly QuestionRecord[]): {
   readonly open: readonly QuestionRecord[];
@@ -92,16 +92,16 @@ export function inPanelOrder(records: readonly QuestionRecord[]): {
 }
 
 /**
- * What an open question's send button does, by what is left of its ask: it saves the answer to wait for the ask's
- * other questions, or, as the ask's last open question, sends the ask's answers.
+ * What an open question's send button does, by what is left open in the chat, whichever ask it came from: it saves the
+ * answer to wait for the other open questions, or, as the chat's last open question, sends it with the waiting answers.
  */
 export function sendLabel(
   record: QuestionRecord,
   records: readonly QuestionRecord[],
 ): "Save answer" | "Send answer" | "Send answers" {
-  const ask = records.filter((known) => known.toolCallId === record.toolCallId);
-  if (ask.some((known) => known.id !== record.id && known.answer === null)) return "Save answer";
-  return ask.some((known) => known.answer?.held === true) ? "Send answers" : "Send answer";
+  const others = records.filter((known) => known.id !== record.id);
+  if (others.some((known) => known.answer === null)) return "Save answer";
+  return others.some((known) => known.answer?.held === true) ? "Send answers" : "Send answer";
 }
 
 /** An answer in a few words: the choices and the written answer, or Skipped. */

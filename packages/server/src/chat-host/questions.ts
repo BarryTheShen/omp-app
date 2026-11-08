@@ -1,11 +1,12 @@
 /**
  * Questions the chat's agent asks without waiting (the `ask_async` tool). Each is saved in the chat's session file as an
  * `omp-app/question` entry and shown in the page's Questions panel; the person answers when they have time. An answer
- * or a skip is saved as an `omp-app/question-answer` entry and waits, changeable, until every question of its ask
- * (one tool call) has one: then the ask's waiting answers go back into the chat together, as one message from the
- * person, the way a typed one goes (`sendAnswer` in `loop.ts`), and an `omp-app/question-sent` entry marks them sent.
- * The person can also send the waiting answers at once (`send_answers`). Custom entries never reach the model, so the
- * question reaches it as the tool call and the answers as a message.
+ * or a skip is saved as an `omp-app/question-answer` entry and waits, changeable, until every open question of the chat
+ * has one, whichever ask (tool call) it came from: then the waiting answers go back into the chat together, as one
+ * message from the person, the way a typed one goes (`sendAnswer` in `loop.ts`), and an `omp-app/question-sent` entry
+ * marks them sent. The person can also send the waiting answers at once (`send_answers`); the questions not answered yet
+ * stay open. Custom entries never reach the model, so the question reaches it as the tool call and the answers as a
+ * message.
  */
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { TSchema } from "@oh-my-pi/pi-ai";
@@ -30,15 +31,16 @@ const RESERVED_LABELS = new Set(["Other (type your own)", "Chat about this", "Ne
 
 export const ASK_ASYNC_DESCRIPTION = [
   "Ask the user questions without waiting for the answers. Each question appears in the app's Questions panel beside",
-  "this chat, with your context; the user answers when they have time. The answers to one call arrive together later",
-  'in this chat, as one message from the user that starts with "Answers to your questions" ("Answer to your question"',
-  'or "Skipped your question" for one), once each question has an answer or a skip, or earlier when the user sends',
-  "the answers ready so far. A skipped question is yours to decide.",
+  "this chat, with your context; the user answers when they have time. The answers arrive later in this chat as one",
+  'message from the user that starts with "Answers to your questions" ("Answer to your question" or "Skipped your',
+  'question" for one): they wait until every open question in this chat has an answer or a skip, or until the user',
+  "sends the ones ready so far, so one message may answer questions from several of your calls, and a question may",
+  "stay open for a while. A skipped question is yours to decide.",
   "The tool returns at once: keep working on what does not depend on the answers, and do not ask the same question",
   "again. Give `options` for multiple choice (the user can always write their own answer instead), or leave them out",
   "for a written answer. Put in `context` what the user needs to decide: why you ask, what each choice changes, and",
-  "what you would pick. Ask related questions in one call, so their answers come together. Prefer it over `ask` when",
-  "the decision does not block your next step or the user may be away.",
+  "what you would pick. Ask related questions in one call. Prefer it over `ask` when the decision does not block your",
+  "next step or the user may be away.",
 ].join(" ");
 
 /** The tool's parameters, as omp's `ask` has them, with `context` added and `options` optional. */
@@ -251,7 +253,7 @@ export class QuestionsController {
     return [...records.values()];
   }
 
-  /** Saves the person's answer to wait for the rest of its ask; the ask goes once each of its questions has one. */
+  /** Saves the person's answer to wait for the chat's other open questions; they go once each has one. */
   answer(params: AnswerQuestionParams, sequence: number): Promise<QuestionRecord> {
     return this.#hold(params.id, sequence, (record) => {
       const picked = [...new Set(params.picked)];
@@ -292,7 +294,7 @@ export class QuestionsController {
     }));
   }
 
-  /** Sends every waiting answer now, together, also from asks not fully answered: the records sent. */
+  /** Sends every waiting answer now, together, from every ask; the questions not answered stay open: the records sent. */
   sendWaiting(sequence: number): Promise<QuestionRecord[]> {
     return this.#inTurn(async () => {
       const waiting = this.list().filter((record) => record.answer?.held === true);
@@ -320,10 +322,11 @@ export class QuestionsController {
       this.#session.sessionManager.appendCustomEntry(ANSWER_ENTRY, { id, ...answer });
       const held: QuestionRecord = { ...record, answer };
       this.#emit({ type: "question_record", record: held });
-      const ask = this.list().filter((known) => known.toolCallId === record.toolCallId);
-      if (ask.some((known) => known.answer === null)) return held;
+      // The answers go once no question of the chat is open, whichever ask each came from.
+      const known = this.list();
+      if (known.some((other) => other.answer === null)) return held;
       const sent = await this.#deliver(
-        ask.filter((known) => known.answer?.held === true),
+        known.filter((other) => other.answer?.held === true),
         sequence,
       );
       return sent.find((known) => known.id === id) ?? held;

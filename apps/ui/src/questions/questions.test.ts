@@ -78,26 +78,26 @@ describe("a chat's questions without waiting", () => {
     expect(answered.map(answerSummary)).toEqual(["No", "Yes", "Skipped"]);
   });
 
-  test("a question's button saves while its ask has other open questions, and sends on the last one", () => {
-    const other = (id: string) => question(id, { id: `call_2:${id}`, toolCallId: "call_2" });
+  test("a question's button saves while any other question of the chat is open, whichever ask, and sends on the last one", () => {
+    const other = (id: string, overrides: Partial<QuestionRecord> = {}) =>
+      question(id, { id: `call_2:${id}`, toolCallId: "call_2", ...overrides });
     const held = { picked: ["Yes"], skipped: false, answeredAt: T, held: true } as const;
-    const records = [question("a"), question("b", { answer: held }), question("c"), other("x")];
+    // Another ask's open question keeps this one's answer waiting too.
+    const records = [question("a"), other("x")];
     expect(sendLabel(records[0] as QuestionRecord, records)).toBe("Save answer");
-    // The ask's last open question sends the waiting answers with it; another ask does not count.
-    const lastOpen = [
-      question("a", { answer: held }),
-      question("b", { answer: held }),
-      question("c"),
+    expect(sendLabel(records[1] as QuestionRecord, records)).toBe("Save answer");
+    // The chat's last open question sends the waiting answers with it, from every ask.
+    const lastOpen = [question("a", { answer: held }), question("b"), other("x", { answer: held })];
+    expect(sendLabel(lastOpen[1] as QuestionRecord, lastOpen)).toBe("Send answers");
+    // Alone, or with every other answer already sent, it sends just itself.
+    const alone = [
+      question("a", { answer: { picked: ["Yes"], skipped: false, answeredAt: T, sentAt: T } }),
       other("x"),
     ];
-    expect(sendLabel(lastOpen[2] as QuestionRecord, lastOpen)).toBe("Send answers");
-    // Alone in its ask, or with the rest of the ask already sent, it sends just itself.
-    expect(sendLabel(records[3] as QuestionRecord, records)).toBe("Send answer");
-    const sentBefore = [
-      question("a", { answer: { picked: ["Yes"], skipped: false, answeredAt: T, sentAt: T } }),
-      question("c"),
-    ];
-    expect(sendLabel(sentBefore[1] as QuestionRecord, sentBefore)).toBe("Send answer");
+    expect(sendLabel(alone[1] as QuestionRecord, alone)).toBe("Send answer");
+    // A waiting answer opened again to change it, with nothing else open or waiting, sends just itself.
+    const changing = [question("a", { answer: held })];
+    expect(sendLabel(changing[0] as QuestionRecord, changing)).toBe("Send answer");
   });
 
   test("an answer's summary has its choices and its written answer", () => {

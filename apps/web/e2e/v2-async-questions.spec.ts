@@ -4,10 +4,10 @@ import { expect, realTest, startNewChat } from "./real-omp";
 /**
  * Questions omp asks without waiting (the chat host's `ask_async` tool), in the new UI on real omp: omp asks and its
  * turn goes on; the chat says so and the rail's Questions button counts them; the Questions panel opens on Questions for
- * you, a card each, with the agent's context; an answer waits, changeable, for the rest of its ask, and Send now sends
- * the waiting ones at once; the ask's last answer sends the rest together as one message from the person, which omp
- * answers; a skipped question tells omp to decide; the answers are there again after a reload. `/btw` brings the side
- * questions forward, also while questions wait.
+ * you, a card each, with the agent's context; an answer waits, changeable, for the chat's other open questions, whichever
+ * ask they came from, and Send answers sends the waiting ones at once; the chat's last answer sends the rest together as
+ * one message from the person, which omp answers; a skipped question tells omp to decide; the answers are there again
+ * after a reload. `/btw` brings the side questions forward, also while questions wait.
  */
 
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
@@ -97,8 +97,8 @@ realTest.describe("questions omp asks without waiting", () => {
         transcript(page).getByText("Answer to your question", { exact: false }),
       ).toHaveCount(0);
 
-      // Send now sends it at once, as the person's message, and omp answers it.
-      await bar.getByRole("button", { name: "Send now" }).click();
+      // Send answers sends it at once, as the person's message, and omp answers it.
+      await bar.getByRole("button", { name: "Send answers" }).click();
       const answer = transcript(page).getByText('Answer to your question "Publish" (publish):', {
         exact: false,
       });
@@ -178,6 +178,55 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(panel(page).getByRole("article", { name: "Answered: Days" })).toContainText(
         "Monday, Tuesday",
       );
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "answers to separate asks wait for each other and go as one message",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      for (const [id, question, said] of [
+        ["color", "Which color?", 1],
+        ["size", "Which size?", 2],
+      ] as const) {
+        await box(page).fill(`call_tool ask_async ${JSON.stringify({ questions: [{ id, question }] })}`);
+        await box(page).press("Enter");
+        await expect(
+          transcript(page).getByText(`tool said: Asked 1 question (${id}).`, { exact: false }),
+        ).toHaveCount(1, { timeout: 90_000 });
+        await expect(transcript(page).getByText("tool said: Asked 1 question", { exact: false })).toHaveCount(said);
+      }
+      await rail(page).getByRole("button", { name: "Questions, 2 waiting for you" }).click();
+
+      // The first ask's answer waits: the other ask's question is still open.
+      const color = panel(page).getByRole("article", { name: "Question: Which color?" });
+      await color.getByRole("textbox", { name: "Your answer" }).fill("Green");
+      await color.getByRole("button", { name: "Save answer" }).click();
+      const bar = panel(page).getByRole("region", { name: "Answers ready to send" });
+      await expect(bar).toContainText("1 answer ready.");
+      await expect(
+        panel(page).getByRole("article", { name: "Ready to send: Which color?" }),
+      ).toContainText("Green");
+      await expect(transcript(page).getByText("Answer to your question", { exact: false })).toHaveCount(0);
+
+      // The last open question sends both, as one message from the person.
+      const size = panel(page).getByRole("article", { name: "Question: Which size?" });
+      await size.getByRole("textbox", { name: "Your answer" }).fill("Large");
+      await size.getByRole("button", { name: "Send answers" }).click();
+      await expect(
+        transcript(page).getByText("Answers to your questions:", { exact: false }),
+      ).toBeVisible({ timeout: 60_000 });
+      for (const block of ['"Which color?" (color):', '"Which size?" (size):']) {
+        await expect(transcript(page).getByText(block, { exact: false })).toBeVisible();
+      }
+      await expect(
+        transcript(page).getByText("Answer to your question", { exact: false }),
+      ).toHaveCount(0);
+      await expect(bar).toHaveCount(0);
+      await expect(panel(page).getByText("Nothing waits for you.", { exact: false })).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

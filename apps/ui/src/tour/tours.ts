@@ -518,7 +518,7 @@ const QUESTIONS_PANEL_TOUR: Tour = {
   ],
 };
 
-/** The answers to one ask go to omp together. */
+/** The answers to omp's questions go to omp together. */
 const ANSWERS_TOGETHER_TOUR: Tour = {
   id: "answers-together-2026-11-07",
   title: "Answers go together",
@@ -528,7 +528,7 @@ const ANSWERS_TOGETHER_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "Answers go together",
-      text: "When omp asks you several questions at once, your answers wait in <b>Questions</b> under <b>Ready to send</b>, where <b>Change</b> still changes them. They go to omp together, as one message, once you have answered or skipped every question it asked; <b>Send now</b> sends the ready ones sooner.",
+      text: "Your answers to omp's questions wait in <b>Questions</b> under <b>Ready to send</b>, where <b>Change</b> still changes them. They go to omp together, as one message, once every open question has an answer or a skip; <b>Send answers</b> sends the ready ones sooner.",
       action: next,
     },
   ],

@@ -39,8 +39,8 @@ const nameOf = (record: QuestionRecord): string => record.header ?? record.quest
 
 /**
  * The questions the chat's agent asked without waiting, in the Questions panel: each open one as a card to answer when
- * there is time; the answers that wait to go with the rest of their ask, with Send now; then the answered and skipped
- * ones, folded to their answer.
+ * there is time; the answers that wait to go with the rest, whichever ask they came from, with Send answers; then the
+ * answered and skipped ones, folded to their answer.
  */
 export function QuestionsTab({ controller }: { readonly controller: ChatController }): ReactNode {
   const { records } = useSyncExternalStore(
@@ -56,8 +56,8 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
         <p className="font-medium text-t1">No questions for you</p>
         <p className="text-[0.8125rem] text-t3">
           When omp asks you something it does not need at once, the question waits here while omp
-          keeps working. Answer when you have time: the answers to one ask go to the chat together,
-          as your message.
+          keeps working. Answer when you have time: your answers go to the chat together, as your
+          message, once every question here has an answer or a skip, or when you send them.
         </p>
       </div>
     );
@@ -118,7 +118,10 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
   );
 }
 
-/** The answers that wait for the rest of their ask, and Send now, which sends them all at once as one message. */
+/**
+ * The answers that wait for the chat's other open questions, and Send answers, which sends them now as one message; the
+ * questions not answered stay open.
+ */
 function WaitingBar({
   controller,
   count,
@@ -146,10 +149,10 @@ function WaitingBar({
         <span className="font-medium text-t1">
           {count === 1 ? "1 answer ready." : `${count} answers ready.`}
         </span>{" "}
-        They go to omp together once the rest of their ask is answered.
+        They go to omp together once every open question has an answer or a skip.
       </p>
       <Button type="button" size="sm" variant="secondary" disabled={sending} onClick={sendNow}>
-        {sending ? "Sending…" : "Send now"}
+        {sending ? "Sending…" : "Send answers"}
       </Button>
       {problem !== null && (
         <p role="alert" className="w-full text-xs text-bad-ink">
@@ -160,7 +163,7 @@ function WaitingBar({
   );
 }
 
-/** An answer that waits for the rest of its ask: what it says, and Change, which opens its card again. */
+/** An answer that waits for the chat's other open questions: what it says, and Change, which opens its card again. */
 function WaitingCard({
   record,
   records,
@@ -207,9 +210,9 @@ function WaitingCard({
 /**
  * One question to answer: its header and time, the question, the agent's context, then the answer: choices (round marks
  * for one, tick boxes for several) with Other… to write one's own, or a box to write the answer in when there are no
- * choices; a note may go with it. Its button saves the answer to wait for the rest of the ask, or, on the ask's last open
- * question, sends the ask's answers to the chat as the person's message; Skip tells the agent to decide. Opened again
- * from a waiting answer (`initial`), it starts from that answer and has Cancel.
+ * choices; a note may go with it. Its button saves the answer to wait for the chat's other open questions, or, on the
+ * chat's last open question, sends it with the waiting answers as the person's message; Skip tells the agent to decide.
+ * Opened again from a waiting answer (`initial`), it starts from that answer and has Cancel.
  */
 function QuestionCard({
   record,

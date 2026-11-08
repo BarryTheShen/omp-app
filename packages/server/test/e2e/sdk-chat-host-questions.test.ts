@@ -1,9 +1,9 @@
 /**
  * Questions the agent asks without waiting (`ask_async`, `chat-host/questions.ts`), end to end on the fake model
- * provider: the model asks through the tool, the questions are kept in the chat's session and listed, and the answers of
- * one ask wait until each question has one, then reach the agent together as one message from the person: a new turn
- * when it is idle, between its steps while it works. The person can send the waiting answers early. Runs from source
- * and compiled (`sdk-chat-host-harness.ts`).
+ * provider: the model asks through the tool, the questions are kept in the chat's session and listed, and the answers
+ * wait until every open question of the chat has one, whichever ask it came from, then reach the agent together as one
+ * message from the person: a new turn when it is idle, between its steps while it works. The person can send the
+ * waiting answers early; the questions not answered stay open. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ChatEvent, QuestionRecord } from "@omp-app/contracts/chat-host";
@@ -177,6 +177,74 @@ describe("the chat host's questions without waiting", () => {
         expect(userTexts(chat).slice(sentBefore)).toEqual([
           'Answer to your question "Which color?" (color):\nGreen',
           'Answer to your question "Which size?" (size):\nLarge',
+        ]);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: answers to separate asks wait for each other and go as one message; one sent early leaves the open ones open`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const ask = async (id: string, question: string, requestId: string) => {
+          const call = { questions: [{ id, question }] };
+          await chat.client.request("prompt", {
+            text: `call_tool ask_async ${JSON.stringify(call)}`,
+          });
+          await chat.next(resultOf(requestId));
+        };
+        // The person's answer messages, without the prompts that made the asks.
+        const answerTexts = () => userTexts(chat).filter((text) => !text.startsWith("call_tool"));
+        await ask("color", "Which color?", "1");
+        await ask("size", "Which size?", "2");
+        const { questions } = await chat.client.request("get_questions", {});
+        const [color, size] = questions as [QuestionRecord, QuestionRecord];
+        expect(color.toolCallId).not.toBe(size.toolCallId);
+
+        // The first ask's only answer waits for the second ask's open question.
+        const waiting = await chat.client.request("answer_question", {
+          id: color.id,
+          picked: [],
+          typed: "Green",
+        });
+        expect(waiting.record.answer).toMatchObject({ typed: "Green", held: true });
+        expect(answerTexts()).toEqual([]);
+
+        // The chat's last open question sends both, as one message.
+        const mark = chat.events.length;
+        const last = await chat.client.request("answer_question", {
+          id: size.id,
+          picked: [],
+          typed: "Large",
+        });
+        expect(last.record.answer?.sentAt).toBeNumber();
+        await chat.nextAfter(mark, agentEnd);
+        expect(answerTexts()).toEqual([
+          'Answers to your questions:\n\n"Which color?" (color):\nGreen\n\n"Which size?" (size):\nLarge',
+        ]);
+
+        // Two more asks: Send answers sends the one answered; the other question stays open, then goes alone.
+        await ask("shape", "Which shape?", "6");
+        await ask("name", "Which name?", "7");
+        const listed = (await chat.client.request("get_questions", {})).questions;
+        const shape = listed.find((record) => record.questionId === "shape") as QuestionRecord;
+        const name = listed.find((record) => record.questionId === "name") as QuestionRecord;
+        await chat.client.request("answer_question", { id: shape.id, picked: [], typed: "Round" });
+        const early = chat.events.length;
+        const { records } = await chat.client.request("send_answers", {});
+        expect(records.map((record) => record.questionId)).toEqual(["shape"]);
+        await chat.nextAfter(early, agentEnd);
+        const stillOpen = (await chat.client.request("get_questions", {})).questions.find(
+          (record) => record.id === name.id,
+        );
+        expect(stillOpen?.answer).toBeNull();
+        const late = chat.events.length;
+        await chat.client.request("skip_question", { id: name.id });
+        await chat.nextAfter(late, agentEnd);
+        expect(answerTexts().slice(1)).toEqual([
+          'Answer to your question "Which shape?" (shape):\nRound',
+          'Skipped your question "Which name?" (name): decide it yourself.',
         ]);
       },
       60_000,
