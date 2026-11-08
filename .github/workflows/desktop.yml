@@ -92,7 +92,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Build the package (window, server, web app, .deb)
-        run: bash packaging/build-desktop-deb.sh "0.2.$(git rev-list --count HEAD)"
+        run: bash packaging/build-desktop-deb.sh "0.3.$(git rev-list --count HEAD)"
 
       - name: Check the Rust code (clippy, then the unit tests)
         working-directory: apps/desktop/src-tauri
