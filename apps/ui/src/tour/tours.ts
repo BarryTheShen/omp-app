@@ -534,6 +534,22 @@ const ANSWERS_TOGETHER_TOUR: Tour = {
   ],
 };
 
+/** Answers to separate asks wait for each other too (2026-11-07). */
+const ANSWERS_ACROSS_ASKS_TOUR: Tour = {
+  id: "answers-across-asks-2026-11-07",
+  title: "Answers to separate asks",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Answers to separate asks",
+      text: "When omp asks you questions at different times, your answers now wait for each other in <b>Questions</b>, under <b>Ready to send</b>. <b>Send answers</b> sends the ones you have answered, as one message; the questions you have not answered stay open. Once every open question has an answer or a skip, they go by themselves.",
+      action: next,
+    },
+  ],
+};
+
 const SIDE_PANEL_TOUR: Tour = {
   id: "side-panel-2026-10-30",
   title: "Side panel and usage",
@@ -2154,6 +2170,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-answers-across-asks",
+    when: "2026-11-07T23:18:00-06:00",
+    summary:
+      "Answers to separate questions from omp now wait for each other: each one waits in Questions under Ready to send, and Send answers sends the ones you have answered together, as one message, leaving the unanswered questions open. Once every open question has an answer or a skip, they go by themselves.",
+    tours: [ANSWERS_ACROSS_ASKS_TOUR],
+  },
   {
     id: "2026-11-07-browser-stays",
     when: "2026-11-07T19:56:00-06:00",
