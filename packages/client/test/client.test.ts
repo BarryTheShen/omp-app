@@ -17,6 +17,7 @@ import {
   type AppClient,
   type ConnectionStateEvent,
   createAppClient,
+  type OutageReport,
   type TimerScheduler,
   type WebSocketFactory,
   type WebSocketLike,
@@ -935,6 +936,167 @@ describe("createAppClient", () => {
     expect(call.error).toMatchObject({
       appError: { code: "unavailable", retryable: false },
     });
+    client.dispose();
+  });
+
+  /** Lets queued microtasks run. */
+  async function turns(count: number): Promise<void> {
+    for (let turn = 0; turn < count; turn += 1)
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+  }
+
+  /**
+   * A client on `server` whose timers run when the test says (`fire`), on the test's clock; `stallNext()` makes the next
+   * connection one that takes frames and never answers, as a handshake that stalls.
+   */
+  async function openStallable(server: FakeServer): Promise<{
+    client: AppClient;
+    fire: () => void;
+    stallNext: () => void;
+    clock: { now: number };
+  }> {
+    const due: Array<() => void> = [];
+    const clock = { now: 1_000 };
+    const factory = server.connectFactory();
+    let stall = false;
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      token: "test-token",
+      webSocketFactory: (url) => {
+        const socket = factory(url);
+        if (stall) {
+          stall = false;
+          server.silent.add(server.current());
+        }
+        return socket;
+      },
+      timers: {
+        setTimeout: (handler) => {
+          due.push(handler);
+          return handler;
+        },
+        clearTimeout: (handle) => {
+          const at = due.indexOf(handle as () => void);
+          if (at >= 0) due.splice(at, 1);
+        },
+      },
+      clock: () => clock.now,
+      reconnect: { baseDelayMs: 0, maxDelayMs: 0 },
+    });
+    await eventually(() => client.connectionState === "open");
+    return {
+      client,
+      fire: () => due.splice(0).forEach((handler) => handler()),
+      stallNext: () => {
+        stall = true;
+      },
+      clock,
+    };
+  }
+
+  test("a try that is not welcomed in time is dropped, and the next one goes at once", async () => {
+    const server = new FakeServer();
+    const { client, fire, stallNext } = await openStallable(server);
+    stallNext();
+    server.closeCurrent();
+    fire(); // the reconnect's wait: the second connection opens and never answers
+    await eventually(() => server.connections.length === 2);
+    await turns(20);
+    expect(client.connectionState).toBe("reconnecting");
+    fire(); // the try's time limit: dropped, and the next try is due at once
+    expect(server.connections[1]?.socket.closed).toBe(true);
+    fire();
+    await eventually(() => server.connections.length === 3 && client.connectionState === "open");
+    client.dispose();
+  });
+
+  test("nudge sends a reconnect that waits for its next try at once, and leaves an open link alone", async () => {
+    const server = new FakeServer();
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      token: "test-token",
+      webSocketFactory: server.connectFactory(),
+      // The next try waits a minute: only a nudge can start it within the test.
+      timers: { setTimeout: (handler) => handler, clearTimeout() {} },
+      reconnect: { baseDelayMs: 60_000, maxDelayMs: 60_000 },
+    });
+    await eventually(() => client.connectionState === "open");
+    client.nudge();
+    await turns(20);
+    expect(server.connections).toHaveLength(1);
+    server.closeCurrent();
+    await eventually(() => client.connectionState === "reconnecting");
+    client.nudge();
+    await eventually(() => client.connectionState === "open");
+    expect(server.connections).toHaveLength(2);
+    client.dispose();
+  });
+
+  test("nudge replaces a try that has gone 2 seconds without a welcome, and not a younger one", async () => {
+    const server = new FakeServer();
+    const { client, fire, stallNext, clock } = await openStallable(server);
+    stallNext();
+    server.closeCurrent();
+    fire();
+    await eventually(() => server.connections.length === 2);
+    clock.now += 1_000;
+    client.nudge();
+    await turns(20);
+    expect(server.connections).toHaveLength(2);
+    clock.now += 1_500;
+    client.nudge();
+    expect(server.connections[1]?.socket.closed).toBe(true);
+    await eventually(() => server.connections.length === 3 && client.connectionState === "open");
+    client.dispose();
+  });
+
+  test("reports an outage once the new link's streams are resumed: why, how long, and how many tries", async () => {
+    const server = new FakeServer();
+    const { client, fire, clock } = await openStallable(server);
+    const one = client.subscribe(EventPort, "updated", { scope: ThreadId.parse("thread-1") });
+    const two = client.subscribe(EventPort, "updated", { scope: ThreadId.parse("thread-2") });
+    await Promise.all([one, two]);
+    const reports: OutageReport[] = [];
+    client.onOutage((report) => reports.push(report));
+    server.current().socket.onclose?.({ code: 1006, reason: "" });
+    clock.now += 250;
+    fire();
+    await eventually(() => reports.length === 1);
+    expect(reports[0]).toEqual({
+      cause: "closed",
+      closeCode: 1006,
+      toWelcomeMs: 250,
+      outageMs: 250,
+      tries: 1,
+      failedTries: 0,
+      stalledTries: 0,
+      openMs: 0,
+      welcomeMs: 0,
+      streams: 2,
+      resumeMs: 0,
+    });
+    // A link a check found dead says so.
+    client.reconnectNow("no-answer");
+    await eventually(() => reports.length === 2);
+    expect(reports[1]).toMatchObject({ cause: "no-answer", tries: 1 });
+    client.dispose();
+  });
+
+  test("after a reconnect, every stream is subscribed again at once, not one after another", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    await client.subscribe(EventPort, "updated", { scope: ThreadId.parse("thread-1") });
+    await client.subscribe(EventPort, "updated", { scope: ThreadId.parse("thread-2") });
+    server.holdNextSubscribe = true;
+    server.closeCurrent();
+    await eventually(
+      () =>
+        server.connections.length === 2 &&
+        server.current().received.filter((frame) => frame.type === "subscribe").length === 2,
+    );
+    // The first is still unanswered: the second went without waiting for it.
+    expect(server.heldSubscribes).toHaveLength(1);
+    server.answerHeldSubscribe(false);
     client.dispose();
   });
 });

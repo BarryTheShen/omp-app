@@ -50,6 +50,35 @@ export interface RunningChatsContext {
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
+/** What a session file says of its name, as the chat list reads it. */
+interface NamedSession {
+  readonly title?: string | null;
+  readonly firstPrompt?: string | null;
+}
+
+/**
+ * A held chat's name for the running list, cheaply: from the file it runs when the app knows it (one cached read); none
+ * for a new chat kept ready (`provisional-…`), which has no file yet; else found by its id. Looking a chat up by its id
+ * reads the header of every session file there is when no file is named after it, which a kept-ready chat never is: with
+ * two thousand files that made each read of the list take seconds.
+ */
+export async function runningChatTitle(
+  threadId: ThreadId,
+  sources: {
+    readonly sessionFileOf: (threadId: ThreadId) => SessionFilePath | undefined;
+    readonly readFile: (sessionFile: SessionFilePath) => Promise<NamedSession>;
+    readonly findById: (threadId: ThreadId) => Promise<NamedSession | undefined>;
+    readonly display: (title: string) => string;
+  },
+): Promise<string | null> {
+  const known = sources.sessionFileOf(threadId);
+  let file: NamedSession | undefined;
+  if (known !== undefined) file = await sources.readFile(known).catch(() => undefined);
+  else if (!threadId.startsWith("provisional-")) file = await sources.findById(threadId);
+  if (file === undefined) return null;
+  return file.title != null ? sources.display(file.title) : (file.firstPrompt ?? null);
+}
+
 /** Changes this close together go out as one event. */
 const COALESCE_MS = 100;
 

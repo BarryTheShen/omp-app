@@ -7,7 +7,7 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import type { PortHandlerContext } from "../../registry/ports";
-import { createRunningChatsRuntime, type HeldChat } from "./running-chats";
+import { createRunningChatsRuntime, type HeldChat, runningChatTitle } from "./running-chats";
 
 const id = (value: string) => ThreadId.parse(value);
 
@@ -210,5 +210,45 @@ describe("the chats that run, from every folder (D1)", () => {
     change();
     await Bun.sleep(150);
     expect(published).toEqual([{ at: 42 }]);
+  });
+});
+
+describe("a running chat's name", () => {
+  const file = SessionFilePath.parse("/sessions/-work/2026-11-07T10-00-00-000Z_abc.jsonl");
+  const sources = (known: Record<string, typeof file>) => {
+    const asked: string[] = [];
+    return {
+      asked,
+      sources: {
+        sessionFileOf: (threadId: ThreadId) => known[threadId],
+        readFile: async (sessionFile: typeof file) => {
+          asked.push(`read ${sessionFile}`);
+          return { title: "From the file", firstPrompt: "first" };
+        },
+        findById: async (threadId: ThreadId) => {
+          asked.push(`find ${threadId}`);
+          return { title: null, firstPrompt: "found by id" };
+        },
+        display: (title: string) => `«${title}»`,
+      },
+    };
+  };
+
+  test("comes from the file the chat runs when the app knows it, with no search by id", async () => {
+    const { asked, sources: from } = sources({ abc: file });
+    expect(await runningChatTitle(id("abc"), from)).toBe("«From the file»");
+    expect(asked).toEqual([`read ${file}`]);
+  });
+
+  test("is none for a new chat kept ready, which has no file: nothing is read", async () => {
+    const { asked, sources: from } = sources({});
+    expect(await runningChatTitle(id("provisional-0b6e"), from)).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  test("is found by the chat's id when its file is not known, its first prompt standing in for a title", async () => {
+    const { asked, sources: from } = sources({});
+    expect(await runningChatTitle(id("def"), from)).toBe("found by id");
+    expect(asked).toEqual(["find def"]);
   });
 });

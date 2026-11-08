@@ -2,6 +2,7 @@ import type { CapabilityMap as CapabilityMapType, ServerFrame } from "@omp-app/c
 import {
   APP_PROTOCOL,
   CapabilityMap,
+  LINK_SILENCE_LIMIT_SECONDS,
   ServerFrame as ServerFrameSchema,
   WelcomeFrame as WelcomeFrameSchema,
 } from "@omp-app/contracts";
@@ -391,6 +392,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       return url.pathname === "/" || url.pathname === "/index.html" ? renewed(request, page) : page;
     },
     websocket: {
+      // Pings keep a quiet link up; a link that answers nothing for this long (a phone in another app, a laptop asleep)
+      // is closed, and a page that was away longer knows its link is gone without asking (`linkCheck.ts`).
+      idleTimeout: LINK_SILENCE_LIMIT_SECONDS,
+      sendPings: true,
       open: (socket) => {
         if (socket.data.authFailure) {
           // Who was refused and with what: a paired device refused by mistake shows here (Nov 2, an unnamed "not paired").
@@ -434,8 +439,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           });
         }
       },
-      close: (socket) => {
-        if (socket.data.session !== undefined) dispatcher.close(socket.data.session);
+      close: (socket, code, reason) => {
+        if (socket.data.session !== undefined)
+          dispatcher.close(socket.data.session, { code, reason });
         devices?.connections.remove(socket.data.id);
       },
     },

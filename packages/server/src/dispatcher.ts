@@ -37,6 +37,13 @@ interface PendingCall {
   readonly controller: AbortController;
 }
 
+/** How a session's socket ended, for the log: the WebSocket close code and reason, or a sweep that found it closed. */
+export interface SessionEnd {
+  readonly code?: number;
+  readonly reason?: string;
+  readonly reaped?: true;
+}
+
 const INTERNAL_ERROR: AppError = {
   code: "internal",
   message: "The app ran into an unexpected problem.",
@@ -182,14 +189,21 @@ export class DispatcherSession {
     return this.#socket.isOpen?.() ?? true;
   }
 
-  /** Ends the session: its calls are aborted, its subscriptions dropped, and each port lets go of what it held for it. */
-  close(reason?: "reaped"): void {
+  /**
+   * Ends the session: its calls are aborted, its subscriptions dropped, and each port lets go of what it held for it.
+   * `how` says how its socket ended, for the log.
+   */
+  close(how: SessionEnd = {}): void {
     if (this.#closed) return;
     this.#closed = true;
     this.#logger?.info("connection.close", {
       id: this.#socket.id.slice(0, 8),
       pending_calls: this.#pending.size,
-      ...(reason === undefined ? {} : { reason }),
+      ...(how.reaped === true ? { reason: "reaped" } : {}),
+      ...(how.code === undefined ? {} : { code: how.code }),
+      ...(how.reason === undefined || how.reason === ""
+        ? {}
+        : { close_reason: how.reason.slice(0, 80) }),
     });
     for (const pending of this.#pending.values()) pending.controller.abort("connection_closed");
     this.#pending.clear();
@@ -407,8 +421,8 @@ export class Dispatcher {
     return session;
   }
 
-  close(session: DispatcherSession, reason?: "reaped"): void {
-    session.close(reason);
+  close(session: DispatcherSession, how: SessionEnd = {}): void {
+    session.close(how);
     this.#sessions.delete(session);
   }
 
@@ -421,7 +435,7 @@ export class Dispatcher {
     let reaped = 0;
     for (const session of [...this.#sessions]) {
       if (session.socketOpen()) continue;
-      this.close(session, "reaped");
+      this.close(session, { reaped: true });
       reaped += 1;
     }
     if (reaped > 0) {

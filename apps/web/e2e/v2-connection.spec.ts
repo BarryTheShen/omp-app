@@ -109,4 +109,86 @@ realTest.describe("new UI: the connection to the app", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a page back after its link was lost while away reconnects at once, with no banner",
+    async ({ realApp }) => {
+      realApp.allowProblem(/WebSocket/i);
+      let first: WebSocketRoute | null = null;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+            if (first === null) first = socket;
+            socket.connectToServer();
+          }),
+      });
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 60_000 });
+      // Every banner text shown from now on, as a phone back from another app would show it.
+      await page.evaluate(() => {
+        const shown: string[] = [];
+        (window as unknown as { bannersShown: string[] }).bannersShown = shown;
+        new MutationObserver(() => {
+          for (const banner of document.querySelectorAll("[role='status'], [role='alert']")) {
+            const text = banner.textContent ?? "";
+            if (text.includes("Reconnecting") && !shown.includes(text)) shown.push(text);
+          }
+        }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        // The page leaves the screen, as when the phone switches to another app.
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "hidden",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      // Meanwhile the link is lost.
+      await (first as WebSocketRoute | null)?.close({ code: 1001, reason: "going away" });
+      await page.waitForTimeout(500);
+      const back = Date.now();
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 10_000 });
+      expect(Date.now() - back).toBeLessThan(2_000);
+      expect(
+        await page.evaluate(() => (window as unknown as { bannersShown: string[] }).bannersShown),
+      ).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a try the server never welcomes is dropped after its time, and the next one gets through",
+    async ({ realApp }) => {
+      realApp.allowProblem(/WebSocket/i);
+      let connections = 0;
+      let first: WebSocketRoute | null = null;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+            connections += 1;
+            if (first === null) first = socket;
+            // The second try reaches nothing: its handshake never ends, as on a laptop whose network is not back.
+            if (connections === 2) {
+              socket.onMessage(() => {});
+              return;
+            }
+            socket.connectToServer();
+          }),
+      });
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 60_000 });
+      const lost = Date.now();
+      await (first as WebSocketRoute | null)?.close({ code: 1001, reason: "going away" });
+      await expect(dot(page, "Reconnecting…")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: "Reconnect now" })).toBeVisible();
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 30_000 });
+      expect(connections).toBe(3);
+      // The stalled try had 8 seconds; the system's own limit would have taken minutes.
+      expect(Date.now() - lost).toBeLessThan(15_000);
+    },
+  );
 });

@@ -235,3 +235,9 @@ export type PortHandlers<P extends Port, Context> = {
 export type PortEventPayload<P extends Port, E extends keyof P["events"]> = z.output<
   P["events"][E]["payload"]
 >;
+
+/**
+ * How long the server keeps a WebSocket it hears nothing from, its pings unanswered (Bun's `idleTimeout`, in seconds): a
+ * page away longer than this (hidden, or its device asleep) holds a link the server has already closed.
+ */
+export const LINK_SILENCE_LIMIT_SECONDS = 120;

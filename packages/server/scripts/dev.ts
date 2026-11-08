@@ -82,6 +82,7 @@ import {
   createRunningChatsRuntime,
   createSharesRuntime,
   OmpStats,
+  runningChatTitle,
 } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -709,11 +710,13 @@ export async function createCompositionServer(
   const runningChats = createRunningChatsRuntime({
     held: () => processRegistry.held(),
     waitingFor: (threadId) => a0Runtime.waiting.waitingFor(threadId),
-    titleOf: async (threadId) => {
-      const file = await sessionFileStore.findSession(threadId);
-      if (file === undefined) return null;
-      return file.title != null ? sessionDisplayTitle(file.title) : (file.firstPrompt ?? null);
-    },
+    titleOf: (threadId) =>
+      runningChatTitle(threadId, {
+        sessionFileOf: (id) => a0Runtime.sessionFileOf(id),
+        readFile: (sessionFile) => sessionFileStore.readSessionRow(sessionFile),
+        findById: (id) => sessionFileStore.findSession(id),
+        display: sessionDisplayTitle,
+      }),
     sessionFileOf: (threadId) => a0Runtime.sessionFileOf(threadId),
     changes: [
       (listener) => processRegistry.onHeldChange(listener),

@@ -74,6 +74,39 @@ export interface ReconnectOptions {
   readonly maxDelayMs?: number;
   /** Optional cap; omitted means reconnect forever until disposed. */
   readonly maxAttempts?: number;
+  /**
+   * How long a try may take to be welcomed before it is dropped and the next one goes at once: a try whose handshake
+   * stalls (a laptop just awake, its network not back) would otherwise wait until the system gives up, minutes later.
+   * Doubles after each such drop, up to 32 s, so a slow but working link still gets through. Defaults to 8 seconds.
+   */
+  readonly tryTimeoutMs?: number;
+}
+
+/**
+ * Why a link that worked was lost: its socket closed, a check of it got no answer, the page came back after longer away
+ * than the server keeps a silent link, or a reconnect was asked for.
+ */
+export type OutageCause = "closed" | "no-answer" | "away" | "asked";
+
+/** One outage of a link that worked, reported once the next link is welcomed and its streams are resumed. */
+export interface OutageReport {
+  readonly cause: OutageCause;
+  /** The socket's close code and reason, when it closed. */
+  readonly closeCode?: number;
+  readonly closeReason?: string;
+  /** From the loss to the new link's welcome, and to its streams resumed. */
+  readonly toWelcomeMs: number;
+  readonly outageMs: number;
+  /** Tries it took, the new link's own included; those that closed without a welcome; those dropped for taking long. */
+  readonly tries: number;
+  readonly failedTries: number;
+  readonly stalledTries: number;
+  /** The new link's own try: from its start to the socket open, and to the welcome. */
+  readonly openMs: number;
+  readonly welcomeMs: number;
+  /** Streams resumed on the new link, and how long that took after its welcome. */
+  readonly streams: number;
+  readonly resumeMs: number;
 }
 
 export interface CreateAppClientOptions {
@@ -84,6 +117,8 @@ export interface CreateAppClientOptions {
   /** Injected only for isomorphic tests; browsers use their standard WebSocket global. */
   readonly webSocketFactory?: WebSocketFactory;
   readonly timers?: TimerScheduler;
+  /** Wall-clock milliseconds, for outage times; injected only for tests. Defaults to `Date.now`. */
+  readonly clock?: () => number;
   readonly clientName?: string;
   readonly clientVersion?: string;
 }
@@ -109,8 +144,18 @@ export interface AppClient {
   /**
    * Connects again now: a reconnect waiting for its next try starts at once, and an open link that may be dead (one that
    * stopped answering) is dropped and opened again. Does nothing after the server refused this page: that stays.
+   * `cause` names why, for the outage report: "no-answer" when a check got none, "away" when the page was away longer
+   * than the server keeps a silent link, else "asked".
    */
-  reconnectNow(): void;
+  reconnectNow(cause?: "no-answer" | "away" | "asked"): void;
+  /**
+   * A sign the network may work again (back online, the page shown again, the device awake): a reconnect that waits for
+   * its next try goes at once, and a try that has taken more than 2 seconds without a welcome is replaced. Does nothing
+   * while the link is open, or after the server refused this page.
+   */
+  nudge(): void;
+  /** Called after each outage of a link that worked, once the new link's streams are resumed. */
+  onOutage(listener: (report: OutageReport) => void): () => void;
   /**
    * Checks that the open link still answers before anything else goes on it, as when a phone wakes: a link can die
    * without closing, and what is sent into it is lost. Calls made while the check runs wait. An answer lets them go on
@@ -268,15 +313,35 @@ function closeCode(event: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
+/** A try older than this without a welcome is replaced when the network may be back (`nudge`). */
+const NUDGE_REPLACES_AFTER_MS = 2_000;
+/** The longest a try may take once earlier ones were dropped for taking long (`ReconnectOptions.tryTimeoutMs`). */
+const LONGEST_TRY_MS = 32_000;
+
+/** An outage of a link that worked, while the next one is being made. */
+interface Outage {
+  readonly start: number;
+  readonly cause: OutageCause;
+  readonly closeCode?: number;
+  readonly closeReason?: string;
+  tries: number;
+  failedTries: number;
+  stalledTries: number;
+}
+
 class AppClientImpl implements AppClient {
   private readonly options: CreateAppClientOptions;
-  private readonly reconnect: Required<Pick<ReconnectOptions, "baseDelayMs" | "maxDelayMs">> &
+  private readonly reconnect: Required<
+    Pick<ReconnectOptions, "baseDelayMs" | "maxDelayMs" | "tryTimeoutMs">
+  > &
     Pick<ReconnectOptions, "maxAttempts">;
   private readonly factory: WebSocketFactory;
+  private readonly clock: () => number;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly subscriptions = new Map<StreamKey, SubscriptionRecord>();
   private readonly stateListeners = new Set<(event: ConnectionStateEvent) => void>();
   private readonly resyncListeners = new Set<(event: ResyncEvent) => void>();
+  private readonly outageListeners = new Set<(report: OutageReport) => void>();
   private readonly openWaiters = new Set<OpenWaiter>();
   private readonly proxies = new Map<string, PortClient<Port>>();
   private socket: WebSocketLike | undefined;
@@ -296,6 +361,13 @@ class AppClientImpl implements AppClient {
   private _instanceId: string | undefined;
   /** The link check that runs (`checkLink`): new calls wait until it settles. */
   private linkCheck: Promise<boolean> | undefined;
+  /** The current try: when it started and when its socket opened; its time limit, and how long that is now. */
+  private tryStartedAt: number | undefined;
+  private tryOpenedAt: number | undefined;
+  private tryTimer: TimerHandle | undefined;
+  private tryLimitMs: number;
+  /** The outage of a link that worked, from its loss until the next link's streams are resumed. */
+  private outage: Outage | undefined;
 
   constructor(options: CreateAppClientOptions) {
     this.options = options;
@@ -303,9 +375,12 @@ class AppClientImpl implements AppClient {
       baseDelayMs: Math.max(0, options.reconnect?.baseDelayMs ?? 100),
       maxDelayMs: Math.max(0, options.reconnect?.maxDelayMs ?? 5000),
       maxAttempts: options.reconnect?.maxAttempts,
+      tryTimeoutMs: Math.max(1, options.reconnect?.tryTimeoutMs ?? 8000),
     };
+    this.tryLimitMs = this.reconnect.tryTimeoutMs;
     this.timers = options.timers ?? defaultTimers;
     this.factory = options.webSocketFactory ?? defaultWebSocketFactory;
+    this.clock = options.clock ?? Date.now;
     this.connectNow();
   }
 
@@ -326,6 +401,11 @@ class AppClientImpl implements AppClient {
   onResync(listener: (event: ResyncEvent) => void): () => void {
     this.resyncListeners.add(listener);
     return () => this.resyncListeners.delete(listener);
+  }
+
+  onOutage(listener: (report: OutageReport) => void): () => void {
+    this.outageListeners.add(listener);
+    return () => this.outageListeners.delete(listener);
   }
 
   port<P extends Port>(port: P): PortClient<P> {
@@ -395,7 +475,7 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  reconnectNow(): void {
+  reconnectNow(cause: "no-answer" | "away" | "asked" = "asked"): void {
     if (this.disposed || this.terminal) return;
     if (this.reconnectTimer !== undefined) {
       this.timers.clearTimeout?.(this.reconnectTimer);
@@ -404,17 +484,32 @@ class AppClientImpl implements AppClient {
     this.reconnectAttempt = 0;
     const socket = this.socket;
     if (socket !== undefined) {
+      if (this.welcomeReceived) this.startOutage(cause);
+      else if (this.outage !== undefined) this.outage.failedTries += 1;
       // Dropped as if it had closed: once it is not the current socket, its own late close is ignored.
-      this.socket = undefined;
-      this.welcomeReceived = false;
-      try {
-        socket.close(4000, "reconnect");
-      } catch {
-        // A socket that is already closed has nothing more to close.
-      }
+      this.dropSocket(socket, 4000, "reconnect");
       this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
       this.setConnectionState(this.everOpen ? "reconnecting" : "connecting");
     }
+    this.connectNow();
+  }
+
+  nudge(): void {
+    if (this.disposed || this.terminal || this._connectionState === "open") return;
+    if (this.reconnectTimer !== undefined) {
+      this.timers.clearTimeout?.(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+      this.reconnectAttempt = 0;
+      this.connectNow();
+      return;
+    }
+    const socket = this.socket;
+    const started = this.tryStartedAt;
+    if (socket === undefined || this.welcomeReceived || started === undefined) return;
+    if (this.clock() - started < NUDGE_REPLACES_AFTER_MS) return;
+    if (this.outage !== undefined) this.outage.stalledTries += 1;
+    this.dropSocket(socket, 4001, "replaced");
+    this.reconnectAttempt = 0;
     this.connectNow();
   }
 
@@ -439,7 +534,7 @@ class AppClientImpl implements AppClient {
         (failure: unknown) => {
           // No answer in time: the link died without closing, so a new one takes its place.
           if (deadline.signal.aborted) {
-            if (this.socket === socket) this.reconnectNow();
+            if (this.socket === socket) this.reconnectNow("no-answer");
             return false;
           }
           // The link closed meanwhile (its close starts the reconnect), or the client was disposed.
@@ -468,6 +563,8 @@ class AppClientImpl implements AppClient {
       this.timers.clearTimeout?.(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
+    this.clearTryTimer();
+    this.outage = undefined;
     const error = appFailure("cancelled", "Client disposed", false);
     this.rejectPending(error);
     this.rejectOpenWaiters(error);
@@ -511,8 +608,23 @@ class AppClientImpl implements AppClient {
     const generation = ++this.socketGeneration;
     this.socket = socket;
     this.welcomeReceived = false;
+    this.tryStartedAt = this.clock();
+    this.tryOpenedAt = undefined;
+    if (this.outage !== undefined) this.outage.tries += 1;
+    this.clearTryTimer();
+    // A try that is not welcomed in time is dropped, and the next goes at once: the time was already waited.
+    this.tryTimer = this.timers.setTimeout?.(() => {
+      this.tryTimer = undefined;
+      if (!this.isCurrent(socket, generation) || this.welcomeReceived) return;
+      this.tryLimitMs = Math.min(LONGEST_TRY_MS, this.tryLimitMs * 2);
+      if (this.outage !== undefined) this.outage.stalledTries += 1;
+      this.dropSocket(socket, 4001, "slow to open");
+      this.rejectPending(appFailure("unavailable", "Connection to the app server timed out", true));
+      this.scheduleReconnect(true);
+    }, this.tryLimitMs);
     socket.onopen = () => {
       if (!this.isCurrent(socket, generation)) return;
+      this.tryOpenedAt = this.clock();
       try {
         const hello = HelloFrame.parse({
           type: "hello",
@@ -536,11 +648,14 @@ class AppClientImpl implements AppClient {
     };
     socket.onclose = (event) => {
       if (!this.isCurrent(socket, generation)) return;
+      const welcomed = this.welcomeReceived;
       this.socket = undefined;
       this.welcomeReceived = false;
+      this.clearTryTimer();
       const code = closeCode(event);
       if (code === 4401 || code === 4403) {
         this.terminal = true;
+        this.outage = undefined;
         let refusal: ConnectionStateEvent["refusal"];
         let message = "This page address is not allowed to reach omp-app";
         if (code === 4401) {
@@ -567,9 +682,69 @@ class AppClientImpl implements AppClient {
         this.setConnectionState("closed", error.appError, refusal);
         return;
       }
+      if (welcomed) this.startOutage("closed", code, closeReason(event));
+      else if (this.outage !== undefined) this.outage.failedTries += 1;
       this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
       if (!this.disposed) this.scheduleReconnect();
     };
+  }
+
+  /** Lets a socket go as if it had closed: once it is not the current socket, its own late events are ignored. */
+  private dropSocket(socket: WebSocketLike, code: number, reason: string): void {
+    if (this.socket === socket) {
+      this.socket = undefined;
+      this.welcomeReceived = false;
+    }
+    this.clearTryTimer();
+    try {
+      socket.close(code, reason);
+    } catch {
+      // A socket that is already closed has nothing more to close.
+    }
+  }
+
+  private clearTryTimer(): void {
+    if (this.tryTimer === undefined) return;
+    this.timers.clearTimeout?.(this.tryTimer);
+    this.tryTimer = undefined;
+  }
+
+  /** A link that worked is lost: its outage starts, unless one already runs (a reconnect asked for meanwhile). */
+  private startOutage(cause: OutageCause, closeCode?: number, closeReason?: string): void {
+    if (this.outage !== undefined) return;
+    this.outage = {
+      start: this.clock(),
+      cause,
+      ...(closeCode === undefined ? {} : { closeCode }),
+      ...(closeReason === undefined || closeReason === "" ? {} : { closeReason }),
+      tries: 0,
+      failedTries: 0,
+      stalledTries: 0,
+    };
+  }
+
+  /** The new link's streams are resumed: the outage is over, and its report goes to the listeners. */
+  private endOutage(welcomedAt: number, streams: number): void {
+    const outage = this.outage;
+    this.outage = undefined;
+    if (outage === undefined || this.outageListeners.size === 0) return;
+    const now = this.clock();
+    const started = this.tryStartedAt ?? welcomedAt;
+    const report: OutageReport = {
+      cause: outage.cause,
+      ...(outage.closeCode === undefined ? {} : { closeCode: outage.closeCode }),
+      ...(outage.closeReason === undefined ? {} : { closeReason: outage.closeReason }),
+      toWelcomeMs: Math.max(0, welcomedAt - outage.start),
+      outageMs: Math.max(0, now - outage.start),
+      tries: outage.tries,
+      failedTries: outage.failedTries,
+      stalledTries: outage.stalledTries,
+      openMs: Math.max(0, (this.tryOpenedAt ?? welcomedAt) - started),
+      welcomeMs: Math.max(0, welcomedAt - started),
+      streams,
+      resumeMs: Math.max(0, now - welcomedAt),
+    };
+    for (const listener of this.outageListeners) this.notifyListener(listener, report);
   }
 
   private isCurrent(socket: WebSocketLike, generation: number): boolean {
@@ -601,6 +776,7 @@ class AppClientImpl implements AppClient {
   }
 
   private handleWelcome(frame: z.output<typeof WelcomeFrame>): void {
+    const welcomedAt = this.clock();
     const previousInstanceId = this._instanceId;
     const instanceChanged =
       previousInstanceId !== undefined && previousInstanceId !== frame.instanceId;
@@ -608,6 +784,8 @@ class AppClientImpl implements AppClient {
     this.welcomeReceived = true;
     this.everOpen = true;
     this.reconnectAttempt = 0;
+    this.clearTryTimer();
+    this.tryLimitMs = this.reconnect.tryTimeoutMs;
     this.setConnectionState("open");
     this.resolveOpenWaiters();
     if (instanceChanged) {
@@ -620,9 +798,14 @@ class AppClientImpl implements AppClient {
         });
       }
     }
-    void this.resumeSubscriptions(instanceChanged).catch(() => {
-      // A close during resume is retried after the next welcome.
-    });
+    void this.resumeSubscriptions(instanceChanged).then(
+      (streams) => {
+        if (this.welcomeReceived) this.endOutage(welcomedAt, streams);
+      },
+      () => {
+        // A close during resume is retried after the next welcome.
+      },
+    );
   }
 
   private handleResult(frame: z.output<typeof ResultFrame>): void {
@@ -805,35 +988,45 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  private async resumeSubscriptions(instanceChanged: boolean): Promise<void> {
-    const records = [...this.subscriptions.values()];
-    for (const record of records) {
-      if (!record.active || !record.subscribed || this.disposed || !this.welcomeReceived) continue;
-      try {
-        await this.subscribeRecord(
-          record,
-          instanceChanged || (record.lastSeq === 0 && !record.hasCursor)
-            ? undefined
-            : record.lastSeq,
-          undefined,
-        );
-      } catch (error) {
-        // A disconnect during resume is retried on the next welcome. A refusal from the server is
-        // final for this record: stop it and tell consumers instead of going silent. The record leaves the map, so a
-        // later subscribe to the stream makes a fresh record instead of joining this dead one.
-        if (!this.welcomeReceived || this.disposed) continue;
-        record.active = false;
-        record.subscribed = false;
-        if (this.subscriptions.get(record.stream) === record)
-          this.subscriptions.delete(record.stream);
-        record.holders.clear();
-        this.emitResync({
-          reason: "subscription-failed",
-          stream: record.stream,
-          error: asAppFailure(error, appFailure("internal", "Resubscribe failed", false)).appError,
-        });
-      }
-    }
+  /**
+   * Subscribes the link's streams again after a welcome, all at once (one round trip for all of them, not one each):
+   * how many it resumed.
+   */
+  private async resumeSubscriptions(instanceChanged: boolean): Promise<number> {
+    const records = [...this.subscriptions.values()].filter(
+      (record) => record.active && record.subscribed,
+    );
+    await Promise.all(
+      records.map(async (record) => {
+        if (!record.active || !record.subscribed || this.disposed || !this.welcomeReceived) return;
+        try {
+          await this.subscribeRecord(
+            record,
+            instanceChanged || (record.lastSeq === 0 && !record.hasCursor)
+              ? undefined
+              : record.lastSeq,
+            undefined,
+          );
+        } catch (error) {
+          // A disconnect during resume is retried on the next welcome. A refusal from the server is
+          // final for this record: stop it and tell consumers instead of going silent. The record leaves the map, so a
+          // later subscribe to the stream makes a fresh record instead of joining this dead one.
+          if (!this.welcomeReceived || this.disposed) return;
+          record.active = false;
+          record.subscribed = false;
+          if (this.subscriptions.get(record.stream) === record)
+            this.subscriptions.delete(record.stream);
+          record.holders.clear();
+          this.emitResync({
+            reason: "subscription-failed",
+            stream: record.stream,
+            error: asAppFailure(error, appFailure("internal", "Resubscribe failed", false))
+              .appError,
+          });
+        }
+      }),
+    );
+    return records.length;
   }
 
   private callPort<P extends Port>(
@@ -1019,12 +1212,14 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  private scheduleReconnect(): void {
+  /** The next try, after the backoff; `immediate` after a try that was dropped for taking long, whose wait is spent. */
+  private scheduleReconnect(immediate = false): void {
     if (this.disposed || this.terminal || this.reconnectTimer !== undefined) return;
     const nextAttempt = this.reconnectAttempt + 1;
     if (this.reconnect.maxAttempts !== undefined && nextAttempt > this.reconnect.maxAttempts) {
       const error = appFailure("unavailable", "Could not reconnect to the app server", false);
       this.closedFailure = error;
+      this.outage = undefined;
       this.setConnectionState("closed");
       this.rejectOpenWaiters(error);
       return;
@@ -1032,7 +1227,9 @@ class AppClientImpl implements AppClient {
     this.reconnectAttempt = nextAttempt;
     this.setConnectionState(this.everOpen ? "reconnecting" : "connecting");
     const exponent = Math.max(0, nextAttempt - 1);
-    const delay = Math.min(this.reconnect.maxDelayMs, this.reconnect.baseDelayMs * 2 ** exponent);
+    const delay = immediate
+      ? 0
+      : Math.min(this.reconnect.maxDelayMs, this.reconnect.baseDelayMs * 2 ** exponent);
     if (!this.timers.setTimeout) {
       this.connectNow();
       return;
