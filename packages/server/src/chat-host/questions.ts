@@ -1,9 +1,11 @@
 /**
  * Questions the chat's agent asks without waiting (the `ask_async` tool). Each is saved in the chat's session file as an
- * `omp-app/question` entry and shown in the page's Questions panel; the person answers when they have time, and the
- * answer goes back into the chat as their message, the way a typed one goes (`sendAnswer` in `loop.ts`). Answers and
- * skips are `omp-app/question-answer` entries. Custom entries never reach the model, so the question reaches it as the
- * tool call and the answer as a message.
+ * `omp-app/question` entry and shown in the page's Questions panel; the person answers when they have time. An answer
+ * or a skip is saved as an `omp-app/question-answer` entry and waits, changeable, until every question of its ask
+ * (one tool call) has one: then the ask's waiting answers go back into the chat together, as one message from the
+ * person, the way a typed one goes (`sendAnswer` in `loop.ts`), and an `omp-app/question-sent` entry marks them sent.
+ * The person can also send the waiting answers at once (`send_answers`). Custom entries never reach the model, so the
+ * question reaches it as the tool call and the answers as a message.
  */
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { TSchema } from "@oh-my-pi/pi-ai";
@@ -21,18 +23,22 @@ import { HostMethodError } from "./method-error";
 
 const QUESTION_ENTRY = "omp-app/question";
 const ANSWER_ENTRY = "omp-app/question-answer";
+const SENT_ENTRY = "omp-app/question-sent";
 
 /** Labels omp's own `ask` keeps for its rows; the page offers its own Other…, so the agent may not use them either. */
 const RESERVED_LABELS = new Set(["Other (type your own)", "Chat about this", "Next →"]);
 
 export const ASK_ASYNC_DESCRIPTION = [
   "Ask the user questions without waiting for the answers. Each question appears in the app's Questions panel beside",
-  "this chat, with your context; the user answers when they have time, and each answer arrives later in this chat as a",
-  'message from the user that starts with "Answer to your question" (or "Skipped your question").',
+  "this chat, with your context; the user answers when they have time. The answers to one call arrive together later",
+  'in this chat, as one message from the user that starts with "Answers to your questions" ("Answer to your question"',
+  'or "Skipped your question" for one), once each question has an answer or a skip, or earlier when the user sends',
+  "the answers ready so far. A skipped question is yours to decide.",
   "The tool returns at once: keep working on what does not depend on the answers, and do not ask the same question",
   "again. Give `options` for multiple choice (the user can always write their own answer instead), or leave them out",
   "for a written answer. Put in `context` what the user needs to decide: why you ask, what each choice changes, and",
-  "what you would pick. Prefer it over `ask` when the decision does not block your next step or the user may be away.",
+  "what you would pick. Ask related questions in one call, so their answers come together. Prefer it over `ask` when",
+  "the decision does not block your next step or the user may be away.",
 ].join(" ");
 
 /** The tool's parameters, as omp's `ask` has them, with `context` added and `options` optional. */
@@ -126,29 +132,61 @@ export function askedQuestions(
   });
 }
 
-/** The person's message to the agent for an answer or a skip. */
-export function answerMessage(record: QuestionRecord, answer: QuestionAnswer): string {
-  const name = `"${record.header ?? record.question}" (${record.questionId})`;
-  if (answer.skipped) return `Skipped your question ${name}: decide it yourself.`;
-  const lines = [`Answer to your question ${name}:`];
+/** The question's name in a message: its header or text, then the agent's id for it. */
+const nameIn = (record: QuestionRecord): string =>
+  `"${record.header ?? record.question}" (${record.questionId})`;
+
+/** An answer's lines: the one choice alone, else each as a list item, the written answer, and the note. */
+function answerLines(answer: QuestionAnswer): string[] {
+  const lines: string[] = [];
   if (answer.picked.length === 1 && answer.typed === undefined) lines.push(answer.picked[0] ?? "");
   else for (const label of answer.picked) lines.push(`- ${label}`);
   if (answer.typed !== undefined) {
     lines.push(answer.picked.length > 0 ? `- Other: ${answer.typed}` : answer.typed);
   }
   if (answer.note !== undefined) lines.push(`Note: ${answer.note}`);
-  return lines.join("\n");
+  return lines;
+}
+
+/**
+ * The person's message to the agent for answers and skips sent together, in the order asked: one answer keeps its own
+ * wording ("Answer to your question …", "Skipped your question …"); several go under "Answers to your questions:".
+ */
+export function answersMessage(records: readonly QuestionRecord[]): string {
+  const answered = records.flatMap((record) =>
+    record.answer === null ? [] : [{ record, answer: record.answer }],
+  );
+  const [only] = answered;
+  if (only !== undefined && answered.length === 1) {
+    if (only.answer.skipped)
+      return `Skipped your question ${nameIn(only.record)}: decide it yourself.`;
+    return [`Answer to your question ${nameIn(only.record)}:`, ...answerLines(only.answer)].join(
+      "\n",
+    );
+  }
+  const blocks = answered.map(({ record, answer }) =>
+    answer.skipped
+      ? `${nameIn(record)}: skipped; decide it yourself.`
+      : [`${nameIn(record)}:`, ...answerLines(answer)].join("\n"),
+  );
+  return ["Answers to your questions:", ...blocks].join("\n\n");
+}
+
+/** The answer as sent: no longer held, with the time it went. */
+function sentAnswer(answer: QuestionAnswer, sentAt: number): QuestionAnswer {
+  const { held: _held, ...rest } = answer;
+  return { ...rest, sentAt };
 }
 
 type QuestionsSession = Pick<AgentSession, "sessionManager">;
 
-/** The chat's questions: asked by the tool, listed, answered and skipped through the host's methods. */
+/** The chat's questions: asked by the tool, listed, answered, skipped and sent through the host's methods. */
 export class QuestionsController {
   readonly #session: QuestionsSession;
   readonly #emit: (event: QuestionRecordEvent) => void;
   readonly #send: (message: string, sequence: number) => Promise<void>;
-  /** Questions whose answer is on its way to the agent: a second answer is refused meanwhile. */
-  readonly #answering = new Set<string>();
+  /** Answers, skips and sends, one at a time: two answers that each finish an ask must not send it twice. */
+  #turn: Promise<unknown> = Promise.resolve();
 
   constructor(
     session: QuestionsSession,
@@ -180,7 +218,10 @@ export class QuestionsController {
     return records;
   }
 
-  /** The session's questions in the order asked, each with its answer (the first one saved) once there is one. */
+  /**
+   * The session's questions in the order asked, each with its answer once there is one: a waiting answer is the last
+   * one saved; a sent one, or one saved before answers waited (sent as it was saved), stays as it went.
+   */
   list(): QuestionRecord[] {
     const records = new Map<string, QuestionRecord>();
     for (const entry of this.#session.sessionManager.getEntries()) {
@@ -191,15 +232,28 @@ export class QuestionsController {
       } else if (entry.customType === ANSWER_ENTRY) {
         const { id, ...answer } = entry.data as QuestionAnswer & { readonly id: string };
         const record = records.get(id);
-        if (record !== undefined && record.answer === null) records.set(id, { ...record, answer });
+        if (record !== undefined && (record.answer === null || record.answer.held === true)) {
+          records.set(id, { ...record, answer });
+        }
+      } else if (entry.customType === SENT_ENTRY) {
+        const { ids, sentAt } = entry.data as {
+          readonly ids: readonly string[];
+          readonly sentAt: number;
+        };
+        for (const id of ids) {
+          const record = records.get(id);
+          if (record?.answer?.held === true) {
+            records.set(id, { ...record, answer: sentAnswer(record.answer, sentAt) });
+          }
+        }
       }
     }
     return [...records.values()];
   }
 
-  /** Sends the person's answer to the agent, then saves it. */
+  /** Saves the person's answer to wait for the rest of its ask; the ask goes once each of its questions has one. */
   answer(params: AnswerQuestionParams, sequence: number): Promise<QuestionRecord> {
-    return this.#close(params.id, sequence, (record) => {
+    return this.#hold(params.id, sequence, (record) => {
       const picked = [...new Set(params.picked)];
       for (const label of picked) {
         if (!record.options.some((option) => option.label === label)) {
@@ -223,41 +277,81 @@ export class QuestionsController {
         ...(note === undefined ? {} : { note }),
         skipped: false,
         answeredAt: Date.now(),
+        held: true,
       };
     });
   }
 
-  /** Tells the agent to go on without the answer, then saves the skip. */
+  /** Saves a skip the same way: the agent is told to decide that one itself. */
   skip(id: string, sequence: number): Promise<QuestionRecord> {
-    return this.#close(id, sequence, () => ({ picked: [], skipped: true, answeredAt: Date.now() }));
+    return this.#hold(id, sequence, () => ({
+      picked: [],
+      skipped: true,
+      answeredAt: Date.now(),
+      held: true,
+    }));
   }
 
-  async #close(
+  /** Sends every waiting answer now, together, also from asks not fully answered: the records sent. */
+  sendWaiting(sequence: number): Promise<QuestionRecord[]> {
+    return this.#inTurn(async () => {
+      const waiting = this.list().filter((record) => record.answer?.held === true);
+      return waiting.length === 0 ? [] : this.#deliver(waiting, sequence);
+    });
+  }
+
+  #hold(
     id: string,
     sequence: number,
     answerOf: (record: QuestionRecord) => QuestionAnswer,
   ): Promise<QuestionRecord> {
-    const record = this.list().find((known) => known.id === id);
-    if (record === undefined)
-      throw new HostMethodError("invalid_params", "No such question in this chat");
-    if (record.answer !== null || this.#answering.has(id)) {
-      throw new Error(
-        record.answer?.skipped === true
-          ? "This question was skipped"
-          : "This question was already answered",
-      );
-    }
-    const answer = answerOf(record);
-    this.#answering.add(id);
-    try {
-      await this.#send(answerMessage(record, answer), sequence);
+    return this.#inTurn(async () => {
+      const record = this.list().find((known) => known.id === id);
+      if (record === undefined)
+        throw new HostMethodError("invalid_params", "No such question in this chat");
+      if (record.answer !== null && record.answer.held !== true) {
+        throw new Error(
+          record.answer.skipped
+            ? "This question was skipped"
+            : "This question was already answered",
+        );
+      }
+      const answer = answerOf(record);
       this.#session.sessionManager.appendCustomEntry(ANSWER_ENTRY, { id, ...answer });
-    } finally {
-      this.#answering.delete(id);
-    }
-    const answered: QuestionRecord = { ...record, answer };
-    this.#emit({ type: "question_record", record: answered });
-    return answered;
+      const held: QuestionRecord = { ...record, answer };
+      this.#emit({ type: "question_record", record: held });
+      const ask = this.list().filter((known) => known.toolCallId === record.toolCallId);
+      if (ask.some((known) => known.answer === null)) return held;
+      const sent = await this.#deliver(
+        ask.filter((known) => known.answer?.held === true),
+        sequence,
+      );
+      return sent.find((known) => known.id === id) ?? held;
+    });
+  }
+
+  /**
+   * Sends the answers as one message, then marks them sent. A send that fails leaves them waiting, so the person can
+   * send them again.
+   */
+  async #deliver(records: readonly QuestionRecord[], sequence: number): Promise<QuestionRecord[]> {
+    await this.#send(answersMessage(records), sequence);
+    const sentAt = Date.now();
+    this.#session.sessionManager.appendCustomEntry(SENT_ENTRY, {
+      ids: records.map((record) => record.id),
+      sentAt,
+    });
+    const sent = records.flatMap((record) =>
+      record.answer === null ? [] : [{ ...record, answer: sentAnswer(record.answer, sentAt) }],
+    );
+    for (const record of sent) this.#emit({ type: "question_record", record });
+    return sent;
+  }
+
+  #inTurn<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.#turn.then(work, work);
+    this.#turn = next.catch(() => undefined);
+    return next;
   }
 }
 
@@ -292,7 +386,7 @@ export class AskAsyncTool {
         content: [
           {
             type: "text",
-            text: `Asked ${records.length === 1 ? "1 question" : `${records.length} questions`} (${ids}). The answers come later as messages from the user in this chat. Keep working; do not wait for them, and do not ask again.`,
+            text: `Asked ${records.length === 1 ? "1 question" : `${records.length} questions`} (${ids}). The answers come later, together, as one message from the user in this chat. Keep working; do not wait for them, and do not ask again.`,
           },
         ],
         details: { questions: records },

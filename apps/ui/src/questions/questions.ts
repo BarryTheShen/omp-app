@@ -71,17 +71,37 @@ export class QuestionsStore {
   }
 }
 
-/** The questions as the panel lists them: the open ones in the order asked, then the answered ones, newest first. */
+/**
+ * The questions as the panel lists them: the open ones in the order asked, then the answers that wait to go with the
+ * rest of their ask (in the order asked), then the answers that went to omp, newest first.
+ */
 export function inPanelOrder(records: readonly QuestionRecord[]): {
   readonly open: readonly QuestionRecord[];
+  readonly waiting: readonly QuestionRecord[];
   readonly answered: readonly QuestionRecord[];
 } {
+  const sentAt = (record: QuestionRecord): number =>
+    record.answer?.sentAt ?? record.answer?.answeredAt ?? 0;
   return {
     open: records.filter((record) => record.answer === null),
+    waiting: records.filter((record) => record.answer?.held === true),
     answered: records
-      .filter((record) => record.answer !== null)
-      .sort((left, right) => (right.answer?.answeredAt ?? 0) - (left.answer?.answeredAt ?? 0)),
+      .filter((record) => record.answer !== null && record.answer.held !== true)
+      .sort((left, right) => sentAt(right) - sentAt(left)),
   };
+}
+
+/**
+ * What an open question's send button does, by what is left of its ask: it saves the answer to wait for the ask's
+ * other questions, or, as the ask's last open question, sends the ask's answers.
+ */
+export function sendLabel(
+  record: QuestionRecord,
+  records: readonly QuestionRecord[],
+): "Save answer" | "Send answer" | "Send answers" {
+  const ask = records.filter((known) => known.toolCallId === record.toolCallId);
+  if (ask.some((known) => known.id !== record.id && known.answer === null)) return "Save answer";
+  return ask.some((known) => known.answer?.held === true) ? "Send answers" : "Send answer";
 }
 
 /** An answer in a few words: the choices and the written answer, or Skipped. */

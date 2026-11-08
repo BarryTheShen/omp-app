@@ -856,17 +856,24 @@ export interface ChatHostMethodMap {
     readonly result: { readonly questions: readonly QuestionRecord[] };
   };
   /**
-   * Answers one of them: the answer is saved, then goes to the agent as the person's message, the way a typed one does
-   * (between its steps while it works, else as a new message). An answered or skipped question cannot be answered.
+   * Answers one of them. The answer is saved and waits, changeable, until every question of its ask has an answer or a
+   * skip; then the ask's waiting answers go to the agent together as one message from the person, the way a typed one
+   * does (between its steps while it works, else as a new message). The record comes back as it is then: still held,
+   * or sent. An answer that went to the agent cannot be changed.
    */
   readonly answer_question: {
     readonly params: AnswerQuestionParams;
     readonly result: { readonly record: QuestionRecord };
   };
-  /** Skips one: saved, and the agent is told to go on without the answer. */
+  /** Skips one: saved and waiting like an answer; the agent is told to decide it itself. */
   readonly skip_question: {
     readonly params: SkipQuestionParams;
     readonly result: { readonly record: QuestionRecord };
+  };
+  /** Sends every answer that waits now, together as one message, also from asks not fully answered: the records sent. */
+  readonly send_answers: {
+    readonly params: EmptyParams;
+    readonly result: { readonly records: readonly QuestionRecord[] };
   };
   /**
    * The roles Ctrl+P walks: omp's `cycleOrder` setting, the roles of it that resolve to an available model (omp skips the
@@ -1296,6 +1303,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   get_questions: EmptyParams,
   answer_question: AnswerQuestionParams,
   skip_question: SkipQuestionParams,
+  send_answers: EmptyParams,
   get_model_hub: EmptyParams,
   get_model_menu: EmptyParams,
   assign_model_role: AssignModelRoleParams,

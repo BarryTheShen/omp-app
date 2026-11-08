@@ -27,6 +27,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "get_questions",
   "answer_question",
   "skip_question",
+  "send_answers",
   "get_model_hub",
   "get_model_menu",
   "assign_model_role",

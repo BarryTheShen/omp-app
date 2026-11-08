@@ -1196,7 +1196,10 @@ export class ChatController {
     }
   }
 
-  /** Answers one: the answer goes to the agent as the person's message; resolves with the question, answered. */
+  /**
+   * Answers one: the answer waits for the rest of its ask, then the ask's answers go to the agent together as the
+   * person's message. Resolves with the question as it is then: its answer waiting, or sent.
+   */
   async answerQuestion(
     id: string,
     answer: Omit<AnswerQuestionParams, "id">,
@@ -1210,12 +1213,23 @@ export class ChatController {
     }
   }
 
-  /** Skips one: the agent is told to decide it itself. */
+  /** Skips one: it waits like an answer; the agent is told to decide it itself. */
   async skipQuestion(id: string): Promise<QuestionRecord> {
     try {
       const { record } = await this.#request("skip_question", { id });
       this.questions.put(record);
       return record;
+    } catch (failure) {
+      throw olderQuestions(failure);
+    }
+  }
+
+  /** Sends every answer that waits now, together as one message, also from asks not fully answered. */
+  async sendAnswers(): Promise<readonly QuestionRecord[]> {
+    try {
+      const { records } = await this.#request("send_answers", {});
+      for (const record of records) this.questions.put(record);
+      return records;
     } catch (failure) {
       throw olderQuestions(failure);
     }

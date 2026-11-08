@@ -1,7 +1,8 @@
 /**
  * Questions an agent asks without waiting (the chat host's `ask_async` tool): each is kept in the chat's session, shown
- * in the page's Questions panel, and answered there whenever the person has time; the answer goes back into the chat
- * as the person's message.
+ * in the page's Questions panel, and answered there whenever the person has time. The answers to one ask wait until
+ * each of its questions has one, then go back into the chat together as one message from the person; the person can
+ * also send the answers ready so far at once.
  */
 import { z } from "zod";
 
@@ -22,6 +23,13 @@ export interface QuestionAnswer {
   readonly skipped: boolean;
   /** Epoch ms. */
   readonly answeredAt: number;
+  /**
+   * True while the answer waits for the rest of its ask's answers (or for the person to send it); it can still be
+   * changed then. Absent once it went to the agent, and on answers from before answers waited.
+   */
+  readonly held?: true;
+  /** When it went to the agent (epoch ms); absent while held, and on answers from before answers waited. */
+  readonly sentAt?: number;
 }
 
 /** A question an agent asked, and its answer once there is one. */

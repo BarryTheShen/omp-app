@@ -575,6 +575,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       record: await questions.answer(params, sequence),
     }),
     skip_question: async ({ id }, sequence) => ({ record: await questions.skip(id, sequence) }),
+    send_answers: async (_params, sequence) => ({ records: await questions.sendWaiting(sequence) }),
     get_model_hub: async () => readModelHub(session),
     get_model_menu: async () => readModelMenu(session),
     assign_model_role: (params) => assignModelRole(session, params),
@@ -1016,9 +1017,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   };
 
   /**
-   * The person's answer to a question (`questions.ts`), sent as their message the way a typed one goes: through the
-   * input gate and the extensions' input hooks, then between the agent's steps while it works (a steer), else as a new
-   * message that starts its turn. Resolves once omp took it; a turn that fails later is only logged.
+   * The person's answers to questions (`questions.ts`), sent together as their message the way a typed one goes:
+   * through the input gate and the extensions' input hooks, then between the agent's steps while it works (a steer),
+   * else as a new message that starts its turn. Resolves once omp took it; a turn that fails later is only logged.
    */
   const sendAnswer = (text: string, sequence: number): Promise<void> => {
     const isCurrent = stillCurrent(sequence);

@@ -1,5 +1,13 @@
-import type { QuestionRecord } from "@omp-app/contracts/chat-host";
-import { type KeyboardEvent, type ReactNode, useId, useState, useSyncExternalStore } from "react";
+import type { QuestionAnswer, QuestionRecord } from "@omp-app/contracts/chat-host";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -8,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ChatController } from "../../chat/controller";
 import { OptionText } from "../../chat/QuestionsDialog";
 import { isImeEnter } from "../../keys/ime";
-import { answerSummary, inPanelOrder } from "../../questions/questions";
+import { answerSummary, inPanelOrder, sendLabel } from "../../questions/questions";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 
 const failureText = (failure: unknown): string =>
@@ -31,7 +39,8 @@ const nameOf = (record: QuestionRecord): string => record.header ?? record.quest
 
 /**
  * The questions the chat's agent asked without waiting, in the Questions panel: each open one as a card to answer when
- * there is time, then the answered and skipped ones, folded to their answer.
+ * there is time; the answers that wait to go with the rest of their ask, with Send now; then the answered and skipped
+ * ones, folded to their answer.
  */
 export function QuestionsTab({ controller }: { readonly controller: ChatController }): ReactNode {
   const { records } = useSyncExternalStore(
@@ -47,19 +56,34 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
         <p className="font-medium text-t1">No questions for you</p>
         <p className="text-[0.8125rem] text-t3">
           When omp asks you something it does not need at once, the question waits here while omp
-          keeps working. Answer when you have time: your answer goes to the chat as your message.
+          keeps working. Answer when you have time: the answers to one ask go to the chat together,
+          as your message.
         </p>
       </div>
     );
-  const { open, answered } = inPanelOrder(records);
+  const { open, waiting, answered } = inPanelOrder(records);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 text-[0.8125rem]">
-      {open.length === 0 && (
+      {waiting.length > 0 && <WaitingBar controller={controller} count={waiting.length} />}
+      {open.length === 0 && waiting.length === 0 && (
         <p className="px-1 text-t3">Nothing waits for you. Answered questions are below.</p>
       )}
       {open.map((record) => (
-        <QuestionCard key={record.id} record={record} controller={controller} />
+        <QuestionCard key={record.id} record={record} records={records} controller={controller} />
       ))}
+      {waiting.length > 0 && (
+        <section aria-label="Ready to send" className="flex flex-col gap-1.5">
+          <h3 className="px-1 pt-1 text-xs font-medium text-t3">Ready to send</h3>
+          {waiting.map((record) => (
+            <WaitingCard
+              key={record.id}
+              record={record}
+              records={records}
+              controller={controller}
+            />
+          ))}
+        </section>
+      )}
       {answered.length > 0 && (
         <section aria-label="Answered questions" className="flex flex-col gap-1.5">
           <h3 className="px-1 pt-1 text-xs font-medium text-t3">Answered</h3>
@@ -74,7 +98,10 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
               <span className="text-xs text-t3">
                 {record.answer?.skipped === true ? "Skipped" : "Your answer"}
                 {record.answer !== null && (
-                  <span className="font-mono"> · {TIME.format(record.answer.answeredAt)}</span>
+                  <span className="font-mono">
+                    {" "}
+                    · {TIME.format(record.answer.sentAt ?? record.answer.answeredAt)}
+                  </span>
                 )}
               </span>
               {record.answer?.skipped !== true && (
@@ -91,30 +118,131 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
   );
 }
 
-/**
- * One open question: its header and time, the question, the agent's context, then the answer: choices (round marks for
- * one, tick boxes for several) with Other… to write one's own, or a box to write the answer in when there are no
- * choices; a note may go with it. Send answer sends it to the chat as the person's message; Skip tells the agent to
- * decide.
- */
-function QuestionCard({
+/** The answers that wait for the rest of their ask, and Send now, which sends them all at once as one message. */
+function WaitingBar({
+  controller,
+  count,
+}: {
+  readonly controller: ChatController;
+  readonly count: number;
+}): ReactNode {
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const sendNow = (): void => {
+    if (sending) return;
+    setSending(true);
+    setProblem(null);
+    controller
+      .sendAnswers()
+      .catch((failure: unknown) => setProblem(`Not sent: ${failureText(failure)}`))
+      .finally(() => setSending(false));
+  };
+  return (
+    <section
+      aria-label="Answers ready to send"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-l3 bg-l1 px-3 py-2"
+    >
+      <p className="min-w-0 flex-1 text-t2">
+        <span className="font-medium text-t1">
+          {count === 1 ? "1 answer ready." : `${count} answers ready.`}
+        </span>{" "}
+        They go to omp together once the rest of their ask is answered.
+      </p>
+      <Button type="button" size="sm" variant="secondary" disabled={sending} onClick={sendNow}>
+        {sending ? "Sending…" : "Send now"}
+      </Button>
+      {problem !== null && (
+        <p role="alert" className="w-full text-xs text-bad-ink">
+          {problem}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** An answer that waits for the rest of its ask: what it says, and Change, which opens its card again. */
+function WaitingCard({
   record,
+  records,
   controller,
 }: {
   readonly record: QuestionRecord;
+  readonly records: readonly QuestionRecord[];
   readonly controller: ChatController;
 }): ReactNode {
-  const [picked, setPicked] = useState<readonly string[]>([]);
+  const [changing, setChanging] = useState(false);
+  const answer = record.answer;
+  if (changing && answer !== null)
+    return (
+      <QuestionCard
+        record={record}
+        records={records}
+        controller={controller}
+        initial={answer}
+        onClose={() => setChanging(false)}
+      />
+    );
+  return (
+    <article
+      data-id={record.id}
+      aria-label={`Ready to send: ${nameOf(record)}`}
+      className="flex items-start gap-2 rounded-lg border border-l3 py-2 pr-1.5 pl-3"
+    >
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="line-clamp-2 text-t2">{record.question}</span>
+        <span className="break-words text-t1">
+          {answer?.skipped === true ? "Skipped" : answerSummary(record)}
+        </span>
+        {answer?.note !== undefined && (
+          <span className="break-words text-xs text-t3">Note: {answer.note}</span>
+        )}
+      </span>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setChanging(true)}>
+        Change
+      </Button>
+    </article>
+  );
+}
+
+/**
+ * One question to answer: its header and time, the question, the agent's context, then the answer: choices (round marks
+ * for one, tick boxes for several) with Other… to write one's own, or a box to write the answer in when there are no
+ * choices; a note may go with it. Its button saves the answer to wait for the rest of the ask, or, on the ask's last open
+ * question, sends the ask's answers to the chat as the person's message; Skip tells the agent to decide. Opened again
+ * from a waiting answer (`initial`), it starts from that answer and has Cancel.
+ */
+function QuestionCard({
+  record,
+  records,
+  controller,
+  initial,
+  onClose,
+}: {
+  readonly record: QuestionRecord;
+  readonly records: readonly QuestionRecord[];
+  readonly controller: ChatController;
+  readonly initial?: QuestionAnswer;
+  readonly onClose?: () => void;
+}): ReactNode {
+  const card = useRef<HTMLElement>(null);
+  // Opened again from its waiting answer, at the foot of the list: brought into view.
+  useEffect(() => {
+    if (initial !== undefined) card.current?.scrollIntoView({ block: "nearest" });
+  }, [initial]);
+  const [picked, setPicked] = useState<readonly string[]>(
+    initial?.skipped === false ? initial.picked : [],
+  );
   /** The written answer: Other…'s, or the whole answer when there are no choices; undefined while Other… is off. */
   const [typed, setTyped] = useState<string | undefined>(
-    record.options.length === 0 ? "" : undefined,
+    initial?.typed ?? (record.options.length === 0 ? "" : undefined),
   );
-  const [note, setNote] = useState<string | undefined>(undefined);
+  const [note, setNote] = useState<string | undefined>(initial?.note);
   const [sending, setSending] = useState<"answer" | "skip" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const writtenId = useId();
   const choices = record.options.length > 0;
   const ready = picked.length > 0 || (typed ?? "").trim() !== "";
+  const label = sendLabel(record, records);
 
   const send = (): void => {
     if (!ready || sending !== null) return;
@@ -128,7 +256,13 @@ function QuestionCard({
         ...(written ? { typed: written } : {}),
         ...(noted ? { note: noted } : {}),
       })
-      .catch((failure: unknown) => setProblem(`Not sent: ${failureText(failure)}`))
+      .then(
+        () => onClose?.(),
+        (failure: unknown) =>
+          setProblem(
+            `${label === "Save answer" ? "Not saved" : "Not sent"}: ${failureText(failure)}`,
+          ),
+      )
       .finally(() => setSending(null));
   };
 
@@ -138,10 +272,12 @@ function QuestionCard({
     setProblem(null);
     controller
       .skipQuestion(record.id)
-      .catch((failure: unknown) => setProblem(`Not skipped: ${failureText(failure)}`))
+      .then(
+        () => onClose?.(),
+        (failure: unknown) => setProblem(`Not skipped: ${failureText(failure)}`),
+      )
       .finally(() => setSending(null));
   };
-
   const enterSends = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key === "Enter" && !event.shiftKey && !isImeEnter(event)) {
       event.preventDefault();
@@ -158,6 +294,7 @@ function QuestionCard({
   );
   return (
     <article
+      ref={card}
       data-id={record.id}
       aria-label={`Question: ${nameOf(record)}`}
       className="flex flex-col gap-2.5 rounded-xl border border-l3 bg-card p-3 shadow-sm"
@@ -291,6 +428,17 @@ function QuestionCard({
           </Button>
         )}
         <span className="flex-1" />
+        {onClose !== undefined && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={sending !== null}
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"
@@ -301,7 +449,7 @@ function QuestionCard({
           {sending === "skip" ? "Skipping…" : "Skip"}
         </Button>
         <Button type="button" size="sm" disabled={!ready || sending !== null} onClick={send}>
-          {sending === "answer" ? "Sending…" : "Send answer"}
+          {sending === "answer" ? (label === "Save answer" ? "Saving…" : "Sending…") : label}
         </Button>
       </footer>
     </article>
