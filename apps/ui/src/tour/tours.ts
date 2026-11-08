@@ -1973,6 +1973,28 @@ const BROWSER_TOUR: Tour = {
   ],
 };
 
+/** Your own browser stays chosen until another is chosen (2026-11-07). */
+const BROWSER_STAYS_TOUR: Tour = {
+  id: "browser-stays-2026-11-07",
+  title: "Your own browser stays",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "The Browser panel",
+      text: "Click <b>Browser</b> on this rail: the side panel opens on the browsers your chats can use.",
+      action: { kind: "appears", selector: BROWSER_PANEL },
+    },
+    {
+      target: BROWSER_PANEL,
+      title: "Your own browser stays",
+      text: "Chosen here, <b>Your own browser</b> no longer turns itself off after 30 minutes: chats use it until you choose another browser, and its relay starts again after the app restarts.",
+      action: next,
+    },
+  ],
+};
+
 const QUESTIONS = part("questions");
 const QUESTIONS_HIDDEN = part("questions-hidden");
 
@@ -2132,6 +2154,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-07-browser-stays",
+    when: "2026-11-07T19:56:00-06:00",
+    summary:
+      "Your own browser, chosen in the Browser panel, now stays until you choose another, and the app's own browser tells websites it is plain Chrome. On a computer, the line above the message box keeps its room, so the chat no longer jumps when a reply starts or ends. A phone back from another app no longer flashes Reconnecting while its connection comes back, and the usage numbers open at once.",
+    tours: [BROWSER_STAYS_TOUR],
+  },
   {
     id: "2026-11-07-answers-together",
     when: "2026-11-07T18:52:00-06:00",
