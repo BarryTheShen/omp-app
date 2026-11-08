@@ -1,5 +1,5 @@
 name: Feedback
-description: Something you noticed or want, in your own words. The main agent turns it into smaller issues.
+description: Something you noticed or want, in your own words.
 labels: ["feedback"]
 body:
   - type: textarea

@@ -12,21 +12,24 @@ import type { Omp, OmpEvent } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS, type ChatHostMethodMap } from "@omp-app/contracts/chat-host";
 ```
 
-`src/index.ts` exports the core and the ports (`src/ports/A0/`, `src/ports/A1/`); `@omp-app/contracts/chat-host` is the chat host's protocol, and `@omp-app/contracts/chat-host/args` its launch arguments.
+`src/index.ts` exports the core and the ports (`src/ports/A0/`, `src/ports/A1/`); `@omp-app/contracts/chat-host` is the chat host's protocol, `@omp-app/contracts/chat-host/args` its launch arguments, and `@omp-app/contracts/ids` the branded ids on their own (`src/core/ids.ts`).
 
 ## Files
 
 | Path | What it is |
 |---|---|
-| `src/chat-host/` | The chat host's protocol (`protocol.ts`: `hello`, the methods by name with their params and results in `ChatHostMethodMap`, the events in `ChatEvent`), its parts (dialogs, host tools and URIs, subagents, live voice), the methods' names on their own (`method-names.ts`, so the capability keys can list them without an import cycle), and `omp-types.ts`: the app's names for omp's objects (`Omp.*`), typed from omp's SDK. |
+| `src/chat-host/` | The chat host's protocol (`protocol.ts`: `hello`, the methods by name with their params and results in `ChatHostMethodMap`, the events in `ChatEvent`), its parts (dialogs, the host's requests, host tools and URIs, subagents, jobs, questions, live voice), the methods' names on their own (`method-names.ts`, so the capability keys can list them without an import cycle), and `omp-types.ts`: the app's names for omp's objects (`Omp.*`), typed from omp's SDK. |
 | `src/core/omp.ts` | The floor version, the `Omp` namespace, `OmpEvent` and `OmpMessage`. |
 | `src/core/ids.ts` | Branded ids with zod schemas (`ThreadId`, `EntryId`, `FolderPath`, `SessionFilePath`, `RequestId`, `ToolCallId`, `SubagentId`, `UiRequestId`, `HostCallId`, `OmpProcessId`, `OmpStreamMessageId`), `EntryRef`, `SessionEntryHead`, and the message keying rule (below) with `messageIdentity` and `pairEndedMessages`. |
 | `src/core/envelope.ts` | The browser-server wire `omp-app/1`: client frames `hello`, `call`, `cancel`, `subscribe`, `unsubscribe`; server frames `welcome`, `result`, `event`; parse and serialize helpers; `definePort` and the `PortClient` / `PortHandlers` types A0 builds the proxy and dispatcher from; `PortCallOptions` with its `AbortSignalLike` signal. |
-| `src/core/errors.ts` | `AppError` with its ten codes, and `parseJson`, which turns bad JSON or schema failures into `invalid_args` errors without echoing the input. |
+| `src/core/errors.ts` | `AppError` with its twelve codes, and `parseJson`, which turns bad JSON or schema failures into `invalid_args` errors without echoing the input. |
 | `src/core/capabilities.ts` | `CapabilityKey` (`omp.cmd.<method>` for each of the chat host's methods, `omp.ui`, `omp.host-tools`, `omp.host-uris`, `omp.subagent-events`, `omp.live-voice`, `host.*`, `client.*`, `upstream.*`), `CapabilityStatus` and `CapabilityMap`. |
 | `src/core/provenance.ts` | `SettingSource` (omp's real settings layers), `Provenance`, `Sourced<T>`, `sourcedSchema` and `overridesFollowPrecedence`. |
 | `src/core/fixtures.ts` | The privacy check for committed fixtures and recordings: `checkScrubbed` and its `PRIVATE_PATH_ROOTS`. |
-| `test/` | `bun test`: the envelope and its rejected frames, the capability keys, the privacy check, the chat host's protocol and the ports. |
+| `src/core/attached-files.ts`, `src/core/pasted-block.ts` | How a message carries attached files and pasted text, so the composer, the transcript and the server read them the same way. |
+| `src/core/message-host.ts` | The pattern the name of the app a message was sent from must match (`MESSAGE_HOST_PATTERN`). |
+| `src/ports/A0/`, `src/ports/A1/` | The ports, one file each: `definePort` declarations with their argument, result and event schemas. `A0` is the server's live state (chat sessions, running chats, devices, shares, the app's browser, app info); `A1` is its stores and gateways. |
+| `test/` | `bun test`: the envelope and its rejected frames, the capability keys, the privacy check, the chat host's protocol, the attached-file and pasted-text blocks, device pairing and the ports. |
 
 Scripts: `bun run typecheck` checks `src/` alone with `tsconfig.json`, then the tests with `tsconfig.test.json`; `bun test` runs the tests.
 
@@ -49,7 +52,7 @@ The exact rule, with omp source citations, is the comment at the top of `ids.ts`
 
 **App wire** (`envelope.ts`). Every `call`, `subscribe` and `unsubscribe` gets exactly one `result`. Events carry a per-stream `seq` starting at 1. A reconnecting client resubscribes with `afterSeq`. Seqs are comparable only within one server `instanceId`; a stale resume fails with `conflict`, and the client then refetches state. Every `PortClient` method takes an optional `{ signal }`. Aborting the signal sends a `cancel` frame, and the call's promise rejects at once with an `AppError` of code `cancelled`. Cancelling does not undo work the server already finished.
 
-**Settings layers** (`provenance.ts`), highest first: `env` (unless the variable is declared a fallback), `runtime` (session overrides, CLI flags, the protocol defaults omp applies to a chat the app runs), `overlay` (`PI_CONFIG_FILES`, then `--config`), `project` (`.omp/config.yml`, `.omp/settings.json` and other agents' project files), `global` (`~/.omp/agent/config.yml`), `default`. omp 18.6.1 has no managed or system layer, and it reports the layer but never the file. In a `Sourced<T>` value, `overrides` lists only layers below `source`, each once, highest first; a fallback `env` ranks just above `default`.
+**Settings layers** (`provenance.ts`), highest first: `env` (unless the variable is declared a fallback), `runtime` (session overrides, CLI flags, the protocol defaults omp applies to a chat the app runs), `overlay` (`PI_CONFIG_FILES`, then `--config`), `project` (`.omp/config.yml`, `.omp/settings.json` and other agents' project files), `global` (`~/.omp/agent/config.yml`), `default`. omp 18.12.6 has no managed or system layer, and it reports the layer but never the file. In a `Sourced<T>` value, `overrides` lists only layers below `source`, each once, highest first; a fallback `env` ranks just above `default`.
 
 **The privacy check** (`fixtures.ts`). Fixtures and recordings are recorded from scripted scenarios against the fake provider. Before one is committed, keys, tokens and auth headers become `<REDACTED:<kind>>`, e-mail addresses `<EMAIL>`, and absolute paths under a private root `<WORKSPACE>`, `<HOME>`, `<TMP>` or `<WORKSPACE_BUCKET>`. `checkScrubbed` reports, by line and column and never with the matched text:
 - absolute paths under a private root, whether the root alone or a path below it: `/home`, `/Users`, `/root`, `/tmp`, `/var/tmp`, `/var/folders`, `/var/home`, `/private/tmp`, `/private/var/tmp`, `/private/var/folders`, `/srv`, `/mnt`, `/media`, `/Volumes`, `/opt`, `/run/user`;

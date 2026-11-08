@@ -4,10 +4,11 @@ A desktop window for the omp app. It opens the app in a window on the app's own 
 
 Closing the window leaves the server running, so chats keep going; stop it with `systemctl --user stop omp-app` when the user service runs it, else `kill $(jq .pid ~/.local/state/omp-app/instance.json)`.
 
-The app can have several windows. Ctrl+Shift+N, or "New window" in the command palette, opens another one on the same server (a window on a server on another computer opens its server again); so does "New Window" in the launcher's right-click menu, or `omp-app-desktop --new-window` while the app is open. The first window keeps its tabs and panes for the next start; the others start with one empty tab and keep theirs only until they close. Closing a window that is not the last closes it alone; closing the last one ends the app. A second launch brings forward the window that had the focus last.
+The app can have several windows. Ctrl+Shift+N, or "New app window" in the command palette, opens another one on the same server (a window on a server on another computer opens its server again); so does "New Window" in the launcher's right-click menu, or `omp-app-desktop --new-window` while the app is open. The first window keeps its tabs and panes for the next start; the others start with one empty tab and keep theirs only until they close. Closing a window that is not the last closes it alone; closing the last one ends the app. A second launch brings forward the window that had the focus last.
 
 The server the window starts uses port 4317, the port of the `omp-app` command and the user service, when it is free, so the web app keeps its stored settings (theme, sidebar, last chat) whichever of them started the server. When the port is busy, the server takes a free port instead.
-"Save debug log" (in the command palette) saves its file into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from.
+
+A file the web app downloads (an attachment from a chat, or a file from the Files panel, for example) is saved into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from. The app's debug log is not a download: `omp-app logs` and `omp-app debug-report` read it (see the main README).
 
 The window bundles the omp coding agent: every chat and every omp command runs omp's own command line, which the app builds from the omp package it pins and the package holds compiled (`/usr/lib/omp-app-desktop/chat-host`), never an omp installed on this computer. There is nothing to install.
 
@@ -66,9 +67,9 @@ Removing the package removes its bundled omp too, and leaves the `omp-app` comma
 
 ## Checks by hand
 
-These two need a person at a real desktop: the automated runs use a virtual display, where the input method and the window manager differ.
+These three need a person at a real desktop: the automated runs use a virtual display, where the input method and the window manager differ.
 
-1. Open "omp app" from the applications menu. Click New chat, click the message box, press Ctrl+K, and type `deb`. Expected: `deb` appears in the "Search commands" box. Press Escape. Expected: the palette closes. Write down what you see for each.
+1. Open "omp app" from the applications menu. Click New chat, click the message box, press Ctrl+K, and type `deb`. Expected: `deb` appears in the palette's search box (the one that reads "Search commands, files, chats and models" while it is empty). Press Escape. Expected: the palette closes. Write down what you see for each.
 2. In a terminal, run this line. Expected: the input-method and display settings of the window, one per line (for example `XMODIFIERS=...`). If nothing prints, open "omp app" first, then run it again.
 
    ```

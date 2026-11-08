@@ -12,7 +12,7 @@ notes=${3:?usage: packaging/release-notes.sh <version> <last tag, or empty> <not
 {
   echo "## Install"
   echo
-  echo "Two packages of the same version. Take the one you want. Both need omp installed first."
+  echo "Two packages of the same version. Take the one you want. Each brings the omp release the app runs, so omp needs no separate install. If omp has no model set up yet, run \`omp-app tui\` and choose one with /model, or sign in with /login."
   echo
   echo "**The window** (\"omp app\" in the applications menu): \`omp-app-desktop_${version}_amd64.deb\`"
   echo
@@ -30,7 +30,7 @@ notes=${3:?usage: packaging/release-notes.sh <version> <last tag, or empty> <not
   echo
   echo 'Then run `omp-app`. Remove it with `sudo apt remove omp-app`.'
   echo
-  echo 'SHA256SUMS lists the checksum of both packages.'
+  echo 'SHA256SUMS lists the checksum of both packages. More in the [installation guide](https://github.com/BarryTheShen/omp-app/blob/main/docs/install.md).'
   echo
   if [[ -n $last ]]; then
     echo "## What changed since $last"
