@@ -3,7 +3,8 @@
 # (omp-app-desktop: the "omp app" window with its bundled server) and the terminal command (omp-app,
 # which opens the app in the browser). The release page lists both, and what changed.
 #
-#   scheduled: 01:00 and 13:00 UTC (8 PM and 8 AM US Central in summer, 7 PM and 7 AM in winter)
+#   scheduled: 01:23 and 13:23 UTC (8:23 PM and 8:23 AM US Central in summer, 7:23 PM and 7:23 AM in winter). Off the
+#              hour: GitHub delays scheduled runs at the start of an hour, when it is busiest, and may drop them.
 #   by hand:   gh workflow run release.yml            (add -f force=true to build without changes)
 #
 # "Changed" means a file under apps/, packages/ or packaging/, or bun.lock, package.json or
@@ -19,7 +20,7 @@ name: release
 
 on:
   schedule:
-    - cron: "0 1,13 * * *"
+    - cron: "23 1,13 * * *"
   workflow_dispatch:
     inputs:
       force:

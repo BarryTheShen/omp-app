@@ -16,7 +16,7 @@ Both packages hold their own chat host, built from the omp release the app pins,
 
 `.github/workflows/release.yml` builds and publishes the release.
 
-**When it runs.** On a schedule, at 01:00 and 13:00 UTC every day, and by hand:
+**When it runs.** On a schedule, at 01:23 and 13:23 UTC every day (off the hour, because GitHub delays scheduled runs at the start of an hour, its busiest time, and may drop them; a run can still start late), and by hand:
 
 ```bash
 gh workflow run release.yml                  # the same checks as the schedule: builds only if the product changed
