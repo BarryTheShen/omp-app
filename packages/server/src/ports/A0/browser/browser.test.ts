@@ -50,8 +50,8 @@ function relay() {
   return { did, host };
 }
 
-function choiceStore(until: number | null): EdgeChoiceStore & { saved: () => number | null } {
-  let saved = until;
+function choiceStore(chosen: boolean): EdgeChoiceStore & { saved: () => boolean } {
+  let saved = chosen;
   return {
     read: async () => saved,
     write: async (next) => {
@@ -70,7 +70,6 @@ function runtimeOver(
   settings: ReturnType<typeof settingsOf>,
   edge: RelayHost,
   edgeChoice: EdgeChoiceStore,
-  edgeMinutes = 30,
 ) {
   const runtime = createBrowserRuntime({
     browser: null,
@@ -81,7 +80,6 @@ function runtimeOver(
     publish: () => undefined,
     publishLive: () => undefined,
     watchStreams: () => () => undefined,
-    edgeMinutes,
   });
   runtimes.push(runtime);
   const handlers = runtime.registration.handlers as {
@@ -96,63 +94,52 @@ function runtimeOver(
 }
 
 describe("which browser chats use: omp's browser.relay", () => {
-  test("one set in omp's settings by hand outlives the server's start and has no end; choosing your own browser starts the relay", async () => {
+  test("one set in omp's settings by hand outlives the server's start; choosing your own browser starts the relay", async () => {
     const settings = settingsOf({ "browser.relay": true });
     const edge = relay();
-    const store = choiceStore(null);
+    const store = choiceStore(false);
     const { runtime, status, choose } = runtimeOver(settings, edge.host, store);
     await runtime.ready;
     expect(settings.map.get("browser.relay")).toBe(true);
     expect(edge.did).toEqual([]);
     expect((await status()).target).toBe("edge");
-    expect((await status()).edge.until).toBeNull();
 
-    const chosen = await choose("edge");
+    await choose("edge");
     expect(edge.did).toEqual(["ensure"]);
-    expect(chosen.edge.until).toBeNull();
-    expect(store.saved()).toBeNull();
+    expect(store.saved()).toBe(true);
   });
 
-  test("chosen in the panel, it ends at its time: the setting goes and the app's relay stops", async () => {
+  test("chosen in the panel, it stays until another choice, which stops its relay", async () => {
     const settings = settingsOf({});
     const edge = relay();
-    const store = choiceStore(null);
-    // 0.002 minutes: 120 ms.
-    const { choose, status } = runtimeOver(settings, edge.host, store, 0.002);
+    const store = choiceStore(false);
+    const { choose, status } = runtimeOver(settings, edge.host, store);
     const chosen = await choose("edge");
     expect(chosen.target).toBe("edge");
-    expect(chosen.edge.until).not.toBeNull();
-    expect(store.saved()).toBe(chosen.edge.until);
+    expect(store.saved()).toBe(true);
     expect(settings.map.get("browser.relay")).toBe(true);
+    expect((await status()).target).toBe("edge");
+    expect(edge.did).toEqual(["ensure"]);
 
-    await Bun.sleep(300);
+    expect((await choose("off")).target).toBe("off");
     expect(settings.map.has("browser.relay")).toBe(false);
-    expect(store.saved()).toBeNull();
+    expect(store.saved()).toBe(false);
     expect(edge.did).toEqual(["ensure", "stop"]);
-    expect((await status()).target).toBe("off");
   });
 
-  test("after a restart, a panel choice whose time ran out ends; one with time left keeps it", async () => {
-    const ended = settingsOf({ "browser.relay": true });
-    const endedStore = choiceStore(Date.now() - 1_000);
-    const first = runtimeOver(ended, relay().host, endedStore);
-    await first.runtime.ready;
-    expect(ended.map.has("browser.relay")).toBe(false);
-    expect(endedStore.saved()).toBeNull();
-
+  test("after a restart, a panel choice gets its relay again", async () => {
     const kept = settingsOf({ "browser.relay": true });
-    const until = Date.now() + 60_000;
     const keptEdge = relay();
-    const second = runtimeOver(kept, keptEdge.host, choiceStore(until));
+    const second = runtimeOver(kept, keptEdge.host, choiceStore(true));
     await second.runtime.ready;
     expect(kept.map.get("browser.relay")).toBe(true);
-    expect((await second.status()).edge.until).toBe(until);
+    expect((await second.status()).target).toBe("edge");
     expect(keptEdge.did).toEqual(["ensure"]);
   });
 
   test("choosing the chats' own browser takes out a hand-set relay too", async () => {
     const settings = settingsOf({ "browser.relay": true });
-    const { runtime, choose } = runtimeOver(settings, relay().host, choiceStore(null));
+    const { runtime, choose } = runtimeOver(settings, relay().host, choiceStore(false));
     await runtime.ready;
     expect((await choose("off")).target).toBe("off");
     expect(settings.map.has("browser.relay")).toBe(false);

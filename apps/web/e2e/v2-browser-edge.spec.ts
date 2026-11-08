@@ -8,10 +8,9 @@ import { expect, realTest, screenshots, startNewChat } from "./real-omp";
  * "Your own browser" (Browser and relay control, B5-B7) on the real server: choosing it runs omp's relay in the app's
  * server and sets omp's `browser.relay`; the panel shows the line to run on the user's computer until the browser
  * connects; a stand-in for the relay extension (the test's own WebSocket on the relay's `/ext`, speaking omp's relay
- * protocol: it says hello with one tab and answers every request) connects, and the panel lists its tab; the choice turns
- * itself off after its time (9 seconds here). The relay listens on its usual port, 9224: one test at a time.
+ * protocol: it says hello with one tab and answers every request) connects, and the panel lists its tab; the choice stays
+ * until another browser is chosen. The relay listens on its usual port, 9224: one test at a time.
  */
-realTest.use({ serverEnv: { OMP_APP_EDGE_MINUTES: "0.15" } });
 
 const RELAY = "ws://127.0.0.1:9224/ext";
 
@@ -77,7 +76,7 @@ realTest.describe("new UI: your own browser, through omp's relay", () => {
       .getByRole("region", { name: "Browser", exact: true });
 
   realTest(
-    "Your own browser waits with the line to run, lists the browser's tabs once its extension connects, and turns itself off",
+    "Your own browser waits with the line to run, lists the browser's tabs once its extension connects, and stays until another browser is chosen",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -90,7 +89,11 @@ realTest.describe("new UI: your own browser, through omp's relay", () => {
       await expect(section.locator("code")).toContainText(
         "ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:9224:127.0.0.1:9224 ",
       );
-      await expect(section).toContainText("Turns itself off at");
+      await expect(section).toContainText("Chats use it until another browser is chosen here.");
+      await expect(choice.getByRole("button", { name: "Your own browser" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       const settings = () => readFile(join(realApp.agentDir, "config.yml"), "utf8").catch(() => "");
       await expect.poll(settings).toMatch(/relay: true/);
       await page.screenshot({ path: join(screenshots, "browser-edge-waiting.png") });
@@ -100,13 +103,11 @@ realTest.describe("new UI: your own browser, through omp's relay", () => {
       await expect(section.getByRole("list", { name: "Its tabs" })).toContainText("Edge page");
       await page.screenshot({ path: join(screenshots, "browser-edge-connected.png") });
 
-      // Its time runs out: the relay stops, the setting goes and the choice is omp's hidden one again.
+      // Another choice ends it: the relay stops, and the setting goes.
+      await choice.getByRole("button", { name: "omp's hidden one" }).click();
       await expect(choice.getByRole("button", { name: "omp's hidden one" })).toHaveAttribute(
         "aria-pressed",
         "true",
-        {
-          timeout: 30_000,
-        },
       );
       await expect(section).toHaveCount(0);
       await expect.poll(settings).not.toMatch(/relay: true/);

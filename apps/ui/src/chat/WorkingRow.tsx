@@ -58,3 +58,15 @@ export function WorkingRow({
     </div>
   );
 }
+
+/**
+ * The working line's room while nothing runs, on a computer: the line (or the paused one) comes and goes in it, so the
+ * chat above does not move when a turn starts or ends. As tall as the line with its Pause button.
+ */
+export function WorkingRowSpace(): ReactNode {
+  return (
+    <div aria-hidden="true" className="invisible flex min-w-0 items-center px-1 pb-2 text-xs">
+      <span className="py-0.5">Pause</span>
+    </div>
+  );
+}

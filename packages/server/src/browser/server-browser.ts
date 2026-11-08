@@ -81,6 +81,30 @@ const TAB_SYNC_MS = 1_000;
  */
 const INPUT_MS = 5_000;
 
+/**
+ * What the browser tells websites it is: plain Chrome of its own version, as a desktop Chrome on Linux says it. Headless
+ * Chrome says "HeadlessChrome", which sites such as Google's sign-in refuse as a browser driven by software; its client
+ * hints already name Google Chrome. Null when the version cannot be read: the browser then says what it says itself.
+ */
+export function chromeUserAgent(versionLine: string): string | null {
+  const major = /(\d+)\.\d+\.\d+\.\d+/.exec(versionLine)?.[1];
+  if (major === undefined) return null;
+  return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+}
+
+/** The Chrome's own version line (`Google Chrome 156.0.8078.73`); empty when it cannot be run within 10 s. */
+async function chromeVersion(chrome: string): Promise<string> {
+  try {
+    const run = Bun.spawn([chrome, "--version"], { stdout: "pipe", stderr: "ignore" });
+    const timer = setTimeout(() => run.kill(), 10_000);
+    const text = await new Response(run.stdout).text();
+    clearTimeout(timer);
+    return text;
+  } catch {
+    return "";
+  }
+}
+
 /** The Chrome on this machine: `OMP_APP_CHROME`, or the first of the usual names on the path; null when there is none. */
 export function findChrome(env: Record<string, string | undefined>): string | null {
   if (env.OMP_APP_CHROME !== undefined && env.OMP_APP_CHROME !== "") return env.OMP_APP_CHROME;
@@ -182,6 +206,7 @@ export class ServerBrowser {
     await mkdir(profileDir, { recursive: true });
     const portFile = join(profileDir, "DevToolsActivePort");
     await rm(portFile, { force: true });
+    const userAgent = chromeUserAgent(await chromeVersion(chrome));
     const child = spawn(
       chrome,
       [
@@ -194,6 +219,7 @@ export class ServerBrowser {
         "--disable-blink-features=AutomationControlled",
         "--mute-audio",
         "--window-size=1280,800",
+        ...(userAgent === null ? [] : [`--user-agent=${userAgent}`]),
         ...(noSandbox === true ? ["--no-sandbox"] : []),
         "about:blank",
       ],

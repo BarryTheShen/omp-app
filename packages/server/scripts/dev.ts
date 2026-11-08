@@ -752,24 +752,21 @@ export async function createCompositionServer(
     // The laptop's end listens on its own loopback only, and ssh stops when the forward fails instead of running on
     // unforwarded (#2796).
     edgeLink: `ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:${EDGE_RELAY_PORT}:127.0.0.1:${EDGE_RELAY_PORT} ${userInfo().username}@${hostname()}`,
-    // When "Your own browser", chosen in the panel, turns itself off: kept across restarts in the app's data folder.
+    // Whether "Your own browser" was chosen in the panel: kept across restarts in the app's data folder. A file from when
+    // the choice had an end (`until`) is a choice still on.
     edgeChoice: {
       read: async () => {
-        const until = await Bun.file(join(appDataDir, "browser-edge.json"))
+        const saved = await Bun.file(join(appDataDir, "browser-edge.json"))
           .json()
-          .then((saved: { until?: unknown }) => saved.until)
           .catch(() => null);
-        return typeof until === "number" ? until : null;
+        return saved !== null && (saved.chosen === true || typeof saved.until === "number");
       },
-      write: async (until) => {
+      write: async (chosen) => {
         const file = join(appDataDir, "browser-edge.json");
-        if (until === null) await rm(file, { force: true });
-        else await Bun.write(file, JSON.stringify({ until }));
+        if (!chosen) await rm(file, { force: true });
+        else await Bun.write(file, JSON.stringify({ chosen: true }));
       },
     },
-    ...(env.OMP_APP_EDGE_MINUTES === undefined
-      ? {}
-      : { edgeMinutes: Number(env.OMP_APP_EDGE_MINUTES) }),
     settings: {
       read: async (key) => {
         // A key no layer sets (no default either, as `browser.cdpUrl`) is "not found" to the store: here it is unset.

@@ -352,8 +352,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
 
 /**
  * "Your own browser": the relay's state (none running yet, waiting for the browser with the line that links its
- * computer, or connected with its tabs), and how long it stays: until a time when chosen here, or until another browser
- * is chosen when set by hand.
+ * computer, or connected with its tabs). Chosen, it stays until another browser is chosen here.
  */
 function EdgeSection({
   edge,
@@ -362,14 +361,10 @@ function EdgeSection({
 }: {
   readonly edge: BrowserStatus["edge"];
   readonly chosen: boolean;
-  /** Chooses your own browser again: starts the relay, and gives a choice made here 30 minutes more. */
+  /** Chooses your own browser again: starts the relay. */
   readonly onChoose: () => void;
 }): ReactNode {
   const [copied, setCopied] = useState(false);
-  const until =
-    edge.until === null
-      ? null
-      : new Date(edge.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return (
     <section
       aria-label="Your own browser"
@@ -435,19 +430,8 @@ function EdgeSection({
           </p>
         </>
       )}
-      {until !== null ? (
-        <div className="flex items-center gap-2 text-xs text-t3">
-          <span>Turns itself off at {until}.</span>
-          <Button size="sm" variant="ghost" onClick={onChoose}>
-            30 minutes more
-          </Button>
-        </div>
-      ) : (
-        chosen && (
-          <p className="text-xs text-t3">
-            Set in omp's settings: chats use it until another browser is chosen here.
-          </p>
-        )
+      {chosen && (
+        <p className="text-xs text-t3">Chats use it until another browser is chosen here.</p>
       )}
     </section>
   );

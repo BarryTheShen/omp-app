@@ -1967,7 +1967,7 @@ const BROWSER_TOUR: Tour = {
     {
       target: BROWSER_PANEL,
       title: "Your own browser",
-      text: "Chrome, Edge or another Chromium browser with omp's relay extension: your computer runs the line shown here to reach the app's computer, and once the browser connects, its tabs are listed here. While it is on, anything on the app's computer can drive it, so put the extension in a profile of its own; chosen here, it turns itself off after 30 minutes, and <b>30 minutes more</b> keeps it.",
+      text: "Chrome, Edge or another Chromium browser with omp's relay extension: your computer runs the line shown here to reach the app's computer, and once the browser connects, its tabs are listed here. While it is on, anything on the app's computer can drive it, so put the extension in a profile of its own. Chosen here, it stays until you choose another browser.",
       action: next,
     },
   ],

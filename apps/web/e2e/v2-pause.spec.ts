@@ -87,6 +87,36 @@ realTest.describe("pausing a chat", () => {
   );
 
   realTest(
+    "the chat keeps its place while a turn starts, pauses and ends: the working line has its room always",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const box = page.getByRole("textbox", { name: "Message" });
+      // The transcript ends where the message box's area starts: a line that came and went above the box moved it.
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const bottom = async (): Promise<number> => {
+        const at = await transcript.boundingBox();
+        return at === null ? Number.NaN : at.y + at.height;
+      };
+      await expect(transcript).toBeVisible();
+      const idle = await bottom();
+      await box.fill("stream_held");
+      await box.press("Enter");
+      await expect(page.getByRole("status").filter({ hasText: "to stop" })).toBeVisible({
+        timeout: 60_000,
+      });
+      expect(await bottom()).toBeCloseTo(idle, 0);
+      await page.getByRole("button", { name: "Pause", exact: true }).click();
+      await expect(paused(page)).toBeVisible();
+      expect(await bottom()).toBeCloseTo(idle, 0);
+      await paused(page).getByRole("button", { name: "Resume" }).click();
+      await writeFile(join(realApp.agentDir, "release-held-reply"), "");
+      await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 60_000 });
+      expect(await bottom()).toBeCloseTo(idle, 0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "Pause all chats in the palette pauses the open chat, and Resume all chats lets it go",
     async ({ realApp }) => {
       const page = await newChat(realApp);

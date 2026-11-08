@@ -55,8 +55,6 @@ export const BrowserStatus = z
         browser: z.string().nullable(),
         tabs: z.array(EdgeTab),
         problem: z.string().nullable(),
-        /** When the choice turns itself back to the chats' own browser (ms since the epoch); null while not chosen. */
-        until: z.number().nullable(),
         /** The command that links the laptop's 127.0.0.1:9224 to the server. */
         link: z.string(),
       })
@@ -132,8 +130,8 @@ export const BrowserPort = definePort({
     start: { args: EmptyArgs, result: BrowserStatus },
     /**
      * Which browser chats use (every folder): "app" starts the app's browser and sets omp's `browser.cdpUrl` to it;
-     * "edge" runs omp's relay for the user's Edge for 30 minutes and sets `browser.relay`; "off" takes both out. Choosing
-     * "edge" again gives it 30 minutes more. A chat running already follows once it is opened again.
+     * "edge" runs omp's relay for the user's Edge and sets `browser.relay`, until another browser is chosen; "off" takes
+     * both out. A chat running already follows once it is opened again.
      */
     setTarget: { args: z.object({ target: BrowserTarget }).strict(), result: BrowserStatus },
     open: {

@@ -24,10 +24,10 @@ export interface BrowserSettings {
   write(key: BrowserSettingKey, value: string | boolean | null): Promise<void>;
 }
 
-/** When "Your own browser", chosen in the panel, turns itself off (ms since the epoch), kept across the server's restarts. */
+/** Whether "Your own browser" was chosen in the panel, kept across the server's restarts (its relay starts again then). */
 export interface EdgeChoiceStore {
-  read(): Promise<number | null>;
-  write(until: number | null): Promise<void>;
+  read(): Promise<boolean>;
+  write(chosen: boolean): Promise<void>;
 }
 
 export interface BrowserPortContext {
@@ -46,8 +46,6 @@ export interface BrowserPortContext {
   /** First and last subscriber of every stream that begins with a prefix. */
   readonly watchStreams: (prefix: string, listener: StreamActivityListener) => () => void;
   readonly now?: () => number;
-  /** How long "Your own browser" stays chosen; `EDGE_MINUTES` unless a test says less. */
-  readonly edgeMinutes?: number;
   readonly logger?: Logger;
 }
 
@@ -63,8 +61,6 @@ const unavailable = (message: string) =>
 
 /** The size a tab is drawn at until its viewer says. */
 const DEFAULT_SIZE = { width: 1280, height: 800 } as const;
-/** How long "Your own browser", chosen in the panel, stays on: anything on this machine can drive it meanwhile. */
-export const EDGE_MINUTES = 30;
 /** How often the relay is looked at while chats use it. */
 const EDGE_POLL_MS = 2_000;
 
@@ -74,14 +70,13 @@ const EDGE_POLL_MS = 2_000;
  * The picture starts with the first watcher and stops with the last; frames are delivered live and never kept.
  *
  * Which browser chats use is omp's own settings: `browser.relay` (the user's own browser; whoever set it) before
- * `browser.cdpUrl` (the app's browser when it names it). "Your own browser" chosen in the panel stays on for
- * `EDGE_MINUTES` (its end kept across restarts) and then turns itself off; one set in omp's settings by hand stays until
- * another browser is chosen here. When chats use the app's browser, it starts with the server.
+ * `browser.cdpUrl` (the app's browser when it names it). "Your own browser", chosen in the panel or set in omp's settings
+ * by hand, stays until another browser is chosen here; one chosen in the panel has its relay started again after a
+ * restart. When chats use the app's browser, it starts with the server.
  */
 export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntime {
   const { browser, edge, settings } = context;
   const now = context.now ?? Date.now;
-  const minutes = context.edgeMinutes ?? EDGE_MINUTES;
   const changed = streamKey(BrowserPort.name, "changed");
   const framePrefix = `${BrowserPort.name}/frame/`;
   const announce = () => context.publish(changed, { at: now() });
@@ -90,9 +85,6 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
   const sizes = new Map<string, { width: number; height: number }>();
   /** The pictures being sent, by tab: how to stop each. */
   const watching = new Map<string, Promise<() => Promise<void>>>();
-  /** When the panel's "Your own browser" turns itself off; null when it was not chosen in the panel. */
-  let edgeUntil: number | null = null;
-  let edgeTimer: ReturnType<typeof setTimeout> | undefined;
   let edgePoll: ReturnType<typeof setInterval> | undefined;
   let edgeSeen = "";
 
@@ -112,7 +104,7 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
         tabs: [...(browser?.tabs() ?? [])],
         front: browser?.front() ?? null,
       },
-      edge: { ...relay, tabs: [...relay.tabs], until: edgeUntil, link: context.edgeLink },
+      edge: { ...relay, tabs: [...relay.tabs], link: context.edgeLink },
     };
   };
   const needBrowser = (): ServerBrowser => {
@@ -146,24 +138,9 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
   const watchEdge = (): void => {
     edgePoll ??= setInterval(() => void lookAtEdge(), EDGE_POLL_MS);
   };
-  /** The panel's time limit: armed for what is left of it, or taken away. */
-  const timeEdge = async (until: number | null): Promise<void> => {
-    clearTimeout(edgeTimer);
-    edgeTimer = undefined;
-    edgeUntil = until;
-    await context.edgeChoice.write(until);
-    if (until === null) return;
-    edgeTimer = setTimeout(
-      () => {
-        context.logger?.info("browser.edge_turned_off", { after_minutes: minutes });
-        void edgeOff().then(announce);
-      },
-      Math.max(0, until - now()),
-    );
-  };
   /** Chats stop using the user's Edge: the setting goes, and the app's own relay with it. */
   const edgeOff = async (): Promise<void> => {
-    await timeEdge(null);
+    await context.edgeChoice.write(false);
     clearInterval(edgePoll);
     edgePoll = undefined;
     if ((await settings.read("browser.relay")) !== null)
@@ -171,16 +148,11 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
     edge.stop();
     await lookAtEdge();
   };
-  /**
-   * Chats use the user's Edge. Chosen in the panel, it turns itself off at `until` (30 minutes from now, again when
-   * chosen again; after a restart, the time it had left); set in omp's settings by hand, it has no end.
-   */
-  const edgeOn = async (until = now() + minutes * 60_000): Promise<void> => {
-    const handSet = (await settings.read("browser.relay")) === true && edgeUntil === null;
-    if (!handSet) {
+  /** Chats use the user's Edge, until another browser is chosen: the setting, and the app's own relay running. */
+  const edgeOn = async (): Promise<void> => {
+    if ((await settings.read("browser.relay")) !== true)
       await settings.write("browser.relay", true);
-      await timeEdge(until);
-    }
+    await context.edgeChoice.write(true);
     watchEdge();
     try {
       await edge.ensure();
@@ -227,16 +199,11 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
     if (active) startWatching(id);
     else void stopWatching(id);
   });
-  // At start: the panel's "Your own browser" ends if its time ran out while the server was down, or keeps its time left; one
-  // set by hand is left alone. The app's browser, when chats use it, starts now so its setting reaches a running browser.
+  // At start: "Your own browser" chosen in the panel gets its relay again; one set by hand is watched. The app's browser,
+  // when chats use it, starts now so its setting reaches a running browser.
   const ready = (async () => {
-    const until = await context.edgeChoice.read();
-    if (until !== null && until <= now()) {
-      context.logger?.info("browser.edge_ended_while_down", {});
-      await edgeOff();
-    } else if (until !== null) {
-      edgeUntil = until;
-      await edgeOn(until);
+    if (await context.edgeChoice.read()) {
+      await edgeOn();
     } else if ((await target()) === "edge") {
       watchEdge();
       await lookAtEdge();
@@ -320,7 +287,6 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
       stopStreams();
       stopTabs();
       stopRunning();
-      clearTimeout(edgeTimer);
       clearInterval(edgePoll);
       edge.stop();
       for (const id of [...watching.keys()]) await stopWatching(id);

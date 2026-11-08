@@ -63,7 +63,7 @@ import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
 import { holdReason } from "./usagePause";
 import { useComposerMenu } from "./useComposerMenu";
-import { WorkingRow } from "./WorkingRow";
+import { WorkingRow, WorkingRowSpace } from "./WorkingRow";
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -907,14 +907,11 @@ export const Composer = memo(function Composer({
             onResume={resume}
             resumeKey={!phone}
           />
+        ) : activity !== null ? (
+          <WorkingRow activity={activity} stopKey={!phone} {...(phone ? {} : { onPause: pause })} />
         ) : (
-          activity !== null && (
-            <WorkingRow
-              activity={activity}
-              stopKey={!phone}
-              {...(phone ? {} : { onPause: pause })}
-            />
-          )
+          // On a computer the line keeps its room while nothing runs, so the chat does not move when a turn starts or ends.
+          !phone && <WorkingRowSpace />
         )}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
         <QueuedMessages queue={queue} onTakeBack={takeBack} />
