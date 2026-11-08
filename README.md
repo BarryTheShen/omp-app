@@ -1,14 +1,14 @@
 # omp app
 
-A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent (oh-my-pi), built on [assistant-ui](https://www.assistant-ui.com/) and React. omp stays the engine; this app is its interface. The goal: every feature of omp's terminal, with the UX of the best AI chat apps.
+A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent (oh-my-pi): a desktop window for Linux and a web app for your other devices, built with React. omp stays the engine; this app is its interface. The goal: every feature of omp's terminal, with the UX of the best AI chat apps.
 
-The logo is copied from omp under its [MIT licence](NOTICE).
+The app runs the omp release it pins, omp **18.12.6** (the `@oh-my-pi/pi-coding-agent` package in `packages/server/package.json`), and no other. Features are switched on by the capabilities omp reports when a session starts, not by version numbers.
 
-The app runs the omp release it pins, omp **18.12.6** (the `@oh-my-pi/pi-coding-agent` package in `packages/server/package.json`), and no other. Features are still switched on by the capabilities omp reports when a session starts, not by version numbers.
+It is a personal project, used and tested on Ubuntu (GNOME) and, as a Home Screen app over [Tailscale](https://tailscale.com), on iPhone and iPad. Issues and pull requests are open to collaborators only.
 
 ## Install
 
-A package is built from `main` every 12 hours (01:00 and 13:00 UTC, which is 8 PM and 8 AM US Central in summer) when the product changed since the last one (`.github/workflows/release.yml`). The repository is private, so download from the [releases page](https://github.com/BarryTheShen/omp-app/releases) while signed in, or:
+Releases are built from `main` by `.github/workflows/release.yml` and published on the [releases page](https://github.com/BarryTheShen/omp-app/releases), two Debian packages of the same version with one `SHA256SUMS` file:
 
 ```bash
 gh release download --repo BarryTheShen/omp-app --pattern '*.deb'          # the latest packages (both)
@@ -17,15 +17,13 @@ sudo apt install ./omp-app_*_amd64.deb                                      # th
 sudo apt remove omp-app                                                     # uninstall the terminal command
 ```
 
-There are two packages of the same version. Take the window (`omp-app-desktop`) if you want the app in the applications menu, or the terminal command (`omp-app`) if you want to start it from a terminal, which opens your browser. Each release lists both, with one `SHA256SUMS` file. Remove the window with `sudo apt remove omp-app-desktop`.
+Take the window (`omp-app-desktop`) if you want the app in the applications menu, or the terminal command (`omp-app`) if you want to start it from a terminal, which opens your browser. Remove the window with `sudo apt remove omp-app-desktop`.
 
-The terminal command's package also installs a user service, `omp-app.service`, and turns it on for every user: from the next login the app's server runs in the background, so chats keep running with no browser or window open, and `omp-app` opens the browser on it. `omp-app <folder>` opens the running app on that folder, in place of the folder the app opened on before. Stop it until the next login with `systemctl --user stop omp-app`. To keep it from starting at your logins, use `systemctl --user mask --now omp-app` (a user cannot disable a service the package turned on for everyone); `systemctl --user unmask omp-app` undoes that. Removing the package turns the service off for everyone.
+The terminal command's package also installs a user service, `omp-app.service`, and turns it on for every user: from the next login the app's server runs in the background, so chats keep running with no browser or window open, and `omp-app` opens the browser on it. `omp-app <folder>` opens the running app on that folder. Stop it until the next login with `systemctl --user stop omp-app`. To keep it from starting at your logins, use `systemctl --user mask --now omp-app` (a user cannot disable a service the package turned on for everyone); `systemctl --user unmask omp-app` undoes that. Removing the package turns the service off for everyone.
 
-The app runs the omp release it is built for (the `@oh-my-pi/pi-coding-agent` package in `packages/server/package.json`, now 18.12.6), never an omp installed on your computer. Both packages hold it as their chat host: omp's own command line, compiled from that package (`/usr/lib/omp-app/chat-host`; the window's is in `/usr/lib/omp-app-desktop`), so nothing is downloaded, and the omp release that earlier versions downloaded into `~/.omp/agent/app/omp` is deleted when the app starts. Every chat and omp command runs on it. `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
+Both packages hold the omp release the app is built for as their chat host: omp's own command line, compiled from the pinned package (`/usr/lib/omp-app/chat-host`; the window's is in `/usr/lib/omp-app-desktop`), never an omp installed on your computer, so nothing is downloaded. Every chat and omp command runs on it. Build a package yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
 
-If the app's omp cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, instead of an app that cannot start chats, and the terminal prints the same warning. The checks are asked twice, the second time with a longer wait, because a busy computer can take more than five seconds to start omp.
-
-When omp starts but has no model set up, the page says "No model is set up yet" and what to set up instead of saying that omp is missing.
+If the app's omp cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, and the terminal prints the same warning. When omp starts but has no model set up, the page says "No model is set up yet" and what to set up.
 
 ### From another device on your tailnet
 
@@ -36,33 +34,35 @@ export OMP_APP_REMOTE_ORIGIN=https://<computer>.<tailnet>.ts.net   # this comput
 tailscale serve --bg localhost:4317                                # HTTPS on the tailnet, passed to the app's port
 ```
 
-`omp-app` then prints the address to open on another device of your tailnet, `https://<computer>.<tailnet>.ts.net`, and the device pairs there (see "Pair a device"). The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off` (or `tailscale serve reset`, which clears every serve setting of this computer), then unset the variable and restart the app.
+`omp-app` then prints the address to open on another device of your tailnet, and the device pairs there (see "Pair a device"). The app accepts only an `https://…ts.net` address here and refuses to start with anything else. When the app runs as the user service, set the variable with `systemctl --user edit omp-app` (`[Service]` then `Environment=OMP_APP_REMOTE_ORIGIN=https://…`). Undo: `tailscale serve --https=443 off`, then unset the variable and restart the app.
 
-The link `omp-app` prints, with its secret after `#token=`, opens the app on this computer only, and stays the same when the app restarts or the computer reboots: the app keeps the token in `~/.local/state/omp-app/launch-token` (or under `$XDG_STATE_HOME`), a file only your account can read. A page at the Tailscale address that still has the token is asked to pair.
+The link `omp-app` prints, with its secret after `#token=`, opens the app on this computer only, and stays the same when the app restarts or the computer reboots: the app keeps the token in `~/.local/state/omp-app/launch-token` (or under `$XDG_STATE_HOME`), a file only your account can read.
 
-The window (`omp-app-desktop`) can open that server from another computer too. Run it once with the address:
+On an iPhone or iPad, open the address in Safari and add it to the Home Screen: it then opens as an app of its own.
+
+The window (`omp-app-desktop`) can open a server on another computer too:
 
 ```bash
 omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net'   # keeps the address and opens that server
 omp-app-desktop --local                                          # back to this computer's own server
 ```
 
-The window keeps the address in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch from the applications menu, starting nothing on this computer. The first time, it pairs with that server like any other device (see "Pair a device"); it stays paired across restarts, its key kept with the window's other data in `~/.local/share/omp-app/desktop-window` (or under `$XDG_DATA_HOME`). Run either command while the window is open to move the first window to the other server (another window, opened with Ctrl+Shift+N or `omp-app-desktop --new-window`, moves from the settings or the palette, for itself alone). Only an `https://` address is accepted; a link with a token, from before pairing, is taken as its address. If the other computer does not answer, or answers but the app does not open there (its server stopped behind `tailscale serve`, or another program at that address), the window says so, names the computer and gives the reason. Undo: `omp-app-desktop --local`.
+The window keeps the address in `~/.config/omp-app/desktop-server` (or under `$XDG_CONFIG_HOME`), a file only your account can read, and opens that server at every launch, starting nothing on this computer. The first time, it pairs with that server like any other device. Only an `https://` address is accepted. If the other computer does not answer, the window says so and gives the reason.
 
 ### Pair a device
 
-Each phone, computer or browser that opens the app's address is paired once, and stays paired until you remove it. Open the address on the new device (`https://<computer>.<tailnet>.ts.net`, above); it shows **Pair this device**:
+Each phone, computer or browser that opens the app's address is paired once, and stays paired until you remove it. Open the address on the new device; it shows **Pair this device**:
 
 - **Ask to pair:** the new device shows 6 digits, and every paired device shows its request with the same 6 digits. Check that they match, then click **Allow**.
-- **Or a one-time code:** **Settings → App → Devices → Pair a new device** on a paired device, or `omp-app pair` on this computer, shows a code (`K7F3-QX9M`) and its QR code. Scan the QR code with the new device's camera, or type the code there. A code works once, for 10 minutes; making a new one stops the one before.
+- **Or a one-time code:** **Settings → App → Devices → Pair a new device** on a paired device, or `omp-app pair` on this computer, shows a code and its QR code. Scan the QR code with the new device's camera, or type the code there. A code works once, for 10 minutes.
 
-**Settings → App → Devices** lists the paired devices and when each last connected: **Rename** names one, **Remove** closes its windows (it pairs again to come back). On this computer, `omp-app devices` lists them and `omp-app devices remove <device>` removes one, named or by the start of its id.
+**Settings → App → Devices** lists the paired devices and when each last connected: **Rename** names one, **Remove** closes its windows. On this computer, `omp-app devices` lists them and `omp-app devices remove <device>` removes one.
 
-A paired device keeps its key in a cookie that only the app's own pages send, renewed while the device uses the app; the app keeps only a hash of each key.
+A paired device keeps its key in a cookie that only the app's own pages send; the app keeps only a hash of each key.
 
 ### omp in the terminal, on the same chats
 
-`omp-app tui [folder]` opens omp's own terminal app in that folder (default: the current one), on the app's chats: it is the chat host the package holds, started as omp's terminal app, so a chat started in either one goes on in the other. It runs in a tmux session for the folder, which keeps running when you leave it (Ctrl+B, then D) or lose an SSH connection, with its turn still going; `omp-app tui` in that folder again goes back to it. It needs tmux (`sudo apt install tmux`, which the package recommends) and a terminal (over SSH: `ssh -t`). omp's own options go after `--`:
+`omp-app tui [folder]` opens omp's own terminal app in that folder (default: the current one), on the app's chats, so a chat started in either one goes on in the other. It runs in a tmux session for the folder, which keeps running when you leave it (Ctrl+B, then D) or lose an SSH connection; `omp-app tui` in that folder again goes back to it. It needs tmux (`sudo apt install tmux`). omp's own options go after `--`:
 
 ```bash
 omp-app tui                                     # omp in this folder: /resume lists its chats, the app's among them
@@ -70,53 +70,45 @@ omp-app tui ~/work/site -- --resume <chat id>   # that chat, in that folder
 omp-app tui -- --continue                       # the folder's newest chat
 ```
 
-One of them writes a chat at a time (omp's own rule). While the app has a chat open, and for a day after its last tab left it (sooner when more than 12 chats sit unopened: the one left longest goes first), omp in the terminal writes its turns to a copy, which both then list as a chat of its own. While omp in the terminal has a chat open, the app does not open it and says so. Quit omp (`/exit`) to hand the chat back. If you have never used omp in a terminal, its first start shows omp's own setup steps once (Esc skips a step).
+One of them writes a chat at a time (omp's own rule). While the app has a chat open, omp in the terminal writes its turns to a copy, which both then list as a chat of its own. While omp in the terminal has a chat open, the app does not open it and says so. Quit omp (`/exit`) to hand the chat back.
 
 ### When something goes wrong: the debug log
 
-The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records: a header (app, system, Bun and omp versions, folders); the omp and capability checks with their timings; every omp process (start, pid, how long it ran, and its last stderr lines if it dies on its own); every browser connection (opened, closed, turned away); every failed call (which one, and why); uncaught errors and crashes with their stack; errors the page itself reports; and every 30 seconds the server's memory, the number and memory of omp processes, and how long the server was blocked at worst, so a freeze leaves numbers behind.
+The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records the versions and folders, omp's start and checks, every omp process, every browser connection (opened, closed with its code, turned away), every failed call, crashes, errors the page reports, and every 30 seconds the server's memory and how long it was blocked at worst.
 
-It never holds your prompts, file contents, the access token in the launch link, or API keys: the code that writes it is never given them, and every line is also scrubbed for key and token shapes before it is saved. File paths and error messages can still appear, so look at a report before posting it publicly.
+It never holds your prompts, file contents, the access token in the launch link, or API keys, and every line is scrubbed for key and token shapes before it is saved. File paths and error messages can still appear, so look at a report before posting it.
 
 ```bash
 omp-app logs                  # where the log is, and its last 100 lines (--lines 500 for more)
-omp-app debug-report          # writes omp-app-debug-<time>.log in this folder: attach it to a GitHub issue
+omp-app debug-report          # writes omp-app-debug-<time>.log in this folder
 ```
 
-The report's process list names only the omp processes that the running app started, and says so when the app is not running. Other programs on the machine stay out of the file.
-
-In the app, press `Ctrl+K` and choose "Save debug log" to download the same report from the page. Errors the page hits (an uncaught error, a failed render, a console error) go into the same log, and when the page cannot reach the app it says where the log is.
-
-A folder that is really named `logs` is opened with `omp-app ./logs`.
-
-## Status
-
-**Under construction.** `bun run dev` starts the real server against the omp the app pins and prints the app's link. The app works end to end on real omp: pick a folder, start or reopen a chat, send a prompt, watch tool calls and replies stream, change the model and thinking level, see context usage, reload and get the chat and the unsent draft back. The colors are omp's own default themes: `titanium` (dark) and `light` (`apps/web/src/styles/tokens.css`).
+In the app, press `Ctrl+K` and choose "Save debug log" to download the same report from the page.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  subgraph Browser["Browser: apps/web"]
-    UI["React + assistant-ui<br/>shell, transcript, composer, panels"]
-    R0["R0 runtime<br/>one event store, one message conversion"]
-    UI --> R0
+  subgraph Browser["Browser or desktop window: apps/ui"]
+    UI["React UI<br/>chats, panels, settings"]
+    C["chat controllers<br/>one per open chat"]
+    UI --> C
   end
   subgraph Server["Bun server: packages/server (127.0.0.1 only)"]
-    D["dispatcher + replay<br/>(token, Origin and Host checks)"]
+    D["dispatcher + replay<br/>(token, device key, Origin and Host checks)"]
     P["process registry"]
-    S["A1 stores: config, drafts, git,<br/>session files (read-only), pins, accounts"]
+    S["stores: config, drafts, git,<br/>session files (read-only), pins, devices"]
     D --> P
     D --> S
   end
-  R0 <-->|"WebSocket: typed ports"| D
-  P <-->|"the app's chat-host protocol<br/>(JSON lines over stdio)"| O["chat host on omp's SDK<br/>(one process per thread, built by the app from omp's package)"]
+  C <-->|"WebSocket: typed ports<br/>(packages/client)"| D
+  P <-->|"the app's chat-host protocol<br/>(JSON lines)"| O["chat host on omp's SDK<br/>(one process per chat)"]
 ```
 
-- **omp's SDK only.** Each chat process is the app's own chat host (`packages/server/src/chat-host/`), which builds its session with omp's SDK and speaks the app's own protocol (`packages/contracts/src/chat-host/protocol.ts`) to the server. The app does not use omp's RPC mode.
-- **One chat process per open thread:** the app's chat host, built with omp's own build settings from the omp package the app pins (`packages/server/scripts/build-chat-host.ts`). The packages ship it compiled (`/usr/lib/omp-app/chat-host`), and `chatHostCommand()` (`packages/server/src/omp-host/chat-command.ts`) starts it. The same build answers omp's own commands (version, models, usage, config).
-- **The browser never parses omp's output itself.** All events go through one store (R0), and one function turns omp messages into assistant-ui messages. Every other module reads that store.
-- **Server state goes through typed ports** (`packages/contracts/src/ports/`): settings come from omp's own config files, plus app-only data (drafts, plan documents, checkpoints) in the app's data folder.
+- **omp's SDK only.** Each chat process is the app's own chat host (`packages/server/src/chat-host/`), which builds its session with omp's SDK and speaks the app's protocol (`packages/contracts/src/chat-host/protocol.ts`) to the server.
+- **One chat process per open chat,** built with omp's own build settings from the omp package the app pins (`packages/server/scripts/build-chat-host.ts`). Chats keep running when the server restarts or every window closes.
+- **Server state goes through typed ports** (`packages/contracts/src/ports/`): settings come from omp's own config files, plus app-only data (drafts, devices, model preferences) in the app's data folder.
+- **The link survives bad networks:** a page reconnects on its own, resumes its event streams where it left off, and reports each outage to the debug log.
 - **A feature the app does not offer yet** is gated by a capability with a visible reason, never faked.
 
 ## Design rules
@@ -131,28 +123,33 @@ flowchart LR
 
 | Path | What it is |
 |---|---|
-| `packages/contracts` | C0: shared types, ids, ports, descriptors, errors (`AppFailure`), the omp feature inventory, the chat host's protocol and omp's types (`src/chat-host/`), the privacy check for fixtures |
-| `packages/client` | A0: the browser's WebSocket client with typed port proxies, reconnect and resume |
-| `packages/server` | A0 server shell and process registry; the chat host on omp's SDK under `src/chat-host/`; A1 stores under `src/modules/A1/` |
-| `apps/web` | The web app: U0 shell and tokens, R0 runtime, and one folder per module under `src/modules/` |
-| `modules/<ID>/README.md` | Each module's header: scope, plan, parts table, rules, change log |
-| `tools/` | Developer scripts: real tool samples from omp's session files, omp fixture recording, the settings registry |
+| `apps/ui` | The app's web UI (React, Vite, Tailwind), served at the server's root |
+| `apps/desktop` | The desktop window (Tauri), which starts and opens the server |
+| `apps/web` | The end-to-end tests (Playwright): each spec runs the real server and omp on a fake model |
+| `packages/server` | The server, the chat host on omp's SDK (`src/chat-host/`), the stores |
+| `packages/client` | The browser's WebSocket client: typed ports, reconnects, resumed streams |
+| `packages/contracts` | Shared types and schemas: ports, frames, errors, the chat host's protocol |
+| `packaging` | The Debian packages and their smoke tests |
 
 ## Development
 
-Prerequisites: [Bun](https://bun.sh) 1.3.14 or later and Google Chrome (the end-to-end tests use the system Chrome and never download browsers). From source, the server runs omp's command line from the pinned package on your Bun. The live tests run the chat host the packages ship instead: their global setup (`apps/web/e2e/global-setup.ts`) builds it once per lockfile into `.data/chat-host` (or the folder `OMP_APP_CHAT_HOST_DIR` names), with the Bun omp's release is built with, which it downloads there once; `OMP_APP_CHAT_HOST_BIN` names one already built.
+Prerequisites: [Bun](https://bun.sh) 1.3.14 or later. The end-to-end tests run in the system's Google Chrome, and the WebKit specs in Playwright's WebKit (`bunx playwright install webkit` in `apps/web`).
 
 ```bash
 bun install                 # install every workspace
 bun run typecheck           # typecheck every workspace
-bun run test                # each workspace's tests (Bun for packages, Vitest for the web app)
+bun run test                # each workspace's tests (Bun for packages, Vitest for the UI)
 bunx biome check .          # lint and format check
+bun run dev                 # build the UI and start the real server with omp; prints the app's link
 
-cd apps/web
-bun run dev                 # the web app on Vite's dev server
-E2E_PORT=4200 bun run e2e   # production build + Playwright on system Chrome (pick a free port)
-
-# Optional: the live tests that run the app's omp (slow; off by default)
+# The end-to-end tests run the real server and omp on a fake model (slow; off by default)
+bun run build
+cd apps/web && OMP_APP_REAL_OMP=1 bunx playwright test e2e/v2-core.spec.ts
 OMP_APP_REAL_OMP=1 bun test packages/server/test/e2e/real-omp.test.ts
-cd apps/web && OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts
 ```
+
+The end-to-end tests' global setup (`apps/web/e2e/global-setup.ts`) builds the chat host once per lockfile into `.data/chat-host` (or the folder `OMP_APP_CHAT_HOST_DIR` names); `OMP_APP_CHAT_HOST_BIN` names one already built. They never touch your own omp settings or chats: each runs omp with a throwaway home folder.
+
+## License
+
+[MIT](LICENSE). The logo is omp's, copied under its [MIT license](NOTICE). Security reports: see [SECURITY.md](SECURITY.md).
