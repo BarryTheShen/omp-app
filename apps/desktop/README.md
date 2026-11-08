@@ -8,7 +8,7 @@ The app can have several windows. Ctrl+Shift+N, or "New app window" in the comma
 
 The server the window starts uses port 4317, the port of the `omp-app` command and the user service, when it is free, so the web app keeps its stored settings (theme, sidebar, last chat) whichever of them started the server. When the port is busy, the server takes a free port instead.
 
-A file the web app downloads (an attachment from a chat, or a file from the Files panel, for example) is saved into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from. The app's debug log is not a download: `omp-app logs` and `omp-app debug-report` read it (see the main README).
+A file the web app downloads (an attachment from a chat, a file from the Files panel, or the debug log from **Save debug log**, for example) is saved into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from. In a terminal, `omp-app logs` and `omp-app debug-report` read the debug log too (see the main README).
 
 The window bundles the omp coding agent: every chat and every omp command runs omp's own command line, which the app builds from the omp package it pins and the package holds compiled (`/usr/lib/omp-app-desktop/chat-host`), never an omp installed on this computer. There is nothing to install.
 

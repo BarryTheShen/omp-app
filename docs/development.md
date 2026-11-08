@@ -53,7 +53,7 @@ bun run dev
   ```
 - **Your own chats and settings.** The server uses your home folder: omp's agent folder (`~/.omp/agent`, or `PI_CODING_AGENT_DIR`) and the app data folder in it (`app`, or `OMP_APP_DATA_DIR`). Chats you start are real chats in your own folders. To keep a source run apart from them, point `PI_CODING_AGENT_DIR` at another folder; omp then finds none of your settings (`config.yml`) or model definitions (`models.yml`) there.
 - **A new token every start,** because this entry keeps none, and no browser is opened.
-- **No debug log.** `dev.ts` creates no logger, so nothing is written to the log file.
+- **No debug log.** `dev.ts` creates no logger, so nothing is written to the log file, the page's errors included, and **Save debug log** says "The debug log is off in this run of the app."
 - **No watching.** None of the scripts watch files. Restart the server after changing server code, and run `bun run build` after changing the UI.
 
 To run the same launcher the installed `omp-app` command runs (instance record, kept token, free-port fallback, debug log, `tui`, `pair` and the rest), from your checkout:

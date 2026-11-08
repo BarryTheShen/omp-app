@@ -247,4 +247,4 @@ One of them writes a chat at a time (omp's own rule). While the app has a chat o
 
 ## Saving the debug log
 
-The app keeps a log of what it does, and a command writes it to one file you can attach to an issue. See [Troubleshooting](troubleshooting.md#how-do-i-save-the-debug-log).
+The app keeps a log of what it does, the page's errors included. **Save debug log**, in the palette or in Settings → App → Debug log (on a phone too), downloads it as one file you can attach to an issue; `omp-app debug-report` writes the same file from a terminal. See [Troubleshooting](troubleshooting.md#how-do-i-save-the-debug-log).

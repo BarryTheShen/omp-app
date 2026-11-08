@@ -18,6 +18,7 @@ import type { ChatController, ChatTarget } from "../chat/controller";
 import { pauseAllChats } from "../chat/pauseAll";
 import type { ChatModel } from "../chat/store";
 import { mentionText } from "../chat/triggers";
+import { debugLogFailureText, saveDebugLog, savedDebugLogText } from "../debugLog";
 import {
   type Bridge,
   type DesktopServers,
@@ -401,6 +402,19 @@ export function Palette({
         label: "Inbox",
         detail: "Chats waiting for you, and turns that ended while you were elsewhere",
         run: () => close(onInbox),
+      },
+      {
+        key: "app:debugLog",
+        group: "Commands",
+        label: "Save debug log",
+        detail: "What the app did, as one file to attach to an issue",
+        run: () =>
+          close(() => {
+            saveDebugLog(client).then(
+              (fileName) => controller?.store.toast(savedDebugLogText(fileName), "info"),
+              (failure: unknown) => controller?.store.toast(debugLogFailureText(failure), "error"),
+            );
+          }),
       },
       // Another desktop window; a browser has none to open.
       ...(bridge === null

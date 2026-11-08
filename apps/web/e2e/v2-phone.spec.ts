@@ -766,7 +766,7 @@ realTest.describe("new UI on a phone", () => {
       await openAppSettings();
       // One a line; empty lines and repeats are dropped when it is saved.
       await field.fill("Ship it\n\nLooks good\nShip it");
-      await page.getByRole("button", { name: "Save" }).tap();
+      await page.getByRole("button", { name: "Save", exact: true }).tap();
       await expect(field).toHaveValue("Ship it\nLooks good");
       await page.keyboard.press("Escape");
       await list.getByRole("button", { name: "New chat" }).tap();

@@ -550,6 +550,40 @@ const ANSWERS_ACROSS_ASKS_TOUR: Tour = {
   ],
 };
 
+/** Save debug log, in Settings → App and the palette (2026-11-08). */
+const DEBUG_LOG_TOUR: Tour = {
+  id: "debug-log-2026-11-08",
+  title: "Save the debug log",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The debug log is under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("debug-log"),
+      title: "Debug log",
+      text: "When something goes wrong, <b>Save debug log</b> downloads what the app did as one file: its versions, the last lines of its log and the page's errors. Attach it to an issue. The palette has it too: {palette}, then <b>debug</b>.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 const SIDE_PANEL_TOUR: Tour = {
   id: "side-panel-2026-10-30",
   title: "Side panel and usage",
@@ -2170,6 +2204,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-08-debug-log",
+    when: "2026-11-08T17:20:00-06:00",
+    summary:
+      "Save debug log is back, in the palette and in Settings → App, where a phone finds it too. It downloads what the app did as one file to attach to an issue, the same report omp-app debug-report writes, and the page's own errors are in the app's log again.",
+    tours: [DEBUG_LOG_TOUR],
+  },
   {
     id: "2026-11-07-answers-across-asks",
     when: "2026-11-07T23:18:00-06:00",

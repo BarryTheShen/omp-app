@@ -8,8 +8,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { App } from "./App";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./lite/hostLook";
 import { isLiteView, liteThemeMode } from "./lite/lite";
+import { installPageErrorReporting } from "./pageErrors";
 import { startLiteTheme, startTheme } from "./theme/theme";
 import { followVisualViewport } from "./viewport";
+
+// From here on the page's errors go to the app's debug log; those before the connection wait for it (`App`).
+installPageErrorReporting();
 
 if (isLiteView()) {
   startLiteTheme(liteThemeMode());

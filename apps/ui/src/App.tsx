@@ -38,6 +38,7 @@ import { KEYS, keycap } from "./keys/table";
 import { watchLink } from "./linkCheck";
 import { LiteShell } from "./lite/LiteShell";
 import { isLiteView } from "./lite/lite";
+import { setPageErrorSink } from "./pageErrors";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
 import { RequestPrompt } from "./pairing/RequestPrompt";
@@ -104,6 +105,8 @@ export function App(): ReactNode {
     scannedCode.current ??= takePairingCode();
     const token = readToken();
     const client = connect(token);
+    // The page's errors go to the debug log over this connection, once it opens.
+    setPageErrorSink((report) => client.port(AppPort).reportClientError(report));
     let active = true;
     // A refusal shows at once, before the app is ready: a device not paired pairs; a refused link says why.
     const stopWatching = client.onConnectionState(({ refusal }) => {
@@ -136,6 +139,7 @@ export function App(): ReactNode {
     })();
     return () => {
       active = false;
+      setPageErrorSink(undefined);
       stopWatching();
       client.dispose();
     };

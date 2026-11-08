@@ -143,11 +143,13 @@ The window can also say "omp app could not reach" a computer, or "omp app did no
 
 ## How do I save the debug log?
 
-The app writes a log of what it does to `omp-app.log` in its state folder, `~/.local/state/omp-app` (or under `$XDG_STATE_HOME` when that is an absolute path). The part before it is in `omp-app.log.1`, and together they never pass 15 MiB. It records the versions and folders, omp's start and checks, every omp process, every browser connection (opened, closed with its code, turned away), every failed call, crashes, the page's measurements (such as how a lost connection came back), and every 30 seconds the server's memory and how long it was blocked at worst.
+The app writes a log of what it does to `omp-app.log` in its state folder, `~/.local/state/omp-app` (or under `$XDG_STATE_HOME` when that is an absolute path). The part before it is in `omp-app.log.1`, and together they never pass 15 MiB. It records the versions and folders, omp's start and checks, every omp process, every browser connection (opened, closed with its code, turned away), every failed call, crashes, the page's errors (uncaught errors, unhandled promise rejections and console errors, at most 30 a minute), the page's measurements (such as how a lost connection came back), and every 30 seconds the server's memory and how long it was blocked at worst.
 
 It never holds your prompts, file contents, the access token in the launch link, or API keys, and every line is scrubbed for key and token shapes before it is saved. File paths and error messages can still appear, so look at a report before posting it.
 
-Two commands read it:
+In the app, **Save debug log** downloads the report described below: it is in the palette (Ctrl+K, then type "debug") and in Settings → App → Debug log, which is where a phone finds it. The desktop window saves it in your Downloads folder.
+
+From a terminal, two commands read it:
 
 ```bash
 omp-app logs                  # where the log is, and its last 100 lines (--lines 500 for more)

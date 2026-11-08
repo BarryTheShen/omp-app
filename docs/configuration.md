@@ -38,7 +38,7 @@ The server listens on 127.0.0.1 only, whatever the port. `--lines` does somethin
 | `omp-app devices` | Lists the paired devices: the start of each id, its name, its kind (Home Screen app, desktop window or browser) and when it last connected, and how many devices are asking to pair. It needs the app to be running. |
 | `omp-app devices remove <device>` | Removes a paired device, named by its id, the first characters of its id (at least 4), or its name in any letter case. The device's key stops working and its open windows close. It says so when no device or several devices match. |
 | `omp-app logs [--lines <n>]` | Prints where the app's log is and its last lines, oldest first, from the current and the previous log file. `--lines <n>` (or `--lines=<n>`) sets how many; the default is 100. `n` is a whole number above 0. |
-| `omp-app debug-report` | Writes `omp-app-debug-<time>.log` in the current folder (readable by your account only): the app and omp versions, the last 2,000 log lines and the omp processes of the running server. It is meant to be attached to an issue. See [Troubleshooting](troubleshooting.md#how-do-i-save-the-debug-log). |
+| `omp-app debug-report` | Writes `omp-app-debug-<time>.log` in the current folder (readable by your account only): the app and omp versions, the last 2,000 log lines and the omp processes of the running server. It is meant to be attached to an issue. **Save debug log** in the app (the palette, or Settings → App) downloads the same report. See [Troubleshooting](troubleshooting.md#how-do-i-save-the-debug-log). |
 
 ## What does the `omp-app-desktop` command take?
 
@@ -113,7 +113,7 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 
 | File | What it is |
 |---|---|
-| `omp-app.log`, `omp-app.log.1` | The app's log, and the part before it. Together they never pass 15 MiB. It records the versions and folders, omp's start and checks, every omp process, every browser connection (opened, closed with its code, turned away), every failed call, crashes, the page's measurements (such as how a lost connection came back), and every 30 seconds the server's memory and how long it was blocked at worst. It never holds your prompts, file contents, the access token in the launch link, or API keys, and each line is scrubbed for key and token shapes before it is saved. File paths and error messages can still appear. |
+| `omp-app.log`, `omp-app.log.1` | The app's log, and the part before it. Together they never pass 15 MiB. It records the versions and folders, omp's start and checks, every omp process, every browser connection (opened, closed with its code, turned away), every failed call, crashes, the page's errors, the page's measurements (such as how a lost connection came back), and every 30 seconds the server's memory and how long it was blocked at worst. It never holds your prompts, file contents, the access token in the launch link, or API keys, and each line is scrubbed for key and token shapes before it is saved. File paths and error messages can still appear. |
 | `launch-token` | The secret in the launch link (after `#token=`), 43 characters, readable by your account only. It stays the same from one start to the next, so a saved link keeps working. Delete it and restart the app to get a new link; the old link then says it has expired. |
 | `instance.json` | The record of the running server: its process id, its link (with the token) and its version. The command, the window and `omp-app pair` read it to find the running app. It is removed when the server stops, and readable by your account only. |
 
@@ -146,7 +146,7 @@ Chats themselves are not here. omp keeps them in its own session files under `~/
 | `~/.config/omp-app/desktop-servers` | The servers on other computers the window opened, up to 8, for the palette and Settings. |
 | `~/.local/share/omp-app/desktop-window` | The window's own web data: the pairing key (a cookie) and the pages' settings. Under `$XDG_DATA_HOME` when that is an absolute path. |
 
-A file the window saves ("Download" in the Files panel, for example) goes to your Downloads folder: the one named in `~/.config/user-dirs.dirs`, or `~/Downloads` when that is missing. It does not go to the folder the window was started from.
+A file the window saves ("Download" in the Files panel, or **Save debug log**, for example) goes to your Downloads folder: the one named in `~/.config/user-dirs.dirs`, or `~/Downloads` when that is missing. It does not go to the folder the window was started from.
 
 ## Which omp settings does the app read or change?
 
