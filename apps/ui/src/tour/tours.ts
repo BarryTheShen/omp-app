@@ -2206,7 +2206,7 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-08-debug-log",
-    when: "2026-11-08T17:20:00-06:00",
+    when: "2026-11-08T16:30:00-06:00",
     summary:
       "Save debug log is back, in the palette and in Settings → App, where a phone finds it too. It downloads what the app did as one file to attach to an issue, the same report omp-app debug-report writes, and the page's own errors are in the app's log again.",
     tours: [DEBUG_LOG_TOUR],
