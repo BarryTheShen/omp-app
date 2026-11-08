@@ -35,6 +35,23 @@ interface Return {
   readonly how: "shown" | "awake";
 }
 
+/** When the page last came back (`Date.now()`), and who wants to know: the banner waits longer right after one. */
+let returnedAt: number | null = null;
+const returnListeners = new Set<() => void>();
+
+/** The time the page last came back (shown again, or awake after a sleep), or null if it has not. */
+export function lastReturnAt(): number | null {
+  return returnedAt;
+}
+
+/** Calls `listener` each time the page comes back; returns what stops it. */
+export function onReturn(listener: () => void): () => void {
+  returnListeners.add(listener);
+  return () => {
+    returnListeners.delete(listener);
+  };
+}
+
 /**
  * Keeps the link's state true and brings it back quickly (#2789). A link can die without closing (a phone that slept, a
  * relay that dropped it), and the page would show it connected for minutes. While the page is shown, the app asks the
@@ -84,6 +101,8 @@ export function watchLink(client: AppClient): () => void {
   /** The page is back after `awayMs` away. */
   const cameBack = (awayMs: number, how: Return["how"]): void => {
     lastReturn = { at: Date.now(), awayMs, how };
+    returnedAt = lastReturn.at;
+    for (const listener of [...returnListeners]) listener();
     if (client.connectionState !== "open") {
       client.nudge();
       return;

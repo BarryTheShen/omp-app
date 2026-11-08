@@ -161,6 +161,69 @@ realTest.describe("new UI: the connection to the app", () => {
   );
 
   realTest(
+    "a page back whose new link takes 4 seconds shows no banner: right after a return the banner waits 6 seconds",
+    async ({ realApp }) => {
+      realApp.allowProblem(/WebSocket/i);
+      let connections = 0;
+      let first: WebSocketRoute | null = null;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+            connections += 1;
+            if (first === null) first = socket;
+            if (connections !== 2) {
+              socket.connectToServer();
+              return;
+            }
+            // The link made after the return reaches the server 4 seconds late, as on a phone whose network is waking
+            // up; what the page sends meanwhile is held for it.
+            const held: (string | Buffer)[] = [];
+            socket.onMessage((message) => held.push(message));
+            setTimeout(() => {
+              const server = socket.connectToServer();
+              for (const message of held) server.send(message);
+              socket.onMessage((message) => server.send(message));
+            }, 4_000);
+          }),
+      });
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 60_000 });
+      await page.evaluate(() => {
+        const shown: string[] = [];
+        (window as unknown as { bannersShown: string[] }).bannersShown = shown;
+        new MutationObserver(() => {
+          for (const banner of document.querySelectorAll("[role='status'], [role='alert']")) {
+            const text = banner.textContent ?? "";
+            if (text.includes("Reconnecting") && !shown.includes(text)) shown.push(text);
+          }
+        }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "hidden",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await (first as WebSocketRoute | null)?.close({ code: 1001, reason: "going away" });
+      await page.waitForTimeout(500);
+      const back = Date.now();
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await expect(dot(page, "Reconnecting…")).toBeVisible();
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 10_000 });
+      expect(Date.now() - back).toBeGreaterThan(3_000);
+      expect(connections).toBe(2);
+      expect(
+        await page.evaluate(() => (window as unknown as { bannersShown: string[] }).bannersShown),
+      ).toEqual([]);
+    },
+  );
+
+  realTest(
     "a try the server never welcomes is dropped after its time, and the next one gets through",
     async ({ realApp }) => {
       realApp.allowProblem(/WebSocket/i);

@@ -1,8 +1,13 @@
 import type { UsageLimitProvider, UsageLimitsResult } from "@omp-app/contracts";
 import { z } from "zod";
 
-/** How long one `omp usage` read is reused, so opening the usage popover does not wait on omp each time. */
+/** How long one `omp usage` read is current; after that a page's read starts a fresh one. */
 export const USAGE_LIMITS_CACHE_MS = 60_000;
+/**
+ * How old a read may be and still answer a page at once while a fresh one is read behind it: twice the watch's pace, so
+ * a page waits on omp (0.8 s typically) only when the server has no recent read.
+ */
+export const USAGE_LIMITS_STALE_MS = 10 * 60_000;
 /** The longest one `omp usage` read may take; past it the popover says omp did not answer in time. */
 export const USAGE_LIMITS_TIMEOUT_MS = 45_000;
 /** How often the server reads the limits by itself (#2781), so every page follows them without asking. */
@@ -19,6 +24,8 @@ export interface UsageLimitStoreOptions {
   readonly env?: Record<string, string | undefined>;
   readonly timeoutMs?: number;
   readonly cacheMs?: number;
+  /** How old a read may be and still answer at once (`USAGE_LIMITS_STALE_MS` unless a test sets it). */
+  readonly staleMs?: number;
   readonly now?: () => number;
   /** The watch's pace, `USAGE_LIMITS_WATCH_MS` and `USAGE_LIMITS_NEAR_WATCH_MS` unless a test sets them. */
   readonly watchMs?: number;
@@ -240,16 +247,18 @@ function environmentFor(env: Record<string, string | undefined>): Record<string,
 }
 
 /**
- * The provider usage limits omp reports, read with `omp usage --json --redact`. Each read is cached for a minute and
- * concurrent reads share one omp run. The result carries provider ids, window labels, percentages and reset times
- * only: no account names, emails or ids. Once watching, the server reads them by itself, every 5 minutes and every
- * minute once a window is near its limit, and every fresh read goes to the subscribers (#2781).
+ * The provider usage limits omp reports, read with `omp usage --json --redact`. A read is current for a minute; up to
+ * ten minutes old it still answers a page at once while a fresh one is read behind it, and concurrent reads share one
+ * omp run. The result carries provider ids, window labels, percentages and reset times only: no account names, emails
+ * or ids. Once watching, the server reads them by itself, every 5 minutes and every minute once a window is near its
+ * limit, and every fresh read goes to the subscribers (#2781), so a page shown a kept read gets the fresh one too.
  */
 export class UsageLimitStoreService {
   readonly #command: readonly string[];
   readonly #env: Record<string, string>;
   readonly #timeoutMs: number;
   readonly #cacheMs: number;
+  readonly #staleMs: number;
   readonly #now: () => number;
   readonly #watchMs: number;
   readonly #nearWatchMs: number;
@@ -264,6 +273,7 @@ export class UsageLimitStoreService {
     this.#env = environmentFor(options.env ?? process.env);
     this.#timeoutMs = options.timeoutMs ?? USAGE_LIMITS_TIMEOUT_MS;
     this.#cacheMs = options.cacheMs ?? USAGE_LIMITS_CACHE_MS;
+    this.#staleMs = options.staleMs ?? USAGE_LIMITS_STALE_MS;
     this.#now = options.now ?? Date.now;
     this.#watchMs = options.watchMs ?? USAGE_LIMITS_WATCH_MS;
     this.#nearWatchMs = options.nearWatchMs ?? USAGE_LIMITS_NEAR_WATCH_MS;
@@ -271,8 +281,15 @@ export class UsageLimitStoreService {
 
   /** The limits omp reports now, or the plain reason they could not be read. Never rejects. */
   read(): Promise<UsageLimitsResult> {
-    if (this.#cache !== undefined && this.#now() - this.#cache.at < this.#cacheMs) {
-      return Promise.resolve(this.#cache.result);
+    const cache = this.#cache;
+    if (cache !== undefined) {
+      const age = this.#now() - cache.at;
+      if (age < this.#cacheMs) return Promise.resolve(cache.result);
+      // A failed read is not shown again: the page waits for the fresh one instead.
+      if (age < this.#staleMs && cache.result.state === "ready") {
+        void this.#fresh();
+        return Promise.resolve(cache.result);
+      }
     }
     return this.#fresh();
   }

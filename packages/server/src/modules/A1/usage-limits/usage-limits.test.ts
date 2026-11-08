@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { UsageLimitsResult } from "@omp-app/contracts";
 import { UsageLimitStoreService } from "./usage-limits";
 
 const directories: string[] = [];
@@ -220,10 +221,56 @@ describe("the provider usage limits omp reports", () => {
     now = 30_000;
     await service.read();
     expect(await runs()).toBe(1);
+  });
+
+  test("a read over a minute old answers at once while a fresh one goes to every subscriber; one past ten minutes waits for omp", async () => {
+    const binary = await fakeOmp(
+      `echo run >> "$(dirname "$0")/runs.txt"\ncat <<'EOF'\n${usageJson}\nEOF`,
+    );
+    const counter = join(dirname(binary), "runs.txt");
+    const runs = async () => (await readFile(counter, "utf8")).trim().split("\n").length;
+    let now = 1_000;
+    const service = new UsageLimitStoreService({
+      command: [binary],
+      env: { PATH },
+      now: () => now,
+      cacheMs: 60_000,
+      staleMs: 600_000,
+    });
+    const first = await service.read();
 
     now = 61_001;
-    await service.read();
+    const fresh = new Promise<UsageLimitsResult>((told) => service.subscribe(told));
+    expect(await service.read()).toBe(first);
+    const next = await fresh;
+    expect(next).not.toBe(first);
+    expect(next).toMatchObject({ state: "ready", fetchedAt: new Date(61_001).toISOString() });
     expect(await runs()).toBe(2);
+    // The fresh read is the current one now.
+    expect(await service.read()).toBe(next);
+
+    now = 61_001 + 600_001;
+    const waited = await service.read();
+    expect(await runs()).toBe(3);
+    expect(waited).toMatchObject({ fetchedAt: new Date(661_002).toISOString() });
+    service.dispose();
+  });
+
+  test("a failed read is not shown again after its minute: the next read waits for omp", async () => {
+    let now = 1_000;
+    const service = new UsageLimitStoreService({
+      command: [await fakeOmp("exit 3")],
+      env: { PATH },
+      now: () => now,
+      cacheMs: 60_000,
+      staleMs: 600_000,
+    });
+    const failed = await service.read();
+    expect(failed).toMatchObject({ state: "unavailable" });
+    now = 61_001;
+    const again = await service.read();
+    expect(again).toMatchObject({ state: "unavailable" });
+    expect(again).not.toBe(failed);
   });
 
   test("says that omp could not be started when there is no omp to run", async () => {

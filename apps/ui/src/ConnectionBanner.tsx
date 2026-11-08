@@ -1,6 +1,7 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { lastReturnAt, onReturn } from "./linkCheck";
 import { reloadKeepingChat } from "./reloadKeepsChat";
 import { useAppUpdated } from "./update";
 
@@ -21,15 +22,20 @@ const PLACE =
   "fixed top-[calc(var(--safe-top)+0.75rem)] max-sm:top-[calc(var(--safe-top)+2.75rem+0.5rem)] left-[calc(50%+(var(--safe-left)-var(--safe-right))/2)] z-50 flex w-max max-w-[min(calc(90vw-var(--safe-left)-var(--safe-right)),560px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg";
 
 /**
- * A link down this long shows the banner. A phone back from another app, or a blip on the network, reconnects in about a
- * second, which the connection dot shows: the banner is for a link that stays down.
+ * A link down this long shows the banner. A blip on the network reconnects in about a second, which the connection dot
+ * shows: the banner is for a link that stays down.
  */
 export const BANNER_AFTER_MS = 2_000;
+/**
+ * Right after the page comes back (a phone back from another app, a laptop awake again), the banner waits this long
+ * from that moment: the phone's new link took 1 to 5 seconds on Nov 7 (its network wakes first), which the dot shows.
+ */
+export const BANNER_AFTER_RETURN_MS = 6_000;
 
 /**
- * One banner while the link to the app's server is lost (reconnecting for 2 seconds or more, refused, or closed), or,
- * while it is fine, once the app was updated after this page loaded (#2787): the page runs its own build until it
- * reloads.
+ * One banner while the link to the app's server is lost (reconnecting for 2 seconds or more and 6 seconds after the
+ * page came back, refused, or closed), or, while it is fine, once the app was updated after this page loaded (#2787):
+ * the page runs its own build until it reloads.
  */
 export function ConnectionBanner({ client }: { readonly client: AppClient }): ReactNode {
   const [state, setState] = useState<ConnectionStateEvent | null>(null);
@@ -37,14 +43,27 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
   const updated = useAppUpdated(client);
   const reconnecting = state?.state === "reconnecting";
   const [long, setLong] = useState(false);
+  const [returns, setReturns] = useState(0);
+  useEffect(() => onReturn(() => setReturns((count) => count + 1)), []);
+  const reconnectingSince = useRef<number | null>(null);
   useEffect(() => {
     if (!reconnecting) {
+      reconnectingSince.current = null;
       setLong(false);
       return;
     }
-    const timer = window.setTimeout(() => setLong(true), BANNER_AFTER_MS);
+    reconnectingSince.current ??= Date.now();
+    const back = lastReturnAt();
+    const showAt = Math.max(
+      reconnectingSince.current + BANNER_AFTER_MS,
+      back === null ? Number.NEGATIVE_INFINITY : back + BANNER_AFTER_RETURN_MS,
+    );
+    const wait = showAt - Date.now();
+    setLong(wait <= 0);
+    if (wait <= 0) return;
+    const timer = window.setTimeout(() => setLong(true), wait);
     return () => window.clearTimeout(timer);
-  }, [reconnecting]);
+  }, [reconnecting, returns]);
   if (
     state === null ||
     state.state === "open" ||
