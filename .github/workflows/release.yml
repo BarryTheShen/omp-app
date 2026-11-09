@@ -177,17 +177,39 @@ jobs:
           (cd dist/release && sha256sum "omp-app-desktop_${VERSION}_amd64.deb" >>SHA256SUMS)
           cat dist/release/SHA256SUMS
 
-      - name: Build the Firefox and Zen extension
+      - name: Build the Firefox and Zen extension, and have Mozilla sign it
         if: steps.changes.outputs.changed == 'true'
         env:
           VERSION: ${{ steps.changes.outputs.version }}
+          # An addons.mozilla.org API key (Developer Hub → Tools → Manage API Keys) as the repository's Actions secrets;
+          # without them the release has the unsigned extension only.
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: |
           set -euo pipefail
-          bun run --cwd apps/zen build
-          # Not signed by Mozilla yet: Firefox and Zen load it for one session (about:debugging → Load Temporary Add-on).
+          bun run --cwd apps/zen build "$VERSION"
+          # Unsigned: Firefox and Zen load it for one session (about:debugging → Load Temporary Add-on).
           (cd apps/zen/dist && zip -qr "$GITHUB_WORKSPACE/dist/release/omp-app-zen_${VERSION}_unsigned.zip" .)
           (cd dist/release && sha256sum "omp-app-zen_${VERSION}_unsigned.zip" >>SHA256SUMS)
-          unzip -l "dist/release/omp-app-zen_${VERSION}_unsigned.zip"
+          if [ -z "$WEB_EXT_API_KEY" ] || [ -z "$WEB_EXT_API_SECRET" ]; then
+            echo "No addons.mozilla.org key: the release has the unsigned extension only."
+            exit 0
+          fi
+          # Mozilla's own checks first, then signing for self-distribution ("unlisted"), which Zen keeps installed. The
+          # source that builds it goes along, for Mozilla's review. Neither stops the release: the app's packages are out
+          # either way, and the unsigned extension is attached.
+          git archive --format=zip -o "$RUNNER_TEMP/zen-source.zip" HEAD \
+            apps/zen packages/embed packages/contracts package.json bun.lock tsconfig.base.json
+          if npx --yes web-ext@10.8.0 lint --source-dir apps/zen/dist \
+            && npx --yes web-ext@10.8.0 sign --channel unlisted --source-dir apps/zen/dist \
+              --artifacts-dir "$RUNNER_TEMP/zen-signed" --upload-source-code "$RUNNER_TEMP/zen-source.zip" \
+              --approval-timeout 900000; then
+            cp "$RUNNER_TEMP"/zen-signed/*.xpi "dist/release/omp-app-zen_${VERSION}.xpi"
+            (cd dist/release && sha256sum "omp-app-zen_${VERSION}.xpi" >>SHA256SUMS)
+          else
+            echo "::warning::Mozilla did not sign the extension; the release has the unsigned one only."
+          fi
+          ls -l dist/release
 
       - name: Write the release notes
         if: steps.changes.outputs.changed == 'true'
@@ -204,9 +226,13 @@ jobs:
         run: |
           # The tag names the commit that was built: main when this job checked it out, which may be newer than the
           # commit the run was started on ($GITHUB_SHA).
-          gh release create "v$VERSION" \
-            "dist/release/omp-app_${VERSION}_amd64.deb" \
-            "dist/release/omp-app-desktop_${VERSION}_amd64.deb" \
-            "dist/release/omp-app-zen_${VERSION}_unsigned.zip" \
-            dist/release/SHA256SUMS \
+          assets=(
+            "dist/release/omp-app_${VERSION}_amd64.deb"
+            "dist/release/omp-app-desktop_${VERSION}_amd64.deb"
+            "dist/release/omp-app-zen_${VERSION}_unsigned.zip"
+          )
+          if [ -f "dist/release/omp-app-zen_${VERSION}.xpi" ]; then
+            assets+=("dist/release/omp-app-zen_${VERSION}.xpi")
+          fi
+          gh release create "v$VERSION" "${assets[@]}" dist/release/SHA256SUMS \
             --target "$(git rev-parse HEAD)" --title "omp app $VERSION" --notes-file dist/release/notes.md

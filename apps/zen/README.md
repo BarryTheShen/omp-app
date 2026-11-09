@@ -9,12 +9,15 @@ omp app's Firefox and Zen extension: omp app's chat in the browser's sidebar, fo
 ## Build and try
 
 ```sh
-bun run --cwd apps/zen build
+bun install
+bun run --cwd apps/zen build [version]
 ```
 
-writes the extension to `apps/zen/dist`; each release also has it as `omp-app-zen_<version>_unsigned.zip`. In Firefox or Zen, open `about:debugging` → This Firefox → **Load Temporary Add-on…** and choose `dist/manifest.json` (or the zip). A temporary add-on stays until the browser closes. In omp app, turn on **Settings → App → Integrations → Firefox and Zen extensions** first, so the sidebar may show the app.
+writes the extension to `apps/zen/dist` (Bun 1.3.14 or newer; a version, such as `0.3.1527`, goes into its manifest). In Firefox or Zen, open `about:debugging` → This Firefox → **Load Temporary Add-on…** and choose `dist/manifest.json`. A temporary add-on stays until the browser closes. In omp app, turn on **Settings → App → Integrations → Firefox and Zen extensions** first, so the sidebar may show the app.
 
-A lasting install needs Mozilla's signature: Zen installs only signed extensions. Mozilla signs an "unlisted" extension (not shown in its store) with an addons.mozilla.org account's API key, for example with Mozilla's `web-ext sign --channel unlisted` run on `dist/`.
+**Each release** attaches the extension twice: `omp-app-zen_<version>_unsigned.zip`, for a temporary install, and, once the repository has an addons.mozilla.org API key as its Actions secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`, `omp-app-zen_<version>.xpi`, signed by Mozilla for self-distribution ("unlisted": not shown in its store). Zen installs only signed extensions for good: about:addons → ⚙ → **Install Add-on From File…** and choose the `.xpi`. A newer release's `.xpi` installs over it. The release runs Mozilla's checks (`web-ext lint`) and signs with `web-ext sign --channel unlisted`, sending this folder's source with it for Mozilla's review; a failure leaves the release with the unsigned zip only.
+
+**What it sends where.** The tab's title, address and selection, and what its tools read, go to the omp app you name in its settings and nowhere else; Firefox asks you to accept that at install (`data_collection_permissions`: browsing activity and website content). It needs Firefox 140 or newer.
 
 ## Checks
 
