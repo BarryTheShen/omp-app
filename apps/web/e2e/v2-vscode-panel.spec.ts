@@ -34,7 +34,7 @@ function webviewScript(): string {
 /** The webview's page, as `panel.ts` writes it, and the stand-in for VS Code and the extension. */
 const webviewPage = (app: string) => `<!doctype html><title>VS Code</title>
 <style>html,body,#panel{height:760px;width:420px;margin:0}</style>
-<div id="panel"></div>
+<div id="panel"></div><div id="note" role="status" hidden></div>
 <script type="application/json" id="omp-app-config">${JSON.stringify({
   app,
   files: { project: "Demo App", id: "0123456789abcdef" },

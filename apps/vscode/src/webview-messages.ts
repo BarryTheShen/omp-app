@@ -38,4 +38,6 @@ export type FromExtension =
       readonly value?: unknown;
       readonly error?: string;
     }
-  | { readonly ompAppExtension: 1; readonly type: "context"; readonly context: HostContext | null };
+  | { readonly ompAppExtension: 1; readonly type: "context"; readonly context: HostContext | null }
+  /** Why the app's page has not opened yet (after `no-answer`): said over the frame until the page answers. */
+  | { readonly ompAppExtension: 1; readonly type: "note"; readonly text: string };

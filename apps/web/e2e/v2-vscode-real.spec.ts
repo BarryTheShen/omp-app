@@ -216,6 +216,37 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
         await expect(said).toBeVisible({ timeout: 60_000 });
         await expect(said).toContainText("ran-in-vscode");
         await window.screenshot({ path: testInfo.outputPath("4-done.png") });
+
+        // A page that answers late (a slow network, a relay): after 10 s the panel says why it has not opened, over
+        // the frame, which keeps loading; when the page answers, the chat takes its place back without a click.
+        let delayed = 0;
+        const litePage = (url: URL): boolean =>
+          url.origin === app && url.pathname.startsWith("/lite");
+        await vscode.context().route(litePage, async (route) => {
+          if (route.request().resourceType() === "document") {
+            delayed += 1;
+            await new Promise((done) => setTimeout(done, 14_000));
+          }
+          await route.continue();
+        });
+        await window.keyboard.press("F1");
+        await palette.fill(">Developer: Reload Webviews");
+        await expect(
+          window
+            .locator(".quick-input-list .monaco-list-row")
+            .filter({ hasText: "Reload Webviews" }),
+        ).toHaveCount(1);
+        await window.keyboard.press("Enter");
+        const late = page.getByText(
+          `omp app at ${app} answers, but its page didn't open in this panel.`,
+        );
+        await expect(late).toBeVisible({ timeout: 30_000 });
+        expect(delayed).toBeGreaterThan(0);
+        await window.screenshot({ path: testInfo.outputPath("5-late-note.png") });
+        await expect(late).toBeHidden({ timeout: 30_000 });
+        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 30_000 });
+        await expect(box).toBeVisible();
+        await window.screenshot({ path: testInfo.outputPath("6-late-answered.png") });
       } finally {
         await vscode.close().catch(() => undefined);
         await rm(own, { recursive: true, force: true });

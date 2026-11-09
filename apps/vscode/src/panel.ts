@@ -48,11 +48,10 @@ const escapeHtml = (text: string): string =>
 /** A button of a note: what it says, and what it asks of the extension. */
 interface NoteButton {
   readonly label: string;
-  readonly ask: "settings" | "retry";
+  readonly ask: "settings";
 }
 
 const SET: NoteButton = { label: "Set the address", ask: "settings" };
-const RETRY: NoteButton = { label: "Try again", ask: "retry" };
 const ADDRESS_FIRST =
   "Give omp app's address to show its chat here: the address you open it at in a browser.";
 const TURN_ON = "In omp app, also turn on <b>Settings → App → Integrations → VS Code</b>.";
@@ -77,7 +76,10 @@ button:hover{background:var(--vscode-button-hoverBackground)}</style></head>
 </body></html>`;
 }
 
-/** The page that frames the app: its script (`webview.js`) and what it needs, in a JSON block. */
+/**
+ * The page that frames the app: its script (`webview.js`) and what it needs, in a JSON block. `#note` is where the page
+ * says why the app's page has not opened yet, over the frame, which keeps loading under it.
+ */
 function panelPage(
   webview: vscode.Webview,
   script: vscode.Uri,
@@ -87,8 +89,12 @@ function panelPage(
   const json = JSON.stringify(config).replaceAll("<", "\\u003c");
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src ${config.app}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource};">
-<style>html,body,#panel{height:100%;margin:0;padding:0;overflow:hidden}</style></head>
-<body><div id="panel"></div>
+<style>html,body,#panel{height:100%;margin:0;padding:0;overflow:hidden}
+#note{position:fixed;inset:0;overflow:auto;padding:12px 16px;font-family:var(--vscode-font-family);color:var(--vscode-foreground);line-height:1.5;overflow-wrap:anywhere}
+#note[hidden]{display:none}
+#note button{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0;padding:6px 12px;border-radius:2px;cursor:pointer;margin:0 6px 6px 0}
+#note button:hover{background:var(--vscode-button-hoverBackground)}</style></head>
+<body><div id="panel"></div><div id="note" role="status" hidden></div>
 <script type="application/json" id="omp-app-config">${json}</script>
 <script nonce="${nonce}" src="${webview.asWebviewUri(script).toString()}"></script>
 </body></html>`;
@@ -177,16 +183,9 @@ export class ChatPanel implements vscode.Disposable {
     );
   }
 
-  /** Shows why the app does not show, with Try again, and writes it in the output channel. */
-  #tell(nonce: string, why: string): void {
-    this.#output.appendLine(`omp app: ${why}`);
-    this.#app = null;
-    this.#giveUpAll();
-    this.#webview.html = notePage(nonce, [escapeHtml(why)], [RETRY, SET]);
-  }
-
   /**
-   * The app's page never said it listens in the panel: why, as the app tells VS Code's extension, else what to try. The
+   * The app's page never said it listens in the panel: why, as the app tells VS Code's extension, else what to try, said
+   * over the frame, which keeps loading under it: a page that answers late takes its place back (`webview.ts`). The
    * extension may reach the network another way than the panel, so what it cannot reach is said with that in mind.
    */
   async #noAnswer(): Promise<void> {
@@ -200,12 +199,12 @@ export class ChatPanel implements vscode.Disposable {
       remote === undefined
         ? ""
         : ` This window's extension runs on the computer the window is connected to (${remote}), which may not reach that address even when this computer does.`;
-    this.#tell(
-      randomBytes(16).toString("base64"),
+    const text =
       why === null
         ? `omp app at ${app} answers, but its page didn't open in this panel. Click Try again; if it stays like this, open ${app} in a browser on this computer to see whether it opens there.`
-        : `${why}${where}`,
-    );
+        : `${why}${where}`;
+    this.#output.appendLine(`omp app: ${text}`);
+    this.#post({ ompAppExtension: 1, type: "note", text });
   }
 
   #post(message: FromExtension): void {

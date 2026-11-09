@@ -14,7 +14,43 @@ const config = JSON.parse(
   document.getElementById("omp-app-config")?.textContent ?? "{}",
 ) as PanelConfig;
 const into = document.getElementById("panel");
-if (into === null) throw new Error("The panel's page has no place for the frame.");
+const note = document.getElementById("note");
+if (into === null || note === null)
+  throw new Error("The panel's page has no place for the frame or for its note.");
+
+/** The app's page has said it listens (`onReady`): a note that comes after that is about a page that opened. */
+let answered = false;
+
+/**
+ * Says why the app's page has not opened yet, with Try again and Set the address, over the frame: the frame keeps
+ * loading under it, hidden, and its page answering takes the note away (`onReady`).
+ */
+function showNote(text: string): void {
+  if (answered || into === null || note === null) return;
+  const said = document.createElement("p");
+  said.textContent = text;
+  const buttons = (
+    [
+      ["Try again", "retry"],
+      ["Set the address", "settings"],
+    ] as const
+  ).map(([label, type]) => {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.addEventListener("click", () => vscode.postMessage({ type }));
+    return button;
+  });
+  note.replaceChildren(said, ...buttons);
+  note.hidden = false;
+  into.style.visibility = "hidden";
+}
+
+function hideNote(): void {
+  if (into === null || note === null) return;
+  note.hidden = true;
+  note.replaceChildren();
+  into.style.visibility = "";
+}
 
 let nextId = 1;
 const waiting = new Map<
@@ -58,6 +94,8 @@ const panel = openPanel({
     },
   },
   onReady: ({ chat }) => {
+    answered = true;
+    hideNote();
     void ask({ what: "chat", chat });
   },
   onNoAnswer: () => vscode.postMessage({ type: "no-answer" }),
@@ -76,5 +114,7 @@ window.addEventListener("message", (event: MessageEvent) => {
     else found.reject(new Error(message.error));
   } else if (message.type === "context") {
     panel.setContext(message.context as HostContext | null);
+  } else if (message.type === "note") {
+    showNote(message.text);
   }
 });
