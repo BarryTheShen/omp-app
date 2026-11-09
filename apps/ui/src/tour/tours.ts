@@ -550,6 +550,56 @@ const ANSWERS_ACROSS_ASKS_TOUR: Tour = {
   ],
 };
 
+/** Settings search on a phone (2026-11-09): the field stays, the results show under it. */
+const SETTINGS_SEARCH_TOUR: Tour = {
+  id: "settings-search-2026-11-09",
+  title: "Search the settings",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: `${SETTINGS_SHEET} [aria-label="Search settings"]`,
+      title: "Search",
+      text: "Type what you look for: each letter narrows the settings. On a phone the results show under the field as you type, with where a change is saved above them; empty the field to see the sections again.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
+/** The dashboard as a page of the workspace (2026-11-09, D7). */
+const DASHBOARD_PAGE_TOUR: Tour = {
+  id: "dashboard-page-2026-11-09",
+  title: "The dashboard is a page",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "The dashboard",
+      text: "The dashboard is a page of its own now: {dashboard} or this button opens it as a workspace in front, as a new chat opens, and brings it back where it is open. Open it.",
+      action: { kind: "appears", selector: DASHBOARD },
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Dashboard parts"]`,
+      title: "Its parts",
+      text: "This bar goes to each part. Being a pane, the dashboard can sit beside a chat too: drag its tab to a window's edge. It stays where you leave it across reloads.",
+      action: next,
+    },
+  ],
+};
+
 /** Save debug log, in Settings → App and the palette (2026-11-08). */
 const DEBUG_LOG_TOUR: Tour = {
   id: "debug-log-2026-11-08",
@@ -2204,6 +2254,20 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-dashboard-page",
+    when: "2026-11-09T02:01:00-06:00",
+    summary:
+      "The dashboard is a page of its own: it opens as a workspace in front, as a new chat does, its button brings it back, a reload keeps it, and it can sit beside a chat. A bar at its top goes to each part.",
+    tours: [DASHBOARD_PAGE_TOUR],
+  },
+  {
+    id: "2026-11-09-settings-search",
+    when: "2026-11-09T01:25:00-06:00",
+    summary:
+      "Searching Settings works on a phone: the field stays as you type, and the results show under it.",
+    tours: [SETTINGS_SEARCH_TOUR],
+  },
   {
     id: "2026-11-08-debug-log",
     when: "2026-11-08T16:30:00-06:00",
