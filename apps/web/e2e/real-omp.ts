@@ -706,8 +706,8 @@ export const realTest = test.extend<{
     const inherited: NodeJS.ProcessEnv = { ...process.env };
     if (noModel)
       for (const key of Object.keys(inherited)) if (key.endsWith("_API_KEY")) delete inherited[key];
-    // The running app's own settings on this computer (its tailnet address, the pages that frame it, its chat hosts)
-    // never reach a test's server: only a spec's `serverEnv` sets them.
+    // The running app's own settings on this computer (the address other computers open it at, the pages that frame
+    // it, its chat hosts) never reach a test's server: only a spec's `serverEnv` sets them.
     for (const key of [
       "OMP_APP_REMOTE_ORIGIN",
       "OMP_APP_FRAME_ANCESTORS",

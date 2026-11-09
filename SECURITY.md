@@ -13,15 +13,16 @@ app can do what your account can do on the computer it runs on, so the app is bu
 - **The server listens on this computer only** (127.0.0.1, port 4317 by default).
 - **On this computer,** a browser signs in with the link `omp-app` prints (its secret follows `#token=`). The token is
   kept in a file only your account can read, and it counts only for a page of this computer: a request that came
-  through a proxy, such as `tailscale serve`, cannot use it.
-- **From another device,** the app is reached only through `tailscale serve` (HTTPS on your tailnet); the app accepts
-  only an `https://…ts.net` address for it. Each device pairs once: by matching the six digits the new device shows
+  through a proxy, or that asks for the address other devices open, cannot use it.
+- **From another device,** the app is reached only at the HTTPS address set in `OMP_APP_REMOTE_ORIGIN`, through
+  what serves it on this computer (Tailscale Serve, a reverse proxy, a tunnel); the app takes no plain `http://`
+  address for another computer. Each device pairs once: by matching the six digits the new device shows
   with those on a paired device, or with a one-time code that works once, for 10 minutes. A paired device's key is a
   cookie that only the app's own pages send; the app keeps only a hash of each key, and removing a device ends its
   sessions.
-- **Shared ports and pages** (the Ports panel) open on this computer's Tailscale address only, for paired devices,
-  through a link the app hands out. A request that another page makes (another share, or another site) is refused,
-  and a shared page serves no hidden files.
+- **Shared ports and pages** (the Ports panel) open only at this computer's address for shares (its Tailscale address,
+  or `OMP_APP_SHARE_ADDRESS`), over plain HTTP, for paired devices, through a link the app hands out. A request that
+  another page makes (another share, or another site) is refused, and a shared page serves no hidden files.
 - **The desktop window** gives its commands (clipboard, servers, windows, notifications) only to the pages of the
   server it opened, by exact address; any other page opens in your browser.
 

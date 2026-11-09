@@ -9,6 +9,6 @@ const problem = query.get("problem");
 if (problem) {
   document.getElementById("what").textContent = "omp app did not open on";
   document.getElementById("why").textContent =
-    "This window opens the app's server on another computer of your tailnet. That computer answered, but the app " +
+    "This window opens the app's server on another computer. That computer answered, but the app " +
     `did not open there (${problem}). The app's server on it may be stopped, or another program answers at that address.`;
 }

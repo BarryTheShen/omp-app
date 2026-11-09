@@ -28,11 +28,11 @@ In a chat that cannot open, the page says "Could not open this chat:" and one of
 
 ## The app does not start and names a variable
 
-**What you see.** `omp-app` stops at once with a line that begins `omp-app:` and names `OMP_APP_REMOTE_ORIGIN` or `OMP_APP_FRAME_ANCESTORS`, for example "OMP_APP_REMOTE_ORIGIN must be the computer's Tailscale address over HTTPS, like https://<computer>.<tailnet>.ts.net, with nothing after it, not "<what you set>"."
+**What you see.** `omp-app` stops at once with a line that begins `omp-app:` and names `OMP_APP_REMOTE_ORIGIN` or `OMP_APP_FRAME_ANCESTORS`, for example "OMP_APP_REMOTE_ORIGIN must be the HTTPS address the app is served at, like https://omp.example.com (a port allowed), with nothing after it, not "<what you set>"."
 
-**Why.** The app accepts only a Tailscale address over HTTPS for the first, and only Tailscale addresses over HTTPS or loopback addresses with a port, separated by spaces, for the second. A wrong value stops the start, so that the app never listens for an address it cannot check.
+**Why.** The app accepts only an HTTPS address for the first, and for the second only HTTPS addresses, loopback addresses with a port, and extension or editor panels, separated by spaces. A wrong value stops the start, so that the app never listens for an address it cannot check.
 
-**What to do.** Correct the value (see [Other devices](devices.md#how-do-i-serve-the-app-on-my-tailnet) and [Configuration](configuration.md#environment-variables)) or remove it, then start the app again. Under the user service, the message is in `journalctl --user -u omp-app`; fix the value with `systemctl --user edit omp-app`, then run `systemctl --user restart omp-app`.
+**What to do.** Correct the value (see [Other devices](devices.md#how-do-i-open-the-app-from-other-devices) and [Configuration](configuration.md#environment-variables)) or remove it, then start the app again. Under the user service, the message is in `journalctl --user -u omp-app`; fix the value with `systemctl --user edit omp-app`, then run `systemctl --user restart omp-app`.
 
 ## A link is refused
 
@@ -42,7 +42,7 @@ In a chat that cannot open, the page says "Could not open this chat:" and one of
 |---|---|---|
 | "This link has expired. Open the app with the link omp-app printed when it last started." | The link's secret is an earlier one: the app's launch token was replaced since the link was made, for example because its file was deleted. | Open the app with the current link. `omp-app --no-open` prints it. |
 | "This link is not valid. Open the app with the link omp-app printed." | The link's secret is not one this app ever had, for example a link that was cut short or copied from another computer. | Use the link `omp-app` prints. |
-| "This device is not paired with the app. Reload the page to pair it." | The page came without a paired device's key: it is not paired yet, it was removed from the list, or it used the launch link through `tailscale serve`, where only a paired device is let in. | Reload the page. It shows **Pair this device**; pair it as described in [Other devices](devices.md#how-do-i-pair-a-device). |
+| "This device is not paired with the app. Reload the page to pair it." | The page came without a paired device's key: it is not paired yet, it was removed from the list, or it used the launch link at the address other devices open, where only a paired device is let in. | Reload the page. It shows **Pair this device**; pair it as described in [Other devices](devices.md#how-do-i-pair-a-device). |
 | "The app does not accept connections from this page's address." | The page was opened at an address the app does not take. It accepts `http://127.0.0.1:<port>`, `http://localhost:<port>` and the exact address in `OMP_APP_REMOTE_ORIGIN`. | Open the app at one of those. Check that `OMP_APP_REMOTE_ORIGIN` matches the address in your browser letter for letter, and that the port in the address is the port the app is on. |
 
 The pairing page may add "The link this page was opened with no longer works." above its own explanation. Refused pages do not retry, because nothing would change: fix the cause, then reload.
@@ -51,13 +51,13 @@ The pairing page may add "The link this page was opened with no longer works." a
 
 **What you see.** A banner, "Reconnecting to the app…", with **Reconnect now**. The connection line at the foot of the chat list says "Reconnecting…". The banner appears when the link to the server has been down for 2 seconds, and 6 seconds after a page comes back to the front (a phone back from another app, a laptop awake again), so a short blip shows only the dot. If the link closes without a reason, the banner says "The connection to the app has closed." with **Reload**.
 
-**Why.** The page lost its link to the app's server. The server may be stopped or restarting (an update, a reboot), the computer that runs it may be asleep or off, or the network between you and it, such as the tailnet or `tailscale serve`, is down.
+**Why.** The page lost its link to the app's server. The server may be stopped or restarting (an update, a reboot), the computer that runs it may be asleep or off, or the network between you and it, or what serves the app's address (Tailscale Serve, a proxy, a tunnel), is down.
 
 **What to do.**
 
 - Wait: the page reconnects by itself and resumes its streams where they left off. A link can die without closing, after a phone sleeps for example. The page asks the server every 30 seconds, and at once when you come back to it; when no answer comes, it drops the link and opens a new one.
 - Press **Reconnect now**, or click the connection line, to try at once.
-- Check that the server runs, on the computer that hosts it: `systemctl --user status omp-app`, and `omp-app logs`. If another device cannot reach it, see [Other devices](devices.md#how-do-i-serve-the-app-on-my-tailnet).
+- Check that the server runs, on the computer that hosts it: `systemctl --user status omp-app`, and `omp-app logs`. If another device cannot reach it, see [Other devices](devices.md#how-do-i-open-the-app-from-other-devices).
 - What you typed is not lost. Drafts are saved continuously, and a send that fails keeps its text in the box.
 
 ## "The app was updated. Reload to use the new version."
@@ -120,7 +120,7 @@ Two more messages come from the same part:
 
 **Why.** Something else listens on the port. Usually it is the app itself, already running, in which case `omp-app` does not start a second one: it prints "omp app <version> is already running." and its link.
 
-**What to do.** Stop the program that holds the port, or choose another with `--port` or `OMP_APP_PORT`. A page keeps its settings (theme, sidebar, last chat) per address, so on a new port they start afresh; keep one port to keep them. For a second device through `tailscale serve`, point `tailscale serve` at the port the app really uses (see [Other devices](devices.md#how-do-i-serve-the-app-on-my-tailnet)).
+**What to do.** Stop the program that holds the port, or choose another with `--port` or `OMP_APP_PORT`. A page keeps its settings (theme, sidebar, last chat) per address, so on a new port they start afresh; keep one port to keep them. For other devices, serve the port the app really uses (see [Other devices](devices.md#how-do-i-open-the-app-from-other-devices)).
 
 ## The window says "omp app could not start"
 

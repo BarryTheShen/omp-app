@@ -165,7 +165,7 @@ export function Integrations({ client }: { readonly client: AppClient }): ReactN
           <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={add}>
             <Input
               aria-label="Another page's address"
-              placeholder="https://….ts.net"
+              placeholder="https://notes.example.com"
               className="min-w-0 flex-1 basis-64 font-mono"
               value={address}
               onChange={(event) => setAddress(event.target.value)}

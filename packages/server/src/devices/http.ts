@@ -28,7 +28,7 @@ export interface PairingRouteOptions {
   readonly fromAppPage: (request: Request) => boolean;
   /** The request comes to the server's loopback address, from no web page. */
   readonly fromThisComputer: (request: Request) => boolean;
-  /** The request came over HTTPS (the Tailscale address), so the key's cookie is Secure. */
+  /** The request came over HTTPS (the address other devices open), so the key's cookie is Secure. */
   readonly overHttps: (request: Request) => boolean;
   /** Checks a bearer against the launch token. */
   readonly isLaunchToken: (candidate: string) => boolean;

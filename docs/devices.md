@@ -1,38 +1,74 @@
 # Other devices
 
-This page covers opening the app from your phone, tablet or another computer: how to serve it on your tailnet, how a device pairs, how to manage and remove devices, how to put it on an iPhone or iPad Home Screen, how the desktop window opens another computer's server, and how to share a port. Each section that changes something ends with how to undo it.
+This page covers opening the app from your phone, tablet or another computer: how to serve it to them, how a device pairs, how to manage and remove devices, how to put it on an iPhone or iPad Home Screen, how the desktop window opens another computer's server, and how to share a port. Each section that changes something ends with how to undo it.
 
 ## Why does the server listen on this computer only?
 
-omp runs commands and changes files as your account. Whoever can use the app can do what your account can do on the computer it runs on, so the app is built to be reachable by you alone. The server listens on 127.0.0.1 (port 4317 by default) and on nothing else. Another computer on your network cannot connect to it, and it is never offered to the internet.
+omp runs commands and changes files as your account. Whoever can use the app can do what your account can do on the computer it runs on, so the app is built to be reachable by you alone. The server listens on 127.0.0.1 (port 4317 by default) and on nothing else. Another computer cannot connect to it directly; it reaches the app only through what you set up to serve it (next section).
 
 Two things let you in:
 
-- **On this computer,** the link `omp-app` prints, with its secret after `#token=`. It counts only for a page of this computer: a request that came through a proxy such as `tailscale serve` cannot use it.
-- **From another device,** pairing. The device opens the app's address through `tailscale serve`, which gives it HTTPS on your tailnet, and pairs once.
+- **On this computer,** the link `omp-app` prints, with its secret after `#token=`. It counts only for a page of this computer: a request that came through a proxy, or for the address other devices use, cannot use it.
+- **From another device,** pairing. The device opens the app's HTTPS address, served by something on this computer (Tailscale Serve, a reverse proxy, a tunnel), and pairs once.
 
 [SECURITY.md](../SECURITY.md) lists what the app guards and what it assumes.
 
-## How do I serve the app on my tailnet?
+## How do I open the app from other devices?
 
-You need [Tailscale](https://tailscale.com) on this computer and on the device. Tell the app its Tailscale address, then have Tailscale serve it. The address is this computer's Tailscale name, `https://<computer>.<tailnet>.ts.net`:
+Other devices reach the app at an HTTPS address that something on this computer serves and passes to the app's port: Tailscale Serve, a reverse proxy such as Caddy or nginx, or a tunnel. Tell the app that address, so that it lets its pages in:
 
 ```bash
-export OMP_APP_REMOTE_ORIGIN=https://<computer>.<tailnet>.ts.net   # this computer's Tailscale name; then start omp-app
-tailscale serve --bg localhost:4317                                # HTTPS on the tailnet, passed to the app's port
+export OMP_APP_REMOTE_ORIGIN=https://omp.example.com   # the address other devices open; then start omp-app
 ```
 
-`omp-app` then prints the address to open on another device of your tailnet:
+`omp-app` then prints the address to open on another device, and the port to serve:
 
 ```text
-From another device on your tailnet, open https://<computer>.<tailnet>.ts.net and pair it: allow it on a device that is already paired, or enter the one-time code omp-app pair prints here.
+From another device, open https://omp.example.com and pair it: allow it on a device that is already paired, or enter the one-time code omp-app pair prints here.
 
-This computer must serve it: tailscale serve --bg localhost:4317
+Serve that address over HTTPS and pass it to http://127.0.0.1:4317 (with Tailscale: tailscale serve --bg localhost:4317).
 ```
 
-The port in that last line is the one the app really uses. If the app took another port (because 4317 was busy), give that port to `tailscale serve`.
+The port in that last line is the one the app really uses. If the app took another port (because 4317 was busy), serve that port instead.
 
-The app accepts only an `https://` address that ends in `.ts.net`, with no port, path, query or fragment, and refuses to start with anything else, naming the problem. The server still listens on 127.0.0.1 only. `tailscale serve` passes the browser's Host on, so the app allows that host and that origin besides its own.
+Whatever serves the address must:
+
+- use HTTPS: the pairing key and your chats cross the network, so the app takes no plain `http://` address but this computer's own;
+- pass WebSocket connections on: the app's pages keep one open;
+- pass the browser's `Host` on, or add `X-Forwarded-For`. The app counts a request for that address, or one a proxy marked, as one from another computer, where only a paired device gets in.
+
+Three ways to serve it, as each project's documentation describes them:
+
+**Tailscale Serve.** Only your own devices on your tailnet reach it. The address is this computer's Tailscale name, `https://<computer>.<tailnet>.ts.net`:
+
+```bash
+tailscale serve --bg localhost:4317
+```
+
+**Caddy.** It passes the browser's `Host` on and adds `X-Forwarded-For` by itself, and gets a certificate for the name when the name points at this computer and the internet reaches it on ports 80 and 443. In its `Caddyfile`:
+
+```caddyfile
+omp.example.com {
+	reverse_proxy 127.0.0.1:4317
+}
+```
+
+**nginx,** with a certificate you set up for the name. In the `server` block for the name:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:4317;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+Anyone who reaches an address on the open internet can ask to pair. Pairing still needs a one-time code from this computer or a paired device's approval, but keep such an address behind something that lets only you in when you can, such as your tailnet or a sign-in in front of it.
+
+The app takes any `https://` address, with a port when it has one, and nothing after it (no path, query or fragment). It refuses to start with anything else, naming the problem. The server still listens on 127.0.0.1 only.
 
 **When the user service runs the app,** set the variable for the service instead, and restart it so the server reads it:
 
@@ -42,7 +78,7 @@ systemctl --user edit omp-app
 
 ```ini
 [Service]
-Environment=OMP_APP_REMOTE_ORIGIN=https://<computer>.<tailnet>.ts.net
+Environment=OMP_APP_REMOTE_ORIGIN=https://omp.example.com
 ```
 
 ```bash
@@ -51,9 +87,9 @@ systemctl --user restart omp-app
 
 A variable exported in your own shell does not reach the service, and `omp-app` run in a shell only attaches to a server that is already running, so it changes nothing there. [Configuration](configuration.md#how-do-i-set-variables-for-the-user-service) has the details, including quoting.
 
-To check it, open the address on another device of your tailnet. A device that is not paired yet shows "Pair this device".
+To check it, open the address on another device. A device that is not paired yet shows "Pair this device".
 
-**Undo:** stop serving with `tailscale serve --https=443 off`. Then remove the variable (delete the `Environment` line with `systemctl --user edit omp-app`, or run `systemctl --user revert omp-app`, or unset it in your shell) and restart the app. Devices you already paired stay in the list until you remove them (see [How do I manage the paired devices?](#how-do-i-manage-the-paired-devices)), but nothing can reach the app from outside this computer.
+**Undo:** stop serving the address (with Tailscale, `tailscale serve --https=443 off`; with Caddy or nginx, remove the site and reload it). Then remove the variable (delete the `Environment` line with `systemctl --user edit omp-app`, or run `systemctl --user revert omp-app`, or unset it in your shell) and restart the app. Devices you already paired stay in the list until you remove them (see [How do I manage the paired devices?](#how-do-i-manage-the-paired-devices)), but nothing can reach the app from outside this computer.
 
 ## How do I pair a device?
 
@@ -96,29 +132,29 @@ Below 640 pixels wide the app uses the phone layout, and a touch screen wider th
 
 ## How do I open another computer's server in the desktop window?
 
-The window normally opens the app on this computer's own server. It can open the server on another computer of your tailnet instead, the one served as above:
+The window normally opens the app on this computer's own server. It can open the server on another computer instead, at the address that computer serves the app at (as above):
 
 ```bash
-omp-app-desktop --remote 'https://<computer>.<tailnet>.ts.net'   # keeps the address and opens that server
-omp-app-desktop --local                                          # back to this computer's own server
+omp-app-desktop --remote 'https://omp.example.com'   # keeps the address and opens that server
+omp-app-desktop --local                              # back to this computer's own server
 ```
 
 You can do the same inside the window. In **Settings → App → Server**, type the address in "Connect to another server" and press **Connect**; the list above it shows "This computer" and each server the window opened before, with an **Open** button. The palette (Ctrl+K) has "Connect to another server…", "Use this computer's server" and "Open the server on <computer>".
 
 The window keeps the address in `~/.config/omp-app/desktop-server` (under `$XDG_CONFIG_HOME` when that is an absolute path), a file only your account can read, and opens that server at every launch, starting nothing on this computer. The first time, it pairs with that server like any other device. Only an `https://` address is accepted.
 
-If the other computer does not answer, the window shows "omp app could not reach" with its name: it may be off, not on the tailnet, or not serving the app with `tailscale serve`. If it answers but the app does not open there, the window says "omp app did not open on" that computer, with the reason.
+If the other computer does not answer, the window shows "omp app could not reach" with its name: it may be off, out of this computer's reach, or not serving the app at that address. If it answers but the app does not open there, the window says "omp app did not open on" that computer, with the reason.
 
 **Undo:** run `omp-app-desktop --local`, or choose "Use this computer's server". Remove the window from the other computer's Devices list if you no longer want it paired.
 
 ## How do I share a port with my devices?
 
-The side panel's **Ports** panel lists the services running on this computer, so that you can open one on a paired device: a web page a chat started, for example. **Share** a service, then press **Open**: it opens in the browser on the device you are using, at this computer's Tailscale address on a port of its own. **Copy link** copies a link that works once, within a minute.
+The side panel's **Ports** panel lists the services running on this computer, so that you can open one on a paired device: a web page a chat started, for example. **Share** a service, then press **Open**: it opens in the browser on the device you are using, at this computer's address for shares on a port of its own. That address is its Tailscale address when it has one, or the one `OMP_APP_SHARE_ADDRESS` names (see [Configuration](configuration.md#environment-variables)); a share is plain HTTP there, so give it an address on a network you trust. **Copy link** copies a link that works once, within a minute.
 
 - Only devices paired with the app get in. A one-time ticket from the app signs a device in to that one share.
 - A service that a chat starts on a port someone picked (a dev server's 3000, 5173 or 8080) is shared by itself once it has listened for 5 seconds, and the chat shows a line with **Open**. A service on a port the system handed out at random (Linux hands those out from its `net.ipv4.ip_local_port_range`, 32768–60999 unless changed), such as a test server or an editor's own port, and a debugger's port (2345, 5005, 5678, 9222, 9229) are only listed: **Share** opens them. The panel lists a chat's services first, under "Started by your chats, or shared"; every other port is folded under "Other services on this machine".
 - An HTML file written in a chat's folder can be shared as a page, from the write's card in the chat or from the Files panel: **Share as a page**, then **Open in browser**. Shared pages are listed under "Pages".
 - A share ends when its service stops (the panel then says "This share ended: the service stopped."), when you press **Stop sharing**, or after 12 hours unused. The app, remote login, sync and network tools, databases, browsers and omp's browser relay are never shared: the panel says "Never shared: it is on the never-share list."
-- With no Tailscale address on this computer the panel says "This machine has no Tailscale address, so nothing can be shared." To share on another address of this computer, set `OMP_APP_SHARE_ADDRESS` (see [Configuration](configuration.md#environment-variables)).
+- With no address for shares, the panel says "This machine has no address for shares, so nothing can be shared." Set `OMP_APP_SHARE_ADDRESS` to an address of this computer that your devices reach (see [Configuration](configuration.md#environment-variables)).
 
 **Undo:** press **Stop sharing**, or stop the service itself.

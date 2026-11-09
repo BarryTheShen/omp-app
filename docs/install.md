@@ -20,7 +20,7 @@ The two packages share no file, so you can install both. Both recommend `xdg-uti
 Two features need something more, and neither is needed to chat:
 
 - The Browser panel's own browser needs Google Chrome or Chromium (see [Configuration](configuration.md#environment-variables)).
-- Opening the app from other devices needs [Tailscale](https://tailscale.com) (see [Other devices](devices.md)).
+- Opening the app from other devices needs an HTTPS address that something on this computer serves it at, such as Tailscale Serve or a reverse proxy (see [Other devices](devices.md)).
 
 ## Where do I download it?
 

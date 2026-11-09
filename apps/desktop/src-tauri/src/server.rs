@@ -816,7 +816,7 @@ fn window_url(address: &Url, label: &str) -> Url {
 /// A page of the server on another computer that does not open shows the error page, naming the computer and what went
 /// wrong, instead of the engine's own text. The computer accepted the connection (see `remote::reachable`), but the page
 /// did not load (a failed TLS handshake, a reset connection, a certificate that is not accepted), or what answered is not
-/// the app (an error status, as `tailscale serve` answers while the app behind it is stopped). A load cancelled because
+/// the app (an error status, as a proxy answers while the app behind it is stopped). A load cancelled because
 /// another page opens is no failure. Pages of this computer's server are left to the server's watch, which shows the
 /// error page when the server ends (see `watch`).
 fn watch_page_loads(window: &WebviewWindow) {

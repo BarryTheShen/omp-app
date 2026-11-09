@@ -175,7 +175,7 @@ export interface CompositionServerOptions {
 export interface CompositionServer extends AppServer {
   readonly processRegistry: OmpProcessRegistry;
   readonly health: OmpProbe["health"];
-  /** The Tailscale address the app can also be opened at (`OMP_APP_REMOTE_ORIGIN`), when one is set. */
+  /** The HTTPS address the app can also be opened at (`OMP_APP_REMOTE_ORIGIN`), when one is set. */
   readonly remoteUrl: string | undefined;
 }
 
@@ -753,7 +753,7 @@ export async function createCompositionServer(
           entry.pid === undefined ? [] : [{ pid: entry.pid, threadId: entry.threadId }],
         ),
     appPort: () => appPort,
-    // Where shares open: the machine's Tailscale address, or the one this names (tests, a machine without Tailscale).
+    // Where shares open: the address this names, else the machine's Tailscale address when it has one.
     ...(env.OMP_APP_SHARE_ADDRESS === undefined
       ? {}
       : { address: () => env.OMP_APP_SHARE_ADDRESS ?? null }),

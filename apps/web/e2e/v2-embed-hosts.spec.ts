@@ -160,11 +160,11 @@ realTest.describe("new UI lite view in another app's panel", () => {
         );
         expect(await listening(host)).toBe(true);
 
-        // A page of the internet is refused, and the list stays as it was.
-        await section.getByLabel("Another page's address").fill("https://example.com");
+        // A page on another computer over plain HTTP is refused, and the list stays as it was.
+        await section.getByLabel("Another page's address").fill("http://example.com");
         await section.getByRole("button", { name: "Add", exact: true }).click();
         await expect(section.getByRole("alert")).toContainText(
-          '"https://example.com" is not one of these',
+          '"http://example.com" is not one of these',
         );
         expect(await frameRule(app)).not.toContain("example.com");
 

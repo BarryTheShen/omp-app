@@ -73,7 +73,7 @@ export type UsableModels = z.infer<typeof UsableModels>;
 
 /**
  * The pages and panels that may frame the lite view (`/lite`): those set when the app starts (`OMP_APP_FRAME_ANCESTORS`,
- * read only) and those saved in Settings → App → Integrations. Each is a tailnet or loopback origin, a browser extension
+ * read only) and those saved in Settings → App → Integrations. Each is an HTTPS or loopback origin, a browser extension
  * kind or one extension (`moz-extension:`, `chrome-extension:`, `moz-extension://<uuid>`), or VS Code's webviews
  * (`vscode-webview:`, `vscode-file:`).
  */

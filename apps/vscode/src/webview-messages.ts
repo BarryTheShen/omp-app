@@ -23,7 +23,12 @@ export type Question =
 export type ToExtension =
   | ({ readonly type: "ask"; readonly id: number } & Question)
   /** The page no longer wants an answer (omp gave the tool's call up). */
-  | { readonly type: "give-up"; readonly id: number };
+  | { readonly type: "give-up"; readonly id: number }
+  /** A note's buttons: open the address setting, or load the panel again. */
+  | { readonly type: "settings" }
+  | { readonly type: "retry" }
+  /** The app's page never said it listens in the panel (`onNoAnswer`). */
+  | { readonly type: "no-answer" };
 
 export type FromExtension =
   | {

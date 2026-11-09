@@ -1,5 +1,6 @@
-//! The app's server on another computer of the tailnet. The server can serve a browser on another device: it then
-//! runs behind `tailscale serve` with `OMP_APP_REMOTE_ORIGIN`, at `https://<computer>.<tailnet>.ts.net/`. The window
+//! The app's server on another computer. The server can serve a browser on another device: it then runs behind
+//! something that serves it over HTTPS (Tailscale Serve, a reverse proxy, a tunnel) with `OMP_APP_REMOTE_ORIGIN`, at
+//! an address such as `https://omp.example.com/`. The window
 //! opens such a server when it keeps its address: `omp-app-desktop --remote '<address>'` keeps it, and
 //! `omp-app-desktop --local` forgets it, so the window goes back to this computer's server. The window pairs with that
 //! server the first time (its key is a cookie in the window's own data folder, see `webdata.rs`). A link with a token,
@@ -29,7 +30,7 @@ const LINK_PATHS: [&str; 2] = ["/", "/v2/"];
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 /// Why a `--remote` was refused.
 const MISSING_LINK: &str = "--remote needs the server's address";
-pub const LINK_SHAPE: &str = "the address must look like https://<computer>.<tailnet>.ts.net/";
+pub const LINK_SHAPE: &str = "the address must be an https:// address, such as https://omp.example.com/";
 
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
@@ -70,7 +71,7 @@ pub fn parse_link(text: &str) -> Option<Url> {
     (shaped && has_host).then_some(url)
 }
 
-/// The link's origin, `https://<computer>.<tailnet>.ts.net`: the window's own pages while the link is kept.
+/// The link's origin, `https://omp.example.com`: the window's own pages while the link is kept.
 pub fn origin(link: &Url) -> String {
     link.origin().ascii_serialization()
 }
@@ -152,7 +153,7 @@ pub fn forget(file: &Path) -> io::Result<()> {
 }
 
 /// Whether the other computer accepts a connection on the link's port within `CONNECT_WAIT`: it is reachable, and
-/// something listens there (`tailscale serve`). The page that opens then says whether the server behind it answers.
+/// something listens there (what serves the app). The page that opens then says whether the server behind it answers.
 pub fn reachable(link: &Url) -> bool {
     let (Some(host), Some(port)) = (link.host_str(), link.port_or_known_default()) else {
         return false;

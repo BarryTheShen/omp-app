@@ -5,7 +5,7 @@
 //! the window that had the focus last, and `omp-app-desktop --new-window` opens another window instead. The window
 //! runs the omp release that ships in its package, not one found on this computer.
 //!
-//! `omp-app-desktop --remote '<link>'` makes the window open the app's server on another computer of the tailnet,
+//! `omp-app-desktop --remote '<link>'` makes the window open the app's server on another computer,
 //! from the link that server logs for another device, and `omp-app-desktop --local` brings it back to this computer's
 //! server (see `remote.rs`). Each is kept for the next launches, and a second launch with either moves the first
 //! window.

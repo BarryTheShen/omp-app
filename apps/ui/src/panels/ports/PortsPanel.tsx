@@ -153,7 +153,7 @@ export function PortsPanel({ client }: { readonly client: AppClient }): ReactNod
     >
       <p className="border-b border-l2 px-4 py-2 text-xs text-t3">
         {list.address === null
-          ? "This machine has no Tailscale address, so nothing can be shared."
+          ? "This machine has no address for shares, so nothing can be shared."
           : "Shared services and pages open only on devices paired with the app, each at an address of its own."}
       </p>
       {said !== null && (

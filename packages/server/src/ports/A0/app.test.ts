@@ -158,7 +158,7 @@ describe("AppPort", () => {
       ).toEqual({ fixed: ["http://127.0.0.1:9000"], saved: ["moz-extension:"] });
       await expect(
         handler(handlers, "setEmbedders")(
-          { sources: ["https://example.com"] },
+          { sources: ["http://example.com"] },
           call(),
         ) as Promise<unknown>,
       ).rejects.toMatchObject({ appError: { code: "invalid_args" } });

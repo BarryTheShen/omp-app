@@ -13,7 +13,7 @@ const SERVERS = {
   remote: ["devbox.tail1234.ts.net", "lab.tail1234.ts.net"],
 };
 /** The window's refusal of a link of another shape (`remote.rs`). */
-const LINK_SHAPE = "the link must look like https://<computer>.<tailnet>.ts.net/#token=<token>";
+const LINK_SHAPE = "the address must be an https:// address, such as https://omp.example.com/";
 const LINK = "https://lab.tail1234.ts.net/v2/#token=abc";
 
 type Call = [string, Record<string, unknown> | null];

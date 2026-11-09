@@ -34,14 +34,24 @@ export interface HostTool extends EmbedTool {
 /**
  * Where the host keeps the panel's key: an extension's or an editor's own storage, out of any page's reach. A frame in
  * another app keeps no cookie of omp app, so the panel signs in with this key; without it, it would pair at every load.
+ * A `get` that fails or takes longer than `KEY_WAIT_MS` counts as no key; a `set` that fails is the host's to tell.
  */
 export interface KeyKeeper {
   get(): string | null | Promise<string | null>;
   set(key: string): void | Promise<void>;
 }
 
+/**
+ * How long the hello waits for the host's key: the panel connects without one after 3 s, so a key read held up (a
+ * keyring's prompt) must not hold the hello, which carries the host's tools, settings and what is open.
+ */
+export const KEY_WAIT_MS = 2_500;
+
+/** How long the panel's page has to say it listens before `onNoAnswer`: it does in about a second. */
+export const NO_ANSWER_MS = 15_000;
+
 export interface PanelOptions {
-  /** omp app's address: its tailnet address over HTTPS (`https://<computer>.<tailnet>.ts.net`), or a loopback one. */
+  /** omp app's address: an HTTPS one (`https://omp.example.com`), or a loopback one on this computer (`http://127.0.0.1:4317`). */
   readonly app: string;
   /** The element the panel's frame goes into; the frame fills it. */
   readonly into: HTMLElement;
@@ -51,7 +61,7 @@ export interface PanelOptions {
   /** What the person is looking at: it goes with each message sent from the panel, which shows it. */
   readonly context?: HostContext | null;
   readonly tools?: readonly HostTool[];
-  /** Keeps the panel's key in the host's storage; leave it out when the frame keeps the app's cookie (a tailnet page). */
+  /** Keeps the panel's key in the host's storage; leave it out when the frame keeps the app's cookie (a page on the app's own site). */
   readonly keys?: KeyKeeper;
   /** The address's parameters, for the first paint (`theme`, `greeting`, `placeholder`, the look's colours). */
   readonly params?: Readonly<Record<string, string>>;
@@ -65,6 +75,12 @@ export interface PanelOptions {
   readonly chat?: string;
   /** The panel shows a chat: its id and the host's tools it took; again whenever it shows another. */
   readonly onReady?: (ready: { readonly chat: string; readonly tools: readonly string[] }) => void;
+  /**
+   * The panel's page did not say it listens within `NO_ANSWER_MS` of the panel opening: the app is not at the address,
+   * cannot be reached from here, or does not let this kind of panel show it (Settings → App → Integrations). Called at
+   * most once; the frame stays, in case the page still comes.
+   */
+  readonly onNoAnswer?: () => void;
   /** The frame's name for screen readers. */
   readonly title?: string;
 }
@@ -122,9 +138,27 @@ const failed = (text: string): EmbedToolResult => ({
   isError: true,
 });
 
+/** The key the host keeps: null when it keeps none, its read fails, or the read takes longer than `KEY_WAIT_MS`. */
+export async function keptKey(keys: KeyKeeper | undefined): Promise<string | null> {
+  if (keys === undefined) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => keys.get()),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), KEY_WAIT_MS);
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
- * omp app's address from what the person typed, or why it is not one: an `https` address (the computer's tailnet
- * address), or a loopback `http` address with its port (the app on this computer). Only the origin is kept.
+ * omp app's address from what the person typed, or why it is not one: an `https` address (where the app is served for
+ * other computers), or a loopback `http` address with its port (the app on this computer). Only the origin is kept.
  */
 export function appAddressOf(
   typed: string,
@@ -144,7 +178,7 @@ export function appAddressOf(
   if (url.protocol !== "https:" && !loopback)
     return {
       problem:
-        "omp app's address starts with https:// (its tailnet address), or is http://127.0.0.1 with its port on this computer.",
+        "omp app's address starts with https://, or is http://127.0.0.1 with its port when the app runs on this computer.",
     };
   return { address: url.origin };
 }
@@ -169,6 +203,7 @@ export function openPanel(options: PanelOptions): Panel {
   /** The panel's page now loaded has had its hello: messages may go to it. */
   let greeted = false;
   const running = new Map<string, AbortController>();
+  const silent = setTimeout(() => options.onNoAnswer?.(), NO_ANSWER_MS);
 
   const frame = document.createElement("iframe");
   frame.title = options.title ?? "omp app";
@@ -214,7 +249,7 @@ export function openPanel(options: PanelOptions): Panel {
   };
 
   const hello = async (): Promise<void> => {
-    const credential = (await options.keys?.get()) ?? null;
+    const credential = await keptKey(options.keys);
     post({
       type: "hello",
       host: options.host,
@@ -234,6 +269,7 @@ export function openPanel(options: PanelOptions): Panel {
     switch (message.type) {
       case "listening":
         // The panel's page loaded (the first time, or again, after pairing): what ran for the page before is over.
+        clearTimeout(silent);
         greeted = false;
         stopAll();
         void hello();
@@ -249,7 +285,10 @@ export function openPanel(options: PanelOptions): Panel {
         running.delete(message.callId);
         return;
       case "credential":
-        void options.keys?.set(message.key);
+        // A key the host could not keep is the host's to tell: the panel asks to pair again at its next load.
+        void Promise.resolve()
+          .then(() => options.keys?.set(message.key))
+          .catch(() => undefined);
         return;
     }
   };
@@ -273,6 +312,7 @@ export function openPanel(options: PanelOptions): Panel {
       if (greeted) post({ type: "tools", tools: described(next) });
     },
     close() {
+      clearTimeout(silent);
       window.removeEventListener("message", listen);
       stopAll();
       frame.remove();

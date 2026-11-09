@@ -13,7 +13,7 @@
   },
   "type": "commonjs",
   "engines": {
-    "vscode": "^1.95.0"
+    "vscode": "^1.106.0"
   },
   "categories": [
     "AI",
@@ -25,7 +25,7 @@
   ],
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "ompApp",
           "title": "omp app",
@@ -96,7 +96,7 @@
         "ompApp.address": {
           "type": "string",
           "default": "",
-          "markdownDescription": "omp app's address, as you open it in a browser: its tailnet address (`https://<computer>.<tailnet>.ts.net`). In omp app, also turn on **Settings → App → Integrations → VS Code**."
+          "markdownDescription": "omp app's address, as you open it in a browser: an HTTPS address such as `https://omp.example.com`, or `http://127.0.0.1` with its port when the app runs on this computer. In omp app, also turn on **Settings → App → Integrations → VS Code**."
         },
         "ompApp.reviewEdits": {
           "type": "boolean",

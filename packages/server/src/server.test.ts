@@ -399,48 +399,45 @@ describe("A0.6 upgrade and static serving", () => {
     ).toEqual({ deviceId: null });
   });
 
-  test("with a remote origin, accepts that Tailscale host and origin besides loopback, and nothing else", () => {
-    const remote = { origin: "https://devbox.tail1234.ts.net", host: "devbox.tail1234.ts.net" };
-    const policy = { token: "right", port: 4317, remote };
-    const request = (origin: string, host: string) =>
-      new Request(`http://127.0.0.1:4317/ws?token=right`, { headers: { origin, host } });
+  test("with a remote origin, lets that address's Host and Origin in besides loopback, and nothing else", () => {
+    const remote = { origin: "https://omp.example.com", host: "omp.example.com" };
+    const policy = {
+      token: "right",
+      port: 4317,
+      remote,
+      deviceForKey: (key: string) => (key === "paired-key" ? "device-1" : undefined),
+    };
+    const request = (origin: string, host: string, query = "device=paired-key") =>
+      new Request(`http://127.0.0.1:4317/ws?${query}`, { headers: { origin, host } });
 
-    // Through `tailscale serve`: the browser's Host and Origin reach the server unchanged.
+    // Through a proxy that passes the browser's Host and Origin on (Tailscale Serve, Caddy): a paired device is in.
     expect(
-      authorizeWebSocketUpgrade(
-        request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
-        policy,
-      ),
-    ).toEqual({ deviceId: null });
+      authorizeWebSocketUpgrade(request("https://omp.example.com", "omp.example.com"), policy),
+    ).toEqual({ deviceId: "device-1" });
+    // Through one that sends its own loopback Host (nginx's default): the Origin still names the address.
+    expect(
+      authorizeWebSocketUpgrade(request("https://omp.example.com", "127.0.0.1:4317"), policy),
+    ).toEqual({ deviceId: "device-1" });
     // The loopback page still works.
     expect(
       authorizeWebSocketUpgrade(request("http://127.0.0.1:4317", "127.0.0.1:4317"), policy),
-    ).toEqual({ deviceId: null });
-    // Another tailnet name, plain HTTP for the same name, or a page on another site are turned away.
+    ).toEqual({ deviceId: "device-1" });
+    // Another name, plain HTTP for the same name, or a page on another site are turned away.
     expect(
-      authorizeWebSocketUpgrade(
-        request("https://devbox.tail1234.ts.net", "other.tail1234.ts.net"),
-        policy,
-      ),
+      authorizeWebSocketUpgrade(request("https://omp.example.com", "other.example.com"), policy),
     ).toMatchObject({ status: 403 });
     expect(
-      authorizeWebSocketUpgrade(
-        request("http://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
-        policy,
-      ),
+      authorizeWebSocketUpgrade(request("http://omp.example.com", "omp.example.com"), policy),
     ).toEqual({ closeCode: 4403, reason: "origin not allowed" });
     expect(
-      authorizeWebSocketUpgrade(request("https://evil.example", "devbox.tail1234.ts.net"), policy),
+      authorizeWebSocketUpgrade(request("https://evil.example", "omp.example.com"), policy),
     ).toEqual({ closeCode: 4403, reason: "origin not allowed" });
-    // Without a remote origin, the Tailscale host is a bad Host.
+    // Without a remote origin, that host is a bad Host.
     expect(
-      authorizeWebSocketUpgrade(
-        request("https://devbox.tail1234.ts.net", "devbox.tail1234.ts.net"),
-        {
-          token: "right",
-          port: 4317,
-        },
-      ),
+      authorizeWebSocketUpgrade(request("https://omp.example.com", "omp.example.com"), {
+        token: "right",
+        port: 4317,
+      }),
     ).toMatchObject({ status: 403 });
   });
 
@@ -712,16 +709,16 @@ describe("A0.6 upgrade and static serving", () => {
     }
   });
 
-  test("with a remote origin, a WebSocket that arrives as `tailscale serve` passes it on gets the welcome", async () => {
-    const remote = { origin: "https://devbox.tail1234.ts.net", host: "devbox.tail1234.ts.net" };
+  test("with a remote origin, a WebSocket at that address reaches the checks, and the launch token does not count there", async () => {
+    const remote = { origin: "https://omp.example.com", host: "omp.example.com" };
     const app = createAppServer({
       port: 0,
       token: "right",
       remote,
     });
     /**
-     * Opens a socket with the Host and Origin a browser sends through `tailscale serve`, and says how it ended: the
-     * welcome, refused before the upgrade (the socket never opened), or closed after it with a code.
+     * Opens a socket with the Host and Origin a browser sends through a proxy that passes them on, and says how it
+     * ended: the welcome, refused before the upgrade (the socket never opened), or closed after it with a code.
      */
     const attempt = (host: string, origin: string) =>
       new Promise<"welcome" | "refused" | `closed ${number}`>((resolve) => {
@@ -745,10 +742,14 @@ describe("A0.6 upgrade and static serving", () => {
         socket.onerror = () => undefined;
       });
     try {
-      expect(await attempt(remote.host, remote.origin)).toBe("welcome");
-      // Another tailnet name is refused before the upgrade, so the custom Host really reached the server.
-      expect(await attempt("other.tail1234.ts.net", remote.origin)).toBe("refused");
+      // The address's Host and Origin pass; the launch token counts on this computer only, so the socket is told to pair.
+      expect(await attempt(remote.host, remote.origin)).toBe("closed 4401");
+      // Another name is refused before the upgrade, so the custom Host really reached the server.
+      expect(await attempt("other.example.com", remote.origin)).toBe("refused");
       expect(await attempt(remote.host, "https://evil.example")).toBe("closed 4403");
+      // On this computer, the token still opens it.
+      const here = `127.0.0.1:${app.port}`;
+      expect(await attempt(here, `http://${here}`)).toBe("welcome");
     } finally {
       await app.stop();
     }

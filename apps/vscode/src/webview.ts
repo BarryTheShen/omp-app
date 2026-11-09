@@ -60,6 +60,7 @@ const panel = openPanel({
   onReady: ({ chat }) => {
     void ask({ what: "chat", chat });
   },
+  onNoAnswer: () => vscode.postMessage({ type: "no-answer" }),
 });
 
 window.addEventListener("message", (event: MessageEvent) => {

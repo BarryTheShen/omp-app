@@ -11,7 +11,7 @@ None, until you name them. The app runs commands on its computer, so it lets onl
 Name them in **Settings → App → Integrations**:
 
 - **Kinds of panel.** One switch each for every Firefox and Zen extension (`moz-extension:`), every Chrome and Edge extension (`chrome-extension:`), and VS Code's panels (`vscode-webview:` with `vscode-file:`).
-- **Another page's address.** A Tailscale address over HTTPS (`https://<computer>.<tailnet>.ts.net`, a port allowed), a loopback address with its port (`http://127.0.0.1:<port>`, `http://localhost:<port>`), or one extension's own address (`moz-extension://<uuid>`, `chrome-extension://<id>`). Anything else is refused, and the message says what the app takes.
+- **Another page's address.** An HTTPS address (`https://notes.example.com`, a port allowed), a loopback address with its port (`http://127.0.0.1:<port>`, `http://localhost:<port>`), or one extension's own address (`moz-extension://<uuid>`, `chrome-extension://<id>`). Anything else is refused, and the message says what the app takes.
 
 A change counts from the panel's next load: no restart. The list is kept in `embedders.json` in the app's data folder ([Configuration](configuration.md#the-app-data-folder)). `OMP_APP_FRAME_ANCESTORS` names more pages when the app starts; Settings lists them as set when the app started, and does not change them.
 
@@ -21,7 +21,7 @@ No other page of the app can be framed, whatever the list says.
 
 A panel is a device, and pairs once, as any device does ([Other devices](devices.md#how-do-i-pair-a-device)): it asks and you allow it, or you type a one-time code into it.
 
-After that, a panel on a tailnet page keeps its key in the app's cookie, as a browser tab does. A panel inside another app (an extension's, an editor's) cannot: a browser keeps no cookie of the app in another site's frame, so the panel would pair at every start. For these, the host keeps the key:
+After that, a panel on a page of the app's own site (the same host name, on another port) keeps its key in the app's cookie, as a browser tab does. A panel inside another app (an extension's, an editor's) cannot: a browser keeps no cookie of the app in another site's frame, so the panel would pair at every start. For these, the host keeps the key:
 
 1. The host frames `/lite?embed=1`. The library does this when you give it a place for the key (`keys`, below).
 2. When the panel pairs, the app hands the key to the panel's page, which passes it to the host (`credential`).
@@ -72,13 +72,13 @@ openPanel(options: PanelOptions): Panel
 
 | Option | What it is |
 |---|---|
-| `app` | The app's address: its tailnet address over HTTPS, or a loopback one. |
+| `app` | The app's address: an HTTPS one, or a loopback one on the host's computer. |
 | `into` | The element the frame goes into; the frame fills it. |
 | `host` | The host's name, shown beside what goes with each message. |
 | `settings`, `context` | As in the protocol. |
 | `tools` | The host's tools, each with `run(args, signal)`: it returns the answer's text or a `result`; an error thrown goes back as the call's error; `signal` aborts when omp gives the call up, or when the panel loads again or closes. |
 | `files` | `{ project, id }`: the project's files are on the host's computer (see `files` above). |
-| `keys` | `{ get(), set(key) }`: where the host keeps the panel's key. Give it for a panel inside another app; leave it out for a tailnet page, which keeps the app's cookie. |
+| `keys` | `{ get(), set(key) }`: where the host keeps the panel's key. Give it for a panel inside another app; leave it out for a page on the app's own site, which keeps the app's cookie. |
 | `params` | The address's parameters for the first paint (`theme`, `greeting`, `placeholder`, the look's colours). |
 | `chat` | The chat to open, as `onReady` named it before: a host that keeps one chat per tab or document gives it back, and the panel opens it again (the lite view's `?chat=<id>`). Left out, the panel starts a new chat. |
 | `onReady` | Called with `{ chat, tools }` when the panel shows a chat. |
@@ -125,4 +125,4 @@ The first time, the panel asks to pair; allow it, or make a one-time code in **S
 ## Hosts in this repository
 
 - **Firefox and Zen** ([apps/zen](../apps/zen/README.md)): the chat in the sidebar, for the tab it was opened on. Its tools read the page, take a picture of it, click, type, scroll, go to an address, open tabs of its own and wait for text, on that tab and the tabs it opened only. Turn on **Firefox and Zen extensions** in Settings → App → Integrations.
-- **VS Code** ([apps/vscode](../apps/vscode/README.md)): the chat in VS Code's side bar for the folder open there, on the computer VS Code runs on. Its tools read, list, search and change the folder's files, run commands in it, and show VS Code's errors; each change shows as a diff to accept or reject, and each command asks first. Turn on **VS Code** in Settings → App → Integrations.
+- **VS Code** ([apps/vscode](../apps/vscode/README.md)): the chat in VS Code's secondary side bar, on the right beside its other chat panels, for the folder open there, on the computer VS Code runs on (VS Code 1.106 or newer). Its tools read, list, search and change the folder's files, run commands in it, and show VS Code's errors; each change shows as a diff to accept or reject, and each command asks first. Turn on **VS Code** in Settings → App → Integrations.

@@ -1,6 +1,6 @@
 /**
  * The cookie that carries a paired device's key. The server sets it, HttpOnly so the page's scripts never read it, and
- * SameSite=Strict so it goes only with the app's own requests; Secure over HTTPS (the Tailscale address). A browser
+ * SameSite=Strict so it goes only with the app's own requests; Secure over HTTPS (the address other devices open). A browser
  * keeps a cookie 400 days at most, so the page's own load sets it again (`renewedDeviceCookie`): a device stays paired
  * while it is used, until it is removed.
  */

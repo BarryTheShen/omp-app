@@ -31,7 +31,7 @@ export interface AppServerOptions {
   readonly port?: number;
   readonly token?: string;
   readonly origins?: readonly string[];
-  /** The Tailscale address the app may also be opened from (`OMP_APP_REMOTE_ORIGIN`, see `remote-origin.ts`). */
+  /** The HTTPS address the app may also be opened at (`OMP_APP_REMOTE_ORIGIN`, see `remote-origin.ts`). */
   readonly remote?: RemoteOrigin;
   readonly instanceId?: string;
   readonly serverVersion?: string;
@@ -82,7 +82,7 @@ export interface UpgradePolicy {
   readonly origins?: readonly string[];
   readonly port: number;
   readonly earlierLaunchTokens?: ReadonlySet<string>;
-  /** The Tailscale address allowed besides the loopback ones. */
+  /** The HTTPS address the app is also served at, besides the loopback ones. */
   readonly remote?: RemoteOrigin;
   /** The paired device a key belongs to; absent when the server pairs no devices. */
   readonly deviceForKey?: (key: string) => string | undefined;
@@ -125,19 +125,25 @@ function forbiddenUpgrade(): Response {
 }
 
 /**
- * Whether a request came through a proxy such as `tailscale serve`, which sets `X-Forwarded-For` and
- * `X-Forwarded-Host` on every request it passes on, over anything the client sent (tailscale `ipn/ipnlocal/serve.go`
- * `addProxyForwardedHeaders`). Such a request is from another computer whatever its Host and Origin say.
+ * Whether a request came from another computer through what serves the app's remote address (a reverse proxy, a
+ * tunnel, Tailscale Serve): it asks for that address (its Host), or the proxy marked it, as most do with `X-Forwarded-For`
+ * or `X-Forwarded-Host` over anything the client sent (Tailscale Serve and Caddy always; nginx when set up to). Such a
+ * request is from another computer whatever its Origin says.
  */
-function throughProxy(request: Request): boolean {
-  return request.headers.has("x-forwarded-for") || request.headers.has("x-forwarded-host");
+function throughProxy(request: Request, policy: UpgradePolicy): boolean {
+  const host = request.headers.get("host")?.toLowerCase();
+  return (
+    (policy.remote !== undefined && host === policy.remote.host) ||
+    request.headers.has("x-forwarded-for") ||
+    request.headers.has("x-forwarded-host")
+  );
 }
 
 /**
  * Returns an HTTP rejection for a bad Host, a close decision after upgrade for auth failures, or who was let in: a
  * paired device's key (its cookie, or `?device=` from a panel whose host keeps the key: another app's frame keeps no
  * cookie of the app), else the launch link's token. The key comes first, so a page that holds both is its device. The
- * token is taken from the server's own computer only: a page at the Tailscale address pairs instead, so one with the
+ * token is taken from the server's own computer only: a page at the remote address pairs instead, so one with the
  * token and no key is told it is not paired, and so is any request that came through a proxy, whatever Host and Origin
  * it names.
  */
@@ -159,7 +165,7 @@ export function authorizeWebSocketUpgrade(
   if (policy.deviceForKey !== undefined && (candidate === "" || remotePage)) {
     return { closeCode: 4401, reason: "not paired" };
   }
-  if (throughProxy(request)) return { closeCode: 4401, reason: "not paired" };
+  if (throughProxy(request, policy)) return { closeCode: 4401, reason: "not paired" };
   if (candidate !== "" && constantTimeEqual(policy.token, candidate)) return { deviceId: null };
   const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;
   return { closeCode: 4401, reason: expired ? "expired token" : "invalid token" };
@@ -172,10 +178,11 @@ function fromAppPage(request: Request, policy: UpgradePolicy): boolean {
 
 /** Whether a request came to the loopback address from no web page and no proxy: a program on the server's own computer. */
 function fromThisComputer(request: Request, port: number): boolean {
+  const local = { token: "", port };
   return (
-    hostAllowed(request, { token: "", port }) &&
+    hostAllowed(request, local) &&
     request.headers.get("origin") === null &&
-    !throughProxy(request)
+    !throughProxy(request, local)
   );
 }
 
@@ -309,10 +316,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       ? {}
       : { deviceForKey: (key: string) => devices.store.deviceForKey(key)?.id }),
   });
-  /** Whether a request came over HTTPS: through `tailscale serve`, which passes the browser's Host on. */
+  /** Whether a request came over HTTPS: at the remote address, or marked so by what serves it there. */
   const overHttps = (request: Request): boolean =>
-    options.remote !== undefined &&
-    request.headers.get("host")?.toLowerCase() === options.remote.host;
+    (options.remote !== undefined &&
+      request.headers.get("host")?.toLowerCase() === options.remote.host) ||
+    request.headers.get("x-forwarded-proto")?.toLowerCase() === "https";
   /** The page a paired device loads sets its key's cookie again, so it lasts while the device is used. */
   const renewed = (request: Request, page: Response): Response => {
     if (devices === undefined || page.status !== 200) return page;

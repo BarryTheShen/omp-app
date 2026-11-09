@@ -132,7 +132,7 @@ function WindowServers({
             id="server-link"
             value={link}
             onChange={(event) => setLink(event.target.value)}
-            placeholder="https://<computer>.<tailnet>.ts.net"
+            placeholder="https://omp.example.com"
             spellCheck={false}
             autoComplete="off"
             className="font-mono text-xs"

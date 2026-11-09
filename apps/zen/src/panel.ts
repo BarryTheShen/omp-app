@@ -41,7 +41,7 @@ function element<K extends keyof HTMLElementTagNameMap>(
 function askForAddress(): void {
   const field = element("input", {
     type: "url",
-    placeholder: "https://….ts.net",
+    placeholder: "https://omp.example.com",
     required: true,
   });
   field.setAttribute("aria-label", "omp app's address");
@@ -50,7 +50,7 @@ function askForAddress(): void {
     element("h1", { textContent: "omp app" }),
     element("p", {
       textContent:
-        "Where is omp app? Its address on your tailnet, as you open it in a browser. In omp app, also turn on Settings → App → Integrations → Firefox and Zen extensions.",
+        "Where is omp app? Its address, as you open it in a browser. In omp app, also turn on Settings → App → Integrations → Firefox and Zen extensions.",
     }),
     field,
     element("button", { type: "submit", textContent: "Save" }),

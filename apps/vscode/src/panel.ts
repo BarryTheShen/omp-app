@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { EmbedFiles, HostContext } from "@omp-app/contracts";
 import { appAddressOf } from "@omp-app/embed";
 import * as vscode from "vscode";
+import { whyNotShown } from "./check";
 import type { Reviews } from "./review";
 import type { FromExtension, PanelConfig, ToExtension } from "./webview-messages";
 import { WorkspaceTools } from "./workspace";
@@ -44,19 +45,35 @@ const escapeHtml = (text: string): string =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
-/** The page when there is no address yet, or it is not one: what to do, with a button to the setting. */
-function setupPage(nonce: string, problem: string | null): string {
-  const said =
-    problem ??
-    "Give omp app's address to show its chat here: its tailnet address, as you open it in a browser.";
+/** A button of a note: what it says, and what it asks of the extension. */
+interface NoteButton {
+  readonly label: string;
+  readonly ask: "settings" | "retry";
+}
+
+const SET: NoteButton = { label: "Set the address", ask: "settings" };
+const RETRY: NoteButton = { label: "Try again", ask: "retry" };
+const ADDRESS_FIRST =
+  "Give omp app's address to show its chat here: the address you open it at in a browser.";
+const TURN_ON = "In omp app, also turn on <b>Settings → App → Integrations → VS Code</b>.";
+
+/** A page that says something in place of the chat, each paragraph HTML, with its buttons. */
+function notePage(
+  nonce: string,
+  paragraphs: readonly string[],
+  buttons: readonly NoteButton[],
+): string {
+  const text = paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("");
+  const actions = buttons
+    .map((button) => `<button data-ask="${button.ask}">${escapeHtml(button.label)}</button>`)
+    .join(" ");
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px 16px;line-height:1.5}
-button{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0;padding:6px 12px;border-radius:2px;cursor:pointer}
+<style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px 16px;line-height:1.5;overflow-wrap:anywhere}
+button{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0;padding:6px 12px;border-radius:2px;cursor:pointer;margin:0 6px 6px 0}
 button:hover{background:var(--vscode-button-hoverBackground)}</style></head>
-<body><p>${escapeHtml(said)}</p><p>In omp app, also turn on <b>Settings → App → Integrations → VS Code</b>.</p>
-<button id="set">Set the address</button>
-<script nonce="${nonce}">const vscode=acquireVsCodeApi();document.getElementById("set").addEventListener("click",()=>vscode.postMessage({type:"settings"}));</script>
+<body>${text}${actions}
+<script nonce="${nonce}">const vscode=acquireVsCodeApi();for(const button of document.querySelectorAll("button"))button.addEventListener("click",()=>vscode.postMessage({type:button.dataset.ask}));</script>
 </body></html>`;
 }
 
@@ -111,32 +128,45 @@ export class ChatPanel implements vscode.Disposable {
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
     };
     this.#listeners.push(
-      webview.onDidReceiveMessage((message: ToExtension | { type: "settings" }) =>
-        this.#heard(message),
-      ),
+      webview.onDidReceiveMessage((message: ToExtension) => this.#heard(message)),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("ompApp.address")) this.load();
+        if (event.affectsConfiguration("ompApp.address")) void this.load();
         else if (event.affectsConfiguration("ompApp.sendOpenFile")) this.#sendContext();
       }),
-      vscode.workspace.onDidChangeWorkspaceFolders(() => this.load()),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.load()),
       vscode.window.onDidChangeActiveTextEditor(() => this.#sendContext()),
       vscode.window.onDidChangeTextEditorSelection(() => this.#sendContext()),
     );
-    this.load();
+    void this.load();
   }
 
-  /** Shows the page anew: the app's chat, or what to set first. */
-  load(): void {
+  /** Each load's number: a check that ends after a newer load began is dropped. */
+  #loads = 0;
+
+  /**
+   * Shows the page anew: what to set first, why the app would not show here, or the app's chat. The app is asked first,
+   * as a frame it refuses, or one that never loads, leaves the panel blank.
+   */
+  async load(): Promise<void> {
     this.#giveUpAll();
+    const loading = ++this.#loads;
     const nonce = randomBytes(16).toString("base64");
     const typed = setting("address", "").trim();
     const checked = appAddressOf(typed);
+    this.#app = null;
     if ("problem" in checked) {
-      this.#app = null;
-      this.#webview.html = setupPage(nonce, typed === "" ? null : checked.problem);
+      const said = typed === "" ? ADDRESS_FIRST : escapeHtml(checked.problem);
+      this.#webview.html = notePage(nonce, [said, TURN_ON], [SET]);
       return;
     }
     const app = checked.address;
+    this.#webview.html = notePage(nonce, [`Opening omp app at ${escapeHtml(app)}…`], []);
+    const why = await whyNotShown(app);
+    if (loading !== this.#loads) return;
+    if (why !== null) {
+      this.#tell(nonce, why);
+      return;
+    }
     this.#app = app;
     this.#webview.html = panelPage(
       this.#webview,
@@ -151,6 +181,26 @@ export class ChatPanel implements vscode.Disposable {
         context: contextOf(vscode.window.activeTextEditor),
       },
     );
+  }
+
+  /** Shows why the app does not show, with Try again, and writes it in the output channel. */
+  #tell(nonce: string, why: string): void {
+    this.#output.appendLine(`omp app: ${why}`);
+    this.#app = null;
+    this.#giveUpAll();
+    this.#webview.html = notePage(nonce, [escapeHtml(why)], [RETRY, SET]);
+  }
+
+  /** The app's page never said it listens in the panel: why, when the app says, else what to try. */
+  async #noAnswer(): Promise<void> {
+    const app = this.#app;
+    if (app === null) return;
+    const loading = this.#loads;
+    const why =
+      (await whyNotShown(app)) ??
+      `omp app at ${app} answers, but its page didn't open in this panel. Click Try again; if it stays like this, open ${app} in a browser on this computer to see whether it opens there.`;
+    if (loading !== this.#loads) return;
+    this.#tell(randomBytes(16).toString("base64"), why);
   }
 
   #post(message: FromExtension): void {
@@ -169,9 +219,17 @@ export class ChatPanel implements vscode.Disposable {
     }, 250);
   }
 
-  async #heard(message: ToExtension | { type: "settings" }): Promise<void> {
+  async #heard(message: ToExtension): Promise<void> {
     if (message.type === "settings") {
       await vscode.commands.executeCommand("workbench.action.openSettings", "ompApp.address");
+      return;
+    }
+    if (message.type === "retry") {
+      await this.load();
+      return;
+    }
+    if (message.type === "no-answer") {
+      await this.#noAnswer();
       return;
     }
     if (message.type === "give-up") {
@@ -208,9 +266,24 @@ export class ChatPanel implements vscode.Disposable {
   ): Promise<unknown> {
     switch (question.what) {
       case "key":
-        return (await this.#context.secrets.get(keyName(app))) ?? null;
+        try {
+          return (await this.#context.secrets.get(keyName(app))) ?? null;
+        } catch (error) {
+          this.#output.appendLine(
+            `omp app: VS Code could not read the panel's key: ${reasonOf(error)}`,
+          );
+          return null;
+        }
       case "keep-key":
-        await this.#context.secrets.store(keyName(app), question.key);
+        try {
+          await this.#context.secrets.store(keyName(app), question.key);
+        } catch (error) {
+          const reason = reasonOf(error);
+          this.#output.appendLine(`omp app: VS Code could not keep the panel's key: ${reason}`);
+          void vscode.window.showWarningMessage(
+            `VS Code couldn't keep omp app's key (${reason}), so this panel will ask to pair again when it opens next.`,
+          );
+        }
         return null;
       case "chat":
         if (this.#keepChat) await this.#context.workspaceState.update(chatName(app), question.chat);
@@ -238,6 +311,9 @@ export class ChatPanel implements vscode.Disposable {
     for (const listener of this.#listeners) listener.dispose();
   }
 }
+
+const reasonOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 /** Forgets the key kept for the address set now (`ompApp.forgetKey`). */
 export async function forgetKey(context: vscode.ExtensionContext): Promise<string | null> {

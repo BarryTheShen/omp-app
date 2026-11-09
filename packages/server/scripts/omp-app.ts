@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
 import { probeOmp } from "../src/capabilities/omp-version";
+import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { keepLaunchToken, launchTokenFile } from "../src/launch-token";
 import {
   callPairing,
@@ -46,7 +47,6 @@ import {
 } from "../src/logging";
 import { ompCommand } from "../src/omp-host/chat-command";
 import { appDataFolder, handBackHosts, hostsFolder } from "../src/process";
-import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { type CompositionServer, createCompositionServer } from "./dev";
 
@@ -364,7 +364,7 @@ await recordInstance(record, { pid: process.pid, url: address, version });
 console.log(`omp app ${version}\n\n  ${address}\n\nPress Ctrl+C or close this window to quit.`);
 if (server.remoteUrl !== undefined) {
   console.log(
-    `\nFrom another device on your tailnet, open ${server.remoteUrl} and pair it: allow it on a device that is already paired, or enter the one-time code omp-app pair prints here.\n\nThis computer must serve it: tailscale serve --bg localhost:${server.port}`,
+    `\nFrom another device, open ${server.remoteUrl} and pair it: allow it on a device that is already paired, or enter the one-time code omp-app pair prints here.\n\nServe that address over HTTPS and pass it to http://127.0.0.1:${server.port} (with Tailscale: tailscale serve --bg localhost:${server.port}).`,
   );
 }
 if (server.health.status !== "ok") {

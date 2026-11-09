@@ -33,7 +33,7 @@ describe("the saved pages and panels that may frame the lite view", () => {
   test("a source the app does not take refuses the change, and the list stays as it was", async () => {
     const store = await EmbeddersStore.open(await file());
     await store.set(["vscode-webview:", "vscode-file:"]);
-    await expect(store.set(["moz-extension:", "https://example.com"])).rejects.toBeInstanceOf(
+    await expect(store.set(["moz-extension:", "http://example.com"])).rejects.toBeInstanceOf(
       EmbedderRefused,
     );
     expect(store.list()).toEqual(["vscode-webview:", "vscode-file:"]);
@@ -44,7 +44,7 @@ describe("the saved pages and panels that may frame the lite view", () => {
     await (await EmbeddersStore.open(path)).set(["moz-extension:"]);
     await writeFile(
       path,
-      JSON.stringify({ sources: ["chrome-extension:", "*", "https://evil.example"] }),
+      JSON.stringify({ sources: ["chrome-extension:", "*", "http://evil.example"] }),
     );
     expect((await EmbeddersStore.open(path)).list()).toEqual(["chrome-extension:"]);
     expect(JSON.parse(await readFile(path, "utf8")).sources).toHaveLength(3);

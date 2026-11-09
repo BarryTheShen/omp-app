@@ -15,7 +15,7 @@ export interface DevicesPortContext {
   readonly pairing: DevicePairing;
   /** Publishes an event into the replay hub: every paired page hears the list change. */
   readonly publish: (stream: StreamKey, payload: unknown) => unknown;
-  /** What to open on a new device: the Tailscale address, else the loopback one. */
+  /** What to open on a new device: the address other devices open the app at, else the loopback one. */
   readonly address: () => string;
   readonly logger?: Logger;
 }

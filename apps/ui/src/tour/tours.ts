@@ -728,7 +728,41 @@ const VSCODE_TOUR: Tour = {
     {
       target: part("integrations"),
       title: "VS Code",
-      text: "Turn on <b>VS Code</b> here. Then, in VS Code, install <b>omp-app-vscode</b> from this release's files (Extensions → ⋯ → Install from VSIX) and give it this app's address. Its chat in VS Code's side bar works on the folder open there, on that computer: each change shows as a diff to accept or reject, and each command asks first.",
+      text: "Turn on <b>VS Code</b> here. Then, in VS Code, install <b>omp-app-vscode</b> from this release's files (Extensions → ⋯ → Install from VSIX) and give it this app's address. Its chat sits in VS Code's right-hand side bar, beside the other chat panels (Ctrl+Alt+B shows it), and works on the folder open there, on that computer: each change shows as a diff to accept or reject, and each command asks first.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
+/** VS Code's panel on the right, and what it says when it cannot show the app (2026-11-09). */
+const VSCODE_RIGHT_TOUR: Tour = {
+  id: "vscode-right-2026-11-09",
+  title: "VS Code's panel on the right",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "Click <b>App</b>.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("integrations"),
+      title: "VS Code's panel",
+      text: "With this release's <b>omp-app-vscode</b>, VS Code shows omp app in its right-hand side bar, beside its other chat panels (Ctrl+Alt+B shows it). When the panel cannot show the app, it says why instead of staying blank: the address cannot be reached, or the <b>VS Code</b> switch here is off. Turn it on, then click <b>Try again</b> in the panel.",
       action: next,
     },
     {
@@ -2450,6 +2484,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-vscode-right",
+    when: "2026-11-09T16:30:00-06:00",
+    summary:
+      "VS Code's omp app panel sits in VS Code's right-hand side bar, beside its other chat panels, and says what is wrong instead of staying blank: omp app can't be reached, or it doesn't let VS Code show it yet, with Try again. The address other devices open the app at can be any HTTPS address, not only a Tailscale one.",
+    tours: [VSCODE_RIGHT_TOUR],
+  },
   {
     id: "2026-11-09-picked-ports",
     when: "2026-11-09T15:30:00-06:00",

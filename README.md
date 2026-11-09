@@ -15,7 +15,7 @@ A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent: a d
 - **A browser for chats.** Choose the browser they use: omp's hidden one, a Chrome on the app's computer shown live in the panel, or your own browser through omp's relay.
 - **Usage limits.** See your accounts' usage and pace on the dashboard. Rules pause the chats you pick while a condition holds and continue them in turn afterwards, and a chat that a limit stopped continues by itself once the limit resets.
 - **Phone and iPad.** A layout for phones and touch screens, which you can add to the Home Screen of an iPhone or iPad.
-- **Your other devices,** over Tailscale. The server listens on this computer only; each device pairs once with a code or by being allowed from a paired device.
+- **Your other devices,** at an HTTPS address that you serve the app at (Tailscale Serve, a reverse proxy, a tunnel). The server listens on this computer only; each device pairs once with a code or by being allowed from a paired device.
 - **omp in the terminal on the same chats.** `omp-app tui` opens omp's own terminal app on the app's chats, so you can go on in either.
 - **Guided tours and What's new.** Click-through tours of the basics, and a list of every update with the tours it brought.
 

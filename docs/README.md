@@ -7,7 +7,7 @@ omp app is a chat app for omp, the coding agent: a desktop window for Linux and 
 | Page | What it answers |
 |---|---|
 | [Install](install.md) | What you need, how to download and check the two packages, how to install, start, update and remove them, how the user service works, and where the app keeps its files. |
-| [Other devices](devices.md) | How to open the app from a phone, tablet or another computer over your tailnet, pair and remove devices, add it to an iPhone or iPad Home Screen, open another computer's server in the desktop window, and share a port. |
+| [Other devices](devices.md) | How to open the app from a phone, tablet or another computer at an HTTPS address you serve it at, pair and remove devices, add it to an iPhone or iPad Home Screen, open another computer's server in the desktop window, and share a port. |
 | [Using the app](using.md) | Every part of the app, one section each: the chat list and workspaces, a chat, the message box, models and plan mode, the side panel, the dashboard, Settings, the palette and its table of keys, tours, the phone layout, and omp in the terminal. |
 | [Configuration](configuration.md) | The options of the `omp-app` and `omp-app-desktop` commands, the environment variables, the folders and files the app keeps, and the omp settings it reads or changes. |
 | [Troubleshooting](troubleshooting.md) | What each message the app shows or prints means and what to do about it, and how to save the debug log. |

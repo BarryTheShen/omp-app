@@ -7,16 +7,17 @@ describe("parseFrameAncestors", () => {
     expect(parseFrameAncestors("  ")).toEqual([]);
   });
 
-  test("takes Tailscale addresses over HTTPS, with a port, and loopback addresses with theirs, each once", () => {
+  test("takes HTTPS addresses, with a port, and loopback addresses with theirs, each once", () => {
     expect(
       parseFrameAncestors(
-        " https://notes.tail1234.ts.net:8443  https://NOTES.tail1234.ts.net:8443/ http://127.0.0.1:9000 http://localhost:9001 https://box.tail1234.ts.net:443",
+        " https://notes.example.com:8443  https://NOTES.example.com:8443/ http://127.0.0.1:9000 http://localhost:9001 https://box.tail1234.ts.net:443 https://10.1.2.3",
       ),
     ).toEqual([
-      "https://notes.tail1234.ts.net:8443",
+      "https://notes.example.com:8443",
       "http://127.0.0.1:9000",
       "http://localhost:9001",
       "https://box.tail1234.ts.net",
+      "https://10.1.2.3",
     ]);
   });
 
@@ -35,25 +36,27 @@ describe("parseFrameAncestors", () => {
     ]);
   });
 
-  test("refuses any page that is not one of this computer's or the tailnet's, and anything after an address", () => {
+  test("refuses plain HTTP from another computer, wildcard hosts, anything after an address, and anything else", () => {
     for (const value of [
       "*",
       "'self'",
-      "https://notes.example.com",
-      "http://notes.tail1234.ts.net:8443",
-      "https://ts.net",
-      "http://127.0.0.1",
+      "https://*",
+      "https://*.example.com",
+      "https://%2A.example.com",
+      "http://notes.example.com",
+      "http://notes.example.com:8443",
       "http://10.0.0.4:9000",
-      "https://notes.tail1234.ts.net:8443/app",
-      "https://notes.tail1234.ts.net:8443/?x=1",
-      "https://user@notes.tail1234.ts.net",
-      "notes.tail1234.ts.net",
+      "http://127.0.0.1",
+      "https://notes.example.com:8443/app",
+      "https://notes.example.com:8443/?x=1",
+      "https://user@notes.example.com",
+      "notes.example.com",
       "moz-extension://not-a-uuid",
       "chrome-extension://short",
       "moz-extension://0123abcd-0000-4111-8222-0123456789ab/panel.html",
       "https:",
       "file:",
-      "https://notes.tail1234.ts.net:8443 https://evil.example.com",
+      "https://notes.example.com:8443 http://evil.example.com",
     ]) {
       expect(() => parseFrameAncestors(value)).toThrow("OMP_APP_FRAME_ANCESTORS takes");
     }

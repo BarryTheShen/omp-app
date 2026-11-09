@@ -61,7 +61,7 @@ export interface SharesPortContext {
   readonly chats: () => readonly ChatHost[];
   /** The app server's own port: never a service. */
   readonly appPort: () => number | undefined;
-  /** The machine's address on the private network shares open at; by default its Tailscale address. */
+  /** The machine's address that shares open at: by default its Tailscale address, when it has one. */
   readonly address?: () => string | null;
   readonly logger?: Logger;
   /** How often the listening sockets are looked at. */
@@ -153,7 +153,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
     if (at === null)
       throw failure(
         "unavailable",
-        "This machine has no address on a private network (Tailscale) for a share to open at.",
+        "This machine has no address for shares: set OMP_APP_SHARE_ADDRESS to an address of it that your devices reach.",
       );
     return at;
   };
