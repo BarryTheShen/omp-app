@@ -79,14 +79,15 @@ function failureOf(run: () => unknown): AppFailure["appError"] {
 
 /**
  * Has the fake model call a tool (`call_tool`) and waits for the turn to end. Resolves with the tool the app was asked to
- * run (answered with `<name> answered`), or undefined when omp had no such tool to give the app: the session's active
- * tools do not list the app's, so a call is how to tell.
+ * run (answered with `<name> answered`, by `from`: the connection that gave the tool), or undefined when omp had no such
+ * tool to give the app: the session's active tools do not list the app's, so a call is how to tell.
  */
 async function callTool(
   setup: PortSetup,
   threadId: ThreadId,
   name: string,
   args: Record<string, unknown>,
+  from = call(),
 ): Promise<string | undefined> {
   const mark = streamOf(setup, threadId).length;
   prompt(setup, threadId, `call_tool ${name} ${JSON.stringify(args)}`);
@@ -99,11 +100,14 @@ async function callTool(
     (payload) => payload.kind === "host_request" || ended(payload),
   );
   if (next.kind !== "host_request") return undefined;
-  setup.runtime.answer({
-    threadId,
-    id: next.request.id,
-    answer: { content: [{ type: "text", text: `${name} answered` }] },
-  });
+  setup.runtime.answer(
+    {
+      threadId,
+      id: next.request.id,
+      answer: { content: [{ type: "text", text: `${name} answered` }] },
+    },
+    from,
+  );
   await nextOnStream(setup, threadId, mark, ended);
   return next.request.method === "tool.call" ? next.request.params.toolName : undefined;
 }
@@ -137,18 +141,18 @@ describe("the chat host's requests on the chat session port", () => {
 
         expect(
           failureOf(() =>
-            runtime.answer({ threadId, id: asked.request.id, answer: { value: "yes" } }),
+            runtime.answer({ threadId, id: asked.request.id, answer: { value: "yes" } }, call()),
           ),
         ).toMatchObject({ code: "invalid_args" });
         expect(runtime.openRequests({ threadId })).toHaveLength(1);
 
-        runtime.answer({ threadId, id: asked.request.id, answer: { confirmed: true } });
+        runtime.answer({ threadId, id: asked.request.id, answer: { confirmed: true } }, call());
         expect(runtime.openRequests({ threadId })).toEqual([]);
         expect(await notice(setup, threadId, mark)).toBe("confirmed true");
         await sent;
         expect(
           failureOf(() =>
-            runtime.answer({ threadId, id: asked.request.id, answer: { confirmed: true } }),
+            runtime.answer({ threadId, id: asked.request.id, answer: { confirmed: true } }, call()),
           ),
         ).toMatchObject({ code: "not_found" });
       },
@@ -234,7 +238,7 @@ describe("the chat host's requests on the chat session port", () => {
           ),
         ).toEqual({ toolNames: ["clock"] });
         // Both owners' tools reach the host as one set: the model can call either.
-        expect(await callTool(setup, threadId, "clock", {})).toBe("clock");
+        expect(await callTool(setup, threadId, "clock", {}, call("connection-2"))).toBe("clock");
 
         const mark = streamOf(setup, threadId).length;
         prompt(setup, threadId, 'call_tool weather {"city":"Paris"}');
@@ -249,11 +253,14 @@ describe("the chat host's requests on the chat session port", () => {
           method: "tool.call",
           params: { toolName: "weather", arguments: { city: "Paris" } },
         });
-        runtime.answer({
-          threadId,
-          id: asked.request.id,
-          answer: { content: [{ type: "text", text: "sunny in Paris" }] },
-        });
+        runtime.answer(
+          {
+            threadId,
+            id: asked.request.id,
+            answer: { content: [{ type: "text", text: "sunny in Paris" }] },
+          },
+          call(),
+        );
         const reply = await nextOnStream(
           setup,
           threadId,
@@ -274,7 +281,7 @@ describe("the chat host's requests on the chat session port", () => {
         // The closed connection's tool leaves the chat; the other connection's stays.
         await runtime.releaseConnection("connection-1");
         expect(await callTool(setup, threadId, "weather", { city: "Paris" })).toBeUndefined();
-        expect(await callTool(setup, threadId, "clock", {})).toBe("clock");
+        expect(await callTool(setup, threadId, "clock", {}, call("connection-2"))).toBe("clock");
         await expect(
           runtime.request(
             {
@@ -327,7 +334,7 @@ describe("the chat host's requests on the chat session port", () => {
         expect(runtime.openRequests({ threadId })).toEqual([]);
         expect(
           failureOf(() =>
-            runtime.answer({ threadId, id: asked.request.id, answer: { confirmed: true } }),
+            runtime.answer({ threadId, id: asked.request.id, answer: { confirmed: true } }, call()),
           ),
         ).toMatchObject({ code: "not_found" });
         expect(await callTool(setup, threadId, "weather", { city: "Paris" })).toBe("weather");

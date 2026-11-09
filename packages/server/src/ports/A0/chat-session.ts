@@ -63,6 +63,9 @@ import {
   type HostRequest,
   type HostToolDefinition,
   type HostUriSchemeDefinition,
+  isHostDialogRequest,
+  isHostToolCall,
+  isHostUriCall,
   type PromptResultEvent,
   parseChatHostParams,
   type ShellRunResult,
@@ -211,6 +214,37 @@ function merged<T>(registrations: Registrations<T>, key: (item: T) => string): T
     }
   }
   return [...all.values()];
+}
+
+/** The connection whose item named `name` the host has: the last one, as in `merged`; none when no one registered it. */
+function registeredBy<T>(
+  registrations: Registrations<T>,
+  key: (item: T) => string,
+  name: string,
+): string | undefined {
+  let found: string | undefined;
+  for (const [connectionId, owners] of registrations) {
+    for (const items of owners.values()) {
+      if (items.some((item) => key(item) === name)) found = connectionId;
+    }
+  }
+  return found;
+}
+
+/**
+ * The connection that alone may answer a host request: the one that gave the tool or the URI scheme it calls (a host
+ * page's tools act in that page, for that chat only). `null` for a dialog, which any page that shows the chat answers;
+ * `undefined` when the tool or scheme is no one's any more.
+ */
+function answererOf(entry: ChatEntry, request: HostRequest): string | null | undefined {
+  if (isHostToolCall(request)) {
+    return registeredBy(entry.hostTools, toolName, request.params.toolName);
+  }
+  if (isHostUriCall(request)) {
+    const scheme = request.params.url.split(":", 1)[0]?.toLowerCase() ?? "";
+    return registeredBy(entry.hostUriSchemes, schemeName, scheme);
+  }
+  return null;
 }
 
 const toolName = (tool: HostToolDefinition): string => tool.name;
@@ -435,7 +469,7 @@ export class ChatSessionPortRuntime {
     restart: (args) => this.restart(args as { threadId: ThreadId }),
     close: (args, call) => this.close(args as { threadId: ThreadId }, call),
     rename: (args, call) => this.rename(args as SessionRenameArgs, call),
-    answer: (args) => this.answer(args as AnswerHostRequestArgs),
+    answer: (args, call) => this.answer(args as AnswerHostRequestArgs, call),
     openRequests: (args) => this.openRequests(args as { threadId: ThreadId }),
     uiState: (args) => this.uiState(args as { threadId: ThreadId }),
     setSubagentSubscription: (args, call) =>
@@ -618,8 +652,12 @@ export class ChatSessionPortRuntime {
 
   /** Whether a chat waits for an answer from you (an approval or a question), and each change: the running list (D1). */
   readonly waiting = {
+    // A call of a page's tool waits for that page, not for you.
     waitingFor: (threadId: ThreadId): boolean =>
-      (this.#entries.get(this.#aliases.get(threadId) ?? threadId)?.openRequests.size ?? 0) > 0,
+      [
+        ...(this.#entries.get(this.#aliases.get(threadId) ?? threadId)?.openRequests.values() ??
+          []),
+      ].some(({ request }) => isHostDialogRequest(request)),
     onWaitingChange: (listener: () => void): (() => void) => {
       this.#waitingListeners.add(listener);
       return () => {
@@ -1202,14 +1240,25 @@ export class ChatSessionPortRuntime {
     return current;
   }
 
-  /** The browser's answer to a host request, checked against the request's method before the host gets it. */
-  answer(args: AnswerHostRequestArgs): null {
+  /**
+   * The browser's answer to a host request, checked against the request's method before the host gets it. A call of a
+   * page's tool or URI scheme is answered only by the connection that gave it.
+   */
+  answer(args: AnswerHostRequestArgs, call: PortHandlerContext): null {
     const entry = this.#entry(args.threadId);
     const open = entry.openRequests.get(args.id);
     if (open === undefined) {
       throw notFound(
         "Nothing waits for that answer: the request was answered, given up, or its chat restarted.",
       );
+    }
+    const answerer = answererOf(entry, open.request);
+    if (answerer !== null && answerer !== call.connectionId) {
+      throw new AppFailure({
+        code: "permission",
+        message: "Only the page that gave this tool to the chat can answer its calls.",
+        retryable: false,
+      });
     }
     const answer = HOST_METHOD_ANSWERS[open.request.method].safeParse(args.answer);
     if (!answer.success) {
@@ -1932,18 +1981,29 @@ export class ChatSessionPortRuntime {
     });
   }
 
-  /** A connection's tools and URI schemes leave the chat with its last view; a write that fails is logged. */
+  /**
+   * A connection's tools and URI schemes leave the chat with its last view, and the calls of them still waiting fail at
+   * once, since nothing else can answer them; a write that fails is logged.
+   */
   #releaseRegistrations(entry: ChatEntry, connectionId: string): Promise<void> {
     return this.#serializeRegistrations(entry, async () => {
       const hadTools = entry.hostTools.has(connectionId);
       const hadSchemes = entry.hostUriSchemes.has(connectionId);
       if (!hadTools && !hadSchemes) return;
+      const orphaned = [...entry.openRequests.entries()].filter(
+        ([, open]) => answererOf(entry, open.request) === connectionId,
+      );
       const tools = new Map(entry.hostTools);
       tools.delete(connectionId);
       const schemes = new Map(entry.hostUriSchemes);
       schemes.delete(connectionId);
       entry.hostTools = tools;
       entry.hostUriSchemes = schemes;
+      for (const [id, open] of orphaned) {
+        entry.openRequests.delete(id);
+        open.reject(new Error("The page that gave this tool to the chat has closed."));
+      }
+      if (orphaned.length > 0) this.#waitingChanged();
       const writes: Promise<unknown>[] = [];
       if (hadTools)
         writes.push(this.#send(entry, "set_host_tools", { tools: merged(tools, toolName) }));

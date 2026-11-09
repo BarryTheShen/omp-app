@@ -2019,10 +2019,14 @@ describe("the chat session runtime: the host's requests and UI state", () => {
 
   test("the browser's answers reach the host, and the host's crash is published as a process event", async () => {
     const { handlers, process, frames } = await openChat();
+    await getHandler(handlers, "request")(
+      registration("set_host_tools", "owner-one", { tools: [toolOne] }),
+      call("one"),
+    );
     process.emitRequest("ui-1", "ui.confirm", confirm);
     process.emitRequest("host-1", "tool.call", {
       toolCallId: "tool-1",
-      toolName: "echo",
+      toolName: "tab_one",
       arguments: {},
     });
     await ticks();
@@ -2041,6 +2045,107 @@ describe("the chat session runtime: the host's requests and UI state", () => {
         .map((frame) => processStatus(frame.payload))
         .filter(Boolean),
     ).toContain("exited");
+  });
+
+  /** The code of the failure an answer is refused with, or `answered`. */
+  function refusal(answer: () => unknown): string {
+    try {
+      answer();
+      return "answered";
+    } catch (error) {
+      return (error as AppFailure).appError?.code ?? String(error);
+    }
+  }
+
+  test("a call of a page's tool or URI scheme is answered only by the page that gave it, and keeps no one waiting for you", async () => {
+    const created: FakeChatHost[] = [];
+    const { processRegistry, runtime, open, handlers } = runtimeWithIdleClose(created, 1_000);
+    const send = getHandler(handlers, "request");
+    const answer = getHandler(handlers, "answer");
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    await open({ threadId: authorityThread }, call("two"));
+    await send(registration("set_host_tools", "owner-one", { tools: [toolOne] }), call("one"));
+    await send(
+      registration("set_host_uri_schemes", "owner-one", {
+        schemes: [{ scheme: "tabone", writable: false }],
+      }),
+      call("one"),
+    );
+    const process = created[0];
+    process?.emitRequest("tool-1", "tool.call", {
+      toolCallId: "call-1",
+      toolName: "tab_one",
+      arguments: {},
+    });
+    process?.emitRequest("uri-1", "uri.read", { url: "tabone://page" });
+    await ticks();
+    // The page's tool works for the page, so the chat does not wait for you.
+    expect(runtime.waiting.waitingFor(authorityThread)).toBe(false);
+
+    const toolAnswer = { threadId: authorityThread, id: "tool-1", answer: { content: [] } };
+    expect(refusal(() => answer(toolAnswer, call("two")))).toBe("permission");
+    expect(
+      refusal(() =>
+        answer({ threadId: authorityThread, id: "uri-1", answer: { content: "" } }, call("two")),
+      ),
+    ).toBe("permission");
+    expect(refusal(() => answer(toolAnswer, call("one")))).toBe("answered");
+    await ticks();
+    expect(process?.responses).toEqual([
+      { kind: "response", id: "tool-1", ok: true, result: { content: [] } },
+    ]);
+
+    // A dialog is yours to answer, from any page that shows the chat.
+    process?.emitRequest("ui-1", "ui.confirm", confirm);
+    await ticks();
+    expect(runtime.waiting.waitingFor(authorityThread)).toBe(true);
+    await processRegistry.closeAll();
+  });
+
+  test("a page that closes fails the waiting calls of its tools at once, and the other page's call still waits", async () => {
+    const created: FakeChatHost[] = [];
+    const {
+      processRegistry,
+      registration: chatPort,
+      open,
+      handlers,
+    } = runtimeWithIdleClose(created, 1_000);
+    const send = getHandler(handlers, "request");
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    await open({ threadId: authorityThread }, call("two"));
+    await send(registration("set_host_tools", "owner-one", { tools: [toolOne] }), call("one"));
+    await send(registration("set_host_tools", "owner-two", { tools: [toolTwo] }), call("two"));
+    const process = created[0];
+    process?.emitRequest("tool-1", "tool.call", {
+      toolCallId: "call-1",
+      toolName: "tab_one",
+      arguments: {},
+    });
+    process?.emitRequest("tool-2", "tool.call", {
+      toolCallId: "call-2",
+      toolName: "tab_two",
+      arguments: {},
+    });
+    await ticks();
+
+    await chatPort.onConnectionClosed?.("one");
+    await ticks();
+    expect(process?.responses).toEqual([
+      {
+        kind: "response",
+        id: "tool-1",
+        ok: false,
+        error: { code: "failed", message: "The page that gave this tool to the chat has closed." },
+      },
+    ]);
+    const stillOpen = getHandler(handlers, "openRequests")(
+      { threadId: authorityThread },
+      call("two"),
+    );
+    expect(
+      (stillOpen as Array<{ request: { id: string } }>).map((item) => item.request.id),
+    ).toEqual(["tool-2"]);
+    await processRegistry.closeAll();
   });
 
   test("keeps the requests the host waits on until each is answered or given up, each with the sequence that asked it", async () => {
