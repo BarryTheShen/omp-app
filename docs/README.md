@@ -33,6 +33,7 @@ Each workspace has a short page of its own:
 | [packages/contracts](../packages/contracts/README.md) | The shared types and schemas. |
 | [apps/ui](../apps/ui/README.md) | The web app. |
 | [apps/desktop](../apps/desktop/README.md) | The desktop window. |
+| [apps/zen](../apps/zen/README.md) | The Firefox and Zen extension: the chat in the sidebar, for one tab. |
 | [apps/web](../apps/web/README.md) | The end-to-end tests. |
 
 ## Also in the repository

@@ -177,6 +177,18 @@ jobs:
           (cd dist/release && sha256sum "omp-app-desktop_${VERSION}_amd64.deb" >>SHA256SUMS)
           cat dist/release/SHA256SUMS
 
+      - name: Build the Firefox and Zen extension
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.changes.outputs.version }}
+        run: |
+          set -euo pipefail
+          bun run --cwd apps/zen build
+          # Not signed by Mozilla yet: Firefox and Zen load it for one session (about:debugging → Load Temporary Add-on).
+          (cd apps/zen/dist && zip -qr "$GITHUB_WORKSPACE/dist/release/omp-app-zen_${VERSION}_unsigned.zip" .)
+          (cd dist/release && sha256sum "omp-app-zen_${VERSION}_unsigned.zip" >>SHA256SUMS)
+          unzip -l "dist/release/omp-app-zen_${VERSION}_unsigned.zip"
+
       - name: Write the release notes
         if: steps.changes.outputs.changed == 'true'
         env:
@@ -195,5 +207,6 @@ jobs:
           gh release create "v$VERSION" \
             "dist/release/omp-app_${VERSION}_amd64.deb" \
             "dist/release/omp-app-desktop_${VERSION}_amd64.deb" \
+            "dist/release/omp-app-zen_${VERSION}_unsigned.zip" \
             dist/release/SHA256SUMS \
             --target "$(git rev-parse HEAD)" --title "omp app $VERSION" --notes-file dist/release/notes.md

@@ -1,0 +1,17 @@
+{
+  "name": "@omp-app/zen",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@omp-app/embed": "workspace:*",
+    "@omp-app/contracts": "workspace:*",
+    "@types/bun": "^1.4.2",
+    "vitest": "^5.0.3"
+  }
+}

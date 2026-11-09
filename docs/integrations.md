@@ -110,3 +110,7 @@ A page of plain HTML that shows the panel, keeps its key in the page's own stora
 ```
 
 The first time, the panel asks to pair; allow it, or make a one-time code in **Settings → App → Devices** and type it in the panel. Each load after that, the panel opens signed in. The end-to-end test `apps/web/e2e/v2-embed-hosts.spec.ts` runs this page against the real app.
+
+## Hosts in this repository
+
+- **Firefox and Zen** ([apps/zen](../apps/zen/README.md)): the chat in the sidebar, for the tab it was opened on. Its tools read the page, take a picture of it, click, type, scroll, go to an address, open tabs of its own and wait for text, on that tab and the tabs it opened only. Turn on **Firefox and Zen extensions** in Settings → App → Integrations.

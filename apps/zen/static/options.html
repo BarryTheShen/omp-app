@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>omp app</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="setup">
+      <form id="address">
+        <h1>omp app</h1>
+        <p>
+          omp app's address on your tailnet, as you open it in a browser. In omp app, also turn on
+          Settings → App → Integrations → Firefox and Zen extensions.
+        </p>
+        <input id="app" type="url" placeholder="https://….ts.net" aria-label="omp app's address" required />
+        <button type="submit">Save</button>
+      </form>
+      <p>
+        This browser paired with omp app once; its key is kept by the extension. Forgetting it makes the
+        next panel pair again.
+      </p>
+      <button id="forget" type="button" class="quiet">Forget this browser's key</button>
+      <p id="status" role="status"></p>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -81,6 +81,16 @@
         "@types/node": "^26.6.4",
       },
     },
+    "apps/zen": {
+      "name": "@omp-app/zen",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@omp-app/contracts": "workspace:*",
+        "@omp-app/embed": "workspace:*",
+        "@types/bun": "^1.4.2",
+        "vitest": "^5.0.3",
+      },
+    },
     "packages/client": {
       "name": "@omp-app/client",
       "version": "0.0.0",
@@ -457,6 +467,8 @@
     "@omp-app/ui": ["@omp-app/ui@workspace:apps/ui"],
 
     "@omp-app/web": ["@omp-app/web@workspace:apps/web"],
+
+    "@omp-app/zen": ["@omp-app/zen@workspace:apps/zen"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.10.0", "", {}, "sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ=="],
 
