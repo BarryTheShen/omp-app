@@ -48,7 +48,7 @@ export interface KeyKeeper {
 export const KEY_WAIT_MS = 2_500;
 
 /** How long the panel's page has to say it listens before `onNoAnswer`: it does in about a second. */
-export const NO_ANSWER_MS = 15_000;
+export const NO_ANSWER_MS = 10_000;
 
 export interface PanelOptions {
   /** omp app's address: an HTTPS one (`https://omp.example.com`), or a loopback one on this computer (`http://127.0.0.1:4317`). */

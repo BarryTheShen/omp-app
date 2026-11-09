@@ -40,6 +40,8 @@ try {
     vscodeExecutablePath,
     extensionDevelopmentPath: root,
     extensionTestsPath: join(root, "dist-test/suite.js"),
+    // VS Code keeps state in the home folder too (`~/.vscode/argv.json`, `~/.vscode-shared`): one of the test's own.
+    extensionTestsEnv: { HOME: join(scratch, "home") },
     launchArgs: [
       workspace,
       "--disable-extensions",

@@ -32,7 +32,7 @@ export async function whyNotShown(app: string, signal?: AbortSignal): Promise<st
   } catch (error) {
     const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
     const reason = cause instanceof Error ? cause.message : String(cause);
-    return `omp app can't be reached at ${app} (${reason}). Check the address, and that this computer can reach that server.`;
+    return `omp app can't be reached at ${app} (${reason}). Check the address, that this computer can reach that server, and that Settings → App → Integrations → VS Code is on in omp app.`;
   }
   await response.body?.cancel().catch(() => undefined);
   if (!response.ok)

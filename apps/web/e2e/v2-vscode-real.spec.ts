@@ -65,6 +65,12 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
         }),
       );
       const code = VSCODE ?? "";
+      // VS Code keeps state in the home folder too (`~/.vscode/argv.json`, `~/.vscode-shared`), and makes its control socket
+      // in XDG_RUNTIME_DIR, else in its profile folder, whose path in the test's results is past the 108 characters a
+      // socket's path may have (the build server's containers set no XDG_RUNTIME_DIR). A short folder of the test's own
+      // is both, so the test leaves nothing in the real home and the socket's path stays short.
+      const own = await mkdtemp(join(tmpdir(), "vsc-"));
+      const env = { ...process.env, HOME: own, XDG_RUNTIME_DIR: own };
       execFileSync(
         join(code, "bin/code"),
         [
@@ -75,14 +81,10 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
           "--user-data-dir",
           user,
         ],
-        { stdio: "pipe" },
+        { stdio: "pipe", env },
       );
-      // VS Code makes its control socket in XDG_RUNTIME_DIR, else in its profile folder: the profile's path in the test's
-      // results is past the 108 characters a socket's path may have, so where the variable is unset (the build server's
-      // containers) VS Code ends at once. A short folder of the test's own keeps the socket's path short.
-      const runtime = await mkdtemp(join(tmpdir(), "vsc-"));
       const vscode = await electron.launch({
-        env: { ...process.env, XDG_RUNTIME_DIR: runtime },
+        env,
         executablePath: join(code, "code"),
         args: [
           project,
@@ -216,7 +218,7 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
         await window.screenshot({ path: testInfo.outputPath("4-done.png") });
       } finally {
         await vscode.close().catch(() => undefined);
-        await rm(runtime, { recursive: true, force: true });
+        await rm(own, { recursive: true, force: true });
       }
     },
   );

@@ -130,26 +130,27 @@ export class ChatPanel implements vscode.Disposable {
     this.#listeners.push(
       webview.onDidReceiveMessage((message: ToExtension) => this.#heard(message)),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("ompApp.address")) void this.load();
+        if (event.affectsConfiguration("ompApp.address")) this.load();
         else if (event.affectsConfiguration("ompApp.sendOpenFile")) this.#sendContext();
       }),
-      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.load()),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => this.load()),
       vscode.window.onDidChangeActiveTextEditor(() => this.#sendContext()),
       vscode.window.onDidChangeTextEditorSelection(() => this.#sendContext()),
     );
-    void this.load();
+    this.load();
   }
 
   /** Each load's number: a check that ends after a newer load began is dropped. */
   #loads = 0;
 
   /**
-   * Shows the page anew: what to set first, why the app would not show here, or the app's chat. The app is asked first,
-   * as a frame it refuses, or one that never loads, leaves the panel blank.
+   * Shows the page anew: what to set first, or the app's chat. The app is shown at once: whether this panel reaches it
+   * is for the panel's own page to find, as VS Code's extension may reach the network another way (the computer a remote
+   * window is connected to, or VS Code's proxy settings). Only a page that never answers is checked (`#noAnswer`).
    */
-  async load(): Promise<void> {
+  load(): void {
     this.#giveUpAll();
-    const loading = ++this.#loads;
+    this.#loads += 1;
     const nonce = randomBytes(16).toString("base64");
     const typed = setting("address", "").trim();
     const checked = appAddressOf(typed);
@@ -160,13 +161,6 @@ export class ChatPanel implements vscode.Disposable {
       return;
     }
     const app = checked.address;
-    this.#webview.html = notePage(nonce, [`Opening omp app at ${escapeHtml(app)}…`], []);
-    const why = await whyNotShown(app);
-    if (loading !== this.#loads) return;
-    if (why !== null) {
-      this.#tell(nonce, why);
-      return;
-    }
     this.#app = app;
     this.#webview.html = panelPage(
       this.#webview,
@@ -191,16 +185,27 @@ export class ChatPanel implements vscode.Disposable {
     this.#webview.html = notePage(nonce, [escapeHtml(why)], [RETRY, SET]);
   }
 
-  /** The app's page never said it listens in the panel: why, when the app says, else what to try. */
+  /**
+   * The app's page never said it listens in the panel: why, as the app tells VS Code's extension, else what to try. The
+   * extension may reach the network another way than the panel, so what it cannot reach is said with that in mind.
+   */
   async #noAnswer(): Promise<void> {
     const app = this.#app;
     if (app === null) return;
     const loading = this.#loads;
-    const why =
-      (await whyNotShown(app)) ??
-      `omp app at ${app} answers, but its page didn't open in this panel. Click Try again; if it stays like this, open ${app} in a browser on this computer to see whether it opens there.`;
+    const why = await whyNotShown(app);
     if (loading !== this.#loads) return;
-    this.#tell(randomBytes(16).toString("base64"), why);
+    const remote = vscode.env.remoteName;
+    const where =
+      remote === undefined
+        ? ""
+        : ` This window's extension runs on the computer the window is connected to (${remote}), which may not reach that address even when this computer does.`;
+    this.#tell(
+      randomBytes(16).toString("base64"),
+      why === null
+        ? `omp app at ${app} answers, but its page didn't open in this panel. Click Try again; if it stays like this, open ${app} in a browser on this computer to see whether it opens there.`
+        : `${why}${where}`,
+    );
   }
 
   #post(message: FromExtension): void {
@@ -225,7 +230,7 @@ export class ChatPanel implements vscode.Disposable {
       return;
     }
     if (message.type === "retry") {
-      await this.load();
+      this.load();
       return;
     }
     if (message.type === "no-answer") {
