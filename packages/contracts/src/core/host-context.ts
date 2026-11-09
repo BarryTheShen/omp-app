@@ -1,0 +1,123 @@
+/**
+ * What the person is looking at in the app that embeds the lite view (a browser's page, an editor's file, a note), as a
+ * person's message carries it: the block that ends the message, after the typed text and the attached files' paragraph.
+ * The lite view writes it (`withHostContext`), the transcript reads it back for a chip (`splitHostContext`), and the
+ * server leaves it out of a chat's first prompt (`firstPromptTextOf`). All read the constants below, so they cannot drift
+ * apart. Values are written with `&`, `<`, `>` and `"` as entities, so a page's text can never close the block early.
+ */
+import { z } from "zod";
+import { MESSAGE_HOST_PATTERN } from "./message-host";
+
+/** What kind of thing it is: `page`, `file`, `note` and so on (lowercase letters and dashes). */
+export const HOST_CONTEXT_KIND_PATTERN = /^[a-z][a-z-]{0,31}$/;
+/** The most of a selection a message carries. */
+export const HOST_CONTEXT_SELECTION_MAX = 8_000;
+/** The most of the thing's own text a message carries; a host gives the rest through a tool. */
+export const HOST_CONTEXT_TEXT_MAX = 8_000;
+
+export const HostContext = z.strictObject({
+  kind: z.string().regex(HOST_CONTEXT_KIND_PATTERN),
+  title: z.string().trim().min(1).max(300),
+  /** Its address: a page's URL, a file's path. */
+  uri: z.string().max(2_000).optional(),
+  /** What is selected in it, if anything. */
+  selection: z.string().max(HOST_CONTEXT_SELECTION_MAX).optional(),
+  /** Some of its text, when the host gives it with every message. */
+  text: z.string().max(HOST_CONTEXT_TEXT_MAX).optional(),
+});
+export type HostContext = z.infer<typeof HostContext>;
+
+/** A message's host context read back: the context, and the app that gave it. */
+export interface SentHostContext extends HostContext {
+  readonly host: string;
+}
+
+const TAG = "host-context";
+const OPEN = `<${TAG} `;
+const CLOSE = `</${TAG}>`;
+const PART_TAGS = ["selection", "text"] as const;
+
+const toEntities = (value: string): string =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+
+const fromEntities = (value: string): string =>
+  value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&gt;", ">")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&amp;", "&");
+
+/** The block for a context: its attributes on the opening tag, then its selection and text, each in its own tags. */
+function blockOf(host: string, context: HostContext): string {
+  const attributes = [
+    `host="${toEntities(host)}"`,
+    `kind="${toEntities(context.kind)}"`,
+    `title="${toEntities(context.title)}"`,
+    ...(context.uri === undefined ? [] : [`uri="${toEntities(context.uri)}"`]),
+  ].join(" ");
+  const parts = PART_TAGS.flatMap((name) => {
+    const value = context[name];
+    return value === undefined || value === ""
+      ? []
+      : [`<${name}>\n${toEntities(value)}\n</${name}>`];
+  });
+  return [`${OPEN}${attributes}>`, ...parts, CLOSE].join("\n");
+}
+
+/** The message omp gets: the message as written, then the block saying what the person has open in `host`. */
+export function withHostContext(message: string, host: string, context: HostContext): string {
+  const block = blockOf(host, context);
+  return message === "" ? block : `${message}\n\n${block}`;
+}
+
+const ATTRIBUTE = /([a-z]+)="([^"]*)"/g;
+
+/** The context a block gives, or none when it is not one the writer writes. */
+function contextOf(block: string): SentHostContext | null {
+  const firstLineEnd = block.indexOf("\n");
+  if (firstLineEnd === -1 || !block.endsWith(`\n${CLOSE}`)) return null;
+  const opening = block.slice(OPEN.length, firstLineEnd);
+  if (!opening.endsWith(">")) return null;
+  const attributes = new Map<string, string>();
+  for (const match of opening.slice(0, -1).matchAll(ATTRIBUTE)) {
+    attributes.set(match[1] ?? "", fromEntities(match[2] ?? ""));
+  }
+  let body = block.slice(firstLineEnd + 1, block.length - CLOSE.length - 1);
+  const parts: Partial<Record<(typeof PART_TAGS)[number], string>> = {};
+  for (const name of PART_TAGS) {
+    const open = `<${name}>\n`;
+    const close = `\n</${name}>`;
+    if (!body.startsWith(open)) continue;
+    const end = body.indexOf(close);
+    if (end === -1) return null;
+    parts[name] = fromEntities(body.slice(open.length, end));
+    body = body.slice(end + close.length).replace(/^\n/, "");
+  }
+  if (body !== "") return null;
+  const host = attributes.get("host") ?? "";
+  const parsed = HostContext.safeParse({
+    kind: attributes.get("kind"),
+    title: attributes.get("title"),
+    ...(attributes.has("uri") ? { uri: attributes.get("uri") } : {}),
+    ...parts,
+  });
+  if (!MESSAGE_HOST_PATTERN.test(host) || !parsed.success) return null;
+  return { host, ...parsed.data };
+}
+
+/** A message read back: what was written before the block, and the context; a message without the block is all text. */
+export function splitHostContext(message: string): {
+  readonly text: string;
+  readonly context: SentHostContext | null;
+} {
+  const whole = { text: message, context: null };
+  const at = message.lastIndexOf(OPEN);
+  if (at === -1 || (at > 0 && !message.slice(0, at).endsWith("\n\n"))) return whole;
+  const context = contextOf(message.slice(at));
+  if (context === null) return whole;
+  return { text: at === 0 ? "" : message.slice(0, at - 2), context };
+}

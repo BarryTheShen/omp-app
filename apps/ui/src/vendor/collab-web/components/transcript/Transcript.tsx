@@ -1,11 +1,11 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { Check, ChevronRight, FileText, X } from "lucide-react";
+import { Check, ChevronRight, Eye, FileText, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FoldContext } from "../../lib/fold";
 import type { ActiveTool, ConnectionPhase } from "../../lib/types";
 import { fmtTokens } from "../../lib/format";
-import { type SentFile, splitAttached } from "@omp-app/contracts";
+import { type SentFile, type SentHostContext, splitAttached, splitHostContext } from "@omp-app/contracts";
 import { contentText, deliveredText, describeNotice, jobRows } from "../../lib/notices";
 import type { ToolRenderHost } from "../../tool-render";
 import { Markdown, StreamingMarkdown } from "./Markdown";
@@ -146,24 +146,51 @@ function MsgContent({ content }: { content: string | readonly (TextContent | Ima
 
 type UserContent = string | readonly (TextContent | ImageContent)[];
 
-/** omp-app: the files a message names (`lib/attached.ts`, #2830), taken off its last text, and the message without them. */
-function withoutAttached(content: UserContent): { content: UserContent; files: readonly SentFile[] } {
+/**
+ * omp-app: the files a message names (`lib/attached.ts`, #2830) and what was open in the app that embeds the panel
+ * (`withHostContext`), taken off its last text, and the message without them.
+ */
+function withoutAdded(content: UserContent): {
+	content: UserContent;
+	files: readonly SentFile[];
+	context: SentHostContext | null;
+} {
+	const split = (message: string) => {
+		const { text: rest, context } = splitHostContext(message);
+		return { ...splitAttached(rest), context };
+	};
 	if (typeof content === "string") {
-		const { text, files } = splitAttached(content);
-		return { content: text, files };
+		const { text, files, context } = split(content);
+		return { content: text, files, context };
 	}
 	const last = content.findLastIndex(block => block.type === "text");
 	const block = content[last];
-	if (block?.type !== "text") return { content, files: [] };
-	const { text, files } = splitAttached(block.text);
-	if (files.length === 0) return { content, files };
+	if (block?.type !== "text") return { content, files: [], context: null };
+	const { text, files, context } = split(block.text);
+	if (files.length === 0 && context === null) return { content, files, context };
 	return {
 		content:
 			text === ""
 				? content.filter((_, index) => index !== last)
 				: content.map((part, index) => (index === last ? { ...block, text } : part)),
 		files,
+		context,
 	};
+}
+
+/** omp-app: what was open in the app that embeds the panel when the message was sent, as one chip; its address in a tip. */
+function SentContext({ context }: { context: SentHostContext }): ReactNode {
+	const what = context.selection === undefined ? context.title : `${context.title} (a selection)`;
+	return (
+		<ul className="tr-files" aria-label={`Sent with what was open in ${context.host}`}>
+			<li>
+				<span className="tr-file tr-context" title={context.uri ?? context.title}>
+					<Eye size={14} aria-hidden />
+					<span className="tr-file-name">{what}</span>
+				</span>
+			</li>
+		</ul>
+	);
 }
 
 /** omp-app: a sent message's files, one chip each; a chip downloads its file to this device where the host can. */
@@ -330,12 +357,16 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 			// omp-app: `custom` is omp's own message kind, which the wire's role list does not name.
 			switch (msg.role as string) {
 				case "user": {
-					// omp-app: the files a message names (#2830) are drawn as chips under its text, not as the paragraph.
-					const { content, files } = withoutAttached((msg as Extract<typeof msg, { role: "user" }>).content);
+					// omp-app: the files a message names (#2830) are drawn as chips under its text, not as the paragraph; so is
+					// what was open in the app that embeds the panel.
+					const { content, files, context } = withoutAdded(
+						(msg as Extract<typeof msg, { role: "user" }>).content,
+					);
 					return (
 						<Row kind="user" gutter="host" title={entry.timestamp}>
 							<MsgContent content={content} />
 							{files.length > 0 && <AttachedFiles files={files} host={host} />}
+							{context !== null && <SentContext context={context} />}
 						</Row>
 					);
 				}

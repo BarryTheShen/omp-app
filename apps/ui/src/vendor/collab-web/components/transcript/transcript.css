@@ -146,7 +146,9 @@
 	outline-offset: 1px;
 }
 
-.tr-file:disabled {
+.tr-file:disabled,
+/* omp-app: what was open in the app that embeds the panel, sent with the message: shown, not a button. */
+.tr-context {
 	cursor: default;
 }
 

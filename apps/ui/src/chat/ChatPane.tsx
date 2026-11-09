@@ -1,4 +1,4 @@
-import { splitAttached, WorkspaceRelativePath } from "@omp-app/contracts";
+import { splitAttached, splitHostContext, WorkspaceRelativePath } from "@omp-app/contracts";
 import type { ChatHostImage } from "@omp-app/contracts/chat-host";
 import {
   type KeyboardEvent,
@@ -112,13 +112,13 @@ export function ChatPane({
   const agentsRunning = snapshot.agents.filter(
     (agent) => agent.status === "running" || agent.status === "pending",
   ).length;
-  // What you sent, oldest first: the message box's Up and Down go through it, as omp's history does. A message's files
-  // stay where they are: only what was typed comes back.
+  // What you sent, oldest first: the message box's Up and Down go through it, as omp's history does. A message's files,
+  // and what was open in the app that embeds the panel, stay where they are: only what was typed comes back.
   const history = useMemo(
     () =>
       snapshot.entries
         .map(userText)
-        .map((text) => (text === null ? null : splitAttached(text).text))
+        .map((text) => (text === null ? null : splitAttached(splitHostContext(text).text).text))
         .filter((text): text is string => text !== null && text.trim() !== ""),
     [snapshot.entries],
   );

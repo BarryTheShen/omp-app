@@ -1,4 +1,4 @@
-import { type SentFile, splitAttached, withAttached } from "@omp-app/contracts";
+import { type SentFile, splitAttached, splitHostContext, withAttached } from "@omp-app/contracts";
 import type {
   ChatHostImage,
   ChatHostState,
@@ -27,6 +27,7 @@ import {
 } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { isImeEnter } from "../keys/ime";
+import { EmbedContextChip } from "../lite/EmbedContextChip";
 import { LiteContext } from "../lite/LiteContext";
 import { sizeText } from "../panels/files/transfer";
 import { showPanel } from "../panels/panel-state";
@@ -412,7 +413,8 @@ export const Composer = memo(function Composer({
   const restoreMessages = (
     messages: readonly { readonly text: string; readonly images?: readonly ChatHostImage[] }[],
   ): void => {
-    const parts = messages.map((message) => splitAttached(message.text));
+    // What was open in the app that embeds the panel goes again with the next message: only what was typed comes back.
+    const parts = messages.map((message) => splitAttached(splitHostContext(message.text).text));
     update(
       withRestored(
         parts.map((part) => part.text),
@@ -927,6 +929,7 @@ export const Composer = memo(function Composer({
             {status}
           </p>
         )}
+        {lite !== null && <EmbedContextChip />}
         <ExtensionWidgets widgets={widgets} placement="aboveEditor" />
         <form
           data-tour="message-box"

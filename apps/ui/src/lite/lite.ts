@@ -1,4 +1,4 @@
-import { MESSAGE_HOST_PATTERN, type ThreadId } from "@omp-app/contracts";
+import { type EmbedSettings, MESSAGE_HOST_PATTERN, type ThreadId } from "@omp-app/contracts";
 
 /**
  * The lite view's address (#2843): the server serves the app's page there, and only there may the pages it is told of
@@ -56,6 +56,16 @@ export function liteChoices(search: string): LiteChoices {
     greeting: text("greeting", MAX_GREETING),
     suggestions: [...suggestions],
     placeholder: text("placeholder", MAX_PLACEHOLDER),
+  };
+}
+
+/** The address's choices with the framing page's settings over them (`lite/embed.ts`); an empty text clears one. */
+export function withEmbedChoices(base: LiteChoices, settings: EmbedSettings): LiteChoices {
+  return {
+    greeting: settings.greeting === undefined ? base.greeting : settings.greeting || null,
+    suggestions: settings.suggestions ?? base.suggestions,
+    placeholder:
+      settings.placeholder === undefined ? base.placeholder : settings.placeholder || null,
   };
 }
 

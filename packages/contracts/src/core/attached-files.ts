@@ -5,6 +5,7 @@
  * (`splitAttached`), and the server leaves it out of a chat's first prompt (`firstPromptTextOf`). All read the constants
  * below, so they cannot drift apart.
  */
+import { splitHostContext } from "./host-context";
 
 /** A file a message names. */
 export interface SentFile {
@@ -63,9 +64,9 @@ export function splitAttached(message: string): {
   return { text: at === 0 ? "" : message.slice(0, at - 2), files };
 }
 
-/** One line for a message in a list (a queued one): its text, and its files' names. */
+/** One line for a message in a list (a queued one): its text, and its files' names; never what an embedding app sent. */
 export function attachedSummary(message: string): string {
-  const { text, files } = splitAttached(message);
+  const { text, files } = splitAttached(splitHostContext(message).text);
   if (files.length === 0) return text;
   const names = files.map((file) => file.name).join(", ");
   return text === "" ? names : `${text} (+ ${names})`;

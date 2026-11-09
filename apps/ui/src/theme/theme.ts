@@ -151,22 +151,31 @@ export function startTheme(): void {
   });
 }
 
+/** The mode the lite view's framing page asks for: the address's `theme`, then its `settings` (`lite/embed.ts`). */
+let liteMode: "light" | "dark" | null = null;
+
 /**
  * The lite view's theme (#2843): the light or the dark theme kept for the mode the page that frames it asks for, else
  * for the system's mode. It is never kept: the full app's choice, in the same storage, stays as it is. The kept light
  * and dark themes, changed in another window, show here too.
  */
 export function startLiteTheme(mode: "light" | "dark" | null): void {
-  choice = mode === null ? "system" : systemTheme(mode).id;
-  changed();
+  setLiteThemeMode(mode);
   systemLight().addEventListener("change", () => {
     if (choice === "system") changed();
   });
   window.addEventListener("storage", (event) => {
     if (event.key !== SYSTEM_KEYS.light && event.key !== SYSTEM_KEYS.dark) return;
-    if (mode !== null) choice = systemTheme(mode).id;
+    if (liteMode !== null) choice = systemTheme(liteMode).id;
     changed();
   });
+}
+
+/** The framing page asks the lite view for another mode, or (`null`) the system's. */
+export function setLiteThemeMode(mode: "light" | "dark" | null): void {
+  liteMode = mode;
+  choice = mode === null ? "system" : systemTheme(mode).id;
+  changed();
 }
 
 const subscribe = (listener: () => void): (() => void) => {

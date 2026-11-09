@@ -22,6 +22,7 @@ import {
   type ThreadId,
   WorkspaceFilesPort,
   WorkspaceRelativePath,
+  withHostContext,
 } from "@omp-app/contracts";
 import {
   type AnswerQuestionParams,
@@ -35,7 +36,10 @@ import {
   type ExtensionCompletion,
   type GoalParams,
   type HostDialogAnswer,
+  type HostToolCall,
+  type HostToolDefinition,
   isHostDialogRequest,
+  isHostToolCall,
   type JobDetail,
   type JobList,
   type LoginProvider,
@@ -50,12 +54,14 @@ import {
   type RoleModel,
   type SubagentSnapshot,
   ThinkingLevelParams,
+  type ToolCallAnswer,
 } from "@omp-app/contracts/chat-host";
 import { AgentHubState } from "../agents/hub-state";
 import { type BtwRecord, BtwStore, withBtwCommand } from "../btw/btw";
 import { follow } from "../follow";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { lastSeen } from "../lastSeen";
+import { embed } from "../lite/embed";
 import { pageHost } from "../lite/lite";
 import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
@@ -153,6 +159,11 @@ export class ChatController {
   /** Reads this chat's live events for what its runs settle with (the inbox's rows). */
   readonly #attention = new AttentionTracker();
   readonly #attentionListeners = new Set<(attention: Attention) => void>();
+  /** Who hears the calls of the tools the embedding page gave this chat (`setHostTools`), and omp giving one up. */
+  readonly #toolCallListeners = new Set<{
+    readonly call: (request: HostToolCall) => void;
+    readonly cancel: (requestId: string) => void;
+  }>();
   #threadId: ThreadId | null;
   #sessionFile: SessionFilePath | null;
   #subscription: AppClientSubscription<ChatSessionEvent> | null = null;
@@ -644,11 +655,15 @@ export class ChatController {
     if (this.target.kind === "new" && this.#threadId !== null)
       // Named as the server names it: what was typed, or the files' names when only files were sent (#2830).
       noteFirstPrompt(this.#threadId, firstPromptTextOf(text));
-    // From another app's side panel, the message names that app, for its extensions (`host`, the lite view's).
+    // From another app's side panel, the message names that app, for its extensions (`host`, the lite view's), and
+    // carries what is open there, unless you took it off (`lite/embed.ts`); a `/` command goes as typed.
+    const host = embed?.getSnapshot().host ?? pageHost;
+    const added = text.trimStart().startsWith("/") ? null : (embed?.contextForMessage() ?? null);
+    const sent = added === null ? text : withHostContext(text, added.host, added.context);
     const message = {
-      text,
+      text: sent,
       ...(images.length > 0 ? { images: [...images] } : {}),
-      ...(pageHost !== null ? { host: pageHost } : {}),
+      ...(host !== null ? { host } : {}),
     };
     const behind = { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } as const;
     if (this.store.getSnapshot().working) {
@@ -667,7 +682,7 @@ export class ChatController {
         this.store.activityMark.turn === asked &&
         this.store.getSnapshot().pausedAt === null
       )
-        this.store.sendStarted(text, images);
+        this.store.sendStarted(sent, images);
     } catch (failure) {
       if (!(failure instanceof AppFailure && failure.appError.code === "agent_busy")) throw failure;
       this.store.markWorking();
@@ -1124,6 +1139,46 @@ export class ChatController {
     this.store.removeRequest(id);
   }
 
+  /**
+   * Gives this chat the tools of the page that embeds the panel (`lite/embed.ts`), under `owner`: only this chat's agent
+   * gets them, and only this page may answer their calls (the server checks). An empty list takes them back. Resolves
+   * with the names the chat took.
+   */
+  async setHostTools(
+    owner: string,
+    tools: readonly HostToolDefinition[],
+  ): Promise<readonly string[]> {
+    const threadId = this.#threadId;
+    if (threadId === null) throw new Error("The chat is not open yet.");
+    const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
+    const result = await chat.request({
+      threadId,
+      method: "set_host_tools",
+      params: { tools: [...tools] },
+      registrationOwner: owner,
+    });
+    return result.toolNames;
+  }
+
+  /** Hears the calls of the tools this page gave the chat as they come, and omp giving one up; returns what stops it. */
+  onHostToolCall(
+    call: (request: HostToolCall) => void,
+    cancel: (requestId: string) => void,
+  ): () => void {
+    const listener = { call, cancel };
+    this.#toolCallListeners.add(listener);
+    return () => {
+      this.#toolCallListeners.delete(listener);
+    };
+  }
+
+  /** Answers a call of one of this page's tools with what the host returned. */
+  async answerToolCall(id: string, answer: ToolCallAnswer): Promise<void> {
+    const threadId = this.#threadId;
+    if (threadId === null) return;
+    await this.client.port(ChatSessionPort).answer({ threadId, id, answer });
+  }
+
   /** This chat's usage: omp's session statistics and the last reply's speed. */
   async usage(): Promise<ChatUsage> {
     const [stats, state] = await Promise.all([
@@ -1408,9 +1463,15 @@ export class ChatController {
     if (payload.kind === "host_request") {
       if (this.#live && isHostDialogRequest(payload.request))
         this.store.addRequest(payload.request);
+      // A call of a tool the embedding page gave the chat goes to that page; the others' are not this page's to answer.
+      else if (this.#live && isHostToolCall(payload.request))
+        for (const listener of [...this.#toolCallListeners]) listener.call(payload.request);
       return;
     }
     if (payload.kind !== "event") return;
+    if (this.#live && payload.event.type === "tool_cancel") {
+      for (const listener of [...this.#toolCallListeners]) listener.cancel(payload.event.requestId);
+    }
     // A new turn is written on from the branch's end, which makes it the file's last entry again.
     if (payload.event.type === "agent_start") this.#leaf = undefined;
     if (payload.event.type === "available_commands")

@@ -21,9 +21,12 @@ import { useFolder } from "../folders/useFolder";
 import { watchLink } from "../linkCheck";
 import { titleOf } from "../sidebar/title";
 import { type ChatList, useChatList } from "../sidebar/useChatList";
+import { setLiteThemeMode } from "../theme/theme";
 import { chatCache } from "../workspace/chatCache";
+import { bindChat, embed, useEmbed } from "./embed";
+import { applyHostLook, BROWSER_CHECKS, hostLook } from "./hostLook";
 import { LiteContext } from "./LiteContext";
-import { fullAppAddress, liteChoices } from "./lite";
+import { fullAppAddress, liteChoices, withEmbedChoices } from "./lite";
 
 /** How many chats the switcher offers: the folder's most recent ones. */
 const RECENT_CHATS = 12;
@@ -85,8 +88,21 @@ export function LiteShell({
   readonly launchFolder: FolderPath;
 }): ReactNode {
   const { folder } = useFolder(client, launchFolder);
-  // The framing app's greeting, suggestions and placeholder (#2845), read once.
-  const choices = useMemo(() => liteChoices(window.location.search), []);
+  // The framing app's greeting, suggestions and placeholder (#2845), from the address, then from what it sends.
+  const { settings } = useEmbed();
+  const choices = useMemo(
+    () => withEmbedChoices(liteChoices(window.location.search), settings),
+    [settings],
+  );
+  // The page that frames the panel talks to it (`lite/embed.ts`): its look and mode, what it has open, its tools.
+  useEffect(() => embed?.start(), []);
+  useEffect(() => {
+    if (settings.look !== undefined) {
+      applyHostLook(hostLook(new URLSearchParams(settings.look).toString(), BROWSER_CHECKS));
+    }
+    if (settings.theme !== undefined)
+      setLiteThemeMode(settings.theme === "system" ? null : settings.theme);
+  }, [settings]);
   // A link that stopped answering shows as such and is opened again (#2789), as in the full app.
   useEffect(() => watchLink(client), [client]);
   return (
@@ -158,6 +174,8 @@ function LiteChat({
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const title = useChatTitle(controller, snapshot.entries);
   const threadId = controller.threadId;
+  // The framing page's tools go to the chat shown here, and to no other (`lite/embed.ts`).
+  useEffect(() => (embed === null ? undefined : bindChat(embed, controller)), [controller]);
   return (
     <>
       {/* One line in the framing app's muted colour and text size (#2845): the chat's name, New chat, the full app. */}

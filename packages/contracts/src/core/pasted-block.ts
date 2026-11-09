@@ -5,6 +5,7 @@
  * read the constants below, so they cannot drift apart.
  */
 import { splitAttached } from "./attached-files";
+import { splitHostContext } from "./host-context";
 
 const BLOCK_TAG = { open: "<attachment>", close: "</attachment>" } as const;
 /** How a block opens and closes: each tag on a line of its own, around the text. */
@@ -167,7 +168,7 @@ export function splitPastedBlocks(message: string): readonly MessageSegment[] {
  * block that is not in exact form is typed text, as the transcript shows it. Empty when there is none of these.
  */
 export function firstPromptTextOf(message: string): string {
-  const { text, files } = splitAttached(message);
+  const { text, files } = splitAttached(splitHostContext(message).text);
   const segments = splitPastedBlocks(text);
   const typed = segments
     .flatMap((segment) => (segment.kind === "text" ? [segment.text] : []))
