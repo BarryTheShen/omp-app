@@ -129,6 +129,8 @@ export interface PaneHost {
   readonly inView: (paneId: string) => boolean;
   /** When a pane opens its chat: at once on a desktop, once it is in front on a phone (#2768). */
   readonly openGate: OpenGate;
+  /** Opens a chat as a link does: where a window shows it, that one comes to the front (the dashboard's links). */
+  readonly openChat: (target: ChatTarget, how: "front" | "behind" | "beside") => void;
 }
 
 export const PaneHostContext = createContext<PaneHost | null>(null);

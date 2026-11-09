@@ -125,6 +125,7 @@ import {
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import { AskAsyncTool } from "./questions";
+import { SharedTodosTool } from "./shared-todos";
 
 /** One chat's session, ready for the loop. */
 export interface ChatSession {
@@ -134,6 +135,8 @@ export interface ChatSession {
   readonly subagentEventBus: EventBus;
   /** The app's `ask_async` tool in the session; the loop gives it the chat's questions. */
   readonly askAsync: AskAsyncTool;
+  /** The app's `shared_todos` tool; the loop gives it the host's line to the server. */
+  readonly sharedTodos: SharedTodosTool;
 }
 
 /** Where omp's launch notices go: omp prints them on stderr in a protocol mode, and so does the chat host. */
@@ -347,11 +350,13 @@ export async function createChatSession(
     );
   }
 
-  // The app's own tool, beside omp's: questions the agent asks without waiting (`questions.ts`).
+  // The app's own tools, beside omp's: questions the agent asks without waiting (`questions.ts`), and the to-do list it
+  // shares with the person and the other chats (`shared-todos.ts`).
   const askAsync = new AskAsyncTool();
+  const sharedTodos = new SharedTodosTool();
   const created = await createAgentSession({
     ...sessionOptions,
-    customTools: [askAsync.definition],
+    customTools: [askAsync.definition, sharedTodos.definition],
     eventBus,
     subagentEventBus,
     preloadedExtensions: extensions,
@@ -402,6 +407,7 @@ export async function createChatSession(
     mcpManager: created.mcpManager,
     subagentEventBus,
     askAsync,
+    sharedTodos,
   };
 }
 

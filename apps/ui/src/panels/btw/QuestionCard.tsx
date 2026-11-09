@@ -1,4 +1,8 @@
-import type { QuestionAnswer, QuestionRecord } from "@omp-app/contracts/chat-host";
+import type {
+  AnswerQuestionParams,
+  QuestionAnswer,
+  QuestionRecord,
+} from "@omp-app/contracts/chat-host";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -36,6 +40,13 @@ const CHOICE_ROW = "flex items-start gap-2.5 max-sm:py-[13px]";
 
 /** A question's name: its header, else its text. */
 const nameOf = (record: QuestionRecord): string => record.header ?? record.question;
+
+/** What answers a chat's questions: its controller in the chat, or the dashboard's line to that chat. */
+export interface QuestionAnswerer {
+  answerQuestion(id: string, answer: Omit<AnswerQuestionParams, "id">): Promise<QuestionRecord>;
+  skipQuestion(id: string): Promise<QuestionRecord>;
+  sendAnswers(): Promise<readonly QuestionRecord[]>;
+}
 
 /**
  * The questions the chat's agent asked without waiting, in the Questions panel: each open one as a card to answer when
@@ -119,6 +130,41 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
 }
 
 /**
+ * A chat's questions that wait, outside the chat (the dashboard): each open one as a card to answer, then the answers
+ * that wait to go with the rest, with Send answers; answered ones are not shown.
+ */
+export function WaitingQuestions({
+  records,
+  controller,
+}: {
+  readonly records: readonly QuestionRecord[];
+  readonly controller: QuestionAnswerer;
+}): ReactNode {
+  const { open, waiting } = inPanelOrder(records);
+  return (
+    <div className="flex flex-col gap-3 text-[0.8125rem]">
+      {waiting.length > 0 && <WaitingBar controller={controller} count={waiting.length} />}
+      {open.map((record) => (
+        <QuestionCard key={record.id} record={record} records={records} controller={controller} />
+      ))}
+      {waiting.length > 0 && (
+        <section aria-label="Ready to send" className="flex flex-col gap-1.5">
+          <h4 className="px-1 pt-1 text-xs font-medium text-t3">Ready to send</h4>
+          {waiting.map((record) => (
+            <WaitingCard
+              key={record.id}
+              record={record}
+              records={records}
+              controller={controller}
+            />
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
  * The answers that wait for the chat's other open questions, and Send answers, which sends them now as one message; the
  * questions not answered stay open.
  */
@@ -126,7 +172,7 @@ function WaitingBar({
   controller,
   count,
 }: {
-  readonly controller: ChatController;
+  readonly controller: QuestionAnswerer;
   readonly count: number;
 }): ReactNode {
   const [sending, setSending] = useState(false);
@@ -171,7 +217,7 @@ function WaitingCard({
 }: {
   readonly record: QuestionRecord;
   readonly records: readonly QuestionRecord[];
-  readonly controller: ChatController;
+  readonly controller: QuestionAnswerer;
 }): ReactNode {
   const [changing, setChanging] = useState(false);
   const answer = record.answer;
@@ -223,7 +269,7 @@ function QuestionCard({
 }: {
   readonly record: QuestionRecord;
   readonly records: readonly QuestionRecord[];
-  readonly controller: ChatController;
+  readonly controller: QuestionAnswerer;
   readonly initial?: QuestionAnswer;
   readonly onClose?: () => void;
 }): ReactNode {

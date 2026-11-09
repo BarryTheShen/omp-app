@@ -79,8 +79,11 @@ import {
   createA0Runtime,
   createBrowserRuntime,
   createDevicesPortRegistration,
+  createQuestionsRuntime,
   createRunningChatsRuntime,
   createSharesRuntime,
+  createStatsRegistration,
+  createTodosRuntime,
   OmpStats,
   runningChatTitle,
 } from "../src/ports/A0";
@@ -104,10 +107,14 @@ import {
   spawnOmpProcess,
   systemdUserScopes,
 } from "../src/process";
+import { OpenQuestions, SCAN_DAYS, scanSessionQuestions } from "../src/questions/open-questions";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
+import { answerAgentCall } from "../src/todos/agent";
+import { SiyuanMirror } from "../src/todos/siyuan-mirror";
+import { TodoStore } from "../src/todos/store";
 
 export interface CompositionServerOptions {
   readonly port?: number;
@@ -430,6 +437,20 @@ export async function createCompositionServer(
     logger,
   });
   usageLimitStore.subscribe((result) => usageReadings.add(result));
+  // The to-do list for you and your chats' agents (D7), kept in the app's data folder.
+  const todoStore = await TodoStore.open(appDataDir, {
+    onUnreadable: (movedTo, reason) => logger.warn("todos.unreadable", { movedTo, reason }),
+  });
+  // Every chat's questions that wait for you, for the dashboard (D7), kept in the app's data folder.
+  const openQuestions = await OpenQuestions.open(appDataDir);
+  /** A chat's name as the chat list shows it, for the changes its agent makes to the to-do list. */
+  const chatTitle = (threadId: ThreadId): Promise<string | null> =>
+    runningChatTitle(threadId, {
+      sessionFileOf: (id) => a0Runtime.sessionFileOf(id),
+      readFile: (sessionFile) => sessionFileStore.readSessionRow(sessionFile),
+      findById: (id) => sessionFileStore.findSession(id),
+      display: sessionDisplayTitle,
+    }).catch(() => null);
   const a0Context: A0PortContext = {
     processRegistry,
     newChatsReady,
@@ -437,6 +458,13 @@ export async function createCompositionServer(
     usagePauseFile: join(appDataDir, "usage-pause.json"),
     usageLimits: usageLimitStore,
     usagePace: () => usageReadings.pace(),
+    todos: {
+      agentCall: async (chat, call) =>
+        answerAgentCall(todoStore, { ...chat, title: await chatTitle(chat.threadId) }, call),
+    },
+    questions: {
+      record: (threadId, folder, record) => openQuestions.record(threadId, folder, record),
+    },
     leaseProbe:
       options.leaseProbe ??
       sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
@@ -520,6 +548,19 @@ export async function createCompositionServer(
     leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
     views: a0Runtime.views,
   });
+  // The questions asked before the list was kept, read once, in the background.
+  void openQuestions
+    .scanOnce(() =>
+      scanSessionQuestions(
+        async () => (await sessionFileStore.listBucketFolders()).map((folder) => folder.sessionDir),
+        Date.now() - SCAN_DAYS * 86_400_000,
+      ),
+    )
+    .catch((error: unknown) =>
+      logger.warn("questions.scan_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   const resolveSession = async (threadId: ThreadId): Promise<CommandSession> => {
     const session = a0Runtime.commandSessionFor(threadId);
     if (session === undefined) {
@@ -733,6 +774,17 @@ export async function createCompositionServer(
     abortTurn: (threadId, call) => a0Runtime.abortTurn(threadId, call),
     stopChat: (threadId, ownViews) => processRegistry.stop(threadId, ownViews),
   });
+  // The to-do list's port: the pages' changes, and `changed` to every device after anyone's; its copy in SiYuan, when set.
+  const siyuanCopy = await SiyuanMirror.open(appDataDir, todoStore, {
+    onProblem: (problem) => logger.warn("todos.siyuan_copy", { problem }),
+  });
+  const todos = createTodosRuntime({ store: todoStore, mirror: siyuanCopy, publish });
+  // Every chat's questions that wait, for the dashboard, and `changed` to every device.
+  const questions = createQuestionsRuntime({
+    questions: openQuestions,
+    titleOf: chatTitle,
+    publish,
+  });
   // The browsers chats use (Browser and relay control, B1-B7): the app's own (a Chrome on this machine with its own
   // profile, shown in the Browser panel; none when no Chrome is found) or the user's Edge through omp's relay, run here
   // while chosen. Chosen in the panel: omp's `browser.cdpUrl` or `browser.relay`, every folder.
@@ -815,6 +867,10 @@ export async function createCompositionServer(
     }),
     shares.registration,
     runningChats.registration,
+    todos.registration,
+    questions.registration,
+    // omp's statistics in brief for the dashboard, read from the page the shares run (#2836 D6).
+    createStatsRegistration({ stats: ompStats }),
     browserRuntime.registration,
     ...createA1PortRegistrations(a1Context),
   ]);
@@ -887,6 +943,10 @@ export async function createCompositionServer(
           ompStats.stop();
           usageLimitStore.dispose();
           runningChats.stop();
+          todos.stop();
+          siyuanCopy.stop();
+          questions.stop();
+          await openQuestions.settled();
           await browserRuntime.stop();
         }
       }

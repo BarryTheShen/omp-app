@@ -130,6 +130,9 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `checkpoints/`, `plans/`, `background-job-stops/` | Per-chat records of checkpoints, plan documents and background jobs you stopped. |
 | `workspace-files/` | What the Files panel keeps: uploads in progress, and deleted files that can still be undone. |
 | `usage-readings.json`, `usage-resume.json`, `usage-pause.json` | The usage numbers behind the dashboard's pace, and the chats the app will continue or has paused at a usage limit. |
+| `todos.json` | The dashboard's to-do list, with its last 200 changes for Undo. A file the app cannot read is moved aside as `todos.unreadable-<time>.json`, and the list starts empty. |
+| `questions.json` | Every chat's questions that wait for an answer, for the dashboard; the chats keep their own questions in their session files. |
+| `siyuan-copy.json` | Where the to-do list's copy in SiYuan goes, with SiYuan's API token: readable by your account only. Deleted when the copy is turned off. |
 | `session-summaries.json`, `session-subagents.json`, `omp-probe-cache.json` | Caches of chat titles, subagents and what omp reported at its last start. |
 | `launch-links.json` | Digests (not the tokens) of earlier launch tokens, so an old link can say it has expired. |
 | `browser-edge.json` | Whether "Your own browser" is chosen in the Browser panel. |

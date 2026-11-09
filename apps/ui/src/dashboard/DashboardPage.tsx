@@ -21,25 +21,15 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import type { ChatTarget } from "../chat/controller";
 import { follow } from "../follow";
 import { AccountsSection } from "../panels/usage/UsagePanel";
 import { useShareLink } from "../shares/link";
 import { useRunningChats } from "../sidebar/useRunningChats";
-
-const failureText = (failure: unknown): string =>
-  failure instanceof Error ? failure.message : String(failure);
-
-/** What a call says when the server is older than the dashboard: the part comes with the next server update. */
-const OLD_SERVER = /Unknown method/;
-
-/**
- * The words for a call that failed: `later` when the server is older than the part ("Rules come with the next server
- * update."), else "Could not `action`: " and the server's own words.
- */
-function problemWords(failure: unknown, later: string, action: string): string {
-  const text = failureText(failure);
-  return OLD_SERVER.test(text) ? later : `Could not ${action}: ${text}`;
-}
+import { problemWords } from "./problems";
+import { QuestionsSection } from "./QuestionsSection";
+import { StatsSummaryView } from "./StatsSummary";
+import { TodoSection } from "./TodoSection";
 
 const RULES_LATER = "Rules come with the next server update.";
 const QUEUE_LATER = "The queue comes with the next server update.";
@@ -756,8 +746,8 @@ function StatsLink({
 }
 
 /**
- * omp's statistics (#2836 D6), as `/stats` shows them: the server runs omp's own page and shares it, so it opens here
- * on an address of its own. Its first start reads every chat, so it can take a minute.
+ * omp's statistics (#2836 D6, D7): in brief here, read from omp's own page on the server; the full page (tools, errors,
+ * traces) opens through a share of its own, on an address of its own.
  */
 function StatsSection({ client }: { readonly client: AppClient }): ReactNode {
   const [share, setShare] = useState<Share | null>(null);
@@ -783,7 +773,8 @@ function StatsSection({ client }: { readonly client: AppClient }): ReactNode {
       .finally(() => setStarting(false));
   };
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
+      <StatsSummaryView client={client} />
       {share === null ? (
         <Button variant="secondary" className="self-start" disabled={starting} onClick={start}>
           {starting ? "Starting omp's statistics…" : "Show omp's statistics"}
@@ -858,6 +849,8 @@ function useUsageControl(client: AppClient, running: readonly RunningChat[]) {
 
 /** The dashboard's parts, in the order the page shows them; the section bar scrolls to each. */
 const PARTS = [
+  { id: "questions", label: "Questions" },
+  { id: "todo", label: "To do" },
   { id: "usage", label: "Usage" },
   { id: "statistics", label: "Statistics" },
 ] as const;
@@ -875,20 +868,24 @@ function Part({ id, children }: { readonly id: string; readonly children: ReactN
 }
 
 /**
- * The dashboard's page (#2836, D7): the accounts' usage windows and their pace, the rules that pause and continue chats
- * on conditions, the queue of the chats they hold, what they did, and omp's statistics. On a computer it is a pane of
- * the workspace (`DashboardPane`); on a phone it fills the screen (`DashboardPage`), its title given as `heading`.
+ * The dashboard's page (#2836, D7): the to-do list for you and your chats; the accounts' usage windows and their pace,
+ * the rules that pause and continue chats on conditions, the queue of the chats they hold, what they did; and omp's
+ * statistics. On a computer it is a pane of the workspace (`DashboardPane`); on a phone it fills the screen
+ * (`DashboardPage`), its title given as `heading`. A wide pane shows the to-do list beside the rest.
  */
 export function DashboardBody({
   client,
   heading,
   back,
+  onOpenChat,
 }: {
   readonly client: AppClient;
   /** The page's title; a phone's sheet gives its dialog's own. */
   readonly heading?: ReactNode;
   /** A phone's ‹ Chats. */
   readonly back?: ReactNode;
+  /** Opens a chat the page links to. */
+  readonly onOpenChat?: (target: ChatTarget) => void;
 }): ReactNode {
   const running = useRunningChats(client);
   const { rules, queue, activity, rulesProblem, queueProblem, activityProblem, reload } =
@@ -919,54 +916,80 @@ export function DashboardBody({
           ))}
         </nav>
       </header>
-      <div ref={page} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto flex w-full max-w-[880px] flex-col gap-4 p-3 sm:p-4">
-          <Part id="usage">
-            <Section title="Usage windows" hint="Your accounts' windows as omp reports them.">
-              <AccountsSection client={client} />
-            </Section>
-            <Section title="Pace" hint="From the server's readings of the last hour.">
-              <PaceSection client={client} />
-            </Section>
-            <Section
-              title="Rules"
-              hint="Pause chats while a condition holds, and continue them once none does."
-            >
-              <RulesSection
-                client={client}
-                running={running}
-                rules={rules}
-                problem={rulesProblem}
-                reload={reload}
-              />
-            </Section>
-            <Section title="Queue" hint="The chats the rules hold, in the order they continue.">
-              <QueueSection
-                client={client}
-                running={running}
-                queue={queue}
-                rules={ruleList}
-                problem={queueProblem}
-                reload={reload}
-              />
-            </Section>
-            <Section title="Activity" hint="What the rules did, newest first.">
-              <ActivitySection
-                activity={activity}
-                running={running}
-                rules={ruleList}
-                problem={activityProblem}
-              />
-            </Section>
-          </Part>
-          <Part id="statistics">
-            <Section
-              title="Statistics"
-              hint="omp's own statistics: requests, costs, models, tools and errors, as /stats shows them."
-            >
-              <StatsSection client={client} />
-            </Section>
-          </Part>
+      <div ref={page} className="@container min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto grid w-full max-w-[1400px] gap-4 p-3 sm:p-4 @5xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] @5xl:items-start">
+          <div className="flex min-w-0 flex-col gap-4">
+            <Part id="questions">
+              <Section
+                title="Questions"
+                hint="What every chat's agent asked without waiting; answered here, a question goes to its chat."
+              >
+                <QuestionsSection
+                  client={client}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+            </Part>
+            <Part id="todo">
+              <Section
+                title="To-do list"
+                hint="For you and your chats' agents, kept across chats; each chat keeps its own todos too."
+              >
+                <TodoSection
+                  client={client}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+            </Part>
+          </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            <Part id="usage">
+              <Section title="Usage windows" hint="Your accounts' windows as omp reports them.">
+                <AccountsSection client={client} />
+              </Section>
+              <Section title="Pace" hint="From the server's readings of the last hour.">
+                <PaceSection client={client} />
+              </Section>
+              <Section
+                title="Rules"
+                hint="Pause chats while a condition holds, and continue them once none does."
+              >
+                <RulesSection
+                  client={client}
+                  running={running}
+                  rules={rules}
+                  problem={rulesProblem}
+                  reload={reload}
+                />
+              </Section>
+              <Section title="Queue" hint="The chats the rules hold, in the order they continue.">
+                <QueueSection
+                  client={client}
+                  running={running}
+                  queue={queue}
+                  rules={ruleList}
+                  problem={queueProblem}
+                  reload={reload}
+                />
+              </Section>
+              <Section title="Activity" hint="What the rules did, newest first.">
+                <ActivitySection
+                  activity={activity}
+                  running={running}
+                  rules={ruleList}
+                  problem={activityProblem}
+                />
+              </Section>
+            </Part>
+            <Part id="statistics">
+              <Section
+                title="Statistics"
+                hint="omp's own statistics, as /stats shows them: in brief here; the full page adds tools, errors and traces."
+              >
+                <StatsSection client={client} />
+              </Section>
+            </Part>
+          </div>
         </div>
       </div>
     </div>
@@ -978,10 +1001,13 @@ export function DashboardPage({
   client,
   open,
   onOpenChange,
+  onOpenChat,
 }: {
   readonly client: AppClient;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /** Opens a chat the page links to; the page closes first. */
+  readonly onOpenChat: (target: ChatTarget) => void;
 }): ReactNode {
   const close = (): void => onOpenChange(false);
   return (
@@ -1000,6 +1026,10 @@ export function DashboardPage({
                 Chats
               </Button>
             }
+            onOpenChat={(target) => {
+              close();
+              onOpenChat(target);
+            }}
           />
         </DialogContent>
       )}

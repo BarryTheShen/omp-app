@@ -12,9 +12,12 @@ export * from "./browser/browser";
 export * from "./chat-session";
 export * from "./context";
 export * from "./devices";
+export * from "./questions";
 export * from "./running-chats";
 export * from "./shares/shares";
 export * from "./shares/stats";
+export * from "./stats";
+export * from "./todos";
 
 /**
  * Main's registry composition seam. Add the returned registrations to `createPortRegistry([...])`

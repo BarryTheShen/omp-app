@@ -23,6 +23,7 @@ import {
   UriWriteAnswer,
   type UriWriteRequest,
 } from "./host-tools";
+import type { SharedTodosRequest } from "./shared-todos";
 
 export interface ChatHostHostMethodMap {
   readonly "ui.select": { readonly params: SelectDialog; readonly result: ValueAnswer };
@@ -35,6 +36,8 @@ export interface ChatHostHostMethodMap {
   readonly "tool.call": { readonly params: ToolCallRequest; readonly result: ToolCallAnswer };
   readonly "uri.read": { readonly params: UriReadRequest; readonly result: UriReadAnswer };
   readonly "uri.write": { readonly params: UriWriteRequest; readonly result: UriWriteAnswer };
+  /** The `shared_todos` tool's call: the server answers it itself, from the to-do list; no page sees it. */
+  readonly "app.todos": { readonly params: SharedTodosRequest; readonly result: ToolCallAnswer };
 }
 export type ChatHostHostMethod = keyof ChatHostHostMethodMap;
 
@@ -100,6 +103,7 @@ export const HOST_METHOD_ANSWERS: {
   "tool.call": ToolCallAnswer,
   "uri.read": UriReadAnswer,
   "uri.write": UriWriteAnswer,
+  "app.todos": ToolCallAnswer,
 };
 
 /** Whether a host's request names one of the host's methods; never an object's inherited names. */

@@ -64,6 +64,7 @@ export * from "./host-tools";
 export * from "./jobs";
 export * from "./live";
 export * from "./questions";
+export * from "./shared-todos";
 export * from "./subagents";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
@@ -73,9 +74,10 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * older build, restarted on this one once its chat is idle (`restartsWhenSettled`). `message_host`: the extensions'
  * `input` hooks read which app a message was sent from (`ctx.ui.messageHost`), and a widget may belong to one app's
  * lite view (`setWidget(key, lines, { host })`). `answers_together`: the answers to `ask_async` questions wait until
- * every open question of the chat has one, whichever ask it came from, then go together.
+ * every open question of the chat has one, whichever ask it came from, then go together. `shared_todos`: the chat's
+ * agent has the `shared_todos` tool, the to-do list it shares with the person and the other chats (`app.todos`).
  */
-export const CHAT_HOST_FEATURES = ["message_host", "answers_together"] as const;
+export const CHAT_HOST_FEATURES = ["message_host", "answers_together", "shared_todos"] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */
 export const MessageHost = z.string().regex(MESSAGE_HOST_PATTERN);

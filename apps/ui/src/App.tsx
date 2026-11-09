@@ -615,7 +615,12 @@ function Shell({
       )}
       {dashboardLoaded && (
         <Suspense fallback={null}>
-          <DashboardPage client={client} open={dashboard} onOpenChange={setDashboard} />
+          <DashboardPage
+            client={client}
+            open={dashboard}
+            onOpenChange={setDashboard}
+            onOpenChat={(target) => openChat(target, "front")}
+          />
         </Suspense>
       )}
     </div>

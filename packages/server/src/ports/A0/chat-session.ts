@@ -1565,11 +1565,29 @@ export class ChatSessionPortRuntime {
       else entry.uiState.set(uiStateKey(event), { seq, event });
     } else if (event.type === "session_settled" && entry.restartWhenSettled === true) {
       void this.#restartIfSettled(entry);
+    } else if (event.type === "question_record") {
+      // Every chat's questions, for the dashboard: asked, answered and held, or sent.
+      const { threadId, folderPath } = entry.bootstrap;
+      this.#context.questions?.record(threadId, folderPath, event.record);
     }
   }
 
-  /** A host request waits in the open requests until the browser answers it or the host gives it up. */
+  /**
+   * A host request waits in the open requests until the browser answers it or the host gives it up. The to-do list's
+   * tool (`app.todos`) is answered here, from the list, and reaches no page.
+   */
   #hostRequest(entry: ChatEntry, request: HostRequest): Promise<unknown> {
+    if (request.method === "app.todos") {
+      const todos = this.#context.todos;
+      if (todos === undefined) {
+        return Promise.resolve({
+          content: [{ type: "text", text: "This app keeps no to-do list." }],
+          isError: true,
+        });
+      }
+      const { threadId, folderPath } = entry.bootstrap;
+      return todos.agentCall({ threadId, folder: folderPath }, request.params);
+    }
     return new Promise((resolve, reject) => {
       entry.openRequests.set(request.id, { request, resolve, reject });
       this.#waitingChanged();

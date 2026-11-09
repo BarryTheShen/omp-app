@@ -1158,8 +1158,20 @@ export function Workspace({
         document.hasFocus() &&
         apis.current.get(tabsRef.current.active)?.activePanel?.id === paneId,
       openGate,
+      openChat,
     }),
-    [client, focus, controllers, composers, report, addChat, folder, openGate, closeWindowAsked],
+    [
+      client,
+      focus,
+      controllers,
+      composers,
+      report,
+      addChat,
+      folder,
+      openGate,
+      closeWindowAsked,
+      openChat,
+    ],
   );
   const labels = new Map(
     tabs.tabs.flatMap((tab) => {

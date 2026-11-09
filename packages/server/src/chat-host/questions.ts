@@ -21,6 +21,7 @@ import {
   type QuestionRecordEvent,
 } from "@omp-app/contracts/chat-host";
 import { HostMethodError } from "./method-error";
+import { appToolDefinition } from "./tool-definition";
 
 const QUESTION_ENTRY = "omp-app/question";
 const ANSWER_ENTRY = "omp-app/question-answer";
@@ -369,8 +370,11 @@ export class AskAsyncTool {
     this.#controller = controller;
   }
 
-  /** Typed as omp's `customTools` takes it; its details are `{ questions: QuestionRecord[] }`. */
-  readonly definition: ToolDefinition = {
+  /**
+   * Typed as omp's `customTools` takes it, marked so omp calls it with the calling agent (`tool-definition.ts`); its
+   * details are `{ questions: QuestionRecord[] }`.
+   */
+  readonly definition: ToolDefinition = appToolDefinition({
     name: ASK_ASYNC_TOOL,
     label: "Ask without waiting",
     description: ASK_ASYNC_DESCRIPTION,
@@ -396,5 +400,5 @@ export class AskAsyncTool {
       };
       return result;
     },
-  };
+  });
 }

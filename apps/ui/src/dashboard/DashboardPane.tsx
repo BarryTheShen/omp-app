@@ -17,7 +17,7 @@ export function DashboardPane(_props: IDockviewPanelProps<DashboardPaneParams>):
   if (host === null) return null;
   return (
     <Suspense fallback={null}>
-      <DashboardBody client={host.client} />
+      <DashboardBody client={host.client} onOpenChat={(target) => host.openChat(target, "front")} />
     </Suspense>
   );
 }

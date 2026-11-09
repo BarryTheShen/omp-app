@@ -116,17 +116,33 @@ realTest.describe("new UI: the dashboard", () => {
     realTest.use({ serverEnv: { OMP_APP_SHARE_ADDRESS: "127.0.0.1" } });
 
     realTest(
-      "omp's statistics open from the dashboard, through a share of their own (#2836 D6)",
+      "omp's statistics in brief on the dashboard for each range, and the full page through a share of its own (#2836 D6)",
       async ({ realApp }) => {
         const page = await realApp.open({ path: "/" });
         await startNewChat(page);
-        await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
-          "placeholder",
-          "Message omp",
-          { timeout: 120_000 },
-        );
+        const box = page.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await box.fill("hello");
+        await box.press("Enter");
+        await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 90_000 });
         await openDashboard(page);
         const stats = dashboard(page).getByRole("region", { name: "Statistics" });
+        // The section bar brings it into view; in brief, read from omp's own page once it shows.
+        await dashboard(page)
+          .getByRole("navigation", { name: "Dashboard parts" })
+          .getByRole("button", { name: "Statistics" })
+          .click();
+        await expect(stats.getByText("Requests", { exact: true })).toBeVisible({
+          timeout: 120_000,
+        });
+        await expect(stats.getByText("Cost", { exact: true })).toBeVisible();
+        const thirty = stats
+          .getByRole("group", { name: "Over the last" })
+          .getByRole("button", { name: "30 days" });
+        await thirty.click();
+        await expect(thirty).toHaveAttribute("aria-pressed", "true");
+        await expect(stats.getByText("Requests", { exact: true })).toBeVisible({ timeout: 60_000 });
+        await expect(stats.getByRole("alert")).toHaveCount(0);
         await stats.getByRole("button", { name: "Show omp's statistics" }).click();
         // omp's page starts on the server and builds itself the first time.
         const open = stats.getByRole("link", { name: "Open omp's statistics" });

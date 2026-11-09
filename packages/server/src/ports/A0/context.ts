@@ -14,6 +14,7 @@ import type { Logger } from "../../logging";
 import type { FileWatchRegistry } from "../../modules/A1/fs/file-watch-registry";
 import type { ExternalOmpState, OmpProcessRegistry, ProcessTimer } from "../../process";
 import type { EventReplayHub } from "../../replay";
+import type { CallingChat } from "../../todos/agent";
 
 /** How a chat starts: its id and file (a provisional pair until its host names its own), and omp's launch flags. */
 export interface ThreadBootstrap {
@@ -101,4 +102,22 @@ export interface A0PortContext {
   };
   /** Each window's pace from the server's readings (#2836), for the rules' pace condition; absent: it never holds. */
   readonly usagePace?: () => UsagePaceResult;
+  /**
+   * Answers a chat's `shared_todos` call (`app.todos`, D7) from the to-do list, the chat named by its id and folder;
+   * absent: the tool says the app keeps no list.
+   */
+  readonly todos?: {
+    readonly agentCall: (
+      chat: Omit<CallingChat, "title">,
+      call: unknown,
+    ) => Promise<import("@omp-app/contracts/chat-host").ToolCallAnswer>;
+  };
+  /** Hears each chat's questions as they change (D7), for the dashboard's list of every chat's questions. */
+  readonly questions?: {
+    readonly record: (
+      threadId: ThreadId,
+      folder: FolderPath,
+      record: import("@omp-app/contracts/chat-host").QuestionRecord,
+    ) => void;
+  };
 }
