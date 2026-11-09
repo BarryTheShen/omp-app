@@ -18,7 +18,7 @@ import type { ChatController, ChatTarget } from "../chat/controller";
 import { pauseAllChats } from "../chat/pauseAll";
 import type { ChatModel } from "../chat/store";
 import { mentionText } from "../chat/triggers";
-import { focusNewTodo } from "../dashboard/waiting";
+import { focusNewTodo, showTodoList } from "../dashboard/waiting";
 import { debugLogFailureText, saveDebugLog, savedDebugLogText } from "../debugLog";
 import {
   type Bridge,
@@ -399,6 +399,17 @@ export function Palette({
           close(() => {
             onDashboard();
             focusNewTodo();
+          }),
+      },
+      {
+        key: "app:openTodos",
+        group: "Commands",
+        label: "Open the to-do list",
+        detail: "The list you and your chats' agents keep, on the dashboard",
+        run: () =>
+          close(() => {
+            onDashboard();
+            showTodoList();
           }),
       },
       {

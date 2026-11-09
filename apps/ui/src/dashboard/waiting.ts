@@ -77,19 +77,29 @@ export function useDashboardWaiting(client: AppClient): number {
 export const dashboardLabel = (waiting: number): string =>
   waiting > 0 ? `Dashboard, ${waiting} waiting for you` : "Dashboard";
 
-/** The to-do list's field for a new item, once the dashboard shows it: brought into view with the caret in it. */
-export function focusNewTodo(waitMs = 3_000): void {
+/** Runs `act` on the dashboard's element `selector` once the dashboard shows it, for up to `waitMs`. */
+function onceShown(selector: string, act: (element: HTMLElement) => void, waitMs = 3_000): void {
   const until = performance.now() + waitMs;
   const look = (): void => {
-    const field = document.querySelector<HTMLInputElement>(
-      '[data-tour="dashboard"] input[aria-label="New to-do"]',
-    );
-    if (field !== null) {
-      field.scrollIntoView({ block: "center" });
-      field.focus();
+    const element = document.querySelector<HTMLElement>(`[data-tour="dashboard"] ${selector}`);
+    if (element !== null) {
+      act(element);
       return;
     }
     if (performance.now() < until) requestAnimationFrame(look);
   };
   requestAnimationFrame(look);
+}
+
+/** The to-do list's field for a new item, once the dashboard shows it: brought into view with the caret in it. */
+export function focusNewTodo(): void {
+  onceShown('input[aria-label="New to-do"]', (field) => {
+    field.scrollIntoView({ block: "center" });
+    field.focus();
+  });
+}
+
+/** The to-do list, once the dashboard shows it: brought into view at the top. */
+export function showTodoList(): void {
+  onceShown('[aria-label="To-do list"]', (list) => list.scrollIntoView({ block: "start" }));
 }
