@@ -600,6 +600,46 @@ const DASHBOARD_PAGE_TOUR: Tour = {
   ],
 };
 
+/** The dashboard's questions, to-do list, statistics and SiYuan copy (2026-11-09, D7). */
+const DASHBOARD_PARTS_TOUR: Tour = {
+  id: "dashboard-parts-2026-11-09",
+  title: "Questions and the to-do list",
+  minutes: 2,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "The dashboard",
+      text: "{dashboard} opens the dashboard. Open it.",
+      action: { kind: "appears", selector: DASHBOARD },
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Questions"]`,
+      title: "Every chat's questions",
+      text: "What any chat's agent asked without waiting shows here, under the chat's name. Answer as in the chat: an answer waits for its chat's other questions, then they all go to the chat as your message, and the question leaves the list.",
+      action: next,
+    },
+    {
+      target: `${DASHBOARD} [aria-label="To-do list"]`,
+      title: "One to-do list",
+      text: "One list for you and your chats' agents, kept across chats. Add, tick, start, edit and order items; each change says who made it, and <b>Undo</b> takes it back. Agents have it as their tool <b>shared_todos</b>: they read and add, start and finish items, and drop rather than delete.",
+      action: next,
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Copy in SiYuan"]`,
+      title: "A copy in SiYuan",
+      text: "Keep a copy at the end of a SiYuan page: it is rewritten after each change, and an item ticked there is done here too.",
+      action: next,
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Statistics"]`,
+      title: "Statistics in brief",
+      text: "omp's own statistics for 24 hours, 7 days or 30 days: requests, cost, tokens, the cache, failures, the cost of each hour or day, and the models that cost the most. The full page is one click away.",
+      action: next,
+    },
+  ],
+};
+
 /** Save debug log, in Settings → App and the palette (2026-11-08). */
 const DEBUG_LOG_TOUR: Tour = {
   id: "debug-log-2026-11-08",
@@ -2254,6 +2294,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-dashboard-parts",
+    when: "2026-11-09T02:32:00-06:00",
+    summary:
+      "The dashboard gains every chat's questions, answered there; one to-do list for you and your chats' agents (their tool shared_todos), with Undo and a copy in SiYuan; and omp's statistics in brief.",
+    tours: [DASHBOARD_PARTS_TOUR],
+  },
   {
     id: "2026-11-09-dashboard-page",
     when: "2026-11-09T02:01:00-06:00",
