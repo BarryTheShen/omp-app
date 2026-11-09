@@ -6,7 +6,7 @@ import { expect, realTest, startNewChat } from "./real-omp";
  * turn goes on; the chat says so and the rail's Questions button counts them; the Questions panel opens on Questions for
  * you, a card each, with the agent's context; an answer waits, changeable, for the chat's other open questions, whichever
  * ask they came from, and Send answers sends the waiting ones at once; the chat's last answer sends the rest together as
- * one message from the person, which omp answers; a skipped question tells omp to decide; the answers are there again
+ * one message from the person, which omp answers; a skipped question sends nothing; the answers are there again
  * after a reload. `/btw` brings the side questions forward, also while questions wait.
  */
 
@@ -127,7 +127,8 @@ realTest.describe("questions omp asks without waiting", () => {
       await changing.getByRole("button", { name: "Save answer" }).click();
       await expect(daysWaiting).toContainText("Monday, Tuesday");
 
-      // The ask's last question sends what waits with it, as one message: a skip tells omp to decide.
+      // The ask's last question sends what waits with it, as one message: the skip sends nothing, so the Days answer
+      // goes alone.
       const name = panel(page).getByRole("article", {
         name: "Question: What should the public copy be called?",
       });
@@ -135,23 +136,19 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(name.getByRole("button", { name: "Send answers" })).toBeVisible();
       await name.getByRole("button", { name: "Skip" }).click();
       await expect(
-        transcript(page).getByText("Answers to your questions:", { exact: false }),
+        transcript(page).getByText('Answer to your question "Days" (days):', { exact: false }),
       ).toBeVisible({
         timeout: 60_000,
       });
-      // The person's message lists the choices, as Markdown draws a list, and the skip.
+      // The person's message lists the choices, as Markdown draws a list; the skipped question has no line in it (the
+      // message names each question it answers as `"<question>" (<id>):`).
       await expect(
         transcript(page).getByRole("listitem").filter({ hasText: "Monday" }),
       ).toBeVisible();
       await expect(
         transcript(page).getByRole("listitem").filter({ hasText: "Tuesday" }),
       ).toBeVisible();
-      await expect(
-        transcript(page).getByText(
-          '"What should the public copy be called?" (name): skipped; decide it yourself.',
-          { exact: false },
-        ),
-      ).toBeVisible();
+      await expect(transcript(page).getByText("(name):", { exact: false })).toHaveCount(0);
       await expect(transcript(page).getByText("pong", { exact: true })).toHaveCount(2, {
         timeout: 90_000,
       });
@@ -192,12 +189,16 @@ realTest.describe("questions omp asks without waiting", () => {
         ["color", "Which color?", 1],
         ["size", "Which size?", 2],
       ] as const) {
-        await box(page).fill(`call_tool ask_async ${JSON.stringify({ questions: [{ id, question }] })}`);
+        await box(page).fill(
+          `call_tool ask_async ${JSON.stringify({ questions: [{ id, question }] })}`,
+        );
         await box(page).press("Enter");
         await expect(
           transcript(page).getByText(`tool said: Asked 1 question (${id}).`, { exact: false }),
         ).toHaveCount(1, { timeout: 90_000 });
-        await expect(transcript(page).getByText("tool said: Asked 1 question", { exact: false })).toHaveCount(said);
+        await expect(
+          transcript(page).getByText("tool said: Asked 1 question", { exact: false }),
+        ).toHaveCount(said);
       }
       await rail(page).getByRole("button", { name: "Questions, 2 waiting for you" }).click();
 
@@ -210,7 +211,9 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(
         panel(page).getByRole("article", { name: "Ready to send: Which color?" }),
       ).toContainText("Green");
-      await expect(transcript(page).getByText("Answer to your question", { exact: false })).toHaveCount(0);
+      await expect(
+        transcript(page).getByText("Answer to your question", { exact: false }),
+      ).toHaveCount(0);
 
       // The last open question sends both, as one message from the person.
       const size = panel(page).getByRole("article", { name: "Question: Which size?" });

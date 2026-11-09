@@ -868,7 +868,7 @@ export interface ChatHostMethodMap {
     readonly params: AnswerQuestionParams;
     readonly result: { readonly record: QuestionRecord };
   };
-  /** Skips one: saved and waiting like an answer; the agent is told to decide it itself. */
+  /** Skips one: it waits like an answer and settles with the answers, and nothing goes to the agent for it. */
   readonly skip_question: {
     readonly params: SkipQuestionParams;
     readonly result: { readonly record: QuestionRecord };

@@ -1283,7 +1283,7 @@ export class ChatController {
     }
   }
 
-  /** Skips one: it waits like an answer; the agent is told to decide it itself. */
+  /** Skips one: it waits like an answer and settles with the answers, and nothing goes to the agent for it. */
   async skipQuestion(id: string): Promise<QuestionRecord> {
     try {
       const { record } = await this.#request("skip_question", { id });

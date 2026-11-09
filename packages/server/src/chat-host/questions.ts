@@ -33,10 +33,10 @@ const RESERVED_LABELS = new Set(["Other (type your own)", "Chat about this", "Ne
 export const ASK_ASYNC_DESCRIPTION = [
   "Ask the user questions without waiting for the answers. Each question appears in the app's Questions panel beside",
   "this chat, with your context; the user answers when they have time. The answers arrive later in this chat as one",
-  'message from the user that starts with "Answers to your questions" ("Answer to your question" or "Skipped your',
-  'question" for one): they wait until every open question in this chat has an answer or a skip, or until the user',
-  "sends the ones ready so far, so one message may answer questions from several of your calls, and a question may",
-  "stay open for a while. A skipped question is yours to decide.",
+  'message from the user that starts with "Answers to your questions" ("Answer to your question" for one): they wait',
+  "until every open question in this chat has an answer or a skip, or until the user sends the ones ready so far, so",
+  "one message may answer questions from several of your calls, and a question may stay open for a while. A question",
+  "the user skips gets no answer: nothing comes back for it, so decide it yourself.",
   "The tool returns at once: keep working on what does not depend on the answers, and do not ask the same question",
   "again. Give `options` for multiple choice (the user can always write their own answer instead), or leave them out",
   "for a written answer. Put in `context` what the user needs to decide: why you ask, what each choice changes, and",
@@ -152,25 +152,21 @@ function answerLines(answer: QuestionAnswer): string[] {
 }
 
 /**
- * The person's message to the agent for answers and skips sent together, in the order asked: one answer keeps its own
- * wording ("Answer to your question …", "Skipped your question …"); several go under "Answers to your questions:".
+ * The person's message to the agent for the answers sent together, in the order asked: one keeps its own wording
+ * ("Answer to your question …"); several go under "Answers to your questions:". A skipped question is not in it: a
+ * skip gets no answer.
  */
 export function answersMessage(records: readonly QuestionRecord[]): string {
   const answered = records.flatMap((record) =>
-    record.answer === null ? [] : [{ record, answer: record.answer }],
+    record.answer === null || record.answer.skipped ? [] : [{ record, answer: record.answer }],
   );
   const [only] = answered;
-  if (only !== undefined && answered.length === 1) {
-    if (only.answer.skipped)
-      return `Skipped your question ${nameIn(only.record)}: decide it yourself.`;
+  if (only !== undefined && answered.length === 1)
     return [`Answer to your question ${nameIn(only.record)}:`, ...answerLines(only.answer)].join(
       "\n",
     );
-  }
   const blocks = answered.map(({ record, answer }) =>
-    answer.skipped
-      ? `${nameIn(record)}: skipped; decide it yourself.`
-      : [`${nameIn(record)}:`, ...answerLines(answer)].join("\n"),
+    [`${nameIn(record)}:`, ...answerLines(answer)].join("\n"),
   );
   return ["Answers to your questions:", ...blocks].join("\n\n");
 }
@@ -285,7 +281,7 @@ export class QuestionsController {
     });
   }
 
-  /** Saves a skip the same way: the agent is told to decide that one itself. */
+  /** Saves a skip: it waits with the answers and settles with them, and nothing goes to the agent for it. */
   skip(id: string, sequence: number): Promise<QuestionRecord> {
     return this.#hold(id, sequence, () => ({
       picked: [],
@@ -335,11 +331,12 @@ export class QuestionsController {
   }
 
   /**
-   * Sends the answers as one message, then marks them sent. A send that fails leaves them waiting, so the person can
-   * send them again.
+   * Sends the answers as one message, then marks them sent. Skips settle with them and send nothing, so skips alone
+   * send no message. A send that fails leaves them waiting, so the person can send them again.
    */
   async #deliver(records: readonly QuestionRecord[], sequence: number): Promise<QuestionRecord[]> {
-    await this.#send(answersMessage(records), sequence);
+    if (records.some((record) => record.answer !== null && !record.answer.skipped))
+      await this.#send(answersMessage(records), sequence);
     const sentAt = Date.now();
     this.#session.sessionManager.appendCustomEntry(SENT_ENTRY, {
       ids: records.map((record) => record.id),

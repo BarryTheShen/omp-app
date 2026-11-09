@@ -114,7 +114,8 @@ describe("the chat host's questions without waiting", () => {
           chat.client.request("answer_question", { id: name.id, picked: [] }),
         ).rejects.toMatchObject({ message: "An answer needs a choice or a written answer" });
 
-        // The skip answers the ask's last question: both go together, as one message that starts the next turn.
+        // The skip settles the ask's last question: the answer goes alone, as one message that starts the next turn,
+        // and nothing goes for the skip.
         const mark = chat.events.length;
         const skipped = await chat.client.request("skip_question", { id: name.id });
         expect(skipped.record.answer).toMatchObject({ picked: [], skipped: true });
@@ -122,7 +123,7 @@ describe("the chat host's questions without waiting", () => {
         expect(skipped.record.answer?.sentAt).toBeNumber();
         await chat.nextAfter(mark, agentEnd);
         expect(userTexts(chat).slice(sentBefore)).toEqual([
-          'Answers to your questions:\n\n"Publish" (publish):\nPublic copy\nNote: keep issues off\n\n"What should the public copy be called?" (name): skipped; decide it yourself.',
+          'Answer to your question "Publish" (publish):\nPublic copy\nNote: keep issues off',
         ]);
         expect(lastReply(chat)).toBe("pong");
 
@@ -239,12 +240,17 @@ describe("the chat host's questions without waiting", () => {
           (record) => record.id === name.id,
         );
         expect(stillOpen?.answer).toBeNull();
+        // Skipped alone, the last open question settles and sends nothing: the next message is the person's own.
+        const skipped = await chat.client.request("skip_question", { id: name.id });
+        expect(skipped.record.answer).toMatchObject({ skipped: true });
+        expect(skipped.record.answer?.held).toBeUndefined();
+        expect(skipped.record.answer?.sentAt).toBeNumber();
         const late = chat.events.length;
-        await chat.client.request("skip_question", { id: name.id });
+        await chat.client.request("prompt", { text: "ping" });
         await chat.nextAfter(late, agentEnd);
         expect(answerTexts().slice(1)).toEqual([
           'Answer to your question "Which shape?" (shape):\nRound',
-          'Skipped your question "Which name?" (name): decide it yourself.',
+          "ping",
         ]);
       },
       60_000,

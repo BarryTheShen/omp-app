@@ -68,7 +68,8 @@ export function QuestionsTab({ controller }: { readonly controller: ChatControll
         <p className="text-[0.8125rem] text-t3">
           When omp asks you something it does not need at once, the question waits here while omp
           keeps working. Answer when you have time: your answers go to the chat together, as your
-          message, once every question here has an answer or a skip, or when you send them.
+          message, once every question here has an answer or a skip, or when you send them. A
+          question you skip gets no answer: nothing goes to the chat for it.
         </p>
       </div>
     );
@@ -257,7 +258,8 @@ function WaitingCard({
  * One question to answer: its header and time, the question, the agent's context, then the answer: choices (round marks
  * for one, tick boxes for several) with Other… to write one's own, or a box to write the answer in when there are no
  * choices; a note may go with it. Its button saves the answer to wait for the chat's other open questions, or, on the
- * chat's last open question, sends it with the waiting answers as the person's message; Skip tells the agent to decide.
+ * chat's last open question, sends it with the waiting answers as the person's message; Skip leaves it unanswered, and
+ * nothing goes to the chat for it.
  * Opened again from a waiting answer (`initial`), it starts from that answer and has Cancel.
  */
 function QuestionCard({
