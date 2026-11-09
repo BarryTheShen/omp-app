@@ -997,13 +997,15 @@ function reply(request: Request): Reply {
       thinking: "I should run a command and say what it is for.",
     };
   }
-  // A service a chat starts (#2788): a small web server on a free port, in the background, for a minute at most. It
-  // sends no type, as many small services do.
-  if (prompt.includes("serve_probe"))
+  // A service a chat starts (#2788): a small web server in the background, for a minute at most, on the port the prompt
+  // names (`serve_probe 23456`: a port someone picked), else on one the system hands out. It sends no type, as many
+  // small services do.
+  const serve = /serve_probe(?: (\d+))?/.exec(prompt);
+  if (serve !== null)
     return {
       tool: "bash",
       args: {
-        command: `timeout 60 bun -e "require('node:http').createServer((q, s) => s.end('served-by-chat')).listen(0, '127.0.0.1')"`,
+        command: `timeout 60 bun -e "require('node:http').createServer((q, s) => s.end('served-by-chat')).listen(${serve[1] ?? 0}, '127.0.0.1')"`,
         async: true,
       },
       thinking: "I should start a server.",

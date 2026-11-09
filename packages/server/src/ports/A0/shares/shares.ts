@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
-import { basename, dirname, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   AppFailure,
   DEVICE_COOKIE,
@@ -30,6 +31,28 @@ import { type ChatHost, listServices } from "./services";
 export const SHARE_AFTER_MS = 5_000;
 export const END_AFTER_MS = 10_000;
 
+/**
+ * The ports a debugger listens on unless told otherwise: Go's Delve (2345), Java's JDWP as most tools set it (5005),
+ * Python's debugpy (5678), Chrome's remote debugging (9222) and Node's inspector (9229). Whoever reaches one runs code on
+ * this machine, so a chat's debugger is never shared by itself; it can still be shared by hand.
+ */
+export const DEBUGGER_PORTS: ReadonlySet<number> = new Set([2345, 5005, 5678, 9222, 9229]);
+
+/** The ports Linux hands out to a program that asks for any free one, as `/proc` gives them; else Linux's default. */
+export function randomPortRange(proc = "/proc"): { readonly low: number; readonly high: number } {
+  try {
+    const [low, high] = readFileSync(join(proc, "sys/net/ipv4/ip_local_port_range"), "utf8")
+      .trim()
+      .split(/\s+/)
+      .map(Number);
+    if (low !== undefined && high !== undefined && Number.isInteger(low) && Number.isInteger(high))
+      return { low, high };
+  } catch {
+    // No such file: not Linux, or no /proc.
+  }
+  return { low: 32_768, high: 60_999 };
+}
+
 export interface SharesPortContext {
   readonly pairing: Pick<DevicePairing, "store" | "connections">;
   /** Publishes an event into the replay hub. */
@@ -49,6 +72,8 @@ export interface SharesPortContext {
   readonly signature?: () => Promise<string>;
   /** omp's statistics page, started when first asked (#2836 D6); absent: this server does not run it. */
   readonly stats?: { readonly start: () => Promise<number> };
+  /** For tests: the range random ports are handed out of, instead of the machine's. */
+  readonly randomPorts?: { readonly low: number; readonly high: number };
 }
 
 /** The machine's Tailscale address: an IPv4 address in 100.64.0.0/10. */
@@ -86,13 +111,19 @@ export interface SharesRuntime {
 }
 
 /**
- * The services and pages open to the paired devices (#2788). A service a chat starts is shared by itself and the chat is
- * told; any other is shared when someone asks. A share ends when its service stops, when it is stopped, or after 12 hours
- * unused; a device removed from the paired devices loses its sessions on every share.
+ * The services and pages open to the paired devices (#2788). A service a chat starts on a port someone picked (a dev
+ * server's 3000, 5173, 8080) is shared by itself and the chat is told; one on a port the system handed out at random
+ * (test servers, editors' and tools' own ports) or a debugger's is listed only, as any other service, and shared when
+ * someone asks. A share ends when its service stops, when it is stopped, or after 12 hours unused; a device removed from
+ * the paired devices loses its sessions on every share.
  */
 export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
   const now = context.now ?? Date.now;
   const address = context.address ?? tailnetAddress;
+  const random = context.randomPorts ?? randomPortRange();
+  /** A chat's service shared by itself: its port was picked, not handed out at random, and is no debugger's. */
+  const opensByItself = (port: number): boolean =>
+    !DEBUGGER_PORTS.has(port) && (port < random.low || port > random.high);
   const held = new Map<string, Held>();
   /** Services stopped by hand, by port and start: not shared again by themselves. */
   const stoppedByHand = new Set<string>();
@@ -210,6 +241,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
         if (
           service.threadId === null ||
           service.neverShare ||
+          !opensByItself(service.port) ||
           sharedPort(service.port) !== undefined
         )
           continue;

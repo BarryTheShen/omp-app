@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
@@ -8,10 +8,10 @@ import { expect, realTest, startNewChat } from "./real-omp";
 /**
  * Ports and pages on your devices (#2788) on the real server and the fake model: a service on the machine is shared
  * with a click, Open signs this browser in through a one-time link and shows it, a request without that sign-in is
- * turned away, and Stop sharing ends it. A service a chat starts is shared by itself, and the chat says so with Open.
- * An HTML file in Files opens as a page, with its stylesheet. Both services send no type, as many small services do:
- * the share must show their pages, not download them. The shares listen on 127.0.0.1 here (`OMP_APP_SHARE_ADDRESS`), in
- * place of the machine's Tailscale address.
+ * turned away, and Stop sharing ends it. A service a chat starts on a port someone picked is shared by itself, and the
+ * chat says so with Open; one on a port handed out at random is only listed. An HTML file in Files opens as a page, with
+ * its stylesheet. Both services send no type, as many small services do: the share must show their pages, not download
+ * them. The shares listen on 127.0.0.1 here (`OMP_APP_SHARE_ADDRESS`), in place of the machine's private address.
  */
 realTest.use({ serverEnv: { OMP_APP_SHARE_ADDRESS: "127.0.0.1" } });
 
@@ -28,6 +28,21 @@ realTest.describe("new UI: ports and pages on your devices", () => {
     await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
   }
 
+  /**
+   * A free port of the kind someone picks for a dev server: below the ports Linux hands out at random (32768 up), and
+   * a different one each time, so tests running at once do not take the same one.
+   */
+  async function pickedPort(): Promise<number> {
+    for (;;) {
+      const port = 20_000 + Math.floor(Math.random() * 10_000);
+      const free = await new Promise<boolean>((done) => {
+        const probe = createNetServer();
+        probe.once("error", () => done(false));
+        probe.listen(port, "127.0.0.1", () => probe.close(() => done(true)));
+      });
+      if (free) return port;
+    }
+  }
   let service: Server | null = null;
   realTest.afterEach(async () => {
     const running = service;
@@ -81,16 +96,16 @@ realTest.describe("new UI: ports and pages on your devices", () => {
   );
 
   realTest(
-    "a service a chat starts is shared by itself, and the chat's line opens it",
+    "a service a chat starts on a port someone picked is shared by itself, and the chat's line opens it",
     async ({ realApp }) => {
+      const port = await pickedPort();
       const page = await realApp.open({ path: "/" });
       await newChat(page);
-      await box(page).fill("serve_probe");
+      await box(page).fill(`serve_probe ${port}`);
       await box(page).press("Enter");
 
-      const line = page.getByRole("status").filter({ hasText: /is listening on port \d+/ });
+      const line = page.getByRole("status").filter({ hasText: `is listening on port ${port}.` });
       await expect(line).toBeVisible({ timeout: 90_000 });
-      const port = /port (\d+)/.exec((await line.textContent()) ?? "")?.[1] ?? "";
       const open = line.getByRole("link", { name: "Open" });
       await expect(open).toBeVisible({ timeout: 15_000 });
       const [shown] = await Promise.all([newTab(page), open.click()]);
@@ -101,6 +116,33 @@ realTest.describe("new UI: ports and pages on your devices", () => {
       const row = ports(page).getByRole("listitem", { name: `Port ${port}` });
       await expect(row).toContainText("Started by a chat");
       await expect(row).toContainText("Shared by itself.");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a service a chat starts on a port handed out at random is only listed: no line in the chat, Share opens it",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await box(page).fill("serve_probe");
+      await box(page).press("Enter");
+
+      await page.getByRole("button", { name: "Ports", exact: true }).click();
+      const row = ports(page).getByRole("listitem").filter({ hasText: "Started by a chat" });
+      await expect(row).toHaveCount(1, { timeout: 90_000 });
+      // Well past the 5 s a picked port waits, it is still only listed, and the chat has no line for it.
+      await page.waitForTimeout(8_000);
+      await expect(row).not.toContainText("Shared by itself.");
+      await expect(
+        page.getByRole("status").filter({ hasText: /is listening on port \d+/ }),
+      ).toHaveCount(0);
+      await row.getByRole("button", { name: "Share", exact: true }).click();
+      const open = row.getByRole("link", { name: "Open" });
+      await expect(open).toBeVisible({ timeout: 15_000 });
+      const [shown] = await Promise.all([newTab(page), open.click()]);
+      await expect(shown.locator("body")).toHaveText("served-by-chat");
+      await shown.close();
       expect(realApp.problems).toEqual([]);
     },
   );
@@ -161,20 +203,21 @@ realTest.describe("new UI: ports and pages on your devices", () => {
   );
 
   realTest.describe("a share at another address than its service", () => {
-    // A share listens at the share's address and takes its service's port number there when it is free, as on the
-    // machine's Tailscale address: here 127.0.0.2, while the chat's service listens at 127.0.0.1.
+    // A share listens at the share's address and takes its service's port number there when it is free, as on a
+    // machine's private-network address: here 127.0.0.2, while the chat's service listens at 127.0.0.1.
     realTest.use({ serverEnv: { OMP_APP_SHARE_ADDRESS: "127.0.0.2" } });
 
     realTest(
       "a chat's service keeps its one share while it runs, when the share took the same port number",
       async ({ realApp }) => {
+        const picked = await pickedPort();
         const page = await realApp.open({ path: "/" });
         await newChat(page);
-        await box(page).fill("serve_probe");
+        await box(page).fill(`serve_probe ${picked}`);
         await box(page).press("Enter");
         const lines = page.getByRole("status").filter({ hasText: /is listening on port \d+/ });
         await expect(lines).toHaveCount(1, { timeout: 90_000 });
-        const port = /port (\d+)/.exec((await lines.textContent()) ?? "")?.[1] ?? "";
+        const port = String(picked);
         await page.getByRole("button", { name: "Ports", exact: true }).click();
         const row = ports(page).getByRole("listitem", { name: `Port ${port}` });
         await expect(row).toContainText("Shared by itself.");

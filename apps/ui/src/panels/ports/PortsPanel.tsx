@@ -27,8 +27,9 @@ const isOlderServer = (failure: unknown): boolean =>
 /**
  * The services listening on the server's machine and the pages shared from it (#2788). A shared one opens on this device
  * through a one-time link; any other is shared with a click, except those on the never-share list. A service a chat
- * started is shared by itself. Every share opens only on devices paired with the app. The chats' services and the shared
- * ones come first; every other listening port folds away under "Other services on this machine" (#2836).
+ * started on a port someone picked is shared by itself; one on a port handed out at random, or a debugger's, waits for a
+ * click. Every share opens only on devices paired with the app. The chats' services and the shared ones come first;
+ * every other listening port folds away under "Other services on this machine" (#2836).
  */
 export function PortsPanel({ client }: { readonly client: AppClient }): ReactNode {
   const [list, setList] = useState<SharesList | null>(null);

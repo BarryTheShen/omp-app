@@ -2169,7 +2169,7 @@ const PORTS_TOUR: Tour = {
     {
       target: PORTS_PANEL,
       title: "Open a service on your devices",
-      text: "Each service is listed with its port. <b>Share</b> one, then <b>Open</b> takes you to it in your browser; it opens only on devices paired with the app. A service a chat starts is shared by itself, and the chat shows a line with <b>Open</b>.",
+      text: "Each service is listed with its port. <b>Share</b> one, then <b>Open</b> takes you to it in your browser; it opens only on devices paired with the app. A service a chat starts on a port someone picked, such as a dev server's 5173, is shared by itself, and the chat shows a line with <b>Open</b>.",
       action: next,
     },
     {
@@ -2198,6 +2198,28 @@ const SHARING_TOUR: Tour = {
       target: PORTS_PANEL,
       title: "Your chats' services first",
       text: "The services your chats started, and the ones shared, come first. Every other port listening on the machine is folded under <b>Other services on this machine</b>. A share whose service stopped says so, here and in the chat's line, instead of offering a link that goes nowhere.",
+      action: next,
+    },
+  ],
+};
+
+/** Only a port someone picked opens by itself: one handed out at random, or a debugger's, waits for Share. */
+const PICKED_PORTS_TOUR: Tour = {
+  id: "picked-ports-2026-11-09",
+  title: "Which services open by themselves",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Ports",
+      text: "Click <b>Ports</b> on this rail.",
+      action: { kind: "appears", selector: PORTS_PANEL },
+    },
+    {
+      target: PORTS_PANEL,
+      title: "Only ports someone picked open by themselves",
+      text: "A service a chat starts on a port someone picked, such as a dev server on 3000, 5173 or 8080, still opens on your paired devices by itself after 5 seconds, with a line in the chat. One on a port the system handed out at random (test servers, an editor's own ports) or a debugger's port is only listed here: <b>Share</b> opens it when you want it.",
       action: next,
     },
   ],
@@ -2428,6 +2450,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-picked-ports",
+    when: "2026-11-09T15:30:00-06:00",
+    summary:
+      "Only a service on a port someone picked, such as a dev server's 3000, 5173 or 8080, opens on your paired devices by itself. One on a port the system handed out at random, or a debugger's, is only listed in Ports until you click Share, and adds no line to the chat.",
+    tours: [PICKED_PORTS_TOUR],
+  },
   {
     id: "2026-11-09-lite-find",
     when: "2026-11-09T12:14:00-06:00",

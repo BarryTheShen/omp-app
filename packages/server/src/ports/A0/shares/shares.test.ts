@@ -36,11 +36,17 @@ const service = (port: number, extra: Partial<ListeningService> = {}): Listening
   ...extra,
 });
 
+/**
+ * Ports the system hands out at random, for these tests: by default a range none of the tests' own servers get (Linux
+ * hands theirs out of 32768–60999), so their ports count as picked unless a test names another range.
+ */
+const ELSEWHERE = { low: 61_000, high: 61_999 };
+
 /** A runtime over a listed set of services, a phone that is paired, the events it published, and its clock. */
 function runtime(
   listed: { services: ListeningService[] },
   clock = { at: 1_000_000 },
-  extra: Pick<SharesPortContext, "stats"> = {},
+  extra: Pick<SharesPortContext, "stats" | "randomPorts"> = {},
 ) {
   let removed: ((deviceId: string) => void) | null = null;
   const events: { stream: string; payload: unknown }[] = [];
@@ -72,6 +78,7 @@ function runtime(
       }
       return String(version);
     },
+    randomPorts: ELSEWHERE,
     ...extra,
   });
   cleanups.push(() => shares.stop());
@@ -151,7 +158,7 @@ describe("shares (#2788)", () => {
     });
   });
 
-  test("a service a chat starts is shared by itself once it has listened 5 s, and the chat told; stopped by hand, it stays unshared", async () => {
+  test("a service a chat starts on a port someone picked is shared by itself once it has listened 5 s, and the chat told; stopped by hand, it stays unshared", async () => {
     const port = upstream();
     const listed = { services: [service(port, { threadId: T1 })] };
     const clock = { at: 1_000_000 };
@@ -171,6 +178,24 @@ describe("shares (#2788)", () => {
     clock.at += SHARE_AFTER_MS;
     await shares.poll();
     expect(((await call("list", {})) as SharesList).shares).toEqual([]);
+  });
+
+  test("a chat's service on a port handed out at random, or a debugger's, is only listed: never shared by itself, shared by hand", async () => {
+    const port = upstream();
+    const listed = {
+      services: [service(port, { threadId: T1 }), service(9229, { threadId: T1, program: "node" })],
+    };
+    const clock = { at: 1_000_000 };
+    const { shares, events, call } = runtime(listed, clock, {
+      randomPorts: { low: port, high: port },
+    });
+    await shares.poll();
+    clock.at += SHARE_AFTER_MS * 2;
+    await shares.poll();
+    expect(events.filter((event) => event.stream === "A0.shares/sharedForChat")).toEqual([]);
+    expect(((await call("list", {})) as SharesList).shares).toEqual([]);
+    const share = (await call("share", { port })) as Share;
+    expect(share).toMatchObject({ kind: "service", port, automatic: false });
   });
 
   test("a service that comes and goes every 2 s is never shared (#2836)", async () => {
