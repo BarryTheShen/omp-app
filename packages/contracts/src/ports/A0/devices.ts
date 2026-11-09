@@ -154,24 +154,42 @@ export const PairingAsked = z
   .strict();
 export type PairingAsked = z.infer<typeof PairingAsked>;
 
-export const PairingClaim = z.object({ requestId: z.string().min(1) }).strict();
+/**
+ * A panel framed by another app (an extension's, an editor's) cannot keep the key's cookie: the browser keeps no
+ * cookie of the app in someone else's frame. With `keep: "host"`, the answer that pairs also gives the key, which the
+ * page hands to its host (the embed protocol's `credential`); the host gives it back at each load, and the page signs in
+ * with it.
+ */
+const KeepWithHost = z.literal("host");
+
+export const PairingClaim = z
+  .object({ requestId: z.string().min(1), keep: KeepWithHost.optional() })
+  .strict();
 export type PairingClaim = z.infer<typeof PairingClaim>;
+
+/** The key, only when the request asked to keep it with a host. */
+const PairedKey = z.string().min(1).optional();
 
 export const PairingClaimed = z.discriminatedUnion("status", [
   z.object({ status: z.literal("waiting") }).strict(),
-  z.object({ status: z.literal("paired"), deviceId: z.string().min(1) }).strict(),
+  z.object({ status: z.literal("paired"), deviceId: z.string().min(1), key: PairedKey }).strict(),
   z.object({ status: z.literal("denied") }).strict(),
   z.object({ status: z.literal("expired") }).strict(),
 ]);
 export type PairingClaimed = z.infer<typeof PairingClaimed>;
 
 export const PairingCodeEntry = z
-  .object({ code: z.string().min(1).max(20), name: DeviceName, kind: DeviceKind })
+  .object({
+    code: z.string().min(1).max(20),
+    name: DeviceName,
+    kind: DeviceKind,
+    keep: KeepWithHost.optional(),
+  })
   .strict();
 export type PairingCodeEntry = z.infer<typeof PairingCodeEntry>;
 
 export const PairingCodeEntered = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("paired"), deviceId: z.string().min(1) }).strict(),
+  z.object({ status: z.literal("paired"), deviceId: z.string().min(1), key: PairedKey }).strict(),
   z.object({ status: z.literal("wrong"), triesLeft: z.number().int().min(0) }).strict(),
   /** No code works now: none was made, it was used, it ran out of time or of tries. */
   z.object({ status: z.literal("expired") }).strict(),

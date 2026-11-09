@@ -15,6 +15,15 @@ export function liteThemeMode(): "light" | "dark" | null {
   return asked === "light" || asked === "dark" ? asked : null;
 }
 
+/**
+ * The chat the lite view opens first (`?chat=<id>`): a host that keeps one chat per tab or document gives back the one
+ * it showed there (the embed protocol's `ready` names it). Null, or a value that is no chat's id, opens a new chat.
+ */
+export function liteChat(search: string): ThreadId | null {
+  const value = new URLSearchParams(search).get("chat")?.trim() ?? "";
+  return /^[A-Za-z0-9._-]{1,128}$/.test(value) ? (value as ThreadId) : null;
+}
+
 /** The full app, showing the chat (`#chat=<id>`, `takeLinkChat`), or as it was left for a chat with no id yet. */
 export const fullAppAddress = (threadId: ThreadId | null): string =>
   threadId === null ? "/" : `/#chat=${encodeURIComponent(threadId)}`;

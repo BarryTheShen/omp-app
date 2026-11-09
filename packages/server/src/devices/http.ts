@@ -85,11 +85,11 @@ export async function pairingRoute(
     name: string,
     kind: PairingAsk["kind"],
     via: string,
-  ): Promise<{ deviceId: string; cookie: string } | Response> => {
+  ): Promise<{ deviceId: string; cookie: string; key: string } | Response> => {
     try {
       const { device, key } = await store.add(name, kind);
       options.logger?.info("device.paired", { via, kind, device: device.id.slice(0, 8) });
-      return { deviceId: device.id, cookie: deviceCookie(key, options.overHttps(request)) };
+      return { deviceId: device.id, cookie: deviceCookie(key, options.overHttps(request)), key };
     } catch {
       return refused(500, "The device could not be saved.");
     }
@@ -118,9 +118,13 @@ export async function pairingRoute(
         if (result.status !== "allowed") return json(200, result satisfies PairingClaimed);
         const paired = await pair(result.name, result.kind, "allow");
         if (paired instanceof Response) return paired;
-        return json(200, { status: "paired", deviceId: paired.deviceId } satisfies PairingClaimed, {
-          "Set-Cookie": paired.cookie,
-        });
+        // A panel in another app's frame gets its key to hand to that app (`keep: "host"`).
+        const kept = claim.keep === "host" ? { key: paired.key } : {};
+        return json(
+          200,
+          { status: "paired", deviceId: paired.deviceId, ...kept } satisfies PairingClaimed,
+          { "Set-Cookie": paired.cookie },
+        );
       }
       const entry = await bodyOf(request, PairingCodeEntry);
       if (entry instanceof Response) return entry;
@@ -132,12 +136,11 @@ export async function pairingRoute(
       if (result.status === "expired") return json(200, result satisfies PairingCodeEntered);
       const paired = await pair(entry.name, entry.kind, "code");
       if (paired instanceof Response) return paired;
+      const kept = entry.keep === "host" ? { key: paired.key } : {};
       return json(
         200,
-        { status: "paired", deviceId: paired.deviceId } satisfies PairingCodeEntered,
-        {
-          "Set-Cookie": paired.cookie,
-        },
+        { status: "paired", deviceId: paired.deviceId, ...kept } satisfies PairingCodeEntered,
+        { "Set-Cookie": paired.cookie },
       );
     }
     case PAIRING_PATHS.newCode:

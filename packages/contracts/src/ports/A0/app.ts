@@ -71,6 +71,23 @@ export type UsableModel = z.infer<typeof UsableModel>;
 export const UsableModels = z.object({ models: z.array(UsableModel) }).strict();
 export type UsableModels = z.infer<typeof UsableModels>;
 
+/**
+ * The pages and panels that may frame the lite view (`/lite`): those set when the app starts (`OMP_APP_FRAME_ANCESTORS`,
+ * read only) and those saved in Settings → App → Integrations. Each is a tailnet or loopback origin, a browser extension
+ * kind or one extension (`moz-extension:`, `chrome-extension:`, `moz-extension://<uuid>`), or VS Code's webviews
+ * (`vscode-webview:`, `vscode-file:`).
+ */
+export const Embedders = z
+  .object({ fixed: z.array(z.string()), saved: z.array(z.string()) })
+  .strict();
+export type Embedders = z.infer<typeof Embedders>;
+
+/** The new saved list; a source the app does not take refuses the whole change, which then says why. */
+export const SetEmbeddersArgs = z
+  .object({ sources: z.array(z.string().max(300)).max(32) })
+  .strict();
+export type SetEmbeddersArgs = z.infer<typeof SetEmbeddersArgs>;
+
 export const AppPort = definePort({
   name: "A0.app",
   methods: {
@@ -101,6 +118,14 @@ export const AppPort = definePort({
     usableModels: {
       args: EmptyArgs,
       result: UsableModels,
+    },
+    embedders: {
+      args: EmptyArgs,
+      result: Embedders,
+    },
+    setEmbedders: {
+      args: SetEmbeddersArgs,
+      result: Embedders,
     },
   },
   events: {},

@@ -113,6 +113,11 @@ export interface CreateAppClientOptions {
   readonly url: string;
   /** The launch link's token; omitted for a paired device, which signs in with its key's cookie. */
   readonly token?: string;
+  /**
+   * A paired device's key, for a panel in another app's frame, which keeps no cookie of the app: its host keeps the key
+   * and gives it back at each load (the embed protocol's `credential`).
+   */
+  readonly device?: string;
   readonly reconnect?: ReconnectOptions;
   /** Injected only for isomorphic tests; browsers use their standard WebSocket global. */
   readonly webSocketFactory?: WebSocketFactory;
@@ -264,7 +269,8 @@ function asAppFailure(error: unknown, fallback: AppFailure): AppFailure {
   return error instanceof AppFailure ? error : fallback;
 }
 
-function withToken(url: string, token: string): string {
+/** The address with one more query parameter, before any fragment. */
+function withParam(url: string, name: string, value: string): string {
   const hashIndex = url.indexOf("#");
   const beforeHash = hashIndex < 0 ? url : url.slice(0, hashIndex);
   const hash = hashIndex < 0 ? "" : url.slice(hashIndex);
@@ -273,7 +279,7 @@ function withToken(url: string, token: string): string {
       ? ""
       : "&"
     : "?";
-  return `${beforeHash}${separator}token=${encodeURIComponent(token)}${hash}`;
+  return `${beforeHash}${separator}${name}=${encodeURIComponent(value)}${hash}`;
 }
 function isTextReader(value: unknown): value is { text(): Promise<unknown> } {
   if (typeof value !== "object" || value === null || !("text" in value)) return false;
@@ -592,10 +598,9 @@ class AppClientImpl implements AppClient {
 
   private connectNow(): void {
     if (this.disposed || this.terminal) return;
-    const url =
-      this.options.token === undefined
-        ? this.options.url
-        : withToken(this.options.url, this.options.token);
+    let url = this.options.url;
+    if (this.options.token !== undefined) url = withParam(url, "token", this.options.token);
+    if (this.options.device !== undefined) url = withParam(url, "device", this.options.device);
     let socket: WebSocketLike;
     try {
       socket = this.factory(url);
@@ -1247,5 +1252,3 @@ export function createAppClient(options: CreateAppClientOptions): AppClient {
   }
   return new AppClientImpl(options);
 }
-
-export { withToken as appendToken };

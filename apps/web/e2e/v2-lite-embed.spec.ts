@@ -1,5 +1,11 @@
-import { createServer } from "node:http";
+import { createServer, type Server } from "node:http";
 import { expect, realTest } from "./real-omp";
+
+/** Ends the host page's server and its open connections, so a repeat of the test can take its port again. */
+async function stop(server: Server): Promise<void> {
+  server.closeAllConnections();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+}
 
 /**
  * The embed protocol, on real omp: a page that frames the lite view (a browser extension's panel, an editor's webview)
@@ -115,7 +121,7 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
         await expect(sentWith).toContainText("Another page");
       } finally {
         await context.close();
-        server.close();
+        await stop(server);
       }
       expect(realApp.problems).toEqual([]);
     },

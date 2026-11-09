@@ -578,6 +578,30 @@ describe("A0.6 upgrade and static serving", () => {
       await none.stop();
     }
   });
+
+  test("a page or panel saved in Settings frames the lite view from its next load, beside those the variable names", async () => {
+    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    let saved: readonly string[] = [];
+    const app = createAppServer({
+      port: 0,
+      uiRoot: `${fixtures}/ui`,
+      origins: ["http://allowed.test"],
+      frameAncestors: ["http://127.0.0.1:9000"],
+      embedders: { list: () => saved },
+    });
+    const csp = async () => (await fetch(`${app.url}/lite`)).headers.get("content-security-policy");
+    try {
+      expect(await csp()).toBe("frame-ancestors http://127.0.0.1:9000");
+      saved = ["moz-extension:", "http://127.0.0.1:9000"];
+      expect(await csp()).toBe("frame-ancestors http://127.0.0.1:9000 moz-extension:");
+      // The rest of the app is never framed, whatever is saved.
+      expect((await fetch(`${app.url}/`)).headers.get("content-security-policy")).toBe(
+        "frame-ancestors 'none'",
+      );
+    } finally {
+      await app.stop();
+    }
+  });
   test("a built asset is kept for good and goes gzipped to a browser that takes gzip; the page is never kept", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const app = createAppServer({

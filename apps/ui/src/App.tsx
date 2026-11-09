@@ -36,6 +36,7 @@ import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS, keycap } from "./keys/table";
 import { watchLink } from "./linkCheck";
+import { embed } from "./lite/embed";
 import { LiteShell } from "./lite/LiteShell";
 import { isLiteView } from "./lite/lite";
 import { setPageErrorSink } from "./pageErrors";
@@ -104,44 +105,56 @@ export function App(): ReactNode {
     keepLinkFolder();
     scannedCode.current ??= takePairingCode();
     const token = readToken();
-    const client = connect(token);
-    // The page's errors go to the debug log over this connection, once it opens.
-    setPageErrorSink((report) => client.port(AppPort).reportClientError(report));
     let active = true;
-    // A refusal shows at once, before the app is ready: a device not paired pairs; a refused link says why.
-    const stopWatching = client.onConnectionState(({ refusal }) => {
-      if (!active || refusal === undefined) return;
-      setConnection((now) => {
-        if (now.kind === "ready") return now;
-        if (refusal === "unpaired") return { kind: "pairing", linkRefused: false };
-        // A server from before pairing refuses a page with no link as an invalid one.
-        if (refusal === "invalid" && token === null) return { kind: "no-link" };
-        return { kind: "refused", refusal };
+    let stop = (): void => undefined;
+    const start = (device: string | null): void => {
+      const client = connect(token, device);
+      // The page's errors go to the debug log over this connection, once it opens.
+      setPageErrorSink((report) => client.port(AppPort).reportClientError(report));
+      // A refusal shows at once, before the app is ready: a device not paired pairs; a refused link says why.
+      const stopWatching = client.onConnectionState(({ refusal }) => {
+        if (!active || refusal === undefined) return;
+        setConnection((now) => {
+          if (now.kind === "ready") return now;
+          if (refusal === "unpaired") return { kind: "pairing", linkRefused: false };
+          // A server from before pairing refuses a page with no link as an invalid one.
+          if (refusal === "invalid" && token === null) return { kind: "no-link" };
+          return { kind: "refused", refusal };
+        });
       });
-    });
-    void (async () => {
-      try {
-        const info = await client.port(AppPort).serverInfo({});
-        if (active) setConnection({ kind: "ready", client, folder: info.launchFolder });
-      } catch (error) {
-        // The call fails when the server refuses the page: the screen the refusal chose (pairing, no link, its words)
-        // stays. A refusal that comes after the failure replaces it (above).
-        if (active)
-          setConnection((now) =>
-            now.kind === "refused" || now.kind === "pairing" || now.kind === "no-link"
-              ? now
-              : {
-                  kind: "failed",
-                  message: error instanceof Error ? error.message : String(error),
-                },
-          );
-      }
-    })();
+      void (async () => {
+        try {
+          const info = await client.port(AppPort).serverInfo({});
+          if (active) setConnection({ kind: "ready", client, folder: info.launchFolder });
+        } catch (error) {
+          // The call fails when the server refuses the page: the screen the refusal chose (pairing, no link, its words)
+          // stays. A refusal that comes after the failure replaces it (above).
+          if (active)
+            setConnection((now) =>
+              now.kind === "refused" || now.kind === "pairing" || now.kind === "no-link"
+                ? now
+                : {
+                    kind: "failed",
+                    message: error instanceof Error ? error.message : String(error),
+                  },
+            );
+        }
+      })();
+      stop = () => {
+        setPageErrorSink(undefined);
+        stopWatching();
+        client.dispose();
+      };
+    };
+    // A panel whose host keeps its key (`/lite?embed=1`, `lite/embed.ts`) signs in with the key the host's hello brings.
+    if (token === null && embed?.keepsCredential === true) {
+      void embed.credential().then((device) => {
+        if (active) start(device);
+      });
+    } else start(null);
     return () => {
       active = false;
-      setPageErrorSink(undefined);
-      stopWatching();
-      client.dispose();
+      stop();
     };
   }, []);
 

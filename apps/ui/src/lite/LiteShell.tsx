@@ -26,7 +26,7 @@ import { chatCache } from "../workspace/chatCache";
 import { bindChat, embed, useEmbed } from "./embed";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./hostLook";
 import { LiteContext } from "./LiteContext";
-import { fullAppAddress, liteChoices, withEmbedChoices } from "./lite";
+import { fullAppAddress, liteChat, liteChoices, withEmbedChoices } from "./lite";
 
 /** How many chats the switcher offers: the folder's most recent ones. */
 const RECENT_CHATS = 12;
@@ -94,8 +94,7 @@ export function LiteShell({
     () => withEmbedChoices(liteChoices(window.location.search), settings),
     [settings],
   );
-  // The page that frames the panel talks to it (`lite/embed.ts`): its look and mode, what it has open, its tools.
-  useEffect(() => embed?.start(), []);
+  // The look and mode the page that frames the panel sends (`lite/embed.ts`, started in `main.tsx`).
   useEffect(() => {
     if (settings.look !== undefined) {
       applyHostLook(hostLook(new URLSearchParams(settings.look).toString(), BROWSER_CHECKS));
@@ -124,7 +123,16 @@ function LiteChats({
   readonly folder: FolderPath;
 }): ReactNode {
   const list = useChatList(client, folder);
-  const [shown, setShown] = useState<Shown>(() => newChat(folder));
+  // The chat the host asked for at load (`?chat=`), else a new one.
+  const [shown, setShown] = useState<Shown>(() => {
+    const asked = liteChat(window.location.search);
+    return asked === null
+      ? newChat(folder)
+      : {
+          key: crypto.randomUUID(),
+          target: { kind: "existing", threadId: asked, sessionFile: null },
+        };
+  });
   /** The controller and the opening it was made for: until the next one is made, the last one is not drawn. */
   const [opened, setOpened] = useState<{
     readonly key: string;

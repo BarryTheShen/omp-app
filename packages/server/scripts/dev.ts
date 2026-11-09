@@ -30,6 +30,7 @@ import {
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
 import { openDevicePairing } from "../src/devices";
+import { EmbeddersStore } from "../src/embedders";
 import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { openLaunchHistory } from "../src/launch-history";
 import {
@@ -214,8 +215,9 @@ export async function createCompositionServer(
   const serverVersion = options.serverVersion ?? String(serverPackage.version);
   // A bad value stops the start before anything runs: the app must never listen for an address it cannot check.
   const remote = parseRemoteOrigin(env[REMOTE_ORIGIN_ENV]);
-  // The pages that may frame the lite view (#2843); a bad one stops the start the same way.
+  // The pages that may frame the lite view (#2843); a bad one stops the start the same way. More are saved in Settings.
   const frameAncestors = parseFrameAncestors(env[FRAME_ANCESTORS_ENV]);
+  const embedders = await EmbeddersStore.open(join(appDataDir, "embedders.json"));
   // omp's own command line, built by the app (#2586): it answers omp's commands, runs every chat on the chat host's own
   // protocol (SDK plan H5.4a) and the check of what a chat answers (H5.6a). Never an omp installed on the computer.
   const chatHostBinary = options.chatHostBinary ?? env.OMP_APP_CHAT_HOST_BIN;
@@ -480,6 +482,7 @@ export async function createCompositionServer(
       }),
     capabilities,
     usableModels: () => listUsableModels(ompCmd, env, launchFolder),
+    embedders: { fixed: frameAncestors, store: embedders },
     serverInfo: {
       instanceId,
       serverVersion,
@@ -890,6 +893,7 @@ export async function createCompositionServer(
     earlierLaunchTokens: launchHistory.earlier,
     ...(remote === undefined ? {} : { remote }),
     ...(frameAncestors.length === 0 ? {} : { frameAncestors }),
+    embedders,
     devices,
   });
   appAddress = remote?.origin ?? server.url;

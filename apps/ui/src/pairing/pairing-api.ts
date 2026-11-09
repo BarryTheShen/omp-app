@@ -53,18 +53,30 @@ export function askToPair(name: string, kind: DeviceKind): Promise<Answer<Pairin
   return post(PAIRING_PATHS.ask, { name, kind }, PairingAsked);
 }
 
-/** Whether the request was answered; when it was allowed, the key comes as a cookie. */
-export function claimPairing(requestId: string): Promise<Answer<PairingClaimed>> {
-  return post(PAIRING_PATHS.claim, { requestId }, PairingClaimed);
+/** Whether the request was answered; when it was allowed, the key comes as a cookie, and to the page when `keep`. */
+export function claimPairing(
+  requestId: string,
+  keep: "host" | null = null,
+): Promise<Answer<PairingClaimed>> {
+  return post(
+    PAIRING_PATHS.claim,
+    { requestId, ...(keep === null ? {} : { keep }) },
+    PairingClaimed,
+  );
 }
 
-/** Pairs with a one-time code; when it is right, the key comes as a cookie. */
+/** Pairs with a one-time code; when it is right, the key comes as a cookie, and to the page when `keep`. */
 export function enterPairingCode(
   code: string,
   name: string,
   kind: DeviceKind,
+  keep: "host" | null = null,
 ): Promise<Answer<PairingCodeEntered>> {
-  return post(PAIRING_PATHS.code, { code, name, kind }, PairingCodeEntered);
+  return post(
+    PAIRING_PATHS.code,
+    { code, name, kind, ...(keep === null ? {} : { keep }) },
+    PairingCodeEntered,
+  );
 }
 
 /** The one-time code a QR code's address carries (`/#pair=K7F3QX9M`); null when it carries none. */

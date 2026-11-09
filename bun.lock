@@ -106,6 +106,14 @@
         "@types/bun": "^1.4.2",
       },
     },
+    "packages/embed": {
+      "name": "@omp-app/embed",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@omp-app/contracts": "workspace:*",
+        "@types/bun": "^1.4.2",
+      },
+    },
     "packages/server": {
       "name": "@omp-app/server",
       "version": "0.0.0",
@@ -441,6 +449,8 @@
     "@omp-app/contracts": ["@omp-app/contracts@workspace:packages/contracts"],
 
     "@omp-app/desktop": ["@omp-app/desktop@workspace:apps/desktop"],
+
+    "@omp-app/embed": ["@omp-app/embed@workspace:packages/embed"],
 
     "@omp-app/server": ["@omp-app/server@workspace:packages/server"],
 

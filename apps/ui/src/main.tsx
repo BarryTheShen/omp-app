@@ -6,6 +6,7 @@ import "katex/dist/katex.min.css";
 import "./styles/index.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { App } from "./App";
+import { embed } from "./lite/embed";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./lite/hostLook";
 import { isLiteView, liteThemeMode } from "./lite/lite";
 import { installPageErrorReporting } from "./pageErrors";
@@ -19,6 +20,8 @@ if (isLiteView()) {
   startLiteTheme(liteThemeMode());
   // The framing app's own colours, font and text size, over the theme (#2844).
   applyHostLook(hostLook(window.location.search, BROWSER_CHECKS));
+  // The page that frames it talks to it from the first moment (`lite/embed.ts`): its hello may bring the panel's key.
+  embed?.start();
 } else startTheme();
 followVisualViewport();
 const root = document.getElementById("root");

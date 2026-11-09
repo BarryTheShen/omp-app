@@ -33,12 +33,16 @@ export function readToken(): string | null {
   }
 }
 
-/** Connects with the launch link's token, or with none: a paired device signs in with its key's cookie. */
-export function connect(token: string | null): AppClient {
+/**
+ * Connects with the launch link's token, or with none: a paired device signs in with its key's cookie, and a panel in
+ * another app's frame with the key its host keeps (`device`).
+ */
+export function connect(token: string | null, device: string | null = null): AppClient {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return createAppClient({
     url: `${protocol}//${window.location.host}/ws`,
     ...(token === null ? {} : { token }),
+    ...(device === null ? {} : { device }),
     clientName: "@omp-app/ui",
   });
 }

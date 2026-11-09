@@ -2,6 +2,7 @@ import { formatPairingCode, normalizePairingCode, type PairingAsked } from "@omp
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { embed } from "../lite/embed";
 import { guessThisDevice } from "./device-name";
 import { askToPair, claimPairing, enterPairingCode } from "./pairing-api";
 
@@ -18,9 +19,16 @@ type AskState =
 /** The digits as shown: "482 913". */
 const spaced = (code: string): string => `${code.slice(0, 3)} ${code.slice(3)}`;
 
-/** Into the app: the address loses the pairing code, and the page loads again, signed in by its new key. */
-function openApp(): void {
-  window.history.replaceState(null, "", window.location.pathname);
+/** A panel whose host keeps its key (`/lite?embed=1`) asks for it with the answer that pairs. */
+const keep = embed?.keepsCredential === true ? "host" : null;
+
+/**
+ * Into the app: the address loses the pairing code (its query, a panel's settings, stays), and the page loads again,
+ * signed in by its new key: a cookie, or for a panel whose host keeps it, the key the host is handed first.
+ */
+function openApp(key: string | undefined): void {
+  if (key !== undefined) embed?.keepCredential(key);
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
   window.location.reload();
 }
 
@@ -57,19 +65,19 @@ export function PairingScreen({
     let timer = 0;
     const askAgain = (): void => {
       timer = window.setTimeout(() => {
-        void claimPairing(waitingFor).then((answer) => {
+        void claimPairing(waitingFor, keep).then((answer) => {
           if (!alive) return;
           if (!answer.ok) setProblem(answer.message);
           else {
             setProblem(null);
-            const status = answer.value.status;
-            if (status === "paired") {
+            const claimed = answer.value;
+            if (claimed.status === "paired") {
               alive = false;
-              openApp();
+              openApp(claimed.key);
               return;
             }
-            if (status === "denied" || status === "expired") {
-              setAsk({ kind: status });
+            if (claimed.status === "denied" || claimed.status === "expired") {
+              setAsk({ kind: claimed.status });
               return;
             }
           }
@@ -102,14 +110,14 @@ export function PairingScreen({
     setBusy(true);
     setProblem(null);
     setCodeNote(null);
-    void enterPairingCode(normalizePairingCode(code), name.trim(), guess.current.kind)
+    void enterPairingCode(normalizePairingCode(code), name.trim(), guess.current.kind, keep)
       .then((answer) => {
         if (!answer.ok) {
           setProblem(answer.message);
           return;
         }
         const entered = answer.value;
-        if (entered.status === "paired") openApp();
+        if (entered.status === "paired") openApp(entered.key);
         else if (entered.status === "wrong")
           setCodeNote(
             `That code is not right: ${entered.triesLeft} ${entered.triesLeft === 1 ? "try" : "tries"} left.`,

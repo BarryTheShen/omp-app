@@ -19,6 +19,7 @@ omp app is a chat app for omp, the coding agent: a desktop window for Linux and 
 | [Architecture](architecture.md) | How the app is put together: the processes, the wire between the page and the server, the chat host, storage, and the checks that keep the server private. |
 | [Development](development.md) | What you need to work on the code, how to run it from a checkout, and the conventions the code follows. |
 | [Testing](testing.md) | The test suites, how to run each, and what CI runs. |
+| [Integrations](integrations.md) | Showing a chat in another app's panel: which pages may frame it, how a panel signs in, the embed protocol, the `@omp-app/embed` library and a minimal host page. |
 | [Releasing](releasing.md) | How releases and packages are built and published, and how an installed app gets an update. |
 | [Contributing](../CONTRIBUTING.md) | Who can contribute, the checks a change must pass, and the design rules. |
 
@@ -28,6 +29,7 @@ Each workspace has a short page of its own:
 |---|---|
 | [packages/server](../packages/server/README.md) | The server, the chat host on omp's SDK, and the stores. |
 | [packages/client](../packages/client/README.md) | The browser's WebSocket client. |
+| [packages/embed](../packages/embed/README.md) | The library a host uses to show the chat in its panel. |
 | [packages/contracts](../packages/contracts/README.md) | The shared types and schemas. |
 | [apps/ui](../apps/ui/README.md) | The web app. |
 | [apps/desktop](../apps/desktop/README.md) | The desktop window. |

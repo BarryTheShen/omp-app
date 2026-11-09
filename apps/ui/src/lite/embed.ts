@@ -58,6 +58,9 @@ const NO_ANSWER: EmbedToolResult = {
   isError: true,
 };
 
+/** How long a panel whose host keeps its key waits for the host's `hello` before it connects without one. */
+export const HOST_HELLO_WAIT_MS = 3_000;
+
 export class EmbedEndpoint {
   readonly #window: EmbedWindow;
   #state: EmbedState = EMPTY;
@@ -65,11 +68,19 @@ export class EmbedEndpoint {
   #origin: string | null = null;
   readonly #listeners = new Set<() => void>();
   readonly #waiting = new Map<string, Waiting>();
+  /** The key the first `hello` brought (null when it brought none), once it came. */
+  readonly #hello = Promise.withResolvers<string | null>();
   /** The owner name of this page's tool registrations: one per page load. */
   readonly owner = `embed-${crypto.randomUUID()}`;
+  /**
+   * The host keeps this panel's key (`/lite?embed=1`): the browser keeps no cookie of the app in another app's frame, so
+   * the page signs in with the key the host's `hello` brings, and hands the host the key it gets when it pairs.
+   */
+  readonly keepsCredential: boolean;
 
-  constructor(window: EmbedWindow) {
+  constructor(window: EmbedWindow, keepsCredential = false) {
     this.#window = window;
+    this.keepsCredential = keepsCredential;
   }
 
   /** Listens to the framing page, and tells it the view listens; returns what stops it. */
@@ -115,6 +126,7 @@ export class EmbedEndpoint {
           contextLeftOut: false,
           tools: message.tools ?? [],
         });
+        this.#hello.resolve(message.credential ?? null);
         return;
       case "settings":
         this.#set({ settings: { ...this.#state.settings, ...message.settings } });
@@ -138,6 +150,19 @@ export class EmbedEndpoint {
   #post(body: EmbedAppBody): void {
     if (this.#origin === null) return;
     this.#window.parent.postMessage(embedMessage(body), this.#origin);
+  }
+
+  /** The key the host's `hello` brings: null when it brings none, or when no `hello` comes in `waitMs`. */
+  credential(waitMs = HOST_HELLO_WAIT_MS): Promise<string | null> {
+    return Promise.race([
+      this.#hello.promise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), waitMs)),
+    ]);
+  }
+
+  /** The key this panel got when it paired, for the host to keep and give back at each load. */
+  keepCredential(key: string): void {
+    this.#post({ type: "credential", key });
   }
 
   /** Tells the host which chat shows now, and which of its tools that chat took. */
@@ -249,10 +274,13 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   };
 }
 
-/** This page's endpoint: only in the lite view, inside a frame; null everywhere else. */
+/**
+ * This page's endpoint: only in the lite view, inside a frame; null everywhere else. `?embed=1` says the host keeps the
+ * panel's key (`keepsCredential`).
+ */
 export const embed: EmbedEndpoint | null =
   typeof window !== "undefined" && isLiteView() && window.parent !== window
-    ? new EmbedEndpoint(window)
+    ? new EmbedEndpoint(window, new URLSearchParams(window.location.search).get("embed") === "1")
     : null;
 
 /** What the framing page said, kept up to date; the empty state outside a frame. */

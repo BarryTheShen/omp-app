@@ -130,6 +130,36 @@ describe("the lite view's end of the embed protocol", () => {
     stop();
     await expect(waiting).resolves.toMatchObject({ isError: true });
   });
+
+  test("a panel whose host keeps its key signs in with the one its hello brings, and hands a new one to that host only", async () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window, true);
+    endpoint.start();
+    expect(endpoint.keepsCredential).toBe(true);
+    const waiting = endpoint.credential(60_000);
+    // Another window's hello brings no key the panel would use.
+    receive(hello({ credential: "stolen" }), "https://other.example", {});
+    receive(hello({ credential: "key-1" }));
+    await expect(waiting).resolves.toBe("key-1");
+    // Only the first hello's key: the page signs in once per load.
+    receive(hello({ credential: "key-2" }));
+    await expect(endpoint.credential(60_000)).resolves.toBe("key-1");
+
+    endpoint.keepCredential("key-3");
+    expect(sent.at(-1)).toEqual({
+      message: { ...envelope, type: "credential", key: "key-3" },
+      origin: HOST,
+    });
+  });
+
+  test("with no hello in time the panel connects without a key, and hands a new key to no one", async () => {
+    const { window, sent } = frame();
+    const endpoint = new EmbedEndpoint(window, true);
+    endpoint.start();
+    await expect(endpoint.credential(5)).resolves.toBeNull();
+    endpoint.keepCredential("key-1");
+    expect(sent).toEqual([{ message: { ...envelope, type: "listening" }, origin: "*" }]);
+  });
 });
 
 /** A chat that is not open yet: what the binding asked of it, and a way to open it. */

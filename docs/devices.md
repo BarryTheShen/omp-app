@@ -70,7 +70,7 @@ Open the address on the new device. It shows **Pair this device** and a field, "
 - **New code** (or running `omp-app pair` again) makes a new code, and the old one stops working.
 - The address shown with the code is the one `OMP_APP_REMOTE_ORIGIN` names. Without that variable it is this computer's own address, `http://127.0.0.1:<port>`, which no other device can open.
 
-A paired device keeps its key in a cookie that only the app's own pages send. The app keeps only a hash of each key.
+A paired device keeps its key in a cookie that only the app's own pages send. The app keeps only a hash of each key. A panel inside another app (an extension's, an editor's) gets no cookie of the app, so its host keeps the key instead and hands it back at each start; see [Integrations](integrations.md#how-does-a-panel-sign-in).
 
 **Undo:** remove the device (see below). It then pairs again to come back.
 

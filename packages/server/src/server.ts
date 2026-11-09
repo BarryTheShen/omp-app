@@ -46,6 +46,8 @@ export interface AppServerOptions {
    * `frame-ancestors.ts`); none by default, and no other page of the app may ever be framed.
    */
   readonly frameAncestors?: readonly string[];
+  /** More of them, saved in Settings → App → Integrations (`embedders.ts`): read at each load of the lite view. */
+  readonly embedders?: { list(): readonly string[] };
   readonly registry?: PortRegistry;
   /** Where connections and failed calls are recorded; nothing is logged without one. */
   readonly logger?: Logger;
@@ -133,10 +135,11 @@ function throughProxy(request: Request): boolean {
 
 /**
  * Returns an HTTP rejection for a bad Host, a close decision after upgrade for auth failures, or who was let in: a
- * paired device's key (its cookie), else the launch link's token. The key comes first, so a page that holds both is its
- * device. The token is taken from the server's own computer only: a page at the Tailscale address pairs instead, so one
- * with the token and no key is told it is not paired, and so is any request that came through a proxy, whatever Host
- * and Origin it names.
+ * paired device's key (its cookie, or `?device=` from a panel whose host keeps the key: another app's frame keeps no
+ * cookie of the app), else the launch link's token. The key comes first, so a page that holds both is its device. The
+ * token is taken from the server's own computer only: a page at the Tailscale address pairs instead, so one with the
+ * token and no key is told it is not paired, and so is any request that came through a proxy, whatever Host and Origin
+ * it names.
  */
 export function authorizeWebSocketUpgrade(
   request: Request,
@@ -148,7 +151,7 @@ export function authorizeWebSocketUpgrade(
   if (!originAllowed(request.headers.get("origin"), policy)) {
     return { closeCode: 4403, reason: "origin not allowed" };
   }
-  const key = deviceKeyOf(request);
+  const key = deviceKeyOf(request) ?? (url.searchParams.get("device") || undefined);
   const deviceId = key === undefined ? undefined : policy.deviceForKey?.(key);
   if (deviceId !== undefined) return { deviceId };
   const remotePage =
@@ -288,7 +291,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
   const uiRoot = options.uiRoot ?? `${process.cwd()}/apps/ui/dist`;
-  const framedBy = liteHeaders(options.frameAncestors ?? []);
+  // The lite view's frame rule, read at each load: a page named in Settings counts without a restart.
+  const framedBy = (): Readonly<Record<string, string>> =>
+    liteHeaders([
+      ...new Set([...(options.frameAncestors ?? []), ...(options.embedders?.list() ?? [])]),
+    ]);
   const port = requestedPort(options);
   const origins = options.origins;
   const devices = options.devices;
@@ -363,7 +370,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             id: randomId(),
             client: (request.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
             origin: request.headers.get("origin") ?? "none",
-            hadKey: deviceKeyOf(request) !== undefined,
+            hadKey: deviceKeyOf(request) !== undefined || url.searchParams.has("device"),
             hadToken: url.searchParams.has("token"),
             ...("closeCode" in authorization
               ? { authFailure: authorization, deviceId: null }
@@ -385,7 +392,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       }
       // The lite view: the new UI's page, which a page `frameAncestors` names may frame.
       if (url.pathname === LITE_PATH) {
-        return renewed(request, await serveStatic(uiRoot, "/index.html", request, framedBy));
+        return renewed(request, await serveStatic(uiRoot, "/index.html", request, framedBy()));
       }
       // The new UI's own files; one it does not have is a 404.
       const page = await serveStatic(uiRoot, url.pathname, request);

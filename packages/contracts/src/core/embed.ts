@@ -73,6 +73,11 @@ export const EmbedHostMessage = z.discriminatedUnion("type", [
     settings: EmbedSettings.optional(),
     context: HostContext.nullable().optional(),
     tools: z.array(EmbedTool).max(EMBED_TOOLS_MAX).optional(),
+    /**
+     * The panel's key, which the host keeps (`/lite?embed=1`): another app's frame keeps no cookie of the app, so the
+     * panel signs in with it. The host got it from the panel's `credential`.
+     */
+    credential: z.string().min(1).max(200).optional(),
   }),
   z.strictObject({ ...envelope, type: z.literal("settings"), settings: EmbedSettings }),
   z.strictObject({ ...envelope, type: z.literal("context"), context: HostContext.nullable() }),
@@ -107,7 +112,9 @@ export type EmbedAppBody =
       readonly name: string;
       readonly arguments: Record<string, unknown>;
     }
-  | { readonly type: "tool_cancel"; readonly callId: string };
+  | { readonly type: "tool_cancel"; readonly callId: string }
+  /** The panel paired: the host keeps this key, out of any page's reach, and gives it back in each `hello`. */
+  | { readonly type: "credential"; readonly key: string };
 
 /** What the lite view sends its host. */
 export type EmbedAppMessage = EmbedAppBody & {

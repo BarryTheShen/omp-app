@@ -59,12 +59,21 @@ const keyOf = (response: Response): string =>
 /** Opens the WebSocket as a page would (its own origin, or the Tailscale address), and resolves with its welcome or its close. */
 function connect(
   app: AppServer,
-  options: { readonly key?: string; readonly token?: string; readonly from?: "page" | "https" },
+  options: {
+    readonly key?: string;
+    readonly token?: string;
+    readonly device?: string;
+    readonly from?: "page" | "https";
+  },
 ): Promise<{ welcome: boolean; code?: number; reason?: string; socket: WebSocket }> {
   const headers: Record<string, string> =
     options.from === "https" ? { origin: REMOTE.origin, host: REMOTE.host } : { origin: app.url };
   if (options.key !== undefined) headers.cookie = `${DEVICE_COOKIE}=${options.key}`;
-  const url = `${app.url.replace("http", "ws")}/ws${options.token === undefined ? "" : `?token=${options.token}`}`;
+  const query = new URLSearchParams({
+    ...(options.token === undefined ? {} : { token: options.token }),
+    ...(options.device === undefined ? {} : { device: options.device }),
+  }).toString();
+  const url = `${app.url.replace("http", "ws")}/ws${query === "" ? "" : `?${query}`}`;
   const socket = new WebSocket(url, { headers });
   return new Promise((resolve) => {
     socket.onopen = () =>
@@ -125,6 +134,33 @@ describe("device pairing on a running server", () => {
     pairing.desk.allow(pairing.desk.waiting()[0]?.id ?? "");
     const claimed = await post(app, PAIRING_PATHS.claim, { requestId }, "https");
     expect(claimed.headers.get("set-cookie") ?? "").toContain("Secure");
+  });
+
+  test("a panel whose host keeps its key gets it in the answer, and signs in with it in the address; others get none", async () => {
+    const { app, pairing } = await serve();
+    const asked = (await (
+      await post(app, PAIRING_PATHS.ask, { name: "Zen panel", kind: "browser" }, "https")
+    ).json()) as { requestId: string };
+    pairing.desk.allow(pairing.desk.waiting()[0]?.id ?? "");
+    const claimed = (await (
+      await post(app, PAIRING_PATHS.claim, { requestId: asked.requestId, keep: "host" }, "https")
+    ).json()) as { status: string; key?: string };
+    expect(claimed.status).toBe("paired");
+    expect(claimed.key).toMatch(/.{20,}/);
+
+    // Through the Tailscale address, where the launch link opens nothing: the key alone signs the panel in.
+    const signedIn = await connect(app, { device: claimed.key ?? "", from: "https" });
+    expect(signedIn.welcome).toBe(true);
+    signedIn.socket.close();
+    const wrong = await connect(app, { device: "not-a-key", from: "https" });
+    expect(wrong).toMatchObject({ welcome: false, code: 4401, reason: "not paired" });
+
+    // A one-time code with no `keep`: the key goes as the cookie only.
+    const { code } = pairing.desk.newCode();
+    const entered = (await (
+      await post(app, PAIRING_PATHS.code, { code, name: "Phone", kind: "browser" }, "https")
+    ).json()) as { status: string; deviceId?: string; key?: string };
+    expect(entered).toEqual({ status: "paired", deviceId: expect.any(String) });
   });
 
   test("a one-time code pairs once; a turned-down request and a wrong code pair nothing", async () => {

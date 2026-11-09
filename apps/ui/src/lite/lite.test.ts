@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { liteChoices, liteHost } from "./lite";
+import { liteChat, liteChoices, liteHost } from "./lite";
 
 describe("liteChoices", () => {
   test("the framing app's greeting, suggestions and placeholder, as the issue gives them", () => {
@@ -54,5 +54,18 @@ describe("liteHost", () => {
     expect(liteHost("?host=2notes")).toBeNull();
     expect(liteHost("?host=my%20notes")).toBeNull();
     expect(liteHost(`?host=a${"b".repeat(32)}`)).toBeNull();
+  });
+});
+
+describe("liteChat", () => {
+  test("the chat a host gives back opens first; none, or a value that is no chat's id, opens a new chat", () => {
+    expect(liteChat("?embed=1&chat=01a18633-f642-75c0-b0bd-ad38cbbf851a")).toBe(
+      "01a18633-f642-75c0-b0bd-ad38cbbf851a",
+    );
+    expect(liteChat("")).toBeNull();
+    expect(liteChat("?chat=")).toBeNull();
+    expect(liteChat("?chat=../etc")).toBeNull();
+    expect(liteChat("?chat=a%20b")).toBeNull();
+    expect(liteChat(`?chat=${"a".repeat(129)}`)).toBeNull();
   });
 });
