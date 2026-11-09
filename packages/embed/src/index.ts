@@ -9,6 +9,7 @@
  */
 import type {
   EmbedAppMessage,
+  EmbedFiles,
   EmbedHostMessage,
   EmbedSettings,
   EmbedTool,
@@ -16,7 +17,7 @@ import type {
   HostContext,
 } from "@omp-app/contracts";
 
-export type { EmbedSettings, EmbedTool, EmbedToolResult, HostContext };
+export type { EmbedFiles, EmbedSettings, EmbedTool, EmbedToolResult, HostContext };
 
 /** One of the host's tools, with what answers its calls. */
 export interface HostTool extends EmbedTool {
@@ -54,6 +55,12 @@ export interface PanelOptions {
   readonly keys?: KeyKeeper;
   /** The address's parameters, for the first paint (`theme`, `greeting`, `placeholder`, the look's colours). */
   readonly params?: Readonly<Record<string, string>>;
+  /**
+   * The project's files are on the host's computer (an editor's open folder): its name, and an id the host derives from
+   * its folder (hex). The panel's chats then run in the server's folder for that project, with omp's own file and shell
+   * tools left out; the host's `tools` reach the files.
+   */
+  readonly files?: EmbedFiles;
   /** The chat to open, as `onReady` named it before (a host that keeps one chat per tab gives it back); none: a new one. */
   readonly chat?: string;
   /** The panel shows a chat: its id and the host's tools it took; again whenever it shows another. */
@@ -114,6 +121,33 @@ const failed = (text: string): EmbedToolResult => ({
   content: [{ type: "text", text }],
   isError: true,
 });
+
+/**
+ * omp app's address from what the person typed, or why it is not one: an `https` address (the computer's tailnet
+ * address), or a loopback `http` address with its port (the app on this computer). Only the origin is kept.
+ */
+export function appAddressOf(
+  typed: string,
+): { readonly address: string } | { readonly problem: string } {
+  const text = typed.trim();
+  if (text === "") return { problem: "Type omp app's address." };
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return { problem: `"${text}" is not an address. It starts with https://.` };
+  }
+  const loopback =
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
+    url.port !== "";
+  if (url.protocol !== "https:" && !loopback)
+    return {
+      problem:
+        "omp app's address starts with https:// (its tailnet address), or is http://127.0.0.1 with its port on this computer.",
+    };
+  return { address: url.origin };
+}
 
 /** Shows omp app's chat in a frame inside `into`, and talks to it. */
 export function openPanel(options: PanelOptions): Panel {
@@ -188,6 +222,7 @@ export function openPanel(options: PanelOptions): Panel {
       ...(context === undefined ? {} : { context }),
       tools: described(tools),
       ...(credential === null ? {} : { credential }),
+      ...(options.files === undefined ? {} : { files: options.files }),
     });
     greeted = true;
   };

@@ -499,6 +499,24 @@ function reply(request: Request): Reply {
     const seen = messages.slice(0, -1).some((message) => text(message.content).includes(word));
     return { text: `context ${seen ? "has" : "lacks"} ${word}` };
   }
+  // `tools_offered`: the names of the tools omp offers this request, sorted, as `tools: a, b, c` (a chat whose files are
+  // on its host offers none of omp's file and shell tools, `chat-host/host-files.ts`).
+  if (/\btools_offered\b/.test(prompt)) {
+    const names = (request.tools ?? [])
+      .map((tool) => tool.function?.name ?? tool.name ?? "")
+      .filter((name) => name !== "")
+      .sort();
+    return { text: `tools: ${names.join(", ")}` };
+  }
+  // `system_has <words>`: whether omp's system prompt holds these words.
+  const systemProbe = /system_has\s+(.+)/.exec(prompt);
+  if (systemProbe?.[1] !== undefined) {
+    const system = messages
+      .filter((message) => message.role === "system" || message.role === "developer")
+      .map((message) => text(message.content))
+      .join("\n");
+    return { text: `system ${system.includes(systemProbe[1].trim()) ? "has" : "lacks"} it` };
+  }
   // `call_tool <name> <json arguments>`: one call of any tool the session offers (a host tool, `read` of a host URI),
   // then the usual "tool said" answer above. Each call gets an id of its own, as omp gives each call one.
   const toolProbe = /call_tool\s+(\S+)\s+(\{.*\})/.exec(prompt);

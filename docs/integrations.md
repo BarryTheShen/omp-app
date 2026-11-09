@@ -33,7 +33,8 @@ The key is the device: whoever holds it is signed in as that panel. Removing the
 |---|---|
 | Set the panel's look and the empty chat's words (theme, colours, font, greeting, suggestions, placeholder). | Read the chat, the transcript or anything else in the panel: the frame is another site's. |
 | Say what the person is looking at (a title, an address, a selection, some text). It goes with each message sent from the panel, which shows it as a chip the person can remove. | Send a message, answer a question or approve anything: only the person, in the panel, does that. |
-| Give the chat tools: omp may call them, and the host's answer goes back to omp. Only the chat in that panel gets them, and only that panel answers their calls; when the panel closes, a call that waits fails. | Reach other chats, other devices' pages or the app's server: it talks to its own panel only. |
+| Give the chat tools: omp offers them by name, with its own, and the host's answer goes back to omp. Only the chat in that panel gets them, and only that panel answers their calls; when the panel closes, a call that waits fails. | Reach other chats, other devices' pages or the app's server: it talks to its own panel only. |
+| Say the project's files are on its own computer (`files`): the panel's chats then run in a folder of their own on the server, and omp's tools for the server's files and shell are left out of them, so the host's tools are how the chat reaches the files. | Choose a folder on the server: the server makes and names the project's folder. |
 
 ## The embed protocol
 
@@ -42,7 +43,7 @@ The host and the panel talk with `postMessage`. Every message is an object with 
 | From | `type` | What it carries |
 |---|---|---|
 | panel | `listening` | Nothing: the panel's page loaded and listens. Sent at every load, so the host says `hello` again after each. |
-| host | `hello` | `host` (its name: lowercase letters, digits and dashes), and optionally `settings`, `context`, `tools` and `credential` (the key it keeps). |
+| host | `hello` | `host` (its name: lowercase letters, digits and dashes), and optionally `settings`, `context`, `tools`, `credential` (the key it keeps) and `files` (below). |
 | panel | `ready` | `chat` (the chat shown) and `tools` (the host's tools the chat took); again whenever the panel shows another chat. |
 | host | `settings` | `theme`, `look`, `greeting`, `suggestions`, `placeholder`; each one left out stays as it was. |
 | host | `context` | What is open now: `{ kind, title, uri, text?, selection? }`, or `null`. |
@@ -51,6 +52,13 @@ The host and the panel talk with `postMessage`. Every message is an object with 
 | host | `tool_result` | `callId` and `result`: `{ content: [{ type: "text", text } or { type: "image", data, mimeType }], isError? }`. |
 | panel | `tool_cancel` | `callId` of a call omp gave up: no answer is needed. |
 | panel | `credential` | `key`: the panel paired, and the host keeps this key. Only for `/lite?embed=1`. |
+
+**`files`: a project whose files are on the host's computer.** An editor on another computer than the app's server says which project is open: `files: { project, id }`, the project's name (64 characters at most) and an id the host derives from its folder (8 to 64 lowercase hex digits; the VS Code extension takes 16 of the SHA-256 of the folder's path). Only the first `hello` of a load counts. The panel then:
+
+- asks the server for that project's folder, `host-folders/<host>/<project>-<id>` in the app's data folder, made empty and readable by your account only, and lists and starts its chats there, so each project has its own chats;
+- runs those chats without omp's tools that work on the server's files and shell (`bash`, `edit`, `grep`, `glob`, `eval`, `task`, `lsp` and the like), keeping `read` and `write` for web pages, skills and `xd://` devices, and adds a note to omp's system prompt that the files are on the host's computer and its tools reach them.
+
+The folder is the mark: a chat in it starts this way wherever it is opened again, in the full app too.
 
 ## The `@omp-app/embed` library
 
@@ -67,13 +75,14 @@ openPanel(options: PanelOptions): Panel
 | `host` | The host's name, shown beside what goes with each message. |
 | `settings`, `context` | As in the protocol. |
 | `tools` | The host's tools, each with `run(args, signal)`: it returns the answer's text or a `result`; an error thrown goes back as the call's error; `signal` aborts when omp gives the call up, or when the panel loads again or closes. |
+| `files` | `{ project, id }`: the project's files are on the host's computer (see `files` above). |
 | `keys` | `{ get(), set(key) }`: where the host keeps the panel's key. Give it for a panel inside another app; leave it out for a tailnet page, which keeps the app's cookie. |
 | `params` | The address's parameters for the first paint (`theme`, `greeting`, `placeholder`, the look's colours). |
 | `chat` | The chat to open, as `onReady` named it before: a host that keeps one chat per tab or document gives it back, and the panel opens it again (the lite view's `?chat=<id>`). Left out, the panel starts a new chat. |
 | `onReady` | Called with `{ chat, tools }` when the panel shows a chat. |
 | `title` | The frame's name for screen readers. |
 
-The `Panel` it returns has `setSettings`, `setContext`, `setTools` and `close`, and the `frame` itself.
+The `Panel` it returns has `setSettings`, `setContext`, `setTools` and `close`, and the `frame` itself. `appAddressOf(typed)` checks an address a person typed: it gives `{ address }`, the origin, for an `https` address or a loopback `http` one with its port, and `{ problem }`, a sentence to show, for anything else.
 
 ## A minimal host
 
@@ -114,3 +123,4 @@ The first time, the panel asks to pair; allow it, or make a one-time code in **S
 ## Hosts in this repository
 
 - **Firefox and Zen** ([apps/zen](../apps/zen/README.md)): the chat in the sidebar, for the tab it was opened on. Its tools read the page, take a picture of it, click, type, scroll, go to an address, open tabs of its own and wait for text, on that tab and the tabs it opened only. Turn on **Firefox and Zen extensions** in Settings → App → Integrations.
+- **VS Code** ([apps/vscode](../apps/vscode/README.md)): the chat in VS Code's side bar for the folder open there, on the computer VS Code runs on. Its tools read, list, search and change the folder's files, run commands in it, and show VS Code's errors; each change shows as a diff to accept or reject, and each command asks first. Turn on **VS Code** in Settings → App → Integrations.

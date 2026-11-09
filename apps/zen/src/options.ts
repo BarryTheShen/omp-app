@@ -1,4 +1,5 @@
-import { appAddressOf, STORED, storedAppAddress } from "./address";
+import { appAddressOf } from "@omp-app/embed";
+import { STORED, storedAppAddress } from "./address";
 
 /** The extension's settings: omp app's address, and forgetting this browser's key (it then pairs again). */
 const form = document.getElementById("address") as HTMLFormElement;

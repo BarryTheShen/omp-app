@@ -1,5 +1,6 @@
 import {
   type EmbedAppBody,
+  type EmbedFiles,
   EmbedHostMessage,
   type EmbedSettings,
   type EmbedTool,
@@ -31,6 +32,8 @@ export interface EmbedState {
   /** The person took the context off the next messages: it stays off until the host says another. */
   readonly contextLeftOut: boolean;
   readonly tools: readonly EmbedTool[];
+  /** The project whose files are on the host's computer, from the first `hello`; null when they are on the server's. */
+  readonly files: EmbedFiles | null;
 }
 
 const EMPTY: EmbedState = {
@@ -39,6 +42,7 @@ const EMPTY: EmbedState = {
   context: null,
   contextLeftOut: false,
   tools: [],
+  files: null,
 };
 
 /** The part of a window the endpoint uses: so a test gives it a fake one. */
@@ -105,6 +109,14 @@ export class EmbedEndpoint {
 
   readonly getSnapshot = (): EmbedState => this.#state;
 
+  /** Resolves once the host's first `hello` came, or after `waitMs` without one: what the view needs before it chooses its folder. */
+  async helloSettled(waitMs = HOST_HELLO_WAIT_MS): Promise<void> {
+    await Promise.race([
+      this.#hello.promise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), waitMs)),
+    ]);
+  }
+
   #set(next: Partial<EmbedState>): void {
     this.#state = { ...this.#state, ...next };
     for (const listener of [...this.#listeners]) listener();
@@ -125,6 +137,8 @@ export class EmbedEndpoint {
           context: message.context ?? null,
           contextLeftOut: false,
           tools: message.tools ?? [],
+          // Read once: the panel's chats run in the folder it chose from the first.
+          files: this.#state.host === null ? (message.files ?? null) : this.#state.files,
         });
         this.#hello.resolve(message.credential ?? null);
         return;
@@ -201,13 +215,18 @@ export class EmbedEndpoint {
   }
 }
 
-/** The host's tools as the chat takes them (`set_host_tools`). */
+/**
+ * The host's tools as the chat takes them (`set_host_tools`). They are what the panel is for, so omp offers them by
+ * name with its own tools (`essential`); left to omp's default, a host's tool is a device the model must look up first
+ * (`xd://<name>`).
+ */
 export function hostToolDefinitions(tools: readonly EmbedTool[]): HostToolDefinition[] {
   return tools.map((tool) => ({
     name: tool.name,
     label: tool.name,
     description: tool.description,
     parameters: tool.parameters,
+    loadMode: "essential",
   }));
 }
 

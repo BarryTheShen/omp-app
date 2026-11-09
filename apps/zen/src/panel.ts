@@ -1,5 +1,5 @@
-import { type HostContext, openPanel } from "@omp-app/embed";
-import { appAddressOf, STORED, storedAppAddress } from "./address";
+import { appAddressOf, type HostContext, openPanel } from "@omp-app/embed";
+import { STORED, storedAppAddress } from "./address";
 import { watchSelection } from "./page";
 import { firefoxTabs, pageTools, type TabScope } from "./tools";
 

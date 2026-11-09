@@ -8,6 +8,9 @@ import {
   type ClientTraceReport,
   type DebugReport,
   type Embedders,
+  FolderPath,
+  type HostFolder,
+  type HostFolderArgs,
   type SetEmbeddersArgs,
   UsableModels,
 } from "@omp-app/contracts";
@@ -71,6 +74,29 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
             throw new AppFailure({
               code: "invalid_args",
               message: error.message,
+              retryable: false,
+            });
+          }
+          throw error;
+        }
+      },
+      hostFolder: async (args: unknown, _call: PortHandlerContext): Promise<HostFolder> => {
+        const hostFolders = context.hostFolders;
+        if (hostFolders === undefined) {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "This run of the app cannot work on files on another computer.",
+            retryable: false,
+          });
+        }
+        const { host, project, id } = args as HostFolderArgs;
+        try {
+          return { folder: FolderPath.parse(await hostFolders.ensure(host, project, id)) };
+        } catch (error) {
+          if (hostFolders.refused(error)) {
+            throw new AppFailure({
+              code: "invalid_args",
+              message: error instanceof Error ? error.message : String(error),
               retryable: false,
             });
           }

@@ -1,0 +1,133 @@
+{
+  "name": "omp-app-vscode",
+  "displayName": "omp app",
+  "description": "omp app's chat in VS Code: it reads, searches and changes the folder you have open, and runs its commands, with each change shown to you first.",
+  "version": "0.0.0",
+  "publisher": "omp-app",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BarryTheShen/omp-app.git",
+    "directory": "apps/vscode"
+  },
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ompApp",
+          "title": "omp app",
+          "icon": "media/chat.svg"
+        }
+      ]
+    },
+    "views": {
+      "ompApp": [
+        {
+          "type": "webview",
+          "id": "ompApp.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ompApp.openInEditor",
+        "title": "Open in an editor tab",
+        "category": "omp app"
+      },
+      {
+        "command": "ompApp.acceptChange",
+        "title": "Accept this change",
+        "category": "omp app",
+        "icon": "$(check)"
+      },
+      {
+        "command": "ompApp.rejectChange",
+        "title": "Reject this change",
+        "category": "omp app",
+        "icon": "$(close)"
+      },
+      {
+        "command": "ompApp.forgetKey",
+        "title": "Forget this computer's key",
+        "category": "omp app"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ompApp.acceptChange",
+          "when": "resourceScheme == omp-app-review",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ompApp.rejectChange",
+          "when": "resourceScheme == omp-app-review",
+          "group": "navigation@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "ompApp.acceptChange",
+          "when": "resourceScheme == omp-app-review"
+        },
+        {
+          "command": "ompApp.rejectChange",
+          "when": "resourceScheme == omp-app-review"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "omp app",
+      "properties": {
+        "ompApp.address": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "omp app's address, as you open it in a browser: its tailnet address (`https://<computer>.<tailnet>.ts.net`). In omp app, also turn on **Settings → App → Integrations → VS Code**."
+        },
+        "ompApp.reviewEdits": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show each change to a file as a diff to accept or reject before it is made. Off: changes are made at once."
+        },
+        "ompApp.askBeforeCommands": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask before each command the chat runs in your folder. Off: commands run at once."
+        },
+        "ompApp.sendOpenFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send the open file's name and your selection with each message."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:vscode": "bun test/run.ts"
+  },
+  "devDependencies": {
+    "@omp-app/contracts": "workspace:*",
+    "@omp-app/embed": "workspace:*",
+    "@types/bun": "^1.4.2",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "2.5.2",
+    "vitest": "^5.0.3"
+  }
+}

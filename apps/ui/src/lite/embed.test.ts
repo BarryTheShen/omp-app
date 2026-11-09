@@ -160,6 +160,25 @@ describe("the lite view's end of the embed protocol", () => {
     endpoint.keepCredential("key-1");
     expect(sent).toEqual([{ message: { ...envelope, type: "listening" }, origin: "*" }]);
   });
+
+  test("the project whose files are on the host comes from the first hello only; the view waits for that hello or a while", async () => {
+    const { window, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    const settled = endpoint.helloSettled(60_000);
+    receive(hello({ files: { project: "web", id: "0123456789abcdef" } }));
+    await settled;
+    expect(endpoint.getSnapshot().files).toEqual({ project: "web", id: "0123456789abcdef" });
+    // Another hello in the same load moves no chat to another folder.
+    receive(hello({ files: { project: "other", id: "fedcba9876543210" } }));
+    receive(hello());
+    expect(endpoint.getSnapshot().files).toEqual({ project: "web", id: "0123456789abcdef" });
+    // A host that names no files, or never says hello: the server's own folders.
+    const quiet = new EmbedEndpoint(frame().window);
+    quiet.start();
+    await quiet.helloSettled(5);
+    expect(quiet.getSnapshot().files).toBeNull();
+  });
 });
 
 /** A chat that is not open yet: what the binding asked of it, and a way to open it. */

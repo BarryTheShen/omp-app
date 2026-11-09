@@ -124,6 +124,7 @@ import {
 } from "@oh-my-pi/pi-utils/dirs";
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
+import { HOST_FILES_TOOLS, hostFilesNote } from "./host-files";
 import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
 
@@ -142,6 +143,15 @@ export interface ChatSession {
 /** Where omp's launch notices go: omp prints them on stderr in a protocol mode, and so does the chat host. */
 export type NoticeSink = (message: string) => void;
 
+/** What the app tells a chat beside omp's flags. */
+export interface ChatSessionOptions {
+  /**
+   * The chat's files are on the computer of this app (`vscode`), which shows the chat in a panel and gives it the tools
+   * that reach them (`host-files.ts`): omp's own file, shell and code tools are left out.
+   */
+  readonly filesOnHost?: string;
+}
+
 /**
  * Builds the chat's session from its launch flags (`--resume <file>`, `--model …`, `--allow-home`, …), in the process
  * folder the server started the host in. Rejects with a readable message when the chat cannot start.
@@ -149,6 +159,7 @@ export type NoticeSink = (message: string) => void;
 export async function createChatSession(
   rawArgs: readonly string[],
   notice: NoticeSink,
+  options: ChatSessionOptions = {},
 ): Promise<ChatSession> {
   const args = [...rawArgs];
   await ensureTheme();
@@ -286,6 +297,16 @@ export async function createChatSession(
   sessionOptions.autoTitle = true;
   sessionOptions.settings = settings;
   sessionOptions.onPrewalkWarning = (warning) => notice(`Warning: ${warning}`);
+  if (options.filesOnHost !== undefined) {
+    // omp's built-ins narrowed to the ones that do not work on this computer's files (`--tools` does the same).
+    sessionOptions.toolNames = [...HOST_FILES_TOOLS];
+    sessionOptions.appendSystemPrompt = [
+      sessionOptions.appendSystemPrompt,
+      hostFilesNote(options.filesOnHost),
+    ]
+      .filter((part) => part !== undefined && part !== "")
+      .join("\n\n");
+  }
   await initTelemetryExport(cfgTelemetryOtlpExportEnabled.get(settings));
   if (isTelemetryExportEnabled()) {
     sessionOptions.telemetry = createTelemetryExportConfig(

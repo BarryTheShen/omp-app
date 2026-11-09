@@ -211,6 +211,19 @@ jobs:
           fi
           ls -l dist/release
 
+      - name: Build and pack the VS Code extension
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.changes.outputs.version }}
+        run: |
+          set -euo pipefail
+          bun run --cwd apps/vscode build "$VERSION"
+          cp LICENSE apps/vscode/LICENSE
+          # Installed with VS Code's Extensions → ⋯ → Install from VSIX, or `code --install-extension`.
+          (cd apps/vscode && npx --yes @vscode/vsce@4.1.0 package --no-dependencies \
+            --out "$GITHUB_WORKSPACE/dist/release/omp-app-vscode_${VERSION}.vsix")
+          (cd dist/release && sha256sum "omp-app-vscode_${VERSION}.vsix" >>SHA256SUMS)
+
       - name: Write the release notes
         if: steps.changes.outputs.changed == 'true'
         env:
@@ -230,6 +243,7 @@ jobs:
             "dist/release/omp-app_${VERSION}_amd64.deb"
             "dist/release/omp-app-desktop_${VERSION}_amd64.deb"
             "dist/release/omp-app-zen_${VERSION}_unsigned.zip"
+            "dist/release/omp-app-vscode_${VERSION}.vsix"
           )
           if [ -f "dist/release/omp-app-zen_${VERSION}.xpi" ]; then
             assets+=("dist/release/omp-app-zen_${VERSION}.xpi")

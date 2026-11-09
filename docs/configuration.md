@@ -127,6 +127,7 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `attachments/` | Pictures and files attached to drafts. Ones no draft refers to are removed after a day. |
 | `devices.json` | The paired devices: each one's name, kind and times, and a hash of its key, never the key. |
 | `embedders.json` | The pages and panels named in **Settings → App → Integrations** that may show the app in a frame. Readable by your account only. |
+| `host-folders/` | One empty folder for each project whose files are on another computer, made when a panel there (the VS Code extension) opens it: `host-folders/<host>/<project>-<id>`, readable by your account only. That project's chats run there, without omp's tools for this computer's files and shell. ([Integrations](integrations.md)) |
 | `model-preferences.json` | The models you starred and hid. |
 | `checkpoints/`, `plans/`, `background-job-stops/` | Per-chat records of checkpoints, plan documents and background jobs you stopped. |
 | `workspace-files/` | What the Files panel keeps: uploads in progress, and deleted files that can still be undone. |

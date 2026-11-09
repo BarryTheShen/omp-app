@@ -45,6 +45,8 @@ sudo apt install ./omp-app_*_amd64.deb           # the terminal command: then ru
 
 Both packages hold the omp release the app is built for, so omp needs no separate install. [docs/install.md](docs/install.md) covers requirements, the user service, updating and removing.
 
+Each release also carries the extensions that show the app's chat in other apps ([docs/integrations.md](docs/integrations.md)): `omp-app-zen_*` for Firefox and Zen ([apps/zen](apps/zen/README.md)), and `omp-app-vscode_*.vsix` for VS Code ([apps/vscode](apps/vscode/README.md)).
+
 ## Documentation
 
 | Page | What it covers |

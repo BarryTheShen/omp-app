@@ -24,6 +24,7 @@ import { type ChatList, useChatList } from "../sidebar/useChatList";
 import { setLiteThemeMode } from "../theme/theme";
 import { chatCache } from "../workspace/chatCache";
 import { bindChat, embed, useEmbed } from "./embed";
+import { usePanelFolder } from "./hostFolder";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./hostLook";
 import { LiteContext } from "./LiteContext";
 import { fullAppAddress, liteChat, liteChoices, withEmbedChoices } from "./lite";
@@ -87,7 +88,9 @@ export function LiteShell({
   readonly client: AppClient;
   readonly launchFolder: FolderPath;
 }): ReactNode {
-  const { folder } = useFolder(client, launchFolder);
+  const { folder: chosen } = useFolder(client, launchFolder);
+  // The project's folder on the server when the framing app keeps the files (`hostFolder.ts`).
+  const panelFolder = usePanelFolder(client, chosen);
   // The framing app's greeting, suggestions and placeholder (#2845), from the address, then from what it sends.
   const { settings } = useEmbed();
   const choices = useMemo(
@@ -108,7 +111,13 @@ export function LiteShell({
     <div data-app-root="true" className="flex h-full min-w-0 flex-col bg-panel">
       <ConnectionBanner client={client} />
       <LiteContext value={choices}>
-        <LiteChats key={folder} client={client} folder={folder} />
+        {panelFolder.kind === "ready" ? (
+          <LiteChats key={panelFolder.folder} client={client} folder={panelFolder.folder} />
+        ) : panelFolder.kind === "failed" ? (
+          <p role="alert" className="m-4 text-sm text-bad-ink">
+            {panelFolder.message}
+          </p>
+        ) : null}
       </LiteContext>
     </div>
   );

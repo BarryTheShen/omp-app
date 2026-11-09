@@ -656,6 +656,40 @@ const DASHBOARD_EXTRAS_TOUR: Tour = {
   ],
 };
 
+/** omp app in VS Code: its extension, for the folder open there (2026-11-09). */
+const VSCODE_TOUR: Tour = {
+  id: "vscode-2026-11-09",
+  title: "omp app in VS Code",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The switch for VS Code is under <b>App</b>. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("integrations"),
+      title: "VS Code",
+      text: "Turn on <b>VS Code</b> here. Then, in VS Code, install <b>omp-app-vscode</b> from this release's files (Extensions → ⋯ → Install from VSIX) and give it this app's address. Its chat in VS Code's side bar works on the folder open there, on that computer: each change shows as a diff to accept or reject, and each command asks first.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
 const INTEGRATIONS_TOUR: Tour = {
   id: "integrations-2026-11-09",
@@ -2344,6 +2378,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-vscode",
+    when: "2026-11-09T11:00:00-06:00",
+    summary:
+      "omp app in VS Code: its extension shows the chat in VS Code's side bar for the folder open there, on the computer VS Code runs on. The chat reads, searches and changes that folder's files and runs its commands, each change shown as a diff to accept or reject and each command asked first; omp's own tools for the server's files stay out of those chats. A panel's tools are now offered to the model by name.",
+    tours: [VSCODE_TOUR],
+  },
   {
     id: "2026-11-09-dashboard-extras",
     when: "2026-11-09T03:39:00-06:00",

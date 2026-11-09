@@ -1,6 +1,5 @@
-import type { EmbedToolResult, HostTool } from "@omp-app/embed";
+import { appAddressOf, type EmbedToolResult, type HostTool } from "@omp-app/embed";
 import { describe, expect, test } from "vitest";
-import { appAddressOf } from "./address";
 import { pageTools, READ_MAX_CHARS, type TabScope, type TabsApi, tabOf, webAddress } from "./tools";
 
 const BOUND = 7;

@@ -1,0 +1,7 @@
+**
+!dist/extension.js
+!dist/webview.js
+!media/chat.svg
+!package.json
+!README.md
+!LICENSE

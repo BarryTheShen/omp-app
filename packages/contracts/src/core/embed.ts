@@ -61,6 +61,17 @@ export const EmbedToolResult = z.strictObject({
 });
 export type EmbedToolResult = z.infer<typeof EmbedToolResult>;
 
+/**
+ * The project whose files are on the host's computer (VS Code on a laptop): its name and an id the host derives from its
+ * folder there (hex). The panel's chats then run in the server's folder for that project (`A0.app.hostFolder`), with
+ * omp's own file and shell tools left out; the host's tools reach the files.
+ */
+export const EmbedFiles = z.strictObject({
+  project: z.string().trim().min(1).max(64),
+  id: z.string().regex(/^[a-f0-9]{8,64}$/),
+});
+export type EmbedFiles = z.infer<typeof EmbedFiles>;
+
 const envelope = { omp: z.literal(EMBED_PROTOCOL), v: z.literal(EMBED_VERSION) };
 
 /** What a host sends the lite view. */
@@ -78,6 +89,8 @@ export const EmbedHostMessage = z.discriminatedUnion("type", [
      * panel signs in with it. The host got it from the panel's `credential`.
      */
     credential: z.string().min(1).max(200).optional(),
+    /** The chat's files are on the host's computer (`EmbedFiles`); said in the first hello, read once. */
+    files: EmbedFiles.optional(),
   }),
   z.strictObject({ ...envelope, type: z.literal("settings"), settings: EmbedSettings }),
   z.strictObject({ ...envelope, type: z.literal("context"), context: HostContext.nullable() }),

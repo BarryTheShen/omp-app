@@ -96,6 +96,14 @@ export interface A0PortContext {
     };
   };
   /**
+   * The folder of a project whose files are on a panel's computer (`host-folders.ts`): made if needed. `refused` tells a
+   * host or id the app does not take from a failure. Absent: no panel can work on its computer's files.
+   */
+  readonly hostFolders?: {
+    ensure(host: string, project: string, id: string): Promise<string>;
+    refused(error: unknown): boolean;
+  };
+  /**
    * Where the app keeps the chats it continues itself after a usage limit (#2781; `<app data>/usage-resume.json`).
    * Absent: continuing is left to omp's own retry.
    */

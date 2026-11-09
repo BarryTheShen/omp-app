@@ -32,6 +32,7 @@ import {
 import { openDevicePairing } from "../src/devices";
 import { EmbeddersStore } from "../src/embedders";
 import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
+import { ensureHostFolder, HostFolderRefused, hostFilesArguments } from "../src/host-folders";
 import { openLaunchHistory } from "../src/launch-history";
 import {
   buildDebugReport,
@@ -398,7 +399,12 @@ export async function createCompositionServer(
       const spawnOptions = {
         ...processOptions,
         chatCommand: chats,
-        args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
+        // A chat in a host folder works on files on the panel's computer (`host-folders.ts`).
+        args: [
+          ...(processOptions.args ?? []),
+          ...hostFilesArguments(processOptions.folder, appDataDir),
+          ...(options.ompArgs ?? []),
+        ],
         env: { ...env, ...processOptions.env },
       };
       return logOmpProcess(
@@ -483,6 +489,10 @@ export async function createCompositionServer(
     capabilities,
     usableModels: () => listUsableModels(ompCmd, env, launchFolder),
     embedders: { fixed: frameAncestors, store: embedders },
+    hostFolders: {
+      ensure: (host, project, id) => ensureHostFolder(appDataDir, host, project, id),
+      refused: (error) => error instanceof HostFolderRefused,
+    },
     serverInfo: {
       instanceId,
       serverVersion,

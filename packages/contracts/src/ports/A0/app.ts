@@ -88,6 +88,23 @@ export const SetEmbeddersArgs = z
   .strict();
 export type SetEmbeddersArgs = z.infer<typeof SetEmbeddersArgs>;
 
+/**
+ * A project whose files are on the computer of the app that shows the lite view (`vscode`): its name, and an id the
+ * host derives from the project's folder there, so two projects of one name stay apart.
+ */
+export const HostFolderArgs = z
+  .object({
+    host: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/),
+    project: z.string().trim().min(1).max(64),
+    id: z.string().regex(/^[a-f0-9]{8,64}$/),
+  })
+  .strict();
+export type HostFolderArgs = z.infer<typeof HostFolderArgs>;
+
+/** The server's folder for that project's chats: empty, private, and the mark that their files are on the host. */
+export const HostFolder = z.object({ folder: FolderPath }).strict();
+export type HostFolder = z.infer<typeof HostFolder>;
+
 export const AppPort = definePort({
   name: "A0.app",
   methods: {
@@ -126,6 +143,10 @@ export const AppPort = definePort({
     setEmbedders: {
       args: SetEmbeddersArgs,
       result: Embedders,
+    },
+    hostFolder: {
+      args: HostFolderArgs,
+      result: HostFolder,
     },
   },
   events: {},
