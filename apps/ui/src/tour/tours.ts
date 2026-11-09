@@ -496,7 +496,7 @@ const ASYNC_QUESTIONS_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "Questions for you",
-      text: "omp can ask you something it does not need at once, and keep working. The question waits in the <b>Questions</b> panel, under <b>Questions for you</b>, with what omp wants you to know; its button on this rail counts the questions waiting in the chat you are in. Pick a choice or write your own, add a note if you like, and <b>Send answer</b>: it goes into the chat as your message, between omp's steps. <b>Skip</b> leaves it to omp.",
+      text: "omp can ask you something it does not need at once, and keep working. The question waits in the <b>Questions</b> panel, under <b>Questions for you</b>, with what omp wants you to know; its button on this rail counts the questions waiting in the chat you are in. Pick a choice or write your own, add a note if you like, and <b>Send answer</b>: it goes into the chat as your message, between omp's steps. <b>Skip</b> leaves it unanswered: nothing goes to omp for it.",
       action: next,
     },
   ],
@@ -652,6 +652,56 @@ const DASHBOARD_EXTRAS_TOUR: Tour = {
       title: "What waits",
       text: "This button counts what waits for you: every chat's questions with no answer yet, and the to-dos due today or before. A chat's menu has <b>Add to the to-do list</b>, the palette has <b>Add a to-do</b>, and the list copies as Markdown.",
       action: next,
+    },
+  ],
+};
+
+/** Skip means no answer (2026-11-09). */
+const SKIP_TOUR: Tour = {
+  id: "skip-2026-11-09",
+  title: "Skip means no answer",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Skip",
+      text: "In <b>Questions</b>, <b>Skip</b> now means no answer: nothing goes to omp for a question you skip. Your answers to the other questions still go to omp together, as one message; when every question that goes is a skip, no message goes at all.",
+      action: next,
+    },
+  ],
+};
+
+/** The lite view finds a chat and opens it in the desktop app (2026-11-09). */
+const LITE_FIND_TOUR: Tour = {
+  id: "lite-find-2026-11-09",
+  title: "The panel: find a chat, open it in the desktop app",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The panels that show omp app inside another app are set under <b>App</b>. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("integrations"),
+      title: "In a panel",
+      text: "In another app's panel, a click on the chat's name lists the folder's recent chats, and <b>Find a chat</b> there finds any of its chats by its title. The arrow beside it opens the chat in the full app: <b>Open in the desktop app</b>, in the menu beside the arrow, opens it in the desktop app's window instead, and the panel keeps that choice. The desktop app takes such links from this update's package on.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
     },
   ],
 };
@@ -2378,6 +2428,20 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-lite-find",
+    when: "2026-11-09T12:14:00-06:00",
+    summary:
+      "In another app's panel, the chat's name lists the folder's recent chats and Find a chat finds any of them by its title; the arrow can open the chat in the desktop app, which now takes omp-app links, and the panel keeps that choice.",
+    tours: [LITE_FIND_TOUR],
+  },
+  {
+    id: "2026-11-09-skip",
+    when: "2026-11-09T11:22:00-06:00",
+    summary:
+      "Skip on a question omp asked without waiting means no answer: nothing goes to omp for it, and when only skips are left to go, no message goes at all.",
+    tours: [SKIP_TOUR],
+  },
   {
     id: "2026-11-09-vscode",
     when: "2026-11-09T11:00:00-06:00",
