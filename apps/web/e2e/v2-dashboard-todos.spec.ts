@@ -11,7 +11,7 @@ const todoList = (page: Page) =>
   page.locator('[data-tour="dashboard"]').getByRole("region", { name: "To-do list" });
 
 async function openList(page: Page) {
-  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("button", { name: /^Dashboard(,|$)/ }).click();
   const list = todoList(page);
   await expect(list.getByText(/\d+ to do/)).toBeVisible({ timeout: 30_000 });
   return list;
@@ -30,7 +30,7 @@ realTest.describe("new UI: the dashboard's to-do list", () => {
 
   realTest(
     "kept on the server for every device; ticked, started, edited, moved and removed; the newest change taken back",
-    async ({ realApp }) => {
+    async ({ realApp, browserName }) => {
       const page = await realApp.open({ path: "/" });
       const list = await openList(page);
       await expect(list).toContainText("Nothing to do.");
@@ -70,9 +70,19 @@ realTest.describe("new UI: the dashboard's to-do list", () => {
       const editor = list.getByRole("form", { name: "Edit Read chapter 4" });
       await editor.getByLabel("Title").fill("Read chapters 4 and 5");
       await editor.getByLabel("Notes").fill("Before Thursday");
+      // Due today: the dashboard's button counts it.
+      const today = await page.evaluate(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      });
+      await editor.getByLabel("Due").fill(today);
       await editor.getByRole("button", { name: "Save" }).click();
       const chapters = list.getByRole("listitem", { name: "Read chapters 4 and 5" });
       await expect(chapters).toContainText("Notes");
+      await expect(chapters).toContainText("Due today");
+      await expect(page.getByRole("button", { name: /^Dashboard(,|$)/ })).toHaveAccessibleName(
+        "Dashboard, 1 waiting for you",
+      );
       await chapters.getByRole("button", { name: "Start Read chapters 4 and 5" }).click();
       await expect(chapters).toContainText("Doing");
       await expect(list).toContainText("You started “Read chapters 4 and 5”");
@@ -86,6 +96,18 @@ realTest.describe("new UI: the dashboard's to-do list", () => {
       await chapters.getByRole("button", { name: "Remove Read chapters 4 and 5" }).click();
       await expect(chapters).toHaveCount(0);
       await expect(there.getByRole("listitem", { name: "Read chapters 4 and 5" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Dashboard(,|$)/ })).toHaveAccessibleName(
+        "Dashboard",
+      );
+      // Copied as Markdown, as it shows: a heading per list, a task per item.
+      if (browserName === "chromium") {
+        await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+        await list.getByRole("button", { name: "Copy as Markdown" }).click();
+        await expect(list.getByRole("button", { name: "Copied" })).toBeVisible();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe("## To do\n\n- [ ] Call the bank\n- [ ] Send the report\n");
+      }
       await list.getByRole("button", { name: "All changes" }).click();
       const changes = list.getByRole("list", { name: "Changes, newest first" });
       await expect(changes.getByRole("listitem").first()).toContainText(
@@ -100,6 +122,16 @@ realTest.describe("new UI: the dashboard's to-do list", () => {
         timeout: 60_000,
       });
       await expect(again.getByText("2 to do")).toBeVisible();
+
+      // The palette's Add a to-do: the field takes what is typed next.
+      await page.keyboard.press("Control+k");
+      const palette = page.getByRole("dialog", { name: "Palette" });
+      await palette.getByRole("combobox", { name: "Search the palette" }).fill("Add a to-do");
+      await palette.getByRole("option", { name: /^Add a to-do/ }).click();
+      await expect(again.getByLabel("New to-do")).toBeFocused();
+      await page.keyboard.type("Pay the rent");
+      await page.keyboard.press("Enter");
+      await expect(again.getByRole("listitem", { name: "Pay the rent" })).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );
@@ -169,6 +201,35 @@ realTest.describe("new UI: the dashboard's to-do list", () => {
       } finally {
         siyuan.close();
       }
+    },
+  );
+});
+
+realTest.describe("new UI: a chat added to the to-do list from its menu", () => {
+  realTest.setTimeout(180_000);
+  realTest.use({ seedSessions: 1 });
+
+  realTest(
+    "the row's menu adds an item named after the chat, linked to it; the link opens the chat",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      const chats = page.getByRole("navigation", { name: "Chats" });
+      const row = chats.getByRole("listitem").filter({ hasText: "Seeded chat 1" });
+      await row.hover();
+      await row.getByRole("button", { name: "More" }).click();
+      await page.getByRole("menuitem", { name: "Add to the to-do list" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "to-do list" })).toHaveText(
+        "Added “Seeded chat 1” to the to-do list.",
+      );
+
+      const list = await openList(page);
+      const item = list.getByRole("listitem", { name: "Seeded chat 1" });
+      await expect(item).toBeVisible();
+      await item.getByRole("button", { name: "Open “Seeded chat 1”" }).click();
+      await expect(
+        page.getByRole("region", { name: "Transcript" }).getByText("Seeded chat 1"),
+      ).toBeVisible({ timeout: 60_000 });
+      expect(realApp.problems).toEqual([]);
     },
   );
 });

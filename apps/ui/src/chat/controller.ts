@@ -350,6 +350,21 @@ export class ChatController {
     this.#threadId = opened.threadId;
     if (this.target.kind === "new") this.#draft.keepFor(opened.threadId);
     this.#sessionFile = opened.sessionFile;
+    // Opened by its id alone (a chat from the list of what runs in every folder, a link on the dashboard): the open named
+    // the file, whose window is read now, before the subscription, as when the file was known at the start. Without it a
+    // saved chat that was not running showed no messages.
+    if (this.target.kind === "existing" && !this.#windowRead && opened.sessionFile !== null) {
+      try {
+        await this.#reloadWindow();
+      } catch (failure) {
+        await this.#releaseView(opened.threadId);
+        throw failure;
+      }
+      if (this.#disposed) {
+        await this.#releaseView(opened.threadId);
+        return;
+      }
+    }
     // The setup goes out with the subscription, not after its answer (#2768): none of it needs the subscription, so the
     // chat is live a round trip sooner, and the store's marks judge a state read asked before the replay (`setState`).
     // The answers come together: the chat is live after the slowest, not after their sum (#2760). omp's ask tool then

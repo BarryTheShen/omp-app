@@ -18,6 +18,7 @@ import type { ChatController, ChatTarget } from "../chat/controller";
 import { pauseAllChats } from "../chat/pauseAll";
 import type { ChatModel } from "../chat/store";
 import { mentionText } from "../chat/triggers";
+import { focusNewTodo } from "../dashboard/waiting";
 import { debugLogFailureText, saveDebugLog, savedDebugLogText } from "../debugLog";
 import {
   type Bridge,
@@ -385,9 +386,20 @@ export function Palette({
         key: "app:dashboard",
         group: "Commands",
         label: KEYS.dashboard.label,
-        detail: "Usage windows, pace, the rules that pause chats, and the queue",
+        detail: "Every chat's questions, the to-do list, usage and statistics",
         keys: keycap(KEYS.dashboard),
         run: () => close(onDashboard),
+      },
+      {
+        key: "app:addTodo",
+        group: "Commands",
+        label: "Add a to-do",
+        detail: "The dashboard's to-do list, ready to type",
+        run: () =>
+          close(() => {
+            onDashboard();
+            focusNewTodo();
+          }),
       },
       {
         key: "app:sidePanel",

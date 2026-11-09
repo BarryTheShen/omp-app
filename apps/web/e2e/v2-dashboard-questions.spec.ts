@@ -39,7 +39,12 @@ realTest.describe("new UI: every chat's questions on the dashboard", () => {
         transcript(page).getByText("tool said: Asked 2 questions", { exact: false }),
       ).toBeVisible({ timeout: 90_000 });
 
-      await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+      // The dashboard's button counts what waits there: both questions.
+      const button = page.getByRole("button", { name: /^Dashboard(,|$)/ });
+      await expect(button).toHaveAccessibleName("Dashboard, 2 waiting for you", {
+        timeout: 30_000,
+      });
+      await button.click();
       const list = questions(page);
       const chat = list.getByRole("region", { name: /^Questions from / });
       await expect(chat).toHaveCount(1, { timeout: 30_000 });
@@ -52,6 +57,7 @@ realTest.describe("new UI: every chat's questions on the dashboard", () => {
       await expect(chat.getByRole("article", { name: "Question: Database" })).toHaveCount(0, {
         timeout: 30_000,
       });
+      await expect(button).toHaveAccessibleName("Dashboard, 1 waiting for you");
       await expect(chat.getByRole("article", { name: "Ready to send: Database" })).toContainText(
         "Postgres",
       );
@@ -61,6 +67,7 @@ realTest.describe("new UI: every chat's questions on the dashboard", () => {
       await name.getByRole("textbox", { name: "Your answer" }).fill("atlas");
       await name.getByRole("button", { name: "Send answers" }).click();
       await expect(list).toContainText("No question waits for you.", { timeout: 60_000 });
+      await expect(button).toHaveAccessibleName("Dashboard");
 
       await page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab").first().click();
       const answers = transcript(page).getByText("Answers to your questions", { exact: false });

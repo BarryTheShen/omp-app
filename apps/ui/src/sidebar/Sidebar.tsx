@@ -5,6 +5,7 @@ import type {
   RunningSession,
   SessionFile,
   ThreadId,
+  TodoChat,
 } from "@omp-app/contracts";
 import { cn } from "cn";
 import {
@@ -12,6 +13,7 @@ import {
   Clock,
   Ellipsis,
   Gauge,
+  ListPlus,
   PanelLeftClose,
   Pause,
   PencilLine,
@@ -54,6 +56,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatTarget } from "../chat/controller";
 import { firstPromptOf } from "../chat/firstPrompts";
+import { dashboardLabel } from "../dashboard/waiting";
 import { folderName } from "../folders/folder";
 import { InboxButton } from "../inbox/InboxButton";
 import { isImeEnter } from "../keys/ime";
@@ -115,6 +118,8 @@ export function Sidebar({
   onStopRunning,
   onSettings,
   onDashboard,
+  dashboardWaiting,
+  onAddTodo,
   onWhatsNew,
   workspace,
   phone,
@@ -141,8 +146,12 @@ export function Sidebar({
   /** Ends a running chat's process (D1); refused with the reason when another tab has it open. */
   readonly onStopRunning: (id: ThreadId) => Promise<void>;
   readonly onSettings: () => void;
-  /** Opens the dashboard: usage windows, pace, rules and the queue (#2836). */
+  /** Opens the dashboard: every chat's questions, the to-do list, usage and statistics (#2836, D7). */
   readonly onDashboard: () => void;
+  /** Every chat's open questions and the to-dos due, for the dashboard button's count. */
+  readonly dashboardWaiting: number;
+  /** Adds an item named after a chat to the dashboard's to-do list, linked to that chat. */
+  readonly onAddTodo: (chat: TodoChat) => Promise<void>;
   /** Opens the What's new list: every update and its tours. */
   readonly onWhatsNew: () => void;
   /** For the What's new card, which starts a tour in the workspace. */
@@ -158,6 +167,13 @@ export function Sidebar({
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  /** What the last action did, for a moment: "Added “X” to the to-do list." */
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = setTimeout(() => setNotice(null), 4_000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   /** Titles typed into a rename that omp has not saved yet. */
   const [renamed, setRenamed] = useState<ReadonlyMap<ThreadId, string>>(new Map());
   /** The chat the delete dialog asks about; kept while the dialog closes, so its words stay put. */
@@ -275,6 +291,15 @@ export function Sidebar({
             );
         },
         onRename: (typed) => rename(session, typed),
+        onAddTodo: () => {
+          setProblem(null);
+          const title = renamed.get(session.id) ?? titleOf(session);
+          onAddTodo({ threadId: session.id, folder, title }).then(
+            () => setNotice(`Added “${title}” to the to-do list.`),
+            (failure: unknown) =>
+              setProblem(`Could not add it to the to-do list: ${errorText(failure)}`),
+          );
+        },
         onDelete: () => {
           setDeleting(session);
           setConfirming(true);
@@ -399,6 +424,11 @@ export function Sidebar({
           {problem}
         </p>
       )}
+      {notice !== null && (
+        <p role="status" className="px-2 py-1 text-xs text-t2">
+          {notice}
+        </p>
+      )}
       <WhatsNew workspace={workspace} onAllUpdates={onWhatsNew} />
       {phone ? (
         // A phone's foot: New chat in the thumb's reach, the inbox and Settings (What's new and the theme are there).
@@ -418,11 +448,19 @@ export function Sidebar({
             data-tour="dashboard-button"
             variant="ghost"
             size="icon"
-            aria-label="Dashboard"
-            className="text-t2"
+            aria-label={dashboardLabel(dashboardWaiting)}
+            className="relative text-t2"
             onClick={onDashboard}
           >
             <Gauge />
+            {dashboardWaiting > 0 && (
+              <span
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 font-medium text-primary-foreground"
+              >
+                {dashboardWaiting}
+              </span>
+            )}
           </Button>
           <Button
             data-tour="settings"
@@ -548,12 +586,16 @@ function Section({
 /** Pin and Delete behind a phone's row swiped to the left, 72 px each. */
 const SWIPE_WIDTH = 144;
 
-/** What a saved chat's row offers besides opening it: reading it ahead, its pin, and its menu's Rename and Delete. */
+/**
+ * What a saved chat's row offers besides opening it: reading it ahead, its pin, and its menu's Rename, Add to the to-do
+ * list and Delete.
+ */
 interface RowActions {
   readonly pinned: boolean;
   readonly onPrefetch: () => void;
   readonly onPin: () => void;
   readonly onRename: (typed: string) => void;
+  readonly onAddTodo: () => void;
   readonly onDelete: () => void;
 }
 
@@ -802,6 +844,12 @@ function ChatRow({
                   <DropdownMenuItem onClick={onStop}>
                     <CircleStop />
                     Stop running
+                  </DropdownMenuItem>
+                )}
+                {actions !== undefined && (
+                  <DropdownMenuItem onClick={actions.onAddTodo}>
+                    <ListPlus />
+                    Add to the to-do list
                   </DropdownMenuItem>
                 )}
                 {actions !== undefined && (

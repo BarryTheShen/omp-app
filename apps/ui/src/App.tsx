@@ -1,5 +1,12 @@
 import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
-import { AppPort, type FolderPath, RunningChatsPort, type ThreadId } from "@omp-app/contracts";
+import {
+  AppPort,
+  type FolderPath,
+  RunningChatsPort,
+  type ThreadId,
+  type TodoChat,
+  TodosPort,
+} from "@omp-app/contracts";
 import { cn } from "cn";
 import { ChevronLeft, PanelLeftOpen, SquarePen } from "lucide-react";
 import {
@@ -21,6 +28,7 @@ import type { ChatController, ChatTarget } from "./chat/controller";
 import { PhoneDetailsButton } from "./chat/PhoneDetailsButton";
 import { prefetchWindow } from "./chat/prefetch";
 import { connect, readToken } from "./connection";
+import { useDashboardWaiting } from "./dashboard/waiting";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
 import {
   useNotifySettings,
@@ -349,6 +357,15 @@ function Shell({
   }, []);
   const showShortcuts = useCallback(() => setShortcuts(true), []);
   const showWhatsNew = useCallback(() => setWhatsNew(true), []);
+  /** Every chat's open questions and the to-dos due, counted on the dashboard's buttons (D7). */
+  const dashboardWaiting = useDashboardWaiting(client);
+  /** A chat's row menu: an item named after the chat, linked to it, in the dashboard's to-do list. */
+  const addChatTodo = useCallback(
+    async (chat: TodoChat): Promise<void> => {
+      await client.port(TodosPort).add({ title: chat.title ?? "A chat", chat });
+    },
+    [client],
+  );
   const showDashboard = useCallback(() => {
     if (!isPhone()) {
       workspace.current?.dashboard();
@@ -493,6 +510,8 @@ function Shell({
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
         onDashboard={showDashboard}
+        dashboardWaiting={dashboardWaiting}
+        onAddTodo={addChatTodo}
         onStopRunning={stopRunning}
         onWhatsNew={showWhatsNew}
         workspace={workspace}
@@ -588,7 +607,13 @@ function Shell({
           </SidePaneContext>
         </div>
       </main>
-      {!phone && <PanelRail chat={focusedChat} onDashboard={showDashboard} />}
+      {!phone && (
+        <PanelRail
+          chat={focusedChat}
+          onDashboard={showDashboard}
+          dashboardWaiting={dashboardWaiting}
+        />
+      )}
       <Palette
         open={palette}
         onOpenChange={setPalette}

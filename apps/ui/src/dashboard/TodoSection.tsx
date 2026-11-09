@@ -149,6 +149,25 @@ export function changeWords(change: TodoChange): string {
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
+/** The items as shown, as Markdown to paste elsewhere: each list a heading, each item a task with what stands by it. */
+export function listMarkdown(items: readonly TodoItem[], lists: readonly string[]): string {
+  const blocks: string[] = [];
+  for (const list of lists) {
+    const inList = items.filter((item) => item.list === list);
+    if (inList.length === 0) continue;
+    const lines = inList.map((item) => {
+      const notes: string[] = [];
+      if (item.state === "doing") notes.push("doing");
+      if (item.state === "dropped") notes.push("dropped");
+      if (item.due !== null && item.state !== "done") notes.push(`due ${item.due}`);
+      const mark = item.state === "done" ? "x" : " ";
+      return `- [${mark}] ${item.title}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`;
+    });
+    blocks.push(`## ${list}\n\n${lines.join("\n")}`);
+  }
+  return `${blocks.join("\n\n")}\n`;
+}
+
 /** The editor of one item: title, notes, list, due day and where it stands. */
 function TodoEditor({
   item,
@@ -492,6 +511,13 @@ export function TodoSection({
   const [editing, setEditing] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  /** "Copied" shows for a moment after the list is copied. */
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2_000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   const id = useId();
   const todos = client.port(TodosPort);
   const attempt = useCallback((work: Promise<unknown>, action: string): void => {
@@ -656,6 +682,21 @@ export function TodoSection({
               variant="ghost"
               size="xs"
               className="ml-auto max-sm:h-11"
+              onClick={() =>
+                attempt(
+                  navigator.clipboard
+                    .writeText(listMarkdown(shown, lists))
+                    .then(() => setCopied(true)),
+                  "copy the list",
+                )
+              }
+            >
+              {copied ? "Copied" : "Copy as Markdown"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="max-sm:h-11"
               aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((open) => !open)}
             >

@@ -3,6 +3,7 @@ import { type ReactNode, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatController } from "../chat/controller";
+import { dashboardLabel } from "../dashboard/waiting";
 import { KEYS, keycap } from "../keys/table";
 import type { QuestionsSnapshot } from "../questions/questions";
 import { hidePanel, showPanel, usePanelState } from "./panel-state";
@@ -23,15 +24,18 @@ function useOpenQuestions(chat: ChatController | null): number {
 /**
  * The side panel's opener, along the window's right edge where the panel opens: one button per panel. A click shows the
  * panel on that one, or hides it when it shows that one already; the button of the panel shown is pressed. Under them,
- * the dashboard (#2836).
+ * the dashboard (#2836), with what waits there (D7).
  */
 export function PanelRail({
   chat,
   onDashboard,
+  dashboardWaiting,
 }: {
   /** The focused pane's chat: the Questions button counts its questions that wait for an answer. */
   readonly chat: ChatController | null;
   readonly onDashboard: () => void;
+  /** Every chat's open questions and the to-dos due, for the dashboard button's count. */
+  readonly dashboardWaiting: number;
 }): ReactNode {
   const { open, panel } = usePanelState();
   const waiting = useOpenQuestions(chat);
@@ -85,17 +89,28 @@ export function PanelRail({
               data-tour="dashboard-button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Dashboard"
+              aria-label={dashboardLabel(dashboardWaiting)}
               aria-keyshortcuts="Control+Shift+D"
-              className="text-t3 hover:text-t1 tablet:size-11"
+              className="relative text-t3 hover:text-t1 tablet:size-11"
               onClick={onDashboard}
             />
           }
         >
           <Gauge />
+          {dashboardWaiting > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 font-medium text-primary-foreground"
+            >
+              {dashboardWaiting}
+            </span>
+          )}
         </TooltipTrigger>
         <TooltipContent side="left">
-          Dashboard: usage, pace, rules and the queue · {keycap(KEYS.dashboard)}
+          {dashboardWaiting > 0
+            ? `Dashboard: ${dashboardWaiting} waiting (questions, to-dos due)`
+            : "Dashboard: questions, the to-do list, usage and statistics"}{" "}
+          · {keycap(KEYS.dashboard)}
         </TooltipContent>
       </Tooltip>
     </nav>
