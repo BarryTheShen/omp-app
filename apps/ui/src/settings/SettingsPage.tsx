@@ -125,7 +125,8 @@ function SettingsSheet({
       .length;
   const tab = data?.tabs.find((each) => each.id === tabId) ?? null;
   const appOpen = needle === "" && tabId === APP_TAB;
-  const showPage = !phone || tabId !== null || needle !== "";
+  // On a phone a search shows its results under the field, in the list's place, so the field (and the keyboard) stays.
+  const showPage = !phone || tabId !== null;
   const choose = (id: string): void => {
     setQuery("");
     setTabId(id);
@@ -137,72 +138,136 @@ function SettingsSheet({
       Done
     </Button>
   );
+  const searchField = (
+    <label
+      className={`flex shrink-0 items-center gap-2 rounded-md border border-l2 px-2 text-t3 focus-within:border-ring ${phone ? "h-11" : "h-8 tablet:h-11"}`}
+    >
+      <Search className="size-3.5 shrink-0" />
+      <input
+        type="search"
+        aria-label="Search settings"
+        placeholder="Search"
+        // biome-ignore lint/a11y/noAutofocus: the sheet opens to find a setting
+        autoFocus={!phone}
+        value={query}
+        className="min-w-0 flex-1 self-stretch bg-transparent text-sm text-t1 outline-none placeholder:text-t3"
+        onChange={(event) => setQuery(event.target.value)}
+      />
+    </label>
+  );
+  const sections = (
+    <ul className="min-h-0 flex-1 overflow-y-auto">
+      <li>
+        <button
+          type="button"
+          data-tour="settings-tab-app"
+          aria-current={appOpen ? "page" : undefined}
+          className={`flex w-full items-center rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm tablet:h-11 ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
+          onClick={() => choose(APP_TAB)}
+        >
+          <span className="min-w-0 flex-1 truncate">App</span>
+          {phone && <ChevronRight aria-hidden="true" className="size-4 text-t3" />}
+        </button>
+      </li>
+      <li aria-hidden className="px-2 pt-3 pb-1 text-xs text-t3">
+        omp
+      </li>
+      {(data?.tabs ?? []).map((each) => {
+        const count = changedIn(each.id);
+        const current = needle === "" && each.id === tabId;
+        return (
+          <li key={each.id}>
+            <button
+              type="button"
+              aria-current={current ? "page" : undefined}
+              aria-label={count > 0 ? `${each.label}, ${count} changed` : each.label}
+              data-tour={`settings-tab-${each.id}`}
+              className={`flex w-full items-center gap-2 rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm tablet:h-11 ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
+              onClick={() => choose(each.id)}
+            >
+              <span className="min-w-0 flex-1 truncate">{each.label}</span>
+              {count > 0 && <span className="text-xs text-accent-ink">{count} changed</span>}
+              {phone && <ChevronRight aria-hidden="true" className="size-4 text-t3" />}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+  const version = data !== null && <p className="px-1 text-xs text-t3">omp {data.omp}</p>;
+  /** Whose settings a change goes to: omp's own, for every folder, or this folder's. */
+  const scope = (
+    <>
+      <ToggleGroup
+        aria-label="Whose settings"
+        size="sm"
+        spacing={0.5}
+        className={`rounded-lg border border-l2 p-0.5 ${phone ? "w-full" : ""}`}
+        value={[thisFolder ? "folder" : "every"]}
+        onValueChange={(next: string[]) => {
+          if (next[0] !== undefined) setThisFolder(next[0] === "folder");
+        }}
+      >
+        <ToggleGroupItem
+          value="every"
+          className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs tablet:h-11"}`}
+        >
+          Every folder
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          value="folder"
+          className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs tablet:h-11"}`}
+        >
+          This folder
+        </ToggleGroupItem>
+      </ToggleGroup>
+      <span className={`min-w-0 text-xs text-t3 ${phone ? "px-1" : "truncate"}`}>
+        {thisFolder
+          ? `Saved in ${folder.split("/").filter(Boolean).at(-1) ?? folder}/.omp, for this folder only`
+          : "Saved in omp's settings file, for every folder"}
+      </span>
+    </>
+  );
+  const unreadable = (problem ?? config.problem) !== null && (
+    <p role="alert" className="pt-4 text-sm text-bad-ink">
+      {problem ?? `The settings could not be read: ${config.problem}`}
+    </p>
+  );
+  const results = data !== null && needle !== "" && (
+    <SearchResults data={data} defs={visible} needle={needle} config={config} layer={layer} />
+  );
+
+  // A phone's first screen: the title and Done, the search field, then the sections, or what the search found.
+  const phoneList = (
+    <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-1 pb-3">
+      <div className="flex h-11 items-center">
+        <p className="min-w-0 flex-1 px-1 text-base font-semibold text-t1">Settings</p>
+        {done}
+      </div>
+      {searchField}
+      {searching ? (
+        <div ref={pageRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-8">
+          {scope}
+          {unreadable}
+          {results}
+        </div>
+      ) : (
+        <nav aria-label="Settings sections" className="flex min-h-0 flex-1 flex-col gap-2">
+          {sections}
+          {version}
+        </nav>
+      )}
+    </div>
+  );
   const nav = (
     <nav
       aria-label="Settings sections"
-      className={`flex min-h-0 flex-col gap-2 border-l2 ${phone ? "flex-1 px-3 pt-1 pb-3" : "w-56 shrink-0 border-r p-3"}`}
+      className="flex min-h-0 w-56 shrink-0 flex-col gap-2 border-r border-l2 p-3"
     >
-      {phone ? (
-        <div className="flex h-11 items-center">
-          <p className="min-w-0 flex-1 px-1 text-base font-semibold text-t1">Settings</p>
-          {done}
-        </div>
-      ) : (
-        <p className="px-1 text-sm font-medium text-t1">Settings</p>
-      )}
-      <label
-        className={`flex shrink-0 items-center gap-2 rounded-md border border-l2 px-2 text-t3 focus-within:border-ring ${phone ? "h-11" : "h-8 tablet:h-11"}`}
-      >
-        <Search className="size-3.5 shrink-0" />
-        <input
-          type="search"
-          aria-label="Search settings"
-          placeholder="Search"
-          // biome-ignore lint/a11y/noAutofocus: the sheet opens to find a setting
-          autoFocus={!phone}
-          value={query}
-          className="min-w-0 flex-1 self-stretch bg-transparent text-sm text-t1 outline-none placeholder:text-t3"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      <ul className="min-h-0 flex-1 overflow-y-auto">
-        <li>
-          <button
-            type="button"
-            data-tour="settings-tab-app"
-            aria-current={appOpen ? "page" : undefined}
-            className={`flex w-full items-center rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm tablet:h-11 ${appOpen ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
-            onClick={() => choose(APP_TAB)}
-          >
-            <span className="min-w-0 flex-1 truncate">App</span>
-            {phone && <ChevronRight aria-hidden="true" className="size-4 text-t3" />}
-          </button>
-        </li>
-        <li aria-hidden className="px-2 pt-3 pb-1 text-xs text-t3">
-          omp
-        </li>
-        {(data?.tabs ?? []).map((each) => {
-          const count = changedIn(each.id);
-          const current = needle === "" && each.id === tabId;
-          return (
-            <li key={each.id}>
-              <button
-                type="button"
-                aria-current={current ? "page" : undefined}
-                aria-label={count > 0 ? `${each.label}, ${count} changed` : each.label}
-                data-tour={`settings-tab-${each.id}`}
-                className={`flex w-full items-center gap-2 rounded-md px-2 text-left ${phone ? "h-13 text-base text-t1" : `h-8 text-sm tablet:h-11 ${current ? "bg-l2 text-t1" : "text-t2 hover:bg-l1 hover:text-t1"}`}`}
-                onClick={() => choose(each.id)}
-              >
-                <span className="min-w-0 flex-1 truncate">{each.label}</span>
-                {count > 0 && <span className="text-xs text-accent-ink">{count} changed</span>}
-                {phone && <ChevronRight aria-hidden="true" className="size-4 text-t3" />}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {data !== null && <p className="px-1 text-xs text-t3">omp {data.omp}</p>}
+      <p className="px-1 text-sm font-medium text-t1">Settings</p>
+      {searchField}
+      {sections}
+      {version}
     </nav>
   );
 
@@ -219,7 +284,7 @@ function SettingsSheet({
       }
     >
       <DialogTitle className="sr-only">Settings</DialogTitle>
-      {(!phone || !showPage) && nav}
+      {phone ? !showPage && phoneList : nav}
       {showPage && (
         <main className="flex min-w-0 flex-1 flex-col">
           <header
@@ -248,57 +313,14 @@ function SettingsSheet({
               </div>
             )}
             {/* omp's settings only: on a phone the App page, whose settings this browser keeps, has no scope. */}
-            {!(phone && appOpen) && (
-              <>
-                <ToggleGroup
-                  aria-label="Whose settings"
-                  size="sm"
-                  spacing={0.5}
-                  className={`rounded-lg border border-l2 p-0.5 ${phone ? "w-full" : ""}`}
-                  value={[thisFolder ? "folder" : "every"]}
-                  onValueChange={(next: string[]) => {
-                    if (next[0] !== undefined) setThisFolder(next[0] === "folder");
-                  }}
-                >
-                  <ToggleGroupItem
-                    value="every"
-                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs tablet:h-11"}`}
-                  >
-                    Every folder
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="folder"
-                    className={`text-t3 hover:text-t1 aria-pressed:bg-l2 aria-pressed:text-t1 ${phone ? "h-10 flex-1 text-sm" : "h-6 px-2 text-xs tablet:h-11"}`}
-                  >
-                    This folder
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <span className={`min-w-0 text-xs text-t3 ${phone ? "px-1" : "truncate"}`}>
-                  {thisFolder
-                    ? `Saved in ${folder.split("/").filter(Boolean).at(-1) ?? folder}/.omp, for this folder only`
-                    : "Saved in omp's settings file, for every folder"}
-                </span>
-              </>
-            )}
+            {!(phone && appOpen) && scope}
           </header>
           <div
             ref={pageRef}
             className={`min-h-0 flex-1 overflow-y-auto pb-8 ${phone ? "px-3" : "px-5"}`}
           >
-            {(problem ?? config.problem) !== null && (
-              <p role="alert" className="pt-4 text-sm text-bad-ink">
-                {problem ?? `The settings could not be read: ${config.problem}`}
-              </p>
-            )}
-            {data !== null && needle !== "" && (
-              <SearchResults
-                data={data}
-                defs={visible}
-                needle={needle}
-                config={config}
-                layer={layer}
-              />
-            )}
+            {unreadable}
+            {!phone && results}
             {appOpen && (
               <AppPage
                 client={client}

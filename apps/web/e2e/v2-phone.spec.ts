@@ -433,6 +433,39 @@ realTest.describe("new UI on a phone", () => {
     },
   );
 
+  realTest(
+    "Settings on a phone search as you type: the field keeps each letter and stays, the results show under it; emptied, the sections come back",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "Settings" })
+        .tap();
+      const sheet = page.getByRole("dialog", { name: "Settings" });
+      const sections = sheet.getByRole("navigation", { name: "Settings sections" });
+      await expect(sections).toBeVisible();
+      const search = sheet.getByRole("searchbox", { name: "Search settings" });
+      await search.tap();
+      // One key at a time, as a phone's keyboard types: every letter goes into the same field.
+      await search.pressSequentially("retry", { delay: 40 });
+      await expect(search).toHaveValue("retry");
+      await expect(search).toBeFocused();
+      await expect(sheet.getByRole("region", { name: "Search results" })).toContainText(
+        "Retry Attempts",
+      );
+      await expect(sections).toHaveCount(0);
+      // Where a change goes shows with the results, as it does over a section.
+      await expect(sheet.getByRole("group", { name: "Whose settings" })).toBeVisible();
+
+      await search.fill("");
+      await expect(sections).toBeVisible();
+      await expect(search).toBeFocused();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
   /**
    * What a finger can tap inside `scope` that is under 44 high, or under 44 wide when it is only an icon (#2816). A row
    * around a control (a label) is its target, and so is the area shadcn draws around a tick box, a switch or a round
