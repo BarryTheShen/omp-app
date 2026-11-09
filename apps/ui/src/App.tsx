@@ -276,6 +276,7 @@ function Shell({
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   /** The chat focused when the settings opened: provider sign-in runs in it. */
   const [settingsChat, setSettingsChat] = useState<ChatController | null>(null);
+  /** A phone's dashboard, which fills the screen; a computer's is a pane of the workspace. */
   const [dashboard, setDashboard] = useState(false);
   /** Loaded once opened, as the settings are. */
   const [dashboardLoaded, setDashboardLoaded] = useState(false);
@@ -336,6 +337,11 @@ function Shell({
   const showShortcuts = useCallback(() => setShortcuts(true), []);
   const showWhatsNew = useCallback(() => setWhatsNew(true), []);
   const showDashboard = useCallback(() => {
+    if (!isPhone()) {
+      workspace.current?.dashboard();
+      setShowChat(true);
+      return;
+    }
     setDashboardLoaded(true);
     setDashboard(true);
   }, []);
@@ -609,12 +615,7 @@ function Shell({
       )}
       {dashboardLoaded && (
         <Suspense fallback={null}>
-          <DashboardPage
-            client={client}
-            phone={phone}
-            open={dashboard}
-            onOpenChange={setDashboard}
-          />
+          <DashboardPage client={client} open={dashboard} onOpenChange={setDashboard} />
         </Suspense>
       )}
     </div>

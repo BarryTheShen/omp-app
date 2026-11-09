@@ -34,6 +34,12 @@ import { Button } from "@/components/ui/button";
 import type { ComposerHandle } from "../chat/Composer";
 import type { ChatController, ChatTarget } from "../chat/controller";
 import { forgetNewChatDraft } from "../chat/drafts";
+import { DashboardPane } from "../dashboard/DashboardPane";
+import {
+  DASHBOARD_PANE,
+  type DashboardPaneParams,
+  isDashboardPane,
+} from "../dashboard/dashboardPane";
 import { inAppWindow, KEYS, keycap } from "../keys/table";
 import { FilePane } from "../panels/files/FilePane";
 import { isFilePane } from "../panels/files/filePaneParams";
@@ -85,8 +91,13 @@ import {
 } from "./tabs";
 
 const THEME: DockviewTheme = { name: "omp", className: "dockview-theme-omp" };
-/** A chat's pane, the side panel, and a file opened from the Files panel (#2782). */
-const COMPONENTS = { chat: ChatPanel, side: SidePane, file: FilePane };
+/** A chat's pane, the side panel, a file opened from the Files panel (#2782), and the dashboard. */
+const COMPONENTS = {
+  chat: ChatPanel,
+  side: SidePane,
+  file: FilePane,
+  [DASHBOARD_PANE]: DashboardPane,
+};
 /** How much one resize key widens, narrows, heightens or shortens the focused pane. */
 const RESIZE_STEP_PX = 48;
 /** Pane mode ends after this long without a key. */
@@ -154,6 +165,11 @@ export interface WorkspaceHandle {
   readonly forget: (threadId: ThreadId) => void;
   /** Shows the side pane on a panel in the shown workspace, at the right of its windows, or takes it away (`null`). */
   readonly side: (panel: string | null) => void;
+  /**
+   * Opens the dashboard: where a workspace shows it, that workspace and its pane come to the front; otherwise it gets a
+   * workspace of its own, in front, as a new chat does.
+   */
+  readonly dashboard: () => void;
 }
 
 /** What the workspace shows, for the sidebar: the focused pane's chat, the chats open in panes, and those waiting. */
@@ -166,13 +182,15 @@ export interface WorkspaceView {
   readonly side: string | null;
 }
 
-/** A chat pane's parameters; none for the side pane's or a file pane's, which show no chat. */
+/** A chat pane's parameters; none for the side pane's, a file pane's or the dashboard's, which show no chat. */
 const paramsOf = (params: unknown): ChatPanelParams | undefined =>
-  isFilePane(params) ? undefined : (params as ChatPanelParams | undefined);
+  isFilePane(params) || isDashboardPane(params)
+    ? undefined
+    : (params as ChatPanelParams | undefined);
 
-/** A pane that shows a chat: not the side panel, not a file. */
+/** A pane that shows a chat: not the side panel, not a file, not the dashboard. */
 const isChatPane = (panel: IDockviewPanel): boolean =>
-  panel.id !== SIDE_PANE && !isFilePane(panel.params);
+  panel.id !== SIDE_PANE && !isFilePane(panel.params) && !isDashboardPane(panel.params);
 
 /** A blank window (#2791): a window that shows nothing yet, only its New chat. */
 const isBlank = (group: IDockviewGroupPanel): boolean => group.panels.length === 0;
@@ -274,6 +292,8 @@ export function Workspace({
   const phoneZoomed = useRef(false);
   /** Workspaces just opened for a chat (#2831) or a tour's sandbox: the chat their blank window takes once ready. */
   const pendingChats = useRef(new Map<string, ChatTarget>());
+  /** Workspaces just opened for the dashboard: their blank window takes it once ready. */
+  const pendingDashboards = useRef(new Set<string>());
   /** The workspaces opened behind from the shown one, so the next goes after the last of them, as a browser's tabs. */
   const behindChain = useRef<{ readonly from: string; readonly last: string } | null>(null);
   /**
@@ -575,6 +595,21 @@ export function Workspace({
         const shown = tabId === tabsRef.current.active;
         addChat(api, pending, undefined, api.groups.find(isBlank), shown);
         if (shown) onShownRef.current?.();
+      }
+      // The dashboard opened in a workspace of its own fills its blank window, and is kept in the layout at once: the
+      // layout's own changes are heard only from below, and a dashboard alone changes nothing more to save it.
+      if (pendingDashboards.current.delete(tabId) && api.totalPanels === 0) {
+        const blank = api.groups.find(isBlank);
+        api.addPanel<DashboardPaneParams>({
+          id: DASHBOARD_PANE,
+          component: DASHBOARD_PANE,
+          title: "Dashboard",
+          params: { kind: "dashboard" },
+          ...(blank === undefined
+            ? {}
+            : { position: { referenceGroup: blank, direction: "within" } }),
+        });
+        setTabs((state) => saveLayout(state, tabId, keptLayout(api.toJSON(), phoneRef.current)));
       }
       // A phone opens on a new chat in the shown tab, ready to type, with the list a tap away: going through the list
       // to start one is slow on a phone. A new chat already in front stays, with the text kept for it. A reload the app
@@ -959,6 +994,18 @@ export function Workspace({
             });
           report();
         }),
+      dashboard: () => {
+        for (const [tabId, api] of apis.current) {
+          const pane = api.getPanel(DASHBOARD_PANE);
+          if (pane === undefined) continue;
+          if (tabId !== tabsRef.current.active) switchTabs((state) => activateTab(state, tabId));
+          pane.api.setActive();
+          return;
+        }
+        const tab: WorkspaceTab = { ...blankTab(), title: "Dashboard" };
+        pendingDashboards.current.add(tab.id);
+        openInFront(tab);
+      },
     }),
     [
       chatPaneIn,
@@ -969,6 +1016,7 @@ export function Workspace({
       openChat,
       openInFront,
       report,
+      switchTabs,
       withActive,
     ],
   );

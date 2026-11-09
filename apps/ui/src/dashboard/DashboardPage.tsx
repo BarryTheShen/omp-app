@@ -16,7 +16,7 @@ import {
   type UsageRulesResult,
 } from "@omp-app/contracts";
 import { ArrowDown, ArrowUp, ChevronLeft, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useId, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -856,105 +856,153 @@ function useUsageControl(client: AppClient, running: readonly RunningChat[]) {
   return { rules, queue, activity, rulesProblem, queueProblem, activityProblem, reload };
 }
 
-function DashboardSheet({
+/** The dashboard's parts, in the order the page shows them; the section bar scrolls to each. */
+const PARTS = [
+  { id: "usage", label: "Usage" },
+  { id: "statistics", label: "Statistics" },
+] as const;
+
+/** A part of the page, a card of its sections: its id is the section bar's anchor; its sections carry the names. */
+function Part({ id, children }: { readonly id: string; readonly children: ReactNode }): ReactNode {
+  return (
+    <div
+      id={`dashboard-${id}`}
+      className="scroll-mt-2 overflow-hidden rounded-lg border border-l2 bg-panel"
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The dashboard's page (#2836, D7): the accounts' usage windows and their pace, the rules that pause and continue chats
+ * on conditions, the queue of the chats they hold, what they did, and omp's statistics. On a computer it is a pane of
+ * the workspace (`DashboardPane`); on a phone it fills the screen (`DashboardPage`), its title given as `heading`.
+ */
+export function DashboardBody({
   client,
-  phone,
-  onClose,
+  heading,
+  back,
 }: {
   readonly client: AppClient;
-  readonly phone: boolean;
-  readonly onClose: () => void;
+  /** The page's title; a phone's sheet gives its dialog's own. */
+  readonly heading?: ReactNode;
+  /** A phone's ‹ Chats. */
+  readonly back?: ReactNode;
 }): ReactNode {
   const running = useRunningChats(client);
   const { rules, queue, activity, rulesProblem, queueProblem, activityProblem, reload } =
     useUsageControl(client, running);
   const ruleList = rules?.rules.map(({ rule }) => rule) ?? [];
+  const page = useRef<HTMLDivElement>(null);
+  const go = (id: string): void => {
+    page.current
+      ?.querySelector(`#dashboard-${id}`)
+      ?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
   return (
-    <DialogContent
-      data-tour="dashboard"
-      showCloseButton={!phone}
-      className={
-        phone
-          ? "top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) ring-0 sm:max-w-none"
-          : "flex h-[min(820px,94dvh)] w-[min(760px,calc(96vw-var(--safe-left)-var(--safe-right)))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
-      }
-    >
-      <header className="flex min-h-11 shrink-0 items-center gap-1 border-b border-l2 px-2 py-1 pr-12">
-        {phone && (
-          <Button variant="ghost" className="h-11 shrink-0 text-t2" onClick={onClose}>
-            <ChevronLeft />
-            Chats
-          </Button>
-        )}
-        <DialogTitle className={phone ? "text-base" : "px-2 text-base"}>Dashboard</DialogTitle>
+    <div data-tour="dashboard" className="flex h-full min-h-0 flex-col bg-l0">
+      <header className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-l2 px-2 py-1">
+        {back}
+        {heading ?? <h2 className="px-2 text-base font-medium text-t1">Dashboard</h2>}
+        <nav aria-label="Dashboard parts" className="flex gap-1">
+          {PARTS.map((part) => (
+            <Button
+              key={part.id}
+              variant="ghost"
+              size="sm"
+              className="text-t2 max-sm:h-11 tablet:h-11"
+              onClick={() => go(part.id)}
+            >
+              {part.label}
+            </Button>
+          ))}
+        </nav>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <Section title="Usage windows" hint="Your accounts' windows as omp reports them.">
-          <AccountsSection client={client} />
-        </Section>
-        <Section title="Pace" hint="From the server's readings of the last hour.">
-          <PaceSection client={client} />
-        </Section>
-        <Section
-          title="Rules"
-          hint="Pause chats while a condition holds, and continue them once none does."
-        >
-          <RulesSection
-            client={client}
-            running={running}
-            rules={rules}
-            problem={rulesProblem}
-            reload={reload}
-          />
-        </Section>
-        <Section title="Queue" hint="The chats the rules hold, in the order they continue.">
-          <QueueSection
-            client={client}
-            running={running}
-            queue={queue}
-            rules={ruleList}
-            problem={queueProblem}
-            reload={reload}
-          />
-        </Section>
-        <Section title="Activity" hint="What the rules did, newest first.">
-          <ActivitySection
-            activity={activity}
-            running={running}
-            rules={ruleList}
-            problem={activityProblem}
-          />
-        </Section>
-        <Section
-          title="Statistics"
-          hint="omp's own statistics: requests, costs, models, tools and errors, as /stats shows them."
-        >
-          <StatsSection client={client} />
-        </Section>
+      <div ref={page} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto flex w-full max-w-[880px] flex-col gap-4 p-3 sm:p-4">
+          <Part id="usage">
+            <Section title="Usage windows" hint="Your accounts' windows as omp reports them.">
+              <AccountsSection client={client} />
+            </Section>
+            <Section title="Pace" hint="From the server's readings of the last hour.">
+              <PaceSection client={client} />
+            </Section>
+            <Section
+              title="Rules"
+              hint="Pause chats while a condition holds, and continue them once none does."
+            >
+              <RulesSection
+                client={client}
+                running={running}
+                rules={rules}
+                problem={rulesProblem}
+                reload={reload}
+              />
+            </Section>
+            <Section title="Queue" hint="The chats the rules hold, in the order they continue.">
+              <QueueSection
+                client={client}
+                running={running}
+                queue={queue}
+                rules={ruleList}
+                problem={queueProblem}
+                reload={reload}
+              />
+            </Section>
+            <Section title="Activity" hint="What the rules did, newest first.">
+              <ActivitySection
+                activity={activity}
+                running={running}
+                rules={ruleList}
+                problem={activityProblem}
+              />
+            </Section>
+          </Part>
+          <Part id="statistics">
+            <Section
+              title="Statistics"
+              hint="omp's own statistics: requests, costs, models, tools and errors, as /stats shows them."
+            >
+              <StatsSection client={client} />
+            </Section>
+          </Part>
+        </div>
       </div>
-    </DialogContent>
+    </div>
   );
 }
 
-/**
- * The dashboard (#2836): the accounts' usage windows and their pace, the rules that pause and continue chats on
- * conditions, the queue of the chats they hold, what they did, and omp's statistics. A page of its own, as the settings
- * are: the whole screen on a phone.
- */
+/** The dashboard on a phone: the whole screen, as the settings are, with ‹ Chats. A computer shows it as a pane. */
 export function DashboardPage({
   client,
-  phone,
   open,
   onOpenChange,
 }: {
   readonly client: AppClient;
-  readonly phone: boolean;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }): ReactNode {
+  const close = (): void => onOpenChange(false);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {open && <DashboardSheet client={client} phone={phone} onClose={() => onOpenChange(false)} />}
+      {open && (
+        <DialogContent
+          showCloseButton={false}
+          className="top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) ring-0 sm:max-w-none"
+        >
+          <DashboardBody
+            client={client}
+            heading={<DialogTitle className="text-base">Dashboard</DialogTitle>}
+            back={
+              <Button variant="ghost" className="h-11 shrink-0 text-t2" onClick={close}>
+                <ChevronLeft />
+                Chats
+              </Button>
+            }
+          />
+        </DialogContent>
+      )}
     </Dialog>
   );
 }
