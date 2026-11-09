@@ -28,6 +28,44 @@ export function liteChat(search: string): ThreadId | null {
 export const fullAppAddress = (threadId: ThreadId | null): string =>
   threadId === null ? "/" : `/#chat=${encodeURIComponent(threadId)}`;
 
+/**
+ * The desktop app's link for the chat (`omp-app://chat/<id>?server=<origin>`), or for the server alone while the chat
+ * has no id yet: the system hands it to the desktop app, which shows the chat in its window on that server, and only
+ * for a server it opens already (`apps/desktop/src-tauri/src/chat_link.rs`).
+ */
+export function desktopAppLink(threadId: ThreadId | null, origin: string): string {
+  const server = `server=${encodeURIComponent(origin)}`;
+  return threadId === null
+    ? `omp-app://open?${server}`
+    : `omp-app://chat/${encodeURIComponent(threadId)}?${server}`;
+}
+
+/** Where the lite view's arrow opens the full app: a browser tab, or the desktop app. */
+export type FullAppPlace = "browser" | "desktop";
+
+const FULL_APP_PLACE = "omp-app.lite.fullAppPlace";
+
+/** The place this panel chose last; a browser tab until it chooses. */
+export function fullAppPlace(storage: Pick<Storage, "getItem"> | null): FullAppPlace {
+  try {
+    return storage?.getItem(FULL_APP_PLACE) === "desktop" ? "desktop" : "browser";
+  } catch {
+    return "browser";
+  }
+}
+
+/** Keeps the place chosen, for the panel's next loads; a storage the browser refuses keeps nothing. */
+export function keepFullAppPlace(
+  storage: Pick<Storage, "setItem"> | null,
+  place: FullAppPlace,
+): void {
+  try {
+    storage?.setItem(FULL_APP_PLACE, place);
+  } catch {
+    // A frame without storage: the choice holds for this load.
+  }
+}
+
 /** What the framing app may set for its assistant (#2845); null keeps the app's own. */
 export interface LiteChoices {
   /** The empty chat's greeting (`?greeting=`), in place of "What are we working on?". */

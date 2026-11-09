@@ -1,5 +1,13 @@
+import type { ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { liteChat, liteChoices, liteHost } from "./lite";
+import {
+  desktopAppLink,
+  fullAppPlace,
+  keepFullAppPlace,
+  liteChat,
+  liteChoices,
+  liteHost,
+} from "./lite";
 
 describe("liteChoices", () => {
   test("the framing app's greeting, suggestions and placeholder, as the issue gives them", () => {
@@ -67,5 +75,40 @@ describe("liteChat", () => {
     expect(liteChat("?chat=../etc")).toBeNull();
     expect(liteChat("?chat=a%20b")).toBeNull();
     expect(liteChat(`?chat=${"a".repeat(129)}`)).toBeNull();
+  });
+});
+
+describe("the full app from the lite view", () => {
+  test("the desktop app's link names the chat and the server; a chat with no id yet, the server alone", () => {
+    const chat = "01a18633-f642-75c0-b0bd-ad38cbbf851a" as ThreadId;
+    expect(desktopAppLink(chat, "https://devbox.tail1234.ts.net")).toBe(
+      "omp-app://chat/01a18633-f642-75c0-b0bd-ad38cbbf851a?server=https%3A%2F%2Fdevbox.tail1234.ts.net",
+    );
+    expect(desktopAppLink(null, "http://127.0.0.1:4317")).toBe(
+      "omp-app://open?server=http%3A%2F%2F127.0.0.1%3A4317",
+    );
+  });
+
+  test("a browser tab until the panel chooses the desktop app, which it keeps; a storage that refuses keeps nothing", () => {
+    const kept = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => kept.get(key) ?? null,
+      setItem: (key: string, value: string) => void kept.set(key, value),
+    };
+    expect(fullAppPlace(storage)).toBe("browser");
+    keepFullAppPlace(storage, "desktop");
+    expect(fullAppPlace(storage)).toBe("desktop");
+    keepFullAppPlace(storage, "browser");
+    expect(fullAppPlace(storage)).toBe("browser");
+    const refusing = {
+      getItem: (): string | null => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    };
+    expect(fullAppPlace(refusing)).toBe("browser");
+    expect(fullAppPlace(null)).toBe("browser");
   });
 });

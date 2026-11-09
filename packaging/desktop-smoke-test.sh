@@ -22,6 +22,9 @@
 # Undo in the window: Ctrl+Z takes text typed in the message box out again, which WebKitGTK alone does not (T12, #2792).
 # Pasting a file a file manager copied (T13, #2833): the clipboard holds its address and its path as GNOME Files puts
 # them there, and Ctrl+V in the message box uploads the file into the chat's folder.
+# A link to a chat (T14, the lite view's Open in the desktop app): a launch with `omp-app://chat/<id>?server=<origin>`, as
+# the system runs it for the link, shows that chat in front in the open window; a link to a server the app never opened
+# opens nothing.
 #
 #   xvfb-run -a dbus-run-session -- packaging/desktop-smoke-test.sh dist/desktop/omp-app-desktop_<version>_amd64.deb
 #
@@ -759,6 +762,37 @@ wait "$clip_pid" 2>/dev/null
 [[ -n $uploaded ]] || fail "T13: Ctrl+V with a copied file put nothing in the chat's folder (no 'copied notes 2833.txt' under the agent folder in 20 s; the clipboard helper: $(tr '\n' ' ' <"$work/clip-serve.log"))"
 cmp -s "$copied" "$uploaded" || fail "T13: the file in the chat's folder differs from the one copied"
 note "T13 Ctrl+V uploaded the copied file into the chat's folder, the same bytes: ${uploaded#"$work/"}"
+note "== T14: a link names a chat (the lite view's Open in the desktop app): the system starts the app with it, and the open window shows that chat in front; a link to a server the app never opened opens nothing"
+# omp names a chat's session file `<time>_<chat id>.jsonl`.
+chat_file=$(grep -rl --include='*.jsonl' slow_tool "$PI_CODING_AGENT_DIR/sessions" 2>/dev/null | head -n 1)
+chat_id=$(basename "${chat_file:-none}" .jsonl)
+chat_id=${chat_id##*_}
+[[ $chat_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "T14: no id for T9's chat (session file '${chat_file:-none}', id '$chat_id')"
+info=$(server_info 30) || fail "T14: the server stopped answering"
+read -r _ base <<<"$info"
+quoted=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1].rstrip("/"), safe=""))' "$base")
+xdotool windowfocus "$wid" 2>/dev/null || true
+xdotool key ctrl+t || fail "T14: could not press Ctrl+T for a blank workspace"
+sleep 3
+shot "$wid" link-blank
+launch "$app" "omp-app://chat/$chat_id?server=$quoted"
+second=$LAUNCHED
+wait_gone "$second" 30 || fail "T14: the launch with the link did not hand it to the open window and exit"
+wait "$second"
+sleep 4
+shot "$wid" link-opened
+[[ $(window_ids | wc -l) == 1 ]] || fail "T14: $(window_ids | wc -l) windows after the link; it must show the chat in the open window"
+changed=$(differing "$shots/link-blank.png" "$shots/link-opened.png")
+[[ $changed -gt 300 ]] || fail "T14: the link left the blank workspace as it was ($changed pixels changed): the chat did not come in front"
+note "T14 the launch with the link handed it to the open window, which showed T9's chat in front ($changed pixels changed)"
+launch "$app" "omp-app://chat/$chat_id?server=https%3A%2F%2Fnever-opened.example"
+second=$LAUNCHED
+wait_gone "$second" 30 || fail "T14: the launch with a link to an unknown server did not exit"
+wait "$second"
+sleep 3
+[[ $(window_ids | wc -l) == 1 ]] || fail "T14: a link to a server the app never opened opened a window"
+grep -q "a link named a server this app has not opened" "$work"/launch-*.log || fail "T14: the app did not log its refusal of a link to a server it never opened"
+note "T14 a link to a server the app never opened opened nothing, and the app logged its refusal"
 close_window "$wid"
 wait_gone "$p" 40 || fail "T9: the app did not exit after its window closed"
 wait "$p"

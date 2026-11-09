@@ -40,6 +40,7 @@ import {
   type DashboardPaneParams,
   isDashboardPane,
 } from "../dashboard/dashboardPane";
+import { onDesktopOpenChat } from "../desktop/openChat";
 import { inAppWindow, KEYS, keycap } from "../keys/table";
 import { FilePane } from "../panels/files/FilePane";
 import { isFilePane } from "../panels/files/filePaneParams";
@@ -851,14 +852,25 @@ export function Workspace({
   );
 
   // The chat the address named opens once the shown workspace's windows are back: before, it could not tell whether a
-  // window shows it already, nor take a blank one.
+  // window shows it already, nor take a blank one. So does a chat a link names while the desktop window is open (the
+  // lite view's "Open in the desktop app", `desktop/openChat.ts`), by its id alone.
   const linked = useRef(linkedChat);
+  const [linkAsked, setLinkAsked] = useState(0);
+  useEffect(
+    () =>
+      onDesktopOpenChat((threadId) => {
+        linked.current = { kind: "existing", threadId, sessionFile: null };
+        setLinkAsked((count) => count + 1);
+      }),
+    [],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a link the window asks for runs the effect again.
   useEffect(() => {
     const target = linked.current;
     if (target === null || readyApis === 0 || !apis.current.has(tabsRef.current.active)) return;
     linked.current = null;
     openChat(target, "front");
-  }, [readyApis, openChat]);
+  }, [readyApis, openChat, linkAsked]);
 
   /** The workspace's commands: kitty's keys run them, and the palette offers them. */
   const commands = useMemo<Record<WorkspaceCommand, () => void>>(

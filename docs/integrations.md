@@ -2,6 +2,8 @@
 
 omp app's chat can sit in another app's panel: a browser extension's side panel, an editor's webview, a notes app's side panel, a web page of your own. The panel shows the app's lite view (`/lite`) in a frame. The page that frames it is the **host**: it can tell the panel what the person is looking at, give the chat tools of its own, and set the panel's look.
 
+The lite view is one chat and its message box. Its header names the chat; a click on the name lists the folder's recent chats, and **Find a chat** there finds any of the folder's chats by its title. Beside it, a pencil starts a new chat, and the arrow opens the chat in the full app: in a browser tab, or, once **Open in the desktop app** was chosen in the menu beside it (⌄), in the desktop app's window, through an `omp-app:` link that the desktop app's package registers ([Configuration](configuration.md#what-does-the-omp-app-desktop-command-take)). The panel keeps that choice. The first time, the browser asks whether to open the omp app.
+
 ## Which pages may show the app in a panel?
 
 None, until you name them. The app runs commands on its computer, so it lets only the pages you name frame it, and never a page of the internet.

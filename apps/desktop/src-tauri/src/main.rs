@@ -9,8 +9,12 @@
 //! from the link that server logs for another device, and `omp-app-desktop --local` brings it back to this computer's
 //! server (see `remote.rs`). Each is kept for the next launches, and a second launch with either moves the first
 //! window.
+//!
+//! `omp-app-desktop 'omp-app://chat/<chat id>?server=<origin>'`, as the system runs it for such a link (the lite view's
+//! "Open in the full app"), shows that chat in a window on that server (see `chat_link.rs`).
 
 mod address;
+mod chat_link;
 mod clipboard;
 mod commands;
 mod downloads;
@@ -31,6 +35,8 @@ fn main() {
         eprintln!("omp app: {reason}");
         std::process::exit(2);
     }
+    // A link to a chat that started the app opens with the first window (see `chat_link.rs`).
+    let link = chat_link::find(&args);
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // The second launch's own arguments, its program's name left out.
@@ -63,10 +69,10 @@ fn main() {
             WindowEvent::Destroyed => server::destroyed(window.app_handle(), window.label()),
             _ => {}
         })
-        .setup(|app| {
+        .setup(move |app| {
             app.manage(gstreamer::RegistryScan::start());
             signals::watch(app.handle().clone());
-            server::start(app.handle().clone());
+            server::start(app.handle().clone(), link);
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -5,13 +5,20 @@ import { Check, ChevronDown, SquareArrowOutUpRight, SquarePen } from "lucide-rea
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ConnectionBanner } from "../ConnectionBanner";
 import { ChatPane } from "../chat/ChatPane";
 import { useChatTitle } from "../chat/chatTitle";
@@ -27,10 +34,17 @@ import { bindChat, embed, useEmbed } from "./embed";
 import { usePanelFolder } from "./hostFolder";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./hostLook";
 import { LiteContext } from "./LiteContext";
-import { fullAppAddress, liteChat, liteChoices, withEmbedChoices } from "./lite";
-
-/** How many chats the switcher offers: the folder's most recent ones. */
-const RECENT_CHATS = 12;
+import {
+  desktopAppLink,
+  type FullAppPlace,
+  fullAppAddress,
+  fullAppPlace,
+  keepFullAppPlace,
+  liteChat,
+  liteChoices,
+  withEmbedChoices,
+} from "./lite";
+import { type FolderChat, switcherChats } from "./switcher";
 
 /** The header's buttons: a finger's size on a phone's width and on a tablet, the full app's small size otherwise. */
 const HEADER_BUTTON = "size-9 shrink-0 text-t2 max-sm:size-11 tablet:size-11";
@@ -48,30 +62,23 @@ const newChat = (folder: FolderPath): Shown => ({
   target: { kind: "new", folder },
 });
 
-/** A chat the switcher offers. */
-interface Recent {
-  readonly id: ThreadId;
-  readonly title: string;
-  readonly target: ChatTarget;
-}
-
 /** The folder's chats, newest first: the ones whose first reply runs now (omp has not saved them yet), then the saved. */
-function recentChats(list: ChatList): readonly Recent[] {
+function folderChats(list: ChatList): readonly FolderChat[] {
   const starting = list.starting.map(
-    (chat): Recent => ({
+    (chat): FolderChat => ({
       id: chat.id,
       title: firstPromptOf(chat.id) ?? "New chat",
       target: { kind: "existing", threadId: chat.id, sessionFile: null },
     }),
   );
   const saved = list.sessions.map(
-    (session): Recent => ({
+    (session): FolderChat => ({
       id: session.id,
       title: titleOf(session),
       target: { kind: "existing", threadId: session.id, sessionFile: session.sessionFile },
     }),
   );
-  return [...starting, ...saved].slice(0, RECENT_CHATS);
+  return [...starting, ...saved];
 }
 
 /**
@@ -163,7 +170,7 @@ function LiteChats({
     <LiteChat
       key={shown.key}
       controller={controller}
-      recent={recentChats(list)}
+      chats={folderChats(list)}
       onNew={() => {
         // A new chat with nothing in it is the new chat already.
         if (shown.target.kind === "new" && controller.threadId === null) return;
@@ -179,18 +186,21 @@ function LiteChats({
 
 function LiteChat({
   controller,
-  recent,
+  chats,
   onNew,
   onOpen,
 }: {
   readonly controller: ChatController;
-  readonly recent: readonly Recent[];
+  readonly chats: readonly FolderChat[];
   readonly onNew: () => void;
-  readonly onOpen: (chat: Recent) => void;
+  readonly onOpen: (chat: FolderChat) => void;
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
   const title = useChatTitle(controller, snapshot.entries);
   const threadId = controller.threadId;
+  const [switching, setSwitching] = useState(false);
+  const [query, setQuery] = useState("");
+  const listed = switcherChats(chats, query);
   // The framing page's tools go to the chat shown here, and to no other (`lite/embed.ts`).
   useEffect(() => (embed === null ? undefined : bindChat(embed, controller)), [controller]);
   return (
@@ -198,30 +208,56 @@ function LiteChat({
       {/* One line in the framing app's muted colour and text size (#2845): the chat's name, New chat, the full app. */}
       <header className="flex h-11 shrink-0 items-center gap-1 px-1 text-t2">
         <h1 className="flex min-w-0 flex-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger
+          <Popover
+            open={switching}
+            onOpenChange={(open) => {
+              setSwitching(open);
+              if (!open) setQuery("");
+            }}
+          >
+            <PopoverTrigger
               title="Recent chats"
               className="flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-lg px-2 text-[length:var(--host-text-size,0.875rem)] font-medium text-t2 outline-none hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 max-sm:min-h-11 tablet:min-h-11"
             >
               <span className="truncate">{title}</span>
               <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-t3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72 max-w-[calc(100vw-1rem)]">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Recent chats</DropdownMenuLabel>
-                {recent.length === 0 ? (
-                  <p className="px-2 py-1.5 text-sm text-t3">No chats in this folder yet.</p>
-                ) : (
-                  recent.map((chat) => (
-                    <DropdownMenuItem key={chat.id} onClick={() => onOpen(chat)}>
-                      <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-                      {chat.id === threadId && <Check aria-label="Shown now" />}
-                    </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 max-w-[calc(100vw-1rem)] p-0">
+              <Command shouldFilter={false}>
+                <CommandInput
+                  aria-label="Find a chat"
+                  placeholder="Find a chat"
+                  value={query}
+                  onValueChange={setQuery}
+                />
+                <CommandList>
+                  <CommandEmpty>
+                    {chats.length === 0
+                      ? "No chats in this folder yet."
+                      : `No chat's title has "${query.trim()}".`}
+                  </CommandEmpty>
+                  {listed.length > 0 && (
+                    <CommandGroup heading={query.trim() === "" ? "Recent chats" : "Found"}>
+                      {listed.map((chat) => (
+                        <CommandItem
+                          key={chat.id}
+                          value={chat.id}
+                          onSelect={() => {
+                            setSwitching(false);
+                            setQuery("");
+                            onOpen(chat);
+                          }}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+                          {chat.id === threadId && <Check aria-label="Shown now" />}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </h1>
         <Button
           variant="ghost"
@@ -233,18 +269,70 @@ function LiteChat({
         >
           <SquarePen className={HEADER_ICON} />
         </Button>
-        <a
-          href={fullAppAddress(threadId)}
-          target="_blank"
-          rel="noopener"
-          aria-label="Open in the full app"
-          title="Open in the full app"
-          className={cn(buttonVariants({ variant: "ghost", size: "icon" }), HEADER_BUTTON)}
-        >
-          <SquareArrowOutUpRight className={HEADER_ICON} />
-        </a>
+        <FullApp threadId={threadId} />
       </header>
       <ChatPane controller={controller} />
     </>
+  );
+}
+
+/** This page's storage, or null in a frame the browser keeps from it. */
+function pageStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The arrow to the full app: it opens the chat where this panel chose last, a browser tab until it chooses. Its menu
+ * opens the chat in the desktop app (through its `omp-app://` link, which the system hands to it) or in a browser tab,
+ * and keeps that choice for the arrow.
+ */
+function FullApp({ threadId }: { readonly threadId: ThreadId | null }): ReactNode {
+  const [place, setPlace] = useState<FullAppPlace>(() => fullAppPlace(pageStorage()));
+  const address = (where: FullAppPlace): string =>
+    where === "desktop"
+      ? desktopAppLink(threadId, window.location.origin)
+      : fullAppAddress(threadId);
+  const openIn = (where: FullAppPlace): void => {
+    keepFullAppPlace(pageStorage(), where);
+    setPlace(where);
+    if (where === "desktop") window.location.assign(address(where));
+    else window.open(address(where), "_blank", "noopener");
+  };
+  const label = place === "desktop" ? "Open in the desktop app" : "Open in the full app";
+  return (
+    <div className="flex shrink-0 items-center">
+      <a
+        href={address(place)}
+        {...(place === "browser" ? { target: "_blank", rel: "noopener" } : {})}
+        aria-label={label}
+        title={label}
+        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), HEADER_BUTTON)}
+      >
+        <SquareArrowOutUpRight className={HEADER_ICON} />
+      </a>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Where the full app opens"
+          title="Where the full app opens"
+          className="flex h-9 w-5 shrink-0 items-center justify-center rounded-lg text-t3 outline-none hover:bg-l1 hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-l2 max-sm:h-11 max-sm:w-7 tablet:h-11 tablet:w-7"
+        >
+          <ChevronDown aria-hidden="true" className="size-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuItem onClick={() => openIn("desktop")}>
+            <span className="flex-1">Open in the desktop app</span>
+            {place === "desktop" && <Check aria-label="The arrow's choice" />}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openIn("browser")}>
+            <span className="flex-1">Open in a browser tab</span>
+            {place === "browser" && <Check aria-label="The arrow's choice" />}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

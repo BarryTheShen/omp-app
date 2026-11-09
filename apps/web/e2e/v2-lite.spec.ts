@@ -68,12 +68,19 @@ realTest.describe("new UI lite view", () => {
       await expect(stop).toBeHidden({ timeout: 60_000 });
       await expect(page.getByText("tool said: slow-tool-done")).toHaveCount(0);
 
-      // New chat starts an empty one; the chat left is in the recent chats, and comes back as it was.
+      // New chat starts an empty one; the chat left is in the recent chats, a search finds it by its title, and it comes
+      // back as it was.
       await page.getByRole("button", { name: "New chat" }).click();
       await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
       await expect(page.getByText("tool said: fixture-tool")).toHaveCount(0);
       await page.getByRole("heading", { name: "New chat" }).getByRole("button").click();
-      await page.getByRole("menuitem", { name: "run_bash" }).click();
+      await expect(page.getByRole("option", { name: "run_bash" })).toBeVisible();
+      const find = page.getByRole("combobox", { name: "Find a chat" });
+      await find.fill("no such chat");
+      await expect(page.getByText('No chat\'s title has "no such chat".')).toBeVisible();
+      await expect(page.getByRole("option")).toHaveCount(0);
+      await find.fill("RUN_b");
+      await page.getByRole("option", { name: "run_bash" }).click();
       await expect(page.getByRole("heading", { name: "run_bash" })).toBeVisible();
       await expect(page.getByText("tool said: fixture-tool")).toBeVisible({ timeout: 60_000 });
       await context.close();
@@ -119,6 +126,55 @@ realTest.describe("new UI lite view", () => {
         chats.getByRole("button", { name: /^count_reply linked, open in a window/ }),
       ).toBeVisible();
       expect(new URL(page.url()).hash).not.toContain("chat=");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "Open in the desktop app hands the chat's link to the system and stays the arrow's choice; the window's script opens the chat in front",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/lite" });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await send(page, "count_reply handed");
+      await expect(page.getByText(/count-\d+ handed/)).toBeVisible({ timeout: 60_000 });
+      // A browser tab until the panel chooses; the menu opens it in the desktop app, through its link, and keeps that.
+      await expect(page.getByRole("link", { name: "Open in the full app" })).toBeVisible();
+      await page.getByRole("button", { name: "Where the full app opens" }).click();
+      await page.getByRole("menuitem", { name: "Open in the desktop app" }).click();
+      const desktop = page.getByRole("link", { name: "Open in the desktop app" });
+      const origin = new URL(page.url()).origin;
+      const server = encodeURIComponent(origin).replaceAll(".", "\\.");
+      const href = new RegExp(`^omp-app://chat/([0-9a-f-]{36})\\?server=${server}$`);
+      await expect(desktop).toHaveAttribute("href", href);
+      await expect(desktop).not.toHaveAttribute("target");
+      const chat = href.exec((await desktop.getAttribute("href")) ?? "")?.[1] ?? "";
+      // The system took the link: the panel stays where it is.
+      expect(new URL(page.url()).pathname).toBe("/lite");
+      // Loaded again, the panel keeps the choice; it shows a new chat, whose link names the server alone until its id.
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(desktop).toHaveAttribute(
+        "href",
+        new RegExp(`^omp-app://open\\?server=${server}$`),
+      );
+
+      // The desktop window shows the full app; for the link it runs this script in the page (`chat_link.rs`).
+      await page.goto(new URL("/", page.url()).toString());
+      const chats = page.getByRole("navigation", { name: "Chats" });
+      await expect(chats).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("[data-chat-pane]").getByText(/count-\d+ handed/)).toHaveCount(0);
+      await page.evaluate(
+        (id) => window.dispatchEvent(new CustomEvent("omp-app:open-chat", { detail: id })),
+        chat,
+      );
+      await expect(page.locator("[data-chat-pane]").getByText(/count-\d+ handed/)).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(
+        chats.getByRole("button", { name: /^count_reply handed, open in a window/ }),
+      ).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

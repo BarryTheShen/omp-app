@@ -41,6 +41,7 @@ use webkit2gtk::{
 };
 
 use crate::address;
+use crate::chat_link::{self, ChatLink};
 use crate::downloads;
 use crate::gstreamer::RegistryScan;
 use crate::keys;
@@ -107,6 +108,9 @@ struct State {
     /// The windows whose close is under way: a window is gone only once its close is through, and meanwhile it does
     /// not count as one that stays (see `window_closes`).
     closing: Vec<String>,
+    /// The link the app was started with (see `chat_link.rs`), until the first window's page opens: its chat goes into
+    /// that page's address when it is the link's server, and is asked of the other windows otherwise.
+    launch_link: Option<ChatLink>,
 }
 
 fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
@@ -115,8 +119,10 @@ fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
     change(&mut state)
 }
 
-/// Opens the app in the window (see `launch`). Called once, from the app's setup, which runs on the main thread.
-pub fn start(app: AppHandle) {
+/// Opens the app in the window (see `launch`), with the link the app was started with, if any (see `chat_link.rs`).
+/// Called once, from the app's setup, which runs on the main thread.
+pub fn start(app: AppHandle, link: Option<ChatLink>) {
+    with_state(&app, |state| state.launch_link = link);
     launch(&mut AppSteps { app });
 }
 
@@ -314,6 +320,10 @@ pub fn apply_choice_for(label: &str, args: &[String]) -> Result<(), String> {
 /// link. `--new-window` opens another window like the one focused last, and without either the window focused last
 /// comes forward (any open window when it is gone).
 pub fn second_launch(app: &AppHandle, args: &[String]) {
+    if let Some(link) = chat_link::find(args) {
+        open_chat_link(app, &link);
+        return;
+    }
     let moves = matches!(remote::choice(args), Ok(choice) if choice != remote::Choice::Unchanged);
     let source = if moves {
         windows::pick(None, &open_labels(app))
@@ -333,6 +343,55 @@ pub fn second_launch(app: &AppHandle, args: &[String]) {
     } else {
         focus(app, &source);
     }
+}
+
+/// Shows what a link asks (see `chat_link.rs`): its server's window comes forward (the one focused last, if it shows
+/// that server) and shows the chat; with no window on that server, a new one opens on it, at the chat. A link to a
+/// server the app never opened brings nothing: the window focused last comes forward, and the refusal is logged.
+fn open_chat_link(app: &AppHandle, link: &ChatLink) {
+    let local = local_origin(app);
+    let shows = |label: &String| {
+        remote_origin_of(app, label)
+            .or_else(|| local.clone())
+            .is_some_and(|origin| origin == link.server)
+    };
+    let last = with_state(app, |state| state.last_focused.clone());
+    let showing = last
+        .filter(|label| app.get_webview_window(label).is_some() && shows(label))
+        .or_else(|| open_labels(app).into_iter().find(|label| shows(label)));
+    if let Some(label) = showing {
+        focus(app, &label);
+        if let (Some(chat), Some(window)) = (&link.chat, app.get_webview_window(&label)) {
+            if let Err(error) = window.eval(chat_link::open_script(chat)) {
+                eprintln!("omp app: the chat did not open in the window: {error}");
+            }
+        }
+        return;
+    }
+    // No window shows it: this computer's server, or one on another computer whose link the app keeps.
+    let here =
+        running_server().filter(|address| address.origin().ascii_serialization() == link.server);
+    let (address, origin) = match here {
+        Some(address) => (address, None),
+        None => match link_for_origin(&link.server) {
+            Some(address) => (address, Some(link.server.clone())),
+            None => {
+                eprintln!(
+                    "omp app: a link named a server this app has not opened, so nothing opened"
+                );
+                if let Some(label) = pick_window(app) {
+                    focus(app, &label);
+                }
+                return;
+            }
+        },
+    };
+    let address = match &link.chat {
+        Some(chat) => chat_link::address_with_chat(&address, chat),
+        None => address,
+    };
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || open_window_on(&handle, &address, origin));
 }
 
 /// Moves window `label` as a launch with these arguments would: to the server on another computer a link names, or
@@ -858,6 +917,17 @@ fn open_server_page(app: &AppHandle, label: &str, url: Url) {
     if url.scheme() == "http" {
         note_local(app, &url);
     }
+    // The link the app was started with: its chat opens in this page when it is the link's server; another server's
+    // chat is asked of the windows once this one is on its way (see `open_chat_link`).
+    let link = with_state(app, |state| state.launch_link.take());
+    let origin = url.origin().ascii_serialization();
+    let (url, elsewhere) = match link {
+        Some(link) if link.server == origin => match &link.chat {
+            Some(chat) => (chat_link::address_with_chat(&url, chat), None),
+            None => (url, None),
+        },
+        other => (url, other),
+    };
     // The app page is where the command palette opens. Without GStreamer's plugin cache, the first palette
     // open would stall while the scan runs, so the page waits here for the launch scan to finish.
     app.state::<RegistryScan>().wait(REGISTRY_SCAN_WAIT);
@@ -871,6 +941,9 @@ fn open_server_page(app: &AppHandle, label: &str, url: Url) {
         }
         None => open_in_a_window_if_none(&handle, &label, WebviewUrl::External(url)),
     });
+    if let Some(link) = elsewhere {
+        open_chat_link(app, &link);
+    }
 }
 
 /// A page for a window that is gone is dropped, and the windows that stay are not touched. With no window open at all,
