@@ -640,6 +640,56 @@ const DASHBOARD_PARTS_TOUR: Tour = {
   ],
 };
 
+/** What waits on the dashboard's button, and the new ways to add to the to-do list (2026-11-09, D7h). */
+const DASHBOARD_EXTRAS_TOUR: Tour = {
+  id: "dashboard-extras-2026-11-09",
+  title: "What waits for you",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "What waits",
+      text: "This button counts what waits for you: every chat's questions with no answer yet, and the to-dos due today or before. A chat's menu has <b>Add to the to-do list</b>, the palette has <b>Add a to-do</b>, and the list copies as Markdown.",
+      action: next,
+    },
+  ],
+};
+
+/** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
+const INTEGRATIONS_TOUR: Tour = {
+  id: "integrations-2026-11-09",
+  title: "Show the app in other apps",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "Integrations are under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("integrations"),
+      title: "Integrations",
+      text: "The apps that may show omp app in a panel: a switch for Firefox and Zen extensions, one for Chrome and Edge extensions and one for VS Code, and pages by their address. A change counts from the panel's next load. Each panel pairs once, as any device; inside another app, that app keeps its key.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** Save debug log, in Settings → App and the palette (2026-11-08). */
 const DEBUG_LOG_TOUR: Tour = {
   id: "debug-log-2026-11-08",
@@ -2294,6 +2344,20 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-dashboard-extras",
+    when: "2026-11-09T03:39:00-06:00",
+    summary:
+      "The dashboard's button counts the questions waiting and the to-dos due; a chat's menu and the palette add to-dos; the list copies as Markdown; and a saved chat opened from a link shows its messages again.",
+    tours: [DASHBOARD_EXTRAS_TOUR],
+  },
+  {
+    id: "2026-11-09-integrations",
+    when: "2026-11-09T03:36:00-06:00",
+    summary:
+      "Settings → App → Integrations names the apps that may show omp app in a panel (browser extensions, VS Code, pages by address), without a restart; a panel inside another app pairs once, and that app keeps its key.",
+    tours: [INTEGRATIONS_TOUR],
+  },
   {
     id: "2026-11-09-dashboard-parts",
     when: "2026-11-09T02:32:00-06:00",
