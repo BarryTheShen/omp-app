@@ -500,4 +500,81 @@ realTest.describe("new UI transcript: a long chat's earlier messages on a phone"
       await context.close();
     },
   );
+
+  realTest(
+    "on an iPhone, earlier messages read during one long swipe up can be scrolled to in that same swipe",
+    async ({ realApp, browser }) => {
+      let reads = 0;
+      const { page, context } = await openLongChat(
+        realApp,
+        browser,
+        (pass) => {
+          reads += 1;
+          pass();
+        },
+        IPHONE_SAFARI,
+      );
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      /** Rows drawn above the transcript's top: a bounce shows them, no scroll reaches them. */
+      const drawnAbove = (): Promise<number> =>
+        transcript.evaluate((element) => {
+          const top = (element.firstElementChild as HTMLElement).getBoundingClientRect().top;
+          return [...element.querySelectorAll("[data-index]")].filter(
+            (row) => row.getBoundingClientRect().top < top - 1,
+          ).length;
+        });
+      /** Whether the chat's first question is on screen in the transcript. */
+      const firstInView = (): Promise<boolean> =>
+        transcript.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return [...element.querySelectorAll<HTMLElement>("[data-index]")].some((row) => {
+            const rect = row.getBoundingClientRect();
+            return (
+              rect.bottom > box.top &&
+              rect.top < box.bottom &&
+              (row.textContent ?? "").includes("Question 1:")
+            );
+          });
+        });
+      const finger = (down: boolean): Promise<void> =>
+        transcript.evaluate((element, isDown) => {
+          const touch = new Touch({ identifier: 1, target: element, clientX: 195, clientY: 400 });
+          const touches = isDown ? [touch] : [];
+          element.dispatchEvent(
+            new TouchEvent(isDown ? "touchstart" : "touchend", {
+              touches,
+              targetTouches: touches,
+              changedTouches: [touch],
+              bubbles: true,
+            }),
+          );
+        }, down);
+      await page.waitForTimeout(1_000);
+
+      // One finger stays down from the chat's end to its first question. The older window is read on the way, and
+      // comes while the finger is down.
+      await finger(true);
+      let reached = false;
+      for (let step = 0; step < 400 && !reached; step += 1) {
+        await transcript.evaluate((element) => {
+          element.scrollTop = Math.max(0, element.scrollTop - 600);
+        });
+        await page.waitForTimeout(40);
+        reached = await firstInView();
+      }
+      expect(reads).toBeGreaterThanOrEqual(1);
+      expect(reached).toBe(true);
+      expect(await drawnAbove()).toBe(0);
+
+      // Once the finger lifts and the scroll rests, the spare room above the chat's beginning goes: the first question
+      // is still on screen, and nothing is drawn above the top.
+      await finger(false);
+      await page.waitForTimeout(1_000);
+      expect(await firstInView()).toBe(true);
+      expect(await drawnAbove()).toBe(0);
+      await expect(transcript.getByText(/^Beginning of the chat/)).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });

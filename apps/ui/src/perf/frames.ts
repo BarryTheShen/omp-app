@@ -76,25 +76,33 @@ export function scrollMoves(tops: readonly number[]): ScrollMoves {
 }
 
 /**
- * One frame of a scroll as the page drew it: the element's position and scroll height, and how far the content under
- * the middle of the view moved on screen since the frame before (up positive, as the position; null when unknown).
+ * One frame of a scroll as the page drew it: the element's position and scroll height, how far the content under the
+ * middle of the view moved on screen since the frame before (up positive, as the position; null when unknown), what the
+ * app itself wrote to the position since the frame before (down positive), and where the finger was on screen (its
+ * `clientY`; null with no finger down).
  */
 export interface ScrollFrame {
   readonly top: number;
   readonly height: number;
   readonly seen: number | null;
+  readonly wrote: number;
+  readonly finger: number | null;
 }
 
 /**
  * A frame in which the position changed: by how much (down positive), how far the content on screen moved, and how much
  * the scrolled content grew in that frame. A position change the screen did not show (`seenPx` near 0, the content
- * grown by about as much) is a correction for content added or measured above; one it showed is the view jumping.
+ * grown by about as much) is a correction for content added or measured above; one it showed is the view jumping. The
+ * app's own writes in that frame and the finger's move on screen (down positive, which pulls the view up the chat; null
+ * unless a finger was down in both frames) tell a jump the app wrote from one the browser made, such as a bounce.
  */
 export interface ScrollJump {
   readonly frame: number;
   readonly movedPx: number;
   readonly seenPx: number | null;
   readonly grewPx: number;
+  readonly wrotePx: number;
+  readonly fingerPx: number | null;
 }
 
 /** The `count` frames whose position changed most, largest first. */
@@ -108,6 +116,11 @@ export function biggestJumps(frames: readonly ScrollFrame[], count: number): rea
       movedPx: Math.round(frame.top - before.top),
       seenPx: frame.seen === null ? null : Math.round(frame.seen),
       grewPx: Math.round(frame.height - before.height),
+      wrotePx: Math.round(frame.wrote),
+      fingerPx:
+        frame.finger === null || before.finger === null
+          ? null
+          : Math.round(frame.finger - before.finger),
     });
   });
   return jumps

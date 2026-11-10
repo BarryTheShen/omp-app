@@ -70,9 +70,17 @@ describe("scrollMoves", () => {
 });
 
 describe("biggestJumps", () => {
-  /** Frames from a list of [position, scroll height, on-screen move]. */
-  const frames = (rows: readonly (readonly [number, number, number | null])[]): ScrollFrame[] =>
-    rows.map(([top, height, seen]) => ({ top, height, seen }));
+  /** Frames from a list of [position, scroll height, on-screen move, the app's writes, the finger on screen]. */
+  const frames = (
+    rows: readonly (readonly [number, number, number | null, number?, (number | null)?])[],
+  ): ScrollFrame[] =>
+    rows.map(([top, height, seen, wrote = 0, finger = null]) => ({
+      top,
+      height,
+      seen,
+      wrote,
+      finger,
+    }));
 
   test("a frame's change sits with that frame's on-screen move and growth, largest first", () => {
     const scrolled = frames([
@@ -85,9 +93,9 @@ describe("biggestJumps", () => {
       [14000, 31520, 0],
     ]);
     expect(biggestJumps(scrolled, 3)).toEqual([
-      { frame: 2, movedPx: 11520, seenPx: 0, grewPx: 11520 },
-      { frame: 3, movedPx: -2400, seenPx: -2400, grewPx: 0 },
-      { frame: 1, movedPx: -120, seenPx: -120, grewPx: 0 },
+      { frame: 2, movedPx: 11520, seenPx: 0, grewPx: 11520, wrotePx: 0, fingerPx: null },
+      { frame: 3, movedPx: -2400, seenPx: -2400, grewPx: 0, wrotePx: 0, fingerPx: null },
+      { frame: 1, movedPx: -120, seenPx: -120, grewPx: 0, wrotePx: 0, fingerPx: null },
     ]);
   });
 
@@ -100,8 +108,25 @@ describe("biggestJumps", () => {
       [130, 1000, 30],
     ]);
     expect(biggestJumps(scrolled, 2)).toEqual([
-      { frame: 3, movedPx: 60, seenPx: null, grewPx: 0 },
-      { frame: 2, movedPx: 40, seenPx: 40, grewPx: 0 },
+      { frame: 3, movedPx: 60, seenPx: null, grewPx: 0, wrotePx: 0, fingerPx: null },
+      { frame: 2, movedPx: 40, seenPx: 40, grewPx: 0, wrotePx: 0, fingerPx: null },
+    ]);
+  });
+
+  test("a jump down against a finger pulling up is told apart by what the app wrote in its frame", () => {
+    const scrolled = frames([
+      [9000, 40000, null, 0, 300],
+      // The finger pulls the view up the chat.
+      [8800, 40000, -200, 0, 500],
+      // The app wrote 276 px down while the finger still pulled up.
+      [9076, 40000, 276, 276, 520],
+      // The finger lifts; the position jumps 261 px down with no write: the browser moved it.
+      [9337, 40000, 261, 0, null],
+    ]);
+    expect(biggestJumps(scrolled, 3)).toEqual([
+      { frame: 2, movedPx: 276, seenPx: 276, grewPx: 0, wrotePx: 276, fingerPx: 20 },
+      { frame: 3, movedPx: 261, seenPx: 261, grewPx: 0, wrotePx: 0, fingerPx: null },
+      { frame: 1, movedPx: -200, seenPx: -200, grewPx: 0, wrotePx: 0, fingerPx: 200 },
     ]);
   });
 });
@@ -147,6 +172,8 @@ describe("rowBehindJump", () => {
     movedPx: grewPx,
     seenPx: grewPx,
     grewPx,
+    wrotePx: 0,
+    fingerPx: null,
   });
 
   test("a row that changes in the jump's own frame", () => {

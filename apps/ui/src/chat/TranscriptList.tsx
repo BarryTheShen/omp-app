@@ -1,5 +1,10 @@
-import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
+import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
+import {
+  elementScroll,
+  useVirtualizer,
+  type VirtualItem,
+  type Virtualizer,
+} from "@tanstack/react-virtual";
 import { ArrowDown, LoaderCircle } from "lucide-react";
 import {
   type ReactNode,
@@ -12,9 +17,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { LiteContext } from "../lite/LiteContext";
 import { useFollowTrace, useHoldTrace } from "../perf/followTrace";
+import { noteScrollWrite } from "../perf/scrollTrace";
 import { usePhone } from "../phone";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import {
@@ -36,11 +43,29 @@ import type { ChatSnapshot } from "./store";
  */
 const ESTIMATED_ROW_PX = 72;
 
+/** The mean height of the rows measured so far, or nothing before any is. */
+function meanHeight(
+  rows: readonly TranscriptRow[],
+  sizes: ReadonlyMap<unknown, number>,
+): number | undefined {
+  let total = 0;
+  let count = 0;
+  for (const row of rows) {
+    const size = sizes.get(row.key);
+    if (size === undefined) continue;
+    total += size;
+    count += 1;
+  }
+  return count === 0 ? undefined : Math.round(total / count);
+}
+
 /**
- * The height a row not measured yet starts at. A reply's saved entry takes its stream's place with the same text, and
- * drawn at the guess for a frame it moved the view (211 px short at the end of a reply): it starts at the stream's
- * measured height instead, kept until it is measured itself. Any other row starts at the guess. `measured` is TanStack's
- * size cache as of the last render, which still holds the stream.
+ * The height a row not measured yet starts at, kept until it is measured. A reply's saved entry takes its stream's place
+ * with the same text, and drawn at the guess for a frame it moved the view (211 px short at the end of a reply): it
+ * starts at the stream's measured height instead. A row of an older window put in front starts at the mean height of
+ * the rows measured, so that it takes about the room it will be drawn in (`spareFor`); its guess stays its own, as one
+ * that changed would move the rows below it. Any other row starts at the guess. `measured` is TanStack's size cache as
+ * of the last render, which still holds the stream.
  */
 function useFirstHeights(
   rows: readonly TranscriptRow[],
@@ -61,6 +86,12 @@ function useFirstHeights(
       const size = measured.current.get(was.key);
       if (size !== undefined) inherited.current.set(row.key, size);
     });
+    const oldFirst = before[0]?.key;
+    const at = oldFirst === undefined ? -1 : rows.findIndex((row) => row.key === oldFirst);
+    const mean = at > 0 ? meanHeight(rows, measured.current) : undefined;
+    if (mean !== undefined)
+      for (const row of rows.slice(0, at))
+        if (!measured.current.has(row.key)) inherited.current.set(row.key, mean);
     for (const key of [...inherited.current.keys()])
       if (!now.has(key) || measured.current.has(key)) inherited.current.delete(key);
     last.current = { rows, placed: rows.map(({ key, kind }) => ({ key, kind })) };
@@ -298,30 +329,60 @@ function useReaderRest(
 }
 
 /**
- * Older entries read while the reader scrolls (`moving`: a finger on the transcript, a swipe that still glides or
- * bounces, a wheel) wait until the scroll rests before they go in above the line being read. Put in mid-scroll, that
- * line can be kept where it is only by a scroll position written once the scroll ends: iOS ignores one written under a
- * finger, a glide overrides it and a bounce drops it. TanStack holds the write until the touch gesture is over and draws
- * the new rows above the transcript's top meanwhile, where they showed in the bounce but could not be scrolled to. At
- * rest the write lands at once. Entries added at the end, and a transcript read anew, show at once. Returns the entries
- * to draw and how many older ones wait.
+ * Spare room kept above the first row on an iPhone or an iPad. iOS ignores a scroll position written under a finger, a
+ * glide overrides one written while it runs, and a bounce drops it, so rows put in or measured above the line being read
+ * could only be kept where they were by a write held until the scroll rested; the rows stayed drawn above the
+ * transcript's top meanwhile, out of reach, and a fast swipe up stopped there until the reader paused. With spare room
+ * above, they go into it: the list's top padding gives way by as much as they take, nothing below moves, and no position
+ * is written. Once the scroll rests the spare room is set again with one write, which lands. Its size is what can still
+ * come before the next rest (`spareFor`): the next two older windows, each as tall as the windows read so far, and what
+ * the rows not measured yet will grow by, with a quarter more for rows taller than the mean. Once the chat's beginning
+ * is read, only the growth is left.
  */
-function useOlderAtRest(
-  entries: readonly SessionEntry[],
-  moving: RefObject<boolean>,
-): { readonly shown: readonly SessionEntry[]; readonly waiting: number } {
-  // The oldest entry drawn: entries in front of it came from an older window since the last render that drew them.
-  const first = useRef<SessionEntry | undefined>(undefined);
-  const older = first.current === undefined ? 0 : entries.indexOf(first.current);
-  const waiting = older > 0 && moving.current ? older : 0;
-  const shown = useMemo(
-    () => (waiting === 0 ? entries : entries.slice(waiting)),
-    [entries, waiting],
-  );
-  useLayoutEffect(() => {
-    first.current = shown[0];
+function spareFor(
+  rows: readonly TranscriptRow[],
+  sizes: ReadonlyMap<unknown, number>,
+  firstHeight: (index: number) => number,
+  hasOlder: boolean,
+  windows: number,
+): number {
+  let measuredPx = 0;
+  let measuredRows = 0;
+  let guessedPx = 0;
+  let guessedRows = 0;
+  rows.forEach((row, index) => {
+    const size = sizes.get(row.key);
+    if (size === undefined) {
+      guessedPx += firstHeight(index);
+      guessedRows += 1;
+    } else {
+      measuredPx += size;
+      measuredRows += 1;
+    }
   });
-  return { shown, waiting };
+  // A row not measured yet grows to the mean of the rows measured, and to a typical row's height before any is.
+  const mean = measuredRows === 0 ? TYPICAL_ROW_PX : measuredPx / measuredRows;
+  const growth = Math.max(0, mean * guessedRows - guessedPx);
+  if (!hasOlder) return Math.round(growth);
+  const perWindow = (mean * rows.length) / Math.max(1, windows);
+  return Math.round(SPARE_WINDOWS * perWindow + 1.25 * growth);
+}
+
+/** How many older windows the spare room takes before the next rest: a long swipe up reads one after another. */
+const SPARE_WINDOWS = 2;
+
+/** A row's height before any row of the chat has been measured: the app's traces showed means of 110 to 180 px a row. */
+const TYPICAL_ROW_PX = 160;
+
+/** A change of the wanted spare room smaller than this waits for a bigger one: each change is a write at rest. */
+const SPARE_DRIFT_PX = 500;
+
+/** iOS's WebKit, as TanStack Virtual tells it: an iPhone or an iPod, or an iPad (a Mac with a touch screen). */
+function iosWebKit(): boolean {
+  return (
+    /iP(hone|od|ad)/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 0)
+  );
 }
 
 /** TanStack Virtual 3.19.9's record that the last position it read was past an edge (a bounce). */
@@ -474,9 +535,7 @@ export function TranscriptList({
   /** What the transcript does once the reader's scroll rests; set below, once the list exists. */
   const atRest = useRef<() => void>(() => undefined);
   const moving = useReaderRest(scrollRef, atRest);
-  const { shown: entries, waiting } = useOlderAtRest(snapshot.entries, moving);
-  // Older entries already read but waiting for the scroll to rest count as entries still to show.
-  const hasOlder = snapshot.hasOlder || waiting > 0;
+  const { entries, hasOlder } = snapshot;
   // The lite view (#2844) leaves out omp's status lines: at each start they list the tools it mounted, which would fill
   // an empty chat in a side panel. A warning or an error stays.
   const lite = use(LiteContext) !== null;
@@ -497,6 +556,35 @@ export function TranscriptList({
   const phone = usePhone();
   // The room above the first row: a computer's 24 px, and a chat's top band.
   const headRoom = (phone ? 0 : 24) + (edge && rows.length > 0 ? EDGE_PX : 0);
+  // The spare room above the first row (`spareFor`): on iOS, in a chat's transcript. Read at rest with the sizes measured
+  // since this draw.
+  const ios = useMemo(iosWebKit, []);
+  const spare = useRef(0);
+  /** The windows of entries read so far: the first, and each older one put in front. */
+  const windows = useRef(0);
+  const spareWanted = (sizes: ReadonlyMap<unknown, number>): number =>
+    ios && edge ? spareFor(rows, sizes, firstHeight, hasOlder, windows.current) : 0;
+  const wanted = useRef(spareWanted);
+  wanted.current = spareWanted;
+  // Older rows put in front take spare room in place of a scroll position: the rows already drawn keep their places.
+  // A chat opens with none: the first rest, after its move to the end, sets it with one write once the rows in view are
+  // measured, so a chat shorter than the screen (which never scrolls, so never rests) keeps its first row at the top.
+  const front = useRef<string | undefined>(undefined);
+  const firstKey = rows[0]?.key;
+  if (firstKey !== front.current) {
+    const at =
+      front.current === undefined ? -1 : rows.findIndex((row) => row.key === front.current);
+    if (front.current === undefined) windows.current = 1;
+    else if (at > 0) {
+      windows.current += 1;
+      let added = 0;
+      for (let index = 0; index < at; index += 1)
+        added += measured.current.get(rows[index]?.key) ?? firstHeight(index);
+      spare.current -= Math.min(spare.current, added);
+    }
+    front.current = firstKey;
+  }
+  const [, redraw] = useReducer((count: number) => count + 1, 0);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -506,12 +594,43 @@ export function TranscriptList({
     followOnAppend: true,
     scrollEndThreshold: AT_END_PX,
     overscan: 6,
-    paddingStart: headRoom,
+    paddingStart: headRoom + spare.current,
     paddingEnd: 16,
+    // Each write is noted for the scroll trace, which tells a jump the list wrote from one the browser made.
+    scrollToFn: (offset, options, instance) => {
+      const from = instance.scrollElement?.scrollTop ?? offset;
+      noteScrollWrite(offset + (options.adjustments ?? 0) - from);
+      elementScroll(offset, options, instance);
+    },
   });
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
+  // During the reader's scroll, a row measured above the view takes spare room too, while some is left.
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, delta, instance) => {
+    if (!movesView(item, delta, instance)) return false;
+    if (spare.current <= 0 || !moving.current || delta > spare.current) return true;
+    spare.current -= delta;
+    instance.options.paddingStart = headRoom + spare.current;
+    return false;
+  };
   measured.current = virtualizer.itemSizeCache;
-  atRest.current = () => settleBounce(scrollRef.current, virtualizer);
+  atRest.current = () => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const held = (): number =>
+      (virtualizer as unknown as { _holdOffset?: number })._holdOffset ?? 0;
+    // A correction held during the swipe is written first: `settleBounce`, then the draw's `_willUpdate`.
+    settleBounce(element, virtualizer);
+    if (held() !== 0) flushSync(redraw);
+    // The spare room set again (or taken away once the chat's beginning is shown and every row above is measured):
+    // every row moves by the same amount and the scroll position with them, in one paint. A small drift waits.
+    const target = wanted.current(virtualizer.itemSizeCache);
+    const change = target - spare.current;
+    if (change === 0 || (target !== 0 && Math.abs(change) < SPARE_DRIFT_PX) || held() !== 0) return;
+    spare.current += change;
+    virtualizer.scrollOffset = Math.max(0, (virtualizer.scrollOffset ?? 0) + change);
+    flushSync(redraw);
+    noteScrollWrite(change);
+    element.scrollTop += change;
+  };
   useLayoutEffect(() => {
     if (typeof (virtualizer as unknown as BounceInternals)._reportedOverscroll !== "boolean")
       console.error(
@@ -549,15 +668,16 @@ export function TranscriptList({
   const items = virtualizer.getVirtualItems();
   // Older entries are read while the reader is within two screens of the top, again after each window read, so a
   // window shorter than that fills the screen from older entries once positioned. A read that failed waits for Try again
-  // or for the link to come back (the chat's `loadOlder`). Entries that wait for the scroll to rest go in first.
+  // or for the link to come back (the chat's `loadOlder`).
   const offset = virtualizer.scrollOffset;
   const screen = scrollRef.current?.clientHeight ?? 0;
-  const nearTop = positioned && offset !== null && offset < NEAR_TOP_SCREENS * screen;
+  // Measured from the first row: the spare room above it is not content.
+  const nearTop =
+    positioned && offset !== null && offset - spare.current < NEAR_TOP_SCREENS * screen;
   const oldestKey = rows[0]?.key;
   useEffect(() => {
-    if (nearTop && hasOlder && waiting === 0 && olderLoad === "idle" && oldestKey !== undefined)
-      onNearTop();
-  }, [nearTop, hasOlder, waiting, olderLoad, oldestKey, onNearTop]);
+    if (nearTop && hasOlder && olderLoad === "idle" && oldestKey !== undefined) onNearTop();
+  }, [nearTop, hasOlder, olderLoad, oldestKey, onNearTop]);
   const firstAt = entries[0]?.timestamp;
   const began = firstAt === undefined ? null : new Date(firstAt);
 
@@ -582,7 +702,7 @@ export function TranscriptList({
                 height: EDGE_PX,
                 transform: `translateY(${items[0]?.index === 0 ? items[0].start - headRoom : 0}px)`,
               }}
-              data-transcript-edge={!hasOlder ? "start" : waiting > 0 ? "loading" : olderLoad}
+              data-transcript-edge={hasOlder ? olderLoad : "start"}
             >
               {!hasOlder ? (
                 <span>
@@ -591,7 +711,7 @@ export function TranscriptList({
                     ? ` · ${START_DATE.format(began)}`
                     : ""}
                 </span>
-              ) : olderLoad === "failed" && waiting === 0 ? (
+              ) : olderLoad === "failed" ? (
                 <>
                   <span>Couldn't load earlier messages.</span>
                   <Button size="sm" variant="secondary" className="max-sm:h-11" onClick={onNearTop}>

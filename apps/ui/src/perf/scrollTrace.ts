@@ -31,6 +31,17 @@ const JUMPS = 3;
 /** Keys that scroll the element with the focus. */
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
+/** The app's own scroll position writes since the last frame a trace drew, down positive (`noteScrollWrite`). */
+let written = 0;
+
+/**
+ * Notes a write the app made to a scroll position, `px` down positive: TanStack Virtual's corrections and moves in the
+ * transcript, and its spare room's. A trace lists them with the jumps they made.
+ */
+export function noteScrollWrite(px: number): void {
+  written += px;
+}
+
 /** An input that can scroll the page: a wheel or touchpad step (its size in pixels), a scroll key, a scrollbar press. */
 interface Input {
   readonly at: number;
@@ -93,13 +104,16 @@ function markWord(kind: string): string {
  * frames were, how far the scrolled element jumped between two frames, with the window's size and the engine; what
  * started the gesture (wheel steps and their size, scroll keys, a scrollbar press, or nothing: the app scrolled); and
  * for the largest one-frame jumps, how far the transcript's content moved on screen and how much it grew in that
- * frame, which tells a correction the reader never sees from the view jumping. `report` sends each to the server's
- * debug log. Returns the function that stops it.
+ * frame, which tells a correction the reader never sees from the view jumping, and what the app wrote to the position
+ * in that frame and how the finger moved, which tells a jump the app made from one the browser made against the finger
+ * (a bounce). `report` sends each to the server's debug log. Returns the function that stops it.
  */
 export function traceScrolling(report: (trace: ClientTraceReport) => void): () => void {
   let gesture: Gesture | null = null;
   let reports = 0;
   let lastReport = Number.NEGATIVE_INFINITY;
+  /** Where the finger is on screen, or null with none down. */
+  let finger: number | null = null;
   /** The latest inputs, newest last. */
   const inputs: Input[] = [];
   const note = (input: Input): void => {
@@ -130,6 +144,16 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
       if (jump.seenPx !== null) jumps[`${name}_seen_px`] = Math.abs(jump.seenPx);
       if (jump.grewPx !== 0)
         jumps[`${name}_${jump.grewPx > 0 ? "grew" : "shrank"}_px`] = Math.abs(jump.grewPx);
+      if (jump.wrotePx !== 0) {
+        jumps[`${name}_wrote_px`] = Math.abs(jump.wrotePx);
+        jumps[`${name}_wrote_up`] = jump.wrotePx < 0 ? 1 : 0;
+      }
+      // The finger's move on screen in that frame (`finger_down`: pulling the view up the chat), or no finger down.
+      if ((ended.frames[jump.frame]?.finger ?? null) === null) jumps[`${name}_no_finger`] = 1;
+      else if (jump.fingerPx !== null) {
+        jumps[`${name}_finger_px`] = Math.abs(jump.fingerPx);
+        jumps[`${name}_finger_down`] = jump.fingerPx > 0 ? 1 : 0;
+      }
       // The rows that came into or went from the list in that frame, nearest the chat's end: a row drawn for a frame, or
       // one row swapped for another, moves the view without any drawn row changing its height.
       const { came, went } = rowsCameAndWent(ended.sizes, jump.frame);
@@ -191,8 +215,9 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
       const inTranscript = target.closest("section[aria-label='Transcript']") !== null;
       let anchor = inTranscript ? middleRow(target) : null;
       const frames: ScrollFrame[] = [
-        { top: target.scrollTop, height: target.scrollHeight, seen: null },
+        { top: target.scrollTop, height: target.scrollHeight, seen: null, wrote: 0, finger },
       ];
+      written = 0;
       const sizes: ReadonlyMap<string, RowSize>[] = [inTranscript ? rowSizes(target) : new Map()];
       gesture = {
         target,
@@ -205,7 +230,14 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
             const row = target.querySelector<HTMLElement>(`[data-key="${CSS.escape(anchor.key)}"]`);
             if (row !== null) seen = anchor.top - row.getBoundingClientRect().top;
           }
-          frames.push({ top: target.scrollTop, height: target.scrollHeight, seen });
+          frames.push({
+            top: target.scrollTop,
+            height: target.scrollHeight,
+            seen,
+            wrote: written,
+            finger,
+          });
+          written = 0;
           sizes.push(inTranscript ? rowSizes(target) : new Map());
           if (inTranscript) anchor = middleRow(target);
         }),
@@ -246,17 +278,24 @@ export function traceScrolling(report: (trace: ClientTraceReport) => void): () =
     if (event.offsetX > target.clientWidth || event.offsetY > target.clientHeight)
       note({ at: performance.now(), kind: "bar", px: 0 });
   };
+  const onTouch = (event: TouchEvent): void => {
+    finger = event.touches[0]?.clientY ?? null;
+  };
 
   const listening = { capture: true, passive: true } as const;
   document.addEventListener("scroll", onScroll, listening);
   document.addEventListener("wheel", onWheel, listening);
   document.addEventListener("keydown", onKey, listening);
   document.addEventListener("pointerdown", onPointer, listening);
+  for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"] as const)
+    document.addEventListener(type, onTouch, listening);
   return () => {
     document.removeEventListener("scroll", onScroll, { capture: true });
     document.removeEventListener("wheel", onWheel, { capture: true });
     document.removeEventListener("keydown", onKey, { capture: true });
     document.removeEventListener("pointerdown", onPointer, { capture: true });
+    for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"] as const)
+      document.removeEventListener(type, onTouch, { capture: true });
     if (gesture !== null) {
       clearTimeout(gesture.quiet);
       gesture.watch.stop();
