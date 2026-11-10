@@ -2251,6 +2251,53 @@ describe("the chat session runtime: the host's requests and UI state", () => {
     await processRegistry.closeAll();
   });
 
+  test("a call of a tool or URI scheme no open page gives fails at once, and omp is told the ones the pages give now", async () => {
+    const created: FakeChatHost[] = [];
+    const { processRegistry, open, handlers } = runtimeWithIdleClose(created, 1_000);
+    const send = getHandler(handlers, "request");
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    // Page one gives tab_two. omp still has tab_one and the tabone scheme of a page that is gone: one of the server before
+    // a restart, which could not take them back as it stopped.
+    await send(registration("set_host_tools", "owner-one", { tools: [toolTwo] }), call("one"));
+    const process = created[0];
+    process?.emitRequest("tool-1", "tool.call", {
+      toolCallId: "call-1",
+      toolName: "tab_one",
+      arguments: {},
+    });
+    process?.emitRequest("uri-1", "uri.read", { url: "tabone://page" });
+    process?.emitRequest("tool-2", "tool.call", {
+      toolCallId: "call-2",
+      toolName: "tab_two",
+      arguments: {},
+    });
+    await ticks();
+
+    const closed = {
+      code: "failed",
+      message: "The page that gave this tool to the chat has closed.",
+    };
+    expect(process?.responses).toEqual([
+      { kind: "response", id: "tool-1", ok: false, error: closed },
+      { kind: "response", id: "uri-1", ok: false, error: closed },
+    ]);
+    // Only the call page one can answer waits.
+    const waiting = getHandler(handlers, "openRequests")(
+      { threadId: authorityThread },
+      call("one"),
+    );
+    expect((waiting as Array<{ request: { id: string } }>).map((item) => item.request.id)).toEqual([
+      "tool-2",
+    ]);
+    // omp is told again what the pages give: page one's tool, and no scheme.
+    expect(paramsOf(process, "set_host_tools").map((params) => params.tools)).toEqual([
+      [toolTwo],
+      [toolTwo],
+    ]);
+    expect(paramsOf(process, "set_host_uri_schemes").map((params) => params.schemes)).toEqual([[]]);
+    await processRegistry.closeAll();
+  });
+
   test("keeps the requests the host waits on until each is answered or given up, each with the sequence that asked it", async () => {
     const { handlers, process, frames } = await openChat();
     const openRequests = () =>

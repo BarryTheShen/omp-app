@@ -1638,7 +1638,9 @@ export class ChatSessionPortRuntime {
 
   /**
    * A host request waits in the open requests until the browser answers it or the host gives it up. The to-do list's
-   * tool (`app.todos`) is answered here, from the list, and reaches no page.
+   * tool (`app.todos`) is answered here, from the list, and reaches no page. A call of a tool or URI scheme that no open
+   * page gives fails at once: no page may answer it, and a page that gives it again runs only the calls that come after,
+   * so it would wait until you stop the turn.
    */
   #hostRequest(entry: ChatEntry, request: HostRequest): Promise<unknown> {
     if (request.method === "app.todos") {
@@ -1651,6 +1653,10 @@ export class ChatSessionPortRuntime {
       }
       const { threadId, folderPath } = entry.bootstrap;
       return todos.agentCall({ threadId, folder: folderPath }, request.params);
+    }
+    if (answererOf(entry, request) === undefined) {
+      void this.#dropLeftovers(entry, isHostToolCall(request) ? "tools" : "schemes");
+      return Promise.reject(new Error("The page that gave this tool to the chat has closed."));
     }
     return new Promise((resolve, reject) => {
       entry.openRequests.set(request.id, { request, at: Date.now(), resolve, reject });
@@ -2112,6 +2118,29 @@ export class ChatSessionPortRuntime {
             message: write.reason instanceof Error ? write.reason.message : String(write.reason),
           });
         }
+      }
+    });
+  }
+
+  /**
+   * omp still has tools or URI schemes no open page gives: those of a page that closed as omp called one, or of a page of
+   * the server before a restart, which could not take them back as it stopped. It is told the ones the pages give now,
+   * so the agent stops calling the others; a write that fails is logged.
+   */
+  #dropLeftovers(entry: ChatEntry, kind: "tools" | "schemes"): Promise<void> {
+    return this.#serializeRegistrations(entry, async () => {
+      try {
+        if (kind === "tools") {
+          await this.#send(entry, "set_host_tools", { tools: merged(entry.hostTools, toolName) });
+        } else {
+          await this.#send(entry, "set_host_uri_schemes", {
+            schemes: merged(entry.hostUriSchemes, schemeName),
+          });
+        }
+      } catch (error) {
+        this.#context.logger?.warn("chat_session.registrations_release_failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     });
   }
