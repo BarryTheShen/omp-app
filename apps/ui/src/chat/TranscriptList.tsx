@@ -335,9 +335,9 @@ function useReaderRest(
  * transcript's top meanwhile, out of reach, and a fast swipe up stopped there until the reader paused. With spare room
  * above, they go into it: the list's top padding gives way by as much as they take, nothing below moves, and no position
  * is written. Once the scroll rests the spare room is set again with one write, which lands. Its size is what can still
- * come before the next rest (`spareFor`): the next two older windows, each as tall as the windows read so far, and what
- * the rows not measured yet will grow by, with a quarter more for rows taller than the mean. Once the chat's beginning
- * is read, only the growth is left.
+ * come before the next rest (`spareFor`): the next two older windows, each as tall as the windows read so far, or
+ * `SPARE_SCREENS` screens when that is more, and what the rows not measured yet will grow by, with a quarter more for
+ * rows taller than the mean. Once the chat's beginning is read, only the growth is left.
  */
 function spareFor(
   rows: readonly TranscriptRow[],
@@ -345,6 +345,7 @@ function spareFor(
   firstHeight: (index: number) => number,
   hasOlder: boolean,
   windows: number,
+  screen: number,
 ): number {
   let measuredPx = 0;
   let measuredRows = 0;
@@ -365,11 +366,18 @@ function spareFor(
   const growth = Math.max(0, mean * guessedRows - guessedPx);
   if (!hasOlder) return Math.round(growth);
   const perWindow = (mean * rows.length) / Math.max(1, windows);
-  return Math.round(SPARE_WINDOWS * perWindow + 1.25 * growth);
+  return Math.round(Math.max(SPARE_WINDOWS * perWindow, SPARE_SCREENS * screen) + 1.25 * growth);
 }
 
 /** How many older windows the spare room takes before the next rest: a long swipe up reads one after another. */
 const SPARE_WINDOWS = 2;
+
+/**
+ * The least spare room while older entries remain, in screens. A window is a set number of bytes, and in a working
+ * chat tool output fills most of them: a phone's window of one draws a screen or two, so two windows' room ran out
+ * within a fast swipe, and the swipe stopped at the top until it rested, with the next window already read.
+ */
+const SPARE_SCREENS = 30;
 
 /** A row's height before any row of the chat has been measured: the app's traces showed means of 110 to 180 px a row. */
 const TYPICAL_ROW_PX = 160;
@@ -628,7 +636,16 @@ export function TranscriptList({
   /** The windows of entries read so far: the first, and each older one put in front. */
   const windows = useRef(0);
   const spareWanted = (sizes: ReadonlyMap<unknown, number>): number =>
-    ios && edge ? spareFor(rows, sizes, firstHeight, hasOlder, windows.current) : 0;
+    ios && edge
+      ? spareFor(
+          rows,
+          sizes,
+          firstHeight,
+          hasOlder,
+          windows.current,
+          scrollRef.current?.clientHeight ?? 0,
+        )
+      : 0;
   const wanted = useRef(spareWanted);
   wanted.current = spareWanted;
   // Older rows put in front take spare room in place of a scroll position: the rows already drawn keep their places.

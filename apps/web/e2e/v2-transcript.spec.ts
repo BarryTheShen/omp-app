@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
 import { expect, type RealApp, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's transcript (`apps/ui`, under `/v2/`) on real omp: a failed request and what it offers. */
@@ -307,6 +307,83 @@ function questionsAndAnswers(count: number) {
 const LONG_CHAT = questionsAndAnswers(120);
 /** About five older windows long: more than the spare room on an iPhone takes in one swipe. */
 const VERY_LONG_CHAT = questionsAndAnswers(300);
+
+/** A tool's long output: most of a step's bytes, as in a working chat (about 40 KB). */
+const TOOL_OUTPUT = Array.from(
+  { length: 1_100 },
+  (_, line) => `build line ${line}: compiled a module`,
+).join("\n");
+
+/**
+ * A chat like a working one: each question runs a tool whose output fills most of the step's bytes, so one of a phone's
+ * 128 KB windows draws about nine rows, a screen or two (a real chat's windows drew a median of 7.5 rows).
+ */
+function toolSteps(count: number) {
+  const fake = {
+    api: "openai-completions",
+    provider: "fake",
+    model: "fake-model",
+    usage: LONG_USAGE,
+  };
+  return Array.from({ length: count }, (_, index) => {
+    const asked = LONG_AT + index * 120_000;
+    const call = `call_${index + 1}`;
+    return [
+      {
+        type: "message",
+        timestamp: new Date(asked).toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: `Question ${index + 1}: build it and show the log.` }],
+          timestamp: asked,
+        },
+      },
+      {
+        type: "message",
+        timestamp: new Date(asked + 1_000).toISOString(),
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: call,
+              name: "bash",
+              arguments: { command: `cat build-${index + 1}.log` },
+            },
+          ],
+          ...fake,
+          stopReason: "toolUse",
+          timestamp: asked + 1_000,
+        },
+      },
+      {
+        type: "message",
+        timestamp: new Date(asked + 2_000).toISOString(),
+        message: {
+          role: "toolResult",
+          toolCallId: call,
+          toolName: "bash",
+          content: [{ type: "text", text: TOOL_OUTPUT }],
+          isError: false,
+          timestamp: asked + 2_000,
+        },
+      },
+      {
+        type: "message",
+        timestamp: new Date(asked + 5_000).toISOString(),
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: `Answer ${index + 1}. ${LONG_TEXT}` }],
+          ...fake,
+          stopReason: "stop",
+          timestamp: asked + 5_000,
+        },
+      },
+    ];
+  }).flat();
+}
+/** About twenty of a phone's older windows, each a screen or two tall. */
+const TOOL_CHAT = toolSteps(60);
 
 /** What the test does with one of the page's reads of an older window: pass it on, or answer it with a failure. */
 type OlderRead = (pass: () => void, fail: () => void) => void;
@@ -648,6 +725,56 @@ realTest.describe("new UI transcript: a long chat's earlier messages on a phone"
   );
 });
 
+/**
+ * Rows drawn above the transcript's top (out of every scroll's reach), rows drawn over the top band, where the band is,
+ * whether the screen's top says earlier messages are loading, and how many rows are on screen.
+ */
+function edgeLook(transcript: Locator): Promise<{
+  above: number;
+  overBand: number;
+  bandInView: boolean;
+  bandBelow: boolean;
+  pill: boolean;
+  rowsInView: number;
+}> {
+  return transcript.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const top = (element.firstElementChild as HTMLElement).getBoundingClientRect().top;
+    const band = (
+      element.querySelector("[data-transcript-edge]") as HTMLElement
+    ).getBoundingClientRect();
+    const rows = [...element.querySelectorAll("[data-index]")].map((row) =>
+      row.getBoundingClientRect(),
+    );
+    return {
+      above: rows.filter((row) => row.top < top - 1).length,
+      overBand: rows.filter((row) => row.bottom > band.top + 1 && row.top < band.bottom - 1).length,
+      bandInView: band.bottom > box.top && band.top < box.bottom,
+      bandBelow: band.top >= box.bottom,
+      pill: [...document.querySelectorAll('[role="status"]')].some((status) =>
+        (status.textContent ?? "").includes("Loading earlier messages"),
+      ),
+      rowsInView: rows.filter((row) => row.bottom > box.top && row.top < box.bottom).length,
+    };
+  });
+}
+
+/** One finger down on the transcript, or lifted, as iOS reports it. */
+function fingerOn(transcript: Locator, down: boolean): Promise<void> {
+  return transcript.evaluate((element, isDown) => {
+    const touch = new Touch({ identifier: 1, target: element, clientX: 195, clientY: 400 });
+    const touches = isDown ? [touch] : [];
+    element.dispatchEvent(
+      new TouchEvent(isDown ? "touchstart" : "touchend", {
+        touches,
+        targetTouches: touches,
+        changedTouches: [touch],
+        bubbles: true,
+      }),
+    );
+  }, down);
+}
+
 realTest.describe("new UI transcript: a very long chat on an iPhone", () => {
   realTest.use({ seedEntries: { entries: VERY_LONG_CHAT } });
   realTest.setTimeout(240_000);
@@ -668,50 +795,8 @@ realTest.describe("new UI transcript: a very long chat on an iPhone", () => {
         300,
       );
       const transcript = page.getByRole("region", { name: "Transcript" });
-      /**
-       * Rows drawn above the transcript's top (out of every scroll's reach), rows drawn over the top band, where the band
-       * is, and whether the screen's top says earlier messages are loading.
-       */
-      const look = (): Promise<{
-        above: number;
-        overBand: number;
-        bandInView: boolean;
-        bandBelow: boolean;
-        pill: boolean;
-      }> =>
-        transcript.evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          const top = (element.firstElementChild as HTMLElement).getBoundingClientRect().top;
-          const band = (
-            element.querySelector("[data-transcript-edge]") as HTMLElement
-          ).getBoundingClientRect();
-          const rows = [...element.querySelectorAll("[data-index]")].map((row) =>
-            row.getBoundingClientRect(),
-          );
-          return {
-            above: rows.filter((row) => row.top < top - 1).length,
-            overBand: rows.filter((row) => row.bottom > band.top + 1 && row.top < band.bottom - 1)
-              .length,
-            bandInView: band.bottom > box.top && band.top < box.bottom,
-            bandBelow: band.top >= box.bottom,
-            pill: [...document.querySelectorAll('[role="status"]')].some((status) =>
-              (status.textContent ?? "").includes("Loading earlier messages"),
-            ),
-          };
-        });
-      const finger = (down: boolean): Promise<void> =>
-        transcript.evaluate((element, isDown) => {
-          const touch = new Touch({ identifier: 1, target: element, clientX: 195, clientY: 400 });
-          const touches = isDown ? [touch] : [];
-          element.dispatchEvent(
-            new TouchEvent(isDown ? "touchstart" : "touchend", {
-              touches,
-              targetTouches: touches,
-              changedTouches: [touch],
-              bubbles: true,
-            }),
-          );
-        }, down);
+      const look = () => edgeLook(transcript);
+      const finger = (down: boolean) => fingerOn(transcript, down);
       await page.waitForTimeout(1_000);
 
       // One finger, down from the chat's end until the swipe can go no higher: past three older windows read on the
@@ -745,6 +830,64 @@ realTest.describe("new UI transcript: a very long chat on an iPhone", () => {
         .poll(() => transcript.evaluate((element) => element.scrollTop), { timeout: 10_000 })
         .toBeGreaterThan(0);
       expect(await look()).toMatchObject({ above: 0, overBand: 0 });
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+});
+
+realTest.describe("new UI transcript: a chat of long tool output on an iPhone", () => {
+  realTest.use({ seedEntries: { entries: TOOL_CHAT } });
+  realTest.setTimeout(240_000);
+
+  realTest(
+    "one long swipe up keeps going while the earlier windows come: it never stops at the top with them already read",
+    async ({ realApp, browser }) => {
+      let reads = 0;
+      // Each older window comes a little late, as over a phone's link.
+      const { page, context } = await openLongChat(
+        realApp,
+        browser,
+        (pass) => {
+          reads += 1;
+          setTimeout(pass, 150);
+        },
+        IPHONE_SAFARI,
+        60,
+      );
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      await page.waitForTimeout(1_000);
+
+      // One finger, down while it goes up fifteen screens: each step moves the view up, none stops at the top with an
+      // older window read but held back, no row is out of reach and none covers the band.
+      await fingerOn(transcript, true);
+      const travel = 15 * (await transcript.evaluate((element) => element.clientHeight));
+      let moved = 0;
+      for (let step = 0; moved < travel; step += 1) {
+        const went = await transcript.evaluate((element) => {
+          const from = element.scrollTop;
+          element.scrollTop = Math.max(0, from - 400);
+          return from - element.scrollTop;
+        });
+        expect(
+          went,
+          `step ${step}: the view went up (${moved} px so far, ${reads} windows read)`,
+        ).toBe(400);
+        moved += went;
+        await page.waitForTimeout(50);
+        const seen = await edgeLook(transcript);
+        expect(seen.above, `step ${step}: rows above the top`).toBe(0);
+        expect(seen.overBand, `step ${step}: rows over the top band`).toBe(0);
+        expect(seen.pill, `step ${step}: the screen's top says loading`).toBe(seen.bandBelow);
+      }
+      expect(reads).toBeGreaterThanOrEqual(5);
+
+      // Lifted, the windows still coming fill the room up to the screen.
+      await fingerOn(transcript, false);
+      await expect
+        .poll(async () => (await edgeLook(transcript)).rowsInView, { timeout: 15_000 })
+        .toBeGreaterThan(0);
+      expect(await edgeLook(transcript)).toMatchObject({ above: 0, overBand: 0 });
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
