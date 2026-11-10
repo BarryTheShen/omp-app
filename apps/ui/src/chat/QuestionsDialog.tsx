@@ -654,13 +654,15 @@ function Review({
               <dt>
                 <button
                   type="button"
-                  className="text-left text-xs text-t3 hover:text-t1"
+                  className="text-left text-xs wrap-anywhere text-t3 hover:text-t1"
                   onClick={() => onOpen(index)}
                 >
                   {tabName(question, index)}: {question.question}
                 </button>
               </dt>
-              <dd className={cn("break-words text-sm", answered(current) ? "text-t1" : "text-t3")}>
+              <dd
+                className={cn("wrap-anywhere text-sm", answered(current) ? "text-t1" : "text-t3")}
+              >
                 {summary(current)}
                 {note && <span className="text-t3"> · note: {note}</span>}
               </dd>
@@ -684,7 +686,7 @@ export function OptionText({
 }): ReactNode {
   return (
     <span className="flex min-w-0 flex-col">
-      <span className="break-words text-t1">
+      <span className="wrap-anywhere text-t1">
         {label}
         {recommended && (
           <span className="ml-2 rounded-sm bg-l2 px-1.5 py-0.5 text-[11px] text-accent-ink">
@@ -693,7 +695,7 @@ export function OptionText({
         )}
       </span>
       {description !== undefined && (
-        <span className="break-words text-xs text-t3">{description}</span>
+        <span className="wrap-anywhere text-xs text-t3">{description}</span>
       )}
     </span>
   );

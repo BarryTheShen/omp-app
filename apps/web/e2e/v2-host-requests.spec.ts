@@ -362,6 +362,54 @@ realTest.describe("new UI approvals and questions", () => {
   );
 
   realTest(
+    "a word too long for its line wraps inside omp's question card, in the question and in an answer (#1327)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 360, height: 800 },
+        hasTouch: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      const box = page.getByRole("textbox", { name: "Message" });
+      await expect(box).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
+      await box.fill("ask_long_word");
+      await page.getByRole("button", { name: "Send" }).tap();
+      const questions = page.getByRole("dialog", { name: "Questions from omp" });
+      await expect(questions.getByRole("radio", { name: /^SQLite / })).toBeVisible({
+        timeout: 60_000,
+      });
+      // The test model's word: 100 characters without a space, in the question and in the second answer.
+      const word =
+        "some_very_long_snake_case_identifier_name_that_goes_on_and_on_and_on_for_quite_a_while_longer_or_not";
+      const { found, past } = await questions.evaluate((card, word) => {
+        const edge = card.getBoundingClientRect().right;
+        const holders = [...card.querySelectorAll("*")].filter((element) =>
+          [...element.childNodes].some(
+            (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").includes(word),
+          ),
+        );
+        // A range measures the whole text, also the part a clip would hide.
+        const right = (element: Element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return range.getBoundingClientRect().right;
+        };
+        return {
+          found: holders.length,
+          past: holders
+            .filter((element) => right(element) > edge + 1)
+            .map((element) => element.textContent),
+        };
+      }, word);
+      expect(found).toBe(2);
+      expect(past).toEqual([]);
+      await context.close();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "a question answered on one page closes on another page that shows the chat (#2809)",
     async ({ realApp }) => {
       const first = await newChat(realApp);

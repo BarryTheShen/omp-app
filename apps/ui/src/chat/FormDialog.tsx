@@ -213,7 +213,7 @@ export function FormDialog({
               className="flex flex-col gap-2.5"
             >
               {section.title.length > 0 && (
-                <p className="font-medium whitespace-pre-wrap text-t1">
+                <p className="font-medium whitespace-pre-wrap wrap-anywhere text-t1">
                   <Spans spans={section.title} />
                 </p>
               )}
@@ -287,8 +287,8 @@ function Block({
         <p
           className={
             block.heading
-              ? "font-medium whitespace-pre-wrap text-t1"
-              : "whitespace-pre-wrap text-t2"
+              ? "font-medium whitespace-pre-wrap wrap-anywhere text-t1"
+              : "whitespace-pre-wrap wrap-anywhere text-t2"
           }
         >
           <Spans spans={block.spans} />
@@ -382,7 +382,7 @@ function Block({
 function FieldLabel({ field }: { readonly field: FormChoiceField | FormTextField }): ReactNode {
   if (field.label.length === 0) return null;
   return (
-    <p className="whitespace-pre-wrap text-t1">
+    <p className="whitespace-pre-wrap wrap-anywhere text-t1">
       <Spans spans={field.label} />
       {field.required && <span className="text-xs text-t3"> (required)</span>}
     </p>
@@ -440,7 +440,7 @@ function Choice({
                   })
                 }
               />
-              <span className="break-words text-t1">
+              <span className="wrap-anywhere text-t1">
                 <Spans spans={option.label} />
               </span>
             </label>
@@ -482,7 +482,7 @@ function Choice({
                 disabled={option.disabled}
                 aria-label={textOf(option.label)}
               />
-              <span className="break-words text-t1">
+              <span className="wrap-anywhere text-t1">
                 <Spans spans={option.label} />
               </span>
             </label>

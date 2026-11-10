@@ -400,6 +400,68 @@ realTest.describe("questions omp asks without waiting", () => {
   );
 
   realTest(
+    "a word too long for its line wraps inside the question's card on a phone, in the question and its answers",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 360, height: 800 },
+        hasTouch: true,
+      });
+      const phone = await realApp.open({ path: "/", context });
+      await expect(box(phone)).toHaveAttribute("placeholder", /./, { timeout: 120_000 });
+      const word =
+        "some_very_long_snake_case_identifier_name_that_goes_on_and_on_and_on_for_quite_a_while_longer_or_not";
+      const ask = {
+        questions: [
+          {
+            id: "db",
+            header: "Database",
+            question: `Which ${word} should omp use?`,
+            options: [
+              { label: "Postgres" },
+              { label: `SQLite ${word}`, description: `Keeps ${word} in one file` },
+            ],
+            recommended: 0,
+          },
+        ],
+      };
+      await box(phone).fill(`call_tool ask_async ${JSON.stringify(ask)}`);
+      await phone.getByRole("button", { name: "Send" }).tap();
+      await expect(
+        transcript(phone).getByText("tool said: Asked 1 question (db).", { exact: false }),
+      ).toBeVisible({ timeout: 90_000 });
+      await phone.getByRole("button", { name: "Details", exact: true }).tap();
+      const details = phone.getByRole("region", { name: "Chat details" });
+      await details.getByRole("tab", { name: /^Questions/ }).tap();
+      const card = details.getByRole("article", { name: "Question: Database" });
+      await expect(card.getByRole("radio", { name: /^SQLite / })).toBeVisible();
+      const { found, past } = await card.evaluate((card, word) => {
+        const edge = card.getBoundingClientRect().right;
+        const holders = [...card.querySelectorAll("*")].filter((element) =>
+          [...element.childNodes].some(
+            (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").includes(word),
+          ),
+        );
+        // A range measures the whole text, also the part a clip would hide.
+        const right = (element: Element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return range.getBoundingClientRect().right;
+        };
+        return {
+          found: holders.length,
+          past: holders
+            .filter((element) => right(element) > edge + 1)
+            .map((element) => element.textContent),
+        };
+      }, word);
+      expect(found).toBe(3);
+      expect(past).toEqual([]);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "omp's question that stops the chat waits in the Questions panel too; answered there, the chat's card closes and omp goes on",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
