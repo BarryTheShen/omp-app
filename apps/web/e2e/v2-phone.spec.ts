@@ -783,6 +783,44 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
+    "the tour of everything that waits points at ⓘ on a phone, then at Questions in the chat's details, never at a rail it has not",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const popover = page.locator(".driver-popover");
+      const heading = popover.locator(".driver-popover-title");
+      await page.getByRole("button", { name: "Chats", exact: true }).tap();
+      await page
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: "Settings" })
+        .tap();
+      await page
+        .getByRole("navigation", { name: "Settings sections" })
+        .getByRole("button", { name: "App", exact: true })
+        .tap();
+      await page
+        .getByRole("dialog", { name: "Settings" })
+        .getByRole("button", { name: "What's new" })
+        .tap();
+      await page
+        .getByRole("dialog", { name: "What's new", exact: true })
+        .getByRole("button", { name: "Take the tour: Everything that waits for you" })
+        .tap();
+      const shown = (tour: string) =>
+        page.locator(`[data-tour='${tour}']`).filter({ visible: true });
+      await expect(heading).toHaveText("Questions: everything that waits", { timeout: 30_000 });
+      await expect(shown("chat-details-button")).toHaveClass(/driver-active-element/);
+      await shown("chat-details-button").tap();
+      await expect(heading).toHaveText("All a chat waits on you for");
+      await expect(shown("side-panel")).toHaveClass(/driver-active-element/);
+      await expect(popover).toContainText("Step 2 of 2");
+      await popover.getByRole("button", { name: "Done" }).tap();
+      await expect(popover).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "Settings → App changes this phone's quick prompts, and the starting set comes back",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);

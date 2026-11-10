@@ -31,6 +31,8 @@ export interface TourStep {
   readonly desktopOnly?: true;
   /** Only on a phone's layout (`isPhone`). */
   readonly phoneOnly?: true;
+  /** Not on a phone's layout: a step that points at a part a phone does not have (the side panel's rail). */
+  readonly notOnPhone?: true;
   /** Only on a tablet (`isTablet`): a touch screen wider than a phone. */
   readonly tabletOnly?: true;
   /**
@@ -849,10 +851,25 @@ const EVERYTHING_THAT_WAITS_TOUR: Tour = {
   sandbox: true,
   steps: [
     {
+      target: part("chat-details-button"),
+      title: "Questions: everything that waits",
+      text: "On a phone, a chat's <b>Questions</b> are in its details: tap ⓘ in the top bar (or the counts in its place).",
+      action: { kind: "click" },
+      phoneOnly: true,
+    },
+    {
+      target: SIDE_PANEL,
+      title: "All a chat waits on you for",
+      text: "The <b>Questions</b> tab holds all the chat waits on you for, and its count shows on the tab: a plan omp proposes in plan mode, with <b>Approve</b> and <b>Keep planning</b>; omp's questions that stop the chat; and the questions it asks without waiting, one card per ask, with the recommended answers already picked, <b>Skip</b> on each and one button at the foot. A long question or plan shows its start and <b>Read all</b>, which opens it on the whole screen. Answer here or in the chat: the chat's own card closes with it.",
+      action: next,
+      phoneOnly: true,
+    },
+    {
       target: SIDE_PANEL_RAIL,
       title: "Questions: everything that waits",
       text: "<b>Questions</b> now holds all a chat waits on you for, and its button counts it: a plan omp proposes in plan mode, with <b>Approve</b> and <b>Keep planning</b>; omp's questions that stop the chat; and the questions it asks without waiting, one card per ask, with the recommended answers already picked, <b>Skip</b> on each and one button at the foot. A long question or plan shows its start and <b>Read all</b>, which opens it wide over the app. Answer in either place: the chat's own card closes with it. The dashboard lists omp's questions too.",
       action: next,
+      notOnPhone: true,
     },
   ],
 };

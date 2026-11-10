@@ -258,6 +258,7 @@ export function startTour(tour: Tour, workspace: WorkspaceHandle, row?: InRow): 
       (step) =>
         (step.desktopOnly !== true || desktopBridge() !== null) &&
         (step.phoneOnly !== true || isPhone()) &&
+        (step.notOnPhone !== true || !isPhone()) &&
         (step.tabletOnly !== true || isTablet()) &&
         (step.action.kind !== "keys" || appWindow || reachesTab(KEYS[step.action.key])),
     );
