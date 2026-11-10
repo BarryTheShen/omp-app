@@ -378,6 +378,22 @@ const TYPICAL_ROW_PX = 160;
 const SPARE_DRIFT_PX = 500;
 
 /**
+ * How a rest changes the spare room: to what `spareFor` wants, unless that is a small drift, which waits for a bigger
+ * one. At the chat's beginning, room the reader sees is a blank gap above the first message, and no row above the view
+ * can grow into it: it all goes, whatever its size.
+ */
+export function spareChangeAtRest(
+  spare: number,
+  wanted: number,
+  scrollTop: number,
+  hasOlder: boolean,
+): number {
+  const target = !hasOlder && scrollTop < spare ? 0 : wanted;
+  const change = target - spare;
+  return target !== 0 && Math.abs(change) < SPARE_DRIFT_PX ? 0 : change;
+}
+
+/**
  * Older entries read during a swipe on iOS go in at once, into the spare room above the first row, as many as it takes:
  * the newest of them, next to the rows already drawn. The rest wait until the scroll rests (`moving`): put in, TanStack
  * would hold what is left over and draw rows above the transcript's top, out of the swipe's reach and over its top band,
@@ -669,11 +685,15 @@ export function TranscriptList({
     // A correction held during the swipe is written first: `settleBounce`, then the draw's `_willUpdate`.
     settleBounce(element, virtualizer);
     if (held() !== 0) flushSync(redraw);
-    // The spare room set again (or taken away once the chat's beginning is shown and every row above is measured):
-    // every row moves by the same amount and the scroll position with them, in one paint. A small drift waits.
-    const target = wanted.current(virtualizer.itemSizeCache);
-    const change = target - spare.current;
-    if (change === 0 || (target !== 0 && Math.abs(change) < SPARE_DRIFT_PX) || held() !== 0) return;
+    // The spare room set again (or taken away once the chat's beginning is shown and every row above is measured, or
+    // the reader sees it there): every row moves by the same amount and the scroll position with them, in one paint.
+    const change = spareChangeAtRest(
+      spare.current,
+      wanted.current(virtualizer.itemSizeCache),
+      element.scrollTop,
+      hasOlder,
+    );
+    if (change === 0 || held() !== 0) return;
     spare.current += change;
     virtualizer.scrollOffset = Math.max(0, (virtualizer.scrollOffset ?? 0) + change);
     flushSync(redraw);
