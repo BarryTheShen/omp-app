@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import type { WebSocketRoute } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
 /** Ends the host page's server and its open connections, so a repeat of the test can take its port again. */
@@ -131,6 +132,59 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
           }),
         );
         await expect(sentWith).toContainText("Looking at Another page");
+      } finally {
+        await context.close();
+        await stop(server);
+      }
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "after the panel's link drops and comes back, the chat has the host's tool again and its call reaches the host",
+    async ({ realApp, browser }) => {
+      const app = new URL((await realApp.open({ path: "/lite" })).url()).origin;
+      const server = createServer((_request, response) => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(hostPage(app, realApp.token));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(HOST_PORT, "127.0.0.1", resolve);
+      });
+      const context = await browser.newContext();
+      // The panel's links to the app's server, held so the test can drop one as a laptop's sleep or a new network does.
+      const links: { page: WebSocketRoute; server: WebSocketRoute }[] = [];
+      await context.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+        links.push({ page: ws, server: ws.connectToServer() });
+      });
+      try {
+        const host = await context.newPage();
+        await host.goto(`${HOST_APP}/doc`);
+        const panel = host.frameLocator('iframe[title="omp"]');
+        const box = panel.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+        const readies = () =>
+          host.evaluate(() => (window as unknown as { ready: unknown[] }).ready.length);
+        await expect.poll(readies).toBe(1);
+
+        const before = links.length;
+        for (const link of links) {
+          await link.server.close();
+          await link.page.close({ code: 4001, reason: "dropped" });
+        }
+        // The panel links again, and the chat takes the host's tool again, as the host hears.
+        await expect.poll(() => links.length, { timeout: 60_000 }).toBeGreaterThan(before);
+        await expect.poll(readies, { timeout: 30_000 }).toBe(2);
+
+        await box.fill("call_tool page_title {}");
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(panel.getByText("tool said: host title: Host page title")).toBeVisible({
+          timeout: 60_000,
+        });
+        expect(
+          await host.evaluate(() => (window as unknown as { calls: unknown[] }).calls.length),
+        ).toBe(1);
       } finally {
         await context.close();
         await stop(server);

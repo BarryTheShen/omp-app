@@ -268,12 +268,14 @@ export interface EmbedChat {
     cancel: (requestId: string) => void,
   ): () => void;
   answerToolCall(id: string, answer: ToolCallAnswer): Promise<void>;
+  /** Hears the chat hold its view again on a link that came back, which took the tools the chat had on the old one. */
+  onRelinked(listener: () => void): () => void;
 }
 
 /**
- * Gives the chat the panel shows the host's tools, once it is open and again whenever they change, hands their calls to
- * the host, and tells the host the chat shows (`ready`). Returns what takes the tools back off the chat, as when the
- * panel shows another one.
+ * Gives the chat the panel shows the host's tools, once it is open, again whenever they change and again on a link
+ * that came back (a dropped link takes them off the chat), hands their calls to the host, and tells the host the chat
+ * shows (`ready`). Returns what takes the tools back off the chat, as when the panel shows another one.
  */
 export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   let stopped = false;
@@ -308,12 +310,17 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
     },
     (requestId) => endpoint.cancel(requestId),
   );
+  const stopRelinked = chat.onRelinked(() => {
+    registered = null;
+    sync();
+  });
   sync();
   return () => {
     stopped = true;
     stopChat();
     stopEmbed();
     stopCalls();
+    stopRelinked();
     // A chat kept open behind the panel keeps no tool whose calls nothing here would hear.
     if (registered !== null) {
       void writes.then(() => chat.setHostTools(endpoint.owner, [])).catch(() => undefined);

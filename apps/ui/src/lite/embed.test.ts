@@ -209,15 +209,17 @@ describe("the lite view's end of the embed protocol", () => {
   });
 });
 
-/** A chat that is not open yet: what the binding asked of it, and a way to open it. */
+/** A chat that is not open yet: what the binding asked of it, and ways to open it and to bring its link back. */
 function chat(): EmbedChat & {
   readonly given: (readonly string[])[];
   readonly answers: { id: string; answer: ToolCallAnswer }[];
   open(threadId: string): void;
+  relink(): void;
   emit(request: HostToolCall): void;
   emitCancel(id: string): void;
 } {
   const storeListeners = new Set<() => void>();
+  const relinkListeners = new Set<() => void>();
   const callListeners = new Set<{
     call: (request: HostToolCall) => void;
     cancel: (id: string) => void;
@@ -247,11 +249,18 @@ function chat(): EmbedChat & {
     answerToolCall: async (id, answer) => {
       answers.push({ id, answer });
     },
+    onRelinked: (listener) => {
+      relinkListeners.add(listener);
+      return () => relinkListeners.delete(listener);
+    },
     given,
     answers,
     open(id) {
       threadId = id;
       for (const listener of [...storeListeners]) listener();
+    },
+    relink() {
+      for (const listener of [...relinkListeners]) listener();
     },
     emit(request) {
       for (const listener of [...callListeners]) listener.call(request);
@@ -304,6 +313,33 @@ describe("the chat the panel shows, bound to its host", () => {
     expect(shown.given.at(-1)).toEqual(["read_page", "click"]);
 
     unbind();
+    await ticks();
+    expect(shown.given.at(-1)).toEqual([]);
+  });
+
+  test("gives the host's tools again once the chat holds its view on a link that came back, and tells the host", async () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    receive(hello({ tools: [READ_PAGE] }));
+    const shown = chat();
+    const unbind = bindChat(endpoint, shown);
+    shown.open("thread-1");
+    await ticks();
+    expect(shown.given).toEqual([["read_page"]]);
+    const readies = () => sent.filter((each) => each.message.type === "ready").length;
+    expect(readies()).toBe(1);
+
+    // The dropped link took the tools off the chat: they are given again, and the host hears the chat take them.
+    shown.relink();
+    await ticks();
+    expect(shown.given).toEqual([["read_page"], ["read_page"]]);
+    expect(readies()).toBe(2);
+
+    // Unbound, a later link coming back gives nothing.
+    unbind();
+    await ticks();
+    shown.relink();
     await ticks();
     expect(shown.given.at(-1)).toEqual([]);
   });

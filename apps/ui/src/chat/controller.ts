@@ -211,6 +211,8 @@ export class ChatController {
    * views the chat and its idle time has passed.
    */
   #viewTaken = false;
+  /** The server instance the view was taken on: a link back to it joins the chat again at once (`#holdAcrossLinks`). */
+  #viewInstance: string | undefined;
   /** The open's own `open` call has answered: from then on a view let go is taken back with a call of its own. */
   #openAnswered = false;
   /** The page keeps this chat while no pane shows it, holding no view (see `park`). */
@@ -231,6 +233,10 @@ export class ChatController {
   /** The server answers no role methods (it predates them): Ctrl+P says so instead of failing. */
   #noRoles = false;
   readonly #stopResync: () => void;
+  /** Stops following the link for what a dropped link lets go (`#holdAcrossLinks`). */
+  readonly #stopRelink: () => void;
+  /** Told once this chat holds its view again on a link that came back: the embed gives its tools again. */
+  readonly #relinkListeners = new Set<() => void>();
   /** Stops following when the app continues this chat after a usage limit (#2781). */
   #stopContinue: (() => void) | null = null;
   /** Stops following this chat's usage pause (#2781 part 3). */
@@ -261,16 +267,23 @@ export class ChatController {
     // A gap in the event stream: the file holds what was missed, and omp's state says whether a turn started or ended.
     // A server that restarted without the chat's omp (its omp ended with the old server) no longer has the chat open:
     // the pane opens it afresh from its file, as after an open the link dropped under, so no reply shows as still going.
+    // One that kept it (a chat whose omp outlived the old server) is joined again (`#holdAcrossLinks`).
     this.#stopResync = client.onResync((event) => {
       if (event.stream !== this.#subscription?.stream) return;
       this.#refreshWindow();
-      this.#refreshState().catch((failure: unknown) => {
-        if (this.#disposed || !notOpenOnServer(failure)) return;
-        // Ended here, so the pane's fresh open makes a new controller instead of taking this one back from its cache.
-        this.store.setPhase("ended");
-        this.#askPane({ kind: "reopen", by: "link" });
-      });
+      this.#refreshState().then(
+        () => {
+          if (event.reason === "instance-changed") void this.#holdAgain();
+        },
+        (failure: unknown) => {
+          if (this.#disposed || !notOpenOnServer(failure)) return;
+          // Ended here, so the pane's fresh open makes a new controller instead of taking this one back from its cache.
+          this.store.setPhase("ended");
+          this.#askPane({ kind: "reopen", by: "link" });
+        },
+      );
     });
+    this.#stopRelink = this.#holdAcrossLinks();
   }
 
   /** The chat's unsent text. A new chat's is kept from the start, under its pane, and under its id once it has one. */
@@ -405,6 +418,7 @@ export class ChatController {
     }
     const opened = await opening;
     this.#viewTaken = true;
+    this.#viewInstance = this.client.instanceId;
     this.#openAnswered = true;
     this.#mark("open_ms");
     if (this.#disposed) {
@@ -1260,6 +1274,14 @@ export class ChatController {
     };
   }
 
+  /** Hears this chat hold its view again on a link that came back (`#holdAcrossLinks`); returns what stops it. */
+  onRelinked(listener: () => void): () => void {
+    this.#relinkListeners.add(listener);
+    return () => {
+      this.#relinkListeners.delete(listener);
+    };
+  }
+
   /** Answers a call of one of this page's tools with what the host returned. */
   async answerToolCall(id: string, answer: ToolCallAnswer): Promise<void> {
     const threadId = this.#threadId;
@@ -1695,6 +1717,8 @@ export class ChatController {
     this.#paneListeners.clear();
     this.#openFrames = null;
     this.#stopResync();
+    this.#stopRelink();
+    this.#relinkListeners.clear();
     this.#stopContinue?.();
     this.#stopUsagePause?.();
     this.#stopShares?.();
@@ -1723,15 +1747,57 @@ export class ChatController {
     this.#parked = false;
     const threadId = this.#threadId;
     if (!this.#openAnswered || threadId === null || this.#viewTaken || this.#disposed) return;
+    await this.#takeViewBack(threadId);
+  }
+
+  /** Takes this pane's view of the chat back with an open of its own: whether it holds one after. */
+  async #takeViewBack(threadId: ThreadId): Promise<boolean> {
     // Taken before the call answers, so a park meanwhile lets it go again (its close follows this open).
     this.#viewTaken = true;
     try {
       await this.client.port(ChatSessionPort).open({ threadId });
     } catch {
       this.#viewTaken = false;
-      return;
+      return false;
     }
-    if (this.#disposed || this.#parked) await this.#releaseView(threadId);
+    if (this.#disposed || this.#parked) {
+      await this.#releaseView(threadId);
+      return false;
+    }
+    this.#viewInstance = this.client.instanceId;
+    return true;
+  }
+
+  /**
+   * A link that drops lets go of every view it held, with the message updates asked over it and the tools a page gave
+   * the chat over it (the server's `releaseConnection`). Once the link is open again to the same server, a chat a pane
+   * shows takes its view back, asks for its message updates again and tells `onRelinked` (the embed gives its tools
+   * again). A server that restarted is first asked whether it still has the chat (the resync's state read), so an open
+   * here never starts a chat whose omp ended with the old server: that one the pane opens afresh. A kept chat takes its
+   * view back when it is shown (`unpark`); a chat whose first open is still under way takes its view with that open.
+   */
+  #holdAcrossLinks(): () => void {
+    let away = false;
+    return this.client.onConnectionState((event) => {
+      if (event.state !== "open") {
+        if (this.#openAnswered) this.#viewTaken = false;
+        away = true;
+        return;
+      }
+      if (!away) return;
+      away = false;
+      if (this.client.instanceId === this.#viewInstance) void this.#holdAgain();
+    });
+  }
+
+  async #holdAgain(): Promise<void> {
+    const threadId = this.#threadId;
+    if (!this.#openAnswered || threadId === null || this.#parked || this.#disposed) return;
+    if (this.#viewTaken || !(await this.#takeViewBack(threadId))) return;
+    const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
+    await chat.setEventOptions({ threadId, messageUpdates: "delta" }).catch(() => undefined);
+    if (this.#disposed || this.#parked) return;
+    for (const listener of [...this.#relinkListeners]) listener();
   }
 
   /** Lets go of the view this pane's open took, once. */
