@@ -1,4 +1,4 @@
-import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import {
   elementScroll,
   useVirtualizer,
@@ -33,7 +33,7 @@ import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { FailureRow } from "./FailureRow";
 import { MessageActions, userText } from "./MessageActions";
-import { buildRows, type TranscriptRow, toolResults } from "./rows";
+import { buildRows, drawn, type TranscriptRow, toolResults } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
 
@@ -377,6 +377,48 @@ const TYPICAL_ROW_PX = 160;
 /** A change of the wanted spare room smaller than this waits for a bigger one: each change is a write at rest. */
 const SPARE_DRIFT_PX = 500;
 
+/**
+ * Older entries read during a swipe on iOS go in at once, into the spare room above the first row, as many as it takes:
+ * the newest of them, next to the rows already drawn. The rest wait until the scroll rests (`moving`): put in, TanStack
+ * would hold what is left over and draw rows above the transcript's top, out of the swipe's reach and over its top band,
+ * and left out with the room unfilled, the swipe would run on into blank room. An entry's height is taken as the mean
+ * measured row when it draws a row (a tool's result shows in its call's card). With no spare room kept (`room` null: a
+ * computer's writes land), older entries go in at once. Returns the entries to draw and how many older ones wait.
+ */
+function useOlderWithinRoom(
+  entries: readonly SessionEntry[],
+  moving: RefObject<boolean>,
+  room: RefObject<number> | null,
+  sizes: RefObject<ReadonlyMap<unknown, number>>,
+): { readonly shown: readonly SessionEntry[]; readonly waiting: number } {
+  // The oldest entry drawn: entries in front of it came from an older window since the last render that drew them.
+  const first = useRef<SessionEntry | undefined>(undefined);
+  const older = first.current === undefined ? 0 : entries.indexOf(first.current);
+  let waiting = 0;
+  if (older > 0 && room !== null && moving.current) {
+    let total = 0;
+    for (const size of sizes.current.values()) total += size;
+    const mean = sizes.current.size === 0 ? ESTIMATED_ROW_PX : total / sizes.current.size;
+    let used = 0;
+    waiting = older;
+    while (waiting > 0) {
+      const entry = entries[waiting - 1];
+      const height = entry !== undefined && drawn(entry) ? mean : 0;
+      if (used + height > room.current) break;
+      used += height;
+      waiting -= 1;
+    }
+  }
+  const shown = useMemo(
+    () => (waiting === 0 ? entries : entries.slice(waiting)),
+    [entries, waiting],
+  );
+  useLayoutEffect(() => {
+    first.current = shown[0];
+  });
+  return { shown, waiting };
+}
+
 /** iOS's WebKit, as TanStack Virtual tells it: an iPhone or an iPod, or an iPad (a Mac with a touch screen). */
 function iosWebKit(): boolean {
   return (
@@ -535,7 +577,18 @@ export function TranscriptList({
   /** What the transcript does once the reader's scroll rests; set below, once the list exists. */
   const atRest = useRef<() => void>(() => undefined);
   const moving = useReaderRest(scrollRef, atRest);
-  const { entries, hasOlder } = snapshot;
+  // The spare room above the first row (`spareFor`): on iOS, in a chat's transcript.
+  const ios = useMemo(iosWebKit, []);
+  const spare = useRef(0);
+  const measured = useRef<ReadonlyMap<unknown, number>>(new Map());
+  const { shown: entries, waiting } = useOlderWithinRoom(
+    snapshot.entries,
+    moving,
+    ios && edge ? spare : null,
+    measured,
+  );
+  // Older entries already read but waiting for the scroll to rest count as entries still to show.
+  const hasOlder = snapshot.hasOlder || waiting > 0;
   // The lite view (#2844) leaves out omp's status lines: at each start they list the tools it mounted, which would fill
   // an empty chat in a side panel. A warning or an error stays.
   const lite = use(LiteContext) !== null;
@@ -550,16 +603,12 @@ export function TranscriptList({
     [entries, stream, streamDone, activeTools, working, shell, notices, hasOlder],
   );
   const results = useMemo(() => toolResults(entries, jobs), [entries, jobs]);
-  const measured = useRef<ReadonlyMap<unknown, number>>(new Map());
   const firstHeight = useFirstHeights(rows, measured);
   // A phone's screen is small: the chat starts right under its top bar (each row keeps its own 10 px).
   const phone = usePhone();
   // The room above the first row: a computer's 24 px, and a chat's top band.
   const headRoom = (phone ? 0 : 24) + (edge && rows.length > 0 ? EDGE_PX : 0);
-  // The spare room above the first row (`spareFor`): on iOS, in a chat's transcript. Read at rest with the sizes measured
-  // since this draw.
-  const ios = useMemo(iosWebKit, []);
-  const spare = useRef(0);
+  // What the spare room should be: read at rest with the sizes measured since this draw.
   /** The windows of entries read so far: the first, and each older one put in front. */
   const windows = useRef(0);
   const spareWanted = (sizes: ReadonlyMap<unknown, number>): number =>
@@ -676,8 +725,34 @@ export function TranscriptList({
     positioned && offset !== null && offset - spare.current < NEAR_TOP_SCREENS * screen;
   const oldestKey = rows[0]?.key;
   useEffect(() => {
-    if (nearTop && hasOlder && olderLoad === "idle" && oldestKey !== undefined) onNearTop();
-  }, [nearTop, hasOlder, olderLoad, oldestKey, onNearTop]);
+    if (nearTop && hasOlder && waiting === 0 && olderLoad === "idle" && oldestKey !== undefined)
+      onNearTop();
+  }, [nearTop, hasOlder, waiting, olderLoad, oldestKey, onNearTop]);
+  // The top band sits right above the first row where the list draws it (its layout place, shifted back by a correction
+  // TanStack holds), whether or not the first row is among the rows drawn now: placed anywhere else, rows were drawn
+  // over it.
+  const held = (virtualizer as unknown as { _holdOffset?: number })._holdOffset ?? 0;
+  const bandTop = (virtualizer.measurementsCache[0]?.start ?? headRoom) - held - headRoom;
+  // A swipe faster than the next window's read, or past the chat's beginning with spare room left that nothing filled,
+  // runs on into the room above the first row, where nothing is drawn: the band is below the screen then, so its words
+  // show at the screen's top until rows come or the scroll rests (which takes unneeded room away). Checked at each
+  // scroll as well as each draw: scrolling through that room changes no row, so the list is not drawn again.
+  const bandWords =
+    edge && rows.length > 0 && !(hasOlder && olderLoad === "failed" && waiting === 0);
+  const [outran, setOutran] = useState(false);
+  const checkOutran = useRef<() => void>(() => undefined);
+  checkOutran.current = () => {
+    const element = scrollRef.current;
+    setOutran(bandWords && element !== null && element.scrollTop + element.clientHeight < bandTop);
+  };
+  useLayoutEffect(() => checkOutran.current());
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const onScroll = (): void => checkOutran.current();
+    element.addEventListener("scroll", onScroll, { passive: true });
+    return () => element.removeEventListener("scroll", onScroll);
+  }, []);
   const firstAt = entries[0]?.timestamp;
   const began = firstAt === undefined ? null : new Date(firstAt);
 
@@ -696,13 +771,8 @@ export function TranscriptList({
           {edge && rows.length > 0 && (
             <div
               className="absolute top-0 left-0 flex w-full items-center justify-center gap-2 px-3 text-t3 text-xs"
-              // Drawn from the first row's place: while a correction is held the rows are drawn shifted back by it
-              // (`useHoldCorrectionsWhileReading`), and the band stays above the first row.
-              style={{
-                height: EDGE_PX,
-                transform: `translateY(${items[0]?.index === 0 ? items[0].start - headRoom : 0}px)`,
-              }}
-              data-transcript-edge={hasOlder ? olderLoad : "start"}
+              style={{ height: EDGE_PX, transform: `translateY(${bandTop}px)` }}
+              data-transcript-edge={!hasOlder ? "start" : waiting > 0 ? "loading" : olderLoad}
             >
               {!hasOlder ? (
                 <span>
@@ -711,7 +781,7 @@ export function TranscriptList({
                     ? ` · ${START_DATE.format(began)}`
                     : ""}
                 </span>
-              ) : olderLoad === "failed" ? (
+              ) : olderLoad === "failed" && waiting === 0 ? (
                 <>
                   <span>Couldn't load earlier messages.</span>
                   <Button size="sm" variant="secondary" className="max-sm:h-11" onClick={onNearTop}>
@@ -753,6 +823,21 @@ export function TranscriptList({
           })}
         </div>
       </section>
+      {outran && (
+        <div
+          role="status"
+          className="pointer-events-none absolute top-2 left-1/2 flex h-6 -translate-x-1/2 items-center gap-1.5 rounded-full border border-l2 bg-l1 px-2.5 text-xs text-t3 shadow-md"
+        >
+          {hasOlder ? (
+            <>
+              <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+              <span>Loading earlier messages…</span>
+            </>
+          ) : (
+            <span>Beginning of the chat</span>
+          )}
+        </div>
+      )}
       {empty && welcome !== null && (
         <Welcome folder={welcome.folder} onSuggest={welcome.onSuggest} />
       )}

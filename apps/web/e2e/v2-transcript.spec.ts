@@ -261,7 +261,7 @@ realTest.describe("new UI transcript: omp's own messages", () => {
   );
 });
 
-/** A chat several of a phone's older windows long (128 KB each): 120 questions and answers of about 1 KB each. */
+/** A chat of `count` questions and answers of about 1 KB each; a phone reads older entries in windows of 128 KB. */
 const LONG_AT = Date.UTC(2026, 10, 1, 12);
 const LONG_TEXT =
   "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor. ".repeat(10);
@@ -273,34 +273,40 @@ const LONG_USAGE = {
   totalTokens: 2,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
-const LONG_CHAT = Array.from({ length: 120 }, (_, index) => {
-  const asked = LONG_AT + index * 120_000;
-  return [
-    {
-      type: "message",
-      timestamp: new Date(asked).toISOString(),
-      message: {
-        role: "user",
-        content: [{ type: "text", text: `Question ${index + 1}: ${LONG_TEXT}` }],
-        timestamp: asked,
+function questionsAndAnswers(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const asked = LONG_AT + index * 120_000;
+    return [
+      {
+        type: "message",
+        timestamp: new Date(asked).toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: `Question ${index + 1}: ${LONG_TEXT}` }],
+          timestamp: asked,
+        },
       },
-    },
-    {
-      type: "message",
-      timestamp: new Date(asked + 5_000).toISOString(),
-      message: {
-        role: "assistant",
-        content: [{ type: "text", text: `Answer ${index + 1}. ${LONG_TEXT}` }],
-        api: "openai-completions",
-        provider: "fake",
-        model: "fake-model",
-        usage: LONG_USAGE,
-        stopReason: "stop",
-        timestamp: asked + 5_000,
+      {
+        type: "message",
+        timestamp: new Date(asked + 5_000).toISOString(),
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: `Answer ${index + 1}. ${LONG_TEXT}` }],
+          api: "openai-completions",
+          provider: "fake",
+          model: "fake-model",
+          usage: LONG_USAGE,
+          stopReason: "stop",
+          timestamp: asked + 5_000,
+        },
       },
-    },
-  ];
-}).flat();
+    ];
+  }).flat();
+}
+/** Several of a phone's older windows long. */
+const LONG_CHAT = questionsAndAnswers(120);
+/** About five older windows long: more than the spare room on an iPhone takes in one swipe. */
+const VERY_LONG_CHAT = questionsAndAnswers(300);
 
 /** What the test does with one of the page's reads of an older window: pass it on, or answer it with a failure. */
 type OlderRead = (pass: () => void, fail: () => void) => void;
@@ -309,70 +315,71 @@ type OlderRead = (pass: () => void, fail: () => void) => void;
 const IPHONE_SAFARI =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1";
 
+/**
+ * The app on a phone's screen with a seeded chat of `last` questions and answers open at its end; `olderRead` sees each
+ * read of an older window. A `userAgent` makes the page another browser's.
+ */
+async function openLongChat(
+  realApp: RealApp,
+  browser: Browser,
+  olderRead: OlderRead,
+  userAgent?: string,
+  last = 120,
+): Promise<{ page: Page; context: BrowserContext }> {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    ...(userAgent === undefined ? {} : { userAgent }),
+  });
+  const page = await realApp.open({
+    path: "/",
+    context,
+    beforeLoad: (opened) =>
+      opened.routeWebSocket(
+        () => true,
+        (webSocket) => {
+          const server = webSocket.connectToServer();
+          webSocket.onMessage((message) => {
+            const older =
+              typeof message === "string" &&
+              message.includes('"method":"readEntryWindow"') &&
+              message.includes('"before"');
+            if (!older) {
+              server.send(message);
+              return;
+            }
+            const { id } = JSON.parse(message) as { id: string };
+            olderRead(
+              () => server.send(message),
+              () =>
+                webSocket.send(
+                  JSON.stringify({
+                    type: "result",
+                    id,
+                    ok: false,
+                    error: { code: "internal", message: "The read failed.", retryable: false },
+                  }),
+                ),
+            );
+          });
+          server.onMessage((message) => webSocket.send(message));
+        },
+      ),
+  });
+  await page.getByRole("button", { name: "Chats", exact: true }).tap();
+  await page
+    .getByRole("navigation", { name: "Chats" })
+    .getByRole("button", { name: /^Question 1:/ })
+    .tap({ timeout: 120_000 });
+  await expect(
+    page.getByRole("region", { name: "Transcript" }).getByText(`Answer ${last}.`, { exact: false }),
+  ).toBeVisible({ timeout: 60_000 });
+  return { page, context };
+}
+
 realTest.describe("new UI transcript: a long chat's earlier messages on a phone", () => {
   realTest.use({ seedEntries: { entries: LONG_CHAT } });
   realTest.setTimeout(240_000);
-
-  /**
-   * The app on a phone's screen with the long chat open at its end; `olderRead` sees each read of an older window. A
-   * `userAgent` makes the page another browser's.
-   */
-  async function openLongChat(
-    realApp: RealApp,
-    browser: Browser,
-    olderRead: OlderRead,
-    userAgent?: string,
-  ): Promise<{ page: Page; context: BrowserContext }> {
-    const context = await browser.newContext({
-      viewport: { width: 390, height: 844 },
-      hasTouch: true,
-      ...(userAgent === undefined ? {} : { userAgent }),
-    });
-    const page = await realApp.open({
-      path: "/",
-      context,
-      beforeLoad: (opened) =>
-        opened.routeWebSocket(
-          () => true,
-          (webSocket) => {
-            const server = webSocket.connectToServer();
-            webSocket.onMessage((message) => {
-              const older =
-                typeof message === "string" &&
-                message.includes('"method":"readEntryWindow"') &&
-                message.includes('"before"');
-              if (!older) {
-                server.send(message);
-                return;
-              }
-              const { id } = JSON.parse(message) as { id: string };
-              olderRead(
-                () => server.send(message),
-                () =>
-                  webSocket.send(
-                    JSON.stringify({
-                      type: "result",
-                      id,
-                      ok: false,
-                      error: { code: "internal", message: "The read failed.", retryable: false },
-                    }),
-                  ),
-              );
-            });
-            server.onMessage((message) => webSocket.send(message));
-          },
-        ),
-    });
-    await page.getByRole("button", { name: "Chats", exact: true }).tap();
-    await page
-      .getByRole("navigation", { name: "Chats" })
-      .getByRole("button", { name: /^Question 1:/ })
-      .tap({ timeout: 120_000 });
-    await expect(
-      page.getByRole("region", { name: "Transcript" }).getByText("Answer 120.", { exact: false }),
-    ).toBeVisible({ timeout: 60_000 });
-    return { page, context };
-  }
 
   /**
    * Scrolls the transcript up with the wheel, as a reader does, until its top band reads `band` on screen. Each window
@@ -573,6 +580,109 @@ realTest.describe("new UI transcript: a long chat's earlier messages on a phone"
       expect(await firstInView()).toBe(true);
       expect(await drawnAbove()).toBe(0);
       await expect(transcript.getByText(/^Beginning of the chat/)).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+});
+
+realTest.describe("new UI transcript: a very long chat on an iPhone", () => {
+  realTest.use({ seedEntries: { entries: VERY_LONG_CHAT } });
+  realTest.setTimeout(240_000);
+
+  realTest(
+    "one swipe up through more older windows than the spare room takes draws no row out of reach, and the top band is never under a row",
+    async ({ realApp, browser }) => {
+      let reads = 0;
+      // Each older window comes a second late, so the swipe meets the top band while it says it is loading.
+      const { page, context } = await openLongChat(
+        realApp,
+        browser,
+        (pass) => {
+          reads += 1;
+          setTimeout(pass, 1_000);
+        },
+        IPHONE_SAFARI,
+        300,
+      );
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      /**
+       * Rows drawn above the transcript's top (out of every scroll's reach), rows drawn over the top band, where the band
+       * is, and whether the screen's top says earlier messages are loading.
+       */
+      const look = (): Promise<{
+        above: number;
+        overBand: number;
+        bandInView: boolean;
+        bandBelow: boolean;
+        pill: boolean;
+      }> =>
+        transcript.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const top = (element.firstElementChild as HTMLElement).getBoundingClientRect().top;
+          const band = (
+            element.querySelector("[data-transcript-edge]") as HTMLElement
+          ).getBoundingClientRect();
+          const rows = [...element.querySelectorAll("[data-index]")].map((row) =>
+            row.getBoundingClientRect(),
+          );
+          return {
+            above: rows.filter((row) => row.top < top - 1).length,
+            overBand: rows.filter((row) => row.bottom > band.top + 1 && row.top < band.bottom - 1)
+              .length,
+            bandInView: band.bottom > box.top && band.top < box.bottom,
+            bandBelow: band.top >= box.bottom,
+            pill: [...document.querySelectorAll('[role="status"]')].some((status) =>
+              (status.textContent ?? "").includes("Loading earlier messages"),
+            ),
+          };
+        });
+      const finger = (down: boolean): Promise<void> =>
+        transcript.evaluate((element, isDown) => {
+          const touch = new Touch({ identifier: 1, target: element, clientX: 195, clientY: 400 });
+          const touches = isDown ? [touch] : [];
+          element.dispatchEvent(
+            new TouchEvent(isDown ? "touchstart" : "touchend", {
+              touches,
+              targetTouches: touches,
+              changedTouches: [touch],
+              bubbles: true,
+            }),
+          );
+        }, down);
+      await page.waitForTimeout(1_000);
+
+      // One finger, down from the chat's end until the swipe can go no higher: past three older windows read on the
+      // way, faster than they come. At every step no row is out of reach and none covers the band, and when the swipe
+      // has run on past the first row into the room above it, the screen's top says earlier messages are loading.
+      await finger(true);
+      let top = -1;
+      let outran = 0;
+      for (let step = 0; step < 400 && !(top === 0 && reads >= 3); step += 1) {
+        top = await transcript.evaluate((element) => {
+          element.scrollTop = Math.max(0, element.scrollTop - 700);
+          return element.scrollTop;
+        });
+        await page.waitForTimeout(50);
+        const seen = await look();
+        expect(seen.above, `step ${step}: rows above the top`).toBe(0);
+        expect(seen.overBand, `step ${step}: rows over the top band`).toBe(0);
+        expect(seen.pill, `step ${step}: the screen's top says loading`).toBe(seen.bandBelow);
+        if (seen.bandBelow) outran += 1;
+      }
+      expect(reads).toBeGreaterThanOrEqual(3);
+      expect(outran).toBeGreaterThan(0);
+
+      // The window comes: its rows fill the room up to the screen, and the band is on screen above them.
+      await expect.poll(async () => (await look()).bandInView, { timeout: 10_000 }).toBe(true);
+      expect(await look()).toMatchObject({ above: 0, overBand: 0, pill: false });
+
+      // Once the finger lifts and the scroll rests, what of the window waited is put in above: the swipe can go on.
+      await finger(false);
+      await expect
+        .poll(() => transcript.evaluate((element) => element.scrollTop), { timeout: 10_000 })
+        .toBeGreaterThan(0);
+      expect(await look()).toMatchObject({ above: 0, overBand: 0 });
       expect(realApp.problems).toEqual([]);
       await context.close();
     },

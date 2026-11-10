@@ -75,7 +75,7 @@ function failure(entry: SessionEntry): { readonly error: string; readonly empty:
 }
 
 /** Whether collab-web's `EntryRow` draws anything for the entry: tool results show inside their call's card. */
-function drawn(entry: SessionEntry): boolean {
+export function drawn(entry: SessionEntry): boolean {
   switch (entry.type) {
     case "message": {
       // A failed reply with nothing in it is only its failure row.
