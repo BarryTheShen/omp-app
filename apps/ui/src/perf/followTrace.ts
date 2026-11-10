@@ -267,3 +267,198 @@ export function useHoldTrace(
     };
   }, [scrollRef, instance]);
 }
+
+/** What the transcript knows about its top that TanStack does not, read at each sample of `useTopTrace`. */
+export interface TopState {
+  /** The spare room above the first row (`spareFor`), px. */
+  readonly spare: number;
+  /** Older entries read but waiting for the scroll to rest. */
+  readonly waiting: number;
+  /** The read of the next older window: 0 none under way, 1 under way, 2 failed. */
+  readonly load: number;
+  /** Older entries remain in the chat's file. */
+  readonly older: boolean;
+  /** Entries drawn, and entries read. */
+  readonly shown: number;
+  readonly read: number;
+  /** Windows of entries read so far. */
+  readonly windows: number;
+  /** The reader's scroll has not rested (`useReaderRest`). */
+  readonly moving: boolean;
+  /** The rests so far: each sets the spare room again. */
+  readonly rests: number;
+}
+
+/** How often the top's state is sampled while the reader touches or scrolls the transcript. */
+const TOP_SAMPLE_MS = 100;
+/** Sampling goes on this long after the last touch or scroll. */
+const TOP_ACTIVE_MS = 6_000;
+/** The samples from before a stall that its report carries. */
+const TOP_BEFORE_MS = 3_000;
+/** A stall shorter than this is not reported; one that lasts `TOP_CAP_MS` is reported while it lasts. */
+const TOP_MIN_STALL_MS = 200;
+const TOP_CAP_MS = 5_000;
+/** A finger that moved this far toward older messages in `TOP_DRAG_MS` while the view moved less than `TOP_DRAG_MOVED_PX`. */
+const TOP_DRAG_PX = 60;
+const TOP_DRAG_MS = 300;
+const TOP_DRAG_MOVED_PX = 10;
+/** Stall reports per page load, at least this far apart. */
+const TOP_MOST = 40;
+const TOP_APART_MS = 1_000;
+let topReports = 0;
+let lastTopReport = Number.NEGATIVE_INFINITY;
+
+type TopSample = Record<string, number>;
+
+/**
+ * The transcript's top at one moment: the scroll position (`past`: how far a bounce has pulled it past the top), the
+ * finger (`fy`: where it last was), the spare room, the correction TanStack holds, the rows drawn above the top (out of
+ * every scroll's reach), where the top band is from the view's top (`band_up`: above it), the older entries' state and
+ * whether the last read position was past an edge (`over`).
+ */
+function topSample(
+  element: HTMLElement,
+  instance: Virtualizer<HTMLDivElement, Element>,
+  state: TopState,
+  finger: { readonly count: number; readonly y: number },
+): TopSample {
+  const internals = instance as unknown as Internals;
+  const top = element.scrollTop;
+  const box = element.getBoundingClientRect();
+  const sizer = element.firstElementChild?.getBoundingClientRect().top ?? box.top;
+  let above = 0;
+  for (const row of element.querySelectorAll<HTMLElement>("[data-index]"))
+    if (row.getBoundingClientRect().top < sizer - 1) above += 1;
+  const band = element.querySelector<HTMLElement>("[data-transcript-edge]");
+  const bandAt = band === null ? 0 : band.getBoundingClientRect().top - box.top;
+  return {
+    top: Math.round(Math.max(0, top)),
+    past: Math.round(Math.max(0, -top)),
+    finger: finger.count,
+    fy: Math.round(Math.max(0, finger.y)),
+    spare: Math.round(Math.max(0, state.spare)),
+    hold: Math.round(Math.abs(internals._holdOffset ?? 0)),
+    above,
+    band: Math.round(Math.abs(bandAt)),
+    band_up: bandAt < 0 ? 1 : 0,
+    waiting: state.waiting,
+    load: state.load,
+    older: state.older ? 1 : 0,
+    shown: state.shown,
+    read: state.read,
+    windows: state.windows,
+    moving: state.moving ? 1 : 0,
+    rests: state.rests,
+    over: internals._reportedOverscroll === true ? 1 : 0,
+  };
+}
+
+/**
+ * Reports the reader held up at the transcript's top, where a swipe stops though earlier messages remain above and goes
+ * on only after a pause: the view at its top with more above it (older entries in the file, read ones waiting, a held
+ * correction, rows drawn above the top), or a finger dragging toward older messages while the view does not move. While
+ * the reader touches or scrolls the transcript its state is sampled every `TOP_SAMPLE_MS`. When a stall ends, or has
+ * lasted `TOP_CAP_MS`, one report carries the samples from `TOP_BEFORE_MS` before it (`s<n>_t` from the first sample,
+ * then only the values that changed since the sample before), when it began (`stall_at_ms`), how long it lasted, its
+ * kind (1 at the top, 2 a drag the view did not follow), how it ended (`end`: 1 the view could go on, 2 the chat's
+ * beginning, 3 still held at the cap) and TanStack's numbers then (`at_`). `on`: an iPhone's or an iPad's transcript,
+ * where the spare room is kept.
+ */
+export function useTopTrace(
+  scrollRef: RefObject<HTMLElement | null>,
+  instance: Virtualizer<HTMLDivElement, Element>,
+  state: RefObject<() => TopState>,
+  on: boolean,
+): void {
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!on || element === null) return;
+    const finger = { count: 0, y: 0 };
+    let activeUntil = Number.NEGATIVE_INFINITY;
+    const wake = (): void => {
+      activeUntil = performance.now() + TOP_ACTIVE_MS;
+    };
+    const touched = (event: TouchEvent): void => {
+      finger.count = event.touches.length;
+      const first = event.touches[0];
+      if (first !== undefined) finger.y = first.clientY;
+      wake();
+    };
+    const kept: { readonly at: number; readonly values: TopSample }[] = [];
+    let stall: { readonly since: number; readonly kind: number; reported: boolean } | null = null;
+    const send = (since: number, kind: number, end: number, now: number): void => {
+      const report = sink;
+      if (report === null || topReports >= TOP_MOST || now - lastTopReport < TOP_APART_MS) return;
+      topReports += 1;
+      lastTopReport = now;
+      const samples = kept.filter((sample) => sample.at >= since - TOP_BEFORE_MS);
+      const first = samples[0]?.at ?? since;
+      const marks: Record<string, number> = {
+        ...layout(element, instance, "at_"),
+        kind,
+        end,
+        stall_ms: Math.round(now - since),
+        stall_at_ms: Math.round(Math.max(0, since - first)),
+        samples: samples.length,
+        sample_ms: TOP_SAMPLE_MS,
+      };
+      let previous: TopSample | null = null;
+      for (const [index, sample] of samples.entries()) {
+        marks[`s${index}_t`] = Math.round(sample.at - first);
+        for (const [name, value] of Object.entries(sample.values))
+          if (previous === null || previous[name] !== value) marks[`s${index}_${name}`] = value;
+        previous = sample.values;
+      }
+      report({ marks, gaps: [], supported: ["top-stall", ...clientTags()] });
+    };
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      if (now > activeUntil && stall === null) return;
+      const values = topSample(element, instance, state.current(), finger);
+      kept.push({ at: now, values });
+      while (now - (kept[0]?.at ?? now) > TOP_BEFORE_MS + TOP_CAP_MS) kept.shift();
+      // More above the view: older entries in the file, read ones waiting, a held correction, rows drawn above the top.
+      const moreAbove =
+        values.older === 1 ||
+        (values.waiting ?? 0) > 0 ||
+        (values.hold ?? 0) > 0 ||
+        (values.above ?? 0) > 0;
+      const atTop = element.scrollTop <= 0.5 && moreAbove;
+      // The oldest sample within the drag window: a finger that went toward older messages since, with the view still.
+      const back = kept.find((sample) => now - sample.at <= TOP_DRAG_MS);
+      const dragged =
+        back !== undefined &&
+        back !== kept.at(-1) &&
+        (back.values.finger ?? 0) > 0 &&
+        (values.finger ?? 0) > 0 &&
+        (values.fy ?? 0) - (back.values.fy ?? 0) >= TOP_DRAG_PX &&
+        (back.values.top ?? 0) - (values.top ?? 0) < TOP_DRAG_MOVED_PX &&
+        (values.top ?? 0) > 0;
+      if (atTop || dragged) {
+        if (stall === null) stall = { since: now, kind: atTop ? 1 : 2, reported: false };
+        else if (!stall.reported && now - stall.since >= TOP_CAP_MS) {
+          send(stall.since, stall.kind, 3, now);
+          stall.reported = true;
+        }
+        return;
+      }
+      if (stall !== null && !stall.reported && now - stall.since >= TOP_MIN_STALL_MS)
+        send(stall.since, stall.kind, values.older === 0 && values.waiting === 0 ? 2 : 1, now);
+      stall = null;
+    }, TOP_SAMPLE_MS);
+    const listening = { capture: true, passive: true } as const;
+    element.addEventListener("touchstart", touched, listening);
+    element.addEventListener("touchmove", touched, listening);
+    element.addEventListener("touchend", touched, listening);
+    element.addEventListener("touchcancel", touched, listening);
+    element.addEventListener("scroll", wake, listening);
+    return () => {
+      window.clearInterval(timer);
+      element.removeEventListener("touchstart", touched, { capture: true });
+      element.removeEventListener("touchmove", touched, { capture: true });
+      element.removeEventListener("touchend", touched, { capture: true });
+      element.removeEventListener("touchcancel", touched, { capture: true });
+      element.removeEventListener("scroll", wake, { capture: true });
+    };
+  }, [scrollRef, instance, state, on]);
+}

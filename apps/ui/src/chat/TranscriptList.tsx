@@ -20,7 +20,7 @@ import {
 import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { LiteContext } from "../lite/LiteContext";
-import { useFollowTrace, useHoldTrace } from "../perf/followTrace";
+import { type TopState, useFollowTrace, useHoldTrace, useTopTrace } from "../perf/followTrace";
 import { noteScrollWrite } from "../perf/scrollTrace";
 import { usePhone } from "../phone";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
@@ -694,9 +694,12 @@ export function TranscriptList({
     return false;
   };
   measured.current = virtualizer.itemSizeCache;
+  /** The rests so far, for the top's recorder (`useTopTrace`). */
+  const rests = useRef(0);
   atRest.current = () => {
     const element = scrollRef.current;
     if (element === null) return;
+    rests.current += 1;
     const held = (): number =>
       (virtualizer as unknown as { _holdOffset?: number })._holdOffset ?? 0;
     // A correction held during the swipe is written first: `settleBounce`, then the draw's `_willUpdate`.
@@ -738,6 +741,21 @@ export function TranscriptList({
     following,
   });
   useHoldTrace(scrollRef, virtualizer);
+  // What the top's recorder reads at each sample: the spare room and the older entries, which TanStack does not know.
+  const topNow = (): TopState => ({
+    spare: spare.current,
+    waiting,
+    load: olderLoad === "loading" ? 1 : olderLoad === "failed" ? 2 : 0,
+    older: snapshot.hasOlder,
+    shown: entries.length,
+    read: snapshot.entries.length,
+    windows: windows.current,
+    moving: moving.current,
+    rests: rests.current,
+  });
+  const topState = useRef(topNow);
+  topState.current = topNow;
+  useTopTrace(scrollRef, virtualizer, topState, ios && edge);
 
   // Start at the latest entry once the first window is there.
   const empty = rows.length === 0;
