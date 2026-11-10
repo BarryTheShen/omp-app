@@ -121,3 +121,57 @@ export function splitHostContext(message: string): {
   if (context === null) return whole;
   return { text: at === 0 ? "" : message.slice(0, at - 2), context };
 }
+
+/**
+ * Where in a file or notebook a context points, read from its uri as VS Code's panel writes it
+ * (`apps/vscode/src/context.ts`): `<path>#L<a>-<b>` for lines a to b, `<path>#cell<n>` for a notebook's cell n (counted
+ * from 1, top to bottom), `<path>#cell<n>-L<a>-<b>` for lines in that cell. A uri without such an ending is all path.
+ */
+export interface HostContextPlace {
+  readonly path: string;
+  readonly cell?: number;
+  readonly lines?: readonly [number, number];
+}
+
+const PLACE = /^(.+?)#(?:cell([1-9]\d*)(?:-L([1-9]\d*)-([1-9]\d*))?|L([1-9]\d*)-([1-9]\d*))$/;
+
+/** The place a file's or notebook's uri names (`HostContextPlace`). */
+export function hostContextPlace(uri: string): HostContextPlace {
+  const match = PLACE.exec(uri);
+  if (match === null) return { path: uri };
+  const [, path = uri, cell, cellFrom, cellTo, from, to] = match;
+  const range = (a?: string, b?: string): readonly [number, number] | undefined =>
+    a === undefined || b === undefined ? undefined : [Number(a), Number(b)];
+  const lines = range(cellFrom, cellTo) ?? range(from, to);
+  return {
+    path,
+    ...(cell === undefined ? {} : { cell: Number(cell) }),
+    ...(lines === undefined ? {} : { lines }),
+  };
+}
+
+const nameOf = (path: string): string => path.split(/[/\\]/).pop() || path;
+const linesSaid = ([from, to]: readonly [number, number]): string =>
+  from === to ? `Line ${from}` : `Lines ${from}–${to}`;
+
+/**
+ * What a context is, in a few words, for its chip above the message box and on a sent message: "Looking at app.ts",
+ * "Lines 3–7 of app.ts", "Cell 4 of notes.ipynb", "Lines 3–7 of cell 4, notes.ipynb"; a page or any other kind of
+ * thing by its title: "Looking at <title>", "A selection on <title>".
+ */
+export function describeHostContext(context: HostContext): string {
+  if (context.kind === "file" || context.kind === "notebook") {
+    const place = hostContextPlace(context.uri ?? context.title);
+    const name = nameOf(place.path);
+    if (place.cell !== undefined) {
+      return place.lines === undefined
+        ? `Cell ${place.cell} of ${name}`
+        : `${linesSaid(place.lines)} of cell ${place.cell}, ${name}`;
+    }
+    if (place.lines !== undefined) return `${linesSaid(place.lines)} of ${name}`;
+    return context.selection === undefined ? `Looking at ${name}` : `A selection in ${name}`;
+  }
+  return context.selection === undefined
+    ? `Looking at ${context.title}`
+    : `A selection on ${context.title}`;
+}

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   attachedSummary,
+  describeHostContext,
   EmbedHostMessage,
   firstPromptTextOf,
+  hostContextPlace,
   splitAttached,
   splitHostContext,
   withAttached,
@@ -105,5 +107,48 @@ describe("the embed protocol's messages from a host", () => {
       },
     ];
     for (const message of bad) expect(EmbedHostMessage.safeParse(message).success).toBe(false);
+  });
+});
+
+describe("where a file's or notebook's context points, and how its chip says it", () => {
+  test("reads lines, a notebook's cell, and lines in a cell from the uri; any other ending is part of the path", () => {
+    expect(hostContextPlace("src/app.ts#L3-7")).toEqual({ path: "src/app.ts", lines: [3, 7] });
+    expect(hostContextPlace("nb/x.ipynb#cell4")).toEqual({ path: "nb/x.ipynb", cell: 4 });
+    expect(hostContextPlace("nb/x.ipynb#cell4-L1-2")).toEqual({
+      path: "nb/x.ipynb",
+      cell: 4,
+      lines: [1, 2],
+    });
+    expect(hostContextPlace("a#b/c.ts#L1-1")).toEqual({ path: "a#b/c.ts", lines: [1, 1] });
+    for (const whole of ["README.md", "x.ts#section", "x.ts#L0-3", "x.ipynb#cell0", "x.ts#L3"]) {
+      expect(hostContextPlace(whole)).toEqual({ path: whole });
+    }
+  });
+
+  test("names a file or a notebook by its file's name, with the lines and the cell", () => {
+    const file = { kind: "file", title: "src/app.ts" };
+    expect(describeHostContext({ ...file, uri: "src/app.ts" })).toBe("Looking at app.ts");
+    expect(describeHostContext({ ...file, uri: "src/app.ts#L3-7", selection: "a" })).toBe(
+      "Lines 3–7 of app.ts",
+    );
+    expect(describeHostContext({ ...file, uri: "src/app.ts#L3-3", selection: "a" })).toBe(
+      "Line 3 of app.ts",
+    );
+    const notebook = { kind: "notebook", title: "nb/x.ipynb, cell 4" };
+    expect(describeHostContext({ ...notebook, uri: "nb/x.ipynb#cell4", text: "print(1)" })).toBe(
+      "Cell 4 of x.ipynb",
+    );
+    expect(describeHostContext({ ...notebook, uri: "nb/x.ipynb#cell4-L1-2", selection: "a" })).toBe(
+      "Lines 1–2 of cell 4, x.ipynb",
+    );
+  });
+
+  test("names a page or any other thing by its title, whatever its address ends with", () => {
+    const page = { kind: "page", title: "Docs", uri: "https://example.com/a#L1-2" };
+    expect(describeHostContext(page)).toBe("Looking at Docs");
+    expect(describeHostContext({ ...page, selection: "hi" })).toBe("A selection on Docs");
+    expect(describeHostContext({ kind: "view", title: "Preview README.md" })).toBe(
+      "Looking at Preview README.md",
+    );
   });
 });

@@ -116,7 +116,7 @@ realTest.describe("new UI lite view in VS Code's panel", () => {
         const sentWith = panel.getByRole("region", {
           name: "Sent with your messages, from vscode",
         });
-        await expect(sentWith).toContainText("src/app.ts");
+        await expect(sentWith).toContainText("Looking at app.ts");
 
         // omp offers the panel's tools by name, beside its own for the server's files and shell.
         await box.fill("tools_offered");
@@ -147,7 +147,24 @@ realTest.describe("new UI lite view in VS Code's panel", () => {
             selection: "const x = 1;",
           }),
         );
-        await expect(sentWith).toContainText("src/other.ts");
+        await expect(sentWith).toContainText("Lines 3–4 of other.ts");
+
+        // A notebook's cell with lines selected in it, as the extension says it: the line above the box names the cell
+        // and the lines, and the message sent carries them to omp (its chip in the chat reads the same).
+        await vscode.evaluate(() =>
+          (window as unknown as { openFile: (context: unknown) => void }).openFile({
+            kind: "notebook",
+            title: "nb/demo.ipynb, cell 2",
+            uri: "nb/demo.ipynb#cell2-L1-2",
+            selection: "x = 1\ny = 2",
+          }),
+        );
+        await expect(sentWith).toContainText("Lines 1–2 of cell 2, demo.ipynb");
+        await box.fill("what is selected?");
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(
+          panel.getByRole("list", { name: "Sent with what was open in vscode" }).last(),
+        ).toContainText("Lines 1–2 of cell 2, demo.ipynb", { timeout: 60_000 });
 
         // No folder of the project's own on the server: the panel's chat runs in the app's folder.
         await expect(stat(join(realApp.appDataDir, "host-folders"))).rejects.toThrow();

@@ -53,7 +53,8 @@ export function ThinkingMenu({
         }
       >
         <Brain />
-        {level}
+        {/* Only the icon in a narrow message box (the row in `Composer`); the label above names the level. */}
+        <span className="@max-[22rem]:sr-only">{level}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-auto min-w-44">
         <DropdownMenuGroup>

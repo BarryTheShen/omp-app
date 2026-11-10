@@ -75,7 +75,7 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
         const sentWith = panel.getByRole("region", {
           name: "Sent with your messages, from testhost",
         });
-        await expect(sentWith).toContainText("Host page title (a selection)");
+        await expect(sentWith).toContainText("A selection on Host page title");
         // The chat took the host's tool, and said so.
         await expect
           .poll(() =>
@@ -100,7 +100,7 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
         await expect(transcript.getByText("call_tool page_title {}")).toBeVisible();
         await expect(
           transcript.getByRole("list", { name: "Sent with what was open in testhost" }),
-        ).toContainText("Host page title (a selection)");
+        ).toContainText("A selection on Host page title");
         await expect(transcript.getByText("<host-context", { exact: false })).toHaveCount(0);
 
         // Left out, it goes with no message until the host says something else is open.
@@ -118,7 +118,7 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
             title: "Another page",
           }),
         );
-        await expect(sentWith).toContainText("Another page");
+        await expect(sentWith).toContainText("Looking at Another page");
       } finally {
         await context.close();
         await stop(server);

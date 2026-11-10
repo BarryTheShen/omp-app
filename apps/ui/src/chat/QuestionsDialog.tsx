@@ -4,7 +4,6 @@ import { Check, X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { isImeEnter } from "../keys/ime";
@@ -205,7 +204,8 @@ export function QuestionsDialog({
   };
 
   // omp's keys in the dialog: Enter chooses and moves on, Tab and Shift+Tab change question, N adds a note, Esc
-  // skips; Arrow keys move between tick boxes (round marks move by themselves). In a text box, its own keys win.
+  // skips; Arrow keys move between tick boxes (round marks move by themselves). In a text box, its own keys win, except
+  // Enter in the box for your own answer, which moves on as everywhere else; Shift+Enter starts a new line there.
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target instanceof HTMLElement ? event.target : null;
@@ -230,7 +230,7 @@ export function QuestionsDialog({
       return;
     }
     if (event.key === "Enter" && !event.shiftKey && !isImeEnter(event)) {
-      if (target.matches("textarea")) return;
+      if (target.matches("textarea:not([data-typed])")) return;
       if (target.matches("button:not([data-row]), a")) return;
       stop();
       let all = chosen;
@@ -572,8 +572,9 @@ function QuestionBody({
         </RadioGroup>
       )}
       {otherOn && (
-        <Input
+        <Textarea
           data-typed
+          rows={2}
           aria-label={`Your own answer: ${question.question}`}
           placeholder="Type your own answer"
           value={chosen.typed ?? ""}

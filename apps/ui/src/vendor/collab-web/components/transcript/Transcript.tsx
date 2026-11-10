@@ -5,7 +5,13 @@ import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState
 import { FoldContext } from "../../lib/fold";
 import type { ActiveTool, ConnectionPhase } from "../../lib/types";
 import { fmtTokens } from "../../lib/format";
-import { type SentFile, type SentHostContext, splitAttached, splitHostContext } from "@omp-app/contracts";
+import {
+	describeHostContext,
+	type SentFile,
+	type SentHostContext,
+	splitAttached,
+	splitHostContext,
+} from "@omp-app/contracts";
 import { contentText, deliveredText, describeNotice, jobRows } from "../../lib/notices";
 import type { ToolRenderHost } from "../../tool-render";
 import { Markdown, StreamingMarkdown } from "./Markdown";
@@ -180,7 +186,7 @@ function withoutAdded(content: UserContent): {
 
 /** omp-app: what was open in the app that embeds the panel when the message was sent, as one chip; its address in a tip. */
 function SentContext({ context }: { context: SentHostContext }): ReactNode {
-	const what = context.selection === undefined ? context.title : `${context.title} (a selection)`;
+	const what = describeHostContext(context);
 	return (
 		<ul className="tr-files" aria-label={`Sent with what was open in ${context.host}`}>
 			<li>

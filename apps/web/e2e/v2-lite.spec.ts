@@ -89,6 +89,47 @@ realTest.describe("new UI lite view", () => {
   );
 
   realTest(
+    "in a narrow panel the message box keeps one row: the chips shorten, and Send stays at the row's end",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({ viewport: { width: 420, height: 700 } });
+      const page = await realApp.open({ path: "/lite", context });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      const sendButton = page.getByRole("button", { name: "Send" });
+      const modelButton = page.getByRole("button", { name: /^Model: Fake Model/ });
+      const thinking = page.getByRole("button", { name: /^Thinking: / });
+      const plan = page.getByRole("button", { name: "Plan" });
+      const middle = async (button: typeof sendButton): Promise<number> => {
+        const at = await button.boundingBox();
+        if (at === null) throw new Error("not shown");
+        return at.y + at.height / 2;
+      };
+      for (const width of [420, 340, 300]) {
+        await page.setViewportSize({ width, height: 700 });
+        // Send is on the model's row, and nothing in the row runs past the box.
+        await expect
+          .poll(async () => Math.abs((await middle(sendButton)) - (await middle(modelButton))))
+          .toBeLessThanOrEqual(2);
+        const row = await sendButton.evaluate((button) => {
+          const parent = button.parentElement;
+          return parent === null ? null : { overflow: parent.scrollWidth - parent.clientWidth };
+        });
+        expect(row?.overflow).toBeLessThanOrEqual(1);
+        // Below 22rem the thinking level and Plan are their icons alone; their names stay for screen readers.
+        const narrow = width < 352;
+        for (const chip of [thinking, plan]) {
+          await expect(chip).toBeVisible();
+          const at = await chip.boundingBox();
+          if (at === null) throw new Error("not shown");
+          if (narrow) expect(at.width).toBeLessThanOrEqual(40);
+          else expect(at.width).toBeGreaterThan(40);
+        }
+      }
+      await context.close();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "the theme is the one the framing page asks for, and the full app's choice stays as it was",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/lite" });

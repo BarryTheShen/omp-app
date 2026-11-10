@@ -111,7 +111,7 @@
         "ompApp.sendOpenFile": {
           "type": "boolean",
           "default": true,
-          "description": "Send the open file's name and your selection with each message."
+          "description": "Send what you are looking at with each message: the open file or a notebook's cell, and your selection."
         }
       }
     }

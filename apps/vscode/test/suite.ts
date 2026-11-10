@@ -10,6 +10,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import * as vscode from "vscode";
+import { editorContext } from "../src/panel";
 import { REVIEW_SCHEME, Reviews } from "../src/review";
 import { WorkspaceTools } from "../src/workspace";
 
@@ -230,6 +231,85 @@ export async function run(): Promise<void> {
   );
   assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath, join(root, "README.md"));
   assert.equal(vscode.window.activeTextEditor?.selection.active.line, 1);
+
+  // What goes with each message (`editorContext`): the open file and the selected lines; in a notebook, the cell and
+  // the lines selected in it, also once the focus has gone to the side bar, where the person types; a preview's name.
+  const same = (expected: unknown): boolean =>
+    JSON.stringify(editorContext()) === JSON.stringify(expected);
+  const appEditor = await vscode.window.showTextDocument(vscode.Uri.file(join(root, "src/app.ts")));
+  appEditor.selection = new vscode.Selection(1, 0, 1, 6);
+  await until(
+    () => same({ kind: "file", title: "src/app.ts", uri: "src/app.ts#L2-2", selection: "export" }),
+    "the file's line in the context",
+  );
+  const cellCode = ["x = 1\n", "y = 2\n", "z = 3"];
+  await writeFile(
+    join(root, "demo.ipynb"),
+    JSON.stringify({
+      cells: [
+        {
+          cell_type: "code",
+          source: ["a = 1\n"],
+          metadata: {},
+          outputs: [],
+          execution_count: null,
+        },
+        { cell_type: "code", source: cellCode, metadata: {}, outputs: [], execution_count: null },
+      ],
+      metadata: {},
+      nbformat: 4,
+      nbformat_minor: 5,
+    }),
+  );
+  const notebook = await vscode.workspace.openNotebookDocument(
+    vscode.Uri.file(join(root, "demo.ipynb")),
+  );
+  // Cell 2 chosen, and its editor entered as a click into the cell does (VS Code's own command).
+  await vscode.window.showNotebookDocument(notebook, {
+    selections: [new vscode.NotebookRange(1, 2)],
+  });
+  await vscode.commands.executeCommand("notebook.cell.edit");
+  const cellDocument = notebook.cellAt(1).document;
+  await until(
+    () => vscode.window.visibleTextEditors.some((editor) => editor.document === cellDocument),
+    "the cell's editor",
+  );
+  const cellEditor =
+    vscode.window.activeTextEditor?.document === cellDocument
+      ? vscode.window.activeTextEditor
+      : vscode.window.visibleTextEditors.find((editor) => editor.document === cellDocument);
+  assert.ok(cellEditor, "the cell's editor");
+  cellEditor.selection = new vscode.Selection(0, 0, 1, 5);
+  const cellLines = {
+    kind: "notebook",
+    title: "demo.ipynb, cell 2",
+    uri: "demo.ipynb#cell2-L1-2",
+    selection: "x = 1\ny = 2",
+  };
+  await until(() => same(cellLines), "the notebook's cell and lines in the context");
+  await vscode.commands.executeCommand("workbench.view.explorer");
+  await new Promise((done) => setTimeout(done, 500));
+  assert.deepEqual(editorContext(), cellLines, "the same once the side bar has the focus");
+  cellEditor.selection = new vscode.Selection(2, 0, 2, 0);
+  await until(
+    () =>
+      same({
+        kind: "notebook",
+        title: "demo.ipynb, cell 2",
+        uri: "demo.ipynb#cell2",
+        text: cellCode.join(""),
+      }),
+    "the cell's text when nothing is selected",
+  );
+  await vscode.window.showTextDocument(vscode.Uri.file(join(root, "README.md")));
+  await vscode.commands.executeCommand("markdown.showPreview");
+  await until(
+    () => same({ kind: "view", title: "Preview README.md" }),
+    "the preview's name in the context",
+  );
+  // Back to README.md alone, the file the panel's part below expects open.
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  await vscode.window.showTextDocument(vscode.Uri.file(join(root, "README.md")));
 
   // The side bar's panel frames the app (here the stand-in) under its frame rule, and speaks the protocol.
   const seen: Seen[] = [];

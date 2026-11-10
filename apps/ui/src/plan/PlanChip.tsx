@@ -40,7 +40,8 @@ export function PlanChip({
         }
       >
         <MapIcon />
-        Plan
+        {/* Only the icon in a narrow message box (the row in `Composer`); the name stays for screen readers. */}
+        <span className="@max-[22rem]:sr-only">Plan</span>
       </TooltipTrigger>
       <TooltipContent>
         {status.enabled

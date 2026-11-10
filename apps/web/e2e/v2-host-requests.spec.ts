@@ -110,6 +110,30 @@ realTest.describe("new UI approvals and questions", () => {
     },
   );
 
+  realTest(
+    "your own answer to omp's question takes several lines: Shift+Enter starts a line, Enter sends both",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const questions = page.getByRole("dialog", { name: "Questions from omp" });
+      await send(page, "ask_user");
+      await expect(questions).toBeVisible({ timeout: 60_000 });
+      await questions.getByRole("radio", { name: "Other…" }).click();
+      const own = questions.getByRole("textbox", { name: "Your own answer: Which database?" });
+      await own.click();
+      await page.keyboard.type("MySQL for now,");
+      await page.keyboard.press("Shift+Enter");
+      await page.keyboard.type("then Postgres once the data outgrows it");
+      await expect(own).toHaveValue("MySQL for now,\nthen Postgres once the data outgrows it");
+      await expect(questions).toBeVisible();
+      await page.keyboard.press("Enter");
+      await expect(questions).toBeHidden();
+      const last = replies(page).last();
+      await expect(last).toContainText("MySQL for now,", { timeout: 60_000 });
+      await expect(last).toContainText("then Postgres once the data outgrows it");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest("shows a question that is still open again after a reload", async ({ realApp }) => {
     const page = await newChat(realApp);
     const questions = page.getByRole("dialog", { name: "Questions from omp" });

@@ -1,3 +1,4 @@
+import { describeHostContext } from "@omp-app/contracts";
 import { Eye, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { embed, useEmbed } from "./embed";
@@ -10,7 +11,7 @@ import { embed, useEmbed } from "./embed";
 export function EmbedContextChip(): ReactNode {
   const { host, context, contextLeftOut } = useEmbed();
   if (host === null || context === null || contextLeftOut) return null;
-  const what = context.selection === undefined ? context.title : `${context.title} (a selection)`;
+  const what = describeHostContext(context);
   return (
     <section
       aria-label={`Sent with your messages, from ${host}`}

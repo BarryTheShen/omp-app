@@ -1105,8 +1105,10 @@ export const Composer = memo(function Composer({
             {phone && sendOrStop}
           </div>
           {!phone && (
-            // A narrow window (the lite view in another app's side panel, #2845) wraps the chips onto a second line.
-            <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
+            // One row at any width, Send at its end (#2845's narrow side panels): the row is a container, so when it
+            // is short of room the model's name shortens, and below 22rem the thinking level and Plan show only
+            // their icons (`ThinkingMenu`, `PlanChip`).
+            <div className="@container flex min-w-0 items-center gap-1 px-2 pb-2">
               {attachButton}
               {shellBadge}
               {settings}

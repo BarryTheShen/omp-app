@@ -808,6 +808,22 @@ const CHANGE_SERVER_TOUR: Tour = {
   ],
 };
 
+/** The message box's row in a narrow window (2026-11-09). */
+const ONE_ROW_TOUR: Tour = {
+  id: "one-row-2026-11-09",
+  title: "The message box in a narrow window",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "One row, whatever the width",
+      text: "On a computer, the model, the thinking level, Plan and Send stay on one row under the message box. In a narrow window, such as another app's side panel, the model's name shortens and the thinking level and Plan show only their icons; Send stays at the end of the row.",
+      action: next,
+    },
+  ],
+};
+
 /** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
 const INTEGRATIONS_TOUR: Tour = {
   id: "integrations-2026-11-09",
@@ -2518,6 +2534,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-one-row",
+    when: "2026-11-09T21:30:00-06:00",
+    summary:
+      "The row under the message box stays one row in a narrow window: the model's name shortens, the thinking level and Plan show only their icons, and Send stays at the end. Your own answer to a question with choices takes several lines, in the Questions panel and in omp's question dialog: Shift+Enter starts a new line, Enter sends. VS Code's panel sends what you are looking at in a notebook too: the notebook, the cell and the lines you selected in it, or the cell's text; another tab's file, or a preview's name. The line above the message box says it, such as \"Lines 3–7 of cell 4, notes.ipynb\".",
+    tours: [ONE_ROW_TOUR],
+  },
   {
     id: "2026-11-09-try-again",
     when: "2026-11-09T20:00:00-06:00",

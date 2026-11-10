@@ -14,7 +14,6 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatController } from "../../chat/controller";
@@ -450,8 +449,10 @@ function QuestionCard({
         </RadioGroup>
       )}
       {choices && otherOn && (
-        <Input
+        // Several lines, as the written answer above: Enter sends, Shift+Enter starts a new line.
+        <Textarea
           aria-label={`Your own answer: ${record.question}`}
+          rows={2}
           placeholder="Write your own answer"
           value={typed ?? ""}
           onChange={(event) => setTyped(event.target.value)}

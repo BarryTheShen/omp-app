@@ -3,6 +3,7 @@ import type { EmbedFiles, HostContext } from "@omp-app/contracts";
 import { appAddressOf } from "@omp-app/embed";
 import * as vscode from "vscode";
 import { whyNotShown } from "./check";
+import { contextFor, type EditorView, type Selected } from "./context";
 import { proxyFor } from "./proxy";
 import type { Reviews } from "./review";
 import type { FromExtension, PanelConfig, ToExtension } from "./webview-messages";
@@ -43,21 +44,111 @@ export function filesOf(folder: vscode.WorkspaceFolder | undefined): EmbedFiles 
   return { project, id: createHash("sha256").update(folder.uri.fsPath).digest("hex").slice(0, 16) };
 }
 
-/** The open file and the selection in it, as the panel shows it and sends it with each message. */
-export function contextOf(editor: vscode.TextEditor | undefined): HostContext | null {
-  if (editor === undefined || !setting("sendOpenFile", true)) return null;
-  const document = editor.document;
-  if (document.uri.scheme !== "file" && document.uri.scheme !== "untitled") return null;
-  const path = vscode.workspace.asRelativePath(document.uri, false);
-  const selection = editor.selection;
-  const selected = selection.isEmpty ? "" : document.getText(selection);
-  const lines = selection.isEmpty ? "" : `#L${selection.start.line + 1}-${selection.end.line + 1}`;
+/** A file's path as a context gives it: relative to the open folder; only for files on disk or not yet saved. */
+function pathOf(uri: vscode.Uri): string | null {
+  if (uri.scheme !== "file" && uri.scheme !== "untitled") return null;
+  return vscode.workspace.asRelativePath(uri, false);
+}
+
+/** What is selected in an editor, if anything. */
+function selectedIn(editor: vscode.TextEditor | undefined): Selected | undefined {
+  if (editor === undefined || editor.selection.isEmpty) return undefined;
+  const { start, end } = editor.selection;
   return {
-    kind: "file",
-    title: path.slice(0, 300),
-    uri: `${path}${lines}`.slice(0, 2_000),
-    ...(selected === "" ? {} : { selection: selected.slice(0, 8_000) }),
+    start: { line: start.line, character: start.character },
+    end: { line: end.line, character: end.character },
+    text: editor.document.getText(editor.selection),
   };
+}
+
+/** The editor showing a document: the active one when it does, else a visible one (the focus may be in the panel). */
+function editorOf(uri: vscode.Uri): vscode.TextEditor | undefined {
+  const key = uri.toString();
+  const active = vscode.window.activeTextEditor;
+  if (active?.document.uri.toString() === key) return active;
+  return vscode.window.visibleTextEditors.find((editor) => editor.document.uri.toString() === key);
+}
+
+/** A notebook: the cell with the cursor, else the first selected cell, and what is selected in it. */
+function notebookView(editor: vscode.NotebookEditor): EditorView | null {
+  const path = pathOf(editor.notebook.uri);
+  if (path === null) return null;
+  const typing = vscode.window.activeTextEditor;
+  const cells = editor.notebook.getCells();
+  const typed =
+    typing === undefined ? undefined : cells.find((cell) => cell.document === typing.document);
+  const first = editor.selections.find((range) => !range.isEmpty);
+  const cell = typed ?? (first === undefined ? undefined : editor.notebook.cellAt(first.start));
+  if (cell === undefined) return { kind: "notebook", path };
+  const selected = selectedIn(typed !== undefined ? typing : editorOf(cell.document.uri));
+  return {
+    kind: "notebook",
+    path,
+    cell: {
+      index: cell.index,
+      text: cell.document.getText(),
+      ...(selected === undefined ? {} : { selected }),
+    },
+  };
+}
+
+/** The panel's own tab, when it is opened as an editor ("ompApp.chatTab"; VS Code may prefix its view type). */
+const isPanelTab = (tab: vscode.Tab): boolean =>
+  tab.input instanceof vscode.TabInputWebview && tab.input.viewType.endsWith("ompApp.chatTab");
+
+/** The tab the person is looking at: the active group's, or, while they type in the panel's own tab, another group's. */
+function lookedAtTab(): vscode.Tab | undefined {
+  const active = vscode.window.tabGroups.activeTabGroup.activeTab;
+  if (active === undefined || !isPanelTab(active)) return active;
+  return vscode.window.tabGroups.all
+    .map((group) => group.activeTab)
+    .find((tab) => tab !== undefined && !isPanelTab(tab));
+}
+
+/** What the person is looking at in VS Code: the tab's file, notebook or view; with no tab, the active editor. */
+function editorView(): EditorView | null {
+  const tab = lookedAtTab();
+  const input = tab?.input;
+  if (input instanceof vscode.TabInputNotebook) {
+    const key = input.uri.toString();
+    const editor =
+      vscode.window.activeNotebookEditor?.notebook.uri.toString() === key
+        ? vscode.window.activeNotebookEditor
+        : vscode.window.visibleNotebookEditors.find((each) => each.notebook.uri.toString() === key);
+    if (editor !== undefined) return notebookView(editor);
+    const path = pathOf(input.uri);
+    return path === null ? null : { kind: "notebook", path };
+  }
+  const text =
+    input instanceof vscode.TabInputText
+      ? input.uri
+      : input instanceof vscode.TabInputTextDiff
+        ? input.modified
+        : tab === undefined
+          ? vscode.window.activeTextEditor?.document.uri
+          : undefined;
+  if (text !== undefined) {
+    const path = pathOf(text);
+    if (path === null) return null;
+    const selected = selectedIn(editorOf(text));
+    return { kind: "text", path, ...(selected === undefined ? {} : { selected }) };
+  }
+  if (tab === undefined) return null;
+  if (input instanceof vscode.TabInputCustom) {
+    const path = pathOf(input.uri);
+    return { kind: "tab", label: tab.label, ...(path === null ? {} : { path }) };
+  }
+  // A webview such as a Markdown preview: its label. A terminal, the settings or the like: nothing.
+  return input instanceof vscode.TabInputWebview ? { kind: "tab", label: tab.label } : null;
+}
+
+/**
+ * What goes with each message: what the person is looking at in VS Code, a text file, a notebook's cell or another
+ * tab, with the selection (`context.ts`); nothing when the `sendOpenFile` setting is off.
+ */
+export function editorContext(): HostContext | null {
+  if (!setting("sendOpenFile", true)) return null;
+  return contextFor(editorView());
 }
 
 const escapeHtml = (text: string): string =>
@@ -164,6 +255,10 @@ export class ChatPanel implements vscode.Disposable {
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.load()),
       vscode.window.onDidChangeActiveTextEditor(() => this.#sendContext()),
       vscode.window.onDidChangeTextEditorSelection(() => this.#sendContext()),
+      vscode.window.onDidChangeActiveNotebookEditor(() => this.#sendContext()),
+      vscode.window.onDidChangeNotebookEditorSelection(() => this.#sendContext()),
+      vscode.window.tabGroups.onDidChangeTabs(() => this.#sendContext()),
+      vscode.window.tabGroups.onDidChangeTabGroups(() => this.#sendContext()),
     );
     this.load();
   }
@@ -200,7 +295,7 @@ export class ChatPanel implements vscode.Disposable {
         chat: this.#keepChat
           ? (this.#context.workspaceState.get<string>(chatName(app)) ?? null)
           : null,
-        context: contextOf(vscode.window.activeTextEditor),
+        context: editorContext(),
       },
     );
   }
@@ -284,7 +379,7 @@ export class ChatPanel implements vscode.Disposable {
       this.#post({
         ompAppExtension: 1,
         type: "context",
-        context: contextOf(vscode.window.activeTextEditor),
+        context: editorContext(),
       });
     }, 250);
   }

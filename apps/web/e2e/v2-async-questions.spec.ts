@@ -278,4 +278,58 @@ realTest.describe("questions omp asks without waiting", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "your own answer to a question with choices takes several lines: it wraps, Shift+Enter starts a line, Enter sends",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const one = {
+        questions: [
+          {
+            id: "colour",
+            header: "Colour",
+            question: "Which colour for the theme?",
+            options: [{ label: "Blue" }, { label: "Green" }],
+          },
+        ],
+      };
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(one)}`);
+      await box(page).press("Enter");
+      await rail(page)
+        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .click({ timeout: 90_000 });
+      const card = panel(page).getByRole("article", { name: "Question: Colour" });
+      await card.getByRole("radio", { name: "Other…" }).click();
+      const own = card.getByRole("textbox", {
+        name: "Your own answer: Which colour for the theme?",
+      });
+      await own.click();
+      const first = "A warm red,";
+      const second =
+        "close to the logo's colour but a little darker, so that the text on it stays easy to read in both themes";
+      await page.keyboard.type(first);
+      await page.keyboard.press("Shift+Enter");
+      await page.keyboard.type(second);
+      await expect(own).toHaveValue(`${first}\n${second}`);
+      // The long line wraps inside the box, and the box shows the whole answer: nothing to scroll, either way.
+      const fits = await own.evaluate((field) => ({
+        sideways: field.scrollWidth - field.clientWidth,
+        hidden: field.scrollHeight - field.clientHeight,
+      }));
+      expect(fits.sideways).toBeLessThanOrEqual(1);
+      expect(fits.hidden).toBeLessThanOrEqual(1);
+
+      // Enter sends it, both lines, as the person's message.
+      await page.keyboard.press("Enter");
+      const answer = transcript(page).getByText('Answer to your question "Colour" (colour):', {
+        exact: false,
+      });
+      await expect(answer).toBeVisible({ timeout: 60_000 });
+      await expect(answer).toContainText(first);
+      await expect(answer).toContainText(second);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
