@@ -180,6 +180,7 @@ function LiteChats({
     <LiteChat
       key={`${shown.key}:${attempt}`}
       controller={controller}
+      existing={shown.target.kind === "existing"}
       chats={folderChats(list)}
       onNew={() => {
         // A new chat with nothing in it is the new chat already.
@@ -196,11 +197,14 @@ function LiteChats({
 
 function LiteChat({
   controller,
+  existing,
   chats,
   onNew,
   onOpen,
 }: {
   readonly controller: ChatController;
+  /** The chat was opened as one that exists, by its id: its address names it from the start. */
+  readonly existing: boolean;
   readonly chats: readonly FolderChat[];
   readonly onNew: () => void;
   readonly onOpen: (chat: FolderChat) => void;
@@ -213,6 +217,17 @@ function LiteChat({
   const listed = switcherChats(chats, query);
   // The framing page's tools go to the chat shown here, and to no other (`lite/embed.ts`).
   useEffect(() => (embed === null ? undefined : bindChat(embed, controller)), [controller]);
+  // This page's address names the chat shown (`?chat=`), so loading the page again (the update's Reload, a reload of
+  // the frame) opens it, not the chat the host's address named when it built the panel. A new chat with nothing in it
+  // yet is named by none: loading again starts a new chat.
+  const named = threadId !== null && (existing || snapshot.entries.length > 0) ? threadId : null;
+  useEffect(() => {
+    const address = new URL(window.location.href);
+    if (address.searchParams.get("chat") === named) return;
+    if (named === null) address.searchParams.delete("chat");
+    else address.searchParams.set("chat", named);
+    window.history.replaceState(window.history.state, "", address);
+  }, [named]);
   return (
     <>
       {/* One line in the framing app's muted colour and text size (#2845): the chat's name, New chat, the full app. */}

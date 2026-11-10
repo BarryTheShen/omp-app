@@ -191,8 +191,15 @@ realTest.describe("new UI lite view", () => {
       const chat = href.exec((await desktop.getAttribute("href")) ?? "")?.[1] ?? "";
       // The system took the link: the panel stays where it is.
       expect(new URL(page.url()).pathname).toBe("/lite");
-      // Loaded again, the panel keeps the choice; it shows a new chat, whose link names the server alone until its id.
+      // Loaded again, the panel keeps the choice and the chat it showed.
       await page.reload();
+      await expect(page.getByText(/count-\d+ handed/)).toBeVisible({ timeout: 60_000 });
+      await expect(desktop).toHaveAttribute("href", href);
+      // A panel on a new chat: its link names the server alone until the chat has an id. (Opened by its address: after
+      // the menu's omp-app:// navigation the test's browser takes no more clicks in this tab.)
+      const fresh = new URL(page.url());
+      fresh.searchParams.delete("chat");
+      await page.goto(fresh.toString());
       await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible({
         timeout: 60_000,
       });
@@ -295,6 +302,43 @@ realTest.describe("new UI lite view", () => {
       await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
       await expect(page.getByText(/^Not sent/)).toHaveCount(0);
       await expect(box(page)).toHaveValue("");
+    },
+  );
+
+  realTest(
+    "loading the page again shows the chat it showed, not the one its address named when the panel was built",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/lite" });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await send(page, "hello");
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      const link = await page
+        .getByRole("link", { name: "Open in the full app" })
+        .getAttribute("href");
+      const first = decodeURIComponent(link?.split("#chat=")[1] ?? "");
+      expect(first).not.toBe("");
+
+      // The panel as a host builds it: its address names the chat it opens first.
+      const built = new URL(page.url());
+      built.searchParams.set("chat", first);
+      await page.goto(built.toString());
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+
+      // Another chat, then the page loaded again (as the update's Reload does): the chat shown comes back.
+      await page.getByRole("button", { name: "New chat" }).click();
+      await send(page, "count_reply second");
+      await expect(page.getByText(/count-\d+ second/)).toBeVisible({ timeout: 60_000 });
+      await page.reload();
+      await expect(page.getByText(/count-\d+ second/)).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText("pong", { exact: true })).toHaveCount(0);
+
+      // A new chat with nothing in it yet: loading again starts a new chat.
+      await page.getByRole("button", { name: "New chat" }).click();
+      await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
+      await page.reload();
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
     },
   );
 });
