@@ -584,6 +584,68 @@ realTest.describe("new UI transcript: a long chat's earlier messages on a phone"
       await context.close();
     },
   );
+
+  realTest(
+    "on an iPhone, a swipe up and straight back to the end keeps the last message at the bottom once the scroll rests",
+    async ({ realApp, browser }) => {
+      const { page, context } = await openLongChat(
+        realApp,
+        browser,
+        (pass) => pass(),
+        IPHONE_SAFARI,
+      );
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const lastRow = transcript.locator("[data-index]").filter({ hasText: "Answer 120." });
+      /** How far the transcript's bottom is below the last answer's bottom; null when that row is not drawn. */
+      const belowLast = async (): Promise<number | null> => {
+        const [box, row] = await Promise.all([
+          transcript.boundingBox(),
+          lastRow.boundingBox({ timeout: 1_000 }).catch(() => null),
+        ]);
+        return box === null || row === null
+          ? null
+          : Math.round(box.y + box.height - row.y - row.height);
+      };
+      const finger = (down: boolean): Promise<void> =>
+        transcript.evaluate((element, isDown) => {
+          const touch = new Touch({ identifier: 1, target: element, clientX: 195, clientY: 400 });
+          const touches = isDown ? [touch] : [];
+          element.dispatchEvent(
+            new TouchEvent(isDown ? "touchstart" : "touchend", {
+              touches,
+              targetTouches: touches,
+              changedTouches: [touch],
+              bubbles: true,
+            }),
+          );
+        }, down);
+      // The first rest at the end sets the room above the first row.
+      await page.waitForTimeout(1_500);
+
+      // One finger: far up, through older windows that go into that room, and straight back down to the end.
+      await finger(true);
+      for (let step = 0; step < 30; step += 1) {
+        await transcript.evaluate((element) => {
+          element.scrollTop = Math.max(0, element.scrollTop - 1_500);
+        });
+        await page.waitForTimeout(40);
+      }
+      await transcript.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      const atEnd = await belowLast();
+      expect(atEnd).not.toBeNull();
+
+      // The finger lifts and the scroll rests: the room is set again, smaller, and the last message stays where it was.
+      // Taking the room away twice (once by the browser, which keeps the view at the shorter end, and once more by the
+      // list) left the view 8,000 px above the end.
+      await finger(false);
+      await page.waitForTimeout(1_500);
+      expect(await belowLast()).toBe(atEnd);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });
 
 realTest.describe("new UI transcript: a very long chat on an iPhone", () => {

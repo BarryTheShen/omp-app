@@ -694,11 +694,14 @@ export function TranscriptList({
       hasOlder,
     );
     if (change === 0 || held() !== 0) return;
+    // Set from the position before the change: a smaller room shortens the content, and at its end the browser has
+    // already moved the position by as much when the list is drawn again; adding the change to that moved it twice.
+    const before = element.scrollTop;
     spare.current += change;
     virtualizer.scrollOffset = Math.max(0, (virtualizer.scrollOffset ?? 0) + change);
     flushSync(redraw);
     noteScrollWrite(change);
-    element.scrollTop += change;
+    element.scrollTop = before + change;
   };
   useLayoutEffect(() => {
     if (typeof (virtualizer as unknown as BounceInternals)._reportedOverscroll !== "boolean")
