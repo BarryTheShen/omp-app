@@ -6,7 +6,7 @@
  * terminal left with tmux's detach, or a lost SSH connection, comes back with its turn still running.
  */
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 /**
  * The variables that decide where omp keeps its chats and their leases (`@oh-my-pi/pi-utils`' `dirs.ts` at 18.12.6), passed to the
@@ -23,6 +23,23 @@ const STORAGE_VARIABLES = [
   "XDG_DATA_HOME",
   "XDG_STATE_HOME",
 ] as const;
+
+/**
+ * omp settings the terminal app starts with, given to omp as a `--config` overlay, which outranks the user's own
+ * `config.yml` (omp 18.18.5 `config/settings.ts`, `getProvenance`). The app's omp changes with the app's releases, so
+ * omp's self-update (`update.auto`, omp 18.17) stays off and never replaces it.
+ */
+export const TUI_SETTINGS = [
+  "# Written by omp-app for `omp-app tui`: the app's omp is updated with the app, not by itself.",
+  "update:",
+  "  auto: false",
+  "",
+].join("\n");
+
+/** Where `omp-app tui` writes {@link TUI_SETTINGS}: the app's own data folder. */
+export function tuiSettingsFile(appDataFolder: string): string {
+  return join(appDataFolder, "tui-settings.yml");
+}
 
 /** The tmux session of one folder's terminal app: named after the folder, and unique to its whole path. */
 export function tuiSessionName(folder: string): string {
@@ -56,6 +73,8 @@ export interface TuiCommandOptions {
   readonly omp: readonly string[];
   /** omp's own options, from after `--`. */
   readonly ompArgs: readonly string[];
+  /** {@link tuiSettingsFile}: given to omp first, so options after `--` (another `--config`) still apply. */
+  readonly settingsFile: string;
   readonly env: Readonly<Record<string, string>>;
   /** This command runs inside tmux (`$TMUX` is set): it switches to the folder's session instead of nesting one. */
   readonly insideTmux: boolean;
@@ -71,7 +90,14 @@ export interface TuiCommandOptions {
 export function tuiCommands(options: TuiCommandOptions): readonly (readonly string[])[] {
   const name = tuiSessionName(options.folder);
   const variables = Object.entries(options.env).map(([key, value]) => `${key}=${value}`);
-  const program = ["env", ...variables, ...options.omp, ...options.ompArgs];
+  const program = [
+    "env",
+    ...variables,
+    ...options.omp,
+    "--config",
+    options.settingsFile,
+    ...options.ompArgs,
+  ];
   if (!options.insideTmux) {
     return [[options.tmux, "new-session", "-A", "-s", name, "-c", options.folder, ...program]];
   }

@@ -197,6 +197,8 @@ export class ChatController {
   #leaf: string | null | undefined = undefined;
   /** Whether the file's window has been read: what this browser kept is shown only until then. */
   #windowRead = false;
+  /** The file the window was read from: a chat omp moved opens as its newest copy, another file, read again. */
+  #windowFile: string | null = null;
   /**
    * Whether this pane's open took a view of the chat: the server counts it until it is closed, and stops omp once nobody
    * views the chat and its idle time has passed.
@@ -402,8 +404,13 @@ export class ChatController {
     this.#sessionFile = opened.sessionFile;
     // Opened by its id alone (a chat from the list of what runs in every folder, a link on the dashboard): the open named
     // the file, whose window is read now, before the subscription, as when the file was known at the start. Without it a
-    // saved chat that was not running showed no messages.
-    if (this.target.kind === "existing" && !this.#windowRead && opened.sessionFile !== null) {
+    // saved chat that was not running showed no messages. A chat omp moved to another file opens as its newest copy,
+    // whose window is read in place of the old file's.
+    if (
+      this.target.kind === "existing" &&
+      opened.sessionFile !== null &&
+      (!this.#windowRead || this.#windowFile !== opened.sessionFile)
+    ) {
       try {
         await this.#reloadWindow();
       } catch (failure) {
@@ -439,6 +446,8 @@ export class ChatController {
         "ask_dialog_ms",
         this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined),
       ),
+      // omp's question form as one card (omp 18.18.3); a host that predates it refuses, and omp asks field by field.
+      this.#request("set_form_dialog", { enabled: true }).catch(() => undefined),
       marked("state_ms", this.#refreshState()),
     ]);
     // Awaited after the subscription; a failure meanwhile is not left unhandled.
@@ -1612,12 +1621,14 @@ export class ChatController {
       if (this.#disposed) return;
       this.store.setWindow([], false);
       this.#windowRead = true;
+      this.#windowFile = sessionFile;
       return;
     }
     if (this.#disposed) return;
     const entries = window.entries as unknown as SessionEntry[];
     this.store.setWindow(entries, window.hasOlder);
     this.#windowRead = true;
+    this.#windowFile = sessionFile;
     // The branch the file ends on is what opening the chat shows next time (not a branch an edit went back to).
     if (this.#leaf === undefined && this.#threadId !== null)
       keepWindow(this.#threadId, { entries, hasOlder: window.hasOlder });

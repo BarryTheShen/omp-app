@@ -33,7 +33,7 @@ It only ever builds `main`, never starts from a pull request, and has no credent
 
 **What it builds and checks**, in order:
 
-1. Installs Bun 1.3.14 and, for the chat host, Bun 1.4.3, and runs `bun install --frozen-lockfile`.
+1. Installs Bun 1.3.14 and, for the chat host, Bun 1.4.4, and runs `bun install --frozen-lockfile`.
 2. Builds the terminal-command package with `packaging/build-deb.sh`, and smoke-tests it with `packaging/smoke-test.sh`.
 3. Installs the libraries the window needs, Rust (stable) and a cache of Cargo's registry and build.
 4. Builds the desktop package with `packaging/build-desktop-deb.sh`, and smoke-tests it under a virtual display with `packaging/desktop-smoke-test.sh`.
@@ -62,20 +62,20 @@ The version is `0.3.<number of commits on main>` (`git rev-list --count HEAD`). 
 
 ## Building packages locally
 
-You need a checkout with `bun install --frozen-lockfile` done, `dpkg-deb`, and Bun 1.4.3 for the chat host: set `CHAT_HOST_BUN` to its path (without it, the script uses the `bun` on the path, and refuses it unless it is 1.4.3).
+You need a checkout with `bun install --frozen-lockfile` done, `dpkg-deb`, and Bun 1.4.4 for the chat host: set `CHAT_HOST_BUN` to its path (without it, the script uses the `bun` on the path, and refuses it unless it is 1.4.4).
 
 **The terminal command:**
 
 ```bash
-CHAT_HOST_BUN=/path/to/bun-1.4.3/bun bash packaging/build-deb.sh 0.3.1
+CHAT_HOST_BUN=/path/to/bun-1.4.4/bun bash packaging/build-deb.sh 0.3.1
 ```
 
-It builds the UI (`bun run build`), compiles `packages/server/scripts/omp-app.ts` into one program with Bun's runtime and the version (`bun build --compile`), compiles the chat host (`packages/server/scripts/build-chat-host.ts`), and stages the package: `/usr/bin/omp-app`, `/usr/lib/omp-app/chat-host`, `/usr/share/omp-app/ui`, an applications-menu entry (`packaging/omp-app.desktop`), the icon, and the user service (`packaging/omp-app.service`, installed at `/usr/lib/systemd/user/omp-app.service`). Its post-install script enables the service for every user (`systemctl --global enable omp-app.service`) and its pre-removal script turns that off again on removal. The result is `dist/release/omp-app_<version>_amd64.deb` and `dist/release/SHA256SUMS`.
+It builds the UI (`bun run build`), compiles `packages/server/scripts/omp-app.ts` into one program with Bun's runtime, the version and omp's native addon (`packages/server/scripts/build-server.ts`; omp's browser relay, which the command runs, loads the addon), compiles the chat host (`packages/server/scripts/build-chat-host.ts`), and stages the package: `/usr/bin/omp-app`, `/usr/lib/omp-app/chat-host`, `/usr/share/omp-app/ui`, an applications-menu entry (`packaging/omp-app.desktop`), the icon, and the user service (`packaging/omp-app.service`, installed at `/usr/lib/systemd/user/omp-app.service`). Its post-install script enables the service for every user (`systemctl --global enable omp-app.service`) and its pre-removal script turns that off again on removal. The result is `dist/release/omp-app_<version>_amd64.deb` and `dist/release/SHA256SUMS`.
 
 **The window:**
 
 ```bash
-CHAT_HOST_BUN=/path/to/bun-1.4.3/bun bash packaging/build-desktop-deb.sh 0.3.1
+CHAT_HOST_BUN=/path/to/bun-1.4.4/bun bash packaging/build-desktop-deb.sh 0.3.1
 ```
 
 It needs Rust and the Linux libraries listed in [apps/desktop/README.md](../apps/desktop/README.md). It builds the UI, puts the UI, the compiled server (as the sidecar `omp-app-desktop-server`) and the chat host into `apps/desktop/src-tauri` (`resources/` and `binaries/`, both git-ignored), and has Tauri build the package (`bun run tauri build --bundles deb`). It then checks the package's name, version and contents, that it shares no file with the terminal command's package (so both can be installed), and that its menu entry is named "omp app" with a New Window action. The result is `dist/desktop/omp-app-desktop_<version>_amd64.deb` and `dist/desktop/SHA256SUMS`. If you set `CARGO_TARGET_DIR`, it must be an absolute path.

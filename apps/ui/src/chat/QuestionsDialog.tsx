@@ -47,7 +47,7 @@ function summary(chosen: Chosen): string {
 }
 
 /** Seconds left of omp's Ask Timeout, counted from when the questions showed; undefined without one. */
-function useSecondsLeft(timeout: number | undefined): number | undefined {
+export function useSecondsLeft(timeout: number | undefined): number | undefined {
   const [deadline] = useState(() => (timeout === undefined ? undefined : Date.now() + timeout));
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -58,7 +58,7 @@ function useSecondsLeft(timeout: number | undefined): number | undefined {
   return deadline === undefined ? undefined : Math.max(0, Math.ceil((deadline - now) / 1000));
 }
 
-const clock = (seconds: number): string =>
+export const clock = (seconds: number): string =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
 /**

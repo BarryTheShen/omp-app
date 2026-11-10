@@ -13,6 +13,12 @@ import {
   type SessionEntryWindowArgs,
 } from "@omp-app/contracts";
 import { headerTimestamp, lastMessageTimestamp, TAIL_CAP_BYTES } from "./activity";
+import {
+  type ContinuationLink,
+  continuationLink,
+  generatedFileName,
+  heldByCopy,
+} from "./continuation";
 import { detectSessionLiveness } from "./liveness";
 import {
   defaultSessionOwnersRoot,
@@ -462,13 +468,12 @@ export class SessionFileStore {
     const after = args.cursor ? decodeListingCursor(args.cursor) : undefined;
     const parseWarnings: ParseWarning[] = [];
     const candidates = await this.#candidates(args.folder, parseWarnings);
+    const listed = await this.#withoutContinued(candidates);
     const found =
-      after === undefined
-        ? 0
-        : candidates.findIndex((candidate) => newestFirst(candidate, after) > 0);
-    const start = found < 0 ? candidates.length : found;
-    const end = limit === undefined ? candidates.length : start + limit;
-    const page = candidates.slice(start, end);
+      after === undefined ? 0 : listed.findIndex((candidate) => newestFirst(candidate, after) > 0);
+    const start = found < 0 ? listed.length : found;
+    const end = limit === undefined ? listed.length : start + limit;
+    const page = listed.slice(start, end);
     const leaseProbe = this.#options.leaseProbe?.forListing?.() ?? this.#options.leaseProbe;
     const outcomes = await inBatches(page, (candidate) =>
       this.#listingEntry(candidate, leaseProbe),
@@ -486,13 +491,59 @@ export class SessionFileStore {
     const last = page.at(-1);
     return {
       sessions,
-      nextCursor: end < candidates.length && last !== undefined ? encodeListingCursor(last) : null,
+      nextCursor: end < listed.length && last !== undefined ? encodeListingCursor(last) : null,
       parseWarnings,
       running:
         after === undefined && args.folder !== undefined
           ? this.#runningWithoutFile(args.folder, candidates)
           : [],
     };
+  }
+
+  /**
+   * The candidates without each chat omp moved to another file and that took no turn after the move: the copy that
+   * continues it holds it whole and is listed in its place, and opening the chat opens that copy (`continuation.ts`).
+   * A chat that went on after its move is kept, as omp keeps it: both copies hold turns the other lacks. So is a chat
+   * this server runs: another omp moved its own copy aside, and this one goes on (omp's lease keeps the file with it).
+   */
+  async #withoutContinued(candidates: readonly SessionCandidate[]): Promise<SessionCandidate[]> {
+    const links = await inBatches(candidates, (candidate) => this.#linkOf(candidate));
+    const movedAt = new Map<string, number>();
+    candidates.forEach((candidate, index) => {
+      const link = links[index];
+      if (link === undefined) return;
+      const key = `${path.dirname(candidate.file)}\0${link.continues}`;
+      movedAt.set(key, Math.max(movedAt.get(key) ?? Number.NEGATIVE_INFINITY, link.movedAtMs));
+    });
+    if (movedAt.size === 0) return [...candidates];
+    return candidates.filter((candidate) => {
+      const id = generatedFileName(candidate.file)?.id;
+      const moved =
+        id === undefined ? undefined : movedAt.get(`${path.dirname(candidate.file)}\0${id}`);
+      return (
+        moved === undefined ||
+        !heldByCopy(candidate.activityMs, moved) ||
+        serverOwnsSession(this.#options, id ?? "", candidate.file)
+      );
+    });
+  }
+
+  /**
+   * The file's continuation link, from the cache while the file keeps its inode (a header never changes in place). One
+   * read now is kept only beside facts of this same state of the file: a file changed since its cached facts keeps them,
+   * which the listing serves while it reads the file again (`#summary`), and a later listing keeps the link.
+   */
+  async #linkOf(candidate: SessionCandidate): Promise<ContinuationLink | undefined> {
+    const identity = identityOf(candidate);
+    const cached = this.#cache.get(candidate.real);
+    if (cached?.continues !== undefined && sameInode(cached.identity, identity)) {
+      return cached.continues ?? undefined;
+    }
+    const link = await continuationLink(candidate.file);
+    if (cached === undefined || sameIdentity(cached.identity, identity)) {
+      this.#remember(candidate.real, identity, { continues: link ?? null });
+    }
+    return link;
   }
 
   /**
@@ -1115,6 +1166,7 @@ export class SessionFileStore {
       readonly updatedAt?: string;
       readonly summary?: StoredSummary;
       readonly resume?: ResumeState | null;
+      readonly continues?: ContinuationLink | null;
     },
   ): void {
     const cached = this.#cache.get(real);
@@ -1125,12 +1177,20 @@ export class SessionFileStore {
       read.resume === null
         ? undefined
         : (read.resume ?? (sameInode(cached?.identity, identity) ? cached?.resume : undefined));
+    // A header never changes while the file keeps its inode: what it continues is kept while the file grows.
+    const continues =
+      read.continues !== undefined
+        ? read.continues
+        : sameInode(cached?.identity, identity)
+          ? cached?.continues
+          : undefined;
     this.#cache.put({
       realpath: real,
       identity,
       ...(updatedAt === undefined ? {} : { updatedAt }),
       ...(summary === undefined ? {} : { summary }),
       ...(resume === undefined ? {} : { resume }),
+      ...(continues === undefined ? {} : { continues }),
     });
   }
 

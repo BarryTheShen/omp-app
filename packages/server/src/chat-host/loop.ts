@@ -260,7 +260,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const requests = new HostRequests(writeMessage);
   // The to-do list's tool asks the server through the same line (`shared-todos.ts`).
   chat.sharedTodos.attach(requests);
-  const ui = new HostUIContext(requests, emit);
+  const ui = new HostUIContext(requests, emit, () => session.sessionManager.getCwd());
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);
   const subagents = new SubagentRoster(chat.subagentEventBus, emit);
@@ -720,6 +720,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       ui.askDialogEnabled = enabled;
       return { enabled };
     },
+    set_form_dialog: async ({ enabled }) => {
+      ui.formDialogEnabled = enabled;
+      return { enabled };
+    },
     get_login_providers: async () => ({
       providers: getOAuthProviders().map((provider) => ({
         id: provider.id,
@@ -855,12 +859,8 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     logout_account: async ({ providerId, credentialId }) => {
       if (!getOAuthProviders().some((candidate) => candidate.id === providerId))
         throw new Error(`Unknown OAuth provider: ${providerId}`);
-      const { removed } = await logoutCredential(
-        session.modelRegistry,
-        providerId,
-        credentialId,
-        session.sessionId,
-      );
+      // omp 18.18.2: the session, so omp refreshes that provider's models and the chat's own list after the removal.
+      const { removed } = await logoutCredential(session, providerId, credentialId);
       return { removed, ...(await readProviderAccounts(session, providerId)) };
     },
     set_host_tools: async ({ tools }) => {

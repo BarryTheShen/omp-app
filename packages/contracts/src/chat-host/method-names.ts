@@ -59,6 +59,7 @@ export const CHAT_HOST_METHOD_NAMES = [
   "fork",
   "navigate_tree",
   "set_ask_dialog",
+  "set_form_dialog",
   "get_login_providers",
   "login",
   "cancel_sign_in",

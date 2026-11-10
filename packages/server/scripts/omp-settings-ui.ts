@@ -84,7 +84,11 @@ export interface UiSettings {
  * Settings only omp's terminal reads, decided from omp's source (every reader in the terminal's code or behind its
  * flags). The first 72 are the old settings screen's decisions; the `compaction.idle*` keys (read only by
  * `modes/interactive-mode.ts`) and `branchSummary.enabled` (read only by the terminal's tree selector) were decided
- * at omp 18.12.6. `completion.notify` and `error.notify` are not here: omp reads them only in its terminal, and the app
+ * at omp 18.12.6; the keys after `branchSummary.enabled` (`tui.colorfulMarkdown`, `tui.maxFps`, `tui.motion`,
+ * `tui.spinnerInterval`, `display.advisorCollapsedLines`, `btw.inject`, `composer.predictionAlternatives`,
+ * `extensionHandlers.modeControl`, `extensionRenderers.*`, `async.printWake` and `session.worktreeScope`, which only
+ * omp's resume pickers read) were decided at omp 18.18.5.
+ * `completion.notify` and `error.notify` are not here: omp reads them only in its terminal, and the app
  * reads them too, for the desktop window's notifications (`apps/ui/src/desktop/notify.ts`).
  */
 const TERMINAL_ONLY: ReadonlySet<string> = new Set([
@@ -164,7 +168,26 @@ const TERMINAL_ONLY: ReadonlySet<string> = new Set([
   "compaction.idleThresholdTokens",
   "compaction.idleTimeoutSeconds",
   "branchSummary.enabled",
+  "tui.colorfulMarkdown",
+  "tui.maxFps",
+  "tui.motion",
+  "tui.spinnerInterval",
+  "display.advisorCollapsedLines",
+  "btw.inject",
+  "composer.predictionAlternatives",
+  "extensionHandlers.modeControl",
+  "extensionRenderers.assistantText",
+  "extensionRenderers.transcriptPresenters",
+  "async.printWake",
+  "session.worktreeScope",
 ]);
+
+/**
+ * Settings the app does not offer at all, left out of the copy. `update.auto` is omp's self-update (omp 18.17): the
+ * app's omp changes with the app's releases, and `omp-app tui` starts omp with it off (`src/launcher/tui.ts`,
+ * `TUI_SETTINGS`).
+ */
+const APP_HIDDEN: ReadonlySet<string> = new Set(["update.auto"]);
 
 /** Conditions on the terminal or the machine (images in the terminal, its renderer, macOS): the app shows the row. */
 const TERMINAL_CONDITIONS: ReadonlySet<string> = new Set([
@@ -263,7 +286,7 @@ interface OmpDefinition {
 }
 
 export function ompSettingsForUi(): UiSettings {
-  const all = orderedSettings();
+  const all = orderedSettings().filter((setting) => !APP_HIDDEN.has(setting.id));
   const describe = (
     setting: (typeof all)[number],
     place: { tab: string; group: string | null; label: string; description: string },

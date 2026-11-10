@@ -59,6 +59,22 @@ function SourceRow({ source, index }: { source: Record<string, unknown>; index: 
 	);
 }
 
+/**
+ * One line per provider that failed before one answered (`details.failures`); an entry without a text label or
+ * reason is skipped.
+ */
+function failureLines(details: Record<string, unknown> | null): string[] {
+	if (!details || !Array.isArray(details.failures)) return [];
+	const lines: string[] = [];
+	for (const entry of details.failures) {
+		if (!isRecord(entry)) continue;
+		const label = str(entry.label);
+		const reason = str(entry.reason);
+		if (label !== null && reason !== null) lines.push(`${label} failed: ${reason}`);
+	}
+	return lines;
+}
+
 function Body({ args, result }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
 	const recency = str(args.recency);
@@ -73,6 +89,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const authMode = response ? str(response.authMode) : null;
 	const sources: Record<string, unknown>[] =
 		response && Array.isArray(response.sources) ? response.sources.filter(isRecord) : [];
+	const failures = failureLines(details);
 
 	let providerInfo = model && provider ? `${model} @ ${provider}` : (model ?? provider ?? "");
 	if (providerInfo && authMode) {
@@ -118,6 +135,11 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					))}
 				</div>
 			)}
+			{failures.map((line, i) => (
+				<Note tone="warn" key={i}>
+					{line}
+				</Note>
+			))}
 		</>
 	);
 }

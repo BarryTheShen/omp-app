@@ -111,8 +111,23 @@ async function setup(handbackMs: string) {
     "run",
   ].map((name) => join(root, name)) as [string, string, string, string, string];
   await Promise.all([home, agentDir, appDataDir, folder, runtime].map((dir) => mkdir(dir)));
+  // Not the running app's own settings, nor the variables the app gives its chats' omp, which a shell inside one of
+  // them has (its settings overlay, that chat's session), as the web specs' harness leaves them out (`real-omp.ts`).
+  const inherited = Object.fromEntries(
+    Object.entries(Bun.env).filter(
+      ([key]) =>
+        ![
+          "OMP_APP_REMOTE_ORIGIN",
+          "OMP_APP_FRAME_ANCESTORS",
+          "OMP_APP_HOST_SOCKET",
+          "PI_CONFIG_FILES",
+          "PI_SESSION_FILE",
+          "PI_SESSION_ID",
+        ].includes(key),
+    ),
+  );
   const env = {
-    ...Bun.env,
+    ...inherited,
     HOME: home,
     PI_CODING_AGENT_DIR: agentDir,
     OMP_APP_DATA_DIR: appDataDir,

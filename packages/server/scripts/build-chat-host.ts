@@ -1,11 +1,11 @@
 /**
  * Compiles the chat host program: the app's entry (`src/chat-host/main.ts`, SDK plan H5.1) with the omp release
- * package.json pins, the way omp compiles its binary (18.12.6 `scripts/compile-binary.ts`, `compileCodingAgent`):
+ * package.json pins, the way omp compiles its binary (18.18.5 `scripts/compile-binary.ts`, `compileCodingAgent`):
  * - precompiled bytecode, code splitting, names kept, omp's JSON-parse plugin and fetch user agent;
- * - omp's build constants: `PI_COMPILED`, `PI_DOCS_EMBED` (the package's shipped docs index) and
- *   `PI_TINY_TRANSFORMERS_VERSION` (the installed `@huggingface/transformers`);
+ * - omp's build constants: `PI_COMPILED` and `PI_DOCS_EMBED` (the package's shipped docs index);
+ * - omp's external runtime dependencies (`COMPILED_EXTERNAL_DEPENDENCIES`), which omp installs on demand;
  * - the native addon embedded, as omp's `natives/scripts/embed-native.ts` does, read from the installed
- *   `@oh-my-pi/pi-natives-linux-x64`, and the stats dashboard embedded, as omp's `gen:stats` does;
+ *   `@oh-my-pi/pi-natives-linux-x64` (`native-addon.ts`), and the stats dashboard embedded, as omp's `gen:stats` does;
  * - omp's legacy-module registry (`omp-legacy-pi-modules`), which a compiled omp loads before any extension: built from
  *   the installed packages, as omp's `scripts/legacy-pi-virtual-module.ts` builds it from its monorepo;
  * - on the Bun omp's release is built with. On the test machine's Bun 1.3.14 each chat kept about 130 MB more memory (SDK plan, H0).
@@ -20,6 +20,7 @@ import { readdir, readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { CHAT_HOST_BUN_VERSION } from "./chat-host-bun";
+import { embeddedNativeAddon } from "./native-addon";
 
 if (Bun.version !== CHAT_HOST_BUN_VERSION) {
   console.error(
@@ -27,9 +28,6 @@ if (Bun.version !== CHAT_HOST_BUN_VERSION) {
   );
   process.exit(1);
 }
-
-/** The platform the packages ship for; omp embeds the addons of the target it compiles. */
-const PLATFORM_TAG = "linux-x64";
 
 // The package's exports map only `./src/*`, so its folder is found from one of them.
 const packageDir = dirname(
@@ -43,80 +41,11 @@ const { USER_AGENT } = (await import(Bun.resolveSync("@oh-my-pi/pi-utils/dirs", 
   USER_AGENT: string;
 };
 
-const transformers: unknown = fromOmp("@huggingface/transformers/package.json");
-if (
-  typeof transformers !== "object" ||
-  transformers === null ||
-  !("version" in transformers) ||
-  typeof transformers.version !== "string"
-) {
-  throw new Error("@huggingface/transformers package manifest has no string version");
-}
 // The docs index the package ships for SDK users; omp's build inlines the same payload.
 const docsEmbed = await readFile(join(packageDir, "dist/docs-index.generated.txt"), "utf8");
 
 /**
- * omp's `embeddedAddonFiles` (`natives/scripts/embed-native.ts` at v18.12.6): one zstd frame per addon variant, and a
- * replacement for pi-natives' null `native/embedded-addon.js` manifest that points at them. The keys are pi-natives'
- * symlink-resolved `native/` folder, which the bundler resolves; the addons come from the platform package.
- */
-async function embeddedNativeAddon(): Promise<Record<string, string | Uint8Array>> {
-  const nativeDir = await realpath(dirname(Bun.resolveSync("@oh-my-pi/pi-natives", packageDir)));
-  const { version } = JSON.parse(await readFile(join(nativeDir, "../package.json"), "utf8")) as {
-    version: string;
-  };
-  const sentinel = (await import(join(nativeDir, "version-sentinel.js"))) as {
-    containsVersionStamp: (bytes: Uint8Array, version: string) => boolean;
-    containsLegacyVersionSentinel: (bytes: Uint8Array, version: string) => boolean;
-  };
-  const addonDir = dirname(
-    Bun.resolveSync(`@oh-my-pi/pi-natives-${PLATFORM_TAG}/package.json`, nativeDir),
-  );
-  const present = new Set(await readdir(addonDir));
-  const addons = await Promise.all(
-    [
-      { variant: "modern", filename: `pi_natives.${PLATFORM_TAG}-modern.node` },
-      { variant: "baseline", filename: `pi_natives.${PLATFORM_TAG}-baseline.node` },
-    ]
-      .filter((addon) => present.has(addon.filename))
-      .map(async (addon) => ({
-        ...addon,
-        bytes: new Uint8Array(await readFile(join(addonDir, addon.filename))),
-      })),
-  );
-  if (addons.length === 0) throw new Error(`No native addon for ${PLATFORM_TAG} in ${addonDir}`);
-  for (const { filename, bytes } of addons) {
-    if (
-      !sentinel.containsVersionStamp(bytes, version) &&
-      !sentinel.containsLegacyVersionSentinel(bytes, version)
-    ) {
-      throw new Error(`${join(addonDir, filename)} is not stamped @oh-my-pi/pi-natives@${version}`);
-    }
-  }
-  const frames = await Promise.all(
-    addons.map(({ bytes }) => Bun.zstdCompress(bytes, { level: 19 })),
-  );
-  const imports = addons.map(
-    ({ filename }, index) =>
-      `import zstdPath${index} from ${JSON.stringify(`./${filename}.zst`)} with { type: "file" };`,
-  );
-  const files = addons.map(
-    ({ variant, filename, bytes }, index) =>
-      `{ variant: ${JSON.stringify(variant)}, filename: ${JSON.stringify(filename)}, size: ${bytes.length}, zstdPath: zstdPath${index} }`,
-  );
-  const overrides: Record<string, string | Uint8Array> = {
-    [join(nativeDir, "embedded-addon.js")]:
-      `${imports.join("\n")}\n\nexport const embeddedAddon = {\n\tplatformTag: ${JSON.stringify(PLATFORM_TAG)},\n\tversion: ${JSON.stringify(version)},\n\tfiles: [\n\t\t${files.join(",\n\t\t")},\n\t],\n};\n`,
-  };
-  addons.forEach(({ filename }, index) => {
-    const frame = frames[index];
-    if (frame !== undefined) overrides[join(nativeDir, `${filename}.zst`)] = frame;
-  });
-  return overrides;
-}
-
-/**
- * The stats dashboard, embedded as omp's build does (`stats/scripts/generate-client-bundle.ts` at v18.12.6, run by
+ * The stats dashboard, embedded as omp's build does (`stats/scripts/generate-client-bundle.ts` at v18.18.5, run by
  * `gen:stats`): the base64 of a gzipped tar of its built files, in place of the package's empty
  * `src/embedded-client.generated.txt`. A compiled omp serves the dashboard only from it. The npm package ships the
  * built files (`dist/client`), so they are archived here. (omp also zeroes each entry's mtime, so its builds are
@@ -145,7 +74,7 @@ async function embeddedStatsDashboard(): Promise<Record<string, string>> {
 
 /**
  * omp's packages in its legacy-module registry, as `BUNDLED_PACKAGES` in its `scripts/legacy-pi-virtual-module.ts` at
- * v18.12.6 names them by monorepo folder (agent, ai, catalog, coding-agent, natives, tui, utils).
+ * v18.18.5 names them by monorepo folder (agent, ai, catalog, coding-agent, natives, tui, utils).
  */
 const LEGACY_PI_PACKAGES = [
   {
@@ -174,7 +103,7 @@ const LEGACY_PI_PACKAGES = [
     rootShim: "legacy-pi-tui-shim.ts",
     rootWildcard: "nested",
   },
-  { name: "@oh-my-pi/pi-utils", identifier: "PiUtils", rootShim: null, rootWildcard: null },
+  { name: "@oh-my-pi/pi-utils", identifier: "PiUtils", rootShim: null, rootWildcard: "flat" },
 ] as const;
 
 function bindingForSubpath(identifier: string, subpath: string): string {
@@ -253,7 +182,7 @@ async function legacyPiModulesSource(): Promise<string> {
       const sourceSuffix = sourcePattern.slice(sourceStar + 1);
       if (!/\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/.test(sourceSuffix)) continue;
       const rootWildcard = exportPrefix === "" || exportPrefix === "/";
-      if (rootWildcard && (exportKey !== "./*" || !pkg.rootWildcard)) continue;
+      if (rootWildcard && !pkg.rootWildcard) continue;
       const matches: string[] = [];
       try {
         for await (const match of new Bun.Glob(`**/*${sourceSuffix}`).scan({
@@ -314,11 +243,10 @@ const outfile = resolve(process.argv[2] ?? "chat-host");
 const output = await Bun.build({
   entrypoints: [join(import.meta.dir, "../src/chat-host/main.ts")],
   // omp's own (COMPILED_EXTERNAL_DEPENDENCIES): native runtime dependencies come from omp's on-demand install.
-  external: ["fastembed", "onnxruntime-node"],
-  files: { ...(await embeddedNativeAddon()), ...(await embeddedStatsDashboard()) },
+  external: ["@huggingface/transformers", "fastembed", "onnxruntime-node"],
+  files: { ...(await embeddedNativeAddon(packageDir)), ...(await embeddedStatsDashboard()) },
   define: {
     "process.env.PI_COMPILED": JSON.stringify("true"),
-    "process.env.PI_TINY_TRANSFORMERS_VERSION": JSON.stringify(transformers.version),
     "process.env.PI_DOCS_EMBED": JSON.stringify(docsEmbed),
   },
   format: "esm",

@@ -4,7 +4,7 @@
  * them end to end in `test/e2e/sdk-chat-session-*.test.ts`.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AppFailure,
@@ -1181,6 +1181,109 @@ describe("the chat session runtime: opening a chat", () => {
     expect(JSON.stringify(replay.replay(oldStream, 0))).not.toContain(switchedThread);
     expect(moved.status).toBe("running");
     unsubscribe();
+  });
+});
+
+describe("the chat session runtime: a chat omp moved to another file (omp 18.18)", () => {
+  const scratch = join(globalThis.process.cwd(), ".data", `moved-chat-${crypto.randomUUID()}`);
+  afterAll(async () => {
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  test("omp's notice of the move moves the chat here too: a view on the old id follows it", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    const heard: unknown[] = [];
+    const unsubscribe = runtimeContext.replay.subscribe(
+      chatSessionEventStream(authorityThread),
+      (frame) => {
+        heard.push(frame.payload);
+      },
+    );
+    // A failure to save, of the same source, moves nothing.
+    host.emitEvent({
+      type: "notice",
+      level: "error",
+      message: "Could not save the session",
+      source: "session-persistence",
+    });
+    await ticks();
+    expect(heard.filter((payload) => payloadKind(payload) === "moved")).toEqual([]);
+    const copyThread = ThreadId.parse("omp-session-moved");
+    const copyFile = SessionFilePath.parse("/workspace/a0-7/.omp/moved.jsonl");
+    host.identity = { threadId: copyThread, sessionFile: copyFile };
+    host.emitEvent({
+      type: "notice",
+      level: "warning",
+      message: "Session moved to a new file",
+      source: "session-persistence",
+    });
+    await ticks();
+    expect(heard.filter((payload) => payloadKind(payload) === "moved")).toEqual([
+      { kind: "moved", threadId: copyThread, sessionFile: copyFile },
+    ]);
+    // The old id still reaches the chat.
+    expect(
+      await getHandler(handlers, "request")(request(authorityThread, "get_state"), call("one")),
+    ).toMatchObject({ sessionId: copyThread });
+    unsubscribe();
+  });
+
+  test("opening the chat opens the copy omp moved it to, and a second open joins it", async () => {
+    const files = join(scratch, "sessions");
+    await mkdir(files, { recursive: true });
+    const header = (id: string, at: string, continues?: string): string =>
+      JSON.stringify({
+        type: "session",
+        version: 3,
+        id,
+        timestamp: at,
+        cwd: folder,
+        ...(continues === undefined ? {} : { parentSession: continues, continuationOf: continues }),
+      });
+    const message = (at: string): string =>
+      JSON.stringify({ type: "message", id: at, timestamp: at, message: { role: "user" } });
+    const oldFile = join(files, "2026-11-01T00-00-00-000Z_old-chat.jsonl");
+    const copyFile = join(files, "2026-11-01T00-05-00-000Z_moved-chat.jsonl");
+    await writeFile(
+      oldFile,
+      `${header("old-chat", "2026-11-01T00:00:00.000Z")}\n${message("2026-11-01T00:01:00.000Z")}\n`,
+    );
+    await writeFile(
+      copyFile,
+      `${header("moved-chat", "2026-11-01T00:05:00.000Z", "old-chat")}\n${message("2026-11-01T00:06:00.000Z")}\n`,
+    );
+    const created: FakeChatHost[] = [];
+    const copy = {
+      threadId: ThreadId.parse("moved-chat"),
+      sessionFile: SessionFilePath.parse(copyFile),
+    };
+    const runtimeContext: A0PortContext = {
+      ...context(created, copy),
+      resolveThread: async (threadId) => ({
+        ...bootstrap,
+        threadId,
+        sessionFile: SessionFilePath.parse(oldFile),
+        args: ["--resume", oldFile],
+      }),
+    };
+    const handlers = handlersFor(runtimeContext);
+    const opened = await getHandler(handlers, "open")(
+      { threadId: ThreadId.parse("old-chat") },
+      call("one"),
+    );
+    expect(opened).toMatchObject(copy);
+    expect(created[0]?.args).toEqual(["--resume", copyFile]);
+    const again = await getHandler(handlers, "open")(
+      { threadId: ThreadId.parse("old-chat") },
+      call("two"),
+    );
+    expect(again).toMatchObject(copy);
+    expect(created).toHaveLength(1);
   });
 });
 

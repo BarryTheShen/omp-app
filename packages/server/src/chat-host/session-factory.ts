@@ -99,7 +99,6 @@ import {
 } from "@oh-my-pi/pi-coding-agent/session/auth-broker-config";
 import type { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { describePendingToolCalls } from "@oh-my-pi/pi-coding-agent/session/exit-diagnostics";
-import { loadRuntimeIdentity } from "@oh-my-pi/pi-coding-agent/session/runtime-identity";
 import type { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import {
   cfgExternalThinking,
@@ -198,7 +197,6 @@ export async function createChatSession(
 
   const modelRegistry = new ModelRegistry(authStorage, undefined, { settings });
   const credentialScopedCaches = modelRegistry.hydrateCredentialScopedModelCaches();
-  const runtimeIdentity = loadRuntimeIdentity();
   Bun.env.PI_NO_PTY = "1";
   // No `PI_NO_TITLE`: omp names the chat (`autoTitle` below, #2798).
   initializeWithSettings(settings);
@@ -220,7 +218,6 @@ export async function createChatSession(
   await credentialScopedCaches;
   let scopedModels = await resolveScopedModels(parsed, modelRegistry, settings);
   normalizeContinueSessionArgs(parsed, args);
-  await runtimeIdentity;
 
   if (parsed.fromClaude || parsed.fromCodex) {
     throw new SessionResolutionError(
@@ -386,6 +383,11 @@ export async function createChatSession(
     if ((parsed.models ?? cfgEnabledModels.get(settings)).length > 0) {
       await rebuildScopedModels(session, parsed, modelRegistry, settings);
     }
+    // omp 18.18.2: a sign-in or sign-out refreshes the chat's own model list through this (`logoutCredential`, the
+    // login flow); without it the list keeps a removed provider's models until the chat restarts.
+    session.setScopedModelsRefresher(async () => {
+      await rebuildScopedModels(session, parsed, modelRegistry, settings);
+    });
     watchScopedModelSettings(session, parsed, modelRegistry, settings);
     for (const warning of modelRegistry.drainConfigWarnings()) notice(`Warning: ${warning}`);
     if (!session.model) {

@@ -26,9 +26,8 @@ bun run build
 
 install -d "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/omp-app" "$stage/usr/share/omp-app" \
   "$stage/usr/lib/systemd/user" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/scalable/apps"
-bun build --compile --minify --target=bun-linux-x64 \
-  --define "OMP_APP_VERSION=\"$version\"" \
-  packages/server/scripts/omp-app.ts --outfile "$stage/usr/bin/omp-app"
+# The app's command (packages/server/scripts/build-server.ts), with omp's native addon embedded.
+bun packages/server/scripts/build-server.ts "$version" "$stage/usr/bin/omp-app"
 # The chat host every chat runs (packages/server/scripts/build-chat-host.ts), compiled by the Bun omp's release is built
 # with: CHAT_HOST_BUN names it (release.yml installs it), else the `bun` on PATH. The script refuses any other Bun.
 "${CHAT_HOST_BUN:-bun}" packages/server/scripts/build-chat-host.ts "$stage/usr/lib/omp-app/chat-host"

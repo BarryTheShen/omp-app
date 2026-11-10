@@ -67,7 +67,7 @@ Each release also carries the extensions that show the app's chat in other apps 
 
 ## Project status
 
-The app runs the omp release it pins, omp **18.12.6** (the `@oh-my-pi/pi-coding-agent` package in [`packages/server/package.json`](packages/server/package.json)), and no other. Features are switched on by the capabilities omp reports when a session starts, not by version numbers.
+The app runs the omp release it pins, omp **18.18.5** (the `@oh-my-pi/pi-coding-agent` package in [`packages/server/package.json`](packages/server/package.json)), and no other. Features are switched on by the capabilities omp reports when a session starts, not by version numbers.
 
 It is a personal project, used and tested on Ubuntu (GNOME) and, as a Home Screen app over [Tailscale](https://tailscale.com), on iPhone and iPad. Issues and pull requests are open to collaborators only. Report a security problem through [SECURITY.md](SECURITY.md), not in an issue.
 

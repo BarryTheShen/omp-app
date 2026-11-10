@@ -33,9 +33,7 @@ triple=$(rustc -vV | sed -n 's/^host: //p')
 rm -rf "$crate/resources" "$crate/binaries"
 mkdir -p "$crate/resources" "$crate/binaries"
 cp -r apps/ui/dist "$crate/resources/ui"
-bun build --compile --minify --target=bun-linux-x64 \
-  --define "OMP_APP_VERSION=\"$version\"" \
-  packages/server/scripts/omp-app.ts --outfile "$crate/binaries/omp-app-desktop-server-$triple"
+bun packages/server/scripts/build-server.ts "$version" "$crate/binaries/omp-app-desktop-server-$triple"
 
 # The chat host every chat runs (packages/server/scripts/build-chat-host.ts) is a resource too (resources/chat-host),
 # compiled by the Bun omp's release is built with: CHAT_HOST_BUN names it (desktop.yml and release.yml install it), else

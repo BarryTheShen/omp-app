@@ -32,7 +32,7 @@ The window needs glibc 2.39, which Ubuntu 24.04 has. The package declares that d
    . "$HOME/.cargo/env"
    ```
 
-3. Bun 1.3.14, the version `release.yml` uses, and Bun 1.4.3 for the chat host: the Bun omp's release is built with (`packages/server/scripts/build-chat-host.ts` names it and refuses another). Unpack Bun 1.4.3 anywhere, for example from `https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64.zip`, and name it in `CHAT_HOST_BUN`.
+3. Bun 1.3.14, the version `release.yml` uses, and Bun 1.4.4 for the chat host: the Bun omp's release is built with (`packages/server/scripts/build-chat-host.ts` names it and refuses another). Unpack Bun 1.4.4 anywhere, for example from `https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip`, and name it in `CHAT_HOST_BUN`.
 
 ## Build the package
 
@@ -40,7 +40,7 @@ From the repository root:
 
 ```
 bun install --frozen-lockfile
-CHAT_HOST_BUN=/path/to/bun-1.4.3/bun bash packaging/build-desktop-deb.sh 0.1.451
+CHAT_HOST_BUN=/path/to/bun-1.4.4/bun bash packaging/build-desktop-deb.sh 0.1.451
 ```
 
 The package lands in `dist/desktop/omp-app-desktop_0.1.451_amd64.deb`, with `SHA256SUMS` next to it.

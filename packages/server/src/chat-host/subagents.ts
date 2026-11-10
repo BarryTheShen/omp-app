@@ -10,7 +10,7 @@
 import * as fs from "node:fs/promises";
 import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { AgentSessionHandle } from "@oh-my-pi/pi-coding-agent/session/agent-session-handle";
 import { USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages";
 import type {
   FileEntry,
@@ -272,7 +272,7 @@ export class SubagentRoster {
 /** A running subagent of this session, with its live session (`resolveOwnedLiveSubagent`). */
 interface OwnedSubagent {
   readonly ref: AgentRef;
-  readonly session: AgentSession;
+  readonly session: AgentSessionHandle;
 }
 
 /**
@@ -326,7 +326,7 @@ export async function steerSubagent(
   const notRunning = new Error(`Subagent not running: ${id}`);
   const owned = ownedRunning(roster, id);
   if (!owned) throw notRunning;
-  let session: AgentSession;
+  let session: AgentSessionHandle;
   try {
     session = await AgentLifecycleManager.global().ensureLive(id);
   } catch {

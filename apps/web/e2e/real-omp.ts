@@ -134,8 +134,12 @@ export interface RealApp {
   readonly appDataDir: string;
   /** The agent folder for this run (omp's own folder): its config.yml is the settings file a test may write. */
   readonly agentDir: string;
-  /** Stops the app's server and starts it again on the same port and data. Returns the new launch link, with a new token; the old link expires. */
-  readonly restartServer: () => Promise<string>;
+  /**
+   * Stops the app's server and starts it again on the same port and data. Returns the new launch link, with a new token;
+   * the old link expires. `env` sets variables of this and later starts, such as another chat host
+   * (`OMP_APP_CHAT_HOST_BIN`, an install of another omp).
+   */
+  readonly restartServer: (env?: Readonly<Record<string, string>>) => Promise<string>;
   /** Console errors and uncaught page errors from every page opened so far. A test must end clean. */
   readonly problems: readonly string[];
   /** The process ids of the chat processes (each chat's host on omp's SDK) the app's server has running right now. */
@@ -522,7 +526,9 @@ const server = await createCompositionServer({
   homeDir: ${JSON.stringify(join(root, "home"))},
   agentDir: ${JSON.stringify(join(root, "agent"))},
   appDataDir: ${JSON.stringify(join(root, "app-data"))},
-  ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
+  // omp's commands come from the chat host this server runs (\`OMP_APP_CHAT_HOST_BIN\`), as an install's do; a spec's
+  // \`ompBinary\` replaces them.
+  ompBin: ${options.ompBinary === undefined ? "undefined" : JSON.stringify(options.ompBinary)},
   chatWrapper: ${options.chatWrapper === undefined ? "undefined" : JSON.stringify(options.chatWrapper)},
   ompArgs: ${options.noModel || !options.defaultModel ? "[]" : '["--model", "fake/fake-model"]'},
   fileWatch,
@@ -709,12 +715,17 @@ export const realTest = test.extend<{
     if (noModel)
       for (const key of Object.keys(inherited)) if (key.endsWith("_API_KEY")) delete inherited[key];
     // The running app's own settings on this computer (the address other computers open it at, the pages that frame
-    // it, its chat hosts) never reach a test's server: only a spec's `serverEnv` sets them.
+    // it, its chat hosts) never reach a test's server: only a spec's `serverEnv` sets them. Nor do the variables the app
+    // gives its chats' omp, which a shell inside one of them has: its settings overlay (`PI_CONFIG_FILES`, the app's
+    // usage policy) and that chat's session (`PI_SESSION_FILE`, `PI_SESSION_ID`).
     for (const key of [
       "OMP_APP_REMOTE_ORIGIN",
       "OMP_APP_FRAME_ANCESTORS",
       "OMP_APP_HOST_SOCKET",
       "OMP_APP_DETACHED_HOSTS",
+      "PI_CONFIG_FILES",
+      "PI_SESSION_FILE",
+      "PI_SESSION_ID",
     ])
       delete inherited[key];
     const env = {
@@ -777,8 +788,9 @@ export const realTest = test.extend<{
         return page;
       };
       // A restart keeps the same data, workspace and port, so the app finds its saved state. It returns a new launch link.
-      const restartServer = async (): Promise<string> => {
+      const restartServer = async (next?: Readonly<Record<string, string>>): Promise<string> => {
         await stopChild(server?.process);
+        if (next !== undefined) Object.assign(env, next);
         server = await startServer(root, env, {
           idleCloseMs,
           seedSessions,

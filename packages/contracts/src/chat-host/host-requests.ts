@@ -11,6 +11,8 @@ import {
   ConfirmAnswer,
   type ConfirmDialog,
   type EditorDialog,
+  FormAnswer,
+  type FormDialog,
   type InputDialog,
   type SelectDialog,
   ValueAnswer,
@@ -32,6 +34,8 @@ export interface ChatHostHostMethodMap {
   readonly "ui.editor": { readonly params: EditorDialog; readonly result: ValueAnswer };
   /** Sent only after the server turned the ask dialog on (`set_ask_dialog`). */
   readonly "ui.ask": { readonly params: AskDialog; readonly result: AskAnswer };
+  /** omp's question form, read into data (`FormDialog`); sent only after the server turned it on (`set_form_dialog`). */
+  readonly "ui.form": { readonly params: FormDialog; readonly result: FormAnswer };
   readonly "ui.approve": { readonly params: ApproveDialog; readonly result: ApproveAnswer };
   readonly "tool.call": { readonly params: ToolCallRequest; readonly result: ToolCallAnswer };
   readonly "uri.read": { readonly params: UriReadRequest; readonly result: UriReadAnswer };
@@ -99,6 +103,7 @@ export const HOST_METHOD_ANSWERS: {
   "ui.input": ValueAnswer,
   "ui.editor": ValueAnswer,
   "ui.ask": AskAnswer,
+  "ui.form": FormAnswer,
   "ui.approve": ApproveAnswer,
   "tool.call": ToolCallAnswer,
   "uri.read": UriReadAnswer,

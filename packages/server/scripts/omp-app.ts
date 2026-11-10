@@ -4,7 +4,7 @@
  * at its address, and keeps one instance per user. `packaging/build-deb.sh` compiles this file into
  * the .deb; from a source checkout, run `bun run build && bun packages/server/scripts/omp-app.ts`.
  */
-import { existsSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
@@ -35,7 +35,13 @@ import {
   startOrAttach,
   USAGE,
 } from "../src/launcher/launcher";
-import { tuiCommands, tuiEnvironment, tuiSessionName } from "../src/launcher/tui";
+import {
+  TUI_SETTINGS,
+  tuiCommands,
+  tuiEnvironment,
+  tuiSessionName,
+  tuiSettingsFile,
+} from "../src/launcher/tui";
 import {
   buildDebugReport,
   createLogger,
@@ -183,11 +189,17 @@ if (args.command === "tui") {
       );
     }
   }
+  // Written each start, so a removed or edited file comes back as the app needs it.
+  const appData = appDataFolder(Bun.env, home);
+  mkdirSync(appData, { recursive: true });
+  const settingsFile = tuiSettingsFile(appData);
+  writeFileSync(settingsFile, TUI_SETTINGS);
   const commands = tuiCommands({
     tmux,
     folder,
     omp: ompCommand({ binary: chatHost }),
     ompArgs: args.ompArgs,
+    settingsFile,
     env: tuiEnvironment(Bun.env, ompSearchPath(home, Bun.env.PATH, existsSync)),
     insideTmux: (Bun.env.TMUX ?? "") !== "",
     running,

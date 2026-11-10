@@ -118,8 +118,10 @@ const ResumeSchema = z.strictObject({
 });
 
 /**
- * The cached facts of one chat file, keyed by its real path. `updatedAt`, `summary` and `resume` are each optional. The
- * first two were read from the file in `identity`; `resume` is checked against the file's bytes before it is used.
+ * The cached facts of one chat file, keyed by its real path. `updatedAt`, `summary`, `resume` and `continues` are each
+ * optional. The first two were read from the file in `identity`; `resume` is checked against the file's bytes before it
+ * is used. `continues` is what the file's header says it continues (`continuation.ts`), null for none: a header never
+ * changes while the file keeps its inode, so it is kept while the file grows.
  */
 const SummaryCacheEntrySchema = z
   .strictObject({
@@ -128,10 +130,17 @@ const SummaryCacheEntrySchema = z
     updatedAt: z.string().optional(),
     summary: StoredSummarySchema.optional(),
     resume: ResumeSchema.optional(),
+    continues: z
+      .strictObject({ continues: z.string().min(1), movedAtMs: z.number() })
+      .nullable()
+      .optional(),
   })
   .refine(
     (entry) =>
-      entry.updatedAt !== undefined || entry.summary !== undefined || entry.resume !== undefined,
+      entry.updatedAt !== undefined ||
+      entry.summary !== undefined ||
+      entry.resume !== undefined ||
+      entry.continues !== undefined,
   );
 
 const CacheFileSchema = z.strictObject({

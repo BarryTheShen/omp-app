@@ -1087,6 +1087,14 @@ export interface ChatHostMethodMap {
     readonly params: EnabledParams;
     readonly result: { readonly enabled: boolean };
   };
+  /**
+   * Turns the host's `ui.form` dialog on or off: omp's question form (its `ask`, omp 18.18.3) as one card; off, omp asks
+   * field by field with selects and editors. A host that predates it refuses the method, and omp asks field by field.
+   */
+  readonly set_form_dialog: {
+    readonly params: EnabledParams;
+    readonly result: { readonly enabled: boolean };
+  };
   readonly get_login_providers: {
     readonly params: EmptyParams;
     readonly result: { readonly providers: readonly LoginProvider[] };
@@ -1344,6 +1352,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   fork: ForkParams,
   navigate_tree: EntryParams,
   set_ask_dialog: EnabledParams,
+  set_form_dialog: EnabledParams,
   get_login_providers: EmptyParams,
   login: LoginParams,
   cancel_sign_in: EmptyParams,

@@ -36,8 +36,13 @@ export class PlanMode {
   readonly #changed: (status: PlanModeStatus) => void;
   /** Stops the running turn as the user's Stop does. */
   readonly #interrupt: () => Promise<void>;
-  /** The tools before plan mode turned on, for the way back (the terminal's `#planModePreviousToolPresentation`). */
-  #toolsBefore: { readonly enabled: string[]; readonly mounted: string[] } | undefined;
+  /**
+   * The tools before plan mode turned on, for the way back (the terminal's `#planModePreviousToolPresentation`):
+   * `registered` is every tool the session had then, so one registered during plan mode stays on afterwards (omp 18.18).
+   */
+  #toolsBefore:
+    | { readonly enabled: string[]; readonly mounted: string[]; readonly registered: string[] }
+    | undefined;
   /** Plan mode was on before in this session: omp tells the model it is coming back to a plan (`reentry`). */
   #plannedBefore = false;
 
@@ -218,6 +223,7 @@ export class PlanMode {
     if (previousState?.enabled) return;
     const previousTools = session.getEnabledToolNames();
     const previousMounted = session.getMountedXdevToolNames();
+    const previousRegistered = session.getAllToolNames();
     // The plan is drafted with `write` and submitted by a `write` to `xd://propose`, so the built-in `write` stays; an
     // extension's `write` cannot submit a plan and would break plan mode's read-only guard (`interactive-mode.ts:5170-5192`).
     const planTools = [
@@ -243,6 +249,7 @@ export class PlanMode {
     this.#toolsBefore = {
       enabled: previousTools.filter((name) => !isMCPToolName(name)),
       mounted: previousMounted.filter((name) => !isMCPToolName(name)),
+      registered: previousRegistered,
     };
     session.setPlanProposalHandler((planTitle) => session.preparePlanForReview(planTitle));
     // A run already going learns about plan mode at once, as in the terminal.
@@ -271,7 +278,7 @@ export class PlanMode {
           options.forceRead && !before.enabled.includes("read")
             ? [...before.enabled, "read"]
             : before.enabled;
-        await session.restoreNonMCPToolPresentation(enabled, before.mounted);
+        await session.restoreNonMCPToolPresentation(enabled, before.mounted, before.registered);
       }
     } catch (error) {
       session.setPlanModeState(state);

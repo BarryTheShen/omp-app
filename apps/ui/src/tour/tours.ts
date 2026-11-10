@@ -824,6 +824,22 @@ const ONE_ROW_TOUR: Tour = {
   ],
 };
 
+/** omp's questions as one card, on omp 18.18.5 (2026-11-10). */
+const OMP_FORM_TOUR: Tour = {
+  id: "omp-form-2026-11-10",
+  title: "omp's questions in one card",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Every question in one card",
+      text: "When omp asks, its questions come above the message box as one card, in the order asked, each under its heading: round marks, tick boxes, lists, boxes to write in and pictures. What omp ticked for you is already ticked, <b>Other…</b> takes your own answer, and omp's checks show under a question. <b>Submit</b> or Enter sends them all; <b>Skip</b> or Esc leaves them unanswered; <b>Hide</b> folds the card to one line.",
+      action: next,
+    },
+  ],
+};
+
 /** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
 const INTEGRATIONS_TOUR: Tour = {
   id: "integrations-2026-11-09",
@@ -2534,6 +2550,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-10-omp-18-18",
+    when: "2026-11-10T03:00:00-06:00",
+    summary:
+      "Your chats run on omp 18.18.5. omp's questions come as one card above the message box: every question of an ask in the order asked, each under its heading, with round marks, tick boxes, lists, boxes to write in and pictures, omp's checks under a question, and Submit for them all. Nothing the question's author wrote can run in the page. A web search's card names the search engines that failed before one answered. Settings has omp's new settings, among them Prewalk planning model and Prewalk target, Restricted Folders and Per-Call Model; omp's Auto Update is not offered, and omp-app tui never updates the app's omp. Settings → Providers signs in to Devin, also with the Devin command line's login or with Windsurf Enterprise. A chat that another omp held, and that omp moved to a new file, opens as one chat. Answers from OpenAI and Codex models are shorter, as omp's Text Verbosity is low by default now.",
+    tours: [OMP_FORM_TOUR],
+  },
   {
     id: "2026-11-09-one-row",
     when: "2026-11-09T21:30:00-06:00",

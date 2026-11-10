@@ -5,7 +5,7 @@ How to set up a checkout, run the app from source, and work on each part. For ho
 ## Prerequisites
 
 - **[Bun](https://bun.sh) 1.3.14 or later.** The repository is a Bun workspace; the release workflow builds with exactly 1.3.14. Bun is the only package manager, runtime and test runner for the packages.
-- **Bun 1.4.3, only to build the chat host.** The chat host is compiled with the Bun release that omp's own release is built with, and `packages/server/scripts/build-chat-host.ts` refuses any other (`CHAT_HOST_BUN_VERSION` in `packages/server/scripts/chat-host-bun.ts`). You need it to build a package, and the end-to-end tests fetch it for you (see [testing.md](testing.md#the-variables-used-only-by-tests-and-the-build)). Running from source does not need it.
+- **Bun 1.4.4, only to build the chat host.** The chat host is compiled with the Bun release that omp's own release is built with, and `packages/server/scripts/build-chat-host.ts` refuses any other (`CHAT_HOST_BUN_VERSION` in `packages/server/scripts/chat-host-bun.ts`). You need it to build a package, and the end-to-end tests fetch it for you (see [testing.md](testing.md#the-variables-used-only-by-tests-and-the-build)). Running from source does not need it.
 - **Rust (stable), only for the desktop window** in `apps/desktop`, with `rustfmt` and `clippy`, and the Linux libraries Tauri 2 needs. The exact packages and commands are in [apps/desktop/README.md](../apps/desktop/README.md).
 - **Google Chrome, and Playwright's WebKit,** only for the end-to-end tests. The specs run in the system's Chrome; the specs whose names end in `-webkit` run in Playwright's WebKit, which you install once with `bunx playwright install webkit` in `apps/web`.
 
@@ -45,10 +45,10 @@ bun run dev
 `bun run dev` builds the UI, then runs `packages/server/scripts/dev.ts`. That script is the server's composition root (`createCompositionServer`): when run directly it starts the real server and prints the app's link, `http://127.0.0.1:4317/#token=<token>`. Open it in a browser. What to know:
 
 - **The port** is 4317, or the value of `OMP_APP_PORT`. Unlike the `omp-app` command, this entry does not look for a free port. If the app is already running on 4317 (the installed user service, for example), stop it first with `systemctl --user stop omp-app`, or give the source run another port.
-- **Which omp.** The omp package pinned in `packages/server/package.json`, from your `node_modules`, run on the Bun that runs the server: omp's command line answers omp's own commands, and each chat runs `packages/server/src/chat-host/main.ts` on that Bun. That is for development only; the installed app runs one compiled chat host. To run chats on a compiled one, build it with Bun 1.4.3 and name it:
+- **Which omp.** The omp package pinned in `packages/server/package.json`, from your `node_modules`, run on the Bun that runs the server: omp's command line answers omp's own commands, and each chat runs `packages/server/src/chat-host/main.ts` on that Bun. That is for development only; the installed app runs one compiled chat host. To run chats on a compiled one, build it with Bun 1.4.4 and name it:
 
   ```bash
-  /path/to/bun-1.4.3/bun packages/server/scripts/build-chat-host.ts /path/to/chat-host
+  /path/to/bun-1.4.4/bun packages/server/scripts/build-chat-host.ts /path/to/chat-host
   OMP_APP_CHAT_HOST_BIN=/path/to/chat-host bun run dev
   ```
 - **Your own chats and settings.** The server uses your home folder: omp's agent folder (`~/.omp/agent`, or `PI_CODING_AGENT_DIR`) and the app data folder in it (`app`, or `OMP_APP_DATA_DIR`). Chats you start are real chats in your own folders. To keep a source run apart from them, point `PI_CODING_AGENT_DIR` at another folder; omp then finds none of your settings (`config.yml`) or model definitions (`models.yml`) there.

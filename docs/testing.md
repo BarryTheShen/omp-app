@@ -6,7 +6,7 @@ The kinds of test the repository has, what each needs, and how to run it. To set
 |---|---|---|---|
 | Unit tests | `packages/*`, `apps/ui` | `bun run test` | Bun |
 | Real-omp tests | `packages/server/test/e2e`, one in `packages/server/src/process` | `OMP_APP_REAL_OMP=1 bun test <file>` | Bun, `bun` on the path |
-| End-to-end specs | `apps/web/e2e` | `OMP_APP_REAL_OMP=1 bunx playwright test <spec>` in `apps/web` | The built UI, Chrome, Bun, and the network on the first run (to fetch Bun 1.4.3) |
+| End-to-end specs | `apps/web/e2e` | `OMP_APP_REAL_OMP=1 bunx playwright test <spec>` in `apps/web` | The built UI, Chrome, Bun, and the network on the first run (to fetch Bun 1.4.4) |
 | Package checks | `packaging/*.sh`, `apps/desktop/src-tauri` | CI and the commands in [releasing.md](releasing.md) | A built package, a virtual display |
 
 None of the slower kinds runs unless asked. A bare `bun run test` starts no real omp and no browser.
@@ -100,15 +100,17 @@ Words that start subagents (the `task` tool). The child's own task text carries 
 | `spawn_intent_subagent [n]`, `spawn_foreground_intent [n]` | Starts a child that runs one bash step with an intent for `n` seconds (6 by default); the second child blocks its parent |
 | `spawn_slow_with_sleep` | Starts a slow worker and a 10-second bash call in one message |
 
-Words that make the model ask the person a question (the `ask` tool):
+Words that make the model ask the person a question (the `ask` tool, which takes one HTML form):
 
-| Word | The question |
+| Word | The form |
 |---|---|
 | `ask_user` | "Which database?", Postgres or SQLite |
-| `ask_recommended` | The same, with SQLite recommended |
-| `ask_three` | Three questions with short headers, descriptions, a preview, one with several answers, and a recommended answer |
-| `ask_six` | Six questions with longer headers, more tabs than a narrow chat fits |
-| `ask_long_word` | One question whose text, an option label and an option description each hold a 100-character word |
+| `ask_recommended` | The same, with SQLite ticked when it opens |
+| `ask_three` | Three questions, each under its own heading: one with several answers, one ticked when it opens |
+| `ask_six` | Six questions, each under its own heading: more than a short chat shows at once |
+| `ask_long_word` | One question whose text and an option label each hold a 100-character word |
+| `ask_checked` | A required number between 1 and 8, and a required choice |
+| `ask_unsafe` | A script, click and error handlers and a remote style sheet beside a question and a picture |
 | `checkbox_ask_one`, `checkbox_ask_two` | A multi-select question "Which tools should run?", alone, or after a single-choice one |
 
 Words that make a plan (plan mode): `plan_propose` writes a plan to `local://fix-the-login-plan.md` and submits it for review; `plan_write_outside` tries to write a file outside the plan, which omp's plan-mode guard refuses.
@@ -142,7 +144,7 @@ The specs in `apps/web/e2e` open the real app in a browser, on the real server a
 ### How a run is put together
 
 - **Build the UI first.** The server serves `apps/ui/dist`, so run `bun run build` at the root after any UI change.
-- **The global setup** (`apps/web/e2e/global-setup.ts`) runs once before the workers start. When `OMP_APP_REAL_OMP=1` and `OMP_APP_CHAT_HOST_BIN` is not set, it builds the compiled chat host and puts its path in `OMP_APP_CHAT_HOST_BIN`, which the workers inherit, so every live test runs the program the packages ship. The build is kept in `.data/chat-host` in the checkout (or in `OMP_APP_CHAT_HOST_DIR`), under a name made from a hash of `bun.lock`, the build script, `chat-host-bun.ts`, the sources of the chat host and of `packages/contracts`, and the manifests of `packages/server` and `packages/contracts`; it is rebuilt only when one of them changes, and a lock folder keeps parallel runs from building it twice. The build needs Bun 1.4.3: `OMP_APP_CHAT_HOST_BUN` names one, otherwise the setup downloads it once from Bun's releases and checks it against the release's `SHASUMS256.txt`.
+- **The global setup** (`apps/web/e2e/global-setup.ts`) runs once before the workers start. When `OMP_APP_REAL_OMP=1` and `OMP_APP_CHAT_HOST_BIN` is not set, it builds the compiled chat host and puts its path in `OMP_APP_CHAT_HOST_BIN`, which the workers inherit, so every live test runs the program the packages ship. The build is kept in `.data/chat-host` in the checkout (or in `OMP_APP_CHAT_HOST_DIR`), under a name made from a hash of `bun.lock`, the build script, `chat-host-bun.ts`, the sources of the chat host and of `packages/contracts`, and the manifests of `packages/server` and `packages/contracts`; it is rebuilt only when one of them changes, and a lock folder keeps parallel runs from building it twice. The build needs Bun 1.4.4: `OMP_APP_CHAT_HOST_BUN` names one, otherwise the setup downloads it once from Bun's releases and checks it against the release's `SHASUMS256.txt`.
 - **The `realTest` fixture** (`apps/web/e2e/real-omp.ts`) gives each test a `realApp`: a fresh composed app. Without `OMP_APP_REAL_OMP=1` every `realTest` is skipped.
 - **Throwaway folders.** Each test makes a folder `real-omp-e2e-<random>` under `.data` in the checkout (git-ignored) with `home`, `agent`, `app-data`, `workspace`, `other-workspace` and `logs` in it, and runs everything with `HOME`, `PI_CODING_AGENT_DIR` and `OMP_APP_DATA_DIR` set to those, so a test never touches your own omp settings or chats. It starts the fake model for the agent folder, then a server (`createCompositionServer`) on a free port with `--model fake/fake-model`, and removes the folder at the end. omp's own chat naming is off (`PI_NO_TITLE=1`) unless a spec turns it back on.
 - **A test must end clean.** `realApp.problems` collects every console error and uncaught page error; the test fails if any remain that `realApp.allowProblem` did not allow.
@@ -177,10 +179,10 @@ These are not settings for a person running the app (those are in [configuration
 | `OMP_APP_REAL_OMP` | `1` turns on the tests that start a real chat host: the real-omp tests and every `realTest` spec. It also makes the e2e global setup build the compiled chat host. |
 | `OMP_APP_CHAT_HOST_BIN` | The path of a compiled chat host. The server and the `omp-app` launcher run it as omp (the launcher falls back to the installed one, and from source to the chat host's entry on Bun), and the desktop window sets it to its bundled one. The e2e global setup sets it for the workers; set it yourself to use a host you built. |
 | `OMP_APP_CHAT_HOST_DIR` | Where the e2e global setup keeps compiled chat hosts and the Bun it downloads. Default: `.data/chat-host` in the checkout. |
-| `OMP_APP_CHAT_HOST_BUN` | The Bun 1.4.3 binary the e2e global setup compiles the chat host with. Without it the setup downloads one. (The packaging scripts and the workflows use `CHAT_HOST_BUN` for the same purpose.) |
+| `OMP_APP_CHAT_HOST_BUN` | The Bun 1.4.4 binary the e2e global setup compiles the chat host with. Without it the setup downloads one. (The packaging scripts and the workflows use `CHAT_HOST_BUN` for the same purpose.) |
 | `OMP_APP_PROBE_SECRET` | Set by one unit test (`packages/server/src/modules/A1/config/omp-defaults.test.ts`) as a canary. It checks that the probe of omp's setting defaults runs omp in its own home, agent and temporary folders with none of the server's environment, so the canary must not reach the probe. No app code reads it. |
 | `OMP_APP_HOST_SOCKET` | The socket a detached chat host listens on, as an older server passed it in the environment. `packages/server/src/chat-host/chat.ts` still reads it when `--app-host-socket=<path>` is absent. It is one of the server's own switches that never reach a chat's environment, and `d2-detached-hosts.test.ts` checks that. |
-| `OMP_APP_VERSION` | Not an environment variable: a constant that `bun build --compile --define` writes into the `omp-app` command in `packaging/build-deb.sh` and `packaging/build-desktop-deb.sh`. It is the version `omp-app --version` prints; from source it is `dev`. |
+| `OMP_APP_VERSION` | Not an environment variable: a constant that `packages/server/scripts/build-server.ts` writes into the `omp-app` command it compiles for `packaging/build-deb.sh` and `packaging/build-desktop-deb.sh`. It is the version `omp-app --version` prints; from source it is `dev`. |
 | `OMP_APP_UI_ROOT` | The folder of the built UI that the `omp-app` launcher serves. The launcher looks there first, then beside the installed command, then in the checkout's `apps/ui/dist`. The desktop window sets it to its bundled UI when it starts its server. |
 
 Other switches the tests use: `OMP_APP_DETACHED_HOSTS=1` (hosts that outlive the server) and `OMP_APP_NEW_CHATS_READY=1` (keep a new chat ready; off in tests unless set), `OMP_APP_HANDBACK_MS` (how long a detached host waits for its server before it hands its chat back), `OMP_APP_SHARE_ADDRESS` (the address shares open at, in place of the computer's Tailscale address), `OMP_APP_BROWSER_NO_SANDBOX=1` (the app's Chrome without its sandbox, for a container that cannot start it), `OMP_APP_VSCODE` and `OMP_APP_VSCE` (a VS Code for Linux and the command that packs its extension, for `v2-vscode-real.spec.ts`), `E2E_WORKERS`, `FAKE_OPENAI_ENABLE_RULES` and `FAKE_EXTRA_MODELS` (the fake model).

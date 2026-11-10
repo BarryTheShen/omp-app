@@ -55,7 +55,11 @@ realTest.describe("new UI Agent Hub", () => {
       );
 
       await agent.getByRole("button", { name: "Kill" }).click();
-      await expect(agent.getByText("aborted", { exact: true })).toBeVisible({ timeout: 30_000 });
+      // The agent's status chip. omp 18.18 also ends its log with the stopped reply's own line ("aborted", "Request was
+      // aborted"), as a stopped reply in a chat shows.
+      await expect(agent.locator(".ag-chip", { hasText: /^aborted$/ })).toBeVisible({
+        timeout: 30_000,
+      });
       await expect(agent.getByRole("button", { name: "Kill" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "1 agent", exact: true })).toBeVisible();
 

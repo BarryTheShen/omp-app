@@ -4,4 +4,4 @@
  * compiled runs as that Bun with this variable set. On another Bun each chat kept about 130 MB more memory (SDK plan, H0).
  * Change it with the omp package; `release.yml` and `desktop.yml` download the same version.
  */
-export const CHAT_HOST_BUN_VERSION = "1.4.3";
+export const CHAT_HOST_BUN_VERSION = "1.4.4";

@@ -12,6 +12,7 @@ import {
   type ExtensionAskDialogQuestion,
   type ExtensionAskDialogResult,
   type ExtensionAskDialogSubmitResult,
+  type ExtensionFormDialogResult,
   type ExtensionUIContext,
   type ExtensionUIDialogOptions,
   type ExtensionUISelectItem,
@@ -33,6 +34,7 @@ import {
   type UiEvent,
   type ValueAnswer,
 } from "@omp-app/contracts/chat-host";
+import { formData, readForm, untouchedFormData } from "./form";
 
 interface PendingRequest {
   readonly method: ChatHostHostMethod;
@@ -245,6 +247,8 @@ export class HostUIContext implements ExtensionUIContext {
   readonly supportsEditor = true;
   /** Set by `set_ask_dialog`. Off, omp asks with selects and editors. */
   askDialogEnabled = false;
+  /** Set by `set_form_dialog`. Off, omp asks a form's fields one at a time with selects and editors. */
+  formDialogEnabled = false;
   /**
    * The app the message being read was sent from (a message's `host`, such as the lite view's `siyuan`), while the
    * extensions' `input` hooks run (`loop.ts` readMessage); null otherwise, and for a message from the full app. Not in
@@ -253,12 +257,19 @@ export class HostUIContext implements ExtensionUIContext {
   messageHost: string | null = null;
   readonly #requests: HostRequests;
   readonly #emit: (event: UiEvent) => void;
+  /** The chat's folder: a form's pictures with a relative path are read from it, as omp reads them. */
+  readonly #cwd: () => string;
   /** The statuses, widgets and title on show, by key, for a server that attaches later (`shown`, D2). */
   readonly #shown = new Map<string, UiEvent>();
 
-  constructor(requests: HostRequests, emit: (event: UiEvent) => void) {
+  constructor(
+    requests: HostRequests,
+    emit: (event: UiEvent) => void,
+    cwd: () => string = () => process.cwd(),
+  ) {
     this.#requests = requests;
     this.#emit = emit;
+    this.#cwd = cwd;
   }
 
   /** What extensions put on show and did not clear: statuses, widgets, the title, as their last events said. */
@@ -276,6 +287,11 @@ export class HostUIContext implements ExtensionUIContext {
   get askDialog(): ExtensionUIContext["askDialog"] {
     if (!this.askDialogEnabled) return undefined;
     return (questions, options) => this.#ask(questions, options);
+  }
+
+  get formDialog(): ExtensionUIContext["formDialog"] {
+    if (!this.formDialogEnabled) return undefined;
+    return (html, options) => this.#form(html, options);
   }
 
   select(
@@ -418,6 +434,44 @@ export class HostUIContext implements ExtensionUIContext {
     return timedOut ? timedOutAskDialogResult(questions) : result;
   }
 
+  /**
+   * omp's question form as one card (`form.ts`): its data, never its HTML. A timeout sends the form as it was offered,
+   * as omp's own form does; a page's countdown sends it as the person left it.
+   */
+  async #form(
+    html: string,
+    dialogOptions?: ExtensionUIDialogOptions,
+  ): Promise<ExtensionFormDialogResult | undefined> {
+    const read = await readForm(html, this.#cwd(), dialogOptions?.signal);
+    let timedOut = false;
+    const options: DialogOptions = {
+      ...dialogOptions,
+      onTimeout: () => {
+        timedOut = true;
+        dialogOptions?.onTimeout?.();
+      },
+    };
+    const result = await openDialog(
+      this.#requests,
+      this.#emit,
+      "ui.form",
+      { ...read.dialog, ...timeoutOf(dialogOptions) },
+      options,
+      undefined,
+      (answer): ExtensionFormDialogResult | undefined => {
+        if ("cancelled" in answer) {
+          if (answer.timedOut) options.onTimeout?.();
+          return undefined;
+        }
+        return {
+          data: formData(read.form, answer.fields),
+          ...(answer.timedOut === true ? { timedOut: true } : {}),
+        };
+      },
+    );
+    return timedOut ? { data: untouchedFormData(read.form), timedOut: true } : result;
+  }
+
   notify(message: string, type?: "info" | "warning" | "error"): void {
     this.#emit({ type: "ui_notify", message, ...(type ? { notifyType: type } : {}) });
   }
@@ -474,6 +528,18 @@ export class HostUIContext implements ExtensionUIContext {
 
   onTerminalInput(): () => void {
     return () => {};
+  }
+
+  /**
+   * omp's transcript presenters, assistant-text renderers and link hints draw omp's terminal transcript; the app draws its
+   * own, so these do what omp's RPC mode does (18.18.5 `modes/rpc/rpc-mode.ts`): nothing, and no link clicks.
+   */
+  rerenderMessage(): void {}
+
+  refreshTranscript(): void {}
+
+  getLinkClicksAvailable(): boolean {
+    return false;
   }
 
   setWorkingMessage(): void {}

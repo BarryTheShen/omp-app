@@ -79,6 +79,7 @@ import {
   type CommandSessionEvent,
   withAdmission,
 } from "../../modules/A1/gateway/command-session";
+import { newestCopy } from "../../modules/A1/sessions/continuation";
 import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
@@ -115,6 +116,8 @@ interface ChatEntry {
   hostRegistrations: Promise<void>;
   /** The app turned omp's ask dialog on; a replaced process is told again. */
   askDialogOptedIn: boolean;
+  /** The app turned omp's form card on (`set_form_dialog`); a replaced process that answers the method is told again. */
+  formDialogOptedIn: boolean;
   /** Each connection's subagent level and message updates; the chat's host gets them as one (`#arbitrate`). */
   readonly preferences: Map<string, Preference>;
   /** What the chat's host was told; undefined until it is, and again once its process is replaced. */
@@ -789,7 +792,8 @@ export class ChatSessionPortRuntime {
         if (result.cancelled) throw cancelled("Starting a new chat was cancelled.");
         identity = await this.#identity(entry);
       }
-      this.#rekey(entry, "threadId" in args ? args.threadId : undefined, identity);
+      // A chat opened by its id opens as the bootstrap says: its newest copy, when omp moved it (`#resolveBootstrap`).
+      this.#rekey(entry, "threadId" in args ? entry.bootstrap.threadId : undefined, identity);
       step("identified");
     } catch (error) {
       // A cancelled open leaves a chat another view still watches running: only this open's view goes.
@@ -1112,6 +1116,11 @@ export class ChatSessionPortRuntime {
     if (method === "set_ask_dialog") {
       entry.askDialogOptedIn = (
         params.value as ChatHostMethodMap["set_ask_dialog"]["params"]
+      ).enabled;
+    }
+    if (method === "set_form_dialog") {
+      entry.formDialogOptedIn = (
+        params.value as ChatHostMethodMap["set_form_dialog"]["params"]
       ).enabled;
     }
     if (SESSION_SWITCH_METHODS.has(method)) {
@@ -1445,6 +1454,7 @@ export class ChatSessionPortRuntime {
       hostUriSchemes: new Map(),
       hostRegistrations: Promise.resolve(),
       askDialogOptedIn: false,
+      formDialogOptedIn: false,
       preferences: new Map(),
       arbitration: Promise.resolve(),
       payloadListeners: new Set(),
@@ -1565,6 +1575,20 @@ export class ChatSessionPortRuntime {
       else entry.uiState.set(uiStateKey(event), { seq, event });
     } else if (event.type === "session_settled" && entry.restartWhenSettled === true) {
       void this.#restartIfSettled(entry);
+    } else if (
+      event.type === "notice" &&
+      event.source === "session-persistence" &&
+      event.level === "warning"
+    ) {
+      // omp moved the chat to a new file (another omp holds its file, or the file changed under it); omp's RPC mode says so
+      // with this notice (18.18.5 `modes/rpc/rpc-mode.ts`, `onPersistenceNotice`), as the host does. The chat goes on under
+      // its new id: every view follows (`moved`), and the old id stays an alias.
+      void this.#refreshIdentity(entry).catch((error: unknown) =>
+        this.#context.logger?.warn("chat_session.move_failed", {
+          threadId: entry.bootstrap.threadId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
     } else if (event.type === "question_record") {
       // Every chat's questions, for the dashboard: asked, answered and held, or sent.
       const { threadId, folderPath } = entry.bootstrap;
@@ -1699,9 +1723,21 @@ export class ChatSessionPortRuntime {
       if (!(await this.#hasSessionFile(resolved.sessionFile))) {
         throw notFound(`Session file not found: ${resolved.sessionFile}`);
       }
+      // omp moved the chat to another file while another omp held it: the newest copy is opened, as omp's own resume
+      // opens it, or joined when it runs here (`modules/A1/sessions/continuation.ts`). The open's answer names it.
+      const copy = await newestCopy(resolved.sessionFile, args.threadId);
+      const threadId = copy === undefined ? resolved.threadId : ThreadId.parse(copy.id);
+      if (copy !== undefined) {
+        const running = this.#entries.get(threadId);
+        if (running !== undefined) return running.bootstrap;
+      }
+      const sessionFile =
+        copy === undefined ? resolved.sessionFile : SessionFilePath.parse(copy.file);
       return {
         ...resolved,
-        args: ["--resume", resolved.sessionFile, ...modelArgs(args.model)],
+        threadId,
+        sessionFile,
+        args: ["--resume", sessionFile, ...modelArgs(args.model)],
         ...(args.model === undefined ? {} : { model: args.model }),
       };
     }
@@ -2053,6 +2089,9 @@ export class ChatSessionPortRuntime {
       }
     });
     if (entry.askDialogOptedIn) await this.#send(entry, "set_ask_dialog", { enabled: true });
+    if (entry.formDialogOptedIn && entry.methods.includes("set_form_dialog")) {
+      await this.#send(entry, "set_form_dialog", { enabled: true });
+    }
   }
 
   /** The entry a thread id names: its own, or the one it moved to by a session switch. */

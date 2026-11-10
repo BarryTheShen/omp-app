@@ -44,6 +44,7 @@ describe("tuiCommands", () => {
     folder: "/home/user/work/app",
     omp: ["/usr/lib/omp-app/chat-host"],
     ompArgs: ["--resume", "abc123"],
+    settingsFile: "/home/user/.omp/app/tui-settings.yml",
     env: { PATH: "/usr/bin", HOME: "/home/user" },
   };
   const name = tuiSessionName(base.folder);
@@ -52,6 +53,9 @@ describe("tuiCommands", () => {
     "PATH=/usr/bin",
     "HOME=/home/user",
     "/usr/lib/omp-app/chat-host",
+    // The app's settings first, so a `--config` of the user's own after `--` still applies.
+    "--config",
+    "/home/user/.omp/app/tui-settings.yml",
     "--resume",
     "abc123",
   ];

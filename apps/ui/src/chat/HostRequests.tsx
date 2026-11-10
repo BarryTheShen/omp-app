@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatController } from "./controller";
+import { FormDialog } from "./FormDialog";
 import { OptionText, QuestionsDialog } from "./QuestionsDialog";
 import { SignInPage } from "./SignInPage";
 
@@ -66,6 +67,16 @@ function RequestCard({
   if (request.method === "ui.ask")
     return (
       <QuestionsDialog
+        dialog={request.params}
+        busy={busy}
+        error={error}
+        waiting={waiting}
+        onAnswer={answer}
+      />
+    );
+  if (request.method === "ui.form")
+    return (
+      <FormDialog
         dialog={request.params}
         busy={busy}
         error={error}

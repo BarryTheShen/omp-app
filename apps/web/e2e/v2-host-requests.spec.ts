@@ -69,7 +69,7 @@ realTest.describe("new UI approvals and questions", () => {
   );
 
   realTest(
-    "asks omp's questions, marks the recommended answer, and sends one or several answers",
+    "asks omp's form: what the form ticks starts ticked, and one or several answers go",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
@@ -77,28 +77,20 @@ realTest.describe("new UI approvals and questions", () => {
       await send(page, "ask_recommended");
       await expect(questions).toBeVisible({ timeout: 60_000 });
       await expect(questions.getByText("Which database?")).toBeVisible();
-      await expect(questions.getByText("Recommended")).toBeVisible();
-      // One question: the button to go on reads Skip until an answer is chosen, then Submit.
-      const goOn = questions.getByRole("button", { name: /^(Skip|Submit)$/ });
-      await expect(goOn).toHaveText("Skip");
-      await questions.getByRole("radio", { name: "SQLite" }).click();
-      await expect(goOn).toHaveText("Submit");
-      await goOn.click();
+      // The form ticks SQLite: it starts ticked, and Submit sends it untouched.
+      await expect(questions.getByRole("radio", { name: "SQLite" })).toBeChecked();
+      await questions.getByRole("button", { name: "Submit" }).click();
       await expect(questions).toBeHidden();
       await expect(replies(page).last()).toContainText("SQLite", { timeout: 60_000 });
 
       await send(page, "checkbox_ask_two");
       await expect(questions).toBeVisible({ timeout: 60_000 });
-      // A click on a single answer chooses it and moves on to the next question, as in omp.
+      // Both questions in the one card, in the order asked.
+      await expect(questions.getByText("Which database?")).toBeVisible();
+      await expect(questions.getByText("Which tools should run?")).toBeVisible();
       await questions.getByRole("radio", { name: "Postgres" }).click();
-      await expect(questions.getByRole("tab", { name: /^tools/ })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
       await questions.getByRole("checkbox", { name: "Read" }).click();
       await questions.getByRole("checkbox", { name: "Bash" }).click();
-      await questions.getByRole("button", { name: "Next" }).click();
-      await expect(questions).toContainText("All answered · Submit sends them");
       await questions.getByRole("button", { name: "Submit" }).click();
       await expect(questions).toBeHidden();
       const last = replies(page).last();
@@ -155,125 +147,111 @@ realTest.describe("new UI approvals and questions", () => {
   });
 
   realTest(
-    "asks several questions one at a time, as omp does: a tab by header each, Next, Review, a note that reaches omp, and Submit (#2795)",
+    "asks several questions in one card, in the order asked, each under its heading, and sends what is answered",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
       await send(page, "ask_three");
       await expect(questions).toBeVisible({ timeout: 60_000 });
-      const tabs = questions.getByRole("tab");
-      await expect(tabs).toHaveText(["Database", "Tools", "Name", "Review"]);
-      // One question at a time; the recommended answer is marked, and the highlighted answer's preview shows.
-      await expect(questions.getByText("Which database?")).toBeVisible();
-      await expect(questions.getByText("Which tools should run?")).toHaveCount(0);
-      await expect(questions.getByText("Recommended")).toBeVisible();
-      await expect(questions.getByRole("region", { name: "Preview" })).toContainText(
-        "preview-marker-3c9e",
+      const [database, tools, name] = ["Database", "Tools", "Name"].map((title) =>
+        questions.getByRole("region", { name: title }),
       );
-      // A click on an answer chooses it and moves on.
-      await questions.getByRole("radio", { name: "SQLite" }).click();
-      await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
-      await questions.getByRole("checkbox", { name: "Read" }).click();
-      await questions.getByRole("checkbox", { name: "Bash" }).click();
-      await questions.getByRole("button", { name: "Note" }).click();
-      await questions
-        .getByRole("textbox", { name: "Note on your answer" })
-        .fill("only the safe ones");
-      await questions.getByRole("button", { name: "Next" }).click();
-      await expect(questions.getByText("What should the file be called?")).toBeVisible();
-      await questions.getByRole("button", { name: "Skip", exact: true }).click();
-      // Review: what is unanswered, then every answer; Submit still sends the rest.
-      await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true");
-      await expect(questions).toContainText("1 unanswered · Submit still sends the rest");
-      await expect(questions).toContainText("Read, Bash · note: only the safe ones");
-      await expect(questions).toContainText("Unanswered");
-      // A tab goes back, and the answer is still there.
-      await tabs.nth(0).click();
-      await expect(questions.getByRole("radio", { name: "SQLite" })).toBeChecked();
-      await tabs.nth(3).click();
+      if (database === undefined || tools === undefined || name === undefined)
+        throw new Error("three parts");
+      const tops: number[] = [];
+      for (const part of [database, tools, name]) {
+        await expect(part).toBeAttached();
+        tops.push(await part.evaluate((element) => element.getBoundingClientRect().top));
+      }
+      expect([...tops].sort((a, b) => a - b)).toEqual(tops);
+      await expect(database.getByRole("radio", { name: "SQLite" })).toBeChecked();
+      await tools.getByRole("checkbox", { name: "Read" }).click();
+      await tools.getByRole("checkbox", { name: "Bash" }).click();
+      // The file's name is left unanswered: the form goes without one.
       await questions.getByRole("button", { name: "Submit" }).click();
       await expect(questions).toBeHidden();
       const reply = replies(page).last();
       await expect(reply).toContainText("SQLite", { timeout: 60_000 });
-      await expect(reply).toContainText("note: only the safe ones");
+      await expect(reply).toContainText("Read");
+      await expect(reply).toContainText("Bash");
+      await expect(reply).not.toContainText("notes.md");
       expect(realApp.problems).toEqual([]);
     },
   );
 
   realTest(
-    "one button goes on: Skip while a question has no answer, Next once it has one; the note's × removes the note (#2803, #2804)",
+    "the card refuses what omp's form refuses, in omp's words, and a number reaches omp as a number",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
-      await send(page, "ask_three");
+      await send(page, "ask_checked");
       await expect(questions).toBeVisible({ timeout: 60_000 });
-      const tabs = questions.getByRole("tab");
-      const goOn = questions.getByRole("button", { name: /^(Skip|Next)$/ });
-
-      // Tools, several answers: nothing ticked reads Skip, a tick reads Next, no tick again reads Skip.
-      await tabs.nth(1).click();
-      await expect(goOn).toHaveText("Skip");
-      const read = questions.getByRole("checkbox", { name: "Read" });
-      await read.click();
-      await expect(goOn).toHaveText("Next");
-      await read.click();
-      await expect(goOn).toHaveText("Skip");
-      // Skip leaves the question unanswered and goes on to the next one; the questions stay.
-      await goOn.click();
-      await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
-      await expect(questions.getByText("What should the file be called?")).toBeVisible();
-
-      // The note's × takes the note away, box and all.
-      await questions.getByRole("button", { name: "Note" }).click();
-      const note = questions.getByRole("textbox", { name: "Note on your answer" });
-      await note.fill("never mind");
-      await questions.getByRole("button", { name: "Remove the note" }).click();
-      await expect(note).toHaveCount(0);
+      const submit = questions.getByRole("button", { name: "Submit" });
+      await submit.click();
+      await expect(questions.getByText("Required", { exact: true })).toHaveCount(2);
+      const workers = questions.getByRole("spinbutton", { name: "Workers" });
+      await workers.fill("9");
+      await questions.getByRole("radio", { name: "Postgres" }).click();
+      await submit.click();
+      await expect(questions.getByText("Must be at most 8")).toBeVisible();
+      await expect(questions).toBeVisible();
+      await workers.fill("4");
+      await submit.click();
+      await expect(questions).toBeHidden();
+      const reply = replies(page).last();
+      await expect(reply).toContainText('"workers": 4', { timeout: 60_000 });
+      await expect(reply).toContainText('"db": "Postgres"');
       expect(realApp.problems).toEqual([]);
     },
   );
 
   realTest(
-    "more question tabs than fit: the selected one comes into view, and the wheel scrolls the row sideways (#2802)",
+    "a form's own script, click handler and remote style do nothing in the page; its picture shows",
     async ({ realApp }) => {
       const page = await newChat(realApp);
-      await page.setViewportSize({ width: 640, height: 720 });
+      const alerts: string[] = [];
+      page.on("dialog", (dialog) => {
+        alerts.push(dialog.message());
+        void dialog.dismiss();
+      });
+      const remote: string[] = [];
+      page.on("request", (request) => {
+        if (request.url().includes("remote-style")) remote.push(request.url());
+      });
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
-      await send(page, "ask_six");
+      await send(page, "ask_unsafe");
       await expect(questions).toBeVisible({ timeout: 60_000 });
-      const row = questions.getByRole("tablist", { name: "Questions" });
-      const tabs = questions.getByRole("tab");
-      await expect(tabs).toHaveCount(7);
-      expect(await row.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-
-      // Skip, to the last question: its tab is in view, not beyond the row's end.
-      for (let step = 0; step < 5; step += 1) {
-        await questions.getByRole("button", { name: "Skip", exact: true }).click();
-      }
-      await expect(tabs.nth(5)).toHaveAttribute("aria-selected", "true");
-      await expect(tabs.nth(5)).toBeInViewport({ ratio: 1 });
-
-      // Back to the first, then the wheel turned over the row scrolls it sideways.
-      await tabs.nth(0).click();
-      await expect(tabs.nth(0)).toBeInViewport({ ratio: 1 });
-      const before = await row.evaluate((element) => element.scrollLeft);
-      await row.hover();
-      await page.mouse.wheel(0, 240);
-      await expect
-        .poll(() => row.evaluate((element) => element.scrollLeft))
-        .toBeGreaterThan(before);
+      // The form's own style would hide its text; the card draws it.
+      await expect(questions.getByText("Which database?")).toBeVisible();
+      await questions.getByText("Which database?").click();
+      await expect(questions.getByRole("img", { name: "A dot" })).toHaveAttribute(
+        "src",
+        /^data:image\/png;base64,/,
+      );
+      expect(await questions.locator("script, link, style, [onclick], [onerror]").count()).toBe(0);
+      expect(
+        await page.evaluate(() => {
+          const marks = window as unknown as Record<string, unknown>;
+          return [marks.formScriptRan, marks.formClickRan, marks.formErrorRan];
+        }),
+      ).toEqual([undefined, undefined, undefined]);
+      await questions.getByRole("radio", { name: "Postgres" }).click();
+      await questions.getByRole("button", { name: "Submit" }).click();
+      await expect(replies(page).last()).toContainText("Postgres", { timeout: 60_000 });
+      expect(alerts).toEqual([]);
+      expect(remote).toEqual([]);
       expect(realApp.problems).toEqual([]);
     },
   );
 
   realTest(
-    "takes at most about half the chat and scrolls inside; Hide folds it to one line until Show, Alt+H too; omp's keys answer (#2795)",
+    "takes at most about half the chat and scrolls inside; Hide folds it to one line until Show, Alt+H too; Esc skips (#2795)",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       await page.setViewportSize({ width: 1280, height: 480 });
       const questions = page.getByRole("dialog", { name: "Questions from omp" });
       const folded = page.getByRole("region", { name: "Questions from omp, hidden" });
-      await send(page, "ask_three");
+      await send(page, "ask_six");
       await expect(questions).toBeVisible({ timeout: 60_000 });
 
       // At most about half the chat's height, the rest scrolling inside it; the conversation keeps at least a quarter.
@@ -289,21 +267,18 @@ realTest.describe("new UI approvals and questions", () => {
       expect(transcriptBox.height).toBeGreaterThanOrEqual(columnBox.height * 0.25 - 1);
       expect(
         await questions
-          .getByRole("tabpanel")
-          .evaluate((panel) => panel.scrollHeight > panel.clientHeight),
+          .locator("[data-form-body]")
+          .evaluate((body) => body.scrollHeight > body.clientHeight),
       ).toBe(true);
 
       // Hide folds the questions into one line; Show brings them back as they were.
-      await questions.getByRole("radio", { name: "SQLite" }).click();
+      await questions.getByRole("radio", { name: "This way" }).first().click();
       await questions.getByRole("button", { name: "Hide" }).click();
       await expect(questions).toBeHidden();
-      await expect(folded).toContainText("Which tools should run?");
-      await expect(folded).toContainText("+2 more");
+      await expect(folded).toContainText("Drop sections: which way?");
+      await expect(folded).toContainText("+5 more");
       await folded.getByRole("button", { name: "Show" }).click();
-      await expect(questions.getByRole("tab", { name: /^Tools/ })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
+      await expect(questions.getByRole("radio", { name: "This way" }).first()).toBeChecked();
       // Alt+H from the message box hides them, and shows them again.
       const box = page.getByRole("textbox", { name: "Message" });
       await box.press("Alt+h");
@@ -311,26 +286,8 @@ realTest.describe("new UI approvals and questions", () => {
       await box.press("Alt+h");
       await expect(questions).toBeVisible();
 
-      // omp's keys: Enter chooses the focused answer and moves on, Shift+Tab goes back, N opens a note, Esc closes an
-      // empty note and then skips.
-      await questions.getByRole("tab", { name: /^Database/ }).click();
-      await questions.getByRole("radio", { name: "Postgres" }).focus();
-      await page.keyboard.press("Enter");
-      await expect(questions.getByRole("tab", { name: /^Tools/ })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-      await page.keyboard.press("Shift+Tab");
-      await expect(questions.getByRole("tab", { name: /^Database/ })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-      await expect(questions.getByRole("radio", { name: "Postgres" })).toBeChecked();
-      await page.keyboard.press("n");
-      const note = questions.getByRole("textbox", { name: "Note on your answer" });
-      await expect(note).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(note).toHaveCount(0);
+      // Esc skips the form, as Esc does in omp.
+      await questions.getByRole("radio", { name: "That way" }).first().focus();
       await page.keyboard.press("Escape");
       await expect(questions).toBeHidden();
       await expect(folded).toHaveCount(0);
@@ -391,8 +348,8 @@ realTest.describe("new UI approvals and questions", () => {
       expect(dialogBox.x).toBeGreaterThanOrEqual(0);
       expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(390);
       expect(dialogBox.height).toBeLessThanOrEqual(paneBox.height * 0.7 + 1);
-      // Every button of the bar is on screen and can be tapped; with no answer yet, the one to go on reads Skip.
-      for (const name of ["Hide", "Note", "Skip"]) {
+      // Every button of the bar is on screen and can be tapped.
+      for (const name of ["Hide", "Skip", "Submit"]) {
         await expect(questions.getByRole("button", { name, exact: true })).toBeInViewport();
       }
       await questions.getByRole("button", { name: "Hide", exact: true }).tap();
@@ -428,7 +385,7 @@ realTest.describe("new UI approvals and questions", () => {
       await expect(asked(second)).toBeHidden({ timeout: 30_000 });
       // The page that did not answer closes it too, and both show the answer.
       await expect(asked(first)).toBeHidden({ timeout: 10_000 });
-      await expect(first.getByText(/User selected: Postgres/)).toBeVisible({ timeout: 30_000 });
+      await expect(replies(first).last()).toContainText("Postgres", { timeout: 30_000 });
       expect(realApp.problems).toEqual([]);
     },
   );

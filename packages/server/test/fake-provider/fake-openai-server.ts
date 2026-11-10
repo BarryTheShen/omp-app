@@ -36,6 +36,35 @@ const LONG_PROVIDER_ERROR = "The fake provider rejected this request. ".repeat(6
 const PLAN_SLUG = "fix-the-login";
 const PLAN_TEXT = "# Fix the login\n\n1. Read the login form.\n2. Fix the password check.\n";
 
+/** One question of an `ask` form: round marks (or tick boxes when `multi`), the option at `checked` ticked first. */
+interface FormQuestion {
+  readonly name: string;
+  /** The fieldset's legend. */
+  readonly title?: string;
+  readonly question: string;
+  readonly options: readonly string[];
+  readonly multi?: boolean;
+  readonly checked?: number;
+}
+
+/** omp's `ask` takes one HTML form (omp 18.18.3): a fieldset per question, each option's label its value. */
+function askForm(questions: readonly FormQuestion[]): { readonly html: string } {
+  const fieldset = (question: FormQuestion): string => {
+    const type = question.multi === true ? "checkbox" : "radio";
+    const options = question.options
+      .map(
+        (label, index) =>
+          `<label><input type="${type}" name="${question.name}" value="${label}"${
+            question.checked === index ? " checked" : ""
+          }> ${label}</label>`,
+      )
+      .join("");
+    const legend = question.title === undefined ? "" : `<legend>${question.title}</legend>`;
+    return `<fieldset>${legend}<p>${question.question}</p>${options}</fieldset>`;
+  };
+  return { html: `<form>${questions.map(fieldset).join("")}</form>` };
+}
+
 function text(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -761,36 +790,28 @@ function reply(request: Request): Reply {
   if (prompt.includes("checkbox_ask_two"))
     return {
       tool: "ask",
-      args: {
-        questions: [
-          {
-            id: "db",
-            question: "Which database?",
-            options: [{ label: "Postgres" }, { label: "SQLite" }],
-          },
-          {
-            id: "tools",
-            question: "Which tools should run?",
-            options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
-            multi: true,
-          },
-        ],
-      },
+      args: askForm([
+        { name: "db", question: "Which database?", options: ["Postgres", "SQLite"] },
+        {
+          name: "tools",
+          question: "Which tools should run?",
+          options: ["Read", "Grep", "Bash"],
+          multi: true,
+        },
+      ]),
       thinking: "I need to ask two questions.",
     };
   if (prompt.includes("checkbox_ask_one"))
     return {
       tool: "ask",
-      args: {
-        questions: [
-          {
-            id: "tools",
-            question: "Which tools should run?",
-            options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
-            multi: true,
-          },
-        ],
-      },
+      args: askForm([
+        {
+          name: "tools",
+          question: "Which tools should run?",
+          options: ["Read", "Grep", "Bash"],
+          multi: true,
+        },
+      ]),
       thinking: "I need to ask which tools to run.",
     };
   if (prompt.includes("stream_math")) return { text: STREAMED_MATH_REPLY, streamed: true };
@@ -798,113 +819,111 @@ function reply(request: Request): Reply {
   if (prompt.includes("ask_user"))
     return {
       tool: "ask",
-      args: {
-        questions: [
-          {
-            id: "db",
-            question: "Which database?",
-            options: [{ label: "Postgres" }, { label: "SQLite" }],
-          },
-        ],
-      },
+      args: askForm([{ name: "db", question: "Which database?", options: ["Postgres", "SQLite"] }]),
       thinking: "I need to ask.",
     };
   if (prompt.includes("ask_recommended"))
     return {
       tool: "ask",
-      args: {
-        questions: [
-          {
-            id: "db",
-            question: "Which database?",
-            options: [{ label: "Postgres" }, { label: "SQLite" }],
-            recommended: 1,
-          },
-        ],
-      },
+      args: askForm([
+        { name: "db", question: "Which database?", options: ["Postgres", "SQLite"], checked: 1 },
+      ]),
       thinking: "I need to ask, and SQLite is the one I recommend.",
     };
-  // The question dialog (#2795): three questions with short headers, descriptions, a preview, one with several
-  // answers, and a recommended answer where there is one.
+  // Three questions in one form, each under its own heading: one with several answers, one already ticked.
   if (prompt.includes("ask_three"))
     return {
       tool: "ask",
-      args: {
-        questions: [
-          {
-            id: "db",
-            header: "Database",
-            question: "Which database?",
-            options: [
-              { label: "Postgres", description: "A server; best with many writers." },
-              {
-                label: "SQLite",
-                description: "One file; nothing to run.",
-                preview: 'preview-marker-3c9e: open("app.db")',
-              },
-            ],
-            recommended: 1,
-          },
-          {
-            id: "tools",
-            header: "Tools",
-            question: "Which tools should run?",
-            options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
-            multi: true,
-          },
-          {
-            id: "name",
-            header: "Name",
-            question: "What should the file be called?",
-            options: [{ label: "notes.md" }, { label: "plan.md" }],
-          },
-        ],
-      },
+      args: askForm([
+        {
+          name: "db",
+          title: "Database",
+          question: "Which database?",
+          options: ["Postgres", "SQLite"],
+          checked: 1,
+        },
+        {
+          name: "tools",
+          title: "Tools",
+          question: "Which tools should run?",
+          options: ["Read", "Grep", "Bash"],
+          multi: true,
+        },
+        {
+          name: "name",
+          title: "Name",
+          question: "What should the file be called?",
+          options: ["notes.md", "plan.md"],
+        },
+      ]),
       thinking: "I need to ask three questions.",
     };
-  // Issue #2802: six questions with longer headers, more tabs than a narrow chat fits in a row.
+  // Issue #2802: six questions, more than a short chat shows at once.
   if (prompt.includes("ask_six"))
     return {
       tool: "ask",
-      args: {
-        questions: [
+      args: askForm(
+        [
           "Drop sections",
           "Different behavior",
           "SiYuan-only",
           "Plugins",
           "Day one bar",
           "Review order",
-        ].map((header, index) => ({
-          id: `q${index}`,
-          header,
-          question: `${header}: which way?`,
-          options: [{ label: "This way" }, { label: "That way" }],
+        ].map((title, index) => ({
+          name: `q${index}`,
+          title,
+          question: `${title}: which way?`,
+          options: ["This way", "That way"],
         })),
-      },
+      ),
       thinking: "I need to ask six questions.",
     };
-  // Issue #1327: one question whose text, one option label and one option description each hold a 100-character
-  // word with no spaces. The ask dialog must wrap that word inside the dialog.
+  // Issue #1327: one question whose text and one option label each hold a 100-character word with no spaces. The
+  // form must wrap that word inside the card.
   if (prompt.includes("ask_long_word")) {
     const longWord =
       "some_very_long_snake_case_identifier_name_that_goes_on_and_on_and_on_for_quite_a_while_longer_or_not";
     return {
       tool: "ask",
-      args: {
-        questions: [
-          {
-            id: "db",
-            question: `Which ${longWord} should omp use?`,
-            options: [
-              { label: "Postgres", description: longWord },
-              { label: `SQLite ${longWord}` },
-            ],
-          },
-        ],
-      },
-      thinking: "I need to ask, and the long word is in the question, a label and a description.",
+      args: askForm([
+        {
+          name: "db",
+          question: `Which ${longWord} should omp use?`,
+          options: ["Postgres", `SQLite ${longWord}`],
+        },
+      ]),
+      thinking: "I need to ask, and the long word is in the question and a label.",
     };
   }
+  // omp's checks on a form: a required number between 1 and 8, and a required choice.
+  if (prompt.includes("ask_checked"))
+    return {
+      tool: "ask",
+      args: {
+        html:
+          '<form><label>Workers <input type="number" name="workers" min="1" max="8" required></label>' +
+          '<p>Which database?</p><label><input type="radio" name="db" value="Postgres" required> Postgres</label>' +
+          '<label><input type="radio" name="db" value="SQLite"> SQLite</label></form>',
+      },
+      thinking: "I need a number and a choice.",
+    };
+  // A form with what a page must never run: a script, handlers, a remote style sheet; and a picture as data.
+  if (prompt.includes("ask_unsafe"))
+    return {
+      tool: "ask",
+      args: {
+        html:
+          '<link rel="stylesheet" href="http://127.0.0.1:9/remote-style.css"><style>p { display: none }</style>' +
+          "<script>window.formScriptRan = true;</script>" +
+          '<form><p onclick="window.formClickRan = true">Which database?</p>' +
+          '<img alt="A dot" onerror="window.formErrorRan = true" src="data:image/png;base64,' +
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=">' +
+          '<label><input type="radio" name="db" value="Postgres"> Postgres</label>' +
+          '<label><input type="radio" name="db" value="SQLite"> SQLite</label></form>',
+      },
+      thinking: "I need to ask.",
+    };
   if (prompt.includes("make_todos"))
     return {
       tool: "todo",

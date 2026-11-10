@@ -39,6 +39,29 @@ export const AskAnswer = z.union([
 ]);
 export type AskAnswer = z.infer<typeof AskAnswer>;
 
+/**
+ * The answer to omp's form (`ui.form`), one entry per field in the form's order: a choice's ticked options (their
+ * indexes) and its Other… text, or a text field's text. The host makes omp's form data from it with omp's own rules
+ * (pi-tui `html-form/data.ts`: numbers, Other…, options that cannot be picked). `timedOut` when the page's countdown
+ * sent the form as it stood.
+ */
+export const FormAnswer = z.union([
+  z.object({
+    fields: z.array(
+      z.union([
+        z.object({
+          checked: z.array(z.number().int().nonnegative()),
+          other: z.string().optional(),
+        }),
+        z.object({ text: z.string() }),
+      ]),
+    ),
+    timedOut: z.boolean().optional(),
+  }),
+  Cancelled,
+]);
+export type FormAnswer = z.infer<typeof FormAnswer>;
+
 /** omp's approval answer: this call, this session, no, or one of the prompt's grants. */
 export const ApproveAnswer = z.union([
   z.enum(["once", "session", "deny"]),
@@ -89,6 +112,92 @@ export interface EditorDialog {
 
 export interface AskDialog extends Timed {
   readonly questions: readonly ExtensionAskDialogQuestion[];
+}
+
+/** A run of a form's text with its emphasis (omp's `FormSpan`); `"\n"` in `text` is a line break. */
+export interface FormSpan {
+  readonly text: string;
+  readonly style?: "code" | "strong" | "em";
+}
+
+/** One answer of a choice: its label, and whether it is ticked at the start or cannot be picked. */
+export interface FormChoiceOption {
+  readonly label: readonly FormSpan[];
+  readonly checked: boolean;
+  readonly disabled: boolean;
+}
+
+/** Round marks (`multi: false`), tick boxes (`multi: true`) or a list (`select`), with Other… when `other`. */
+export interface FormChoiceField {
+  readonly kind: "choice";
+  /** The question it answers, in one line, as omp words it (`fieldQuestions`): its label, else the text above it. */
+  readonly question: string;
+  readonly multi: boolean;
+  readonly select: boolean;
+  readonly other: boolean;
+  /** The control's own label; empty for round marks and tick boxes, whose question is the text above them. */
+  readonly label: readonly FormSpan[];
+  readonly options: readonly FormChoiceOption[];
+  readonly required: boolean;
+}
+
+/** A one-line box (`multiline: false`) or a box of several lines, with omp's checks on its text. */
+export interface FormTextField {
+  readonly kind: "text";
+  /** The question it answers, in one line, as omp words it (`fieldQuestions`): its label, else the text above it. */
+  readonly question: string;
+  /** The input's type (`text`, `number`, `email`, `url`, …); `textarea` for a box of several lines. */
+  readonly type: string;
+  readonly multiline: boolean;
+  readonly label: readonly FormSpan[];
+  /** The text it starts with. */
+  readonly value: string;
+  readonly placeholder: string;
+  readonly required: boolean;
+  readonly min?: number;
+  readonly max?: number;
+  readonly pattern?: string;
+  readonly minLength?: number;
+  readonly maxLength?: number;
+  /** The lines a box of several lines asked for; 1 for a one-line box. */
+  readonly rows: number;
+}
+
+export type FormField = FormChoiceField | FormTextField;
+
+/** What a form shows, in order: text, a list, preformatted text, a table, a picture, or one of its fields. */
+export type FormBlock =
+  | { readonly kind: "text"; readonly spans: readonly FormSpan[]; readonly heading: boolean }
+  | {
+      readonly kind: "list";
+      readonly items: readonly (readonly FormSpan[])[];
+      readonly ordered: boolean;
+    }
+  | { readonly kind: "pre"; readonly text: string }
+  | {
+      readonly kind: "table";
+      readonly rows: readonly (readonly (readonly FormSpan[])[])[];
+      readonly headerRows: number;
+    }
+  /** A picture the host loaded, as a `data:` URL; null when it could not, and `alt` says what it was. */
+  | { readonly kind: "image"; readonly src: string | null; readonly alt: string }
+  /** The field at this index of `fields`. */
+  | { readonly kind: "field"; readonly index: number };
+
+/** A part of the form: a titled `<fieldset>`, or untitled content between them. */
+export interface FormSection {
+  readonly title: readonly FormSpan[];
+  readonly blocks: readonly FormBlock[];
+}
+
+/**
+ * omp's question form (its `ask` tool, omp 18.18.3), as the host reads it with omp's own parser (pi-tui
+ * `html-form/parse.ts`): text, pictures and fields only. Nothing in it is HTML, so nothing the form's author wrote can
+ * run in a page; the pictures are `data:` URLs the host loaded, so no page fetches an address the form names.
+ */
+export interface FormDialog extends Timed {
+  readonly sections: readonly FormSection[];
+  readonly fields: readonly FormField[];
 }
 
 /** A tool approval with omp's own choices: `once` is always among them, so a host never matches labels to find it. */
