@@ -268,14 +268,20 @@ export interface EmbedChat {
     cancel: (requestId: string) => void,
   ): () => void;
   answerToolCall(id: string, answer: ToolCallAnswer): Promise<void>;
-  /** Hears the chat hold its view again on a link that came back, which took the tools the chat had on the old one. */
-  onRelinked(listener: () => void): () => void;
+  /** Whether the chat is open for this page on the server, which takes a page's tools only for a chat it holds open. */
+  readonly held: boolean;
+  /**
+   * Hears the chat be open for this page: after its open, after a link that came back (a dropped link took the tools the
+   * chat had on the old one), and after a new chat starts in its place.
+   */
+  onHeld(listener: () => void): () => void;
 }
 
 /**
- * Gives the chat the panel shows the host's tools, once it is open, again whenever they change and again on a link
- * that came back (a dropped link takes them off the chat), hands their calls to the host, and tells the host the chat
- * shows (`ready`). Returns what takes the tools back off the chat, as when the panel shows another one.
+ * Gives the chat the panel shows the host's tools once the server holds it open for this page, again whenever they
+ * change and again each time it is held anew (a dropped link takes them off the chat), hands their calls to the host,
+ * and tells the host the chat shows (`ready`). An open chat's id is known before its open answers; tools given then
+ * were refused, and never given again. Returns what takes the tools back off the chat, as when the panel shows another.
  */
 export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   let stopped = false;
@@ -286,7 +292,7 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   const sync = (): void => {
     const threadId = chat.threadId;
     const { host, tools } = endpoint.getSnapshot();
-    if (stopped || threadId === null || host === null) return;
+    if (stopped || threadId === null || host === null || !chat.held) return;
     if (registered?.tools === tools && registered.chat === threadId) return;
     registered = { tools, chat: threadId };
     writes = writes.then(async () => {
@@ -310,7 +316,7 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
     },
     (requestId) => endpoint.cancel(requestId),
   );
-  const stopRelinked = chat.onRelinked(() => {
+  const stopHeld = chat.onHeld(() => {
     registered = null;
     sync();
   });
@@ -320,7 +326,7 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
     stopChat();
     stopEmbed();
     stopCalls();
-    stopRelinked();
+    stopHeld();
     // A chat kept open behind the panel keeps no tool whose calls nothing here would hear.
     if (registered !== null) {
       void writes.then(() => chat.setHostTools(endpoint.owner, [])).catch(() => undefined);

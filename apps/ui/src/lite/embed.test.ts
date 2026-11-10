@@ -209,17 +209,21 @@ describe("the lite view's end of the embed protocol", () => {
   });
 });
 
-/** A chat that is not open yet: what the binding asked of it, and ways to open it and to bring its link back. */
+/**
+ * A chat that is not open yet: what the binding asked of it, and ways to know it by its id before its open answers (an
+ * existing chat), to open it and to bring its link back.
+ */
 function chat(): EmbedChat & {
   readonly given: (readonly string[])[];
   readonly answers: { id: string; answer: ToolCallAnswer }[];
+  know(threadId: string): void;
   open(threadId: string): void;
   relink(): void;
   emit(request: HostToolCall): void;
   emitCancel(id: string): void;
 } {
   const storeListeners = new Set<() => void>();
-  const relinkListeners = new Set<() => void>();
+  const heldListeners = new Set<() => void>();
   const callListeners = new Set<{
     call: (request: HostToolCall) => void;
     cancel: (id: string) => void;
@@ -227,9 +231,13 @@ function chat(): EmbedChat & {
   const given: (readonly string[])[] = [];
   const answers: { id: string; answer: ToolCallAnswer }[] = [];
   let threadId: string | null = null;
+  let held = false;
   return {
     get threadId() {
       return threadId;
+    },
+    get held() {
+      return held;
     },
     store: {
       subscribe: (listener) => {
@@ -249,18 +257,25 @@ function chat(): EmbedChat & {
     answerToolCall: async (id, answer) => {
       answers.push({ id, answer });
     },
-    onRelinked: (listener) => {
-      relinkListeners.add(listener);
-      return () => relinkListeners.delete(listener);
+    onHeld: (listener) => {
+      heldListeners.add(listener);
+      return () => heldListeners.delete(listener);
     },
     given,
     answers,
-    open(id) {
+    know(id) {
       threadId = id;
       for (const listener of [...storeListeners]) listener();
     },
+    open(id) {
+      threadId = id;
+      held = true;
+      for (const listener of [...heldListeners]) listener();
+      for (const listener of [...storeListeners]) listener();
+    },
     relink() {
-      for (const listener of [...relinkListeners]) listener();
+      held = true;
+      for (const listener of [...heldListeners]) listener();
     },
     emit(request) {
       for (const listener of [...callListeners]) listener.call(request);
@@ -315,6 +330,25 @@ describe("the chat the panel shows, bound to its host", () => {
     unbind();
     await ticks();
     expect(shown.given.at(-1)).toEqual([]);
+  });
+
+  test("gives an existing chat the host's tools only once its open has answered, not when its id is known before", async () => {
+    const { window, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    receive(hello({ tools: [READ_PAGE] }));
+    const shown = chat();
+    const unbind = bindChat(endpoint, shown);
+    // Known by its id while its open is on its way: the server refuses tools for a chat this page does not hold open,
+    // and a refused gift was never given again.
+    shown.know("thread-1");
+    await ticks();
+    expect(shown.given).toEqual([]);
+
+    shown.open("thread-1");
+    await ticks();
+    expect(shown.given).toEqual([["read_page"]]);
+    unbind();
   });
 
   test("gives the host's tools again once the chat holds its view on a link that came back, and tells the host", async () => {

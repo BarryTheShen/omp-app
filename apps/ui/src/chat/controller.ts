@@ -235,8 +235,14 @@ export class ChatController {
   readonly #stopResync: () => void;
   /** Stops following the link for what a dropped link lets go (`#holdAcrossLinks`). */
   readonly #stopRelink: () => void;
-  /** Told once this chat holds its view again on a link that came back: the embed gives its tools again. */
-  readonly #relinkListeners = new Set<() => void>();
+  /** Told each time this chat is open for this page on the server (`onHeld`): the embed gives its tools then. */
+  readonly #heldListeners = new Set<() => void>();
+  /**
+   * Whether the server has answered this page's open of the chat on the current link: not before that open answers,
+   * nor once the link drops (which lets go of the view), the chat is kept unshown, or the chat is found gone. The server
+   * takes a page's tools only for a chat the page holds open.
+   */
+  #held = false;
   /** Stops following when the app continues this chat after a usage limit (#2781). */
   #stopContinue: (() => void) | null = null;
   /** Stops following this chat's usage pause (#2781 part 3). */
@@ -279,6 +285,7 @@ export class ChatController {
         async (failure: unknown) => {
           if (this.#disposed || !notOpenOnServer(failure)) return;
           this.#viewTaken = false;
+          this.#held = false;
           if (await this.#renewEmpty().catch(() => false)) return;
           if (this.#disposed) return;
           // Ended here, so the pane's fresh open makes a new controller instead of taking this one back from its cache.
@@ -310,6 +317,11 @@ export class ChatController {
 
   get threadId(): ThreadId | null {
     return this.#threadId;
+  }
+
+  /** Whether the chat is open for this page on the server (`#held`): the embed gives its tools only then. */
+  get held(): boolean {
+    return this.#held;
   }
 
   /** The chat's session file once omp named it; a new chat's is named when it opens, and written with omp's first reply. */
@@ -434,6 +446,7 @@ export class ChatController {
     this.#threadId = opened.threadId;
     if (this.target.kind === "new") this.#draft.keepFor(opened.threadId);
     this.#sessionFile = opened.sessionFile;
+    if (!this.#parked) this.#tellHeld();
     // Opened by its id alone (a chat from the list of what runs in every folder, a link on the dashboard): the open named
     // the file, whose window is read now, before the subscription, as when the file was known at the start. Without it a
     // saved chat that was not running showed no messages. A chat omp moved to another file opens as its newest copy,
@@ -1292,12 +1305,21 @@ export class ChatController {
     };
   }
 
-  /** Hears this chat hold its view again on a link that came back (`#holdAcrossLinks`); returns what stops it. */
-  onRelinked(listener: () => void): () => void {
-    this.#relinkListeners.add(listener);
+  /**
+   * Hears this chat be open for this page on the server: after its open, after a kept chat is shown again, after a link
+   * that dropped comes back, and after a new chat starts in its place (`#renewEmpty`). Returns what stops it.
+   */
+  onHeld(listener: () => void): () => void {
+    this.#heldListeners.add(listener);
     return () => {
-      this.#relinkListeners.delete(listener);
+      this.#heldListeners.delete(listener);
     };
+  }
+
+  /** The chat is open for this page on the server: tells `onHeld`. */
+  #tellHeld(): void {
+    this.#held = true;
+    for (const listener of [...this.#heldListeners]) listener();
   }
 
   /** Answers a call of one of this page's tools with what the host returned. */
@@ -1736,7 +1758,7 @@ export class ChatController {
     this.#openFrames = null;
     this.#stopResync();
     this.#stopRelink();
-    this.#relinkListeners.clear();
+    this.#heldListeners.clear();
     this.#stopContinue?.();
     this.#stopUsagePause?.();
     this.#stopShares?.();
@@ -1765,7 +1787,7 @@ export class ChatController {
     this.#parked = false;
     const threadId = this.#threadId;
     if (!this.#openAnswered || threadId === null || this.#viewTaken || this.#disposed) return;
-    await this.#takeViewBack(threadId);
+    if (await this.#takeViewBack(threadId)) this.#tellHeld();
   }
 
   /** Takes this pane's view of the chat back with an open of its own: whether it holds one after. */
@@ -1789,7 +1811,7 @@ export class ChatController {
   /**
    * A link that drops lets go of every view it held, with the message updates asked over it and the tools a page gave
    * the chat over it (the server's `releaseConnection`). Once the link is open again to the same server, a chat a pane
-   * shows takes its view back, asks for its message updates again and tells `onRelinked` (the embed gives its tools
+   * shows takes its view back, asks for its message updates again and tells `onHeld` (the embed gives its tools
    * again). A server that restarted is first asked whether it still has the chat (the resync's state read), so an open
    * here never starts a chat whose omp ended with the old server: that one the pane opens afresh. A kept chat takes its
    * view back when it is shown (`unpark`); a chat whose first open is still under way takes its view with that open.
@@ -1799,6 +1821,7 @@ export class ChatController {
     return this.client.onConnectionState((event) => {
       if (event.state !== "open") {
         if (this.#openAnswered) this.#viewTaken = false;
+        this.#held = false;
         away = true;
         return;
       }
@@ -1820,7 +1843,7 @@ export class ChatController {
     const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
     await chat.setEventOptions({ threadId, messageUpdates: "delta" }).catch(() => undefined);
     if (this.#disposed || this.#parked) return;
-    for (const listener of [...this.#relinkListeners]) listener();
+    this.#tellHeld();
   }
 
   /**
@@ -1835,7 +1858,11 @@ export class ChatController {
     if (failure.appError.code === "not_found") {
       // The server holds no view of a chat it no longer has.
       this.#viewTaken = false;
-      if (await this.#takeViewBack(threadId)) return true;
+      this.#held = false;
+      if (await this.#takeViewBack(threadId)) {
+        this.#tellHeld();
+        return true;
+      }
     }
     return this.#renewEmpty();
   }
@@ -1843,7 +1870,7 @@ export class ChatController {
   /**
    * A new chat with nothing in it yet that the server no longer has, or whose omp stopped before it was saved (an empty
    * chat leaves no file to open again), starts again in its place, in the same folder, and this window follows it: its
-   * view, its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onRelinked`).
+   * view, its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onHeld`).
    * What is typed stays in the box. Whether it was renewed.
    */
   async #renewEmpty(): Promise<boolean> {
@@ -1881,7 +1908,7 @@ export class ChatController {
     ]);
     if (this.#disposed) return false;
     this.#followAgents(opened.threadId).catch(() => undefined);
-    for (const listener of [...this.#relinkListeners]) listener();
+    this.#tellHeld();
     return true;
   }
 
@@ -1889,6 +1916,7 @@ export class ChatController {
   async #releaseView(threadId: ThreadId): Promise<void> {
     if (!this.#viewTaken) return;
     this.#viewTaken = false;
+    this.#held = false;
     // The server answers a chat it no longer has (deleted meanwhile) with nothing to do, and a lost connection has let
     // go of every view already, so a failure here leaves nothing held.
     await this.client
