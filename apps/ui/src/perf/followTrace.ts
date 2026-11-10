@@ -36,6 +36,12 @@ interface Internals {
   readonly getVirtualDistanceFromEnd?: () => number;
   readonly _getLayoutTotalSize?: () => number;
   readonly getSize?: () => number;
+  /** The last position read was past an edge (a bounce): nothing is written meanwhile. */
+  readonly _reportedOverscroll?: boolean;
+  /** The iOS touch gesture: a finger down, the glide after it, or a glide that may still report. */
+  readonly _iosGesture?: {
+    readonly touch?: { readonly phase?: string; readonly moved?: boolean } | null;
+  };
 }
 
 /** Where the list and its last drawn row are, from TanStack's numbers and the page's, each name led by `prefix`. */
@@ -196,4 +202,68 @@ export function useFollowTrace(
     }, SETTLE_MS);
     return () => window.clearTimeout(check);
   }, [atEnd, scrollRef, instance, holding, following]);
+}
+
+/** A correction held this long, with no scroll event for as long, is reported: it keeps rows out of the scroll's reach. */
+const HELD_MS = 1_500;
+const TOUCH_PHASES = ["down", "tail", "lateFling"];
+
+/**
+ * Reports a correction TanStack has held for `HELD_MS` while the transcript sat still: the rows above are drawn above
+ * its top then, out of reach. The report says what kept the write back (the last read past an edge, a touch gesture
+ * not over) and where the transcript is, so a case that still sticks on a device can be told from the log.
+ */
+export function useHoldTrace(
+  scrollRef: RefObject<HTMLElement | null>,
+  instance: Virtualizer<HTMLDivElement, Element>,
+): void {
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    let lastScroll = performance.now();
+    let heldSince: number | null = null;
+    let reported = false;
+    const onScroll = (): void => {
+      lastScroll = performance.now();
+    };
+    element.addEventListener("scroll", onScroll, { passive: true });
+    const timer = window.setInterval(() => {
+      const internals = instance as unknown as Internals;
+      const now = performance.now();
+      if ((internals._holdOffset ?? 0) === 0) {
+        heldSince = null;
+        reported = false;
+        return;
+      }
+      heldSince ??= now;
+      const report = sink;
+      if (report === null || reported || now - heldSince < HELD_MS || now - lastScroll < HELD_MS)
+        return;
+      if (reports >= MOST_REPORTS || now - lastReport < APART_MS) return;
+      reported = true;
+      reports += 1;
+      lastReport = now;
+      const touch = internals._iosGesture?.touch;
+      const top = element.scrollTop;
+      report({
+        marks: {
+          ...layout(element, instance, "at_"),
+          held_ms: Math.round(now - heldSince),
+          since_scroll_ms: Math.round(now - lastScroll),
+          overscroll: internals._reportedOverscroll === true ? 1 : 0,
+          touch:
+            touch === null || touch === undefined ? 0 : TOUCH_PHASES.indexOf(touch.phase ?? "") + 1,
+          touch_moved: touch?.moved === true ? 1 : 0,
+          past_top: top < 0 ? 1 : 0,
+          past_top_px: Math.round(Math.max(0, -top)),
+        },
+        gaps: [],
+        supported: ["hold-held", ...clientTags()],
+      });
+    }, 500);
+    return () => {
+      window.clearInterval(timer);
+      element.removeEventListener("scroll", onScroll);
+    };
+  }, [scrollRef, instance]);
 }

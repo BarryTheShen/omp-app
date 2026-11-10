@@ -305,19 +305,28 @@ const LONG_CHAT = Array.from({ length: 120 }, (_, index) => {
 /** What the test does with one of the page's reads of an older window: pass it on, or answer it with a failure. */
 type OlderRead = (pass: () => void, fail: () => void) => void;
 
+/** Safari on an iPhone: TanStack Virtual handles touches as iOS's from its user agent. */
+const IPHONE_SAFARI =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1";
+
 realTest.describe("new UI transcript: a long chat's earlier messages on a phone", () => {
   realTest.use({ seedEntries: { entries: LONG_CHAT } });
   realTest.setTimeout(240_000);
 
-  /** The app on a phone's screen with the long chat open at its end; `olderRead` sees each read of an older window. */
+  /**
+   * The app on a phone's screen with the long chat open at its end; `olderRead` sees each read of an older window. A
+   * `userAgent` makes the page another browser's.
+   */
   async function openLongChat(
     realApp: RealApp,
     browser: Browser,
     olderRead: OlderRead,
+    userAgent?: string,
   ): Promise<{ page: Page; context: BrowserContext }> {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
+      ...(userAgent === undefined ? {} : { userAgent }),
     });
     const page = await realApp.open({
       path: "/",
@@ -422,6 +431,71 @@ realTest.describe("new UI transcript: a long chat's earlier messages on a phone"
       await edge.getByRole("button", { name: "Try again" }).tap();
       await upTo(page, /^Beginning of the chat · Nov 1, 2026$/);
       await expect(transcript.getByText("Question 1:", { exact: false })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "on an iPhone, a swipe up that ends in a bounce at the top leaves every row above within reach once the scroll rests",
+    async ({ realApp, browser }) => {
+      const { page, context } = await openLongChat(
+        realApp,
+        browser,
+        (pass) => pass(),
+        IPHONE_SAFARI,
+      );
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      /** Rows drawn above the transcript's top: a bounce shows them, no scroll reaches them. */
+      const drawnAbove = (): Promise<number> =>
+        transcript.evaluate((element) => {
+          const top = (element.firstElementChild as HTMLElement).getBoundingClientRect().top;
+          return [...element.querySelectorAll("[data-index]")].filter(
+            (row) => row.getBoundingClientRect().top < top - 1,
+          ).length;
+        });
+      const finger = (down: boolean): Promise<void> =>
+        transcript.evaluate((element, isDown) => {
+          const touch = new Touch({ identifier: 1, target: element, clientX: 195, clientY: 400 });
+          const touches = isDown ? [touch] : [];
+          element.dispatchEvent(
+            new TouchEvent(isDown ? "touchstart" : "touchend", {
+              touches,
+              targetTouches: touches,
+              changedTouches: [touch],
+              bubbles: true,
+            }),
+          );
+        }, down);
+      await page.waitForTimeout(1_000);
+
+      // A finger drags the transcript up to the top of what is drawn. The rows above are measured on the way and the
+      // next older window is read; TanStack holds the corrections while the finger is down.
+      await finger(true);
+      for (let step = 0; step < 100; step += 1) {
+        const top = await transcript.evaluate((element) => {
+          element.scrollTop = Math.max(0, element.scrollTop - 800);
+          return element.scrollTop;
+        });
+        await page.waitForTimeout(30);
+        if (top === 0) break;
+      }
+
+      // The bounce at the top as an iPhone reports it: a position past the top as the finger lifts, read so again
+      // 150 ms after the last event, and the bounce settling at the top with no event after it.
+      await transcript.evaluate((element) => {
+        Object.defineProperty(element, "scrollTop", { configurable: true, get: () => -40 });
+        element.dispatchEvent(new Event("scroll"));
+      });
+      await finger(false);
+      await page.waitForTimeout(400);
+      await transcript.evaluate((element) => Reflect.deleteProperty(element, "scrollTop"));
+
+      // Once the scroll rests, nothing is drawn above the top and the transcript has room to scroll up.
+      await expect.poll(drawnAbove).toBe(0);
+      await expect
+        .poll(() => transcript.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0);
       expect(realApp.problems).toEqual([]);
       await context.close();
     },

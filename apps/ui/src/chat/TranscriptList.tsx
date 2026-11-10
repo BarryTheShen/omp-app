@@ -1,4 +1,4 @@
-import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, LoaderCircle } from "lucide-react";
 import {
@@ -14,7 +14,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { LiteContext } from "../lite/LiteContext";
-import { useFollowTrace } from "../perf/followTrace";
+import { useFollowTrace, useHoldTrace } from "../perf/followTrace";
 import { usePhone } from "../phone";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import {
@@ -226,6 +226,128 @@ function useStayAtEndWhenShorter(
   }, [scrollRef, instance]);
 }
 
+/**
+ * How long the transcript goes without a touch, a wheel or a scroll before it counts as at rest. Longer than the 150 ms
+ * TanStack waits after a touch's last scroll event, so its touch gesture has ended too and a write can land.
+ */
+const REST_MS = 250;
+
+/**
+ * Follows the reader's scroll. `moving` while a finger is on the transcript, a touch, a wheel or a scroll came less than
+ * `REST_MS` ago, the position still changes (the end of a glide can move less than a pixel a frame with no scroll event
+ * for a while), or it is past an edge (a bounce that has not settled). Once the scroll rests, `atRest` runs and the
+ * transcript is drawn again.
+ */
+function useReaderRest(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  atRest: RefObject<() => void>,
+): RefObject<boolean> {
+  const [, rest] = useReducer((count: number) => count + 1, 0);
+  const moving = useRef(false);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    let fingers = 0;
+    let last = Number.NEGATIVE_INFINITY;
+    let top = element.scrollTop;
+    let timer = 0;
+    const moved = (): void => {
+      last = performance.now();
+      top = element.scrollTop;
+      moving.current = true;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(check, REST_MS);
+    };
+    const check = (): void => {
+      if (fingers > 0) return;
+      const now = element.scrollTop;
+      const pastEdge = now < 0 || now > element.scrollHeight - element.clientHeight + 1;
+      if (pastEdge || Math.abs(now - top) >= 1) {
+        moved();
+        return;
+      }
+      const quiet = performance.now() - last;
+      if (quiet < REST_MS) {
+        timer = window.setTimeout(check, REST_MS - quiet);
+        return;
+      }
+      moving.current = false;
+      atRest.current();
+      rest();
+    };
+    const touched = (event: TouchEvent): void => {
+      fingers = event.touches.length;
+      moved();
+    };
+    const listening = { capture: true, passive: true } as const;
+    element.addEventListener("touchstart", touched, listening);
+    element.addEventListener("touchend", touched, listening);
+    element.addEventListener("touchcancel", touched, listening);
+    element.addEventListener("wheel", moved, listening);
+    element.addEventListener("scroll", moved, listening);
+    return () => {
+      window.clearTimeout(timer);
+      element.removeEventListener("touchstart", touched, { capture: true });
+      element.removeEventListener("touchend", touched, { capture: true });
+      element.removeEventListener("touchcancel", touched, { capture: true });
+      element.removeEventListener("wheel", moved, { capture: true });
+      element.removeEventListener("scroll", moved, { capture: true });
+    };
+  }, [scrollRef, atRest]);
+  return moving;
+}
+
+/**
+ * Older entries read while the reader scrolls (`moving`: a finger on the transcript, a swipe that still glides or
+ * bounces, a wheel) wait until the scroll rests before they go in above the line being read. Put in mid-scroll, that
+ * line can be kept where it is only by a scroll position written once the scroll ends: iOS ignores one written under a
+ * finger, a glide overrides it and a bounce drops it. TanStack holds the write until the touch gesture is over and draws
+ * the new rows above the transcript's top meanwhile, where they showed in the bounce but could not be scrolled to. At
+ * rest the write lands at once. Entries added at the end, and a transcript read anew, show at once. Returns the entries
+ * to draw and how many older ones wait.
+ */
+function useOlderAtRest(
+  entries: readonly SessionEntry[],
+  moving: RefObject<boolean>,
+): { readonly shown: readonly SessionEntry[]; readonly waiting: number } {
+  // The oldest entry drawn: entries in front of it came from an older window since the last render that drew them.
+  const first = useRef<SessionEntry | undefined>(undefined);
+  const older = first.current === undefined ? 0 : entries.indexOf(first.current);
+  const waiting = older > 0 && moving.current ? older : 0;
+  const shown = useMemo(
+    () => (waiting === 0 ? entries : entries.slice(waiting)),
+    [entries, waiting],
+  );
+  useLayoutEffect(() => {
+    first.current = shown[0];
+  });
+  return { shown, waiting };
+}
+
+/** TanStack Virtual 3.19.9's record that the last position it read was past an edge (a bounce). */
+interface BounceInternals {
+  _reportedOverscroll?: unknown;
+}
+
+/**
+ * Tells TanStack the bounce is over once the transcript rests within its bounds. TanStack reads the position only at
+ * scroll events and once more 150 ms after the last of them, and writes nothing while that read was past an edge, since
+ * WebKit drops a write during a bounce. On an iPhone the end of a bounce at the top could settle after both reads, with
+ * no event: TanStack kept the read past the top, and a correction it held during the swipe (rows measured above,
+ * earlier messages put in) was never written. The rows above stayed drawn above the top, seen in each new bounce and out
+ * of reach, until a scroll down sent a new event or the chat was opened again. The draw that follows writes it.
+ */
+function settleBounce(
+  element: HTMLElement | null,
+  instance: Virtualizer<HTMLDivElement, Element>,
+): void {
+  const internals = instance as unknown as BounceInternals;
+  if (element === null || internals._reportedOverscroll !== true) return;
+  const top = element.scrollTop;
+  if (top >= 0 && top <= element.scrollHeight - element.clientHeight + 1)
+    internals._reportedOverscroll = false;
+}
+
 /** How long after the reader's wheel, touch, scroll key or scrollbar press a scroll still counts as the reader's. */
 const READER_SCROLL_MS = 1_000;
 
@@ -348,8 +470,13 @@ export function TranscriptList({
   readonly edge?: boolean;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, olderLoad, shell } =
-    snapshot;
+  const { stream, streamDone, activeTools, jobs, working, olderLoad, shell } = snapshot;
+  /** What the transcript does once the reader's scroll rests; set below, once the list exists. */
+  const atRest = useRef<() => void>(() => undefined);
+  const moving = useReaderRest(scrollRef, atRest);
+  const { shown: entries, waiting } = useOlderAtRest(snapshot.entries, moving);
+  // Older entries already read but waiting for the scroll to rest count as entries still to show.
+  const hasOlder = snapshot.hasOlder || waiting > 0;
   // The lite view (#2844) leaves out omp's status lines: at each start they list the tools it mounted, which would fill
   // an empty chat in a side panel. A warning or an error stays.
   const lite = use(LiteContext) !== null;
@@ -384,6 +511,13 @@ export function TranscriptList({
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
   measured.current = virtualizer.itemSizeCache;
+  atRest.current = () => settleBounce(scrollRef.current, virtualizer);
+  useLayoutEffect(() => {
+    if (typeof (virtualizer as unknown as BounceInternals)._reportedOverscroll !== "boolean")
+      console.error(
+        "TanStack Virtual has no _reportedOverscroll: a bounce at the top can leave the rows above out of reach again.",
+      );
+  }, [virtualizer]);
   const holding = useHoldCorrectionsWhileReading(scrollRef, virtualizer);
   useStayAtEndWhenShorter(scrollRef, virtualizer);
   const { follow, following, follows } = useFollowLatest(scrollRef, virtualizer);
@@ -395,6 +529,7 @@ export function TranscriptList({
     holding,
     following,
   });
+  useHoldTrace(scrollRef, virtualizer);
 
   // Start at the latest entry once the first window is there.
   const empty = rows.length === 0;
@@ -414,14 +549,15 @@ export function TranscriptList({
   const items = virtualizer.getVirtualItems();
   // Older entries are read while the reader is within two screens of the top, again after each window read, so a
   // window shorter than that fills the screen from older entries once positioned. A read that failed waits for Try again
-  // or for the link to come back (the chat's `loadOlder`).
+  // or for the link to come back (the chat's `loadOlder`). Entries that wait for the scroll to rest go in first.
   const offset = virtualizer.scrollOffset;
   const screen = scrollRef.current?.clientHeight ?? 0;
   const nearTop = positioned && offset !== null && offset < NEAR_TOP_SCREENS * screen;
   const oldestKey = rows[0]?.key;
   useEffect(() => {
-    if (nearTop && hasOlder && olderLoad === "idle" && oldestKey !== undefined) onNearTop();
-  }, [nearTop, hasOlder, olderLoad, oldestKey, onNearTop]);
+    if (nearTop && hasOlder && waiting === 0 && olderLoad === "idle" && oldestKey !== undefined)
+      onNearTop();
+  }, [nearTop, hasOlder, waiting, olderLoad, oldestKey, onNearTop]);
   const firstAt = entries[0]?.timestamp;
   const began = firstAt === undefined ? null : new Date(firstAt);
 
@@ -446,7 +582,7 @@ export function TranscriptList({
                 height: EDGE_PX,
                 transform: `translateY(${items[0]?.index === 0 ? items[0].start - headRoom : 0}px)`,
               }}
-              data-transcript-edge={hasOlder ? olderLoad : "start"}
+              data-transcript-edge={!hasOlder ? "start" : waiting > 0 ? "loading" : olderLoad}
             >
               {!hasOlder ? (
                 <span>
@@ -455,7 +591,7 @@ export function TranscriptList({
                     ? ` · ${START_DATE.format(began)}`
                     : ""}
                 </span>
-              ) : olderLoad === "failed" ? (
+              ) : olderLoad === "failed" && waiting === 0 ? (
                 <>
                   <span>Couldn't load earlier messages.</span>
                   <Button size="sm" variant="secondary" className="max-sm:h-11" onClick={onNearTop}>
