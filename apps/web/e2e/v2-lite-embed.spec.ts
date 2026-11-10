@@ -21,9 +21,10 @@ const ready = /^(Fake Model|Message omp)/;
 /**
  * The host page: frames the panel, answers its `listening` with a hello, and answers each call of its tool. `vscode`:
  * the frame is sandboxed as VS Code's webview is (no window may open from it), and the page opens what the panel asks
- * it to open (`open`), keeps the address, and says so (`opened`).
+ * it to open (`open`), keeps the address, and says so (`opened`). `chat`: the panel opens that chat (`?chat=`), as a
+ * panel loaded again opens the chat it had.
  */
-function hostPage(app: string, token: string, vscode = false): string {
+function hostPage(app: string, token: string, vscode = false, chat?: string): string {
   const script = `
 const frame = document.querySelector("iframe");
 const app = ${JSON.stringify(app)};
@@ -58,7 +59,8 @@ window.addEventListener("message", (event) => {
   const sandbox = vscode
     ? ' sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"'
     : "";
-  return `<!doctype html><title>host</title><iframe title="omp"${sandbox} style="width:420px;height:760px;border:0" src="${app}/lite#token=${encodeURIComponent(token)}"></iframe><script>${script}</script>`;
+  const asked = chat === undefined ? "" : `?chat=${encodeURIComponent(chat)}`;
+  return `<!doctype html><title>host</title><iframe title="omp"${sandbox} style="width:420px;height:760px;border:0" src="${app}/lite${asked}#token=${encodeURIComponent(token)}"></iframe><script>${script}</script>`;
 }
 
 realTest.describe("new UI lite view framed by a host that speaks the embed protocol", () => {
@@ -185,6 +187,74 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
         expect(
           await host.evaluate(() => (window as unknown as { calls: unknown[] }).calls.length),
         ).toBe(1);
+      } finally {
+        await context.close();
+        await stop(server);
+      }
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a panel loaded again on the chat it had gives that chat the host's tool once it is open, however slow its open",
+    async ({ realApp, browser }) => {
+      const app = new URL((await realApp.open({ path: "/lite" })).url()).origin;
+      let chat: string | undefined;
+      const server = createServer((_request, response) => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(hostPage(app, realApp.token, false, chat));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(HOST_PORT, "127.0.0.1", resolve);
+      });
+      const context = await browser.newContext();
+      try {
+        const host = await context.newPage();
+        await host.goto(`${HOST_APP}/doc`);
+        const panel = host.frameLocator('iframe[title="omp"]');
+        const box = panel.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+        // A chat with a reply in it: the one the panel comes back to.
+        await box.fill("hello");
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(panel.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+        const lastReady = () =>
+          host.evaluate(
+            () =>
+              (window as unknown as { ready: { chat: string; tools: string[] }[] }).ready.at(-1) ??
+              null,
+          );
+        chat = (await lastReady())?.chat;
+        expect(chat).toBeDefined();
+        const shown = chat ?? "";
+
+        // The panel loads again on that chat, and its open answers late: the chat's id is known before the server holds
+        // the chat open for this page, and a tool given then was refused.
+        await context.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+          const toServer = ws.connectToServer();
+          ws.onMessage((message) => {
+            if (
+              typeof message === "string" &&
+              message.includes('"method":"open"') &&
+              message.includes(shown)
+            )
+              setTimeout(() => toServer.send(message), 1_500);
+            else toServer.send(message);
+          });
+          toServer.onMessage((message) => ws.send(message));
+        });
+        await host.reload();
+        await expect(panel.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+        await expect
+          .poll(lastReady, { timeout: 30_000 })
+          .toMatchObject({ chat: shown, tools: ["page_title"] });
+
+        await box.fill("call_tool page_title {}");
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(panel.getByText("tool said: host title: Host page title")).toBeVisible({
+          timeout: 60_000,
+        });
       } finally {
         await context.close();
         await stop(server);
