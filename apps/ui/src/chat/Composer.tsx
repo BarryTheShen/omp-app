@@ -188,6 +188,17 @@ export const Composer = memo(function Composer({
   const textRef = useRef(text);
   const [caret, setCaret] = useState(0);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
+  /**
+   * Puts the caret at `at` in the next frame, once the box shows `shown`. A frame that comes late (a long task while the
+   * page loads) finds what was typed since in the box, and leaves the caret where that typing put it.
+   */
+  const caretLater = (shown: string, at: number, focus: boolean): void => {
+    requestAnimationFrame(() => {
+      if (textRef.current !== shown) return;
+      if (focus) boxRef.current?.focus();
+      boxRef.current?.setSelectionRange(at, at);
+    });
+  };
   const picker = useRef<HTMLInputElement | null>(null);
   /** The row's controls under the box: sideways in a side bar too narrow for them, Send staying at the end. */
   const controlsRow = useSidewaysRow(null);
@@ -230,13 +241,11 @@ export const Composer = memo(function Composer({
     const box = boxRef.current;
     const start = box?.selectionStart ?? value.length;
     const end = box?.selectionEnd ?? start;
-    update(value.slice(0, start) + inserted + value.slice(end));
+    const next = value.slice(0, start) + inserted + value.slice(end);
+    update(next);
     const after = start + inserted.length;
     setCaret(after);
-    requestAnimationFrame(() => {
-      boxRef.current?.focus();
-      boxRef.current?.setSelectionRange(after, after);
-    });
+    caretLater(next, after, true);
   };
   useEffect(() => {
     if (onHandle === undefined) return;
@@ -579,7 +588,7 @@ export const Composer = memo(function Composer({
   const put = (next: { readonly text: string; readonly caret: number }): void => {
     update(next.text);
     setCaret(next.caret);
-    requestAnimationFrame(() => boxRef.current?.setSelectionRange(next.caret, next.caret));
+    caretLater(next.text, next.caret, false);
   };
 
   /**

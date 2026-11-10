@@ -60,6 +60,47 @@ realTest.describe("new UI commands, mentions and shell runs", () => {
   });
 
   realTest(
+    "a frame that comes late after a picked row leaves the caret where the typing since put it, and the next menu works",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const box = page.getByRole("textbox", { name: "Message" });
+      await box.pressSequentially("/ret");
+      const commands = page.getByRole("listbox", { name: "omp's commands" });
+      await expect(commands.getByRole("option", { name: /^\/retry/ })).toBeVisible({
+        timeout: 30_000,
+      });
+      // A busy page (a long task while it loads): the frames after the pick come only once the box was cleared and
+      // typed in again.
+      await page.evaluate(() => {
+        const held: FrameRequestCallback[] = [];
+        Object.assign(window, { heldFrames: held, ownFrame: window.requestAnimationFrame });
+        window.requestAnimationFrame = (callback) => held.push(callback);
+      });
+      await box.press("Enter");
+      await expect(box).toHaveValue("/retry ");
+      await box.fill("");
+      await box.pressSequentially("look at @pars");
+      await page.evaluate(() => {
+        const { heldFrames, ownFrame } = window as unknown as {
+          readonly heldFrames: FrameRequestCallback[];
+          readonly ownFrame: typeof requestAnimationFrame;
+        };
+        window.requestAnimationFrame = ownFrame;
+        for (const callback of heldFrames.splice(0)) callback(performance.now());
+      });
+      await expect
+        .poll(() => box.evaluate((area) => (area as HTMLTextAreaElement).selectionStart))
+        .toBe("look at @pars".length);
+      await page
+        .getByRole("listbox", { name: "Files to mention" })
+        .getByRole("option", { name: /src\/parser\.ts/ })
+        .click();
+      await expect(box).toHaveValue("look at @src/parser.ts ");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "`!` runs a command in bash as a run box, Stop ends one, `!!` keeps one out of context, and a command's output shows until dismissed",
     async ({ realApp }) => {
       const page = await newChat(realApp);
