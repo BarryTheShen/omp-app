@@ -23,21 +23,22 @@ let answered = false;
 
 /**
  * Says why the app's page has not opened yet, with Try again and Set the address, over the frame: the frame keeps
- * loading under it, hidden, and its page answering takes the note away (`onReady`).
+ * loading under it, hidden, and its page answering takes the note away (`onReady`). `proxy`: VS Code's proxy can't reach
+ * the app, so Connect without the proxy comes first.
  */
-function showNote(text: string): void {
+function showNote(text: string, proxy: boolean): void {
   if (answered || into === null || note === null) return;
   const said = document.createElement("p");
   said.textContent = text;
-  const buttons = (
-    [
-      ["Try again", "retry"],
-      ["Set the address", "settings"],
-    ] as const
-  ).map(([label, type]) => {
+  const actions: readonly (readonly [string, ToExtension])[] = [
+    ...(proxy ? [["Connect without the proxy", { type: "connect-directly" }] as const] : []),
+    ["Try again", { type: "retry" }],
+    ["Set the address", { type: "settings" }],
+  ];
+  const buttons = actions.map(([label, message]) => {
     const button = document.createElement("button");
     button.textContent = label;
-    button.addEventListener("click", () => vscode.postMessage({ type }));
+    button.addEventListener("click", () => vscode.postMessage(message));
     return button;
   });
   note.replaceChildren(said, ...buttons);
@@ -115,6 +116,6 @@ window.addEventListener("message", (event: MessageEvent) => {
   } else if (message.type === "context") {
     panel.setContext(message.context as HostContext | null);
   } else if (message.type === "note") {
-    showNote(message.text);
+    showNote(message.text, message.proxy === true);
   }
 });

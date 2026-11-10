@@ -21,8 +21,17 @@ export function framesVsCode(policy: string | null): boolean {
   return sources.has("*") || PANEL_SOURCES.every((source) => sources.has(source));
 }
 
-/** Why the app at `app` (an origin) would not show in the panel, in words for the panel; null when it would. */
-export async function whyNotShown(app: string, signal?: AbortSignal): Promise<string | null> {
+/**
+ * Why the app would not show in the panel: it can't be reached, the address answers with something else, or the app
+ * does not let VS Code frame it; `text` says so in words for the panel.
+ */
+export interface NotShown {
+  readonly kind: "unreachable" | "not-the-app" | "not-allowed";
+  readonly text: string;
+}
+
+/** Why the app at `app` (an origin) would not show in the panel; null when it would. */
+export async function whyNotShown(app: string, signal?: AbortSignal): Promise<NotShown | null> {
   let response: Response;
   try {
     response = await fetch(new URL("/lite", app), {
@@ -32,12 +41,21 @@ export async function whyNotShown(app: string, signal?: AbortSignal): Promise<st
   } catch (error) {
     const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
     const reason = cause instanceof Error ? cause.message : String(cause);
-    return `omp app can't be reached at ${app} (${reason}). Check the address, that this computer can reach that server, and that Settings → App → Integrations → VS Code is on in omp app.`;
+    return {
+      kind: "unreachable",
+      text: `omp app can't be reached at ${app} (${reason}). Check the address, that this computer can reach that server, and that Settings → App → Integrations → VS Code is on in omp app.`,
+    };
   }
   await response.body?.cancel().catch(() => undefined);
   if (!response.ok)
-    return `${app} answered ${response.status}${response.statusText === "" ? "" : ` ${response.statusText}`} instead of omp app's page. Check that the address is the one you open omp app at in a browser.`;
+    return {
+      kind: "not-the-app",
+      text: `${app} answered ${response.status}${response.statusText === "" ? "" : ` ${response.statusText}`} instead of omp app's page. Check that the address is the one you open omp app at in a browser.`,
+    };
   if (!framesVsCode(response.headers.get("content-security-policy")))
-    return `omp app at ${app} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`;
+    return {
+      kind: "not-allowed",
+      text: `omp app at ${app} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`,
+    };
   return null;
 }

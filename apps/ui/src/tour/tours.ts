@@ -2488,7 +2488,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-09-vscode-right",
     when: "2026-11-09T16:30:00-06:00",
     summary:
-      "VS Code's omp app panel sits in VS Code's right-hand side bar, beside its other chat panels, and says what is wrong instead of staying blank: omp app can't be reached, or it doesn't let VS Code show it yet, with Try again. The address other devices open the app at can be any HTTPS address, not only a Tailscale one.",
+      "VS Code's omp app panel sits in VS Code's right-hand side bar, beside its other chat panels, and says what is wrong instead of staying blank: omp app can't be reached, or it doesn't let VS Code show it yet, with Try again. When VS Code's own proxy can't reach the app, the panel names the proxy and Connect without the proxy opens the app. The address other devices open the app at can be any HTTPS address, not only a Tailscale one.",
     tours: [VSCODE_RIGHT_TOUR],
   },
   {

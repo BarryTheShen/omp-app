@@ -39,17 +39,22 @@ describe("whyNotShown", () => {
       "default-src 'self'; frame-ancestors vscode-webview:",
     ]) {
       const address = await app(200, { "content-security-policy": policy });
-      expect(await whyNotShown(address)).toBe(
-        `omp app at ${address} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`,
-      );
+      expect(await whyNotShown(address)).toEqual({
+        kind: "not-allowed",
+        text: `omp app at ${address} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`,
+      });
     }
   });
 
   test("an address that answers with something other than the app's page, or a redirect, says so", async () => {
     const missing = await app(404);
-    expect(await whyNotShown(missing)).toMatch(new RegExp(`^${missing} answered 404`));
+    const notFound = await whyNotShown(missing);
+    expect(notFound?.kind).toBe("not-the-app");
+    expect(notFound?.text).toMatch(new RegExp(`^${missing} answered 404`));
     const moved = await app(302, { location: "https://login.example.com/" });
-    expect(await whyNotShown(moved)).toMatch(new RegExp(`^${moved} answered 302`));
+    const redirected = await whyNotShown(moved);
+    expect(redirected?.kind).toBe("not-the-app");
+    expect(redirected?.text).toMatch(new RegExp(`^${moved} answered 302`));
   });
 
   test("nothing listening at the address: it can't be reached", async () => {
@@ -57,6 +62,8 @@ describe("whyNotShown", () => {
     await Promise.all(
       servers.splice(0).map((server) => new Promise((done) => server.close(() => done(null)))),
     );
-    expect(await whyNotShown(gone)).toMatch(new RegExp(`^omp app can't be reached at ${gone} \\(`));
+    const unreachable = await whyNotShown(gone);
+    expect(unreachable?.kind).toBe("unreachable");
+    expect(unreachable?.text).toMatch(new RegExp(`^omp app can't be reached at ${gone} \\(`));
   });
 });

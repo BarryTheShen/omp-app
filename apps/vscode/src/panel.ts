@@ -3,12 +3,34 @@ import type { EmbedFiles, HostContext } from "@omp-app/contracts";
 import { appAddressOf } from "@omp-app/embed";
 import * as vscode from "vscode";
 import { whyNotShown } from "./check";
+import { proxyFor } from "./proxy";
 import type { Reviews } from "./review";
 import type { FromExtension, PanelConfig, ToExtension } from "./webview-messages";
 import { WorkspaceTools } from "./workspace";
 
 const setting = <T>(name: string, fallback: T): T =>
   vscode.workspace.getConfiguration("ompApp").get<T>(name, fallback);
+
+/**
+ * How long VS Code's window takes to go around its proxy after the extension adds an address to `http.noProxy`: the
+ * window reads the setting from the settings file once the change is written, with nothing an extension can wait for.
+ */
+const PROXY_APPLY_MS = 1_000;
+
+/** Resolves once `key` changes in this window's settings, or after `ms`. */
+function changeOf(key: string, ms: number): Promise<void> {
+  return new Promise((done) => {
+    const finish = (): void => {
+      clearTimeout(timer);
+      listening.dispose();
+      done();
+    };
+    const timer = setTimeout(finish, ms);
+    const listening = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration(key)) finish();
+    });
+  });
+}
 
 /** Where the extension keeps the key and the chat: per app, so another app's address pairs anew. */
 const keyName = (app: string): string => `ompApp.deviceKey:${app}`;
@@ -186,7 +208,8 @@ export class ChatPanel implements vscode.Disposable {
   /**
    * The app's page never said it listens in the panel: why, as the app tells VS Code's extension, else what to try, said
    * over the frame, which keeps loading under it: a page that answers late takes its place back (`webview.ts`). The
-   * extension may reach the network another way than the panel, so what it cannot reach is said with that in mind.
+   * extension may reach the network another way than the panel, so what it cannot reach is said with that in mind. An
+   * app that can't be reached through VS Code's own proxy gets the proxy named, with Connect without the proxy.
    */
   async #noAnswer(): Promise<void> {
     const app = this.#app;
@@ -199,12 +222,55 @@ export class ChatPanel implements vscode.Disposable {
       remote === undefined
         ? ""
         : ` This window's extension runs on the computer the window is connected to (${remote}), which may not reach that address even when this computer does.`;
+    const http = vscode.workspace.getConfiguration("http");
+    const proxy =
+      why?.kind === "unreachable"
+        ? proxyFor(app, {
+            proxy: http.get<string>("proxy", ""),
+            noProxy: http.get<string[]>("noProxy", []),
+            env: process.env,
+          })
+        : null;
+    if (why !== null) this.#output.appendLine(`omp app: ${why.text}`);
     const text =
       why === null
         ? `omp app at ${app} answers, but its page didn't open in this panel. Click Try again; if it stays like this, open ${app} in a browser on this computer to see whether it opens there.`
-        : `${why}${where}`;
-    this.#output.appendLine(`omp app: ${text}`);
-    this.#post({ ompAppExtension: 1, type: "note", text });
+        : proxy === null
+          ? `${why.text}${where}`
+          : `VS Code connects through the proxy ${proxy.proxy} (from ${proxy.from}), which can't reach omp app at ${app}: a proxy often doesn't know addresses on your own network, such as Tailscale names. Connect without the proxy adds ${new URL(app).hostname} to VS Code's http.noProxy setting.${where}`;
+    if (why === null || proxy !== null) this.#output.appendLine(`omp app: ${text}`);
+    this.#post({
+      ompAppExtension: 1,
+      type: "note",
+      text,
+      ...(proxy === null ? {} : { proxy: true }),
+    });
+  }
+
+  /** Adds the app's host to `http.noProxy`, so VS Code reaches the app without its proxy, then shows the panel anew. */
+  async #connectDirectly(): Promise<void> {
+    const app = this.#app;
+    if (app === null) return;
+    const host = new URL(app).hostname;
+    const http = vscode.workspace.getConfiguration("http");
+    const listed = http.get<string[]>("noProxy", []);
+    if (!listed.includes(host)) {
+      const changed = changeOf("http.noProxy", 3_000);
+      try {
+        await http.update("noProxy", [...listed, host], vscode.ConfigurationTarget.Global);
+      } catch (error) {
+        const text = `VS Code's http.noProxy setting couldn't be changed (${error instanceof Error ? error.message : String(error)}). Add ${host} to it in Settings, then click Try again.`;
+        this.#output.appendLine(`omp app: ${text}`);
+        this.#post({ ompAppExtension: 1, type: "note", text });
+        return;
+      }
+      await changed;
+      await new Promise((done) => setTimeout(done, PROXY_APPLY_MS));
+      this.#output.appendLine(
+        `omp app: added ${host} to VS Code's http.noProxy setting, so VS Code reaches omp app without the proxy.`,
+      );
+    }
+    this.load();
   }
 
   #post(message: FromExtension): void {
@@ -234,6 +300,10 @@ export class ChatPanel implements vscode.Disposable {
     }
     if (message.type === "no-answer") {
       await this.#noAnswer();
+      return;
+    }
+    if (message.type === "connect-directly") {
+      await this.#connectDirectly();
       return;
     }
     if (message.type === "give-up") {

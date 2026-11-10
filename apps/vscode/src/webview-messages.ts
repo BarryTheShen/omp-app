@@ -28,7 +28,9 @@ export type ToExtension =
   | { readonly type: "settings" }
   | { readonly type: "retry" }
   /** The app's page never said it listens in the panel (`onNoAnswer`). */
-  | { readonly type: "no-answer" };
+  | { readonly type: "no-answer" }
+  /** A note's Connect without the proxy: the app's address goes around VS Code's proxy. */
+  | { readonly type: "connect-directly" };
 
 export type FromExtension =
   | {
@@ -39,5 +41,13 @@ export type FromExtension =
       readonly error?: string;
     }
   | { readonly ompAppExtension: 1; readonly type: "context"; readonly context: HostContext | null }
-  /** Why the app's page has not opened yet (after `no-answer`): said over the frame until the page answers. */
-  | { readonly ompAppExtension: 1; readonly type: "note"; readonly text: string };
+  /**
+   * Why the app's page has not opened yet (after `no-answer`): said over the frame until the page answers. `proxy`: the
+   * app can't be reached through VS Code's proxy, so the note offers Connect without the proxy.
+   */
+  | {
+      readonly ompAppExtension: 1;
+      readonly type: "note";
+      readonly text: string;
+      readonly proxy?: true;
+    };
