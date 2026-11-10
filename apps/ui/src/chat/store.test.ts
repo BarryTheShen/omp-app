@@ -808,6 +808,55 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().goal).toBeNull();
   });
 
+  test("a plan in the chat's file that the person has not answered waits for review when the file is read; one answered by a message, or set aside here, does not come back", () => {
+    const call = (id: string) => ({
+      ...assistant([
+        {
+          type: "toolCall",
+          id,
+          name: "write",
+          arguments: { path: "xd://propose", content: "fix-the-login" },
+        },
+      ]),
+      stopReason: "toolUse",
+    });
+    const answer = (id: string, isError = false) => ({
+      role: "toolResult",
+      toolCallId: id,
+      toolName: "write",
+      content: [{ type: "text", text: "Plan submitted for review." }],
+      details: {
+        xdev: { tool: "propose", inner: { planFilePath: "local://fix-the-login-plan.md" } },
+      },
+      isError,
+      timestamp: T + 1,
+    });
+    const proposed = [fileEntry("a1", call("p1")), fileEntry("r1", answer("p1"))];
+    const plan = { planFilePath: "local://fix-the-login-plan.md", title: "fix-the-login" };
+
+    // A page opened after the server restarted: no event of the plan, only the file.
+    const opened = new ChatStore();
+    opened.setWindow(proposed, false);
+    expect(opened.getSnapshot().proposal).toEqual(plan);
+    // Set aside here (Keep planning), a window read again after a turn does not bring it back.
+    opened.clearProposal();
+    opened.setWindow(proposed, false);
+    expect(opened.getSnapshot().proposal).toBeNull();
+
+    // The person wrote after it: answered.
+    const answered = new ChatStore();
+    answered.setWindow(
+      [...proposed, fileEntry("u1", { role: "user", content: "Plan more", timestamp: T + 2 })],
+      false,
+    );
+    expect(answered.getSnapshot().proposal).toBeNull();
+
+    // omp refused the write: nothing to review.
+    const refused = new ChatStore();
+    refused.setWindow([fileEntry("a2", call("p2")), fileEntry("r2", answer("p2", true))], false);
+    expect(refused.getSnapshot().proposal).toBeNull();
+  });
+
   test("a sign-in's page to open is kept until the sign-in ends, without omp's local link; the latest page wins", () => {
     const store = new ChatStore();
     store.apply(event({ type: "ui_open_url", url: "https://example.test/auth?state=1" }));

@@ -299,6 +299,39 @@ function proposalOf(result: unknown, args: unknown): PlanProposal | null {
   return { planFilePath, title };
 }
 
+/** The arguments of the call `id` in the assistant messages before `before`, as the file holds them. */
+function callArguments(entries: readonly SessionEntry[], before: number, id: string): unknown {
+  for (let at = before - 1; at >= 0; at -= 1) {
+    const entry = entries[at];
+    if (entry?.type !== "message" || entry.message.role !== "assistant") continue;
+    for (const block of entry.message.content)
+      if (block.type === "toolCall" && block.id === id) return block.arguments;
+  }
+  return undefined;
+}
+
+/**
+ * The plan proposed last in the chat's file that still waits for review: omp's answer to a `write` of `xd://propose`
+ * with no message of the person after it. A page opened after the server restarted has no event of it, only the file.
+ */
+function waitingProposal(
+  entries: readonly SessionEntry[],
+): { readonly proposal: PlanProposal; readonly call: string } | null {
+  for (let at = entries.length - 1; at >= 0; at -= 1) {
+    const entry = entries[at];
+    if (entry?.type !== "message") continue;
+    const message = entry.message;
+    if (message.role === "user") return null;
+    if (message.role !== "toolResult" || message.toolName !== "write" || message.isError) continue;
+    const proposal = proposalOf(
+      { details: message.details },
+      callArguments(entries, at, message.toolCallId),
+    );
+    if (proposal !== null) return { proposal, call: message.toolCallId };
+  }
+  return null;
+}
+
 /**
  * A toast is a status line. A note longer than two lines' worth, or one on several lines (such as the list of tools an
  * MCP server brought), stays in the chat as a row instead, where it can be read in full and dismissed.
@@ -402,6 +435,9 @@ export class ChatStore {
   #todos: ChatHostState["todoPhases"] = [];
   #planMode: PlanModeStatus | null = null;
   #proposal: PlanProposal | null = null;
+  /** The call that proposed the plan shown, and the one approved or set aside here, which the file never brings back. */
+  #proposalCall: string | null = null;
+  #setAside: string | null = null;
   #goal: GoalAnswer["goal"] = null;
   #signIn: SignInPage | null = null;
   #widgets: readonly ExtensionWidget[] = [];
@@ -432,6 +468,14 @@ export class ChatStore {
     const at = first === undefined ? -1 : this.#entries.findIndex((entry) => entry.id === first);
     const kept = at > 0 ? this.#entries.slice(0, at) : [];
     this.#entries = kept.length > 0 ? [...kept, ...entries] : entries;
+    // A plan waiting for review is in the file too, which a page opened after the server restarted has to go by.
+    if (this.#proposal === null) {
+      const waiting = waitingProposal(this.#entries);
+      if (waiting !== null && waiting.call !== this.#setAside) {
+        this.#proposal = waiting.proposal;
+        this.#proposalCall = waiting.call;
+      }
+    }
     this.#keys = new Set(this.#entries.map(messageKey).filter((key) => key !== null));
     this.#hasOlder = kept.length > 0 ? this.#hasOlder : hasOlder;
     // A window read again came over a working link: an older window that failed may be read again.
@@ -646,7 +690,9 @@ export class ChatStore {
 
   /** The proposal was approved, or the person keeps planning: the review goes. */
   clearProposal(): void {
+    this.#setAside = this.#proposalCall;
     this.#proposal = null;
+    this.#proposalCall = null;
     this.#publish();
   }
 
@@ -913,7 +959,10 @@ export class ChatStore {
         // In plan mode the model submits its plan by writing the plan's name to `xd://propose`; omp's answer names the file.
         if (event.toolName === "write") {
           const proposed = proposalOf(event.result, started?.args);
-          if (proposed !== null) this.#proposal = proposed;
+          if (proposed !== null) {
+            this.#proposal = proposed;
+            this.#proposalCall = event.toolCallId;
+          }
         }
         return false;
       }

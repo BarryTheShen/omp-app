@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import type { ChatController } from "../chat/controller";
+import { lostWithTheLink } from "../chat/openFailure";
 import type { PlanProposal } from "../chat/store";
 import { Clamped } from "../questions/Clamped";
 import { Markdown } from "../vendor/collab-web/components/transcript/Markdown";
@@ -31,22 +32,36 @@ export function PlanCard({
   const [problem, setProblem] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [wide, setWide] = useState(false);
+  // A read the connection dropped under (a release restarts the server) is read again once the connection is back.
+  const [tries, setTries] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each new try reads the plan again
   useEffect(() => {
     let alive = true;
+    let stopWaiting: (() => void) | undefined;
     controller
       .readPlan(proposal.planFilePath)
-      .then((file) => alive && setPlan(file.content))
-      .catch(
-        (failure: unknown) =>
-          alive &&
-          setProblem(
-            `Could not read the plan: ${failure instanceof Error ? failure.message : String(failure)}`,
-          ),
-      );
+      .then((file) => {
+        if (!alive) return;
+        setPlan(file.content);
+        setProblem(null);
+      })
+      .catch((failure: unknown) => {
+        if (!alive) return;
+        setProblem(
+          `Could not read the plan: ${failure instanceof Error ? failure.message : String(failure)}`,
+        );
+        if (!lostWithTheLink(failure)) return;
+        let away = false;
+        stopWaiting = controller.client.onConnectionState((event) => {
+          if (event.state !== "open") away = true;
+          else if (away && alive) setTries((count) => count + 1);
+        });
+      });
     return () => {
       alive = false;
+      stopWaiting?.();
     };
-  }, [controller, proposal.planFilePath]);
+  }, [controller, proposal.planFilePath, tries]);
   const keepPlanning = (): void => controller.store.clearProposal();
   const approve = (): void => {
     setApproving(true);

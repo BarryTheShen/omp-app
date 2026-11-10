@@ -89,6 +89,88 @@ realTest.describe("new UI plan mode and goal mode", () => {
   );
 
   realTest(
+    "a plan waiting for review is there again after the server restarts, in the chat and in Questions; kept planning, it stays gone",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      await off(page).click();
+      await expect(on(page)).toBeVisible({ timeout: 1_000 });
+      await box(page).fill("plan_propose");
+      await box(page).press("Enter");
+      await expect(page.getByRole("dialog", { name: "Plan ready for review" })).toBeVisible({
+        timeout: 60_000,
+      });
+
+      // The server restarts (a release); the page opens again with its tabs and panes.
+      const context = page.context();
+      await page.close();
+      await realApp.restartServer();
+      const again = await realApp.open({ path: "/", context });
+      const review = again.getByRole("dialog", { name: "Plan ready for review" });
+      await expect(review).toBeVisible({ timeout: 90_000 });
+      await expect(review.getByRole("region", { name: "The plan" })).toContainText(
+        "Fix the password check.",
+      );
+      await again
+        .getByRole("navigation", { name: "Side panel" })
+        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .click();
+      const listed = again
+        .getByRole("complementary", { name: "Side panel" })
+        .getByRole("article", { name: "Plan: Fix the login" });
+      await expect(listed).toBeVisible();
+
+      await review.getByRole("button", { name: "Keep planning" }).click();
+      await expect(review).toHaveCount(0);
+      await expect(listed).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a plan whose read the connection dropped under is read again once the connection is back",
+    async ({ realApp }) => {
+      // The first read of the plan goes out just as the link drops, as when a release restarts the server.
+      let drops = 1;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(
+            () => true,
+            (webSocket) => {
+              const server = webSocket.connectToServer();
+              webSocket.onMessage((message) => {
+                if (drops > 0 && typeof message === "string" && message.includes('"get_plan"')) {
+                  drops -= 1;
+                  void webSocket.close();
+                  return;
+                }
+                server.send(message);
+              });
+              server.onMessage((message) => webSocket.send(message));
+            },
+          ),
+      });
+      await newChat(page);
+      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      await off(page).click();
+      await expect(on(page)).toBeVisible({ timeout: 1_000 });
+      await box(page).fill("plan_propose");
+      await box(page).press("Enter");
+      const review = page.getByRole("dialog", { name: "Plan ready for review" });
+      await expect(review.getByRole("region", { name: "The plan" })).toContainText(
+        "Fix the password check.",
+        { timeout: 60_000 },
+      );
+      expect(drops).toBe(0);
+      await expect(review.getByRole("alert")).toHaveCount(0);
+      realApp.allowProblem(/WebSocket connection to .* failed/);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "the late answer to an earlier switch does not turn plan mode back, even briefly",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
