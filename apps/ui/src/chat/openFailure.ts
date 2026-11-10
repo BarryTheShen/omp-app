@@ -52,3 +52,8 @@ export function lostWithTheLink(failure: unknown): boolean {
     failure.appError.retryable
   );
 }
+
+/** The app's server has no open chat by that id: it restarted, and the chat's omp ended with the old server. */
+export function notOpenOnServer(failure: unknown): boolean {
+  return failure instanceof AppFailure && failure.appError.code === "not_found";
+}

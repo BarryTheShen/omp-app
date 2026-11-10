@@ -73,7 +73,12 @@ import { QuestionsStore } from "../questions/questions";
 import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
-import { lostWithTheLink, openFailureAction, openFailureText } from "./openFailure";
+import {
+  lostWithTheLink,
+  notOpenOnServer,
+  openFailureAction,
+  openFailureText,
+} from "./openFailure";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
 import { cachedWindow, keepWindow } from "./windowCache";
@@ -254,10 +259,17 @@ export class ChatController {
         ? new ChatDraft(client, target.threadId)
         : ChatDraft.forNewChat(client, paneChat);
     // A gap in the event stream: the file holds what was missed, and omp's state says whether a turn started or ended.
+    // A server that restarted without the chat's omp (its omp ended with the old server) no longer has the chat open:
+    // the pane opens it afresh from its file, as after an open the link dropped under, so no reply shows as still going.
     this.#stopResync = client.onResync((event) => {
       if (event.stream !== this.#subscription?.stream) return;
       this.#refreshWindow();
-      this.#refreshState().catch(() => undefined);
+      this.#refreshState().catch((failure: unknown) => {
+        if (this.#disposed || !notOpenOnServer(failure)) return;
+        // Ended here, so the pane's fresh open makes a new controller instead of taking this one back from its cache.
+        this.store.setPhase("ended");
+        this.#askPane({ kind: "reopen", by: "link" });
+      });
     });
   }
 

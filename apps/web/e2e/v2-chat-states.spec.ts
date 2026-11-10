@@ -60,6 +60,52 @@ realTest.describe("new UI chat states", () => {
   );
 
   realTest(
+    "a reply under way when the server restarts with the chat's omp ending: back on the page, it is not shown as going on (#9)",
+    async ({ realApp }) => {
+      // A paired device, as a phone is: its pairing outlasts the restart, so the same page comes back on its own and
+      // picks the chat up where it was (a page on the launch link would have to be given the new link).
+      const owner = await realApp.open({ path: "/" });
+      await owner.getByRole("button", { name: "Settings", exact: true }).click();
+      const devices = owner.getByRole("region", { name: "Devices" });
+      await devices.getByRole("button", { name: "Pair a new device" }).click();
+      const shown = devices
+        .getByRole("region", { name: "One-time code" })
+        .getByText(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+      await expect(shown).toBeVisible();
+      const code = ((await shown.textContent()) ?? "").replace("-", "");
+      const page = await realApp.open({ path: "/", hash: `#pair=${code}` });
+      await startNewChat(page);
+      const box = page.getByRole("textbox", { name: "Message" });
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      // A chat omp has written to its file (a new chat's file is written with its first reply).
+      await box.fill("hello");
+      await box.press("Enter");
+      await expect(transcript.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await box.fill("stream_steady");
+      await box.press("Enter");
+      await expect(transcript).toContainText("Steady line 10:", { timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+      // The restart's refusals: the owner page's link expires, and both pages miss the server while it is down.
+      realApp.allowProblem(/WebSocket|401|403|expired|ERR_CONNECTION_REFUSED/i);
+
+      // The harness's chats end with its server (no detached hosts): the reply ends with the restart.
+      await realApp.restartServer();
+
+      // Back on the paired page, the chat opens again from its file: nothing is writing, and it takes the next message.
+      await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0, { timeout: 60_000 });
+      await expect(page.getByRole("status").filter({ hasText: /^Writing/ })).toHaveCount(0);
+      await expect(transcript.getByText("stream_steady", { exact: true })).toBeVisible();
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box.fill("hello");
+      await box.press("Enter");
+      await expect(transcript.getByText("pong", { exact: true })).toHaveCount(2, {
+        timeout: 60_000,
+      });
+    },
+  );
+
+  realTest(
     "says a link the app never printed is not valid, in the words of the expired banner",
     async ({ realApp, browser }) => {
       // The page reports the server's refusal; it is the case under test.
