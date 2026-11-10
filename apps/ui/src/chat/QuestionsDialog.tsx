@@ -66,7 +66,8 @@ export const clock = (seconds: number): string =>
  * tab when there are two or more; answers with their descriptions, the recommended one marked, Other… for a typed
  * answer, and the highlighted answer's preview; Hide, Note, and one button to go on: Skip while the question has no
  * answer, Next once it has one (#2804), Submit on the last; and omp's keys (Esc skips them all). Hide folds it to one
- * line above the message box until Show.
+ * line above the message box until Show. In the Questions panel and on the dashboard (`inPanel`) the same card lists
+ * them, without Hide and Alt+H, which belong to the chat's own.
  */
 export function QuestionsDialog({
   dialog,
@@ -74,12 +75,14 @@ export function QuestionsDialog({
   error,
   waiting,
   onAnswer,
+  inPanel = false,
 }: {
   readonly dialog: AskDialog;
   readonly busy: boolean;
   readonly error: string | null;
   readonly waiting: number;
   readonly onAnswer: (answer: HostDialogAnswer) => void;
+  readonly inPanel?: boolean;
 }): ReactNode {
   const { questions } = dialog;
   const count = questions.length;
@@ -105,8 +108,9 @@ export function QuestionsDialog({
   });
 
   // omp's Alt+H (`app.ask.hide`) anywhere in this chat's window (the workspace's `data-chat-pane`; the whole page where
-  // no window holds the chat); an open menu that takes the key first keeps it.
+  // no window holds the chat); an open menu that takes the key first keeps it. The chat's own card only.
   useEffect(() => {
+    if (inPanel) return;
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.defaultPrevented || !matchesHotkey(event, KEYS.askHide.hotkey)) return;
       const pane = root.current?.closest("[data-chat-pane]") ?? document.body;
@@ -116,7 +120,7 @@ export function QuestionsDialog({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [inPanel]);
 
   const update = (index: number, next: (current: Chosen) => Chosen): void =>
     setChosen((all) => all.map((current, at) => (at === index ? next(current) : current)));
@@ -323,8 +327,8 @@ export function QuestionsDialog({
   return (
     <div ref={root} className="flex min-h-0 flex-col">
       <section
-        role="dialog"
-        data-tour="questions"
+        role={inPanel ? undefined : "dialog"}
+        data-tour={inPanel ? undefined : "questions"}
         aria-label="Questions from omp"
         className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-l3 bg-card shadow-md"
         onKeyDownCapture={onKeyDownCapture}
@@ -401,14 +405,16 @@ export function QuestionsDialog({
         {error !== null && <p className="shrink-0 px-3.5 pb-1 text-xs text-bad-ink">{error}</p>}
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-l2 px-3.5 py-2">
           {timer}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setHidden(true)}
-            title={`Hide until you are ready to answer  ${keycap(KEYS.askHide)}`}
-          >
-            Hide
-          </Button>
+          {!inPanel && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setHidden(true)}
+              title={`Hide until you are ready to answer  ${keycap(KEYS.askHide)}`}
+            >
+              Hide
+            </Button>
+          )}
           {waiting > 0 && (
             <span className="text-xs text-t3">
               {waiting === 1 ? "1 more is waiting." : `${waiting} more are waiting.`}

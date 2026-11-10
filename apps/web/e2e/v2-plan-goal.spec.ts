@@ -56,6 +56,39 @@ realTest.describe("new UI plan mode and goal mode", () => {
   );
 
   realTest(
+    "omp's plan also waits in the Questions panel; approved there, the chat's plan card closes",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      await off(page).click();
+      await expect(on(page)).toBeVisible({ timeout: 1_000 });
+      await box(page).fill("plan_propose");
+      await box(page).press("Enter");
+      const review = page.getByRole("dialog", { name: "Plan ready for review" });
+      await expect(review).toBeVisible({ timeout: 60_000 });
+
+      // The rail counts it; the Questions panel lists it, the plan and its two decisions as in the chat.
+      await page
+        .getByRole("navigation", { name: "Side panel" })
+        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .click();
+      const listed = page
+        .getByRole("complementary", { name: "Side panel" })
+        .getByRole("article", { name: "Plan: Fix the login" });
+      await expect(listed.getByRole("region", { name: "The plan" })).toContainText(
+        "Fix the password check.",
+      );
+      await expect(listed.getByRole("button", { name: "Keep planning" })).toBeVisible();
+      await listed.getByRole("button", { name: "Approve" }).click();
+      await expect(review).toHaveCount(0);
+      await expect(listed).toHaveCount(0);
+      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "the late answer to an earlier switch does not turn plan mode back, even briefly",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });

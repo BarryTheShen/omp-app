@@ -71,37 +71,72 @@ export class QuestionsStore {
   }
 }
 
+/** One ask: the questions one call of `ask_async` asked, in the order asked. The panel shows it as one card. */
+export interface Ask {
+  /** The tool call that asked them: the ask's own id. */
+  readonly toolCallId: string;
+  readonly records: readonly QuestionRecord[];
+}
+
+/** The chat's questions by ask: the asks in the order asked, each ask's questions in the order asked. */
+export function asksOf(records: readonly QuestionRecord[]): readonly Ask[] {
+  const asks = new Map<string, QuestionRecord[]>();
+  for (const record of records) {
+    const ask = asks.get(record.toolCallId);
+    if (ask === undefined) asks.set(record.toolCallId, [record]);
+    else ask.push(record);
+  }
+  return [...asks].map(([toolCallId, asked]) => ({ toolCallId, records: asked }));
+}
+
+/** The ask's answers that have not gone to omp yet: its open questions and its waiting answers, which its card sends. */
+export function unsent(ask: Ask): readonly QuestionRecord[] {
+  return ask.records.filter((record) => record.answer === null || record.answer.held === true);
+}
+
 /**
- * The questions as the panel lists them: the open ones in the order asked, then the answers that wait to go with the
- * rest (in the order asked), then the answers that went to omp, newest first.
+ * The asks as the panel lists them: those with a question still open, in the order asked; then those whose answers all
+ * wait to go with the rest; then those that went to omp, newest first. An ask with an open question is open, whatever
+ * its other answers are (some may have gone early, with Send answers).
  */
-export function inPanelOrder(records: readonly QuestionRecord[]): {
-  readonly open: readonly QuestionRecord[];
-  readonly waiting: readonly QuestionRecord[];
-  readonly answered: readonly QuestionRecord[];
+export function asksInPanelOrder(records: readonly QuestionRecord[]): {
+  readonly open: readonly Ask[];
+  readonly waiting: readonly Ask[];
+  readonly answered: readonly Ask[];
 } {
-  const sentAt = (record: QuestionRecord): number =>
-    record.answer?.sentAt ?? record.answer?.answeredAt ?? 0;
+  const asks = asksOf(records);
+  const isOpen = (ask: Ask): boolean => ask.records.some((record) => record.answer === null);
+  const isWaiting = (ask: Ask): boolean =>
+    !isOpen(ask) && ask.records.some((record) => record.answer?.held === true);
+  const sentAt = (ask: Ask): number =>
+    Math.max(
+      ...ask.records.map((record) => record.answer?.sentAt ?? record.answer?.answeredAt ?? 0),
+    );
   return {
-    open: records.filter((record) => record.answer === null),
-    waiting: records.filter((record) => record.answer?.held === true),
-    answered: records
-      .filter((record) => record.answer !== null && record.answer.held !== true)
+    open: asks.filter(isOpen),
+    waiting: asks.filter(isWaiting),
+    answered: asks
+      .filter((ask) => !isOpen(ask) && !isWaiting(ask))
       .sort((left, right) => sentAt(right) - sentAt(left)),
   };
 }
 
 /**
- * What an open question's send button does, by what is left open in the chat, whichever ask it came from: it saves the
- * answer to wait for the other open questions, or, as the chat's last open question, sends it with the waiting answers.
+ * What an ask's button does, by what is left open in the chat, whichever ask it came from: it saves the card's answers
+ * to wait for the other open asks, or, on the chat's last open ask, sends them with the answers that wait.
  */
-export function sendLabel(
-  record: QuestionRecord,
+export function askSendLabel(
+  ask: Ask,
   records: readonly QuestionRecord[],
-): "Save answer" | "Send answer" | "Send answers" {
-  const others = records.filter((known) => known.id !== record.id);
-  if (others.some((known) => known.answer === null)) return "Save answer";
-  return others.some((known) => known.answer?.held === true) ? "Send answers" : "Send answer";
+): "Save answer" | "Save answers" | "Send answer" | "Send answers" {
+  const mine = new Set(ask.records.map((record) => record.id));
+  const others = records.filter((record) => !mine.has(record.id));
+  const several = unsent(ask).length > 1;
+  if (others.some((record) => record.answer === null))
+    return several ? "Save answers" : "Save answer";
+  return several || others.some((record) => record.answer?.held === true)
+    ? "Send answers"
+    : "Send answer";
 }
 
 /** An answer in a few words: the choices and the written answer, or Skipped. */

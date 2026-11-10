@@ -66,6 +66,8 @@ import {
   isHostDialogRequest,
   isHostToolCall,
   isHostUriCall,
+  isOmpQuestion,
+  type OmpQuestionRequest,
   type PromptResultEvent,
   parseChatHostParams,
   type ShellRunResult,
@@ -188,10 +190,22 @@ type Registrations<T> = ReadonlyMap<string, ReadonlyMap<string, readonly T[]>>;
 
 interface OpenRequest {
   readonly request: HostRequest;
+  /** When the host asked it. */
+  readonly at: number;
   /** The sequence of the event that asked it, once published. */
   seq?: number;
   readonly resolve: (answer: unknown) => void;
   readonly reject: (error: Error) => void;
+}
+
+/** A chat's questions from omp that stop it until you answer, for the dashboard (`waiting.asks`). */
+export interface WaitingAsks {
+  readonly threadId: ThreadId;
+  readonly folder: FolderPath;
+  /** Oldest first. */
+  readonly requests: readonly OmpQuestionRequest[];
+  /** When the newest of them was asked. */
+  readonly at: number;
 }
 
 /** The registrations with one owner's set replaced. */
@@ -653,7 +667,10 @@ export class ChatSessionPortRuntime {
 
   readonly #waitingListeners = new Set<() => void>();
 
-  /** Whether a chat waits for an answer from you (an approval or a question), and each change: the running list (D1). */
+  /**
+   * Whether a chat waits for an answer from you (an approval or a question), and each change: the running list (D1);
+   * and omp's questions that wait in each chat, for the dashboard's questions (D7).
+   */
   readonly waiting = {
     // A call of a page's tool waits for that page, not for you.
     waitingFor: (threadId: ThreadId): boolean =>
@@ -661,6 +678,29 @@ export class ChatSessionPortRuntime {
         ...(this.#entries.get(this.#aliases.get(threadId) ?? threadId)?.openRequests.values() ??
           []),
       ].some(({ request }) => isHostDialogRequest(request)),
+    /** Each chat with omp's questions that stop it until you answer (`isOmpQuestion`), oldest first. */
+    asks: (): readonly WaitingAsks[] => {
+      const chats: WaitingAsks[] = [];
+      for (const entry of this.#entries.values()) {
+        const requests: OmpQuestionRequest[] = [];
+        let at = 0;
+        for (const open of [...entry.openRequests.values()].sort(
+          (left, right) => left.at - right.at,
+        )) {
+          if (!isOmpQuestion(open.request)) continue;
+          requests.push(open.request);
+          at = open.at;
+        }
+        if (requests.length === 0) continue;
+        chats.push({
+          threadId: entry.bootstrap.threadId,
+          folder: entry.bootstrap.folderPath,
+          requests,
+          at,
+        });
+      }
+      return chats;
+    },
     onWaitingChange: (listener: () => void): (() => void) => {
       this.#waitingListeners.add(listener);
       return () => {
@@ -1613,7 +1653,7 @@ export class ChatSessionPortRuntime {
       return todos.agentCall({ threadId, folder: folderPath }, request.params);
     }
     return new Promise((resolve, reject) => {
-      entry.openRequests.set(request.id, { request, resolve, reject });
+      entry.openRequests.set(request.id, { request, at: Date.now(), resolve, reject });
       this.#waitingChanged();
       this.#receive(entry, { kind: "host_request", request });
     });

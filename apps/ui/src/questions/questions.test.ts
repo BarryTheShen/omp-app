@@ -1,6 +1,13 @@
 import type { QuestionRecord } from "@omp-app/contracts/chat-host";
 import { describe, expect, test } from "vitest";
-import { ASKED_NOTICE, answerSummary, inPanelOrder, QuestionsStore, sendLabel } from "./questions";
+import {
+  ASKED_NOTICE,
+  answerSummary,
+  askSendLabel,
+  asksInPanelOrder,
+  asksOf,
+  QuestionsStore,
+} from "./questions";
 
 const T = 1_790_000_000_000;
 
@@ -59,45 +66,61 @@ describe("a chat's questions without waiting", () => {
     expect(questions.apply({ type: "agent_start" }, true)).toBe(false);
   });
 
-  test("lists the open questions in the order asked, then the waiting answers, then the sent ones newest first", () => {
+  test("lists the asks with a question open in the order asked, then those whose answers wait, then the sent ones newest first", () => {
+    const of = (call: string, id: string, overrides: Partial<QuestionRecord> = {}) =>
+      question(id, { id: `${call}:${id}`, toolCallId: call, ...overrides });
+    const sent = (at: number) => ({ picked: ["No"], skipped: false, answeredAt: at, sentAt: at });
+    const held = { picked: ["Yes"], skipped: false, answeredAt: T, held: true } as const;
     const records = [
-      question("a", {
-        answer: { picked: ["No"], skipped: false, answeredAt: T + 1, sentAt: T + 9 },
+      // One answer went early with Send answers: the ask is open while another of its questions is.
+      of("call_1", "a", { answer: sent(T + 1) }),
+      of("call_1", "b"),
+      of("call_2", "c", { answer: held }),
+      of("call_2", "d", { answer: { picked: [], skipped: true, answeredAt: T, held: true } }),
+      of("call_3", "e", { answer: sent(T + 9) }),
+      of("call_4", "f", {
+        answer: { picked: [], skipped: true, answeredAt: T + 2, sentAt: T + 3 },
       }),
-      question("b"),
-      question("c", { answer: { picked: [], skipped: true, answeredAt: T + 2, sentAt: T + 3 } }),
-      question("d", { answer: { picked: ["Yes"], skipped: false, answeredAt: T + 4, held: true } }),
-      question("e"),
       // Sent before answers waited: no send time, its answer time counts.
-      question("f", { answer: { picked: ["Yes"], skipped: false, answeredAt: T + 5 } }),
+      of("call_5", "g", { answer: { picked: ["Yes"], skipped: false, answeredAt: T + 5 } }),
+      of("call_6", "h"),
     ];
-    const { open, waiting, answered } = inPanelOrder(records);
-    expect(open.map((record) => record.questionId)).toEqual(["b", "e"]);
-    expect(waiting.map((record) => record.questionId)).toEqual(["d"]);
-    expect(answered.map((record) => record.questionId)).toEqual(["a", "f", "c"]);
-    expect(answered.map(answerSummary)).toEqual(["No", "Yes", "Skipped"]);
+    const { open, waiting, answered } = asksInPanelOrder(records);
+    const calls = (asks: readonly { readonly toolCallId: string }[]) =>
+      asks.map((ask) => ask.toolCallId);
+    expect(calls(open)).toEqual(["call_1", "call_6"]);
+    expect(calls(waiting)).toEqual(["call_2"]);
+    expect(calls(answered)).toEqual(["call_3", "call_5", "call_4"]);
+    // Each ask keeps its questions in the order asked.
+    expect(asksOf(records)[0]?.records.map((record) => record.questionId)).toEqual(["a", "b"]);
   });
 
-  test("a question's button saves while any other question of the chat is open, whichever ask, and sends on the last one", () => {
+  test("an ask's button saves while another ask has a question open, and sends on the last one", () => {
     const other = (id: string, overrides: Partial<QuestionRecord> = {}) =>
       question(id, { id: `call_2:${id}`, toolCallId: "call_2", ...overrides });
     const held = { picked: ["Yes"], skipped: false, answeredAt: T, held: true } as const;
-    // Another ask's open question keeps this one's answer waiting too.
-    const records = [question("a"), other("x")];
-    expect(sendLabel(records[0] as QuestionRecord, records)).toBe("Save answer");
-    expect(sendLabel(records[1] as QuestionRecord, records)).toBe("Save answer");
-    // The chat's last open question sends the waiting answers with it, from every ask.
-    const lastOpen = [question("a", { answer: held }), question("b"), other("x", { answer: held })];
-    expect(sendLabel(lastOpen[1] as QuestionRecord, lastOpen)).toBe("Send answers");
-    // Alone, or with every other answer already sent, it sends just itself.
+    const askOf = (records: readonly QuestionRecord[], call: string) => {
+      const ask = asksOf(records).find((each) => each.toolCallId === call);
+      if (ask === undefined) throw new Error(`no ask ${call}`);
+      return ask;
+    };
+    // Another ask's open question keeps this card's answers waiting.
+    const records = [question("a"), question("b"), other("x")];
+    expect(askSendLabel(askOf(records, "call_1"), records)).toBe("Save answers");
+    expect(askSendLabel(askOf(records, "call_2"), records)).toBe("Save answer");
+    // The chat's last open ask sends its answers with the ones that wait, from every ask.
+    const lastOpen = [question("a"), other("x", { answer: held })];
+    expect(askSendLabel(askOf(lastOpen, "call_1"), lastOpen)).toBe("Send answers");
+    // A one-question card, with nothing else open or waiting, sends just its answer.
     const alone = [
       question("a", { answer: { picked: ["Yes"], skipped: false, answeredAt: T, sentAt: T } }),
       other("x"),
     ];
-    expect(sendLabel(alone[1] as QuestionRecord, alone)).toBe("Send answer");
-    // A waiting answer opened again to change it, with nothing else open or waiting, sends just itself.
-    const changing = [question("a", { answer: held })];
-    expect(sendLabel(changing[0] as QuestionRecord, changing)).toBe("Send answer");
+    expect(askSendLabel(askOf(alone, "call_2"), alone)).toBe("Send answer");
+    // A card of several questions sends them together.
+    expect(askSendLabel(askOf(records.slice(0, 2), "call_1"), records.slice(0, 2))).toBe(
+      "Send answers",
+    );
   });
 
   test("an answer's summary has its choices and its written answer", () => {

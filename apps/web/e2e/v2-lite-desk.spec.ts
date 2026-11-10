@@ -109,4 +109,29 @@ realTest.describe("new UI lite view at a computer's layout", () => {
     await expect(planChip(page, false)).toHaveCount(0);
     expect(realApp.problems).toEqual([]);
   });
+
+  realTest(
+    "a side bar 160 px wide keeps the page in it: Send stays in view and the box's controls scroll sideways",
+    async ({ realApp, browser }) => {
+      const width = 160;
+      const context = await browser.newContext({ viewport: { width, height: 700 } });
+      const page = await realApp.open({ path: "/lite", context });
+      await expect(box(page)).toHaveAttribute("placeholder", /./, { timeout: 120_000 });
+      // Nothing sticks out, so the panel never scrolls sideways (and never cuts the chat's left edge off).
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+      const send = await page.getByRole("button", { name: "Send" }).boundingBox();
+      expect(send).not.toBeNull();
+      if (send !== null) expect(send.x + send.width).toBeLessThanOrEqual(width);
+      // A control the row has no room for is reached by scrolling the row: Plan comes into view.
+      const plan = planChip(page, false);
+      await plan.scrollIntoViewIfNeeded();
+      const planPlace = await plan.boundingBox();
+      expect(planPlace).not.toBeNull();
+      if (planPlace !== null) expect(planPlace.x + planPlace.width).toBeLessThanOrEqual(width);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });

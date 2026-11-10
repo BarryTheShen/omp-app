@@ -4,10 +4,11 @@ import { expect, realTest, startNewChat } from "./real-omp";
 /**
  * Questions omp asks without waiting (the chat host's `ask_async` tool), in the new UI on real omp: omp asks and its
  * turn goes on; the chat says so and the rail's Questions button counts them; the Questions panel opens on Questions for
- * you, a card each, with the agent's context; an answer waits, changeable, for the chat's other open questions, whichever
- * ask they came from, and Send answers sends the waiting ones at once; the chat's last answer sends the rest together as
- * one message from the person, which omp answers; a skipped question sends nothing; the answers are there again
- * after a reload. `/btw` brings the side questions forward, also while questions wait.
+ * you, one card per ask with its questions in the order asked, the agent's context and the recommended choice already
+ * picked; Skip on each question; the card's answers wait, changeable, for the chat's other open asks, and Send answers
+ * sends the waiting ones at once; the chat's last ask sends the rest together as one message from the person, which omp
+ * answers; a skipped question sends nothing; the answers are there again after a reload. `/btw` brings the side
+ * questions forward, also while questions wait.
  */
 
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
@@ -46,7 +47,7 @@ realTest.describe("questions omp asks without waiting", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "wait in the Questions panel while omp works on; the answers of an ask go to the chat together",
+    "wait in the Questions panel while omp works on; an ask is one card, its recommended choice already picked, and its answers go to the chat together",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -68,96 +69,62 @@ realTest.describe("questions omp asks without waiting", () => {
         "true",
       );
 
-      // A card per question, with the agent's context and its recommendation.
-      const publish = panel(page).getByRole("article", { name: "Question: Publish" });
+      // One card for the ask, its questions in the order asked, with the agent's context and its recommendation.
+      const card = panel(page).getByRole("article", {
+        name: "Questions: Publish, Days, What should the public copy be called?",
+      });
+      await expect(card.getByRole("region", { name: /^Question: / })).toHaveCount(3);
+      const publish = card.getByRole("region", { name: "Question: Publish" });
       await expect(publish).toContainText("How should the project be published?");
       await expect(publish.getByRole("region", { name: "Context" })).toContainText(
         "Issues on a public repository can be opened by anyone.",
       );
       await expect(publish.getByText("Recommended")).toBeVisible();
       await expect(publish).toContainText("A new repository with the code only");
-      // Other questions of the ask are open, so the answer is saved to wait for them.
-      const save = publish.getByRole("button", { name: "Save answer" });
-      await expect(save).toBeDisabled();
-      await publish.getByRole("radio", { name: "Public copy" }).click();
+      // The recommended choice is already picked; the card's one button waits for an answer or a skip on each question.
+      await expect(publish.getByRole("radio", { name: "Public copy" })).toBeChecked();
+      const send = card.getByRole("button", { name: "Send answers" });
+      await expect(send).toBeDisabled();
       await publish.getByRole("button", { name: "Add a note" }).click();
       await publish.getByRole("textbox", { name: "Note on your answer" }).fill("keep issues off");
-      await save.click();
-
-      // The answer waits, and nothing went to the chat yet.
-      const waiting = panel(page).getByRole("article", { name: "Ready to send: Publish" });
-      await expect(waiting).toContainText("Public copy");
-      await expect(waiting).toContainText("Note: keep issues off");
-      const bar = panel(page).getByRole("region", { name: "Answers ready to send" });
-      await expect(bar).toContainText("1 answer ready.");
-      await expect(
-        rail(page).getByRole("button", { name: "Questions, 2 waiting for you" }),
-      ).toBeVisible();
-      await expect(
-        transcript(page).getByText("Answer to your question", { exact: false }),
-      ).toHaveCount(0);
-
-      // Send answers sends it at once, as the person's message, and omp answers it.
-      await bar.getByRole("button", { name: "Send answers" }).click();
-      const answer = transcript(page).getByText('Answer to your question "Publish" (publish):', {
-        exact: false,
-      });
-      await expect(answer).toBeVisible({ timeout: 60_000 });
-      await expect(answer).toContainText("Note: keep issues off");
-      await expect(transcript(page).getByText("pong", { exact: true })).toHaveCount(1, {
-        timeout: 90_000,
-      });
-      await expect(bar).toHaveCount(0);
-      const answered = panel(page).getByRole("article", { name: "Answered: Publish" });
-      await expect(answered).toContainText("Public copy");
-      await expect(answered).toContainText("Note: keep issues off");
-
-      // Several choices of a question that takes them; a waiting answer can be changed.
-      const days = panel(page).getByRole("article", { name: "Question: Days" });
+      const days = card.getByRole("region", { name: "Question: Days" });
       await days.getByRole("checkbox", { name: "Monday" }).click();
       await days.getByRole("checkbox", { name: "Wednesday" }).click();
-      await days.getByRole("button", { name: "Save answer" }).click();
-      const daysWaiting = panel(page).getByRole("article", { name: "Ready to send: Days" });
-      await expect(daysWaiting).toContainText("Monday, Wednesday");
-      await daysWaiting.getByRole("button", { name: "Change" }).click();
-      const changing = panel(page).getByRole("article", { name: "Question: Days" });
-      await expect(changing.getByRole("checkbox", { name: "Wednesday" })).toBeChecked();
-      await changing.getByRole("checkbox", { name: "Wednesday" }).click();
-      await changing.getByRole("checkbox", { name: "Tuesday" }).click();
-      await changing.getByRole("button", { name: "Save answer" }).click();
-      await expect(daysWaiting).toContainText("Monday, Tuesday");
-
-      // The ask's last question sends what waits with it, as one message: the skip sends nothing, so the Days answer
-      // goes alone.
-      const name = panel(page).getByRole("article", {
+      await expect(send).toBeDisabled();
+      const name = card.getByRole("region", {
         name: "Question: What should the public copy be called?",
       });
       await expect(name.getByRole("textbox", { name: "Your answer" })).toBeVisible();
-      await expect(name.getByRole("button", { name: "Send answers" })).toBeVisible();
       await name.getByRole("button", { name: "Skip" }).click();
+      await expect(name).toContainText("Skipped: nothing goes to omp for it.");
       await expect(
-        transcript(page).getByText('Answer to your question "Days" (days):', { exact: false }),
-      ).toBeVisible({
-        timeout: 60_000,
-      });
-      // The person's message lists the choices, as Markdown draws a list; the skipped question has no line in it (the
-      // message names each question it answers as `"<question>" (<id>):`).
-      await expect(
-        transcript(page).getByRole("listitem").filter({ hasText: "Monday" }),
-      ).toBeVisible();
-      await expect(
-        transcript(page).getByRole("listitem").filter({ hasText: "Tuesday" }),
-      ).toBeVisible();
-      await expect(transcript(page).getByText("(name):", { exact: false })).toHaveCount(0);
-      await expect(transcript(page).getByText("pong", { exact: true })).toHaveCount(2, {
+        transcript(page).getByText("Answers to your questions", { exact: false }),
+      ).toHaveCount(0);
+
+      // One message from the person: the recommended choice as it was left, its note and the days; the skipped
+      // question has no line in it (the message names each question it answers as `"<question>" (<id>):`).
+      await send.click();
+      const message = transcript(page)
+        .locator(".tl-item")
+        .filter({ hasText: "Answers to your questions:" });
+      await expect(message).toHaveCount(1, { timeout: 60_000 });
+      await expect(message).toContainText('"Publish" (publish):');
+      await expect(message).toContainText("Public copy");
+      await expect(message).toContainText("Note: keep issues off");
+      await expect(message.getByRole("listitem").filter({ hasText: "Monday" })).toBeVisible();
+      await expect(message.getByRole("listitem").filter({ hasText: "Wednesday" })).toBeVisible();
+      await expect(message).not.toContainText("(name):");
+      await expect(transcript(page).getByText("pong", { exact: true })).toHaveCount(1, {
         timeout: 90_000,
       });
       await expect(panel(page).getByText("Nothing waits for you.", { exact: false })).toBeVisible();
-      await expect(
-        panel(page).getByRole("article", {
-          name: "Answered: What should the public copy be called?",
-        }),
-      ).toContainText("Skipped");
+      const answered = panel(page).getByRole("article", {
+        name: "Answered: Publish, Days, What should the public copy be called?",
+      });
+      await expect(answered).toContainText("Public copy");
+      await expect(answered).toContainText("Note: keep issues off");
+      await expect(answered).toContainText("Monday, Wednesday");
+      await expect(answered).toContainText("Skipped");
       await expect(
         rail(page).getByRole("button", { name: "Questions", exact: true }),
       ).toBeVisible();
@@ -169,18 +136,17 @@ realTest.describe("questions omp asks without waiting", () => {
         await rail(page).getByRole("button", { name: "Questions", exact: true }).click();
       }
       await panel(page).getByRole("tab", { name: "Questions for you" }).click();
-      await expect(panel(page).getByRole("article", { name: "Answered: Publish" })).toContainText(
-        "Public copy",
-      );
-      await expect(panel(page).getByRole("article", { name: "Answered: Days" })).toContainText(
-        "Monday, Tuesday",
-      );
+      const again = panel(page).getByRole("article", {
+        name: "Answered: Publish, Days, What should the public copy be called?",
+      });
+      await expect(again).toContainText("Public copy");
+      await expect(again).toContainText("Monday, Wednesday");
       expect(realApp.problems).toEqual([]);
     },
   );
 
   realTest(
-    "answers to separate asks wait for each other and go as one message",
+    "answers to separate asks wait for each other and can be changed; Send answers sends what waits, the last ask the rest as one message",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -188,6 +154,7 @@ realTest.describe("questions omp asks without waiting", () => {
       for (const [id, question, said] of [
         ["color", "Which color?", 1],
         ["size", "Which size?", 2],
+        ["shape", "Which shape?", 3],
       ] as const) {
         await box(page).fill(
           `call_tool ask_async ${JSON.stringify({ questions: [{ id, question }] })}`,
@@ -200,34 +167,54 @@ realTest.describe("questions omp asks without waiting", () => {
           transcript(page).getByText("tool said: Asked 1 question", { exact: false }),
         ).toHaveCount(said);
       }
-      await rail(page).getByRole("button", { name: "Questions, 2 waiting for you" }).click();
+      await rail(page).getByRole("button", { name: "Questions, 3 waiting for you" }).click();
 
-      // The first ask's answer waits: the other ask's question is still open.
+      // The first ask's answer waits: the other asks' questions are still open. A waiting answer can be changed.
       const color = panel(page).getByRole("article", { name: "Question: Which color?" });
       await color.getByRole("textbox", { name: "Your answer" }).fill("Green");
       await color.getByRole("button", { name: "Save answer" }).click();
       const bar = panel(page).getByRole("region", { name: "Answers ready to send" });
       await expect(bar).toContainText("1 answer ready.");
-      await expect(
-        panel(page).getByRole("article", { name: "Ready to send: Which color?" }),
-      ).toContainText("Green");
+      const waiting = panel(page).getByRole("article", { name: "Ready to send: Which color?" });
+      await expect(waiting).toContainText("Green");
+      await waiting.getByRole("button", { name: "Change" }).click();
+      const changing = panel(page).getByRole("article", { name: "Question: Which color?" });
+      await expect(changing.getByRole("textbox", { name: "Your answer" })).toHaveValue("Green");
+      await changing.getByRole("textbox", { name: "Your answer" }).fill("Dark green");
+      await changing.getByRole("button", { name: "Save answer" }).click();
+      await expect(waiting).toContainText("Dark green");
       await expect(
         transcript(page).getByText("Answer to your question", { exact: false }),
       ).toHaveCount(0);
 
-      // The last open question sends both, as one message from the person.
+      // Send answers sends what waits at once, as the person's message, and omp answers it.
+      await bar.getByRole("button", { name: "Send answers" }).click();
+      await expect(
+        transcript(page).getByText('Answer to your question "Which color?" (color):', {
+          exact: false,
+        }),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(transcript(page).getByText("pong", { exact: true })).toHaveCount(1, {
+        timeout: 90_000,
+      });
+      await expect(bar).toHaveCount(0);
+      await expect(
+        panel(page).getByRole("article", { name: "Answered: Which color?" }),
+      ).toContainText("Dark green");
+
+      // The next ask's answer waits for the last; the last ask sends both, as one message from the person.
       const size = panel(page).getByRole("article", { name: "Question: Which size?" });
       await size.getByRole("textbox", { name: "Your answer" }).fill("Large");
-      await size.getByRole("button", { name: "Send answers" }).click();
+      await size.getByRole("button", { name: "Save answer" }).click();
+      const shape = panel(page).getByRole("article", { name: "Question: Which shape?" });
+      await shape.getByRole("textbox", { name: "Your answer" }).fill("Round");
+      await shape.getByRole("button", { name: "Send answers" }).click();
       await expect(
         transcript(page).getByText("Answers to your questions:", { exact: false }),
       ).toBeVisible({ timeout: 60_000 });
-      for (const block of ['"Which color?" (color):', '"Which size?" (size):']) {
+      for (const block of ['"Which size?" (size):', '"Which shape?" (shape):']) {
         await expect(transcript(page).getByText(block, { exact: false })).toBeVisible();
       }
-      await expect(
-        transcript(page).getByText("Answer to your question", { exact: false }),
-      ).toHaveCount(0);
       await expect(bar).toHaveCount(0);
       await expect(panel(page).getByText("Nothing waits for you.", { exact: false })).toBeVisible();
       expect(realApp.problems).toEqual([]);
@@ -329,6 +316,113 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(answer).toBeVisible({ timeout: 60_000 });
       await expect(answer).toContainText(first);
       await expect(answer).toContainText(second);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a long question shows its start and Read all, which opens the same card wide with its answer kept; on a phone it fills the screen",
+    async ({ realApp, browser }) => {
+      const long = (id: string) => ({
+        questions: [
+          {
+            id,
+            header: "Plan",
+            question: [
+              "Here is the plan.",
+              "",
+              "| Step | What | When |",
+              "|---|---|---|",
+              ...Array.from(
+                { length: 8 },
+                (_, at) => `| ${at + 1} | Part ${at + 1} of the work | Day ${at + 1} |`,
+              ),
+              "",
+              ...Array.from({ length: 14 }, (_, at) => `Paragraph ${at + 1} of the plan's notes.`),
+            ].join("\n"),
+            options: [{ label: "Approve" }, { label: "Not yet" }],
+            recommended: 0,
+          },
+        ],
+      });
+
+      // A computer: the card shows the start and Read all; the wide card keeps the answer picked in the panel.
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(long("plan"))}`);
+      await box(page).press("Enter");
+      await rail(page)
+        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .click({ timeout: 90_000 });
+      const card = panel(page).getByRole("article", { name: "Question: Plan" });
+      await card.getByRole("radio", { name: "Not yet" }).click();
+      await card.getByRole("button", { name: "Read all" }).click();
+      const wide = page.getByRole("dialog", { name: "Question: Plan" });
+      await expect(wide.getByRole("table")).toBeVisible();
+      await expect(wide.getByText("Paragraph 14 of the plan's notes.")).toBeVisible();
+      await expect(wide.getByRole("radio", { name: "Not yet" })).toBeChecked();
+      // Measured once its opening zoom (95% to 100%) has ended.
+      await expect.poll(async () => (await wide.boundingBox())?.width ?? 0).toBeGreaterThan(600);
+      await wide.getByRole("button", { name: "Send answer" }).click();
+      await expect(
+        transcript(page).getByText('Answer to your question "Plan" (plan):', { exact: false }),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(wide).toHaveCount(0);
+
+      // A phone: the wide card fills the screen; closing it brings the card back with its answer.
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      const phone = await realApp.open({ path: "/", context });
+      await expect(box(phone)).toHaveAttribute("placeholder", /./, { timeout: 120_000 });
+      await box(phone).fill(`call_tool ask_async ${JSON.stringify(long("plan2"))}`);
+      await phone.getByRole("button", { name: "Send" }).tap();
+      await expect(
+        transcript(phone).getByText("tool said: Asked 1 question (plan2).", { exact: false }),
+      ).toBeVisible({ timeout: 90_000 });
+      await phone.getByRole("button", { name: "Details", exact: true }).tap();
+      const details = phone.getByRole("region", { name: "Chat details" });
+      await details.getByRole("tab", { name: /^Questions/ }).tap();
+      const phoneCard = details.getByRole("article", { name: "Question: Plan" });
+      await phoneCard.getByRole("radio", { name: "Not yet" }).tap();
+      await phoneCard.getByRole("button", { name: "Read all" }).tap();
+      const full = phone.getByRole("dialog", { name: "Question: Plan" });
+      await expect(full.getByRole("table")).toBeVisible();
+      await expect.poll(async () => (await full.boundingBox())?.height ?? 0).toBeGreaterThan(800);
+      await full.getByRole("button", { name: "Close" }).tap();
+      await expect(full).toHaveCount(0);
+      await expect(phoneCard.getByRole("radio", { name: "Not yet" })).toBeChecked();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "omp's question that stops the chat waits in the Questions panel too; answered there, the chat's card closes and omp goes on",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box(page).fill("ask_user");
+      await box(page).press("Enter");
+      const inChat = page.getByRole("dialog", { name: "Questions from omp" });
+      await expect(inChat).toBeVisible({ timeout: 60_000 });
+      await rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }).click();
+      const listed = panel(page)
+        .getByRole("region", { name: "omp waits for your answer" })
+        .getByRole("region", { name: "Questions from omp" });
+      await listed.getByRole("radio", { name: "Postgres" }).click();
+      await listed.getByRole("button", { name: "Submit" }).click();
+      await expect(inChat).toHaveCount(0);
+      await expect(listed).toHaveCount(0);
+      await expect(page.getByText(/^tool said: /).last()).toContainText("Postgres", {
+        timeout: 60_000,
+      });
+      await expect(
+        rail(page).getByRole("button", { name: "Questions", exact: true }),
+      ).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

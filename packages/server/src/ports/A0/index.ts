@@ -4,7 +4,11 @@ import type { CommandSession } from "../../modules/A1/gateway/command-session";
 import type { OmpProcess } from "../../process";
 import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
 import { createAppPortRegistration } from "./app";
-import { type ChatSessionPortRegistration, createChatSessionPortRuntime } from "./chat-session";
+import {
+  type ChatSessionPortRegistration,
+  createChatSessionPortRuntime,
+  type WaitingAsks,
+} from "./chat-session";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 
 export * from "./app";
@@ -76,9 +80,13 @@ export interface A0Runtime {
       ) => void,
     ): () => void;
   };
-  /** Whether a chat waits for an answer from you, and each change, for the running list (D1; see the chat runtime). */
+  /**
+   * Whether a chat waits for an answer from you, and each change, for the running list (D1; see the chat runtime); and
+   * omp's questions that wait in each chat, for the dashboard's questions (D7).
+   */
   readonly waiting: {
     waitingFor(threadId: ThreadId): boolean;
+    asks(): readonly WaitingAsks[];
     onWaitingChange(listener: () => void): () => void;
   };
   /** Ends a chat's turn as Esc does, for the running list's Stop (D1; the chat runtime's `abort` request). */

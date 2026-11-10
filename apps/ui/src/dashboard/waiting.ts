@@ -5,6 +5,7 @@ import {
   type TodoBoard,
   TodosPort,
 } from "@omp-app/contracts";
+import { isOmpQuestion } from "@omp-app/contracts/chat-host";
 import { useEffect, useState } from "react";
 import { follow } from "../follow";
 
@@ -15,10 +16,13 @@ function today(now: Date = new Date()): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-/** How many questions wait for an answer, in every chat. */
+/** How many questions wait for an answer, in every chat: its agent's open ones, and omp's that stop it. */
 export function openQuestionsIn(list: OpenQuestionsList): number {
   return list.chats.reduce(
-    (count, chat) => count + chat.records.filter((record) => record.answer === null).length,
+    (count, chat) =>
+      count +
+      chat.records.filter((record) => record.answer === null).length +
+      chat.requests.filter(isOmpQuestion).length,
     0,
   );
 }

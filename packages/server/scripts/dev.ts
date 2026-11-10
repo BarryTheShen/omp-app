@@ -782,9 +782,11 @@ export async function createCompositionServer(
     onProblem: (problem) => logger.warn("todos.siyuan_copy", { problem }),
   });
   const todos = createTodosRuntime({ store: todoStore, mirror: siyuanCopy, publish });
-  // Every chat's questions that wait, for the dashboard, and `changed` to every device.
+  // Every chat's questions that wait (those asked without waiting, and omp's that stop a chat), for the dashboard, and
+  // `changed` to every device.
   const questions = createQuestionsRuntime({
     questions: openQuestions,
+    waiting: a0Runtime.waiting,
     titleOf: chatTitle,
     publish,
   });

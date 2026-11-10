@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "../../btw/btw";
 import type { ChatController } from "../../chat/controller";
 import { isImeEnter } from "../../keys/ime";
+import { useWaiting } from "../../questions/waiting";
 import {
   Markdown,
   StreamingMarkdown,
@@ -174,10 +175,12 @@ export function BtwPanel({ chat }: { readonly chat: ChatController | null }): Re
 type BtwTab = "questions" | "side";
 
 function BtwTabs({ controller }: { readonly controller: ChatController }): ReactNode {
-  const { records, open } = useSyncExternalStore(
+  const { records } = useSyncExternalStore(
     controller.questions.subscribe,
     controller.questions.getSnapshot,
   );
+  // The open questions and a plan to review: the tab's count, and the tab the panel opens on.
+  const open = useWaiting(controller);
   // Read as a yes or no, so the pieces of a side answer do not redraw the tabs.
   const sideWanted = useSyncExternalStore(
     controller.btw.subscribe,

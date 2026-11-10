@@ -70,7 +70,9 @@ const textOf = (spans: readonly FormSpan[]): string =>
 /**
  * omp's question form (its `ask`, omp 18.18.3) as one card: the form's sections in order, each with its text, pictures
  * and fields (round marks, tick boxes, lists, one-line and longer boxes), Other… where omp offers it, omp's own checks
- * under a field, and Submit. Skip (Esc) leaves it unanswered, as Esc does in omp. Hide folds it to one line.
+ * under a field, and Submit. Skip (Esc) leaves it unanswered, as Esc does in omp. Hide folds it to one line. In the
+ * Questions panel and on the dashboard (`inPanel`) the same card lists it, without Hide and Alt+H, which belong to the
+ * chat's own.
  */
 export function FormDialog({
   dialog,
@@ -78,12 +80,14 @@ export function FormDialog({
   error,
   waiting,
   onAnswer,
+  inPanel = false,
 }: {
   readonly dialog: FormDialogParams;
   readonly busy: boolean;
   readonly error: string | null;
   readonly waiting: number;
   readonly onAnswer: (answer: HostDialogAnswer) => void;
+  readonly inPanel?: boolean;
 }): ReactNode {
   const [values, setValues] = useState<FieldValue[]>(() => initialValues(dialog));
   const [shownErrors, setShownErrors] = useState<ReadonlyMap<number, string>>(new Map());
@@ -119,8 +123,10 @@ export function FormDialog({
   const skip = (): void => onAnswer({ cancelled: true });
 
   // omp's Alt+H (`app.ask.hide`) anywhere in this chat's window (the workspace's `data-chat-pane`; the whole page where
-  // no window holds the chat), as the questions dialog takes it; an open menu that takes the key first keeps it.
+  // no window holds the chat), as the questions dialog takes it; an open menu that takes the key first keeps it. The
+  // chat's own card only.
   useEffect(() => {
+    if (inPanel) return;
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.defaultPrevented || !matchesHotkey(event, KEYS.askHide.hotkey)) return;
       const pane = root.current?.closest("[data-chat-pane]") ?? document.body;
@@ -130,7 +136,7 @@ export function FormDialog({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [inPanel]);
 
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>): void => {
     if (busy) return;
@@ -192,7 +198,7 @@ export function FormDialog({
   return (
     <div ref={root} className="flex min-h-0 flex-col">
       <section
-        role="dialog"
+        role={inPanel ? undefined : "dialog"}
         aria-label="Questions from omp"
         className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-l3 bg-card shadow-md"
         onKeyDownCapture={onKeyDownCapture}
@@ -228,14 +234,16 @@ export function FormDialog({
         {error !== null && <p className="shrink-0 px-3.5 pb-1 text-xs text-bad-ink">{error}</p>}
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-l2 px-3.5 py-2">
           {timer}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setHidden(true)}
-            title={`Hide until you are ready to answer  ${keycap(KEYS.askHide)}`}
-          >
-            Hide
-          </Button>
+          {!inPanel && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setHidden(true)}
+              title={`Hide until you are ready to answer  ${keycap(KEYS.askHide)}`}
+            >
+              Hide
+            </Button>
+          )}
           {waiting > 0 && (
             <span className="text-xs text-t3">
               {waiting === 1 ? "1 more is waiting." : `${waiting} more are waiting.`}

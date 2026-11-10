@@ -922,7 +922,7 @@ export function DashboardBody({
             <Part id="questions">
               <Section
                 title="Questions"
-                hint="What every chat's agent asked without waiting; answered here, a question goes to its chat."
+                hint="What every chat waits on you for: omp's questions that stop it, and those its agent asked without waiting. Answered here, a question goes to its chat."
               >
                 <QuestionsSection
                   client={client}

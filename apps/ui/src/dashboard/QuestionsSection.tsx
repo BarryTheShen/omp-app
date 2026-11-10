@@ -6,10 +6,11 @@ import {
   QuestionsPort,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { QuestionRecord } from "@omp-app/contracts/chat-host";
+import { isOmpQuestion, type QuestionRecord } from "@omp-app/contracts/chat-host";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatTarget } from "../chat/controller";
+import { OmpQuestionCard } from "../chat/HostRequests";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
 import { type QuestionAnswerer, WaitingQuestions } from "../panels/btw/QuestionCard";
@@ -87,8 +88,9 @@ const folderName = (folder: string | null): string | null =>
   folder === null ? null : (folder.split("/").filter(Boolean).at(-1) ?? folder);
 
 /**
- * The questions every chat's agent asked without waiting (`ask_async`), each chat's under its name: answered here as in
- * the chat's own Questions panel, a question leaves once its answer went to the chat; Open chat goes to it.
+ * The questions that wait for you in every chat, each chat's under its name: omp's questions that stop the chat until
+ * you answer, as above the chat's message box, and those its agent asked without waiting (`ask_async`), as in the chat's
+ * own Questions panel. Answered here, a question leaves once its answer went to the chat; Open chat goes to it.
  */
 export function QuestionsSection({
   client,
@@ -98,6 +100,7 @@ export function QuestionsSection({
   readonly onOpenChat?: (target: ChatTarget) => void;
 }): ReactNode {
   const { chats, problem } = useOpenQuestions(client);
+  const session = useMemo(() => client.port(ChatSessionPort), [client]);
   const answerers = useMemo(() => new Map<ThreadId, QuestionAnswerer>(), []);
   const answererOf = (threadId: ThreadId): QuestionAnswerer => {
     const known = answerers.get(threadId);
@@ -115,8 +118,8 @@ export function QuestionsSection({
       )}
       {chats !== null && chats.length === 0 && (
         <p className="text-sm text-t3">
-          No question waits for you. When a chat's agent asks something it does not need at once,
-          the question shows here and in that chat, and waits for you.
+          No question waits for you. When a chat's agent asks something it does not need at once, or
+          omp stops a chat to ask you, the question shows here and in that chat, and waits for you.
         </p>
       )}
       {(chats ?? []).map((chat) => {
@@ -149,7 +152,18 @@ export function QuestionsSection({
                 </Button>
               )}
             </div>
-            <WaitingQuestions records={chat.records} controller={answererOf(chat.threadId)} />
+            {chat.requests.filter(isOmpQuestion).map((request) => (
+              <OmpQuestionCard
+                key={request.id}
+                request={request}
+                answerWith={(answer) =>
+                  session.answer({ threadId: chat.threadId, id: request.id, answer })
+                }
+              />
+            ))}
+            {chat.records.length > 0 && (
+              <WaitingQuestions records={chat.records} controller={answererOf(chat.threadId)} />
+            )}
           </section>
         );
       })}

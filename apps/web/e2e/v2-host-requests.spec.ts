@@ -389,4 +389,21 @@ realTest.describe("new UI approvals and questions", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest("a notice shows above omp's question card, never over it", async ({ realApp }) => {
+    const page = await newChat(realApp);
+    await send(page, "ask_user");
+    const card = page.getByRole("dialog", { name: "Questions from omp" });
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    // omp's status line while it waits: Ctrl+P with one role model says so for a moment.
+    await page.getByRole("textbox", { name: "Message" }).press("Control+p");
+    const notice = page.getByRole("status").filter({ hasText: "Only one role model available" });
+    await expect(notice).toBeVisible({ timeout: 30_000 });
+    const noticeBox = await notice.boundingBox();
+    const cardBox = await card.boundingBox();
+    if (noticeBox === null || cardBox === null)
+      throw new Error("no box for the notice or the card");
+    expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(cardBox.y);
+    expect(realApp.problems).toEqual([]);
+  });
 });

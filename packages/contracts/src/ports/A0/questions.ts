@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HostRequestSchema } from "../../chat-host/host-requests";
 import type { QuestionRecord } from "../../chat-host/questions";
 import type { PortClient, PortHandlers } from "../../core/envelope";
 import { definePort } from "../../core/envelope";
@@ -34,7 +35,10 @@ export const QuestionRecordSchema = z.object({
   answer: QuestionAnswerSchema.nullable(),
 }) satisfies z.ZodType<QuestionRecord>;
 
-/** One chat's questions that wait: open ones, and answers given that wait to go with the rest (or for Send now). */
+/**
+ * One chat's questions that wait: those its agent asked without waiting, open ones and answers given that wait to go
+ * with the rest (or for Send now); and omp's questions that stop the chat until you answer.
+ */
 export const OpenQuestionsChat = z.strictObject({
   threadId: ThreadId,
   folder: FolderPath.nullable(),
@@ -42,6 +46,8 @@ export const OpenQuestionsChat = z.strictObject({
   title: z.string().nullable(),
   /** In the order asked: those with no answer, and those whose answer is held (`answer.held`). */
   records: z.array(QuestionRecordSchema).readonly(),
+  /** omp's questions that stop the chat until you answer (`isOmpQuestion`), oldest first. */
+  requests: z.array(HostRequestSchema).readonly(),
 });
 export type OpenQuestionsChat = z.infer<typeof OpenQuestionsChat>;
 
@@ -49,9 +55,9 @@ export const OpenQuestionsList = z.strictObject({ chats: z.array(OpenQuestionsCh
 export type OpenQuestionsList = z.infer<typeof OpenQuestionsList>;
 
 /**
- * The questions every chat's agent asked without waiting and that wait for you (D7), for the dashboard: answered there
- * through each chat's own methods, a question leaves the list once its answer went to the chat. Each change is
- * `changed`.
+ * The questions that wait for you in every chat (D7), for the dashboard: those its agent asked without waiting, and
+ * omp's questions that stop a chat until you answer. Answered there through each chat's own methods, a question leaves
+ * the list once its answer went to the chat. Each change is `changed`.
  */
 export const QuestionsPort = definePort({
   name: "A0.questions",

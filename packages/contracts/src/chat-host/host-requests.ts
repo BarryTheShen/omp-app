@@ -63,6 +63,24 @@ export function isHostDialogRequest(request: HostRequest): request is HostDialog
   return request.method.startsWith("ui.");
 }
 
+/**
+ * omp's questions that stop the chat until you answer: its questions (`ui.ask`, its form `ui.form`) and its yes/no and
+ * pick-one prompts, as against a tool's approval and a text it asks for. The Questions panel and the dashboard list them.
+ */
+export type OmpQuestionRequest = Extract<
+  HostRequest,
+  { readonly method: "ui.ask" | "ui.form" | "ui.confirm" | "ui.select" }
+>;
+
+export function isOmpQuestion(request: HostRequest): request is OmpQuestionRequest {
+  return (
+    request.method === "ui.ask" ||
+    request.method === "ui.form" ||
+    request.method === "ui.confirm" ||
+    request.method === "ui.select"
+  );
+}
+
 /** The host's calls of the app's tools (`tool.call`) and of its URI schemes (`uri.read`, `uri.write`). */
 export type HostToolCall = Extract<HostRequest, { readonly method: "tool.call" }>;
 export type HostUriCall = Extract<HostRequest, { readonly method: "uri.read" | "uri.write" }>;

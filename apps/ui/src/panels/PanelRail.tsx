@@ -1,25 +1,13 @@
 import { Gauge } from "lucide-react";
-import { type ReactNode, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatController } from "../chat/controller";
 import { dashboardLabel } from "../dashboard/waiting";
 import { KEYS, keycap } from "../keys/table";
-import type { QuestionsSnapshot } from "../questions/questions";
+import { useWaiting } from "../questions/waiting";
 import { hidePanel, showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
-
-const NO_QUESTIONS: QuestionsSnapshot = { records: null, open: 0 };
-const noSubscription = (): (() => void) => () => undefined;
-const noQuestions = (): QuestionsSnapshot => NO_QUESTIONS;
-
-/** How many questions the focused chat's agent asked that wait for an answer. */
-function useOpenQuestions(chat: ChatController | null): number {
-  return useSyncExternalStore(
-    chat?.questions.subscribe ?? noSubscription,
-    chat?.questions.getSnapshot ?? noQuestions,
-  ).open;
-}
 
 /**
  * The side panel's opener, along the window's right edge where the panel opens: one button per panel. A click shows the
@@ -38,7 +26,7 @@ export function PanelRail({
   readonly dashboardWaiting: number;
 }): ReactNode {
   const { open, panel } = usePanelState();
-  const waiting = useOpenQuestions(chat);
+  const waiting = useWaiting(chat);
   return (
     <nav
       aria-label="Side panel"

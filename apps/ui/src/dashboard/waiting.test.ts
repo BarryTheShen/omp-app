@@ -32,7 +32,7 @@ const item = (title: string, fields: Partial<TodoItem> = {}): TodoItem =>
   }) as TodoItem;
 
 describe("what waits on the dashboard", () => {
-  test("counts the questions with no answer yet, in every chat; an answer held for the rest no longer waits", () => {
+  test("counts the questions with no answer yet, in every chat, and omp's that stop a chat; an answer held for the rest, or a tool's approval, never", () => {
     const held = { picked: ["Yes"], skipped: false, answeredAt: 2, held: true };
     const list = {
       chats: [
@@ -41,11 +41,28 @@ describe("what waits on the dashboard", () => {
           folder: null,
           title: "A",
           records: [record("q1", null), record("q2", held)],
+          requests: [],
         },
-        { threadId: "b", folder: null, title: "B", records: [record("q3", null)] },
+        {
+          threadId: "b",
+          folder: null,
+          title: "B",
+          records: [record("q3", null)],
+          requests: [
+            { id: "r1", method: "ui.confirm", params: { title: "Deploy?", message: "Now?" } },
+            { id: "r2", method: "ui.approve", params: {} },
+          ],
+        },
+        {
+          threadId: "c",
+          folder: null,
+          title: "C",
+          records: [],
+          requests: [{ id: "r3", method: "ui.select", params: { title: "Branch?", options: [] } }],
+        },
       ],
     } as unknown as OpenQuestionsList;
-    expect(openQuestionsIn(list)).toBe(2);
+    expect(openQuestionsIn(list)).toBe(4);
   });
 
   test("counts the to-dos not done that are due today or before; done, dropped or undated ones never", () => {

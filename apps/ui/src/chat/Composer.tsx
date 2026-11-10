@@ -33,6 +33,7 @@ import { sizeText } from "../panels/files/transfer";
 import { showPanel } from "../panels/panel-state";
 import { usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
+import { useSidewaysRow } from "../sidewaysRow";
 import { TodoPill } from "../todos/TodoPill";
 import { type AttachedFile, MAX_FILE_BYTES, pastesCopiedFiles } from "./attachedFiles";
 import { type Attachment, readImages } from "./attachments";
@@ -54,13 +55,11 @@ import type {
   ChatModel,
   ChatQueue,
   ChatSnapshot,
-  ChatToast,
   ExtensionWidget,
   SentMessage,
   RoleTrack as Track,
 } from "./store";
 import { ThinkingMenu } from "./ThinkingMenu";
-import { Toast } from "./Toast";
 import { shellRun } from "./triggers";
 import { holdReason } from "./usagePause";
 import { useComposerMenu } from "./useComposerMenu";
@@ -126,8 +125,6 @@ export const Composer = memo(function Composer({
   roles,
   roleTrack,
   onRoleTrackDone,
-  toast,
-  onToastDone,
   thinkingLevel,
   queue,
   activity,
@@ -162,9 +159,6 @@ export const Composer = memo(function Composer({
   /** After Ctrl+P, the roles in their order for a moment; `onRoleTrackDone` ends it. */
   readonly roleTrack: Track | null;
   readonly onRoleTrackDone: (id: number) => void;
-  /** omp's latest status line, as a toast above the box; `onToastDone` ends it. */
-  readonly toast: ChatToast | null;
-  readonly onToastDone: (id: number) => void;
   readonly thinkingLevel: string | null;
   readonly queue: ChatQueue;
   readonly activity: ChatActivity | null;
@@ -195,6 +189,8 @@ export const Composer = memo(function Composer({
   const [caret, setCaret] = useState(0);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
+  /** The row's controls under the box: sideways in a side bar too narrow for them, Send staying at the end. */
+  const controlsRow = useSidewaysRow(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
@@ -899,7 +895,6 @@ export const Composer = memo(function Composer({
   return (
     <div className="composer-foot px-4 pt-2 pb-4 max-sm:px-2">
       <div className="relative mx-auto max-w-[720px]">
-        {toast !== null && <Toast toast={toast} onDone={onToastDone} />}
         {/* On a phone the pills live in the top bar (`PhoneDetailsButton`): no row of their own above the box. */}
         {pausedAt !== null ? (
           <PausedRow
@@ -1107,11 +1102,17 @@ export const Composer = memo(function Composer({
           {!phone && (
             // One row at any width, Send at its end (#2845's narrow side panels): the row is a container, so when it
             // is short of room the model's name shortens, and below 22rem the thinking level and Plan show only
-            // their icons (`ThinkingMenu`, `PlanChip`).
+            // their icons (`ThinkingMenu`, `PlanChip`). Narrower still (a side bar of 160 px) the controls scroll
+            // sideways and Send keeps its place; 3 px inside the scroller keep the focus rings whole.
             <div className="@container flex min-w-0 items-center gap-1 px-2 pb-2">
-              {attachButton}
-              {shellBadge}
-              {settings}
+              <div
+                ref={controlsRow}
+                className="row-scroll -m-[3px] flex min-w-0 items-center gap-1 p-[3px]"
+              >
+                {attachButton}
+                {shellBadge}
+                {settings}
+              </div>
               <span
                 className="min-w-0 flex-1 truncate px-1 text-right text-xs text-t3"
                 role="status"

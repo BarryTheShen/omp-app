@@ -40,8 +40,9 @@ export const ASK_ASYNC_DESCRIPTION = [
   "The tool returns at once: keep working on what does not depend on the answers, and do not ask the same question",
   "again. Give `options` for multiple choice (the user can always write their own answer instead), or leave them out",
   "for a written answer. Put in `context` what the user needs to decide: why you ask, what each choice changes, and",
-  "what you would pick. Ask related questions in one call. Prefer it over `ask` when the decision does not block your",
-  "next step or the user may be away.",
+  "what you would pick. To have the user approve a plan, ask one question whose text is the whole plan in Markdown,",
+  "with the options Approve and Not yet: the user writes any changes as their own answer. Ask related questions in",
+  "one call. Prefer it over `ask` when the decision does not block your next step or the user may be away.",
 ].join(" ");
 
 /** The tool's parameters, as omp's `ask` has them, with `context` added and `options` optional. */

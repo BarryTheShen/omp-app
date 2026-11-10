@@ -20,8 +20,9 @@ const DOT: Record<ChatToast["tone"], string> = {
 };
 
 /**
- * omp's status line as Tern draws a toast: above the message box, centred, one at a time (a newer one takes its place
- * and its time), then it fades. It floats over the transcript, so nothing moves when it comes or goes.
+ * omp's status line as Tern draws a toast: above the message box, and above omp's requests and the plan when they sit
+ * over it (the chat pane's anchor), centred, one at a time (a newer one takes its place and its time), then it fades. It
+ * floats over the transcript, so nothing moves when it comes or goes.
  */
 export function Toast({
   toast,
@@ -46,7 +47,7 @@ export function Toast({
       role={toast.tone === "error" ? "alert" : "status"}
       data-tone={toast.tone}
       className={cn(
-        "pointer-events-auto absolute bottom-full left-1/2 z-10 mb-3 flex max-w-[min(560px,92%)] -translate-x-1/2 items-center gap-2 rounded-[12px] border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg",
+        "pointer-events-auto absolute bottom-full left-1/2 z-10 mb-1 flex max-w-[min(560px,92%)] -translate-x-1/2 items-center gap-2 rounded-[12px] border border-l3 bg-popover px-3.5 py-2 text-[0.8125rem] text-t1 shadow-lg",
         "animate-in fade-in-0 duration-150 transition-opacity",
         leaving && "opacity-0 duration-[260ms]",
       )}

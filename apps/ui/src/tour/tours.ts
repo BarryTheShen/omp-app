@@ -841,6 +841,22 @@ const OMP_FORM_TOUR: Tour = {
   ],
 };
 
+/** The Questions panel holds all a chat waits on you for: cards per ask, Read all, plans, omp's questions (2026-11-10). */
+const EVERYTHING_THAT_WAITS_TOUR: Tour = {
+  id: "everything-that-waits-2026-11-10",
+  title: "Everything that waits for you",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Questions: everything that waits",
+      text: "<b>Questions</b> now holds all a chat waits on you for, and its button counts it: a plan omp proposes in plan mode, with <b>Approve</b> and <b>Keep planning</b>; omp's questions that stop the chat; and the questions it asks without waiting, one card per ask, with the recommended answers already picked, <b>Skip</b> on each and one button at the foot. A long question or plan shows its start and <b>Read all</b>, which opens it wide over the app. Answer in either place: the chat's own card closes with it. The dashboard lists omp's questions too.",
+      action: next,
+    },
+  ],
+};
+
 /** A long chat's earlier messages: read before the top, shown under way, and where the chat began (2026-11-10). */
 const EARLIER_MESSAGES_TOUR: Tour = {
   id: "earlier-messages-2026-11-10",
@@ -2567,6 +2583,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-10-everything-that-waits",
+    when: "2026-11-10T05:35:00-06:00",
+    summary:
+      "The Questions panel holds all a chat waits on you for. The questions omp asks without waiting come as one card per ask, in the order asked: each with its choices and the recommended one already picked, Other… and a note, Skip on each, and one button at the foot that saves the answers or sends them. A long question shows its start and Read all, which opens the same card wide over the app, the whole screen on a phone. omp's plan in plan mode is a card above the message box now, not a window over the app, and waits in Questions too, with Read all, Approve and Keep planning. omp's questions that stop a chat wait in Questions and on the dashboard as well, answered in any of them. The dashboard's cards are the same. omp's notices show above the cards over the message box, never on them. In a very narrow side bar, such as VS Code's at its narrowest, the controls under the message box scroll sideways and Send stays in view.",
+    tours: [EVERYTHING_THAT_WAITS_TOUR],
+  },
   {
     id: "2026-11-10-earlier-messages",
     when: "2026-11-10T02:30:00-06:00",

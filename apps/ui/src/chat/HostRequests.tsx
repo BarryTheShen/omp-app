@@ -3,6 +3,7 @@ import type {
   ApproveDialog,
   HostDialogAnswer,
   HostDialogRequest,
+  OmpQuestionRequest,
 } from "@omp-app/contracts/chat-host";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,31 +35,47 @@ export function HostRequests({
       <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-col">
         <RequestCard
           key={request.id}
-          controller={controller}
           request={request}
           waiting={requests.length - 1}
+          answerWith={(value) => controller.answer(request.id, value)}
         />
       </div>
     </div>
   );
 }
 
+/**
+ * omp's question that stops its chat until you answer, in the Questions panel or on the dashboard: the chat's own card,
+ * answered there as in the chat (`answerWith`), and the chat's card closes with it.
+ */
+export function OmpQuestionCard({
+  request,
+  answerWith,
+}: {
+  readonly request: OmpQuestionRequest;
+  readonly answerWith: (answer: HostDialogAnswer) => Promise<unknown>;
+}): ReactNode {
+  return <RequestCard request={request} waiting={0} answerWith={answerWith} inPanel />;
+}
+
 function RequestCard({
-  controller,
   request,
   waiting,
+  answerWith,
+  inPanel = false,
 }: {
-  readonly controller: ChatController;
   readonly request: HostDialogRequest;
   readonly waiting: number;
+  readonly answerWith: (answer: HostDialogAnswer) => Promise<unknown>;
+  /** In the Questions panel or on the dashboard: not a dialog, and without the chat card's Hide. */
+  readonly inPanel?: boolean;
 }): ReactNode {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const answer: Answer = (value) => {
     setBusy(true);
     setError(null);
-    controller
-      .answer(request.id, value)
+    answerWith(value)
       .catch((failure: unknown) =>
         setError(`Not sent: ${failure instanceof Error ? failure.message : String(failure)}`),
       )
@@ -72,6 +89,7 @@ function RequestCard({
         error={error}
         waiting={waiting}
         onAnswer={answer}
+        inPanel={inPanel}
       />
     );
   if (request.method === "ui.form")
@@ -82,6 +100,7 @@ function RequestCard({
         error={error}
         waiting={waiting}
         onAnswer={answer}
+        inPanel={inPanel}
       />
     );
   let title: string;
@@ -154,7 +173,7 @@ function RequestCard({
   }
   return (
     <section
-      role="dialog"
+      role={inPanel ? undefined : "dialog"}
       aria-label={title}
       className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-l3 bg-card p-3.5 shadow-md"
     >

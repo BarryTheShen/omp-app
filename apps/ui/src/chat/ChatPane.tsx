@@ -13,7 +13,7 @@ import { AgentHub } from "../agents/AgentHub";
 import { KEYS } from "../keys/table";
 import { ModelHub } from "../models/ModelHub";
 import { PageShare } from "../panels/files/PageShare";
-import { PlanReview } from "../plan/PlanReview";
+import { PlanCard } from "../plan/PlanCard";
 import { matchesHotkey } from "../tour/keys";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
@@ -21,6 +21,7 @@ import { Composer, type ComposerHandle } from "./Composer";
 import type { ChatController } from "./controller";
 import { HostRequests } from "./HostRequests";
 import { userText } from "./MessageActions";
+import { Toast } from "./Toast";
 import { type RowActions, TranscriptList } from "./TranscriptList";
 
 /** A path a chat's tool wrote, relative to the chat's folder (#2836); null for one outside it. */
@@ -271,7 +272,19 @@ export function ChatPane({
           edge
         />
       </FoldContext>
+      {/* omp's status line floats above what sits over the message box (omp's requests, the plan, the box itself) and
+          never over them: an anchor of no height at their top, as wide and centred as the message box. */}
+      <div className="px-4 max-sm:px-2">
+        <div className="relative mx-auto h-0 max-w-[720px]">
+          {snapshot.toast !== null && <Toast toast={snapshot.toast} onDone={hideToast} />}
+        </div>
+      </div>
       <HostRequests controller={controller} requests={snapshot.requests} />
+      {/* omp proposed a plan: it waits for a decision while plan mode is on (a replayed, decided one never shows), above
+          the message box as omp's other requests do, so the chat and the Questions panel (which lists it too) stay usable. */}
+      {snapshot.proposal !== null && snapshot.planMode?.enabled === true && (
+        <PlanCard controller={controller} proposal={snapshot.proposal} />
+      )}
       <Composer
         controller={controller}
         working={snapshot.working}
@@ -284,8 +297,6 @@ export function ChatPane({
         roles={snapshot.roles}
         roleTrack={snapshot.roleTrack}
         onRoleTrackDone={hideRoleTrack}
-        toast={snapshot.toast}
-        onToastDone={hideToast}
         thinkingLevel={snapshot.thinkingLevel}
         queue={snapshot.queue}
         activity={snapshot.activity}
@@ -311,10 +322,6 @@ export function ChatPane({
           onSelect={(id) => controller.agentHub.open(id)}
           onClose={closeAgents}
         />
-      )}
-      {/* omp proposed a plan: it waits for a decision while plan mode is on (a replayed, decided one never shows). */}
-      {snapshot.proposal !== null && snapshot.planMode?.enabled === true && (
-        <PlanReview controller={controller} proposal={snapshot.proposal} />
       )}
       {/* omp's Alt+M: the Models dialog, opened by the key or the palette. */}
       <ModelHub controller={controller} />
