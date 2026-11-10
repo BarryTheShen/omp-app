@@ -190,6 +190,8 @@ export class ChatController {
   readonly #paneListeners = new Set<(ask: PaneAsk) => void>();
   /** Stops waiting for the link to come back, for a chat whose open the link dropped under. */
   #stopReopenWait: (() => void) | undefined;
+  /** Stops waiting for the link to come back, for an older window whose read the link dropped under. */
+  #stopOlderWait: (() => void) | undefined;
   /**
    * Where the transcript's branch ends after an edit rewound the chat: an entry, or null for the chat's very start.
    * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
@@ -1470,7 +1472,12 @@ export class ChatController {
     this.store.setGoal(answer.goal);
   }
 
-  /** Reads the next older window of the session file into the transcript. */
+  /**
+   * Reads the next older window of the session file into the transcript. The transcript shows the read under way, and
+   * a read that failed with Try again; one the link to the app's server dropped under is read again by the transcript
+   * once the link is back (`#olderWhenRelinked`), as the phone's app back from the background has a link that died.
+   * It never rejects: the pane calls it from a scroll.
+   */
   async loadOlder(): Promise<void> {
     const sessionFile = this.#sessionFile;
     const before = this.store.oldestId;
@@ -1482,16 +1489,48 @@ export class ChatController {
     )
       return;
     this.#loadingOlder = true;
+    this.#stopOlderWait?.();
+    this.#stopOlderWait = undefined;
+    this.store.setOlderLoad("loading");
     try {
       const window = await this.client.port(SessionFileStore).readEntryWindow({
         sessionFile,
         before: before as EntryId,
         byteBudget: isPhone() ? PHONE_OLDER_WINDOW_BYTES : OLDER_WINDOW_BYTES,
       });
-      this.store.prependWindow(window.entries as unknown as SessionEntry[], window.hasOlder);
-    } finally {
       this.#loadingOlder = false;
+      if (!this.#disposed)
+        this.store.prependWindow(window.entries as unknown as SessionEntry[], window.hasOlder);
+    } catch (failure) {
+      this.#loadingOlder = false;
+      if (this.#disposed) return;
+      this.store.setOlderLoad("failed");
+      if (lostWithTheLink(failure)) this.#olderWhenRelinked();
     }
+  }
+
+  /**
+   * Once the link to the app's server has dropped and is open again, a failed older window may be read again: the
+   * transcript reads it when the reader is near its top. A read that failed while the link stayed open waits for the
+   * reader's Try again, so a failing read is never repeated by itself.
+   */
+  #olderWhenRelinked(): void {
+    let away = false;
+    const stop = this.client.onConnectionState((event) => {
+      if (event.state !== "open") {
+        away = true;
+        return;
+      }
+      if (!away) return;
+      // The state may be said while `onConnectionState` is still being set up: the stop is called after it returns.
+      queueMicrotask(() => {
+        stop();
+        if (this.#stopOlderWait === stop) this.#stopOlderWait = undefined;
+        if (!this.#disposed && this.store.getSnapshot().olderLoad === "failed")
+          this.store.setOlderLoad("idle");
+      });
+    });
+    this.#stopOlderWait = stop;
   }
 
   #request<M extends ChatHostMethod>(
@@ -1639,6 +1678,8 @@ export class ChatController {
     this.#openFrames?.stop();
     this.#stopReopenWait?.();
     this.#stopReopenWait = undefined;
+    this.#stopOlderWait?.();
+    this.#stopOlderWait = undefined;
     this.#paneListeners.clear();
     this.#openFrames = null;
     this.#stopResync();

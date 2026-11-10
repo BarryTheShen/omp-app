@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { expect, type RealApp, realTest, startNewChat } from "./real-omp";
 
 /** The new UI's transcript (`apps/ui`, under `/v2/`) on real omp: a failed request and what it offers. */
@@ -110,6 +110,8 @@ realTest.describe("new UI transcript", () => {
       // The block is drawn again, as a settled reply, when the turn ends; the Copy button to press is that one.
       await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 60_000 });
       const copy = page.getByRole("button", { name: "Copy code" });
+      // The pointer rests on the message box, away from the block (the click that opened the chat left it mid-window).
+      await box.hover();
       await expect(copy).toHaveCSS("opacity", "0");
       await block.hover();
       await expect(copy).toHaveCSS("opacity", "1");
@@ -255,6 +257,173 @@ realTest.describe("new UI transcript: omp's own messages", () => {
       await expect(transcript).not.toContainText("If response expected");
       await expect(transcript).not.toContainText("irc:incoming");
       expect(realApp.problems).toEqual([]);
+    },
+  );
+});
+
+/** A chat several of a phone's older windows long (128 KB each): 120 questions and answers of about 1 KB each. */
+const LONG_AT = Date.UTC(2026, 10, 1, 12);
+const LONG_TEXT =
+  "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor. ".repeat(10);
+const LONG_USAGE = {
+  input: 1,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 2,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+const LONG_CHAT = Array.from({ length: 120 }, (_, index) => {
+  const asked = LONG_AT + index * 120_000;
+  return [
+    {
+      type: "message",
+      timestamp: new Date(asked).toISOString(),
+      message: {
+        role: "user",
+        content: [{ type: "text", text: `Question ${index + 1}: ${LONG_TEXT}` }],
+        timestamp: asked,
+      },
+    },
+    {
+      type: "message",
+      timestamp: new Date(asked + 5_000).toISOString(),
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: `Answer ${index + 1}. ${LONG_TEXT}` }],
+        api: "openai-completions",
+        provider: "fake",
+        model: "fake-model",
+        usage: LONG_USAGE,
+        stopReason: "stop",
+        timestamp: asked + 5_000,
+      },
+    },
+  ];
+}).flat();
+
+/** What the test does with one of the page's reads of an older window: pass it on, or answer it with a failure. */
+type OlderRead = (pass: () => void, fail: () => void) => void;
+
+realTest.describe("new UI transcript: a long chat's earlier messages on a phone", () => {
+  realTest.use({ seedEntries: { entries: LONG_CHAT } });
+  realTest.setTimeout(240_000);
+
+  /** The app on a phone's screen with the long chat open at its end; `olderRead` sees each read of an older window. */
+  async function openLongChat(
+    realApp: RealApp,
+    browser: Browser,
+    olderRead: OlderRead,
+  ): Promise<{ page: Page; context: BrowserContext }> {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    });
+    const page = await realApp.open({
+      path: "/",
+      context,
+      beforeLoad: (opened) =>
+        opened.routeWebSocket(
+          () => true,
+          (webSocket) => {
+            const server = webSocket.connectToServer();
+            webSocket.onMessage((message) => {
+              const older =
+                typeof message === "string" &&
+                message.includes('"method":"readEntryWindow"') &&
+                message.includes('"before"');
+              if (!older) {
+                server.send(message);
+                return;
+              }
+              const { id } = JSON.parse(message) as { id: string };
+              olderRead(
+                () => server.send(message),
+                () =>
+                  webSocket.send(
+                    JSON.stringify({
+                      type: "result",
+                      id,
+                      ok: false,
+                      error: { code: "internal", message: "The read failed.", retryable: false },
+                    }),
+                  ),
+              );
+            });
+            server.onMessage((message) => webSocket.send(message));
+          },
+        ),
+    });
+    await page.getByRole("button", { name: "Chats", exact: true }).tap();
+    await page
+      .getByRole("navigation", { name: "Chats" })
+      .getByRole("button", { name: /^Question 1:/ })
+      .tap({ timeout: 120_000 });
+    await expect(
+      page.getByRole("region", { name: "Transcript" }).getByText("Answer 120.", { exact: false }),
+    ).toBeVisible({ timeout: 60_000 });
+    return { page, context };
+  }
+
+  /**
+   * Scrolls the transcript up with the wheel, as a reader does, until its top band reads `band` on screen. Each window
+   * read keeps the reader's place, so the band it changed is above the view until the reader scrolls up to it.
+   */
+  async function upTo(page: Page, band: RegExp): Promise<void> {
+    const transcript = page.getByRole("region", { name: "Transcript" });
+    const edge = transcript.locator("[data-transcript-edge]");
+    await transcript.hover();
+    await expect(async () => {
+      await page.mouse.wheel(0, -100_000);
+      await expect(edge).toHaveText(band, { timeout: 2_000 });
+      await expect(edge).toBeInViewport({ timeout: 2_000 });
+    }).toPass({ timeout: 90_000 });
+  }
+
+  realTest(
+    "at the top it says Loading earlier messages while it reads them, and shows the day the chat began above its first message",
+    async ({ realApp, browser }) => {
+      // Each older window answers 1.5 s late, so the top shows its read under way.
+      const { page, context } = await openLongChat(realApp, browser, (pass) => {
+        setTimeout(pass, 1_500);
+      });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const edge = transcript.locator("[data-transcript-edge]");
+      await transcript.hover();
+      await page.mouse.wheel(0, -100_000);
+      await expect(edge).toHaveText("Loading earlier messages…");
+      await expect(edge).toBeInViewport();
+      await upTo(page, /^Beginning of the chat · Nov 1, 2026$/);
+      await expect(edge).toBeInViewport();
+      await expect(transcript.getByText("Question 1:", { exact: false })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
+    "an older window that could not be read says so, and Try again reads it",
+    async ({ realApp, browser }) => {
+      let failures = 1;
+      const { page, context } = await openLongChat(realApp, browser, (pass, fail) => {
+        if (failures > 0) {
+          failures -= 1;
+          fail();
+        } else pass();
+      });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const edge = transcript.locator("[data-transcript-edge]");
+      await transcript.hover();
+      await page.mouse.wheel(0, -100_000);
+      await expect(edge).toContainText("Couldn't load earlier messages.");
+      // A read that failed while the link stayed up is not repeated by itself.
+      await page.waitForTimeout(1_500);
+      await expect(edge).toContainText("Couldn't load earlier messages.");
+      await edge.getByRole("button", { name: "Try again" }).tap();
+      await upTo(page, /^Beginning of the chat · Nov 1, 2026$/);
+      await expect(transcript.getByText("Question 1:", { exact: false })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+      await context.close();
     },
   );
 });

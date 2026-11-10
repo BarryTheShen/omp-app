@@ -1242,8 +1242,8 @@ realTest.describe("new UI on a phone", () => {
           // covers the status bar alone.
           barTop: Math.round(edge('[data-tour="phone-top-bar"]')?.top ?? 0),
           stripHeight: Math.round(Number.parseFloat(strip.height)),
-          // The first message right under the top bar (its row keeps its own spacing), and with the keyboard down the
-          // box, the lowest thing on the screen, right on the home bar's strip.
+          // The chat's top band under the top bar (its beginning, 44 pt), then the first message (its row keeps its own
+          // spacing), and with the keyboard down the box, the lowest thing on the screen, right on the home bar's strip.
           aboveChat: Math.round(
             (edge('[data-index="0"]')?.top ?? 0) -
               (edge('[data-tour="phone-top-bar"]')?.bottom ?? 0),
@@ -1257,7 +1257,7 @@ realTest.describe("new UI on a phone", () => {
         bottom: shown.chat,
         barTop: 62,
         stripHeight: 62,
-        aboveChat: 0,
+        aboveChat: 44,
         belowBox: 0,
       });
 

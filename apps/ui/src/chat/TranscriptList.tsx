@@ -1,6 +1,6 @@
 import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, LoaderCircle } from "lucide-react";
 import {
   type ReactNode,
   type RefObject,
@@ -99,6 +99,22 @@ function movesView(
 
 /** How near the end still counts as at the end: the list then follows new output. */
 const AT_END_PX = 80;
+
+/** The band at the top of a chat's transcript: Loading earlier messages, Try again, or the chat's beginning. */
+const EDGE_PX = 44;
+
+/**
+ * How far from the top, in screens, the next older window is read: a fling on a phone reaches the top in a moment, and
+ * the window is there by then.
+ */
+const NEAR_TOP_SCREENS = 2;
+
+/** The day a chat began, under its first entry. */
+const START_DATE = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
 /** Keys that scroll the transcript when it has the focus: WebKit animates them, as it does the wheel. */
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
@@ -310,8 +326,10 @@ export function TranscriptList({
   welcome,
   host,
   label = "Transcript",
+  edge = false,
 }: {
   readonly snapshot: ChatSnapshot;
+  /** Reads the next older window (the chat's `loadOlder`); also Try again's. */
   readonly onNearTop: () => void;
   readonly actions: RowActions;
   /**
@@ -323,9 +341,15 @@ export function TranscriptList({
   readonly host?: ToolRenderHost;
   /** The list's name for a screen reader. */
   readonly label?: string;
+  /**
+   * A chat's transcript shows its top: Loading earlier messages while older entries are left to read, Try again once
+   * a read of them failed, and the chat's beginning once its first entry is shown. An agent's log does not.
+   */
+  readonly edge?: boolean;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, shell } = snapshot;
+  const { entries, stream, streamDone, activeTools, jobs, working, hasOlder, olderLoad, shell } =
+    snapshot;
   // The lite view (#2844) leaves out omp's status lines: at each start they list the tools it mounted, which would fill
   // an empty chat in a side panel. A warning or an error stays.
   const lite = use(LiteContext) !== null;
@@ -344,6 +368,8 @@ export function TranscriptList({
   const firstHeight = useFirstHeights(rows, measured);
   // A phone's screen is small: the chat starts right under its top bar (each row keeps its own 10 px).
   const phone = usePhone();
+  // The room above the first row: a computer's 24 px, and a chat's top band.
+  const headRoom = (phone ? 0 : 24) + (edge && rows.length > 0 ? EDGE_PX : 0);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -353,7 +379,7 @@ export function TranscriptList({
     followOnAppend: true,
     scrollEndThreshold: AT_END_PX,
     overscan: 6,
-    paddingStart: phone ? 0 : 24,
+    paddingStart: headRoom,
     paddingEnd: 16,
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = movesView;
@@ -386,19 +412,64 @@ export function TranscriptList({
   }, [empty]);
 
   const items = virtualizer.getVirtualItems();
-  const firstIndex = items[0]?.index;
+  // Older entries are read while the reader is within two screens of the top, again after each window read, so a
+  // window shorter than that fills the screen from older entries once positioned. A read that failed waits for Try again
+  // or for the link to come back (the chat's `loadOlder`).
+  const offset = virtualizer.scrollOffset;
+  const screen = scrollRef.current?.clientHeight ?? 0;
+  const nearTop = positioned && offset !== null && offset < NEAR_TOP_SCREENS * screen;
+  const oldestKey = rows[0]?.key;
   useEffect(() => {
-    // A window shorter than the screen stays at the top once positioned, so it fills the screen from older entries.
-    if (positioned && firstIndex !== undefined && firstIndex < 3 && hasOlder) onNearTop();
-  }, [positioned, firstIndex, hasOlder, onNearTop]);
+    if (nearTop && hasOlder && olderLoad === "idle" && oldestKey !== undefined) onNearTop();
+  }, [nearTop, hasOlder, olderLoad, oldestKey, onNearTop]);
+  const firstAt = entries[0]?.timestamp;
+  const began = firstAt === undefined ? null : new Date(firstAt);
 
   return (
     // At least a quarter of the chat stays the conversation's, under questions or an approval too (#2795). A chat
     // too short for that, a quarter and the message box and a question's choices (a phone held sideways, a window about
     // 400 px high), keeps 20rem for the message box and the question instead, so their choices stay in view (#2807).
     <div className="relative min-h-[min(25%,max(0px,calc(100%_-_20rem)))] flex-1">
-      <section ref={scrollRef} className="tr-root tl-scroll" aria-label={label}>
+      <section
+        ref={scrollRef}
+        className="tr-root tl-scroll"
+        aria-label={label}
+        data-tour={edge ? "transcript" : undefined}
+      >
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {edge && rows.length > 0 && (
+            <div
+              className="absolute top-0 left-0 flex w-full items-center justify-center gap-2 px-3 text-t3 text-xs"
+              // Drawn from the first row's place: while a correction is held the rows are drawn shifted back by it
+              // (`useHoldCorrectionsWhileReading`), and the band stays above the first row.
+              style={{
+                height: EDGE_PX,
+                transform: `translateY(${items[0]?.index === 0 ? items[0].start - headRoom : 0}px)`,
+              }}
+              data-transcript-edge={hasOlder ? olderLoad : "start"}
+            >
+              {!hasOlder ? (
+                <span>
+                  Beginning of the chat
+                  {began !== null && !Number.isNaN(began.getTime())
+                    ? ` · ${START_DATE.format(began)}`
+                    : ""}
+                </span>
+              ) : olderLoad === "failed" ? (
+                <>
+                  <span>Couldn't load earlier messages.</span>
+                  <Button size="sm" variant="secondary" className="max-sm:h-11" onClick={onNearTop}>
+                    Try again
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+                  <span>Loading earlier messages…</span>
+                </>
+              )}
+            </div>
+          )}
           {items.map((item) => {
             const row = rows[item.index];
             if (row === undefined) return null;

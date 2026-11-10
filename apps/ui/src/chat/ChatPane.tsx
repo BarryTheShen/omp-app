@@ -268,6 +268,7 @@ export function ChatPane({
           actions={actions}
           welcome={welcome}
           host={host}
+          edge
         />
       </FoldContext>
       <HostRequests controller={controller} requests={snapshot.requests} />

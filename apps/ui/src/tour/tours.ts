@@ -58,6 +58,7 @@ const SEARCH_CHATS = part("search-chats");
 const TABS = part("tabs");
 const WORKSPACE = part("workspace");
 const MESSAGE_BOX = part("message-box");
+const TRANSCRIPT = part("transcript");
 const MENU = part("composer-menu");
 const AGENT_HUB = '[aria-label="Agent Hub"]';
 const PALETTE = part("palette");
@@ -835,6 +836,22 @@ const OMP_FORM_TOUR: Tour = {
       target: MESSAGE_BOX,
       title: "Every question in one card",
       text: "When omp asks, its questions come above the message box as one card, in the order asked, each under its heading: round marks, tick boxes, lists, boxes to write in and pictures. What omp ticked for you is already ticked, <b>Other…</b> takes your own answer, and omp's checks show under a question. <b>Submit</b> or Enter sends them all; <b>Skip</b> or Esc leaves them unanswered; <b>Hide</b> folds the card to one line.",
+      action: next,
+    },
+  ],
+};
+
+/** A long chat's earlier messages: read before the top, shown under way, and where the chat began (2026-11-10). */
+const EARLIER_MESSAGES_TOUR: Tour = {
+  id: "earlier-messages-2026-11-10",
+  title: "Earlier messages in a long chat",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Scroll up to the beginning",
+      text: "In a long chat, scroll up: its earlier messages are read about two screens before you reach the top, and the top says <b>Loading earlier messages…</b> while they are. If a read fails, it says so with <b>Try again</b>, and reads them again by itself once the connection is back. Once the chat's first message shows, the top says <b>Beginning of the chat</b>, with the day it began.",
       action: next,
     },
   ],
@@ -2551,8 +2568,15 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-10-earlier-messages",
+    when: "2026-11-10T02:30:00-06:00",
+    summary:
+      "Scrolling up a long chat reads its earlier messages about two screens before the top, so a quick swipe on the phone finds them there. The top of the chat says Loading earlier messages… while they are read; when a read fails it says so with Try again, and reads them again by itself once the connection is back; and once the first message shows, it says Beginning of the chat, with the day it began.",
+    tours: [EARLIER_MESSAGES_TOUR],
+  },
+  {
     id: "2026-11-10-omp-18-18",
-    when: "2026-11-10T03:00:00-06:00",
+    when: "2026-11-10T01:55:00-06:00",
     summary:
       "Your chats run on omp 18.18.5. omp's questions come as one card above the message box: every question of an ask in the order asked, each under its heading, with round marks, tick boxes, lists, boxes to write in and pictures, omp's checks under a question, and Submit for them all. Nothing the question's author wrote can run in the page. A web search's card names the search engines that failed before one answered. Settings has omp's new settings, among them Prewalk planning model and Prewalk target, Restricted Folders and Per-Call Model; omp's Auto Update is not offered, and omp-app tui never updates the app's omp. Settings → Providers signs in to Devin, also with the Devin command line's login or with Windsurf Enterprise. A chat that another omp held, and that omp moved to a new file, opens as one chat. Answers from OpenAI and Codex models are shorter, as omp's Text Verbosity is low by default now.",
     tours: [OMP_FORM_TOUR],

@@ -354,6 +354,27 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().hasOlder).toBe(false);
   });
 
+  test("the read of an older window shows while under way and ends with its entries in front", () => {
+    const store = new ChatStore();
+    store.setWindow([fileEntry("e3", { role: "user", content: "c", timestamp: T + 3 })], true);
+    store.setOlderLoad("loading");
+    expect(store.getSnapshot().olderLoad).toBe("loading");
+    store.prependWindow([fileEntry("e2", { role: "user", content: "b", timestamp: T + 2 })], true);
+    // The transcript's top says Loading earlier messages no more, and reads the next window when the reader is near.
+    expect(store.getSnapshot().olderLoad).toBe("idle");
+    expect(store.getSnapshot().entries.map((entry) => entry.id)).toEqual(["e2", "e3"]);
+  });
+
+  test("an older window that failed to read may be read again once the chat's window is read again", () => {
+    const store = new ChatStore();
+    store.setWindow([fileEntry("e3", { role: "user", content: "c", timestamp: T + 3 })], true);
+    store.setOlderLoad("failed");
+    expect(store.getSnapshot().olderLoad).toBe("failed");
+    // The link came back and the chat's newest window was read over it (a resync).
+    store.setWindow([fileEntry("e3", { role: "user", content: "c", timestamp: T + 3 })], true);
+    expect(store.getSnapshot().olderLoad).toBe("idle");
+  });
+
   test("a window read again keeps the older entries shown in front of it, and a branch's keeps its ancestors (#2768)", () => {
     const store = new ChatStore();
     const message = (n: number) =>
