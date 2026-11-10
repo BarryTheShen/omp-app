@@ -112,6 +112,8 @@ export interface OpenOptions {
   readonly context?: BrowserContext;
   /** The app's path to open with the launch link (default: `/`, the app's root). */
   readonly path?: string;
+  /** The address's query, as `?chat=<id>` (default: none). */
+  readonly search?: string;
   /**
    * The address's fragment in place of the launch link's `#token=…`: `""` opens the bare address, as a device that is
    * not paired does; `#pair=<code>` is what a pairing QR code opens.
@@ -765,6 +767,7 @@ export const realTest = test.extend<{
         await options.beforeLoad?.(page);
         const address = new URL(url);
         address.pathname = options.path ?? "/";
+        if (options.search !== undefined) address.search = options.search;
         if (options.hash !== undefined) address.hash = options.hash;
         await page.goto(address.toString());
         if (options.expectApp !== false) {

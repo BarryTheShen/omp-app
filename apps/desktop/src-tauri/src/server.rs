@@ -62,8 +62,9 @@ const ERROR_PAGE: &str = "error.html";
 /// The page for "the server on another computer did not answer", served from apps/desktop/ui.
 const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// The window's commands a page may call (see `clipboard.rs` and `commands.rs`): the pages of this computer's server and
-/// of the server on another computer a window opens get them from `grant_page_commands`, by their exact origin; no other
-/// page has any.
+/// of the server on another computer a window opens get them from `grant_page_commands`, by their exact origin. The
+/// app's own pages (the page for a server that did not open) may call only the four that choose the window's server
+/// (`capabilities/app-pages.json`); no other page has any.
 const PAGE_PERMISSIONS: [&str; 10] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",

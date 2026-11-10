@@ -1,0 +1,12 @@
+{
+  "identifier": "app-pages",
+  "description": "The app's own pages in its windows (the page for a server on another computer that did not open) may choose the window's server: the servers it opened before, another address, or this computer's server. Server pages get their commands by exact origin at run time (server.rs, grant_page_commands).",
+  "local": true,
+  "windows": ["main", "window-*"],
+  "permissions": [
+    "allow-servers",
+    "allow-connect-server",
+    "allow-open-server",
+    "allow-use-this-computer"
+  ]
+}

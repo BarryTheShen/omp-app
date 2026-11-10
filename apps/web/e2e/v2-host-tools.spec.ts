@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { expect, realTest } from "./real-omp";
 
 /**
- * A panel whose project's files are on the host's computer (VS Code on a laptop): its `hello` says so (`files`). The
- * panel's chat runs in the server's folder for that project, made empty in the app's data; omp offers it none of its
- * own tools for the server's files and shell, and the host's tool reaches the files.
+ * A panel whose project is open on the host's computer (VS Code on a laptop): its `hello` says so (`files`) and gives
+ * the host's tools. The panel's chat is an ordinary chat in the app's folder on the server, with omp's own tools for
+ * the server's files and shell; the host's tool, beside them, reaches the project on the host's computer.
  */
 const HOST_PORT = 41_000 + Math.floor(Math.random() * 20_000);
 const HOST_APP = `http://127.0.0.1:${HOST_PORT}`;
@@ -45,12 +45,12 @@ async function stop(server: Server): Promise<void> {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
-realTest.describe("new UI lite view for a project whose files are on the host's computer", () => {
+realTest.describe("new UI lite view for a project open on the host's computer", () => {
   realTest.setTimeout(240_000);
   realTest.use({ serverEnv: { OMP_APP_FRAME_ANCESTORS: HOST_APP } });
 
   realTest(
-    "the chat runs in the project's own folder on the server, without omp's file and shell tools; the host's tool reads the files",
+    "the chat runs in the app's folder with omp's own tools, and the host's tool beside them reads the host's files",
     async ({ realApp, browser }) => {
       const app = new URL((await realApp.open({ path: "/lite" })).url()).origin;
       const server = createServer((_request, response) => {
@@ -69,31 +69,33 @@ realTest.describe("new UI lite view for a project whose files are on the host's 
         const box = panel.getByRole("textbox", { name: "Message" });
         await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
 
-        // The tools omp offers the chat: the host's, read and write, and none for the server's files or shell.
+        // The tools omp offers the chat: its own, for the server's files and shell, and the host's beside them.
         await box.fill("tools_offered");
         await panel.getByRole("button", { name: "Send", exact: true }).click();
         const offered = panel.getByText(/^tools: /);
         await expect(offered).toBeVisible({ timeout: 60_000 });
         const names = ((await offered.textContent()) ?? "").replace(/^tools: /, "").split(", ");
-        for (const name of ["testhost_read", "read", "write"]) expect(names).toContain(name);
-        for (const name of ["bash", "edit", "grep", "glob", "eval", "task"])
-          expect(names).not.toContain(name);
+        for (const name of ["testhost_read", "read", "write", "bash", "edit", "grep"])
+          expect(names).toContain(name);
 
-        // The host's tool reaches the project's files.
+        // The host's tool reaches the project's files on the host's computer.
         await box.fill('call_tool testhost_read {"path":"README.md"}');
         await panel.getByRole("button", { name: "Send", exact: true }).click();
         await expect(panel.getByText("tool said: # Demo App, on the host")).toBeVisible({
           timeout: 60_000,
         });
 
-        // The project's folder on the server: made in the app's data, private.
-        const folder = join(
-          realApp.appDataDir,
-          "host-folders",
-          "testhost",
-          "demo-app-0123456789ab",
+        // omp's own shell runs in the app's folder on the server, as any chat's does.
+        await box.fill(`call_tool bash ${JSON.stringify({ command: "pwd" })}`);
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(panel.getByText(`tool said: ${realApp.folder}`, { exact: false })).toBeVisible(
+          {
+            timeout: 60_000,
+          },
         );
-        expect(((await stat(folder)).mode & 0o777).toString(8)).toBe("700");
+
+        // No folder of the project's own is made on the server.
+        await expect(stat(join(realApp.appDataDir, "host-folders"))).rejects.toThrow();
       } finally {
         await context.close();
         await stop(server);

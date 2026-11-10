@@ -73,7 +73,7 @@ import { QuestionsStore } from "../questions/questions";
 import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
-import { openFailureText } from "./openFailure";
+import { lostWithTheLink, openFailureAction, openFailureText } from "./openFailure";
 import { type ChatModel, ChatStore, type PlanProposal, toChatModel } from "./store";
 import type { ShellRun } from "./triggers";
 import { cachedWindow, keepWindow } from "./windowCache";
@@ -106,6 +106,14 @@ export interface ChatUsage {
 
 /** A thinking level by its name, as omp's `set_thinking_level` takes it ("off", "low", …). */
 export type ThinkingLevelName = ChatHostMethodMap["set_thinking_level"]["params"]["level"];
+
+/**
+ * What a chat that could not open asks of its pane: to open it afresh, after Try again (`person`) or once the link
+ * to the server was back (`link`); or a new chat in its place.
+ */
+export type PaneAsk =
+  | { readonly kind: "reopen"; readonly by: "person" | "link" }
+  | { readonly kind: "new-chat" };
 
 export type ChatTarget =
   | {
@@ -178,6 +186,10 @@ export class ChatController {
   #openFrames: ReturnType<typeof watchFrames> | null = null;
   /** The page was hidden at some moment of the open (its frames then say nothing about how it draws). */
   #hiddenDuringOpen = false;
+  /** What the pane does for a chat that could not open: open it afresh, or start a new chat in its place. */
+  readonly #paneListeners = new Set<(ask: PaneAsk) => void>();
+  /** Stops waiting for the link to come back, for a chat whose open the link dropped under. */
+  #stopReopenWait: (() => void) | undefined;
   /**
    * Where the transcript's branch ends after an edit rewound the chat: an entry, or null for the chat's very start.
    * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
@@ -286,17 +298,55 @@ export class ChatController {
   }
 
   /**
-   * Opens the chat for this pane. A failure is said in the transcript, with what to do when omp stopped as it started;
-   * a pane that went away meanwhile says nothing.
+   * Opens the chat for this pane. A failure is said in the transcript, with what to do: Try again, or New chat for a
+   * chat the server no longer has or whose omp stopped as it started. An open the link to the server dropped under is
+   * made afresh by itself once the link is back. A pane that went away meanwhile says nothing.
    */
   async open(): Promise<void> {
     try {
       await this.#open();
     } catch (failure) {
       if (this.#disposed) return;
-      this.store.addNotice(openFailureText(failure), "error");
+      this.store.addNotice(openFailureText(failure), "error", openFailureAction(failure));
       this.store.setPhase("ended");
+      if (lostWithTheLink(failure)) this.#reopenWhenLinked();
     }
+  }
+
+  /** The pane hears what to do for a chat that could not open; returns the stop. */
+  onPaneAsk(listener: (ask: PaneAsk) => void): () => void {
+    this.#paneListeners.add(listener);
+    return () => this.#paneListeners.delete(listener);
+  }
+
+  /** Try again on a chat that could not open: the pane opens it afresh, with a new controller. */
+  reopen(): void {
+    this.#askPane({ kind: "reopen", by: "person" });
+  }
+
+  /** New chat in place of a chat that could not open. */
+  startNewChat(): void {
+    this.#askPane({ kind: "new-chat" });
+  }
+
+  #askPane(ask: PaneAsk): void {
+    for (const listener of [...this.#paneListeners]) listener(ask);
+  }
+
+  /** Once the link to the app's server is open again (at once when it already is), the pane opens the chat afresh. */
+  #reopenWhenLinked(): void {
+    let heard = false;
+    const stop = this.client.onConnectionState((event) => {
+      if (heard || event.state !== "open") return;
+      heard = true;
+      // The state may be said while `onConnectionState` is still being set up: the stop is called after it returns.
+      queueMicrotask(() => {
+        stop();
+        this.#stopReopenWait = undefined;
+        if (!this.#disposed) this.#askPane({ kind: "reopen", by: "link" });
+      });
+    });
+    this.#stopReopenWait = stop;
   }
 
   async #open(): Promise<void> {
@@ -1576,6 +1626,9 @@ export class ChatController {
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#openFrames?.stop();
+    this.#stopReopenWait?.();
+    this.#stopReopenWait = undefined;
+    this.#paneListeners.clear();
     this.#openFrames = null;
     this.#stopResync();
     this.#stopContinue?.();

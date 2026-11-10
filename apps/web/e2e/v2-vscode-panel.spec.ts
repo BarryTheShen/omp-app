@@ -8,8 +8,8 @@ import { APP_ROOT, expect, realTest } from "./real-omp";
  * VS Code's panel (`apps/vscode`): its page script (`webview.ts`), built from the source, in Chromium. The page stands in
  * for VS Code's webview and the extension (`panel.ts`): it gives the script `acquireVsCodeApi`, keeps the key and the
  * chat, and answers `vscode_read` from files it holds, as the extension answers from the open folder. The panel pairs
- * once; its chat runs in the project's folder on the server, without omp's file and shell tools, with the panel's
- * tools by name; the open file goes with each message.
+ * once; its chat is an ordinary chat in the app's folder on the server, with omp's own tools and the panel's tools by
+ * name; the open file goes with each message.
  */
 const ready = /^(Fake Model|Message omp)/;
 const port = 41_000 + Math.floor(Math.random() * 20_000);
@@ -118,7 +118,7 @@ realTest.describe("new UI lite view in VS Code's panel", () => {
         });
         await expect(sentWith).toContainText("src/app.ts");
 
-        // omp offers the panel's tools by name, and none of its own for the server's files and shell.
+        // omp offers the panel's tools by name, beside its own for the server's files and shell.
         await box.fill("tools_offered");
         await panel.getByRole("button", { name: "Send", exact: true }).click();
         const offered = panel.getByText(/^tools: /);
@@ -126,7 +126,7 @@ realTest.describe("new UI lite view in VS Code's panel", () => {
         const names = ((await offered.textContent()) ?? "").replace(/^tools: /, "").split(", ");
         for (const name of ["vscode_read", "vscode_edit", "vscode_run", "vscode_search"])
           expect(names).toContain(name);
-        for (const name of ["bash", "edit", "grep", "glob"]) expect(names).not.toContain(name);
+        for (const name of ["bash", "edit", "grep", "glob"]) expect(names).toContain(name);
 
         // A tool's call goes through the extension, and its answer reaches the chat.
         await box.fill('call_tool vscode_read {"path":"README.md"}');
@@ -149,9 +149,8 @@ realTest.describe("new UI lite view in VS Code's panel", () => {
         );
         await expect(sentWith).toContainText("src/other.ts");
 
-        // The project's folder on the server, made in the app's data.
-        const folder = join(realApp.appDataDir, "host-folders", "vscode", "demo-app-0123456789ab");
-        expect((await stat(folder)).isDirectory()).toBe(true);
+        // No folder of the project's own on the server: the panel's chat runs in the app's folder.
+        await expect(stat(join(realApp.appDataDir, "host-folders"))).rejects.toThrow();
 
         // Next time VS Code opens the panel: signed in with the kept key, no pairing.
         await vscode.reload();

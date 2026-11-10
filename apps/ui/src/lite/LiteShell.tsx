@@ -24,6 +24,7 @@ import { ChatPane } from "../chat/ChatPane";
 import { useChatTitle } from "../chat/chatTitle";
 import { ChatController, type ChatTarget } from "../chat/controller";
 import { firstPromptOf } from "../chat/firstPrompts";
+import { LinkReopens } from "../chat/reopens";
 import { useFolder } from "../folders/useFolder";
 import { watchLink } from "../linkCheck";
 import { titleOf } from "../sidebar/title";
@@ -31,7 +32,6 @@ import { type ChatList, useChatList } from "../sidebar/useChatList";
 import { setLiteThemeMode } from "../theme/theme";
 import { chatCache } from "../workspace/chatCache";
 import { bindChat, embed, useEmbed } from "./embed";
-import { usePanelFolder } from "./hostFolder";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./hostLook";
 import { LiteContext } from "./LiteContext";
 import {
@@ -95,9 +95,7 @@ export function LiteShell({
   readonly client: AppClient;
   readonly launchFolder: FolderPath;
 }): ReactNode {
-  const { folder: chosen } = useFolder(client, launchFolder);
-  // The project's folder on the server when the framing app keeps the files (`hostFolder.ts`).
-  const panelFolder = usePanelFolder(client, chosen);
+  const { folder } = useFolder(client, launchFolder);
   // The framing app's greeting, suggestions and placeholder (#2845), from the address, then from what it sends.
   const { settings } = useEmbed();
   const choices = useMemo(
@@ -118,13 +116,7 @@ export function LiteShell({
     <div data-app-root="true" className="flex h-full min-w-0 flex-col bg-panel">
       <ConnectionBanner client={client} />
       <LiteContext value={choices}>
-        {panelFolder.kind === "ready" ? (
-          <LiteChats key={panelFolder.folder} client={client} folder={panelFolder.folder} />
-        ) : panelFolder.kind === "failed" ? (
-          <p role="alert" className="m-4 text-sm text-bad-ink">
-            {panelFolder.message}
-          </p>
-        ) : null}
+        <LiteChats key={folder} client={client} folder={folder} />
       </LiteContext>
     </div>
   );
@@ -149,26 +141,44 @@ function LiteChats({
           target: { kind: "existing", threadId: asked, sessionFile: null },
         };
   });
+  /** Each fresh open of the chat shown (Try again, or the link back): a new controller for the same chat. */
+  const [attempt, setAttempt] = useState(0);
+  const [reopens] = useState(() => new LinkReopens());
   /** The controller and the opening it was made for: until the next one is made, the last one is not drawn. */
   const [opened, setOpened] = useState<{
     readonly key: string;
+    readonly attempt: number;
     readonly controller: ChatController;
   } | null>(null);
   // A controller for each chat shown. The chat left stays open a while (`chatCache`), as a window's does, so going back
-  // to it shows it at once; a new chat left empty is closed.
+  // to it shows it at once; a new chat left empty is closed. A chat that could not open asks for a fresh open (Try
+  // again, or the link back) or a new chat.
   useEffect(() => {
     const kept =
       shown.target.kind === "existing" ? chatCache.take(client, shown.target.threadId) : undefined;
     const next = kept ?? new ChatController(client, shown.target, folder, shown.key);
-    setOpened({ key: shown.key, controller: next });
+    setOpened({ key: shown.key, attempt, controller: next });
     if (kept === undefined) void next.open();
-    return () => chatCache.keep(client, next);
-  }, [client, folder, shown]);
-  const controller = opened?.key === shown.key ? opened.controller : null;
+    const stopAsks = next.onPaneAsk((ask) => {
+      if (ask.kind === "new-chat") {
+        setShown(newChat(folder));
+        return;
+      }
+      if (ask.by === "person") reopens.reset();
+      else if (!reopens.take(shown.key)) return;
+      setAttempt((count) => count + 1);
+    });
+    return () => {
+      stopAsks();
+      chatCache.keep(client, next);
+    };
+  }, [client, folder, shown, attempt, reopens]);
+  const controller =
+    opened?.key === shown.key && opened.attempt === attempt ? opened.controller : null;
   if (controller === null) return null;
   return (
     <LiteChat
-      key={shown.key}
+      key={`${shown.key}:${attempt}`}
       controller={controller}
       chats={folderChats(list)}
       onNew={() => {

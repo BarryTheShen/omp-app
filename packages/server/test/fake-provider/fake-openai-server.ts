@@ -499,8 +499,8 @@ function reply(request: Request): Reply {
     const seen = messages.slice(0, -1).some((message) => text(message.content).includes(word));
     return { text: `context ${seen ? "has" : "lacks"} ${word}` };
   }
-  // `tools_offered`: the names of the tools omp offers this request, sorted, as `tools: a, b, c` (a chat whose files are
-  // on its host offers none of omp's file and shell tools, `chat-host/host-files.ts`).
+  // `tools_offered`: the names of the tools omp offers this request, sorted, as `tools: a, b, c` (omp's own beside the
+  // ones a panel's host adds, such as VS Code's).
   if (/\btools_offered\b/.test(prompt)) {
     const names = (request.tools ?? [])
       .map((tool) => tool.function?.name ?? tool.name ?? "")

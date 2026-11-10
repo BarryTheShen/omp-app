@@ -35,9 +35,16 @@ export const BANNER_AFTER_RETURN_MS = 6_000;
 /**
  * One banner while the link to the app's server is lost (reconnecting for 2 seconds or more and 6 seconds after the
  * page came back, refused, or closed), or, while it is fine, once the app was updated after this page loaded (#2787):
- * the page runs its own build until it reloads.
+ * the page runs its own build until it reloads. While the link is lost, `onChangeServer` (the full app's) offers Change
+ * server, which opens Settings → App → Server.
  */
-export function ConnectionBanner({ client }: { readonly client: AppClient }): ReactNode {
+export function ConnectionBanner({
+  client,
+  onChangeServer,
+}: {
+  readonly client: AppClient;
+  readonly onChangeServer?: () => void;
+}): ReactNode {
   const [state, setState] = useState<ConnectionStateEvent | null>(null);
   useEffect(() => client.onConnectionState(setState), [client]);
   const updated = useAppUpdated(client);
@@ -100,6 +107,11 @@ export function ConnectionBanner({ client }: { readonly client: AppClient }): Re
       {!reconnecting && state.refusal === undefined && (
         <Button size="xs" variant="secondary" onClick={reloadKeepingChat}>
           Reload
+        </Button>
+      )}
+      {onChangeServer !== undefined && state.refusal === undefined && (
+        <Button size="xs" variant="ghost" onClick={onChangeServer}>
+          Change server
         </Button>
       )}
     </div>

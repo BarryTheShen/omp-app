@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Plus, RotateCw, X } from "lucide-react";
 import { type ReactNode, use, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LiteContext } from "../lite/LiteContext";
@@ -76,21 +76,36 @@ const NOTICE_TEXT: Record<Exclude<ChatNotice["level"], "status">, string> = {
 /**
  * What a built-in command printed, or omp's notification, kept until it is dismissed; omp's status lines stay dim. A
  * service this chat started that was shared (#2788) has Open: a one-time link into it on this device; once its share
- * ended (the service stopped), the row says so instead (#2836). In the lite view a warning or an error is one line, as a
- * status line is, so a side panel's chat keeps its room (#2844).
+ * ended (the service stopped), the row says so instead (#2836). A chat that could not open has Try again, or New chat
+ * when opening it again would fail the same way. In the lite view a warning or an error is one line, as a status line
+ * is, so a side panel's chat keeps its room (#2844).
  */
 export function NoticeRow({
   notice,
   onDismiss,
   onShareOpened,
+  onReopen,
+  onNewChat,
 }: {
   readonly notice: ChatNotice;
   readonly onDismiss: (id: number) => void;
   readonly onShareOpened?: (shareId: string) => void;
+  readonly onReopen?: () => void;
+  readonly onNewChat?: () => void;
 }): ReactNode {
   const lite = use(LiteContext) !== null;
   if (notice.level === "status") return <OneLine text={notice.text} tone="status" />;
   const share = notice.share;
+  const action =
+    notice.action === "reopen" && onReopen !== undefined ? (
+      <Button size="xs" variant="secondary" className="shrink-0" onClick={onReopen}>
+        <RotateCw /> Try again
+      </Button>
+    ) : notice.action === "new-chat" && onNewChat !== undefined ? (
+      <Button size="xs" variant="secondary" className="shrink-0" onClick={onNewChat}>
+        <Plus /> New chat
+      </Button>
+    ) : null;
   if (lite && share === undefined && (notice.level === "warning" || notice.level === "error"))
     return (
       <div
@@ -98,6 +113,7 @@ export function NoticeRow({
         className="flex w-full min-w-0 items-center gap-1"
       >
         <OneLine text={notice.text} tone={notice.level} />
+        {action}
         <Button
           variant="ghost"
           size="icon-xs"
@@ -139,6 +155,7 @@ export function NoticeRow({
             <ExternalLink /> Open
           </a>
         ))}
+      {action !== null && <span className="self-center">{action}</span>}
       <Button
         variant="ghost"
         size="icon-xs"

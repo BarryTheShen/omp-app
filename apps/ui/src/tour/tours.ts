@@ -774,6 +774,40 @@ const VSCODE_RIGHT_TOUR: Tour = {
   ],
 };
 
+/** Another server, in Settings → App → Server; the banner's Change server and the desktop's page lead there (2026-11-09). */
+const CHANGE_SERVER_TOUR: Tour = {
+  id: "change-server-2026-11-09",
+  title: "Change the server",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "Click <b>App</b>.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("server"),
+      title: "The server",
+      text: "The server this app is connected to, and another one by its address; in the desktop app, the servers it opened before are a click away too. While the connection is lost, the banner's <b>Change server</b> opens this. In the desktop app, the page for a server that does not answer has <b>Try again</b>, those servers and a field for another address.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
 const INTEGRATIONS_TOUR: Tour = {
   id: "integrations-2026-11-09",
@@ -2484,6 +2518,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-09-try-again",
+    when: "2026-11-09T20:00:00-06:00",
+    summary:
+      "A chat that could not open has Try again, and one whose open the connection dropped under opens again by itself once the connection is back; a chat the server no longer has offers New chat. While the connection is lost, the banner has Change server, which opens Settings → App → Server, where a browser now takes another server's address too; the desktop app's page for a server that does not answer has Try again, the servers it opened and a field for another address. A chat in VS Code's panel is an ordinary chat in the app's folder, with omp's own tools, and the VS Code tools for the project open there.",
+    tours: [CHANGE_SERVER_TOUR],
+  },
   {
     id: "2026-11-09-vscode-right",
     when: "2026-11-09T16:30:00-06:00",

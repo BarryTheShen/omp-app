@@ -254,4 +254,39 @@ realTest.describe("new UI: the connection to the app", () => {
       expect(Date.now() - lost).toBeLessThan(15_000);
     },
   );
+
+  realTest(
+    "while the link is lost, the banner's Change server opens Settings → App → Server, whose address takes the page there",
+    async ({ realApp }) => {
+      realApp.allowProblem(/WebSocket/i);
+      let first: WebSocketRoute | null = null;
+      let away = false;
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+            // Once the server is away, every try is turned away: the banner stays.
+            if (away) {
+              void socket.close({ code: 1001, reason: "going away" });
+              return;
+            }
+            first ??= socket;
+            socket.connectToServer();
+          }),
+      });
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 60_000 });
+      away = true;
+      await (first as WebSocketRoute | null)?.close({ code: 1001, reason: "going away" });
+      const change = page.getByRole("button", { name: "Change server" });
+      await expect(change).toBeVisible({ timeout: 30_000 });
+      await change.click();
+      const field = page.getByRole("textbox", { name: "Open another server" });
+      await expect(field).toBeFocused({ timeout: 10_000 });
+      // A loopback address under another name is another origin: the page goes there.
+      const other = `http://localhost:${new URL(page.url()).port}/`;
+      await field.fill(other);
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(page).toHaveURL(other, { timeout: 30_000 });
+    },
+  );
 });

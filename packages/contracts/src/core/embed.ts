@@ -62,9 +62,9 @@ export const EmbedToolResult = z.strictObject({
 export type EmbedToolResult = z.infer<typeof EmbedToolResult>;
 
 /**
- * The project whose files are on the host's computer (VS Code on a laptop): its name and an id the host derives from its
- * folder there (hex). The panel's chats then run in the server's folder for that project (`A0.app.hostFolder`), with
- * omp's own file and shell tools left out; the host's tools reach the files.
+ * The project open in the host, on the host's computer (VS Code on a laptop), which the host's tools reach: its name and
+ * an id the host derives from its folder there (hex). The panel's chats run where the app's other chats run, in the
+ * app's folder on the server, with omp's own tools for the server's files; the host's tools are added for the project.
  */
 export const EmbedFiles = z.strictObject({
   project: z.string().trim().min(1).max(64),

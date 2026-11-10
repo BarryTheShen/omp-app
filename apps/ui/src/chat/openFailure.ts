@@ -4,7 +4,8 @@ import { AppFailure } from "@omp-app/contracts";
  * Why a chat could not open, in words a person can act on. A new chat whose omp stopped as it started carries the
  * server's typed reason (`startup`): "Try again" would fail the same way, so the words say what is missing and where to
  * fix it. The app's chats run omp without its terminal, where omp stops when no model is set up; omp's own terminal app
- * (`omp-app tui`) starts anyway and offers /login and /model there. Any other failure is said in its own words.
+ * (`omp-app tui`) starts anyway and offers /login and /model there. A chat the server no longer has says so. Any other
+ * failure is said in its own words.
  */
 export function openFailureText(failure: unknown): string {
   if (failure instanceof AppFailure) {
@@ -18,6 +19,36 @@ export function openFailureText(failure: unknown): string {
       case undefined:
         break;
     }
+    if (failure.appError.code === "not_found")
+      return "Could not open this chat: the app's server no longer has it.";
   }
   return `Could not open this chat: ${failure instanceof Error ? failure.message : String(failure)}`;
+}
+
+/** What the person can do about a chat that could not open: open it again, or start a new chat. */
+export type OpenFailureAction = "reopen" | "new-chat";
+
+/**
+ * A chat the server no longer has, or whose omp stopped as it started, gets New chat: opening it again would fail the
+ * same way. Any other failure gets Try again.
+ */
+export function openFailureAction(failure: unknown): OpenFailureAction {
+  if (
+    failure instanceof AppFailure &&
+    (failure.appError.startup !== undefined || failure.appError.code === "not_found")
+  )
+    return "new-chat";
+  return "reopen";
+}
+
+/**
+ * The open failed because the link to the app's server dropped or timed out (the client's own failure for its calls):
+ * the chat is opened again by itself once the link is back.
+ */
+export function lostWithTheLink(failure: unknown): boolean {
+  return (
+    failure instanceof AppFailure &&
+    failure.appError.code === "unavailable" &&
+    failure.appError.retryable
+  );
 }

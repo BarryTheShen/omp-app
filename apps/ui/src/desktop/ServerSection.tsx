@@ -16,23 +16,102 @@ export const LOCAL_SERVER_LABEL = "Use this computer's server";
 export const remoteServerLabel = (host: string): string => `Open the server on ${host}`;
 
 /**
+ * Where a page in a browser goes for another server: an `https` address, or the app on this computer at a loopback
+ * `http` address with its port, as the app serves itself. Only the origin is kept, and a pasted launch link's
+ * `#token=…`, which signs the page in there; without it that app pairs this device.
+ */
+export function otherServer(
+  typed: string,
+): { readonly address: string } | { readonly problem: string } {
+  const text = typed.trim();
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return { problem: `"${text}" is not an address: it starts with https://.` };
+  }
+  const loopback =
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]") &&
+    url.port !== "";
+  if (url.protocol !== "https:" && !loopback)
+    return {
+      problem:
+        "The address starts with https://, or is http://127.0.0.1 with its port for the app on this computer.",
+    };
+  return { address: `${url.origin}/${url.hash.startsWith("#token=") ? url.hash : ""}` };
+}
+
+/**
  * The App tab's Server section. In the desktop window: this computer's server and the servers on other computers the
  * window opened, each one click away, and a pasted link to another (`focusLink` puts the cursor there). In a browser:
- * the server the page came from.
+ * the server the page came from, and another server's address, which the page goes to.
  */
 export function ServerSection({ focusLink }: { readonly focusLink: boolean }): ReactNode {
   const bridge = desktopBridge();
   return (
-    <>
+    <section aria-label="Server" data-tour="server">
       <h3 className="mt-6 text-xs font-medium text-t3">Server</h3>
       {bridge === null ? (
-        <div className="flex items-center gap-4 py-3">
-          <p className="min-w-0 flex-1 text-sm text-t1">Connected to</p>
-          <p className="truncate font-mono text-xs text-t2">{window.location.host}</p>
-        </div>
+        <PageServer focusLink={focusLink} />
       ) : (
         <WindowServers bridge={bridge} focusLink={focusLink} />
       )}
+    </section>
+  );
+}
+
+/** In a browser: the server the page came from, and a field to go to another one. */
+function PageServer({ focusLink }: { readonly focusLink: boolean }): ReactNode {
+  const [typed, setTyped] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusLink) field.current?.focus();
+  }, [focusLink]);
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    const other = otherServer(typed);
+    if ("problem" in other) setProblem(other.problem);
+    else window.location.assign(other.address);
+  };
+  return (
+    <>
+      <div className="flex items-center gap-4 border-b border-l1 py-3">
+        <p className="min-w-0 flex-1 text-sm text-t1">Connected to</p>
+        <p className="truncate font-mono text-xs text-t2">{window.location.host}</p>
+      </div>
+      <form onSubmit={submit} className="py-3">
+        <label htmlFor="server-link" className="text-sm text-t1">
+          Open another server
+        </label>
+        <p className="mt-0.5 text-xs text-t3">
+          Type its address: this page goes there, and that app pairs this device the first time.
+        </p>
+        <div className="mt-2 flex gap-2">
+          <Input
+            ref={field}
+            id="server-link"
+            value={typed}
+            onChange={(event) => {
+              setTyped(event.target.value);
+              setProblem(null);
+            }}
+            placeholder="https://omp.example.com"
+            spellCheck={false}
+            autoComplete="off"
+            className="font-mono text-xs"
+          />
+          <Button type="submit" size="sm" disabled={typed.trim() === ""}>
+            Open
+          </Button>
+        </div>
+        {problem !== null && (
+          <p role="alert" className="mt-2 text-sm text-bad-ink">
+            {problem}
+          </p>
+        )}
+      </form>
     </>
   );
 }

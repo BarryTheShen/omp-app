@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { FolderPath, RequestId } from "@omp-app/contracts";
 import { EmbeddersStore } from "../../embedders";
-import { ensureHostFolder, HostFolderRefused } from "../../host-folders";
 import type { Logger } from "../../logging";
 import { OmpProcessRegistry } from "../../process";
 import type { PortHandlerContext } from "../../registry/ports";
@@ -171,33 +170,6 @@ describe("AppPort", () => {
       ).rejects.toMatchObject({ appError: { code: "unavailable" } });
     } finally {
       await rm(dirname(path), { recursive: true, force: true });
-    }
-  });
-
-  test("makes a project's host folder, private and empty, the same one each time; refuses a host it does not take", async () => {
-    const appData = await mkdtemp(join(tmpdir(), "app-host-folders-"));
-    try {
-      const handlers = appHandlers({
-        hostFolders: {
-          ensure: (host, project, id) => ensureHostFolder(appData, host, project, id),
-          refused: (error) => error instanceof HostFolderRefused,
-        },
-      });
-      const asked = { host: "vscode", project: "My App", id: "0123456789abcdef0123" };
-      const made = (await handler(handlers, "hostFolder")(asked, call())) as { folder: string };
-      expect(made.folder).toBe(join(appData, "host-folders", "vscode", "my-app-0123456789ab"));
-      expect((await stat(made.folder)).mode & 0o777).toBe(0o700);
-      expect(await readdir(made.folder)).toEqual([]);
-      expect(await handler(handlers, "hostFolder")(asked, call())).toEqual(made);
-      await expect(
-        handler(handlers, "hostFolder")({ ...asked, host: "../etc" }, call()) as Promise<unknown>,
-      ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
-      // A run of the app that cannot keep such folders says so.
-      await expect(
-        handler(appHandlers(), "hostFolder")(asked, call()) as Promise<unknown>,
-      ).rejects.toMatchObject({ appError: { code: "unavailable" } });
-    } finally {
-      await rm(appData, { recursive: true, force: true });
     }
   });
 });

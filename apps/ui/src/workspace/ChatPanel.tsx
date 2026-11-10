@@ -21,6 +21,7 @@ import { ChatPane } from "../chat/ChatPane";
 import type { ComposerHandle } from "../chat/Composer";
 import { useChatTitle } from "../chat/chatTitle";
 import { ChatController, type ChatTarget } from "../chat/controller";
+import { LinkReopens } from "../chat/reopens";
 import { inbox } from "../inbox/inbox";
 import { chatCache } from "./chatCache";
 import type { OpenGate } from "./openGate";
@@ -151,16 +152,22 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     },
     [composers, api.id],
   );
+  /** Each fresh open of this pane's chat (Try again, or the link back): a new controller for the same chat. */
+  const [attempt, setAttempt] = useState(0);
+  const [reopens] = useState(() => new LinkReopens());
   /** The controller and the chat it was made for: until a new chat's controller is made, the old one is not drawn. */
   const [opened, setOpened] = useState<{
     readonly chat: string;
+    readonly attempt: number;
     readonly controller: ChatController;
   } | null>(null);
-  const controller = opened?.chat === params.chat ? opened.controller : null;
+  const controller =
+    opened?.chat === params.chat && opened.attempt === attempt ? opened.controller : null;
   const root = useRef<HTMLDivElement | null>(null);
 
-  // A controller only when the pane is given another chat; the same chat gaining its id keeps it. A new controller
-  // opens its chat once the gate lets the pane through: at once on a desktop, when the pane is in front on a phone.
+  // A controller only when the pane is given another chat, or opens its chat afresh; the same chat gaining its id keeps
+  // it. A new controller opens its chat once the gate lets the pane through: at once on a desktop, when the pane is in
+  // front on a phone. A chat that could not open asks for a fresh open (Try again, or the link back) or a new chat.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `params.chat` names the chat; target and folder go with it
   useEffect(() => {
     const kept =
@@ -168,20 +175,35 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
         ? chatCache.take(client, params.target.threadId)
         : undefined;
     const next = kept ?? new ChatController(client, params.target, params.folder, params.chat);
-    setOpened({ chat: params.chat, controller: next });
+    setOpened({ chat: params.chat, attempt, controller: next });
     controllers.set(api.id, next);
     let current = true;
     if (kept === undefined)
       void openGate.wait(api.id).then(() => {
         if (current) void next.open();
       });
+    const stopAsks = next.onPaneAsk((ask) => {
+      if (ask.kind === "new-chat") {
+        api.updateParameters({
+          chat: crypto.randomUUID(),
+          target: { kind: "new", folder: params.folder },
+          folder: params.folder,
+        } satisfies ChatPanelParams);
+        api.setTitle("New chat");
+        return;
+      }
+      if (ask.by === "person") reopens.reset();
+      else if (!reopens.take(params.chat)) return;
+      setAttempt((count) => count + 1);
+    });
     return () => {
       current = false;
+      stopAsks();
       if (controllers.get(api.id) === next) controllers.delete(api.id);
       // A chat that never opened is empty: the cache closes it rather than keep it.
       chatCache.keep(client, next);
     };
-  }, [client, params.chat]);
+  }, [client, params.chat, attempt]);
 
   // A pane that closes leaves the gate.
   useEffect(() => () => openGate.forget(api.id), [openGate, api.id]);
@@ -209,7 +231,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     >
       {controller !== null && (
         <PaneChat
-          key={params.chat}
+          key={`${params.chat}:${attempt}`}
           controller={controller}
           params={params}
           api={api}

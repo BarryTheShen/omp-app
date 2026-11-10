@@ -24,7 +24,8 @@ app can do what your account can do on the computer it runs on, so the app is bu
   or `OMP_APP_SHARE_ADDRESS`), over plain HTTP, for paired devices, through a link the app hands out. A request that
   another page makes (another share, or another site) is refused, and a shared page serves no hidden files.
 - **The desktop window** gives its commands (clipboard, servers, windows, notifications) only to the pages of the
-  server it opened, by exact address; any other page opens in your browser.
+  server it opened, by exact address, and the four that choose its server (the servers it opened, another address,
+  this computer's server) to its own page for a server that did not open; any other page opens in your browser.
 
 ## What it assumes
 

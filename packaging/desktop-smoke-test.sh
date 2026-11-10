@@ -817,19 +817,11 @@ servers=$(sidecars_of_run | wc -l)
 [[ $servers == 1 ]] || fail "T10: $servers server processes of this run: the launch with --remote started one here"
 shot "$wid" remote-unreachable
 note "T10 the other computer did not answer: the window stayed open on the error page, and it neither used nor started a server here"
-launch "$app" --local
-second=$LAUNCHED
-wait_gone "$second" 30 || fail "T10: the second launch with --local did not exit"
-wait "$second"
-[[ ! -e $link_file ]] || fail "T10: the second launch with --local left the link file"
-wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T10: after a second launch with --local the window never connected to this computer's server"
-servers=$(sidecars_of_run | wc -l)
-[[ $servers == 1 && $(window_ids | wc -l) == 1 ]] || fail "T10: $servers server processes and $(window_ids | wc -l) windows after --local"
-note "T10 a second launch with --local forgot the link and moved the open window to this computer's running server"
-# A computer that answers: something listens on the link's port. It is no https server, so no page loads, but the
-# first byte the window sends there (22, a TLS handshake) shows that the window went to that address.
-open_port=$(free_port)
-python3 - "$open_port" "$work/listener.log" <<'PY' &
+# A computer that answers: something listens on a port. It is no https server, so no page loads, but the first byte the
+# window sends there (22, a TLS handshake) shows that the window went to that address; the window then says so in its
+# log and shows the error page with the reason (#2664).
+listen_on() {
+  python3 - "$1" "$2" <<'PY' &
 import socket
 import sys
 
@@ -849,31 +841,93 @@ with open(sys.argv[2], "a", buffering=1) as log:
         log.write(f"connection first={first[0] if first else 'none'}\n")
         connection.close()
 PY
-listener=$!
-started+=("$listener")
-for n in $(seq 1 50); do
-  grep -q listening "$work/listener.log" 2>/dev/null && break
-  sleep 0.2
+  started+=("$!")
+  for n in $(seq 1 50); do
+    grep -q listening "$2" 2>/dev/null && return 0
+    sleep 0.2
+  done
+  return 1
+}
+# Stops a listener that `listen_on` started; the end of the test counts what this run left running.
+stop_listener() {
+  kill -TERM "$1" 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
+}
+# Waits until a listener's log holds `$2` TLS handshakes.
+wait_handshakes() {
+  for n in $(seq 1 60); do
+    (($(grep -c 'first=22' "$1" 2>/dev/null || true) >= $2)) && return 0
+    sleep 0.5
+  done
+  return 1
+}
+# How often the window said that the app on the other computer did not open; and a wait for that count.
+did_not_open() { cat "$work"/launch-*.log 2>/dev/null | grep -c 'the app on 127.0.0.1 did not open' || true; }
+wait_did_not_open() {
+  for n in $(seq 1 40); do
+    (($(did_not_open) >= $1)) && return 0
+    sleep 0.5
+  done
+  return 1
+}
+# Keys to the error page, which puts the cursor on Try again; Tab goes on to Use this computer's server, then to the
+# field for another address.
+page_keys() {
+  xdotool windowfocus "$wid" 2>/dev/null || true
+  xdotool key --clearmodifiers "$@"
+}
+# The page's Try again: the window goes to the same address again, where something listens now.
+again_port=${unreachable#https://127.0.0.1:}
+again_port=${again_port%%/*}
+listen_on "$again_port" "$work/again.log" || fail "T10: no listener on the first link's port"
+again_listener=${started[-1]}
+shown_before=$(did_not_open)
+page_keys Return || fail "T10: could not press Enter on the page's Try again"
+wait_handshakes "$work/again.log" 1 || fail "T10: the page's Try again did not go to the address again (the listener got: $(tr '\n' ' ' <"$work/again.log" 2>/dev/null))"
+wait_did_not_open $((shown_before + 1)) || fail "T10: after Try again the window did not show the error page with the reason"
+sleep 2
+shot "$wid" remote-try-again
+note "T10 the page's Try again went to the same address again (a TLS handshake there), and the page came back with the reason"
+stop_listener "$again_listener"
+# Another address in the page's field: the window keeps that link privately and goes there.
+field_port=$(free_port)
+listen_on "$field_port" "$work/field.log" || fail "T10: no listener for the page's field"
+field_listener=${started[-1]}
+typed="https://127.0.0.1:$field_port/#token=smoke-field"
+shown_before=$(did_not_open)
+page_keys Tab Tab || fail "T10: could not move to the page's address field"
+xdotool type --delay 40 -- "$typed" || fail "T10: could not type into the page's address field"
+page_keys Return || fail "T10: could not press Enter in the page's address field"
+wait_handshakes "$work/field.log" 1 || fail "T10: the address typed on the page was not opened (the listener got: $(tr '\n' ' ' <"$work/field.log" 2>/dev/null))"
+[[ $(cat "$link_file" 2>/dev/null) == "$typed" && $(link_mode) == 600 ]] || fail "T10: the address typed on the page was not kept privately as the window's link"
+wait_did_not_open $((shown_before + 1)) || fail "T10: after the typed address the window did not show the error page with the reason"
+sleep 2
+note "T10 the address typed on the page was kept privately, and the window went there"
+stop_listener "$field_listener"
+# The page's Use this computer's server: the window forgets the link and moves to this computer's running server.
+page_keys Tab Return || fail "T10: could not press the page's Use this computer's server"
+for n in $(seq 1 40); do
+  [[ ! -e $link_file ]] && break
+  sleep 0.5
 done
+[[ ! -e $link_file ]] || fail "T10: the page's Use this computer's server left the link file"
+wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T10: after the page's Use this computer's server the window never connected to this computer's server"
+servers=$(sidecars_of_run | wc -l)
+[[ $servers == 1 && $(window_ids | wc -l) == 1 ]] || fail "T10: $servers server processes and $(window_ids | wc -l) windows after Use this computer's server"
+note "T10 the page's Use this computer's server forgot the link and moved the open window to this computer's running server"
+# A second launch with --remote moves the open window to another computer.
+open_port=$(free_port)
+listen_on "$open_port" "$work/listener.log" || fail "T10: no listener on the other computer's port"
+listener=${started[-1]}
 answering="https://127.0.0.1:$open_port/#token=smoke-remote"
+shown_before=$(did_not_open)
 launch "$app" --remote "$answering"
 second=$LAUNCHED
 wait_gone "$second" 30 || fail "T10: the second launch with --remote did not exit"
 wait "$second"
 [[ $(cat "$link_file" 2>/dev/null) == "$answering" && $(link_mode) == 600 ]] || fail "T10: the second launch with --remote did not keep its link privately"
-went=""
-for n in $(seq 1 60); do
-  grep -q 'first=22' "$work/listener.log" 2>/dev/null && { went=yes; break; }
-  sleep 0.5
-done
-[[ -n $went ]] || fail "T10: the window never went to the other computer's address (the listener got: $(tr '\n' ' ' <"$work/listener.log" 2>/dev/null))"
-# The page did not load there: the window says so in its log and shows the error page with the reason (#2664).
-shown=""
-for n in $(seq 1 40); do
-  grep -q 'the app on 127.0.0.1 did not open' "$work"/launch-*.log 2>/dev/null && { shown=yes; break; }
-  sleep 0.5
-done
-[[ -n $shown ]] || fail "T10: the page at the other computer's address did not load, and the window did not show the error page"
+wait_handshakes "$work/listener.log" 1 || fail "T10: the window never went to the other computer's address (the listener got: $(tr '\n' ' ' <"$work/listener.log" 2>/dev/null))"
+wait_did_not_open $((shown_before + 1)) || fail "T10: the page at the other computer's address did not load, and the window did not show the error page"
 sleep 3
 is_alive "$p" || fail "T10: the app quit after the window went to the other computer"
 [[ $(window_ids | wc -l) == 1 ]] || fail "T10: $(window_ids | wc -l) windows after the window went to the other computer"
@@ -886,8 +940,7 @@ wait "$second"
 [[ ! -e $link_file ]] || fail "T10: the last launch with --local left the link file"
 wait_log_count 'connection.open' $((${opens_before:-0} + 2)) 60 || fail "T10: after the last --local the window never connected to this computer's server again"
 note "T10 --local again: the link is forgotten, and the window is back on this computer's server"
-kill -TERM "$listener" 2>/dev/null || true
-wait "$listener" 2>/dev/null || true
+stop_listener "$listener"
 close_window "$wid"
 wait_gone "$p" 40 || fail "T10: the app did not exit after its window closed"
 wait "$p"

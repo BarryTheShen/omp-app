@@ -563,6 +563,12 @@ export interface RowActions {
   readonly onDismissNotice: (id: number) => void;
   /** A shared service's link in the chat was followed (#2788). */
   readonly onShareOpened: (shareId: string) => void;
+  /**
+   * A chat that could not open: open it afresh (Try again), or a new chat in its place. Absent where no chat opens (a
+   * subagent's transcript).
+   */
+  readonly onReopen?: () => void;
+  readonly onNewChat?: () => void;
   readonly onEdit: (entryId: string) => void;
   readonly canEdit: boolean;
 }
@@ -656,6 +662,8 @@ function RowView({
             notice={row.notice}
             onDismiss={actions.onDismissNotice}
             onShareOpened={actions.onShareOpened}
+            onReopen={actions.onReopen}
+            onNewChat={actions.onNewChat}
           />
         </Row>
       );

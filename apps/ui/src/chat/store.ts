@@ -92,6 +92,8 @@ export interface ChatNotice {
    * the share has ended (#2836).
    */
   readonly share?: { readonly id: string; readonly url: string | null; readonly ended: boolean };
+  /** The chat could not open: the row offers Try again (`reopen`) or New chat (`new-chat`). */
+  readonly action?: "reopen" | "new-chat";
 }
 
 /**
@@ -698,8 +700,12 @@ export class ChatStore {
   }
 
   /** A row from the page itself that explains the chat: it could not open, or a part of it is not shown. */
-  addNotice(text: string, level: ChatNotice["level"]): void {
+  addNotice(text: string, level: ChatNotice["level"], action?: ChatNotice["action"]): void {
     this.#notify(text, level);
+    if (action !== undefined)
+      this.#notices = this.#notices.map((notice, at, all) =>
+        at === all.length - 1 ? { ...notice, action } : notice,
+      );
     this.#publish();
   }
 

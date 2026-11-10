@@ -135,6 +135,8 @@ export function ChatPane({
       onStopShell: () => controller.stopShell(),
       onDismissNotice: (id) => controller.store.dismissNotice(id),
       onShareOpened: (shareId) => controller.shareLinkUsed(shareId),
+      onReopen: () => controller.reopen(),
+      onNewChat: () => controller.startNewChat(),
       onEdit: (entryId) => {
         if (editingNow.current) return;
         editingNow.current = true;

@@ -23,7 +23,6 @@ import { VERSION } from "@oh-my-pi/pi-utils/dirs";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import { CHAT_HOST_SOCKET_ARG } from "@omp-app/contracts/chat-host/args";
 import { startHandback } from "./handback";
-import { hostFilesOf } from "./host-files";
 import { linesOf } from "./input";
 import { runChatLoop } from "./loop";
 import { type LineWriter, takeOverStdout } from "./output";
@@ -74,14 +73,10 @@ export async function runChat(args: readonly string[]): Promise<never> {
   if (transport === null) return exit(1);
   // A terminal notification writes a bell or an escape sequence to stdout, inside the protocol.
   process.env.PI_NOTIFICATIONS = "off";
-  // `--app-host-files=<host>` is the app's, not omp's: the chat's files are on the panel's computer (`host-files.ts`).
-  const { host: filesOnHost, rest: ompArgs } = hostFilesOf(rest);
 
   let chat: Awaited<ReturnType<typeof createChatSession>>;
   try {
-    chat = await createChatSession(ompArgs, (message) => process.stderr.write(`${message}\n`), {
-      ...(filesOnHost === undefined ? {} : { filesOnHost }),
-    });
+    chat = await createChatSession(rest, (message) => process.stderr.write(`${message}\n`));
   } catch (error) {
     process.stderr.write(`${startFailure(error)}\n`);
     return exit(1);

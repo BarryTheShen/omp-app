@@ -23,17 +23,93 @@
         font-size: 1.4rem;
         font-weight: 600;
       }
+      h2 {
+        margin: 1.5rem 0 0.5rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #59636e;
+      }
       p {
         margin: 0 0 0.75rem;
         line-height: 1.5;
       }
-      code {
-        font-size: 0.95em;
+      button,
+      input {
+        font: inherit;
+        font-size: 0.95rem;
+        border-radius: 6px;
+      }
+      button {
+        padding: 0.45rem 0.9rem;
+        border: 1px solid #d1d9e0;
+        background: #f6f8fa;
+        color: inherit;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: #1f6feb;
+        background: #1f6feb;
+        color: #ffffff;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid #1f6feb;
+        outline-offset: 2px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 1.25rem 0 0;
+      }
+      .address {
+        display: flex;
+        gap: 0.5rem;
+      }
+      input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.45rem 0.6rem;
+        border: 1px solid #d1d9e0;
+        background: #ffffff;
+        color: inherit;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      #problem {
+        color: #d1242f;
       }
       @media (prefers-color-scheme: dark) {
         body {
           background: #1f2328;
           color: #e6edf3;
+        }
+        h2 {
+          color: #9198a1;
+        }
+        button,
+        input {
+          border-color: #3d444d;
+          background: #262c36;
+        }
+        button.primary {
+          border-color: #4493f8;
+          background: #1f6feb;
+        }
+        #problem {
+          color: #ff7b72;
         }
       }
     </style>
@@ -46,8 +122,26 @@
         This window opens the app's server on another computer. That computer did not answer: it may be
         off, out of this computer's reach, or not serving the app at this address.
       </p>
-      <p>Close this window and open omp app again once the other computer is back.</p>
-      <p>To use this computer's own server instead, run <code>omp-app-desktop --local</code>.</p>
+      <div class="actions">
+        <button id="again" class="primary" type="button" autofocus>Try again</button>
+        <button id="here" type="button">Use this computer's server</button>
+      </div>
+      <h2><label for="address">Another server's address</label></h2>
+      <form id="other" class="address">
+        <input
+          id="address"
+          type="text"
+          placeholder="https://omp.example.com"
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <button type="submit">Open</button>
+      </form>
+      <section id="saved" hidden>
+        <h2>Servers this window opened before</h2>
+        <ul id="servers"></ul>
+      </section>
+      <p id="problem" role="alert" hidden></p>
     </main>
   </body>
 </html>

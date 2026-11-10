@@ -172,14 +172,14 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
           await lite.getByRole("button", { name: "Send", exact: true }).click();
         };
 
-        // The folder's chat has the extension's tools, and none of omp's own for the server's files.
+        // The panel's chat has the extension's tools for the folder open in VS Code, beside omp's own for the server's.
         await send("tools_offered");
         const offered = lite.getByText(/^tools: /);
         await expect(offered).toBeVisible({ timeout: 60_000 });
         const names = ((await offered.textContent()) ?? "").replace(/^tools: /, "").split(", ");
         for (const name of ["vscode_read", "vscode_edit", "vscode_run", "vscode_search"])
           expect(names).toContain(name);
-        for (const name of ["bash", "edit", "grep", "glob"]) expect(names).not.toContain(name);
+        for (const name of ["bash", "edit", "grep", "glob"]) expect(names).toContain(name);
 
         // It reads the file in VS Code's folder.
         await send('call_tool vscode_read {"path":"README.md"}');

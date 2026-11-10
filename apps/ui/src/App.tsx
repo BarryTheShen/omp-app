@@ -495,7 +495,7 @@ function Shell({
       }
       data-app-root="true"
     >
-      <ConnectionBanner client={client} />
+      <ConnectionBanner client={client} onChangeServer={showServers} />
       <RequestPrompt client={client} />
       <Sidebar
         folderMenu={<FolderMenu client={client} choice={choice} />}

@@ -13,10 +13,3 @@ export const CHAT_HOST_CHAT_ARG = "__omp_app_chat";
  * with this host's socket would delete it and take its place.
  */
 export const CHAT_HOST_SOCKET_ARG = "--app-host-socket";
-
-/**
- * `--app-host-files=<host>`: the chat's files are on the computer of the app that shows it in a panel (`<host>`, such as
- * `vscode`), not on this one. The server gives it to a chat whose folder is one of the app's host folders; the chat host
- * then leaves out omp's own tools that work on this computer's files and shell, and tells the model where the files are.
- */
-export const CHAT_HOST_FILES_ARG = "--app-host-files";

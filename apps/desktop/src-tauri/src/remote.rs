@@ -30,7 +30,8 @@ const LINK_PATHS: [&str; 2] = ["/", "/v2/"];
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 /// Why a `--remote` was refused.
 const MISSING_LINK: &str = "--remote needs the server's address";
-pub const LINK_SHAPE: &str = "the address must be an https:// address, such as https://omp.example.com/";
+pub const LINK_SHAPE: &str =
+    "the address must be an https:// address, such as https://omp.example.com/";
 
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
