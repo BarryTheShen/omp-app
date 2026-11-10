@@ -131,6 +131,34 @@ describe("the lite view's end of the embed protocol", () => {
     await expect(waiting).resolves.toMatchObject({ isError: true });
   });
 
+  test("asks the host to open an address outside the panel: true once it says so, false with no host or no answer in time", async () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    const full = "https://app.example/?chat=1";
+    // No hello yet: no host to ask, so the view opens it itself.
+    await expect(endpoint.open(full, 20)).resolves.toBe(false);
+    receive(hello());
+    const asked = endpoint.open(full, 2_000);
+    expect(sent.at(-1)).toEqual({
+      message: { ...envelope, type: "open", url: full },
+      origin: HOST,
+    });
+    let settled = false;
+    void asked.then(() => {
+      settled = true;
+    });
+    // An answer for another address, or from another origin, is not this one's.
+    receive({ ...envelope, type: "opened", url: "omp-app://open" });
+    receive({ ...envelope, type: "opened", url: full }, "https://other.example");
+    await ticks();
+    expect(settled).toBe(false);
+    receive({ ...envelope, type: "opened", url: full });
+    await expect(asked).resolves.toBe(true);
+    // A host that does not answer: false once the wait is over.
+    await expect(endpoint.open("omp-app://open", 20)).resolves.toBe(false);
+  });
+
   test("a panel whose host keeps its key signs in with the one its hello brings, and hands a new one to that host only", async () => {
     const { window, sent, receive } = frame();
     const endpoint = new EmbedEndpoint(window, true);

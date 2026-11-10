@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { EmbedFiles, HostContext } from "@omp-app/contracts";
-import { appAddressOf } from "@omp-app/embed";
+import { appAddressOf, opensOutside } from "@omp-app/embed";
 import * as vscode from "vscode";
 import { whyNotShown } from "./check";
 import { contextFor, type EditorView, type Selected } from "./context";
@@ -466,6 +466,10 @@ export class ChatPanel implements vscode.Disposable {
           signal,
         );
       }
+      case "open":
+        // Only the app's own pages (the full app) and the desktop app's `omp-app://` link; VS Code says whether it did.
+        if (!opensOutside(question.url, new URL(app).origin)) return false;
+        return vscode.env.openExternal(vscode.Uri.parse(question.url));
     }
   }
 

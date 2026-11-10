@@ -13,6 +13,9 @@
  *   (`withHostContext`), and the panel shows it, with a way to leave it out.
  * - **Tools**: the host's own tools, given to the chat the panel shows and to no other; only this panel answers their
  *   calls. A call reaches the host as `tool_call`, a call omp gave up on as `tool_cancel`.
+ * - **Opening outside the panel**: the full app, or the desktop app's `omp-app://` link, which a frame in an editor's
+ *   webview may not open itself. The view asks with `open`; a host that opened it answers `opened` with the same
+ *   address. A host that does not answer in time leaves it to the view, which opens it as a page would.
  */
 import { z } from "zod";
 import { HostContext } from "./host-context";
@@ -105,6 +108,7 @@ export const EmbedHostMessage = z.discriminatedUnion("type", [
     callId: z.string().min(1).max(200),
     result: EmbedToolResult,
   }),
+  z.strictObject({ ...envelope, type: z.literal("opened"), url: z.string().min(1).max(4_000) }),
 ]);
 export type EmbedHostMessage = z.infer<typeof EmbedHostMessage>;
 
@@ -127,7 +131,9 @@ export type EmbedAppBody =
     }
   | { readonly type: "tool_cancel"; readonly callId: string }
   /** The panel paired: the host keeps this key, out of any page's reach, and gives it back in each `hello`. */
-  | { readonly type: "credential"; readonly key: string };
+  | { readonly type: "credential"; readonly key: string }
+  /** Open this address outside the panel: the app's own page, or the desktop app's `omp-app://` link. */
+  | { readonly type: "open"; readonly url: string };
 
 /** What the lite view sends its host. */
 export type EmbedAppMessage = EmbedAppBody & {

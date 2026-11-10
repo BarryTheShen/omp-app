@@ -18,7 +18,9 @@ export type Question =
   | { readonly what: "key" }
   | { readonly what: "keep-key"; readonly key: string }
   | { readonly what: "chat"; readonly chat: string }
-  | { readonly what: "tool"; readonly name: string; readonly args: Record<string, unknown> };
+  | { readonly what: "tool"; readonly name: string; readonly args: Record<string, unknown> }
+  /** Open an address outside VS Code (the full app, the desktop app's link); the answer says whether VS Code did. */
+  | { readonly what: "open"; readonly url: string };
 
 export type ToExtension =
   | ({ readonly type: "ask"; readonly id: number } & Question)

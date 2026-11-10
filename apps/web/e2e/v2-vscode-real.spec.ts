@@ -70,7 +70,22 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
       // socket's path may have (the build server's containers set no XDG_RUNTIME_DIR). A short folder of the test's own
       // is both, so the test leaves nothing in the real home and the socket's path stays short.
       const own = await mkdtemp(join(tmpdir(), "vsc-"));
-      const env = { ...process.env, HOME: own, XDG_RUNTIME_DIR: own };
+      // The system's opener, as VS Code calls it on Linux (`xdg-open`), stood in for: it keeps each address it is handed.
+      const opened = join(own, "opened.txt");
+      await mkdir(join(own, "bin"));
+      await writeFile(
+        join(own, "bin", "xdg-open"),
+        `#!/bin/sh\nprintf '%s\\n' "$1" >> "${opened}"\n`,
+        {
+          mode: 0o755,
+        },
+      );
+      const env = {
+        ...process.env,
+        HOME: own,
+        XDG_RUNTIME_DIR: own,
+        PATH: `${join(own, "bin")}:${process.env.PATH ?? ""}`,
+      };
       execFileSync(
         join(code, "bin/code"),
         [
@@ -216,6 +231,43 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
         await expect(said).toBeVisible({ timeout: 60_000 });
         await expect(said).toContainText("ran-in-vscode");
         await window.screenshot({ path: testInfo.outputPath("4-done.png") });
+
+        // The arrow and Open in the desktop app: VS Code's frames may open no window or other app's link, so the panel
+        // asks the extension, and VS Code hands each to the system's opener; the panel stays on the chat.
+        const handed = async (): Promise<string[]> =>
+          (await readFile(opened, "utf8").catch(() => ""))
+            .split("\n")
+            .filter((line) => line !== "");
+        const allow = async (): Promise<void> => {
+          // VS Code may ask before it opens a link (its trusted domains): the test says yes.
+          const ask = window
+            .locator(".monaco-dialog-box")
+            .getByRole("button", { name: "Open", exact: true });
+          await ask.waitFor({ state: "visible", timeout: 3_000 }).then(
+            () => ask.click(),
+            () => undefined,
+          );
+        };
+        await lite.getByRole("link", { name: "Open in the full app" }).click();
+        await allow();
+        await expect.poll(handed, { timeout: 30_000 }).toHaveLength(1);
+        const full = new URL((await handed())[0] ?? "");
+        expect(full.origin).toBe(app);
+        expect(full.hash).toMatch(/^#chat=[0-9a-f-]+$/);
+        await lite.getByRole("button", { name: "Where the full app opens" }).click();
+        await lite.getByRole("menuitem", { name: "Open in the desktop app" }).click();
+        await allow();
+        await expect.poll(handed, { timeout: 30_000 }).toHaveLength(2);
+        const desktop = new URL((await handed())[1] ?? "");
+        expect(desktop.protocol).toBe("omp-app:");
+        expect(`${desktop.host}${desktop.pathname}`).toBe(
+          `chat/${full.hash.slice("#chat=".length)}`,
+        );
+        expect(desktop.searchParams.get("server")).toBe(app);
+        await expect(box).toBeVisible();
+        await window.screenshot({ path: testInfo.outputPath("4b-opened.png") });
+        // The keys back to VS Code: the last click was in the panel's frame, which keeps them (F1 among them).
+        await window.locator(".part.editor").click();
 
         // A page that answers late (a slow network, a relay): after 10 s the panel says why it has not opened, over
         // the frame, which keeps loading; when the page answers, the chat takes its place back without a click.

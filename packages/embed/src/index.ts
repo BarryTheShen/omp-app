@@ -81,6 +81,13 @@ export interface PanelOptions {
    * most once; the frame stays, in case the page still comes.
    */
   readonly onNoAnswer?: () => void;
+  /**
+   * Opens an address the panel asks to open outside it: the full app (the app's own address) or the desktop app's
+   * `omp-app://` link; no other is passed on. A host whose frame may open no window or other app's link itself, as an
+   * editor's webview, opens it here and returns true; the panel then knows it is open. Left out, or false, the panel
+   * opens it itself.
+   */
+  readonly onOpen?: (url: string) => boolean | Promise<boolean>;
   /** The frame's name for screen readers. */
   readonly title?: string;
 }
@@ -104,6 +111,17 @@ function isAppMessage(data: unknown): data is EmbedAppMessage {
   if (typeof data !== "object" || data === null) return false;
   const message = data as { omp?: unknown; v?: unknown; type?: unknown };
   return message.omp === "embed" && message.v === 1 && typeof message.type === "string";
+}
+
+/** Whether the panel may have an address opened outside it: the app's own pages, or the desktop app's link. */
+export function opensOutside(url: unknown, appOrigin: string): url is string {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "omp-app:" || parsed.origin === appOrigin;
+  } catch {
+    return false;
+  }
 }
 
 function checkTools(tools: readonly HostTool[]): void {
@@ -290,6 +308,19 @@ export function openPanel(options: PanelOptions): Panel {
           .then(() => options.keys?.set(message.key))
           .catch(() => undefined);
         return;
+      case "open": {
+        // Only the app's own pages and the desktop app's link, and only when the host opens them.
+        const opener = options.onOpen;
+        const url = message.url;
+        if (opener === undefined || !opensOutside(url, origin)) return;
+        void Promise.resolve()
+          .then(() => opener(url))
+          .then((opened) => {
+            if (opened) post({ type: "opened", url });
+          })
+          .catch(() => undefined);
+        return;
+      }
     }
   };
 

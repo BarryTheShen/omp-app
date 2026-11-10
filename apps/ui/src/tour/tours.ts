@@ -2538,7 +2538,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-09-one-row",
     when: "2026-11-09T21:30:00-06:00",
     summary:
-      "The row under the message box stays one row in a narrow window: the model's name shortens, the thinking level and Plan show only their icons, and Send stays at the end. Your own answer to a question with choices takes several lines, in the Questions panel and in omp's question dialog: Shift+Enter starts a new line, Enter sends. VS Code's panel sends what you are looking at in a notebook too: the notebook, the cell and the lines you selected in it, or the cell's text; another tab's file, or a preview's name. The line above the message box says it, such as \"Lines 3–7 of cell 4, notes.ipynb\".",
+      "The row under the message box stays one row in a narrow window: the model's name shortens, the thinking level and Plan show only their icons, and Send stays at the end. Your own answer to a question with choices takes several lines, in the Questions panel and in omp's question dialog: Shift+Enter starts a new line, Enter sends. VS Code's panel sends what you are looking at in a notebook too: the notebook, the cell and the lines you selected in it, or the cell's text; another tab's file, or a preview's name. The line above the message box says it, such as \"Lines 3–7 of cell 4, notes.ipynb\". In VS Code's panel, the arrow and Open in the desktop app work: VS Code opens the full app or the desktop app for the panel, which stays on the chat.",
     tours: [ONE_ROW_TOUR],
   },
   {

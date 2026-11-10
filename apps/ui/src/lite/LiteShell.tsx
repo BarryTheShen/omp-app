@@ -298,7 +298,9 @@ function pageStorage(): Storage | null {
 /**
  * The arrow to the full app: it opens the chat where this panel chose last, a browser tab until it chooses. Its menu
  * opens the chat in the desktop app (through its `omp-app://` link, which the system hands to it) or in a browser tab,
- * and keeps that choice for the arrow.
+ * and keeps that choice for the arrow. In another app's frame the host opens it when it can (`embed.open`): a frame in
+ * an editor's webview may open no window or other app's link itself (VS Code's), and an `omp-app://` link the frame
+ * followed would leave the panel blank. A host that does not answer leaves it to the view, which opens it as a page does.
  */
 function FullApp({ threadId }: { readonly threadId: ThreadId | null }): ReactNode {
   const [place, setPlace] = useState<FullAppPlace>(() => fullAppPlace(pageStorage()));
@@ -306,11 +308,14 @@ function FullApp({ threadId }: { readonly threadId: ThreadId | null }): ReactNod
     where === "desktop"
       ? desktopAppLink(threadId, window.location.origin)
       : fullAppAddress(threadId);
-  const openIn = (where: FullAppPlace): void => {
+  const openIn = async (where: FullAppPlace): Promise<void> => {
     keepFullAppPlace(pageStorage(), where);
     setPlace(where);
-    if (where === "desktop") window.location.assign(address(where));
-    else window.open(address(where), "_blank", "noopener");
+    // Whole, for the host: the full app's own address is relative to this page.
+    const url = new URL(address(where), window.location.href).href;
+    if (embed !== null && (await embed.open(url))) return;
+    if (where === "desktop") window.location.assign(url);
+    else window.open(url, "_blank", "noopener");
   };
   const label = place === "desktop" ? "Open in the desktop app" : "Open in the full app";
   return (
@@ -318,6 +323,12 @@ function FullApp({ threadId }: { readonly threadId: ThreadId | null }): ReactNod
       <a
         href={address(place)}
         {...(place === "browser" ? { target: "_blank", rel: "noopener" } : {})}
+        onClick={(event) => {
+          // Outside another app's frame the link opens as links do.
+          if (embed === null) return;
+          event.preventDefault();
+          void openIn(place);
+        }}
         aria-label={label}
         title={label}
         className={cn(buttonVariants({ variant: "ghost", size: "icon" }), HEADER_BUTTON)}
@@ -333,11 +344,11 @@ function FullApp({ threadId }: { readonly threadId: ThreadId | null }): ReactNod
           <ChevronDown aria-hidden="true" className="size-3.5" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuItem onClick={() => openIn("desktop")}>
+          <DropdownMenuItem onClick={() => void openIn("desktop")}>
             <span className="flex-1">Open in the desktop app</span>
             {place === "desktop" && <Check aria-label="The arrow's choice" />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => openIn("browser")}>
+          <DropdownMenuItem onClick={() => void openIn("browser")}>
             <span className="flex-1">Open in a browser tab</span>
             {place === "browser" && <Check aria-label="The arrow's choice" />}
           </DropdownMenuItem>

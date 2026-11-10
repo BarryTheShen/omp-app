@@ -17,13 +17,18 @@ const HOST_PORT = 41_000 + Math.floor(Math.random() * 20_000);
 const HOST_APP = `http://127.0.0.1:${HOST_PORT}`;
 const ready = /^(Fake Model|Message omp)/;
 
-/** The host page: frames the panel, answers its `listening` with a hello, and answers each call of its tool. */
-function hostPage(app: string, token: string): string {
+/**
+ * The host page: frames the panel, answers its `listening` with a hello, and answers each call of its tool. `vscode`:
+ * the frame is sandboxed as VS Code's webview is (no window may open from it), and the page opens what the panel asks
+ * it to open (`open`), keeps the address, and says so (`opened`).
+ */
+function hostPage(app: string, token: string, vscode = false): string {
   const script = `
 const frame = document.querySelector("iframe");
 const app = ${JSON.stringify(app)};
 window.calls = [];
 window.ready = [];
+window.opens = [];
 const send = (message) => frame.contentWindow.postMessage({ omp: "embed", v: 1, ...message }, app);
 window.setContext = (context) => send({ type: "context", context });
 window.addEventListener("message", (event) => {
@@ -44,8 +49,15 @@ window.addEventListener("message", (event) => {
     window.calls.push(message);
     send({ type: "tool_result", callId: message.callId, result: { content: [{ type: "text", text: "host title: Host page title" }] } });
   }
+  if (message.type === "open" && ${vscode}) {
+    window.opens.push(message.url);
+    send({ type: "opened", url: message.url });
+  }
 });`;
-  return `<!doctype html><title>host</title><iframe title="omp" style="width:420px;height:760px;border:0" src="${app}/lite#token=${encodeURIComponent(token)}"></iframe><script>${script}</script>`;
+  const sandbox = vscode
+    ? ' sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"'
+    : "";
+  return `<!doctype html><title>host</title><iframe title="omp"${sandbox} style="width:420px;height:760px;border:0" src="${app}/lite#token=${encodeURIComponent(token)}"></iframe><script>${script}</script>`;
 }
 
 realTest.describe("new UI lite view framed by a host that speaks the embed protocol", () => {
@@ -119,6 +131,56 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
           }),
         );
         await expect(sentWith).toContainText("Looking at Another page");
+      } finally {
+        await context.close();
+        await stop(server);
+      }
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "in a frame that may open no window, as VS Code's, the arrow and Open in the desktop app ask the host to open them, and the panel stays",
+    async ({ realApp, browser }) => {
+      const app = new URL((await realApp.open({ path: "/lite" })).url()).origin;
+      const server = createServer((_request, response) => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(hostPage(app, realApp.token, true));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(HOST_PORT, "127.0.0.1", resolve);
+      });
+      const context = await browser.newContext();
+      try {
+        const host = await context.newPage();
+        await host.goto(`${HOST_APP}/doc`);
+        const panel = host.frameLocator('iframe[title="omp"]');
+        const box = panel.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+        await expect(panel.getByText("Hello from the host")).toBeVisible({ timeout: 30_000 });
+        const opens = (): Promise<string[]> =>
+          host.evaluate(() => (window as unknown as { opens: string[] }).opens);
+
+        // The arrow: the host opens the full app, whole (on the chat the panel shows, when it has one); no window opens
+        // from the frame.
+        const escaped = app.replaceAll(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+        await panel.getByRole("link", { name: "Open in the full app" }).click();
+        await expect.poll(async () => (await opens()).length).toBe(1);
+        expect((await opens())[0]).toMatch(new RegExp(`^${escaped}/(#chat=[0-9a-f-]+)?$`));
+        expect(context.pages()).toHaveLength(1);
+
+        // Open in the desktop app, from the arrow's menu: the host opens the desktop app's link, and the panel still
+        // shows the chat (a frame that followed the link itself was left blank).
+        await panel.getByRole("button", { name: "Where the full app opens" }).click();
+        await panel.getByRole("menuitem", { name: "Open in the desktop app" }).click();
+        await expect.poll(async () => (await opens()).length).toBe(2);
+        expect((await opens())[1]).toMatch(
+          new RegExp(`^omp-app://(open|chat/[0-9a-f-]+)\\?server=${encodeURIComponent(app)}$`),
+        );
+        await expect(box).toBeVisible();
+        await expect(panel.getByRole("link", { name: "Open in the desktop app" })).toBeVisible();
+        expect(context.pages()).toHaveLength(1);
       } finally {
         await context.close();
         await stop(server);

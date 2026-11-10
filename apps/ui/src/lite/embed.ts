@@ -65,6 +65,9 @@ const NO_ANSWER: EmbedToolResult = {
 /** How long a panel whose host keeps its key waits for the host's `hello` before it connects without one. */
 export const HOST_HELLO_WAIT_MS = 3_000;
 
+/** How long the view waits for the host to say it opened an address, before it opens it itself. */
+export const HOST_OPEN_WAIT_MS = 1_000;
+
 export class EmbedEndpoint {
   readonly #window: EmbedWindow;
   #state: EmbedState = EMPTY;
@@ -72,6 +75,8 @@ export class EmbedEndpoint {
   #origin: string | null = null;
   readonly #listeners = new Set<() => void>();
   readonly #waiting = new Map<string, Waiting>();
+  /** The addresses the host was asked to open, each with what hears its `opened`. */
+  readonly #opening = new Map<string, () => void>();
   /** The key the first `hello` brought (null when it brought none), once it came. */
   readonly #hello = Promise.withResolvers<string | null>();
   /** The owner name of this page's tool registrations: one per page load. */
@@ -97,6 +102,7 @@ export class EmbedEndpoint {
       this.#window.removeEventListener("message", onMessage);
       for (const waiting of this.#waiting.values()) waiting.resolve(NO_ANSWER);
       this.#waiting.clear();
+      this.#opening.clear();
     };
   }
 
@@ -158,6 +164,9 @@ export class EmbedEndpoint {
         waiting.resolve(message.result);
         return;
       }
+      case "opened":
+        this.#opening.get(message.url)?.();
+        return;
     }
   }
 
@@ -201,6 +210,25 @@ export class EmbedEndpoint {
   cancel(callId: string): void {
     if (!this.#waiting.delete(callId)) return;
     this.#post({ type: "tool_cancel", callId });
+  }
+
+  /**
+   * Asks the host to open an address outside the panel (`open`): true once it says it did, false when no host said hello
+   * or none answers in `waitMs`. A frame in an editor's webview may not open windows or another app's links itself.
+   */
+  open(url: string, waitMs = HOST_OPEN_WAIT_MS): Promise<boolean> {
+    if (this.#origin === null) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const done = (opened: boolean): void => {
+        clearTimeout(timer);
+        if (this.#opening.get(url) === answered) this.#opening.delete(url);
+        resolve(opened);
+      };
+      const answered = (): void => done(true);
+      const timer = setTimeout(() => done(false), waitMs);
+      this.#opening.set(url, answered);
+      this.#post({ type: "open", url });
+    });
   }
 
   /** What goes with the next message: the host's context, unless the person took it off. */

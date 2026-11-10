@@ -100,6 +100,8 @@ const panel = openPanel({
     void ask({ what: "chat", chat });
   },
   onNoAnswer: () => vscode.postMessage({ type: "no-answer" }),
+  // VS Code's frames open no window or other app's link: the extension has VS Code open it.
+  onOpen: async (url) => (await ask({ what: "open", url })) === true,
 });
 
 window.addEventListener("message", (event: MessageEvent) => {
