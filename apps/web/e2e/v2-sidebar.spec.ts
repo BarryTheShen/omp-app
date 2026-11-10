@@ -335,3 +335,58 @@ realTest.describe("new UI chat list: resize and hide", () => {
     },
   );
 });
+
+/** A side panel in a narrow window: the chat list steps aside so the chat keeps its room (#8). */
+realTest.describe("new UI chat list: steps aside for a side panel in a narrow window", () => {
+  realTest.setTimeout(240_000);
+
+  realTest(
+    "at 680 px a side panel sends the list aside and the chat keeps its room; Show and Ctrl+B bring it back meanwhile, closing the panel brings it back; at 1280 px it stays (#8)",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await page.setViewportSize({ width: 680, height: 600 });
+      await startNewChat(page);
+      const list = page.getByRole("navigation", { name: "Chats" });
+      const panel = page.getByRole("complementary", { name: "Side panel" });
+      const questions = page
+        .getByRole("navigation", { name: "Side panel" })
+        .getByRole("button", { name: "Questions", exact: true });
+      const box = page
+        .locator("[data-tab]:not([data-hidden])")
+        .locator('[data-tour="message-box"]');
+      const boxWidth = async (): Promise<number> =>
+        Math.round((await box.boundingBox())?.width ?? 0);
+      await expect(list).toBeVisible();
+
+      // The panel opens: the list steps aside, and the message box keeps a usable width (66 px beside the list).
+      await questions.click();
+      await expect(panel).toBeVisible();
+      await expect(list).toBeHidden();
+      await expect.poll(boxWidth).toBeGreaterThanOrEqual(250);
+
+      // Show before the tabs brings the list back while the panel is open; Ctrl+B sends it aside and back again.
+      await page.getByRole("button", { name: "Show the chat list" }).click();
+      await expect(list).toBeVisible();
+      await page.keyboard.press("Control+b");
+      await expect(list).toBeHidden();
+      await page.keyboard.press("Control+b");
+      await expect(list).toBeVisible();
+      await page.keyboard.press("Control+b");
+      await expect(list).toBeHidden();
+
+      // The panel closes: the list is back, and still after a reload, since stepping aside never hid it.
+      await questions.click();
+      await expect(panel).toBeHidden();
+      await expect(list).toBeVisible();
+      await page.reload();
+      await expect(list).toBeVisible({ timeout: 60_000 });
+
+      // A wide window keeps the list beside the panel.
+      await page.setViewportSize({ width: 1280, height: 600 });
+      await questions.click();
+      await expect(panel).toBeVisible();
+      await expect(list).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});

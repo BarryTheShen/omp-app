@@ -64,7 +64,7 @@ import { isPhone, usePhone } from "./phone";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { ListEdge } from "./sidebar/ListEdge";
 import { Sidebar } from "./sidebar/Sidebar";
-import { useChatListSize } from "./sidebar/size";
+import { useChatListSize, useNarrowForPanel } from "./sidebar/size";
 import { TitleMenu } from "./sidebar/TitleMenu";
 import { useChatList } from "./sidebar/useChatList";
 import { useRunningChats } from "./sidebar/useRunningChats";
@@ -419,16 +419,33 @@ function Shell({
   useHotkeys(KEYS.sidePanel.hotkey, togglePanel, anywhere);
   /** The chat list's width and whether it is hidden, on a desktop (#2805); a phone keeps its own list screen. */
   const chatList = useChatListSize();
-  const listHidden = !phone && chatList.hidden;
+  const sidePanel = usePanelState();
+  /**
+   * A side panel open in a window too narrow for it beside the list and the chat (#8): the list steps aside while the
+   * panel is open, and Show or the list's key brings it back until the panel closes. Neither changes the kept setting.
+   */
+  const narrow = useNarrowForPanel(chatList.width);
+  const crowded = !phone && sidePanel.open && narrow;
+  const [listBack, setListBack] = useState(false);
+  useEffect(() => {
+    if (!sidePanel.open) setListBack(false);
+  }, [sidePanel.open]);
+  const listHidden = !phone && (chatList.hidden || (crowded && !listBack));
+  const toggleList = useCallback(() => {
+    if (listHidden) {
+      if (chatList.hidden) chatList.toggle();
+      if (crowded) setListBack(true);
+    } else if (crowded) setListBack(false);
+    else chatList.toggle();
+  }, [listHidden, crowded, chatList.hidden, chatList.toggle]);
   useHotkeys(
     KEYS.chatList.hotkey,
     () => {
-      if (!phone) chatList.toggle();
+      if (!phone) toggleList();
     },
     anywhere,
-    [phone, chatList.toggle],
+    [phone, toggleList],
   );
-  const sidePanel = usePanelState();
   /** On a phone the shown chat's details fill the screen in its place (`ChatDetails`), from the panel state. */
   const details = phone && sidePanel.open;
   // A phone starts on its chat, never on details a closed page left open.
@@ -518,7 +535,7 @@ function Shell({
         phone={phone}
         connection={<ConnectionDot client={client} line={!phone} />}
         edge={phone ? undefined : <ListEdge width={chatList.width} onResize={chatList.resize} />}
-        onHide={phone ? undefined : chatList.toggle}
+        onHide={phone ? undefined : toggleList}
       />
       <main
         data-tour="workspace"
@@ -597,7 +614,7 @@ function Shell({
                     className="shrink-0 self-center text-t3 hover:text-t1"
                     aria-label="Show the chat list"
                     title={`Show the chat list  ${keycap(KEYS.chatList)}`}
-                    onClick={chatList.toggle}
+                    onClick={toggleList}
                   >
                     <PanelLeftOpen />
                   </Button>

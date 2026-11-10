@@ -890,6 +890,23 @@ const EARLIER_MESSAGES_TOUR: Tour = {
   ],
 };
 
+/** A side panel in a narrow window: the chat list steps aside so the chat keeps its room (2026-11-10). */
+const LIST_STEPS_ASIDE_TOUR: Tour = {
+  id: "list-steps-aside-2026-11-10",
+  title: "Room for the chat beside a side panel",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "The chat list steps aside",
+      text: "In a narrow window, a side panel no longer squeezes the chat: while it is open, the chat list steps aside, and it comes back when the panel closes. Meanwhile, the button before the tabs or {chatList} brings the list back.",
+      action: next,
+      notOnPhone: true,
+    },
+  ],
+};
+
 /** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
 const INTEGRATIONS_TOUR: Tour = {
   id: "integrations-2026-11-09",
@@ -2600,6 +2617,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-10-list-steps-aside",
+    when: "2026-11-10T11:45:00-06:00",
+    summary:
+      "In a narrow window, a side panel no longer squeezes the chat to a strip: while the panel is open, the chat list steps aside, and it comes back when the panel closes. Meanwhile, the button before the tabs or Ctrl+B brings the list back.",
+    tours: [LIST_STEPS_ASIDE_TOUR],
+  },
   {
     id: "2026-11-10-everything-that-waits",
     when: "2026-11-10T05:35:00-06:00",

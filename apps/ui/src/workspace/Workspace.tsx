@@ -53,6 +53,7 @@ import {
 } from "../panels/SidePane";
 import { usePhone } from "../phone";
 import { loadKeepsChat } from "../reloadKeepsChat";
+import { SIDE_PANE_PX } from "../sidebar/size";
 import { matchesHotkey } from "../tour/keys";
 import {
   ChatPanel,
@@ -993,17 +994,25 @@ export function Workspace({
           if (pane !== undefined) {
             pane.api.updateParameters({ panel } satisfies SidePaneParams);
             pane.api.setTitle(title);
-          } else
+          } else {
+            // The pane opens at its width beside the room the chat has now. A chat list that stepped aside for it (#8)
+            // has widened the workspace already, and dockview would hear of that only at its next resize, after the
+            // pane was added: it then shared the new room by the panes' proportions (the chat got 121 px of 302).
+            const box = document
+              .querySelector(`[data-tab="${CSS.escape(tabsRef.current.active)}"]`)
+              ?.getBoundingClientRect();
+            if (box !== undefined) api.layout(box.width, box.height);
             api.addPanel<SidePaneParams>({
               id: SIDE_PANE,
               component: "side",
               title,
               params: { panel },
               position: { direction: "right" },
-              initialWidth: 320,
+              initialWidth: SIDE_PANE_PX,
               // The chat keeps the caret: the side pane opens beside it.
               inactive: true,
             });
+          }
           report();
         }),
       dashboard: () => {

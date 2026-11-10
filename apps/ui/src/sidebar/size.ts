@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 /** The narrowest and widest the chat list goes, in CSS pixels (#2805). */
 export const LIST_MIN_PX = 180;
 export const LIST_MAX_PX = 480;
 /** How far an arrow key moves the list's edge. */
 export const LIST_STEP_PX = 16;
+/** The side panel's width as it opens beside the chat (the workspace's side pane). */
+export const SIDE_PANE_PX = 320;
+/** The least room a chat keeps beside an open side panel (#8): with less, the chat list steps aside for the panel. */
+const CHAT_MIN_PX = 360;
+/** The side panel's rail at the window's right edge: 40 px, 44 on a tablet. */
+const RAIL_PX = 44;
+/** The layout's own list width in a window of 1360 px or less; a wider window is far past where the list steps aside. */
+const LIST_OWN_PX = 224;
 
 const KEY = "omp-app:chat-list";
 
@@ -63,4 +71,22 @@ export function useChatListSize(): ChatListSize & {
     [],
   );
   return { ...size, resize, toggle };
+}
+
+/**
+ * Whether this window is too narrow for the chat list, a side panel as it opens, its rail and a chat of 360 px (#8):
+ * below 948 px with the layout's own list. Followed as the window resizes; it says nothing about the panel or the list.
+ */
+export function useNarrowForPanel(listWidth: number | null): boolean {
+  const below = (listWidth ?? LIST_OWN_PX) + RAIL_PX + SIDE_PANE_PX + CHAT_MIN_PX;
+  const query = `(max-width: ${below - 1}px)`;
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      const media = matchMedia(query);
+      media.addEventListener("change", notify);
+      return () => media.removeEventListener("change", notify);
+    },
+    [query],
+  );
+  return useSyncExternalStore(subscribe, () => matchMedia(query).matches);
 }
