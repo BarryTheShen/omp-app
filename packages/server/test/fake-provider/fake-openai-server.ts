@@ -29,8 +29,13 @@ function toolCallsOf(
   return "tools" in value ? value.tools : [value];
 }
 
-/** `long_loop` makes the model run this many bash steps in one turn before it answers. */
+/**
+ * `long_loop` makes the model run this many bash steps in one turn before it answers, each taking `LOOP_STEP_SLEEP`
+ * seconds: omp 18.18 runs sixty bare steps in about 2 s on the build server, too fast for a reader to scroll up while
+ * they come in, which is what the scroll check of #2839 does.
+ */
 const LOOP_STEPS = 60;
+const LOOP_STEP_SLEEP = 0.2;
 const LONG_PROVIDER_ERROR = "The fake provider rejected this request. ".repeat(60);
 /** `plan_propose`'s plan: its slug names the file (`local://fix-the-login-plan.md`) and is what it submits. */
 const PLAN_SLUG = "fix-the-login";
@@ -420,7 +425,11 @@ function reply(request: Request): Reply {
     // One turn of many steps: a tool call per round, each with its own id, no thinking part.
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
     if (done < LOOP_STEPS)
-      return { tool: "bash", args: { command: `echo loop-${done}` }, id: `call_loop_${done}` };
+      return {
+        tool: "bash",
+        args: { command: `sleep ${LOOP_STEP_SLEEP}; echo loop-${done}` },
+        id: `call_loop_${done}`,
+      };
     return { text: "loop finished" };
   }
   // Plan mode (#768): the model writes its plan to `local://<slug>-plan.md`, then submits the slug to `xd://propose`, as
