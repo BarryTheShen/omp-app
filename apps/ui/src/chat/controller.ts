@@ -266,8 +266,9 @@ export class ChatController {
         : ChatDraft.forNewChat(client, paneChat);
     // A gap in the event stream: the file holds what was missed, and omp's state says whether a turn started or ended.
     // A server that restarted without the chat's omp (its omp ended with the old server) no longer has the chat open:
-    // the pane opens it afresh from its file, as after an open the link dropped under, so no reply shows as still going.
-    // One that kept it (a chat whose omp outlived the old server) is joined again (`#holdAcrossLinks`).
+    // the pane opens it afresh from its file, as after an open the link dropped under, so no reply shows as still going;
+    // a new chat with nothing in it yet starts again in its place, keeping what is typed. One that kept it (a chat whose
+    // omp outlived the old server) is joined again (`#holdAcrossLinks`).
     this.#stopResync = client.onResync((event) => {
       if (event.stream !== this.#subscription?.stream) return;
       this.#refreshWindow();
@@ -275,8 +276,11 @@ export class ChatController {
         () => {
           if (event.reason === "instance-changed") void this.#holdAgain();
         },
-        (failure: unknown) => {
+        async (failure: unknown) => {
           if (this.#disposed || !notOpenOnServer(failure)) return;
+          this.#viewTaken = false;
+          if (await this.#renewEmpty().catch(() => false)) return;
+          if (this.#disposed) return;
           // Ended here, so the pane's fresh open makes a new controller instead of taking this one back from its cache.
           this.store.setPhase("ended");
           this.#askPane({ kind: "reopen", by: "link" });
@@ -746,7 +750,8 @@ export class ChatController {
   /**
    * Sends a message: a new prompt, or while omp works, a steer (`followUp` queues it behind the turn). A prompt omp
    * refuses as busy (a turn this page did not see start, as when the chat was opened in the middle of one) is sent
-   * again the same way.
+   * again the same way. One the server refuses because the chat is gone from it (`#bringBack`) goes to the chat opened
+   * again, or to the new chat started in its place.
    */
   async send(
     text: string,
@@ -754,9 +759,12 @@ export class ChatController {
     images: readonly ChatHostImage[] = [],
   ): Promise<void> {
     await this.#planSwitch;
-    if (this.target.kind === "new" && this.#threadId !== null)
-      // Named as the server names it: what was typed, or the files' names when only files were sent (#2830).
-      noteFirstPrompt(this.#threadId, firstPromptTextOf(text));
+    // Named as the server names it: what was typed, or the files' names when only files were sent (#2830).
+    const named = (): void => {
+      if (this.target.kind === "new" && this.#threadId !== null)
+        noteFirstPrompt(this.#threadId, firstPromptTextOf(text));
+    };
+    named();
     // From another app's side panel, the message names that app, for its extensions (`host`, the lite view's), and
     // carries what is open there, unless you took it off (`lite/embed.ts`); a `/` command goes as typed.
     const host = embed?.getSnapshot().host ?? pageHost;
@@ -772,7 +780,7 @@ export class ChatController {
       await this.#request("prompt", { ...message, ...behind });
       return;
     }
-    try {
+    const prompt = async (): Promise<void> => {
       // The turn's starts and ends seen so far: one seen by the time the answer comes means the message is already in
       // the chat (omp starts later turns at once).
       const asked = this.store.activityMark.turn;
@@ -785,10 +793,20 @@ export class ChatController {
         this.store.getSnapshot().pausedAt === null
       )
         this.store.sendStarted(sent, images);
+    };
+    try {
+      await prompt();
     } catch (failure) {
-      if (!(failure instanceof AppFailure && failure.appError.code === "agent_busy")) throw failure;
-      this.store.markWorking();
-      await this.#request("prompt", { ...message, ...behind });
+      if (!(failure instanceof AppFailure)) throw failure;
+      if (failure.appError.code === "agent_busy") {
+        this.store.markWorking();
+        await this.#request("prompt", { ...message, ...behind });
+        return;
+      }
+      const gone = failure.appError.code === "not_found" || failure.appError.code === "omp_exited";
+      if (!gone || !(await this.#bringBack(failure).catch(() => false))) throw failure;
+      named();
+      await prompt();
     }
   }
 
@@ -1793,11 +1811,78 @@ export class ChatController {
   async #holdAgain(): Promise<void> {
     const threadId = this.#threadId;
     if (!this.#openAnswered || threadId === null || this.#parked || this.#disposed) return;
-    if (this.#viewTaken || !(await this.#takeViewBack(threadId))) return;
+    if (this.#viewTaken) return;
+    if (!(await this.#takeViewBack(threadId))) {
+      // Gone from the server while the link was down: a new chat with nothing in it yet starts again in its place.
+      await this.#renewEmpty().catch(() => false);
+      return;
+    }
     const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
     await chat.setEventOptions({ threadId, messageUpdates: "delta" }).catch(() => undefined);
     if (this.#disposed || this.#parked) return;
     for (const listener of [...this.#relinkListeners]) listener();
+  }
+
+  /**
+   * The chat a send found gone from the server: its omp stopped while no page held it (the computer slept and the server
+   * stopped the chats it held longest, or the server restarted), or, a new chat never saved, stopped and cannot go on.
+   * A saved chat is opened again from its file; a new chat with nothing in it yet starts again in its place. Whether the
+   * chat is open again, for the send to go there.
+   */
+  async #bringBack(failure: AppFailure): Promise<boolean> {
+    const threadId = this.#threadId;
+    if (threadId === null || this.#disposed) return false;
+    if (failure.appError.code === "not_found") {
+      // The server holds no view of a chat it no longer has.
+      this.#viewTaken = false;
+      if (await this.#takeViewBack(threadId)) return true;
+    }
+    return this.#renewEmpty();
+  }
+
+  /**
+   * A new chat with nothing in it yet that the server no longer has, or whose omp stopped before it was saved (an empty
+   * chat leaves no file to open again), starts again in its place, in the same folder, and this window follows it: its
+   * view, its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onRelinked`).
+   * What is typed stays in the box. Whether it was renewed.
+   */
+  async #renewEmpty(): Promise<boolean> {
+    const old = this.#threadId;
+    if (this.target.kind !== "new" || old === null || this.#disposed || this.#parked) return false;
+    const now = this.store.getSnapshot();
+    if (now.stream !== null || now.entries.some((entry) => entry.type === "message")) return false;
+    const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
+    const opened = await chat.open({ folderPath: this.target.folder, start: "new" });
+    if (this.#disposed || this.#parked) {
+      await chat.close({ threadId: opened.threadId }).catch(() => undefined);
+      return false;
+    }
+    // A view still held on the stopped chat is let go.
+    if (this.#viewTaken) void chat.close({ threadId: old }).catch(() => undefined);
+    const stream = this.#subscription;
+    this.#threadId = opened.threadId;
+    this.#sessionFile = opened.sessionFile;
+    this.#viewTaken = true;
+    this.#viewInstance = this.client.instanceId;
+    this.#draft.keepFor(opened.threadId);
+    this.#live = false;
+    this.#subscription = await this.client.subscribe(ChatSessionPort, "event", {
+      scope: opened.threadId,
+      afterSeq: 0,
+      onEvent: (payload) => this.#onEvent(payload),
+    });
+    this.#live = true;
+    await stream?.unsubscribe().catch(() => undefined);
+    await Promise.all([
+      chat.setEventOptions({ threadId: opened.threadId, messageUpdates: "delta" }),
+      this.#request("set_ask_dialog", { enabled: true }).catch(() => undefined),
+      this.#request("set_form_dialog", { enabled: true }).catch(() => undefined),
+      this.#refreshState().catch(() => undefined),
+    ]);
+    if (this.#disposed) return false;
+    this.#followAgents(opened.threadId).catch(() => undefined);
+    for (const listener of [...this.#relinkListeners]) listener();
+    return true;
   }
 
   /** Lets go of the view this pane's open took, once. */

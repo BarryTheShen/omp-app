@@ -266,4 +266,35 @@ realTest.describe("new UI lite view", () => {
       },
     );
   });
+
+  realTest(
+    "a new chat whose omp stopped before anything was sent still sends: a new chat starts in its place",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/lite" });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      // The empty chat's omp stops, as when the server let go of a chat no page held while the computer slept: an
+      // empty chat leaves no file to go on from.
+      const started = [
+        ...realApp.log().matchAll(/omp\.process thread=(\S+) status=running pid=(\d+)/g),
+      ].at(-1);
+      expect(started).toBeDefined();
+      const [, thread = "", pid = "0"] = started ?? [];
+      process.kill(Number(pid), "SIGKILL");
+      await expect
+        .poll(
+          () =>
+            new RegExp(`omp\\.process thread=${thread} status=(exited|error|stopped)`).test(
+              realApp.log(),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+
+      // What the box sends reaches a chat: the reply comes, and nothing says it was not sent.
+      await send(page, "hello");
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText(/^Not sent/)).toHaveCount(0);
+      await expect(box(page)).toHaveValue("");
+    },
+  );
 });
