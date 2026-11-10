@@ -900,7 +900,7 @@ const LIST_STEPS_ASIDE_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "The chat list steps aside",
-      text: "In a narrow window, a side panel no longer squeezes the chat: while it is open, the chat list steps aside, and it comes back when the panel closes. Meanwhile, the button before the tabs or {chatList} brings the list back.",
+      text: "In a narrow window, a side panel no longer squeezes the chat: the chat list and the panel take turns. While the panel is open, the list steps aside, and it comes back when the panel closes. The button before the tabs or {chatList} brings the list back and closes the panel.",
       action: next,
       notOnPhone: true,
     },
@@ -2621,7 +2621,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-10-list-steps-aside",
     when: "2026-11-10T11:45:00-06:00",
     summary:
-      "In a narrow window, a side panel no longer squeezes the chat to a strip: while the panel is open, the chat list steps aside, and it comes back when the panel closes. Meanwhile, the button before the tabs or Ctrl+B brings the list back.",
+      "In a narrow window, a side panel no longer squeezes the chat to a strip: the chat list and the panel take turns. While the panel is open, the list steps aside, and it comes back when the panel closes. The button before the tabs or Ctrl+B brings the list back and closes the panel.",
     tours: [LIST_STEPS_ASIDE_TOUR],
   },
   {

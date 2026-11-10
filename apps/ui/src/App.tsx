@@ -421,23 +421,21 @@ function Shell({
   const chatList = useChatListSize();
   const sidePanel = usePanelState();
   /**
-   * A side panel open in a window too narrow for it beside the list and the chat (#8): the list steps aside while the
-   * panel is open, and Show or the list's key brings it back until the panel closes. Neither changes the kept setting.
+   * A side panel open in a window too narrow for it beside the list and the chat (#8): the list and the panel take
+   * turns, so the chat keeps its room. The list steps aside while the panel is open; Show or the list's key brings it
+   * back and closes the panel. Stepping aside never changes the list's kept setting.
    */
   const narrow = useNarrowForPanel(chatList.width);
   const crowded = !phone && sidePanel.open && narrow;
-  const [listBack, setListBack] = useState(false);
-  useEffect(() => {
-    if (!sidePanel.open) setListBack(false);
-  }, [sidePanel.open]);
-  const listHidden = !phone && (chatList.hidden || (crowded && !listBack));
+  const listHidden = !phone && (chatList.hidden || crowded);
   const toggleList = useCallback(() => {
-    if (listHidden) {
-      if (chatList.hidden) chatList.toggle();
-      if (crowded) setListBack(true);
-    } else if (crowded) setListBack(false);
-    else chatList.toggle();
-  }, [listHidden, crowded, chatList.hidden, chatList.toggle]);
+    if (!crowded) {
+      chatList.toggle();
+      return;
+    }
+    hidePanel();
+    if (chatList.hidden) chatList.toggle();
+  }, [crowded, chatList.hidden, chatList.toggle]);
   useHotkeys(
     KEYS.chatList.hotkey,
     () => {

@@ -341,7 +341,7 @@ realTest.describe("new UI chat list: steps aside for a side panel in a narrow wi
   realTest.setTimeout(240_000);
 
   realTest(
-    "at 680 px a side panel sends the list aside and the chat keeps its room; Show and Ctrl+B bring it back meanwhile, closing the panel brings it back; at 1280 px it stays (#8)",
+    "at 680 px a side panel sends the list aside and the chat keeps its room; Show and Ctrl+B bring the list back and close the panel; closing the panel brings it back; at 1280 px it stays (#8)",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await page.setViewportSize({ width: 680, height: 600 });
@@ -364,14 +364,21 @@ realTest.describe("new UI chat list: steps aside for a side panel in a narrow wi
       await expect(list).toBeHidden();
       await expect.poll(boxWidth).toBeGreaterThanOrEqual(250);
 
-      // Show before the tabs brings the list back while the panel is open; Ctrl+B sends it aside and back again.
+      // Show before the tabs brings the list back and closes the panel, so the chat keeps its room. Opening the panel
+      // sends the list aside again, and Ctrl+B takes turns the same way.
       await page.getByRole("button", { name: "Show the chat list" }).click();
       await expect(list).toBeVisible();
-      await page.keyboard.press("Control+b");
+      await expect(panel).toBeHidden();
+      await expect.poll(boxWidth).toBeGreaterThanOrEqual(250);
+      await questions.click();
+      await expect(panel).toBeVisible();
       await expect(list).toBeHidden();
       await page.keyboard.press("Control+b");
       await expect(list).toBeVisible();
-      await page.keyboard.press("Control+b");
+      await expect(panel).toBeHidden();
+      await expect.poll(boxWidth).toBeGreaterThanOrEqual(250);
+      await questions.click();
+      await expect(panel).toBeVisible();
       await expect(list).toBeHidden();
 
       // The panel closes: the list is back, and still after a reload, since stepping aside never hid it.
@@ -380,6 +387,16 @@ realTest.describe("new UI chat list: steps aside for a side panel in a narrow wi
       await expect(list).toBeVisible();
       await page.reload();
       await expect(list).toBeVisible({ timeout: 60_000 });
+
+      // A list hidden on purpose stays hidden beside the panel; Show brings it back and closes the panel the same way.
+      await page.keyboard.press("Control+b");
+      await expect(list).toBeHidden();
+      await questions.click();
+      await expect(panel).toBeVisible();
+      await page.getByRole("button", { name: "Show the chat list" }).click();
+      await expect(list).toBeVisible();
+      await expect(panel).toBeHidden();
+      await expect.poll(boxWidth).toBeGreaterThanOrEqual(250);
 
       // A wide window keeps the list beside the panel.
       await page.setViewportSize({ width: 1280, height: 600 });
