@@ -1162,7 +1162,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
                             className={`truncate font-mono text-[11px] ${
                               each.autoSelected || each.model === null
                                 ? chosen
-                                  ? "text-t2"
+                                  ? "text-t1"
                                   : "text-t3"
                                 : "text-t1"
                             }`}

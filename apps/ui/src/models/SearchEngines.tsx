@@ -95,6 +95,8 @@ export function SearchEngines({
   const [problem, setProblem] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [opened, setOpened] = useState<string | null>(null);
+  /** Chat models that search are many (every chat model with its provider's search): folded until asked for. */
+  const [chatModels, setChatModels] = useState(false);
   /** Bumped to read the engines again (after a sign-in). */
   const [reads, setReads] = useState(0);
   /** Each engine's running action and last word, kept here: saving a key moves its row to another group. */
@@ -286,7 +288,7 @@ export function SearchEngines({
         )}
         {groups.map((group) => (
           <section key={group.standing} aria-label={group.title}>
-            <h4 className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-t3">{group.title}</h4>
+            <h4 className="px-2.5 pt-2 pb-1 text-xs font-medium text-t3">{group.title}</h4>
             <ul>
               {group.engines.map((engine) => (
                 <EngineRow
@@ -318,52 +320,61 @@ export function SearchEngines({
         ))}
         {others.length > 0 && (
           <section aria-label="Chat models that search">
-            <h4 className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-t3">
-              Chat models that search
-            </h4>
-            <ul>
-              {others.map((model) => {
-                const selector = `${model.provider}/${model.modelId}`;
-                const place = order.indexOf(selector);
-                return (
-                  <li
-                    key={selector}
-                    className="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2.5 py-1.5"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-t1">
-                      {model.name}{" "}
-                      <span className="font-mono text-[11px] text-t3 max-sm:hidden">
-                        {selector}
+            <button
+              type="button"
+              aria-expanded={chatModels || query.trim() !== ""}
+              onClick={() => setChatModels((shown) => !shown)}
+              className="flex w-full items-center gap-1.5 rounded-md px-2.5 pt-2 pb-1 text-left text-xs font-medium text-t3 outline-none hover:text-t2 focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
+            >
+              <ChevronRight
+                aria-hidden
+                className={`size-3.5 transition-transform motion-reduce:transition-none ${chatModels || query.trim() !== "" ? "rotate-90" : ""}`}
+              />
+              {`Chat models that search (${others.length})`}
+            </button>
+            {(chatModels || query.trim() !== "") && (
+              <ul>
+                {others.map((model) => {
+                  const selector = `${model.provider}/${model.modelId}`;
+                  const place = order.indexOf(selector);
+                  return (
+                    <li
+                      key={selector}
+                      className="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2.5 py-1.5"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-t1">
+                        {model.name}{" "}
+                        <span className="font-mono text-xs text-t3 max-sm:hidden">{selector}</span>
                       </span>
-                    </span>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      disabled={disabled || place === 0}
-                      onClick={() => onAssign(model)}
-                    >
-                      {place === 0 ? "Searches first" : "Search with this first"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      disabled={disabled || place === 0}
-                      onClick={() =>
-                        onFallbacks(
-                          base.includes(selector)
-                            ? base.filter((each) => each !== selector)
-                            : [...base, selector],
-                        )
-                      }
-                    >
-                      {base.includes(selector) ? "Remove from the order" : "Add as a fallback"}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={disabled || place === 0}
+                        onClick={() => onAssign(model)}
+                      >
+                        {place === 0 ? "Searches first" : "Search with this first"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        disabled={disabled || place === 0}
+                        onClick={() =>
+                          onFallbacks(
+                            base.includes(selector)
+                              ? base.filter((each) => each !== selector)
+                              : [...base, selector],
+                          )
+                        }
+                      >
+                        {base.includes(selector) ? "Remove from the order" : "Add as a fallback"}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </section>
         )}
       </div>
