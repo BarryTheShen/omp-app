@@ -112,6 +112,7 @@ import {
   startPrompt,
 } from "./prompt-results";
 import { QuestionsController } from "./questions";
+import { readSearchEngines, removeSearchKey, setSearchKey, testSearch } from "./search-engines";
 import type { ChatSession } from "./session-factory";
 import { isSessionSettled, SettleWatcher } from "./settle";
 import { SignIn } from "./sign-in";
@@ -161,6 +162,10 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "get_jobs",
   "inspect_job",
   "cancel_job",
+  // A saved key is checked by its provider (omp's API-key login), and a test search waits for one: neither may hold up
+  // the chat's other requests.
+  "set_search_key",
+  "test_search",
 ]);
 
 /** How often a host asked to hand its chat back checks that the turn it runs has finished. */
@@ -863,6 +868,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       const { removed } = await logoutCredential(session, providerId, credentialId);
       return { removed, ...(await readProviderAccounts(session, providerId)) };
     },
+    get_search_engines: async () => readSearchEngines(session),
+    set_search_key: async (params) => setSearchKey(session, params),
+    remove_search_key: async (params) => removeSearchKey(session, params),
+    test_search: async (params) => testSearch(session, params),
     set_host_tools: async ({ tools }) => {
       const definitions = checkHostTools(tools);
       // The session's own method for host-provided tools; the name is omp's.

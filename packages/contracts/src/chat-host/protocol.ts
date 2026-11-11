@@ -632,6 +632,81 @@ export interface ProviderAccounts {
   readonly otherSource?: ProviderAuthSource;
 }
 
+/**
+ * `get_search_engines` (#11, #12): one of omp's search engines (`web/<id>` in omp's catalog, the models of its `web`
+ * role), where its key comes from and whether omp can search with it now. A key itself never leaves the chat host.
+ */
+export interface SearchEngine {
+  /** omp's id for the engine; its model is `web/<id>`. */
+  readonly id: string;
+  /** omp's name for it. */
+  readonly name: string;
+  /**
+   * How it gets a key: `key`, a key field (omp's own API-key login with that key where omp has one for the provider,
+   * else the record that login stores); `sign_in`, the provider's own sign-in (Settings, Sign in); `none`, it needs none.
+   */
+  readonly access: "key" | "sign_in" | "none";
+  /** The provider whose credentials it reads (`kimi-code` for Kimi); absent when it needs none. */
+  readonly keyProvider?: string;
+  /** omp's name for that provider (`Kimi Code`), when omp names it. */
+  readonly keyProviderName?: string;
+  /** Where its key comes from now; absent when it has none. */
+  readonly key?: SearchEngineKey;
+  /** The keys stored for its provider, which Remove takes (a sign-in, the server's environment and omp's models.yml stay). */
+  readonly savedKeys: number;
+  /** omp tries it in the role's automatic order: it has what it needs. */
+  readonly ready: boolean;
+  /** It searches when picked by name, also without a key (Keenable's and Perplexity's public modes). */
+  readonly whenPicked: boolean;
+  /** The page where a key is made, when omp or the engine names one. */
+  readonly keyPage?: string;
+  /** What a key looks like (`keen_...`), for the field. */
+  readonly keyHint?: string;
+  /** omp's words on getting a key, where its login has them. */
+  readonly keyHelp?: string;
+  /** The key also serves the provider's chat models (DeepSeek, Z.AI): saving or removing it changes those too. */
+  readonly sharedWithModels: boolean;
+}
+
+/**
+ * Where a search engine's key comes from now, by omp's order: `--api-key` (`runtime`), omp's models.yml (`config`), a
+ * sign-in (`signed_in`), a key stored in omp (`saved`: this window, `/login` or `omp auth`), or the server's environment.
+ */
+export interface SearchEngineKey {
+  readonly from: "runtime" | "config" | "signed_in" | "saved" | "environment";
+  /** The environment variable holding it, when one does. */
+  readonly envVar?: string;
+}
+
+/** `get_search_engines`: the engines, and the order a search tries them in now. */
+export interface SearchEngines {
+  readonly engines: readonly SearchEngine[];
+  /**
+   * What a search tries, in order, as omp resolves its `web` role now: the role's choice first (omp's automatic one when
+   * none is set), then the fallbacks; `web/<id>` for an engine, `provider/model` for a chat model that searches.
+   */
+  readonly order: readonly string[];
+  /** The role has fallbacks of its own; when not, omp tries its default list after the first. */
+  readonly fallbacksSet: boolean;
+}
+
+export const SearchEngineParams = z.object({ engine: z.string().min(1).max(64) });
+export type SearchEngineParams = z.infer<typeof SearchEngineParams>;
+
+/** The longest key the app sends; anything longer is not a key (a pasted page). */
+export const SEARCH_KEY_MAX_LENGTH = 4_096;
+
+export const SetSearchKeyParams = z.object({
+  engine: z.string().min(1).max(64),
+  key: z.string().min(1).max(SEARCH_KEY_MAX_LENGTH),
+});
+export type SetSearchKeyParams = z.infer<typeof SetSearchKeyParams>;
+
+/** `test_search`: one real search with the engine alone, as a chat's `web_search` runs an engine picked by name. */
+export type SearchTest =
+  | { readonly ok: true; readonly ms: number; readonly results: number }
+  | { readonly ok: false; readonly ms: number; readonly message: string };
+
 /** omp's todo statuses (`TodoStatus`); as with the levels, a status omp adds or drops fails the typecheck here. */
 const TODO_STATUSES: { readonly [Status in TodoStatus]: Status } = {
   pending: "pending",
@@ -818,6 +893,27 @@ export interface ChatHostMethodMap {
     readonly params: ExtensionCompletionsParams;
     readonly result: { readonly items: readonly ExtensionCompletion[] };
   };
+  /**
+   * omp's search engines, with where each one's key comes from and whether it can search now (#11, #12); and the
+   * order a search tries them in, as omp resolves its `web` role now (the role's choice, then its fallbacks, or omp's
+   * own defaults when no fallbacks are set).
+   */
+  readonly get_search_engines: {
+    readonly params: EmptyParams;
+    readonly result: SearchEngines;
+  };
+  /** Saves a key for an engine (omp's own API-key login where omp has one); it replaces the keys stored before it. */
+  readonly set_search_key: {
+    readonly params: SetSearchKeyParams;
+    readonly result: { readonly engine: SearchEngine };
+  };
+  /** Removes the keys stored for an engine's provider; a sign-in, the environment and models.yml stay. */
+  readonly remove_search_key: {
+    readonly params: SearchEngineParams;
+    readonly result: { readonly engine: SearchEngine; readonly removed: number };
+  };
+  /** One real search with the engine alone. */
+  readonly test_search: { readonly params: SearchEngineParams; readonly result: SearchTest };
   /**
    * Holds every agent of the chat (main, subagents, advisor) at its next step, as omp's `/pause` does: a model reply or
    * tool already under way finishes, nothing new starts. Pausing a paused chat keeps the first time.
@@ -1304,6 +1400,10 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   abort_and_restore_queue: EmptyParams,
   local_folder: EmptyParams,
   extension_completions: ExtensionCompletionsParams,
+  get_search_engines: EmptyParams,
+  set_search_key: SetSearchKeyParams,
+  remove_search_key: SearchEngineParams,
+  test_search: SearchEngineParams,
   pause: EmptyParams,
   resume: EmptyParams,
   get_available_commands: EmptyParams,

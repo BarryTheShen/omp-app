@@ -95,6 +95,10 @@ export const CHAT_HOST_METHOD_NAMES = [
   "set_interrupt_mode",
   "local_folder",
   "extension_completions",
+  "get_search_engines",
+  "set_search_key",
+  "remove_search_key",
+  "test_search",
 ] as const;
 
 export type ChatHostMethodName = (typeof CHAT_HOST_METHOD_NAMES)[number];

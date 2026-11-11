@@ -12,6 +12,7 @@ import { loadSettingsData, type SettingDef, type SettingsData, type SettingsTab 
 import { McpServers } from "./McpServers";
 import { ModelRoles } from "./ModelRoles";
 import { changedHere, type Entries, inForce, matches, sections, shown, valueText } from "./model";
+import { SearchKeys } from "./SearchKeys";
 import { SettingControl, wide } from "./SettingControl";
 import { SignIn } from "./SignIn";
 import { type Config, useConfig } from "./useConfig";
@@ -337,7 +338,10 @@ function SettingsSheet({
                 layer={layer}
                 first={
                   tab.id === "providers" ? (
-                    <SignIn controller={controller} />
+                    <>
+                      <SignIn controller={controller} />
+                      <SearchKeys controller={controller} onClose={onClose} />
+                    </>
                   ) : tab.id === "tools" ? (
                     <McpServers controller={controller} />
                   ) : tab.id === "model" ? (

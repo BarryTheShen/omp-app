@@ -52,6 +52,9 @@ import {
   type QueuedMessage,
   type QueueName,
   type RoleModel,
+  type SearchEngine,
+  type SearchEngines,
+  type SearchTest,
   type SubagentSnapshot,
   ThinkingLevelParams,
   type ToolCallAnswer,
@@ -1046,6 +1049,50 @@ export class ChatController {
     return await this.#request("logout_account", { providerId, credentialId });
   }
 
+  /**
+   * omp's search engines, with where each one's key comes from and whether it can search now, and the order a search
+   * tries them in (#11, #12).
+   */
+  async searchEngines(): Promise<SearchEngines> {
+    try {
+      return await this.#request("get_search_engines", {});
+    } catch (failure) {
+      throw olderSearch(failure);
+    }
+  }
+
+  /**
+   * Saves a key for a search engine in omp's store, through this chat's omp; it replaces the keys stored before it.
+   * Answers the engine as it is after. The page keeps no copy of the key.
+   */
+  async setSearchKey(engine: string, key: string): Promise<SearchEngine> {
+    try {
+      return (await this.#request("set_search_key", { engine, key })).engine;
+    } catch (failure) {
+      throw olderSearch(failure);
+    }
+  }
+
+  /** Removes the keys stored for a search engine; answers the engine after and how many keys went. */
+  async removeSearchKey(
+    engine: string,
+  ): Promise<{ readonly engine: SearchEngine; readonly removed: number }> {
+    try {
+      return await this.#request("remove_search_key", { engine });
+    } catch (failure) {
+      throw olderSearch(failure);
+    }
+  }
+
+  /** One real search with the engine alone, as a chat's web search runs an engine picked by name. */
+  async testSearch(engine: string): Promise<SearchTest> {
+    try {
+      return await this.#request("test_search", { engine });
+    } catch (failure) {
+      throw olderSearch(failure);
+    }
+  }
+
   async setModel(model: ChatModel): Promise<void> {
     const chosen = await this.#request("set_model", {
       provider: model.provider,
@@ -1932,11 +1979,27 @@ export class ChatController {
   }
 }
 
-/** A server that predates a method refuses its name: said in words a person acts on. */
+/**
+ * A server that predates a method refuses its name: said in words a person acts on. The chat's omp refusing what it
+ * was asked (its own `invalid_params`, which the server also passes on as `invalid_args`) carries omp's code and its
+ * own words.
+ */
 function olderServer(failure: unknown, cannot: string): unknown {
-  return failure instanceof AppFailure && failure.appError.code === "invalid_args"
+  return failure instanceof AppFailure &&
+    failure.appError.code === "invalid_args" &&
+    failure.appError.omp === undefined
     ? new Error(`This app server cannot ${cannot} yet; it needs an update.`)
     : failure;
+}
+
+/** A chat whose omp predates search keys, or a server that does: said in words a person acts on. */
+function olderSearch(failure: unknown): unknown {
+  if (failure instanceof AppFailure && failure.appError.omp?.code === "unknown_method") {
+    return new Error(
+      "This chat still runs the omp from before the update, which has no search engine keys. It moves to the new one once this reply ends.",
+    );
+  }
+  return olderServer(failure, "set search engine keys");
 }
 
 /** A chat whose omp predates questions without waiting, or a server that does: said in words a person acts on. */

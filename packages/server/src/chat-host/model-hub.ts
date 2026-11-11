@@ -143,6 +143,21 @@ export async function findModel(session: AgentSession, provider: string, modelId
 }
 
 /**
+ * A model a role other than Default takes, of any kind: omp's hub lists every kind for the roles that take it (the web
+ * role takes search engines, `web/<id>`). Default switches the chat, so it looks up chat models only, as `set_model` does.
+ */
+async function findRoleModel(session: AgentSession, provider: string, modelId: string) {
+  const find = () =>
+    session.modelRegistry
+      .getAvailable("all")
+      .find((model) => model.provider === provider && model.id === modelId);
+  const model = find();
+  if (model) return model;
+  await session.modelRegistry.awaitBackgroundRefresh();
+  return find();
+}
+
+/**
  * The thinking levels a role assignment can apply to a model (`ModelHubComponent#thinkingOptionsFor`, `model-hub.ts`
  * 1329-1333). A model that does not reason gets none: no request sends reasoning for it, so `inherit`, `off` and `auto`
  * would all be no-ops. A reasoner without an effort dial keeps the always-on levels, and `auto` only where its
@@ -272,7 +287,10 @@ export async function assignModelRole(
   session: AgentSession,
   params: AssignModelRoleParams,
 ): Promise<{ readonly applied: boolean; readonly status: string }> {
-  const model = await findModel(session, params.provider, params.modelId);
+  const model =
+    params.role === "default"
+      ? await findModel(session, params.provider, params.modelId)
+      : await findRoleModel(session, params.provider, params.modelId);
   if (!model) throw new Error(`Model not found: ${params.provider}/${params.modelId}`);
   const settings = session.settings;
   const { role } = params;

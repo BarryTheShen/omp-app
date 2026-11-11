@@ -32,6 +32,7 @@ import {
   roleValueText,
   windowText,
 } from "./hub";
+import { SearchEngines } from "./SearchEngines";
 
 /** The hub as the dialog showed it last for a folder (its project settings are the folder's), for this page. */
 const keptHub = (folder: string) => lastSeen<Hub>(`model-hub:${folder}`);
@@ -110,7 +111,7 @@ function Fallbacks({
           : `When ${label}'s model fails, omp tries these, in order:`}
       </p>
       {chain.length > 0 && (
-        <ol className="flex flex-col">
+        <ol className="flex flex-col sm:max-h-48 sm:overflow-y-auto">
           {chain.map((selector, index) => {
             const name = selectorName(selector, hub);
             // The same selector twice (a chain edited by hand) gets a key of its own each time.
@@ -1189,7 +1190,7 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
             {/* min-w-0: a flex child would otherwise grow to its widest content (the level chips) past the dialog. */}
             <section
               aria-label="Role's model"
-              className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3 max-sm:overflow-y-auto"
+              className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto p-3"
             >
               {role !== undefined && (
                 <>
@@ -1245,7 +1246,8 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
                       </Tooltip>
                     )}
                   </div>
-                  {roleEntry?.compaction !== undefined && (
+                  {/* A search engine reads no context: it never compacts. */}
+                  {roleEntry?.compaction !== undefined && roleEntry.kind !== "search" && (
                     <div ref={compactionRef}>
                       <CompactionLimit
                         key={keyOf(roleEntry)}
@@ -1257,90 +1259,116 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
                       />
                     </div>
                   )}
-                  {/* A host older than fallbacks sends none: the block waits for its update (#2838). */}
-                  {(role.fallbacks as readonly string[] | undefined) !== undefined && (
-                    <Fallbacks
-                      role={role}
-                      hub={hub}
-                      disabled={pending}
-                      onChange={(chain) =>
-                        run(async () => [await controller.setRoleFallbacks(role.role, chain)])
-                      }
-                    />
-                  )}
-                  <input
-                    type="search"
-                    aria-label="Search models"
-                    placeholder="Search models"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        modelsRef.current?.querySelector<HTMLElement>('[role="option"]')?.focus();
-                      }
-                    }}
-                    className="h-8 rounded-md bg-transparent px-2.5 text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset placeholder:text-t3 focus-visible:ring-ring"
-                  />
-                  <div
-                    ref={modelsRef}
-                    role="listbox"
-                    aria-label="Models"
-                    onKeyDown={onModelKeys}
-                    className="min-h-0 flex-1 overflow-y-auto max-sm:flex-none max-sm:overflow-visible"
-                  >
-                    {models.length === 0 && (
-                      <p className="px-2.5 py-2 text-[0.8125rem] text-t3">
-                        {query === "" ? "No model can take this role." : "No model matches."}
-                      </p>
-                    )}
-                    {models.map((model) => {
-                      const key = keyOf(model);
-                      const assigned =
-                        role.model !== null && !role.autoSelected && key === keyOf(role.model);
-                      const inUse = hub.current !== null && key === keyOf(hub.current);
-                      return (
-                        <div
-                          key={key}
-                          data-model={key}
-                          aria-label={`${model.name}, ${key}${inUse ? ", in use" : ""}`}
-                          role="option"
-                          aria-selected={assigned}
-                          tabIndex={model === tabbable ? 0 : -1}
-                          onClick={() => assign(model)}
+                  {(() => {
+                    const generic = (
+                      <>
+                        {/* A host older than fallbacks sends none: the block waits for its update (#2838). */}
+                        {(role.fallbacks as readonly string[] | undefined) !== undefined && (
+                          <Fallbacks
+                            role={role}
+                            hub={hub}
+                            disabled={pending}
+                            onChange={(chain) =>
+                              run(async () => [await controller.setRoleFallbacks(role.role, chain)])
+                            }
+                          />
+                        )}
+                        <input
+                          type="search"
+                          aria-label="Search models"
+                          placeholder="Search models"
+                          value={query}
+                          onChange={(event) => setQuery(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
+                            if (event.key === "ArrowDown") {
                               event.preventDefault();
-                              assign(model);
+                              modelsRef.current
+                                ?.querySelector<HTMLElement>('[role="option"]')
+                                ?.focus();
                             }
                           }}
-                          className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 outline-none hover:bg-l1 focus-visible:bg-l1 focus-visible:ring-2 focus-visible:ring-ring"
+                          className="h-8 shrink-0 rounded-md bg-transparent px-2.5 text-[0.8125rem] text-t1 outline-none ring-1 ring-l2 ring-inset placeholder:text-t3 focus-visible:ring-ring"
+                        />
+                        <div
+                          ref={modelsRef}
+                          role="listbox"
+                          aria-label="Models"
+                          onKeyDown={onModelKeys}
+                          className="min-h-40 flex-1 overflow-y-auto max-sm:min-h-0 max-sm:flex-none max-sm:overflow-visible"
                         >
-                          <Check
-                            aria-hidden
-                            className={`size-3.5 shrink-0 ${assigned ? "text-accent-ink" : "invisible"}`}
-                          />
-                          <span className="min-w-0 truncate text-[0.8125rem] text-t1">
-                            {model.name}
-                          </span>
-                          <span className="min-w-0 truncate font-mono text-[11px] text-t3 max-sm:hidden">
-                            {key}
-                          </span>
-                          {/* On a phone the name keeps the room; the provider still tells two same-named models apart. */}
-                          <span className="shrink-0 font-mono text-[11px] text-t3 sm:hidden">
-                            {model.provider}
-                          </span>
-                          <span className="flex-1" />
-                          {inUse && (
-                            <span className="shrink-0 text-xs text-accent-ink">in use</span>
+                          {models.length === 0 && (
+                            <p className="px-2.5 py-2 text-[0.8125rem] text-t3">
+                              {query === "" ? "No model can take this role." : "No model matches."}
+                            </p>
                           )}
-                          <span className="w-12 shrink-0 text-right text-xs text-t3 tabular-nums">
-                            {windowText(model.contextWindow)}
-                          </span>
+                          {models.map((model) => {
+                            const key = keyOf(model);
+                            const assigned =
+                              role.model !== null &&
+                              !role.autoSelected &&
+                              key === keyOf(role.model);
+                            const inUse = hub.current !== null && key === keyOf(hub.current);
+                            return (
+                              <div
+                                key={key}
+                                data-model={key}
+                                aria-label={`${model.name}, ${key}${inUse ? ", in use" : ""}`}
+                                role="option"
+                                aria-selected={assigned}
+                                tabIndex={model === tabbable ? 0 : -1}
+                                onClick={() => assign(model)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    assign(model);
+                                  }
+                                }}
+                                className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 outline-none hover:bg-l1 focus-visible:bg-l1 focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <Check
+                                  aria-hidden
+                                  className={`size-3.5 shrink-0 ${assigned ? "text-accent-ink" : "invisible"}`}
+                                />
+                                <span className="min-w-0 truncate text-[0.8125rem] text-t1">
+                                  {model.name}
+                                </span>
+                                <span className="min-w-0 truncate font-mono text-[11px] text-t3 max-sm:hidden">
+                                  {key}
+                                </span>
+                                {/* On a phone the name keeps the room; the provider still tells two same-named models apart. */}
+                                <span className="shrink-0 font-mono text-[11px] text-t3 sm:hidden">
+                                  {model.provider}
+                                </span>
+                                <span className="flex-1" />
+                                {inUse && (
+                                  <span className="shrink-0 text-xs text-accent-ink">in use</span>
+                                )}
+                                <span className="w-12 shrink-0 text-right text-xs text-t3 tabular-nums">
+                                  {windowText(model.contextWindow)}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </>
+                    );
+                    // omp's web search role (#11, #12): its engines, their keys and the order a search tries them in.
+                    return role.role === "web" ? (
+                      <SearchEngines
+                        controller={controller}
+                        hub={hub}
+                        role={role}
+                        disabled={pending}
+                        generic={generic}
+                        onAssign={(model) => assign(model)}
+                        onFallbacks={(chain) =>
+                          run(async () => [await controller.setRoleFallbacks(role.role, chain)])
+                        }
+                      />
+                    ) : (
+                      generic
+                    );
+                  })()}
                 </>
               )}
             </section>

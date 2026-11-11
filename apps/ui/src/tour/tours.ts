@@ -1069,6 +1069,40 @@ const FALLBACKS_TOUR: Tour = {
   ],
 };
 
+/** omp's web search engines, their keys and the order a search tries them, in Models → Web search (#11, #12). */
+const SEARCH_ENGINES_TOUR: Tour = {
+  id: "search-engines-2026-11-10",
+  title: "Web search engines and their keys",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Models",
+      text: "{modelHub} opens omp's Models. Try it.",
+      action: { kind: "appears", selector: MODEL_HUB },
+    },
+    {
+      target: `${MODEL_HUB} [data-role="web"]`,
+      title: "Web search",
+      text: "omp's web search is a role with engines instead of models. Pick <b>Web search</b>.",
+      action: { kind: "click" },
+    },
+    {
+      target: `${MODEL_HUB} [data-tour="search-order"]`,
+      title: "The order",
+      text: "What a web search tries, in order: the first engine, then the next whenever one fails. Without fallbacks of your own, omp's default list follows the first. The arrows move an engine, × takes it out, and <b>Back to omp's default fallbacks</b> drops your list.",
+      action: next,
+    },
+    {
+      target: `${MODEL_HUB} [data-tour="search-engines"]`,
+      title: "Every engine, with its key",
+      text: "Every search engine omp has, by whether it can search now; each says where its key comes from. Open one for its key: typed hidden, kept in omp's own store and checked with a real search, with <b>Replace key</b> and <b>Remove key</b> once saved. <b>Test search</b> runs one search with it alone; <b>Search with this first</b> and <b>Add as a fallback</b> put it in the order. {stop} closes Models.",
+      action: { kind: "disappears", selector: MODEL_HUB },
+    },
+  ],
+};
+
 /** #2838 part 4: a model's compaction limit in omp's Models. */
 const COMPACTION_LIMIT_TOUR: Tour = {
   id: "compaction-limit-2026-11-06",
@@ -2617,6 +2651,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-10-search-engines",
+    when: "2026-11-10T23:30:00-06:00",
+    summary:
+      "Models → Web search shows every search engine omp has, each saying where its key comes from, and the order a web search tries them in. TinyFish, Keenable, Brave, Jina and Firecrawl, which omp has no sign-in for, take their key there, as do Kagi, Tavily, Exa and the other engines with an API key: typed hidden, kept in omp's own store (an auth broker's too), checked with a real search, then replaced or removed; the page never shows a saved key. Keenable without a key searches only when picked, and says so. Test search runs one search with an engine alone, and Search with this first and Add as a fallback set the order. Settings → Providers → Web search keys opens it. The window keeps its rows clear of Close.",
+    tours: [SEARCH_ENGINES_TOUR],
+  },
   {
     id: "2026-11-10-list-steps-aside",
     when: "2026-11-10T11:45:00-06:00",
