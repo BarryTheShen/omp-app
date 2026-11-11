@@ -1,5 +1,5 @@
 import type { AppClient } from "@omp-app/client";
-import type { FolderPath } from "@omp-app/contracts";
+import type { FolderPath, WorkspaceRelativePath } from "@omp-app/contracts";
 import type {
   DockviewApi,
   IDockviewGroupPanel,
@@ -21,8 +21,18 @@ import { ChatPane } from "../chat/ChatPane";
 import type { ComposerHandle } from "../chat/Composer";
 import { useChatTitle } from "../chat/chatTitle";
 import { ChatController, type ChatTarget } from "../chat/controller";
+import { resolveFileLink } from "../chat/fileLinks";
 import { LinkReopens } from "../chat/reopens";
 import { inbox } from "../inbox/inbox";
+import { FileDialog } from "../panels/files/FileDialog";
+import {
+  FILE_PANE_COMPONENT,
+  type FilePaneParams,
+  filePaneId,
+} from "../panels/files/filePaneParams";
+import { baseName } from "../panels/files/names";
+import { usePhone } from "../phone";
+import { FileLinkContext } from "../vendor/collab-web/components/transcript/Markdown";
 import { chatCache } from "./chatCache";
 import type { OpenGate } from "./openGate";
 import { PaneModeOutline } from "./paneMode";
@@ -140,7 +150,11 @@ export const PaneHostContext = createContext<PaneHost | null>(null);
  * One chat pane in dockview: the chat's controller for as long as the pane shows that chat. A chat the page kept open
  * (`chatCache`) is taken from there and shown as it is now; the pane gives its chat back when it moves on.
  */
-export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>): ReactNode {
+export function ChatPanel({
+  params,
+  api,
+  containerApi,
+}: IDockviewPanelProps<ChatPanelParams>): ReactNode {
   const host = use(PaneHostContext);
   if (host === null) throw new Error("ChatPanel needs the workspace around it.");
   const { client, focus, controllers, composers, onPaneChanged, inView, openGate } = host;
@@ -232,9 +246,11 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
       {controller !== null && (
         <PaneChat
           key={`${params.chat}:${attempt}`}
+          client={client}
           controller={controller}
           params={params}
           api={api}
+          containerApi={containerApi}
           onPaneChanged={onPaneChanged}
           onComposer={onComposer}
           inView={paneInView}
@@ -246,16 +262,20 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
 }
 
 function PaneChat({
+  client,
   controller,
   params,
   api,
+  containerApi,
   onPaneChanged,
   onComposer,
   inView,
 }: {
+  readonly client: AppClient;
   readonly controller: ChatController;
   readonly params: ChatPanelParams;
   readonly api: IDockviewPanelProps<ChatPanelParams>["api"];
+  readonly containerApi: DockviewApi;
   readonly onPaneChanged: () => void;
   readonly onComposer: (handle: ComposerHandle | null) => void;
   /** Whether this pane is the one you are in now. */
@@ -305,5 +325,56 @@ function PaneChat({
     [controller, inView],
   );
 
-  return <ChatPane key={params.chat} controller={controller} onComposer={onComposer} />;
+  const phone = usePhone();
+  const [viewing, setViewing] = useState<WorkspaceRelativePath | null>(null);
+  /**
+   * A reply's link to a file (#17): the file opens in the app's own viewer, read over its signed-in connection, beside
+   * this chat (or brought forward where it is open), and over the screen on a phone. Only the chat's own folder: a link
+   * elsewhere is refused, and says where it pointed.
+   */
+  const openFile = useCallback(
+    (href: string) => {
+      const link = resolveFileLink(href, params.folder);
+      if (link.kind === "outside") {
+        controller.store.toast(
+          `${link.path} is outside this chat's folder: a reply's links open only its own files.`,
+          "error",
+        );
+        return;
+      }
+      if (phone) {
+        setViewing(link.path);
+        return;
+      }
+      const id = filePaneId(params.folder, link.path);
+      const open = containerApi.getPanel(id);
+      if (open !== undefined) {
+        open.api.setActive();
+        return;
+      }
+      containerApi.addPanel({
+        id,
+        component: FILE_PANE_COMPONENT,
+        title: baseName(link.path),
+        params: { kind: "file", folder: params.folder, path: link.path } satisfies FilePaneParams,
+        position: { referencePanel: api.id, direction: "right" },
+      });
+    },
+    [controller, params.folder, phone, containerApi, api.id],
+  );
+
+  return (
+    <FileLinkContext value={openFile}>
+      <ChatPane key={params.chat} controller={controller} onComposer={onComposer} />
+      {viewing !== null && (
+        <FileDialog
+          client={client}
+          folder={params.folder}
+          path={viewing}
+          back="Chat"
+          onClose={() => setViewing(null)}
+        />
+      )}
+    </FileLinkContext>
+  );
 }

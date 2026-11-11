@@ -2,10 +2,17 @@ import type { Token } from "@oh-my-pi/pi-utils/marked";
 import { Marked } from "@oh-my-pi/pi-utils/marked";
 import { listMayContinueAt } from "@oh-my-pi/pi-utils/marked-list";
 import type { MouseEvent, ReactNode } from "react";
-import { memo, useMemo, useRef } from "react";
+import { createContext, memo, use, useMemo, useRef } from "react";
+import { isFileHref } from "./fileHref";
 import { escapeHtml } from "../../lib/format";
 import { highlightCode } from "../../tool-render/highlight";
 import { mathExtension } from "./math";
+
+/**
+ * Opens a reply's link to a file (#17): the chat's pane gives it, and opens the file in the app's own viewer. Without
+ * one (Markdown outside a chat) such a link does nothing, as the page has no address for a file of the folder.
+ */
+export const FileLinkContext = createContext<((href: string) => void) | null>(null);
 
 function unescapeHtml(raw: string): string {
 	const parseCodePoint = (value: number): string => {
@@ -69,12 +76,19 @@ const md = new Marked({
 		},
 		link({ href, title, tokens }) {
 			const inner = this.parser.parseInline(tokens);
+			// A path or `file:` names a file of the chat's folder: the page has no address for it, so the app opens it
+			// in its own viewer, over its signed-in connection (#17). Nothing is shared on the network by a click.
+			if (isFileHref(href)) {
+				const named = href.trim();
+				const titleAttr = ` title="${escapeHtml(title || `Open ${named} here`)}"`;
+				return `<a href="#" data-file="${escapeHtml(named)}"${titleAttr}>${inner}</a>`;
+			}
 			const url = safeHref(href);
 			if (url === null) return inner;
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
 		},
-		// A code block, with a Copy button that `copyCode` handles; in code's colours where its language is known (#2801).
+		// A code block, with a Copy button that `clickIn` handles; in code's colours where its language is known (#2801).
 		code({ text, lang, escaped }) {
 			const language = (lang ?? "").match(/^\S*/)?.[0] ?? "";
 			const body = `${text.replace(/\n$/, "")}\n`;
@@ -96,11 +110,19 @@ function renderMarkdown(text: string): string {
 }
 
 /**
- * A click on a code block's Copy button copies the block's text, and the button says so for a moment. One handler on
- * the rendered Markdown serves every block, since the blocks are HTML, not React elements.
+ * One handler on the rendered Markdown, as its blocks are HTML, not React elements: a link to a file opens it through
+ * `openFile` (#17), and a code block's Copy button copies the block's text, the button saying so for a moment.
  */
-function copyCode(event: MouseEvent<HTMLDivElement>): void {
-	const button = event.target instanceof Element ? event.target.closest("button[data-copy-code]") : null;
+function clickIn(event: MouseEvent<HTMLDivElement>, openFile: ((href: string) => void) | null): void {
+	const target = event.target instanceof Element ? event.target : null;
+	const fileLink = target?.closest("a[data-file]");
+	if (fileLink instanceof HTMLAnchorElement) {
+		event.preventDefault();
+		const href = fileLink.dataset.file;
+		if (href !== undefined) openFile?.(href);
+		return;
+	}
+	const button = target?.closest("button[data-copy-code]");
 	if (!(button instanceof HTMLButtonElement)) return;
 	const text = button.parentElement?.querySelector("code")?.textContent ?? "";
 	void navigator.clipboard.writeText(text.replace(/\n$/, "")).then(
@@ -118,9 +140,10 @@ function sayForAMoment(button: HTMLButtonElement, said: string): void {
 
 export const Markdown = memo(function Markdown({ text }: { text: string }): ReactNode {
 	const html = useMemo(() => renderMarkdown(text), [text]);
-	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on the code blocks' Copy buttons, which take the keyboard themselves
+	const openFile = use(FileLinkContext);
+	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on links and the code blocks' Copy buttons, which take the keyboard themselves
 	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
-	return <div className="tr-md" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div className="tr-md" onClick={(event) => clickIn(event, openFile)} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 /**
@@ -232,7 +255,8 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { tex
 		prefixRef.current = rendered.prefix;
 		return rendered.html;
 	}, [text]);
-	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on the code blocks' Copy buttons, which take the keyboard themselves
+	const openFile = use(FileLinkContext);
+	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on links and the code blocks' Copy buttons, which take the keyboard themselves
 	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
-	return <div className="tr-md" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div className="tr-md" onClick={(event) => clickIn(event, openFile)} dangerouslySetInnerHTML={{ __html: html }} />;
 });

@@ -2372,6 +2372,22 @@ const MCP_SERVERS_TOUR: Tour = {
   ],
 };
 
+/** #17: a reply's link to a file of the chat's folder opens it in the app's own viewer. */
+const FILE_LINKS_TOUR: Tour = {
+  id: "file-links-2026-11-11",
+  title: "Links to files in replies",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Links to files",
+      text: "When a reply links to a file of this chat's folder, such as a report it wrote, a click opens the file here, beside the chat (on a phone, over the screen), read over the app's own connection: nothing is put on the network for it. A link out of the folder is not opened, and the app says where it pointed. Links to web pages open in a new tab.",
+      action: next,
+    },
+  ],
+};
+
 /** #2770 D1 part 3: on the phone, menus come up from the foot of the screen, and a held message offers Copy and Edit. */
 const PHONE_TOUCH_TOUR: Tour = {
   id: "phone-touch-2026-11-01",
@@ -2803,6 +2819,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-file-links",
+    when: "2026-11-11T09:30:00-06:00",
+    summary:
+      "A reply's link to a file of the chat's folder (a report, a CSV, a page it wrote) opens the file in the app's own viewer, beside the chat or over the screen on a phone, read over the app's own connection like the Files panel: nothing of the folder is put on the network for it. A link out of the chat's folder is not opened, and the app says where it pointed.",
+    tours: [FILE_LINKS_TOUR],
+  },
   {
     id: "2026-11-11-mcp-servers",
     when: "2026-11-11T09:00:00-06:00",

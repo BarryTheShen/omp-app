@@ -219,6 +219,16 @@ const STREAMED_STEADY_REPLY = Array.from(
 ).join("\n");
 
 /**
+ * A reply that links to files of the chat's folder as a model writes them, one leaving the folder, and a page
+ * (`apps/web/e2e/v2-file-links.spec.ts`, #17).
+ */
+const FILE_LINKS_REPLY = [
+  "Quantitative comparison complete",
+  "",
+  "[Full report](reports/report.md) · [Compact CSV](./reports/summary.csv#L2) · [Elsewhere](../outside.md) · [Example site](https://example.com/)",
+].join("\n");
+
+/**
  * A reply whose math needs more than glyphs: a boxed result inline, and a display equation with a brace under a sum
  * and a fraction (`apps/web/e2e/v2-math-checks.ts`).
  */
@@ -825,6 +835,7 @@ function reply(request: Request): Reply {
     };
   if (prompt.includes("stream_math")) return { text: STREAMED_MATH_REPLY, streamed: true };
   if (prompt.includes("math_shapes")) return { text: MATH_SHAPES_REPLY };
+  if (prompt.includes("file_links")) return { text: FILE_LINKS_REPLY };
   if (prompt.includes("ask_user"))
     return {
       tool: "ask",
