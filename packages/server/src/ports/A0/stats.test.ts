@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AppFailure, type StatsSummary } from "@omp-app/contracts";
+import { AppFailure, type StatsChatResult, type StatsSummary } from "@omp-app/contracts";
 import { createStatsRegistration } from "./stats";
 
 const aggregated = (cost: number, requests: number) => ({
@@ -37,10 +37,10 @@ const status = (
 });
 
 /**
- * A registration over a stand-in page that records what was asked (`GET <url>`, `POST <url>`). `statuses` answer
+ * The handlers over a stand-in page that records what was asked (`GET <url>`, `POST <url>`). `statuses` answer
  * `/api/status` in turn, the last one again and again; `syncs: false` is a page that cannot be asked to read the chats.
  */
-function statsOf(
+function handlersOf(
   answers: Record<string, unknown>,
   asked: string[] = [],
   statuses: (() => unknown)[] = [() => status("idle")],
@@ -65,9 +65,20 @@ function statsOf(
         : new Response("missing", { status: 404 });
     }) as unknown as typeof fetch,
   });
-  const handlers = registration.handlers as {
+  return registration.handlers as {
     summary: (args: unknown) => Promise<StatsSummary>;
+    chat: (args: unknown) => Promise<StatsChatResult>;
   };
+}
+
+/** The 7-day summary over the stand-in page (`handlersOf`). */
+function statsOf(
+  answers: Record<string, unknown>,
+  asked: string[] = [],
+  statuses: (() => unknown)[] = [() => status("idle")],
+  syncs = true,
+) {
+  const handlers = handlersOf(answers, asked, statuses, syncs);
   return () => handlers.summary({ range: "7d" });
 }
 
@@ -174,5 +185,66 @@ describe("omp's statistics in brief", () => {
       "GET /api/stats/overview",
       "GET /api/stats/models",
     ]);
+  });
+});
+
+/** A chat as omp's traces list folds it (`SessionSummary`). */
+const session = (file: string, costTotal: number) => ({
+  file,
+  folder: "/work",
+  title: null,
+  startedAt: 1,
+  endedAt: 2,
+  requests: 9_120,
+  toolCalls: 12_400,
+  subagents: 10,
+  totalTokens: 1_200_000_000,
+  costTotal,
+  unpricedRequests: 2,
+  models: ["claude-opus-5-5"],
+});
+
+describe("a chat's whole history in omp's statistics (#19)", () => {
+  const file = "/home/u/.omp/agent/sessions/-work/2026-11-11T03-45-20-394Z_01a1c8b5.jsonl";
+
+  test("its cost, replies, tool calls, tokens and subagents, from the chat named exactly as its file", async () => {
+    const asked: string[] = [];
+    const result = await handlersOf(
+      {
+        "/api/sessions": [
+          // omp's list finds every chat whose name holds the words asked, not only that one.
+          session("/home/u/.omp/agent/sessions/-work/x_2026-11-11T03-45-20-394Z_01a1c8b5.jsonl", 1),
+          session(file, 2345.67),
+        ],
+      },
+      asked,
+    ).chat({ file });
+    expect(paths(asked)).toEqual(["POST /api/sync", "GET /api/status", "GET /api/sessions"]);
+    expect(new URL(asked[2]?.split(" ")[1] ?? "").searchParams.get("q")).toBe(
+      "2026-11-11T03-45-20-394Z_01a1c8b5.jsonl",
+    );
+    expect(result).toEqual({
+      chat: {
+        cost: 2345.67,
+        requests: 9_120,
+        toolCalls: 12_400,
+        tokens: 1_200_000_000,
+        subagents: 10,
+        unpriced: 2,
+      },
+    });
+  });
+
+  test("a chat omp's statistics do not hold is none", async () => {
+    expect(await handlersOf({ "/api/sessions": [] }).chat({ file })).toEqual({ chat: null });
+  });
+
+  test("a list that cannot be read says so, as a failure to try again", async () => {
+    const failed = await handlersOf({ "/api/sessions": [{ file }] })
+      .chat({ file })
+      .catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(AppFailure);
+    expect((failed as AppFailure).appError).toMatchObject({ code: "unavailable", retryable: true });
+    expect((failed as AppFailure).message).toContain("omp's statistics could not be read");
   });
 });

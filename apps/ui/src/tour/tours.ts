@@ -2248,6 +2248,34 @@ const USAGE_BUDGET_TOUR: Tour = {
   ],
 };
 
+/** #19: This chat's figures, the whole chat's from omp's statistics and those in its context from omp's /session. */
+const USAGE_THIS_CHAT_TOUR: Tour = {
+  id: "usage-this-chat-2026-11-11",
+  title: "This chat's figures",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Usage",
+      text: "Click <b>Usage</b>, the first button on this rail.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: `${SIDE_PANEL} section[aria-label="This chat"]`,
+      title: "This chat",
+      text: "Once the chat has replied, <b>The whole chat</b> shows what it spent, omp's replies, its tool calls, subagents and tokens over its whole history, as omp's statistics count them. <b>In its context now</b> shows omp's /session figures: when omp compacts a chat, a summary takes the place of its older messages, so those count only what came since.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Hide it",
+      text: "Click <b>Usage</b> again to hide the side panel.",
+      action: { kind: "disappears", selector: SIDE_PANEL },
+    },
+  ],
+};
+
 /** #14: the dashboard's Tasks, and Queue for later beside Send (on a phone, in ＋). */
 const TASKS_TOUR: Tour = {
   id: "tasks-2026-11-11",
@@ -2819,6 +2847,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-this-chat",
+    when: "2026-11-11T08:07:00-06:00",
+    summary:
+      "Usage → This chat counts the whole chat: what it spent, omp's replies, its tool calls, subagents and tokens over its whole history, its subagents' included, as omp's statistics count them. omp's /session figures follow, plainly, under In its context now: dollars, your messages, omp's replies and tool calls, and tokens in brief with the exact count on hover. They count only what came since omp last compacted the chat.",
+    tours: [USAGE_THIS_CHAT_TOUR],
+  },
   {
     id: "2026-11-11-file-links",
     when: "2026-11-11T07:32:00-06:00",

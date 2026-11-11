@@ -2,6 +2,8 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   ChatSessionPort,
+  type StatsChat,
+  StatsPort,
   USAGE_PAUSE_DEFAULT_PERCENT,
   type UsageLimitProvider,
   UsageLimitStore,
@@ -76,30 +78,35 @@ function Section({
 
 /**
  * A labelled group of numbers: a heading, then label and value rows; a row's third part is its exact value, shown on
- * hover where the row rounds it.
+ * hover where the row rounds it; then a note, when there is one.
  */
 function Numbers({
   title,
   rows,
+  note,
 }: {
   readonly title: string;
   readonly rows: readonly (readonly [string, string, string?] | false)[];
+  readonly note?: string;
 }): ReactNode {
   const shown = rows.filter((row): row is readonly [string, string, string?] => row !== false);
   return (
     // biome-ignore lint/a11y/useSemanticElements: a named group of figures, not of form controls, so not a fieldset
     <div role="group" aria-label={title} className="flex flex-col gap-1">
       <h4 className="text-[0.8125rem] font-medium text-t1">{title}</h4>
-      <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-[0.8125rem]">
-        {shown.map(([label, value, exact]) => (
-          <div key={label} className="contents">
-            <dt className="text-t3">{label}</dt>
-            <dd className="text-right text-t1 tabular-nums" title={exact}>
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {shown.length > 0 && (
+        <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-[0.8125rem]">
+          {shown.map(([label, value, exact]) => (
+            <div key={label} className="contents">
+              <dt className="text-t3">{label}</dt>
+              <dd className="text-right text-t1 tabular-nums" title={exact}>
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {note !== undefined && <p className="text-xs text-pretty text-t3">{note}</p>}
     </div>
   );
 }
@@ -146,11 +153,79 @@ function dollarsOf(cost: number): string {
 /** How often a chat's numbers are read again while its turn runs: omp's counts grow with each finished message. */
 const DURING_TURN_EVERY_MS = 10_000;
 
+/** A chat's whole history in omp's statistics, or why it could not be read. */
+type WholeChat = { readonly chat: StatsChat | null } | { readonly problem: string };
+
+/**
+ * The chat's whole history (#19), its subagents' included, from omp's statistics: omp's /session counts only the
+ * messages in the chat's context, which a compaction shortens. Read when it shows and after each turn; omp's statistics
+ * page reads the chats first, which can take a minute the first time.
+ */
+function useWholeChat(
+  client: AppClient,
+  file: string | undefined,
+  working: boolean,
+): WholeChat | undefined {
+  const [read, setRead] = useState<{ readonly file: string; readonly whole: WholeChat } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (file === undefined || file === "" || working) return;
+    let alive = true;
+    client
+      .port(StatsPort)
+      .chat({ file })
+      .then(
+        ({ chat }) => alive && setRead({ file, whole: { chat } }),
+        (failure: unknown) => alive && setRead({ file, whole: { problem: failureText(failure) } }),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [client, file, working]);
+  return read !== null && read.file === file ? read.whole : undefined;
+}
+
+/** The chat's whole history as omp's statistics hold it: what it spent, its replies, tool calls, subagents and tokens. */
+function WholeChatNumbers({ whole }: { readonly whole: WholeChat | undefined }): ReactNode {
+  const title = "The whole chat";
+  if (whole === undefined) return <Numbers title={title} rows={[]} note="Counting…" />;
+  if ("problem" in whole) return <Numbers title={title} rows={[]} note={whole.problem} />;
+  const { chat } = whole;
+  if (chat === null)
+    return (
+      <Numbers title={title} rows={[]} note="omp's statistics hold nothing of this chat yet." />
+    );
+  const unpriced =
+    chat.unpriced === 0
+      ? ""
+      : `; ${count(chat.unpriced)} ${chat.unpriced === 1 ? "reply" : "replies"} had no price and are left out`;
+  return (
+    <Numbers
+      title={title}
+      rows={[
+        ["Spent", dollarsOf(chat.cost), `$${chat.cost.toFixed(4)}`],
+        ["omp's replies", count(chat.requests)],
+        ["Tool calls", count(chat.toolCalls)],
+        chat.subagents > 0 && ["Subagents", count(chat.subagents)],
+        ["Tokens", short.format(chat.tokens), count(chat.tokens)],
+      ]}
+      note={`With its subagents, as omp's statistics count it${unpriced}.`}
+    />
+  );
+}
+
 /**
  * The focused chat's numbers: read when it shows, every 10 s while a turn runs, when a turn ends and when its model
- * changes. A busy chat would otherwise show nothing until its turn ends.
+ * changes. A busy chat would otherwise show nothing until its turn ends. Its whole history comes from omp's statistics.
  */
-function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNode {
+function ChatUsageSection({
+  chat,
+  client,
+}: {
+  readonly chat: ChatController;
+  readonly client: AppClient;
+}): ReactNode {
   const working = useSyncExternalStore(
     chat.store.subscribe,
     () => chat.store.getSnapshot().working,
@@ -212,6 +287,7 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
       : chat.threadId === null
         ? undefined
         : keptUsage(chat.threadId).get();
+  const whole = useWholeChat(client, usage?.stats.sessionFile, working);
   if (usage === undefined)
     return <p className="text-[0.8125rem] text-t3">{problem ?? "Reading…"}</p>;
   const { stats, tokensPerSecond } = usage;
@@ -240,30 +316,22 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
           </p>
         </div>
       )}
-      {(stats.cost > 0 || premium > 0) && (
-        <Numbers
-          title="Cost"
-          rows={[
-            stats.cost > 0 && [
-              "Spent in this chat",
-              dollarsOf(stats.cost),
-              `$${stats.cost.toFixed(4)}`,
-            ],
-            premium > 0 && ["Premium requests", premium.toLocaleString()],
-          ]}
-        />
+      {stats.sessionFile !== undefined && stats.sessionFile !== "" && (
+        <WholeChatNumbers whole={whole} />
       )}
       {/* omp's own counts. Left out: tool results (one for each call) and the total, which counts omp's notes too. */}
       <Numbers
-        title="Messages"
+        title="In its context now"
         rows={[
-          ["Yours", count(stats.userMessages)],
+          stats.cost > 0 && ["Spent", dollarsOf(stats.cost), `$${stats.cost.toFixed(4)}`],
+          premium > 0 && ["Premium requests", premium.toLocaleString()],
+          ["Your messages", count(stats.userMessages)],
           ["omp's replies", count(stats.assistantMessages)],
           ["Tool calls", count(stats.toolCalls)],
         ]}
       />
       <Numbers
-        title="Tokens"
+        title="Tokens in its context now"
         rows={[
           ["New input", short.format(stats.tokens.input), count(stats.tokens.input)],
           stats.tokens.cacheRead > 0 && [
@@ -292,7 +360,8 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
         />
       )}
       <p className="text-xs text-pretty text-t3">
-        As omp's /session counts them: the messages in this chat's context now, and what they cost.
+        In its context now: omp's /session figures. When omp compacts a chat, a summary takes the
+        place of its older messages; the whole chat still counts them.
       </p>
       {problem !== null && <p className="text-xs text-bad-ink">{problem}</p>}
     </>
@@ -822,7 +891,7 @@ export function UsagePanel({
         {chat === null ? (
           <p className="text-[0.8125rem] text-t3">Open a chat to see its usage.</p>
         ) : (
-          <ChatUsageSection key={chat.threadId ?? "new"} chat={chat} />
+          <ChatUsageSection key={chat.threadId ?? "new"} chat={chat} client={client} />
         )}
       </Section>
       {chat !== null && (

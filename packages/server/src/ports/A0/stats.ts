@@ -1,4 +1,11 @@
-import { AppFailure, StatsPort, type StatsRange, type StatsSummary } from "@omp-app/contracts";
+import { basename } from "node:path";
+import {
+  AppFailure,
+  type StatsChatResult,
+  StatsPort,
+  type StatsRange,
+  type StatsSummary,
+} from "@omp-app/contracts";
 import { z } from "zod";
 import type { PortRegistration } from "../../registry/ports";
 
@@ -53,6 +60,26 @@ const Overview = z.object({
 });
 
 const ByModel = z.array(Aggregated.extend({ model: z.string(), provider: z.string() }));
+
+/** omp's traces list (`SessionSummary`, `@oh-my-pi/omp-stats`): each chat's whole history, its subagents folded in. */
+const Sessions = z.array(
+  z.object({
+    file: z.string(),
+    requests: z.number(),
+    toolCalls: z.number(),
+    subagents: z.number(),
+    totalTokens: z.number(),
+    costTotal: z.number(),
+    unpricedRequests: z.number(),
+  }),
+);
+
+const unavailable = (error: unknown): AppFailure =>
+  new AppFailure({
+    code: "unavailable",
+    message: `omp's statistics could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    retryable: true,
+  });
 
 export interface StatsContext {
   /** omp's statistics page on this machine: its port, started when first asked (`OmpStats`). */
@@ -149,11 +176,39 @@ export function createStatsRegistration(context: StatsContext): PortRegistration
             })),
         };
       } catch (error) {
-        throw new AppFailure({
-          code: "unavailable",
-          message: `omp's statistics could not be read: ${error instanceof Error ? error.message : String(error)}`,
-          retryable: true,
-        });
+        throw unavailable(error);
+      }
+    },
+    /**
+     * A chat's whole history (#19): asked by its file's name, which holds the chat's id, among the chats omp's list
+     * folds (the 300 used last), and that one taken by its name.
+     */
+    chat: async (args: unknown): Promise<StatsChatResult> => {
+      const name = basename((args as { file: string }).file);
+      try {
+        const port = await context.stats.start();
+        await readChats(port);
+        const rows = await read(
+          port,
+          `/api/sessions?limit=10&q=${encodeURIComponent(name)}`,
+          Sessions,
+        );
+        const row = rows.find((candidate) => basename(candidate.file) === name);
+        return {
+          chat:
+            row === undefined
+              ? null
+              : {
+                  cost: row.costTotal,
+                  requests: row.requests,
+                  toolCalls: row.toolCalls,
+                  tokens: row.totalTokens,
+                  subagents: row.subagents,
+                  unpriced: row.unpricedRequests,
+                },
+        };
+      } catch (error) {
+        throw unavailable(error);
       }
     },
   };

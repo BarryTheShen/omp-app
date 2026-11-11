@@ -63,6 +63,11 @@ const panel = (page: Page) => page.getByRole("complementary", { name: "Side pane
 const thisChat = (page: Page) => page.getByRole("region", { name: "This chat" });
 const accounts = (page: Page) => page.getByRole("region", { name: "Your accounts" });
 const numbers = (page: Page, title: string) => thisChat(page).getByRole("group", { name: title });
+/** The value beside a row's name in one of This chat's groups (a term's name is not its text). */
+const figure = (page: Page, title: string, name: string) =>
+  numbers(page, title)
+    .locator("dt", { hasText: new RegExp(`^${name}$`) })
+    .locator("xpath=following-sibling::dd[1]");
 /** A panel's button on the rail at the window's right edge. */
 const railButton = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "Side panel" }).getByRole("button", { name });
@@ -165,19 +170,27 @@ realTest.describe("new UI side panel", () => {
           .first(),
       ).toBeVisible();
 
-      // The focused chat's numbers, as omp's /session counts them.
+      // The focused chat's numbers: those in its context, as omp's /session counts them, and the whole chat's, as
+      // omp's statistics do.
       await startNewChat(page);
       await expect(boxes(page).first()).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
       await send(page, 0, "hello", 1);
-      const user = numbers(page, "Messages").getByRole("definition").first();
+      const user = figure(page, "In its context now", "Your messages");
       await expect(user).toHaveText("1", { timeout: 30_000 });
-      await expect(numbers(page, "Tokens")).toBeVisible();
+      await expect(numbers(page, "Tokens in its context now")).toBeVisible();
       await expect(thisChat(page).getByRole("progressbar", { name: "Context used" })).toBeVisible();
+      // omp's statistics page starts on the server and reads every chat the first time.
+      const replies = figure(page, "The whole chat", "omp's replies");
+      await expect(replies).toHaveText("1", { timeout: 120_000 });
+      await expect(figure(page, "The whole chat", "Spent")).toHaveText(
+        /^(\$\d+\.\d\d|under \$0\.01)$/,
+      );
       // A turn's end reads them again.
       await send(page, 0, "hello again", 2);
       await expect(user).toHaveText("2", { timeout: 30_000 });
+      await expect(replies).toHaveText("2", { timeout: 60_000 });
 
       // A new window's chat is focused: its own numbers; back in the first window, the first chat's.
       await page.keyboard.press("Control+Shift+O");
@@ -209,7 +222,7 @@ realTest.describe("new UI side panel", () => {
 
       // Usage opened during the turn, on a page that never read this chat: its numbers come within a read.
       await page.keyboard.press("Control+Alt+KeyB");
-      const user = numbers(page, "Messages").getByRole("definition").first();
+      const user = figure(page, "In its context now", "Your messages");
       await expect(user).toHaveText("1", { timeout: 20_000 });
       await expect(stop).toBeVisible();
 

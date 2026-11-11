@@ -54,11 +54,37 @@ export const StatsSummary = z.strictObject({
 });
 export type StatsSummary = z.infer<typeof StatsSummary>;
 
-/** omp's statistics (`/stats`) in brief, for the dashboard: read from omp's own statistics page on the server. */
+/**
+ * One chat in omp's statistics: its whole history, its subagents' included, as omp's traces list it (`/api/sessions`).
+ * omp's `/session` counts only the messages in a chat's context, which a compaction shortens.
+ */
+export const StatsChat = z.strictObject({
+  /** In US dollars, as omp prices it. */
+  cost: z.number(),
+  /** omp's replies, each a request to a model. */
+  requests: z.number(),
+  toolCalls: z.number(),
+  tokens: z.number(),
+  subagents: z.number(),
+  /** Requests omp had no price for: the cost leaves them out. */
+  unpriced: z.number(),
+});
+export type StatsChat = z.infer<typeof StatsChat>;
+
+/** A chat by its session file (`get_session_stats`' `sessionFile`). */
+export const StatsChatArgs = z.strictObject({ file: z.string().min(1).max(4_096) });
+export type StatsChatArgs = z.infer<typeof StatsChatArgs>;
+
+/** null: omp's statistics hold no such chat. */
+export const StatsChatResult = z.strictObject({ chat: StatsChat.nullable() });
+export type StatsChatResult = z.infer<typeof StatsChatResult>;
+
+/** omp's statistics (`/stats`) in brief, for the dashboard and a chat's usage: read from omp's own statistics page on the server. */
 export const StatsPort = definePort({
   name: "A0.stats",
   methods: {
     summary: { args: z.strictObject({ range: StatsRange }), result: StatsSummary },
+    chat: { args: StatsChatArgs, result: StatsChatResult },
   },
   events: {},
 });
