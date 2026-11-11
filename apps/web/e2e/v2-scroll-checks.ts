@@ -243,7 +243,12 @@ export function defineScrollChecks(engine: string): void {
           // A step moves as far as it asks; near the very top, at least as far as there was room.
           if (moved === null ? room > 0 : moved > 304 || moved < Math.min(300, room) - 4)
             short.push(`${label}: ${moved} px`);
-          return now !== null && was !== null && now.index > was.index;
+          // Older entries put in above during the step push the position on by their height while the line read stays
+          // put: it ends past where the step alone took it, by a window of rows (in 8 logged runs, 1,500 to 205,000 px;
+          // a row measured afresh corrects by far less). A row's index says less: the list draws a window of rows around
+          // the screen, and three of those loads moved no index.
+          const pushed = moved !== null && (await scrollTop(page)) - (room - moved) > 500;
+          return pushed || (now !== null && was !== null && now.index > was.index);
         };
         for (let n = 1; n <= 15; n += 1) await step(`from the end, step ${n}`);
         // Near the top of what is loaded, so that the next older entries load above in the middle of the steps.
