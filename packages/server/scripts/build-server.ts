@@ -23,6 +23,9 @@ const packageDir = dirname(
 const output = await Bun.build({
   entrypoints: [join(import.meta.dir, "omp-app.ts")],
   target: "bun",
+  // omp's legacy-module registry is a module only omp's own builds supply (`build-chat-host.ts` builds it for the chat
+  // host); omp imports it lazily, to load old pi extensions in a compiled omp, which the server never does.
+  external: ["omp-legacy-pi-modules"],
   minify: true,
   define: { OMP_APP_VERSION: JSON.stringify(version) },
   files: await embeddedNativeAddon(packageDir),
