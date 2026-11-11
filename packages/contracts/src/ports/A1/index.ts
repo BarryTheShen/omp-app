@@ -7,6 +7,7 @@ export * from "./file-search";
 export * from "./github-refs";
 export * from "./host-metadata";
 export * from "./mcp-commands";
+export * from "./mcp-config";
 export * from "./memory-commands";
 export * from "./memory-store";
 export * from "./model-preferences";

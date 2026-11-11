@@ -2338,6 +2338,40 @@ const MCP_SIGN_IN_TOUR: Tour = {
   ],
 };
 
+/** #16: MCP servers added, edited, turned off and on, and removed in Settings → Tools. */
+const MCP_SERVERS_TOUR: Tour = {
+  id: "mcp-servers-2026-11-11",
+  title: "Editing MCP servers",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Try it.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "MCP servers",
+      text: "Under <b>Tools</b>, <b>MCP servers</b> lists the servers in your MCP file, for every folder, and this folder's own: how omp reaches each, a switch to turn it off and on, <b>Test</b>, <b>Edit</b> and <b>Remove</b>.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Add a server",
+      text: "<b>Add a server</b> takes the command that starts it or its address, or, in its <b>JSON</b> tab, the server's JSON from its page. Saved keys never come back to the page: an edit keeps them unless you type a new one.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** #2770 D1 part 3: on the phone, menus come up from the foot of the screen, and a held message offers Copy and Edit. */
 const PHONE_TOUCH_TOUR: Tour = {
   id: "phone-touch-2026-11-01",
@@ -2769,6 +2803,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-mcp-servers",
+    when: "2026-11-11T09:00:00-06:00",
+    summary:
+      "Settings → Tools → MCP servers edits them: Add a server takes the command that starts it (its arguments, variables and folder) or its address over HTTP or SSE (its headers), or the server's JSON from its page; each server has a switch, Test, Edit and Remove, and is kept for every folder or for this folder alone. Saved keys never reach the page and stay unless typed over; the open chat reads its servers again after each change.",
+    tours: [MCP_SERVERS_TOUR],
+  },
   {
     id: "2026-11-11-dashboard-overview",
     when: "2026-11-11T07:12:00-06:00",

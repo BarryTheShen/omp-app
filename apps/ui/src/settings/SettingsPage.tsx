@@ -343,7 +343,7 @@ function SettingsSheet({
                       <SearchKeys controller={controller} onClose={onClose} />
                     </>
                   ) : tab.id === "tools" ? (
-                    <McpServers controller={controller} />
+                    <McpServers client={client} folder={folder} controller={controller} />
                   ) : tab.id === "model" ? (
                     <ModelRoles controller={controller} onClose={onClose} />
                   ) : null

@@ -171,8 +171,8 @@ realTest.describe("new UI: signing in to an MCP server again", () => {
           .getByRole("navigation", { name: "Settings sections" })
           .getByRole("button", { name: /^Tools/ })
           .click();
-        const row = servers(page).getByRole("listitem").filter({ hasText: "fixture-oauth" });
-        await expect(row).toContainText("Enabled", { timeout: 60_000 });
+        const row = servers(page).getByRole("listitem", { name: "fixture-oauth" });
+        await expect(row).toContainText("HTTP · every folder", { timeout: 60_000 });
         await row.getByRole("button", { name: "Sign in again" }).click();
 
         // The page to open is the server's own sign-in address, for any device's browser.

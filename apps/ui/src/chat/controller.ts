@@ -11,6 +11,8 @@ import {
   FileSearchPort,
   FolderPath,
   firstPromptTextOf,
+  type McpCommandActionResult,
+  type McpCommandScope,
   type McpCommandServerSummary,
   McpCommandsPort,
   type SessionEntryWindow,
@@ -1104,6 +1106,25 @@ export class ChatController {
     } finally {
       this.store.clearSignIn();
     }
+  }
+
+  /** Tests an MCP server through this chat's omp (`/mcp test`, #16): it connects and counts the server's tools. */
+  async mcpTest(name: string, scope: McpCommandScope): Promise<McpCommandActionResult> {
+    const threadId = this.#threadId;
+    if (threadId === null)
+      throw new Error("Open a chat first: omp runs MCP servers inside a chat.");
+    return await this.client
+      .port(McpCommandsPort)
+      .action({ threadId, operationId: crypto.randomUUID(), operation: "test", name, scope });
+  }
+
+  /** Has this chat's omp read its MCP servers again (`/mcp reload`, #16); null before the chat is open. */
+  async mcpReload(): Promise<McpCommandActionResult | null> {
+    const threadId = this.#threadId;
+    if (threadId === null) return null;
+    return await this.client
+      .port(McpCommandsPort)
+      .action({ threadId, operationId: crypto.randomUUID(), operation: "reload" });
   }
 
   /** The accounts omp stores for a provider, and another source of its sign-in when there is one. */

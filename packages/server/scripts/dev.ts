@@ -720,6 +720,7 @@ export async function createCompositionServer(
     providerAccountStore,
     usageLimitStore,
     usageReadings,
+    agentDir,
     extensionCatalog,
     memoryStore,
     ruleStore,

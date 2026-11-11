@@ -9,6 +9,7 @@ import { createFileSearchRegistration } from "./file-search";
 import { createGithubRefsRegistration } from "./github-refs";
 import { createHostMetadataRegistration } from "./host-metadata";
 import { createMcpCommandsRegistration } from "./mcp-commands";
+import { createMcpConfigRegistration } from "./mcp-config";
 import { createMemoryStoreRegistration } from "./memory-store";
 import { createModelPreferenceStoreRegistration } from "./model-preference-store";
 import { createOmpCommandGatewayRegistration } from "./omp-command-gateway";
@@ -35,6 +36,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createWorkspaceStateRegistration(context),
     createGitStateRegistration(context),
     createMcpCommandsRegistration(context),
+    createMcpConfigRegistration(context),
     createOmpCommandGatewayRegistration(context),
     createSessionPinStoreRegistration(context),
     createModelPreferenceStoreRegistration(context),

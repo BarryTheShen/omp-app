@@ -39,6 +39,8 @@ export interface A1PortContext {
   readonly usageLimitStore: UsageLimitStoreService;
   /** Each usage window's readings over the last day and its pace (#2836). */
   readonly usageReadings: UsageReadings;
+  /** omp's agent folder: its `mcp.json` holds the user's MCP servers (#16). */
+  readonly agentDir: string;
   readonly extensionCatalog: ExtensionCatalogService;
   readonly attachmentStore: AttachmentStoreService;
   readonly memoryStore: MemoryStoreService;
