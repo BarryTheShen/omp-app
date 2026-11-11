@@ -24,15 +24,15 @@ async function fakeOmp(body: string): Promise<string> {
 
 const PATH = process.env.PATH ?? "/usr/bin:/bin";
 
-// The shape omp 18.12.6 prints for `omp usage --json` (pi-coding-agent src/cli/usage-cli.ts:1105-1146, payload at
-// :1648-1655): reports with their limits, and account identities that must never reach the app.
+// The shape omp 18.18.5 prints for `omp usage --json` (pi-coding-agent src/cli/usage-cli.ts, payload near :1715):
+// reports with their limits, each account's email, and fields the app never passes on.
 const usageJson = JSON.stringify({
   generatedAt: 1_000,
   reports: [
     {
       provider: "anthropic",
       fetchedAt: 1_000,
-      metadata: { email: "person@example.com", accountId: "acct-secret-1" },
+      metadata: { email: "pat@example.com", accountId: "acct-1", orgName: "acct-secret-org" },
       limits: [
         {
           id: "anthropic:5h",
@@ -51,7 +51,7 @@ const usageJson = JSON.stringify({
     {
       provider: "anthropic",
       fetchedAt: 1_000,
-      metadata: { email: "other@example.com", accountId: "acct-secret-2" },
+      metadata: { email: "ola@example.com", accountId: "acct-2" },
       limits: [
         {
           id: "anthropic:5h",
@@ -92,11 +92,11 @@ const usageJson = JSON.stringify({
       ],
     },
   ],
-  accountsWithoutUsage: [{ provider: "anthropic", email: "third@example.com" }],
+  accountsWithoutUsage: [{ provider: "anthropic", email: "theo@example.com" }],
 });
 
 describe("the provider usage limits omp reports", () => {
-  test("summarises each provider's windows: the fullest account's share and reset, how many accounts report it, and its length, with no identity", async () => {
+  test("summarises each provider's windows: the fullest account's share and reset, how many accounts report it, its length, and with two or more accounts their shares added up and each account by its email as omp shows it, nothing else of theirs", async () => {
     const service = new UsageLimitStoreService({
       command: [await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`)],
       env: { PATH },
@@ -118,6 +118,8 @@ describe("the provider usage limits omp reports", () => {
               resetsAt: "2026-10-10T09:00:00.000Z",
               accounts: 2,
               durationMs: 18_000_000,
+              // omp's combined line: 0.41 + 0.60 of 2 accounts used.
+              usedAccounts: 1.01,
             },
             {
               label: "7 Day",
@@ -125,6 +127,19 @@ describe("the provider usage limits omp reports", () => {
               resetsAt: null,
               accounts: 1,
               durationMs: 604_800_000,
+            },
+          ],
+          accounts: [
+            {
+              label: "pat@example.com",
+              windows: [
+                { label: "5 Hour", usedPercent: 41, resetsAt: "2026-10-10T08:30:00.000Z" },
+                { label: "7 Day", usedPercent: 20, resetsAt: null },
+              ],
+            },
+            {
+              label: "ola@example.com",
+              windows: [{ label: "5 Hour", usedPercent: 60, resetsAt: "2026-10-10T09:00:00.000Z" }],
             },
           ],
         },
@@ -148,7 +163,47 @@ describe("the provider usage limits omp reports", () => {
         },
       ],
     });
-    expect(JSON.stringify(result)).not.toMatch(/example\.com|acct-secret/);
+    expect(JSON.stringify(result)).not.toMatch(/acct-secret|ac\*1\*/);
+  });
+
+  test("an account omp names nowhere is called by one of its limits' accounts, else by its place, and one account signed in twice is told apart", async () => {
+    const unnamed = JSON.stringify({
+      reports: [
+        {
+          provider: "openai-codex",
+          limits: [
+            {
+              window: { id: "5h", label: "5 hours" },
+              amount: { usedFraction: 0.5 },
+              scope: { accountId: "acct-9" },
+            },
+          ],
+        },
+        {
+          provider: "openai-codex",
+          limits: [{ window: { id: "5h", label: "5 hours" }, amount: { usedFraction: 0.25 } }],
+        },
+        {
+          provider: "openai-codex",
+          metadata: { email: "sam@example.com" },
+          limits: [{ window: { id: "5h", label: "5 hours" }, amount: { usedFraction: 0.1 } }],
+        },
+        {
+          provider: "openai-codex",
+          metadata: { email: "sam@example.com" },
+          limits: [{ window: { id: "5h", label: "5 hours" }, amount: { usedFraction: 0.2 } }],
+        },
+      ],
+    });
+    const service = new UsageLimitStoreService({
+      command: [await fakeOmp(`cat <<'EOF'\n${unnamed}\nEOF`)],
+      env: { PATH },
+      now: () => 1_000,
+    });
+    const result = await service.read();
+    expect(
+      result.state === "ready" ? result.providers[0]?.accounts?.map((each) => each.label) : null,
+    ).toEqual(["acct-9", "Account 2", "sam@example.com", "sam@example.com (2)"]);
   });
 
   test("says why when omp does not answer within the deadline, and stops it", async () => {

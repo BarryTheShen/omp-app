@@ -1,4 +1,4 @@
-import type { UsageLimitProvider, UsageLimitsResult } from "@omp-app/contracts";
+import type { UsageLimitAccount, UsageLimitProvider, UsageLimitsResult } from "@omp-app/contracts";
 import { z } from "zod";
 
 /** How long one `omp usage` read is current; after that a page's read starts a fresh one. */
@@ -46,7 +46,8 @@ type OmpRun =
   | { readonly kind: "output"; readonly text: string }
   | { readonly kind: "failed"; readonly reason: string };
 
-// Only the fields the popover shows are read; every other field (account emails, ids, raw payloads) is ignored.
+// Only the fields the popover shows are read, and of an account's identity only the name omp gives it (its email,
+// account or project); every other field (raw payloads, plans, organizations) is ignored.
 const AmountInput = z.looseObject({
   usedFraction: z.number().optional(),
   used: z.number().optional(),
@@ -58,13 +59,20 @@ const WindowInput = z.looseObject({
   durationMs: z.number().optional(),
   resetsAt: z.number().optional(),
 });
+const IdentityInput = z.looseObject({
+  email: z.string().optional(),
+  accountId: z.string().optional(),
+  projectId: z.string().optional(),
+});
 const LimitInput = z.looseObject({
   window: WindowInput.optional(),
   amount: AmountInput.optional(),
+  scope: IdentityInput.optional(),
 });
 const ReportInput = z.looseObject({
   provider: z.string().min(1),
   limits: z.array(z.unknown()).optional(),
+  metadata: IdentityInput.optional(),
 });
 const UsageInput = z.looseObject({
   reports: z.array(z.unknown()),
@@ -75,6 +83,15 @@ interface WindowSummary {
   resetsAt: number | undefined;
   durationMs: number | undefined;
   accounts: number;
+  /** The accounts' own highest shares added up (omp's combined line, `computeProviderWindowStats`). */
+  usedAccounts: number;
+}
+
+/** One account's own share of a window: the highest of its limits in it, and when that one resets. */
+interface AccountShare {
+  fraction: number;
+  resetsAt: number | undefined;
+  durationMs: number | undefined;
 }
 
 /** omp's stable window ids that say their length ("5h", "7d"); "monthly" and the like do not. */
@@ -103,44 +120,105 @@ function usedFractionOf(amount: z.infer<typeof AmountInput> | undefined): number
 }
 
 /**
- * Per provider and window, the fullest account's share and its reset time, plus how many accounts report the
- * window. Accounts are counted, never named.
+ * An account as omp names it (`reportAccountLabel`, cli/usage-cli.ts): its email, account or project; else the account
+ * or project of one of its limits; else its place among the provider's.
+ */
+function accountLabel(
+  report: z.infer<typeof ReportInput>,
+  limits: readonly z.infer<typeof LimitInput>[],
+  index: number,
+): string {
+  const named = [
+    report.metadata?.email,
+    report.metadata?.accountId,
+    report.metadata?.projectId,
+  ].find((value) => value !== undefined && value !== "");
+  if (named !== undefined) return named;
+  const scoped = limits
+    .map((limit) => limit.scope?.accountId ?? limit.scope?.projectId)
+    .find((value) => value !== undefined && value !== "");
+  return scoped ?? `Account ${index + 1}`;
+}
+
+/** A label no other account of the provider has: one account signed in twice has the same email twice. */
+function uniqueLabel(label: string, taken: readonly { readonly label: string }[]): string {
+  if (!taken.some((account) => account.label === label)) return label;
+  for (let n = 2; ; n += 1) {
+    const next = `${label} (${n})`;
+    if (!taken.some((account) => account.label === next)) return next;
+  }
+}
+
+/** One provider's windows as summed so far, and its accounts in the order omp reported them. */
+interface ProviderSummary {
+  readonly windows: Map<string, WindowSummary>;
+  readonly accounts: UsageLimitAccount[];
+}
+
+/**
+ * Per provider and window: the fullest account's share and its reset time (what the usage rules act on), how many
+ * accounts report the window and, as omp's combined line counts them, their shares added up; with two or more
+ * accounts, each account's own windows under the name omp gives it (#13).
  */
 function summarize(reports: readonly unknown[]): UsageLimitProvider[] {
-  const byProvider = new Map<string, Map<string, WindowSummary>>();
+  const byProvider = new Map<string, ProviderSummary>();
   for (const raw of reports) {
     const report = ReportInput.safeParse(raw);
     if (!report.success) continue;
-    const windows = byProvider.get(report.data.provider) ?? new Map<string, WindowSummary>();
-    byProvider.set(report.data.provider, windows);
-    const countedInReport = new Set<string>();
+    const entry: ProviderSummary = byProvider.get(report.data.provider) ?? {
+      windows: new Map(),
+      accounts: [],
+    };
+    byProvider.set(report.data.provider, entry);
+    const limits: z.infer<typeof LimitInput>[] = [];
+    const own = new Map<string, AccountShare>();
     for (const rawLimit of report.data.limits ?? []) {
       const limit = LimitInput.safeParse(rawLimit);
-      if (!limit.success || limit.data.window === undefined) continue;
+      if (!limit.success) continue;
+      limits.push(limit.data);
+      if (limit.data.window === undefined) continue;
       const fraction = usedFractionOf(limit.data.amount);
       if (fraction === undefined) continue;
       const { label, resetsAt } = limit.data.window;
       const durationMs = durationOf(limit.data.window);
-      const usedPercent = fraction * 100;
-      const current = windows.get(label);
+      const mine = own.get(label);
+      if (mine === undefined) own.set(label, { fraction, resetsAt, durationMs });
+      else if (fraction > mine.fraction)
+        own.set(label, { fraction, resetsAt, durationMs: durationMs ?? mine.durationMs });
+    }
+    if (own.size === 0) continue;
+    for (const [label, mine] of own) {
+      const current = entry.windows.get(label);
       if (current === undefined) {
-        windows.set(label, { usedPercent, resetsAt, durationMs, accounts: 1 });
-        countedInReport.add(label);
+        entry.windows.set(label, {
+          usedPercent: mine.fraction * 100,
+          resetsAt: mine.resetsAt,
+          durationMs: mine.durationMs,
+          accounts: 1,
+          usedAccounts: mine.fraction,
+        });
         continue;
       }
-      if (!countedInReport.has(label)) {
-        countedInReport.add(label);
-        current.accounts += 1;
-      }
-      if (usedPercent > current.usedPercent) {
-        current.usedPercent = usedPercent;
-        current.resetsAt = resetsAt;
+      current.accounts += 1;
+      current.usedAccounts += mine.fraction;
+      current.durationMs ??= mine.durationMs;
+      if (mine.fraction * 100 > current.usedPercent) {
+        current.usedPercent = mine.fraction * 100;
+        current.resetsAt = mine.resetsAt;
       }
     }
+    entry.accounts.push({
+      label: uniqueLabel(accountLabel(report.data, limits, entry.accounts.length), entry.accounts),
+      windows: [...own].map(([label, mine]) => ({
+        label,
+        usedPercent: Math.round(mine.fraction * 1_000) / 10,
+        resetsAt: mine.resetsAt === undefined ? null : new Date(mine.resetsAt).toISOString(),
+      })),
+    });
   }
   return [...byProvider]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([providerId, windows]) => ({
+    .map(([providerId, { windows, accounts }]) => ({
       providerId,
       windows: [...windows].map(([label, summary]) => ({
         label,
@@ -148,7 +226,12 @@ function summarize(reports: readonly unknown[]): UsageLimitProvider[] {
         resetsAt: summary.resetsAt === undefined ? null : new Date(summary.resetsAt).toISOString(),
         accounts: summary.accounts,
         durationMs: summary.durationMs ?? null,
+        // One account's line is its own: the combined numbers and the accounts come only with two or more.
+        ...(summary.accounts > 1
+          ? { usedAccounts: Math.round(summary.usedAccounts * 100) / 100 }
+          : {}),
       })),
+      ...(accounts.length > 1 ? { accounts } : {}),
     }));
 }
 
@@ -182,7 +265,7 @@ function stopProcessGroup(child: Bun.Subprocess<"pipe", "pipe", "pipe">): void {
 }
 
 /**
- * Runs `omp usage --json --redact` once, bounded by the deadline. Its stderr is read and never returned or logged,
+ * Runs `omp usage --json` once, bounded by the deadline. Its stderr is read and never returned or logged,
  * since it can carry credentials. The process group is stopped when the read ends, however it ends.
  */
 async function runOmpUsage(
@@ -192,7 +275,7 @@ async function runOmpUsage(
 ): Promise<OmpRun> {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
-    child = Bun.spawn([...command, "usage", "--json", "--redact"], {
+    child = Bun.spawn([...command, "usage", "--json"], {
       env,
       stdout: "pipe",
       stderr: "pipe",
@@ -247,11 +330,12 @@ function environmentFor(env: Record<string, string | undefined>): Record<string,
 }
 
 /**
- * The provider usage limits omp reports, read with `omp usage --json --redact`. A read is current for a minute; up to
- * ten minutes old it still answers a page at once while a fresh one is read behind it, and concurrent reads share one
- * omp run. The result carries provider ids, window labels, percentages and reset times only: no account names, emails
- * or ids. Once watching, the server reads them by itself, every 5 minutes and every minute once a window is near its
- * limit, and every fresh read goes to the subscribers (#2781), so a page shown a kept read gets the fresh one too.
+ * The provider usage limits omp reports, read with `omp usage --json`. A read is current for a minute; up to ten
+ * minutes old it still answers a page at once while a fresh one is read behind it, and concurrent reads share one omp
+ * run. The result carries provider ids, window labels, percentages and reset times, and with two or more accounts of a
+ * provider each account's name as omp gives it (its email, account or project): nothing else of theirs. Once
+ * watching, the server reads them by itself, every 5 minutes and every minute once a window is near its limit, and
+ * every fresh read goes to the subscribers (#2781), so a page shown a kept read gets the fresh one too.
  */
 export class UsageLimitStoreService {
   readonly #command: readonly string[];

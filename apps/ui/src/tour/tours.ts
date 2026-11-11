@@ -2186,6 +2186,34 @@ const USAGE_PAUSE_TOUR: Tour = {
   ],
 };
 
+/** #13: a provider's accounts in Usage, their shares added up as `omp usage` does, and each account's own lines. */
+const USAGE_ACCOUNTS_TOUR: Tour = {
+  id: "usage-accounts-2026-11-10",
+  title: "Usage for each of your accounts",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Usage",
+      text: "Click <b>Usage</b>, the first button on this rail.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: `${SIDE_PANEL} section[aria-label="Your accounts"]`,
+      title: "Each account",
+      text: "With two or more accounts on a provider, each window's line adds up what they used, as <b>omp usage</b> does: how many accounts' worth is used and left, and when the fullest one resets. <b>Each account</b> opens every account's own lines, each under its email as <b>omp usage</b> shows it.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Hide it",
+      text: "Click <b>Usage</b> again to hide the side panel.",
+      action: { kind: "disappears", selector: SIDE_PANEL },
+    },
+  ],
+};
+
 /** #2779 D6.2: signing in to an MCP server again from the device in use, in Settings → Tools. */
 const MCP_SIGN_IN_TOUR: Tour = {
   id: "mcp-sign-in-2026-11-01",
@@ -2652,8 +2680,15 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-10-usage-accounts",
+    when: "2026-11-10T22:23:00-06:00",
+    summary:
+      "Usage counts a provider's accounts together, as omp usage does: with two or more, each window's line says how many accounts' worth is used and left and when the fullest one resets, and Each account opens every account's own lines.",
+    tours: [USAGE_ACCOUNTS_TOUR],
+  },
+  {
     id: "2026-11-10-search-engines",
-    when: "2026-11-10T23:30:00-06:00",
+    when: "2026-11-10T22:22:00-06:00",
     summary:
       "Models → Web search shows every search engine omp has, each saying where its key comes from, and the order a web search tries them in. TinyFish, Keenable, Brave, Jina and Firecrawl, which omp has no sign-in for, take their key there, as do Kagi, Tavily, Exa and the other engines with an API key: typed hidden, kept in omp's own store (an auth broker's too), checked with a real search, then replaced or removed; the page never shows a saved key. Keenable without a key searches only when picked, and says so. Test search runs one search with an engine alone, and Search with this first and Add as a fallback set the order. Settings → Providers → Web search keys opens it. The window keeps its rows clear of Close.",
     tours: [SEARCH_ENGINES_TOUR],

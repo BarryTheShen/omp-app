@@ -1,11 +1,14 @@
 import type { AppClient } from "@omp-app/client";
 import {
   USAGE_PAUSE_DEFAULT_PERCENT,
+  type UsageLimitProvider,
   UsageLimitStore,
   UsageLimitsResult,
   type UsageLimitWindow,
 } from "@omp-app/contracts";
+import { ChevronRight } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { ChatController, ChatUsage } from "../../chat/controller";
@@ -13,7 +16,14 @@ import { holdLimitWords, holdResumeWords } from "../../chat/usagePause";
 import { follow } from "../../follow";
 import { lastSeen } from "../../lastSeen";
 import { usePhone } from "../../phone";
-import { barPercent, type LimitTone, limitTone, resetAtWords, resetsInWords } from "./usage-words";
+import {
+  barPercent,
+  combinedShare,
+  type LimitTone,
+  limitTone,
+  resetAtWords,
+  resetsInWords,
+} from "./usage-words";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -242,38 +252,115 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
   );
 }
 
-/** One usage window of one provider: the share used, its percent, and when it resets (the clock time on hover). */
+/**
+ * One usage window: the share used, its words, and when it resets (the clock time on hover). A window two or more
+ * accounts report reads as omp's combined line (#13); one account's, or an account's own, as its share.
+ */
 function LimitBar({
-  providerId,
+  name,
   window,
   now,
 }: {
-  readonly providerId: string;
+  /** Whose window it is, for the bar's name: the provider, or the provider and an account. */
+  readonly name: string;
   readonly window: UsageLimitWindow;
   readonly now: Date;
 }): ReactNode {
-  const known = Number.isFinite(window.usedPercent);
-  const percentText = known ? `${Math.round(window.usedPercent)}% used` : "usage unknown";
+  const combined = combinedShare(window);
+  const percent = combined?.percent ?? window.usedPercent;
+  const known = Number.isFinite(percent);
+  const percentText = !known ? "usage unknown" : (combined?.used ?? `${Math.round(percent)}% used`);
   const reset = resetsInWords(window.resetsAt, now);
-  const accounts = window.accounts > 1 ? ` (the fullest of ${window.accounts} accounts)` : "";
+  // A server from before #13 sends the fullest account's share alone.
+  const below =
+    combined !== null
+      ? `${combined.left} · ${reset} for the fullest`
+      : window.accounts > 1
+        ? `${reset} (the fullest of ${window.accounts} accounts)`
+        : reset;
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[0.8125rem] text-t1">{window.label}</span>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <Bar
-            label={`${providerId}, ${window.label.toLowerCase()} limit`}
-            percent={window.usedPercent}
-            tone={limitTone(window.usedPercent)}
-            valueText={`${percentText}, ${reset}`}
+            label={`${name}, ${window.label.toLowerCase()} limit`}
+            percent={percent}
+            tone={limitTone(percent)}
+            valueText={`${percentText}, ${below}`}
           />
         </div>
         <span className="shrink-0 text-xs text-t1 tabular-nums">{percentText}</span>
       </div>
       <p className="text-xs text-t3" title={resetAtWords(window.resetsAt, now)}>
-        {reset}
-        {accounts}
+        {below}
       </p>
+    </div>
+  );
+}
+
+/**
+ * One provider's windows, its accounts combined as omp's short form counts them; with two or more accounts, Each
+ * account opens each one's own windows, under the name `omp usage` gives it, its email whole (#13): addresses of one
+ * person often differ only at their end.
+ */
+function ProviderLimits({
+  provider,
+  now,
+}: {
+  readonly provider: UsageLimitProvider;
+  readonly now: Date;
+}): ReactNode {
+  const [open, setOpen] = useState(false);
+  const each = useId();
+  const accounts = provider.accounts ?? [];
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <h4 className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-t1">
+          {provider.providerId}
+        </h4>
+        {accounts.length > 1 && (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            aria-expanded={open}
+            aria-controls={each}
+            onClick={() => setOpen((shown) => !shown)}
+          >
+            <ChevronRight
+              aria-hidden
+              className={`transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+            />
+            Each account
+          </Button>
+        )}
+      </div>
+      {provider.windows.map((window) => (
+        <LimitBar key={window.label} name={provider.providerId} window={window} now={now} />
+      ))}
+      {open && (
+        <div id={each} className="flex flex-col gap-3 border-l border-l2 pl-3">
+          {accounts.map((account) => (
+            <section
+              key={account.label}
+              aria-label={`${provider.providerId}, ${account.label}`}
+              className="flex flex-col gap-2"
+            >
+              <h5 className="text-xs font-medium break-all text-t2">{account.label}</h5>
+              {account.windows.map((window) => (
+                <LimitBar
+                  key={window.label}
+                  name={`${provider.providerId} ${account.label}`}
+                  window={{ ...window, accounts: 1 }}
+                  now={now}
+                />
+              ))}
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -322,17 +409,7 @@ export function AccountsSection({ client }: { readonly client: AppClient }): Rea
         <p className="text-[0.8125rem] text-t3">omp reports no usage limits for your accounts.</p>
       )}
       {result.providers.map((provider) => (
-        <div key={provider.providerId} className="flex flex-col gap-2.5">
-          <h4 className="text-[0.8125rem] font-medium text-t1">{provider.providerId}</h4>
-          {provider.windows.map((window) => (
-            <LimitBar
-              key={window.label}
-              providerId={provider.providerId}
-              window={window}
-              now={now}
-            />
-          ))}
-        </div>
+        <ProviderLimits key={provider.providerId} provider={provider} now={now} />
       ))}
       {!Number.isNaN(fetched.getTime()) && (
         <p className="text-xs text-t3">Updated {clock.format(fetched)}</p>

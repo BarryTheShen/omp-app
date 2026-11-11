@@ -15,13 +15,37 @@ export const UsageLimitWindow = z.strictObject({
    * usage pause acts on the 5-hour window by this, as providers label it differently ("5 Hour", "5 hours").
    */
   durationMs: z.number().int().positive().nullable().optional(),
+  /**
+   * With two or more accounts: their shares of the window added up, as omp's combined line counts them (each account's
+   * highest share; 1.05 of 2 accounts used, 0.95 left). Absent with one account (#13).
+   */
+  usedAccounts: z.number().min(0).max(1_000).optional(),
 });
 export type UsageLimitWindow = z.infer<typeof UsageLimitWindow>;
 
-/** The windows one provider reports, in the order omp lists them. */
+/** One account's share of one window and when that account's window resets (#13). */
+export const UsageLimitAccountWindow = z.strictObject({
+  label: z.string().min(1).max(64),
+  usedPercent: z.number().min(0).max(10_000),
+  resetsAt: z.string().max(64).nullable(),
+});
+export type UsageLimitAccountWindow = z.infer<typeof UsageLimitAccountWindow>;
+
+/**
+ * One signed-in account and its windows (#13). `label` is the account as `omp usage` names it: its email, else an
+ * account or project of it, else its place among the provider's (`Account 2`); one signed in twice gets ` (2)`.
+ */
+export const UsageLimitAccount = z.strictObject({
+  label: z.string().min(1).max(320),
+  windows: z.array(UsageLimitAccountWindow).max(64),
+});
+export type UsageLimitAccount = z.infer<typeof UsageLimitAccount>;
+
+/** The windows one provider reports, in the order omp lists them; with two or more accounts, each account's too. */
 export const UsageLimitProvider = z.strictObject({
   providerId: z.string().min(1).max(128),
   windows: z.array(UsageLimitWindow).max(64),
+  accounts: z.array(UsageLimitAccount).max(64).optional(),
 });
 export type UsageLimitProvider = z.infer<typeof UsageLimitProvider>;
 

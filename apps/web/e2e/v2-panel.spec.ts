@@ -137,12 +137,27 @@ realTest.describe("new UI side panel", () => {
       await expect(
         accounts(page).getByRole("progressbar", { name: "anthropic, 7 day limit" }),
       ).toHaveAttribute("data-tone", "warning");
-      const fullest = accounts(page).getByRole("progressbar", {
+      // Two accounts on one window: omp's combined line (0.95 + 0.20 of 2), then each account's own (#13).
+      const combined = accounts(page).getByRole("progressbar", {
         name: "openai-codex, 5 hours limit",
+      });
+      await expect(combined).toHaveAttribute("aria-valuenow", /^5[78]$/);
+      await expect(accounts(page).getByText("1.15 of 2 used")).toBeVisible();
+      // The fullest account resets 3 h after the spec started: "3 h" until a minute has gone, "2 h 59 min" after.
+      await expect(
+        accounts(page).getByText(
+          /^0\.85× quota left · resets in (?:3 h|2 h \d+ min) for the fullest$/,
+        ),
+      ).toBeVisible();
+      await accounts(page).getByRole("button", { name: "Each account" }).click();
+      const fullest = accounts(page).getByRole("progressbar", {
+        name: "openai-codex Account 1, 5 hours limit",
       });
       await expect(fullest).toHaveAttribute("aria-valuenow", "95");
       await expect(fullest).toHaveAttribute("data-tone", "danger");
-      await expect(accounts(page).getByText(/the fullest of 2 accounts/)).toBeVisible();
+      await expect(
+        accounts(page).getByRole("progressbar", { name: "openai-codex Account 2, 5 hours limit" }),
+      ).toHaveAttribute("aria-valuenow", "20");
       // The fixture's resets count from when this file loaded, so the minutes have moved on a little by now.
       await expect(
         accounts(page)

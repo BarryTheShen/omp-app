@@ -41,3 +41,20 @@ export function resetAtWords(resetsAt: string | null, now: Date): string {
   if (at.toDateString() === now.toDateString()) return `resets at ${clock.format(at)}`;
   return `resets on ${weekday.format(at)} at ${clock.format(at)}`;
 }
+
+/**
+ * A window two or more accounts report, as omp's combined line counts it (`computeProviderWindowStats`, #13): their
+ * shares added up out of how many accounts, what is left in accounts' worth, and the bar's share of them all. Null for
+ * one account, and from a server that sends only the fullest account's share.
+ */
+export function combinedShare(window: {
+  readonly accounts: number;
+  readonly usedAccounts?: number;
+}): { readonly percent: number; readonly used: string; readonly left: string } | null {
+  if (window.accounts < 2 || window.usedAccounts === undefined) return null;
+  return {
+    percent: (window.usedAccounts / window.accounts) * 100,
+    used: `${window.usedAccounts.toFixed(2)} of ${window.accounts} used`,
+    left: `${Math.max(0, window.accounts - window.usedAccounts).toFixed(2)}× quota left`,
+  };
+}

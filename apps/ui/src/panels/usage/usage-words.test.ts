@@ -1,5 +1,23 @@
 import { describe, expect, test } from "vitest";
-import { barPercent, limitTone, resetsInWords } from "./usage-words";
+import { barPercent, combinedShare, limitTone, resetsInWords } from "./usage-words";
+
+describe("combinedShare", () => {
+  test("two accounts' shares add up as omp's combined line counts them, and the bar shows their share of both", () => {
+    const share = combinedShare({ accounts: 2, usedAccounts: 1.15 });
+    expect(share?.percent).toBeCloseTo(57.5);
+    expect(share?.used).toBe("1.15 of 2 used");
+    expect(share?.left).toBe("0.85× quota left");
+  });
+
+  test("one account, or a server that sends only the fullest account's share, has no combined line", () => {
+    expect(combinedShare({ accounts: 1, usedAccounts: 0.4 })).toBeNull();
+    expect(combinedShare({ accounts: 2 })).toBeNull();
+  });
+
+  test("past every account's limit, nothing is left rather than a negative share", () => {
+    expect(combinedShare({ accounts: 2, usedAccounts: 2.3 })?.left).toBe("0.00× quota left");
+  });
+});
 
 describe("limitTone", () => {
   test("the bar turns warning at 75% used and danger at 90%", () => {
