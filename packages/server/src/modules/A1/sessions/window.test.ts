@@ -201,6 +201,41 @@ describe("session entry windows", () => {
     }
   });
 
+  test("counts the branch's entries older than a window read before an entry, only when asked", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "count.jsonl");
+      const names = Array.from({ length: 10 }, (_, index) => `e${index}`);
+      const lines = [header("count")];
+      names.forEach((name, index) => {
+        lines.push(
+          message(name, index === 0 ? null : (names[index - 1] ?? null), "x".repeat(1000)),
+        );
+      });
+      await writeFile(file, `${lines.join("\n")}\n`, "utf8");
+
+      const before = EntryId.parse("e7");
+      const counted = await readEntryWindow(file, { byteBudget: 3500, before, countOlder: true });
+      expect(ids(counted.entries)).toEqual(["e4", "e5", "e6"]);
+      expect(counted.olderEntries).toBe(4);
+      // Not asked: the window says nothing more, as a page from before the count expects.
+      const plain = await readEntryWindow(file, { byteBudget: 3500, before });
+      expect(plain).not.toHaveProperty("olderEntries");
+      expect(plain.entries).toEqual(counted.entries);
+      // The last window back: none older.
+      const last = await readEntryWindow(file, {
+        byteBudget: 3500,
+        before: EntryId.parse("e1"),
+        countOlder: true,
+      });
+      expect(ids(last.entries)).toEqual(["e0"]);
+      expect(last.olderEntries).toBe(0);
+      expect(last.hasOlder).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("pages near the start of a middle leaf's branch like the index path", async () => {
     const root = await makeTempRoot();
     try {

@@ -893,3 +893,64 @@ realTest.describe("new UI transcript: a chat of long tool output on an iPhone", 
     },
   );
 });
+
+/** About seventy of a phone's older windows: far taller than the spare room a page keeps before the server counts. */
+const LONG_TOOL_CHAT = toolSteps(200);
+
+realTest.describe("new UI transcript: a very long chat of tool output on an iPhone", () => {
+  realTest.use({ seedEntries: { entries: LONG_TOOL_CHAT } });
+  realTest.setTimeout(300_000);
+
+  realTest(
+    "one long swipe up goes on as far as the chat does: the room above holds the rest of the chat once the server counts it",
+    async ({ realApp, browser }) => {
+      let reads = 0;
+      const { page, context } = await openLongChat(
+        realApp,
+        browser,
+        (pass) => {
+          reads += 1;
+          setTimeout(pass, 150);
+        },
+        IPHONE_SAFARI,
+        200,
+      );
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      // The first older window says how many entries are left, and the still transcript sizes its room by it.
+      await expect.poll(() => reads, { timeout: 30_000 }).toBeGreaterThan(0);
+      await page.waitForTimeout(1_500);
+
+      // One finger, down while it goes up sixty screens, twice the room a page kept before: every step moves the view,
+      // no row is out of reach and none covers the band.
+      await fingerOn(transcript, true);
+      const travel = 60 * (await transcript.evaluate((element) => element.clientHeight));
+      let moved = 0;
+      for (let step = 0; moved < travel; step += 1) {
+        const went = await transcript.evaluate((element) => {
+          const from = element.scrollTop;
+          element.scrollTop = Math.max(0, from - 400);
+          return from - element.scrollTop;
+        });
+        expect(
+          went,
+          `step ${step}: the view went up (${moved} px so far, ${reads} windows read)`,
+        ).toBe(400);
+        moved += went;
+        await page.waitForTimeout(50);
+        const seen = await edgeLook(transcript);
+        expect(seen.above, `step ${step}: rows above the top`).toBe(0);
+        expect(seen.overBand, `step ${step}: rows over the top band`).toBe(0);
+        expect(seen.pill, `step ${step}: the screen's top says loading`).toBe(seen.bandBelow);
+      }
+
+      // Lifted, the windows still coming fill the room up to the screen.
+      await fingerOn(transcript, false);
+      await expect
+        .poll(async () => (await edgeLook(transcript)).rowsInView, { timeout: 30_000 })
+        .toBeGreaterThan(0);
+      expect(await edgeLook(transcript)).toMatchObject({ above: 0, overBand: 0 });
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+});

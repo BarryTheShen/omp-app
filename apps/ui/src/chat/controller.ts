@@ -1571,10 +1571,16 @@ export class ChatController {
         sessionFile,
         before: before as EntryId,
         byteBudget: isPhone() ? PHONE_OLDER_WINDOW_BYTES : OLDER_WINDOW_BYTES,
+        // How many entries are left before it: an iPhone's transcript sizes the room above its first message by it.
+        countOlder: true,
       });
       this.#loadingOlder = false;
       if (!this.#disposed)
-        this.store.prependWindow(window.entries as unknown as SessionEntry[], window.hasOlder);
+        this.store.prependWindow(
+          window.entries as unknown as SessionEntry[],
+          window.hasOlder,
+          window.olderEntries,
+        );
     } catch (failure) {
       this.#loadingOlder = false;
       if (this.#disposed) return;

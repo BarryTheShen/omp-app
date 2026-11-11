@@ -148,6 +148,11 @@ export const SessionEntryWindowArgs = z.strictObject({
   before: EntryId.optional(),
   /** The budget for the serialized entries, in bytes: 4 MB by default, 8 MB at most. */
   byteBudget: z.int().min(1024).max(8_388_608).optional(),
+  /**
+   * With `before`: also say how many entries of the branch are older than the window (`olderEntries`), which a page
+   * sizes the room above its first message by. Asked for, so a page from before it never gets a field it does not know.
+   */
+  countOlder: z.boolean().optional(),
 });
 export type SessionEntryWindowArgs = z.infer<typeof SessionEntryWindowArgs>;
 
@@ -161,6 +166,8 @@ export const SessionEntryWindow = z.strictObject({
   /** Pass as `before` for the next older window; null when this window is empty. */
   oldestId: EntryId.nullable(),
   hasOlder: z.boolean(),
+  /** The branch's entries older than this window: only when asked (`countOlder`), for a window before an entry. */
+  olderEntries: z.int().min(0).optional(),
 });
 export type SessionEntryWindow = z.infer<typeof SessionEntryWindow>;
 

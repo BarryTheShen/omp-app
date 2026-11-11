@@ -652,6 +652,7 @@ export class SessionFileStore {
       ...(args.leafId === undefined ? {} : { leafId: args.leafId }),
       ...(args.before === undefined ? {} : { before: args.before }),
       ...(args.byteBudget === undefined ? {} : { byteBudget: args.byteBudget }),
+      ...(args.countOlder === true ? { countOlder: true } : {}),
       blobsDir: this.blobsDir,
     });
     return { sessionFile: args.sessionFile, ...window };

@@ -47,6 +47,8 @@ export interface WindowRequest {
   readonly leafId?: EntryId;
   readonly before?: EntryId;
   readonly byteBudget?: number;
+  /** Also count the branch's entries older than a window read before an entry (`olderEntries`). */
+  readonly countOlder?: boolean;
   /** omp's blob folder beside the sessions: where the pictures a window's references point at are kept. */
   readonly blobsDir?: string;
 }
@@ -57,6 +59,8 @@ export interface WindowResult {
   readonly entries: Record<string, unknown>[];
   readonly oldestId: EntryId | null;
   readonly hasOlder: boolean;
+  /** The branch's entries older than the window, when asked (`countOlder`) for a window before an entry. */
+  readonly olderEntries?: number;
 }
 
 const cache = new Map<string, FileIndex>();
@@ -507,12 +511,14 @@ async function readEntryWindowFromIndex(
       used += size;
       oldestId = id;
     }
+    const olderEntries = path.length - (from + chosen.length);
     return {
       leafId,
       fileLastId: index.fileLastId,
       entries: chosen.reverse(),
       oldestId,
-      hasOlder: from + chosen.length < path.length,
+      hasOlder: olderEntries > 0,
+      ...(request.countOlder === true ? { olderEntries } : {}),
     };
   });
 }

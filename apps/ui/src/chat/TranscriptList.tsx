@@ -335,9 +335,12 @@ function useReaderRest(
  * transcript's top meanwhile, out of reach, and a fast swipe up stopped there until the reader paused. With spare room
  * above, they go into it: the list's top padding gives way by as much as they take, nothing below moves, and no position
  * is written. Once the scroll rests the spare room is set again with one write, which lands. Its size is what can still
- * come before the next rest (`spareFor`): the next two older windows, each as tall as the windows read so far, or
- * `SPARE_SCREENS` screens when that is more, and what the rows not measured yet will grow by, with a quarter more for
- * rows taller than the mean. Once the chat's beginning is read, only the growth is left.
+ * come before the next rest (`spareFor`): once the server has counted the entries left before the oldest one read
+ * (`olderEntries`), the rest of the chat, those and the entries read but waiting, each as tall as the entries shown on
+ * average with a margin (`REST_MARGIN`), up to `SPARE_CAP_SCREENS`; before a count, the next two older windows, each as
+ * tall as the windows read so far, or `SPARE_SCREENS` screens when that is more. To it comes what the rows not measured
+ * yet will grow by, with a quarter more for rows taller than the mean. Once the chat's beginning is read, only the
+ * growth is left.
  */
 function spareFor(
   rows: readonly TranscriptRow[],
@@ -346,6 +349,8 @@ function spareFor(
   hasOlder: boolean,
   windows: number,
   screen: number,
+  left: number | null,
+  shown: number,
 ): number {
   let measuredPx = 0;
   let measuredRows = 0;
@@ -366,7 +371,10 @@ function spareFor(
   const growth = Math.max(0, mean * guessedRows - guessedPx);
   if (!hasOlder) return Math.round(growth);
   const perWindow = (mean * rows.length) / Math.max(1, windows);
-  return Math.round(Math.max(SPARE_WINDOWS * perWindow, SPARE_SCREENS * screen) + 1.25 * growth);
+  const rest = left === null || shown === 0 ? 0 : (left * mean * rows.length * REST_MARGIN) / shown;
+  const cap = screen > 0 ? SPARE_CAP_SCREENS * screen : Number.POSITIVE_INFINITY;
+  const room = Math.min(cap, Math.max(SPARE_WINDOWS * perWindow, SPARE_SCREENS * screen, rest));
+  return Math.round(room + 1.25 * growth);
 }
 
 /** How many older windows the spare room takes before the next rest: a long swipe up reads one after another. */
@@ -378,6 +386,12 @@ const SPARE_WINDOWS = 2;
  * within a fast swipe, and the swipe stopped at the top until it rested, with the next window already read.
  */
 const SPARE_SCREENS = 30;
+
+/** The rest of the chat is sized with this margin: its entries' heights vary from those of the entries shown. */
+const REST_MARGIN = 1.15;
+
+/** The most spare room, in screens: a chat longer than this meets the room's top there, until the scroll rests. */
+const SPARE_CAP_SCREENS = 1_000;
 
 /** A row's height before any row of the chat has been measured: the app's traces showed means of 110 to 180 px a row. */
 const TYPICAL_ROW_PX = 160;
@@ -644,6 +658,8 @@ export function TranscriptList({
           hasOlder,
           windows.current,
           scrollRef.current?.clientHeight ?? 0,
+          snapshot.olderEntries === null ? null : snapshot.olderEntries + waiting,
+          entries.length,
         )
       : 0;
   const wanted = useRef(spareWanted);
@@ -723,6 +739,17 @@ export function TranscriptList({
     noteScrollWrite(change);
     element.scrollTop = before + change;
   };
+  // Each older window read says how many entries are left: while the scroll is still, the room is set again by it at
+  // once (a frame on, after the window's rows are drawn). Left to the next rest, the first swipe after a chat opens would
+  // meet the room set before any count.
+  const olderEntries = snapshot.olderEntries;
+  useEffect(() => {
+    if (olderEntries === null || moving.current) return;
+    const frame = requestAnimationFrame(() => {
+      if (!moving.current) atRest.current();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [olderEntries, moving]);
   useLayoutEffect(() => {
     if (typeof (virtualizer as unknown as BounceInternals)._reportedOverscroll !== "boolean")
       console.error(
