@@ -2270,6 +2270,40 @@ const TASKS_TOUR: Tour = {
   ],
 };
 
+/** #15: the dashboard's overview, its chats, and its graphs of use and spend. */
+const DASHBOARD_OVERVIEW_TOUR: Tour = {
+  id: "dashboard-overview-2026-11-11",
+  title: "The dashboard at a glance",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("dashboard-button"),
+      title: "The dashboard",
+      text: "{dashboard} opens the dashboard. Open it.",
+      action: { kind: "appears", selector: DASHBOARD },
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Overview"]`,
+      title: "At a glance",
+      text: "What you spent today and this week, the tokens and failures of the day, your chats by what they do, and each window as a half ring, coloured as it fills: calm, then warning from 75%, then danger from 90%.",
+      action: next,
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Chats"]`,
+      title: "Every running chat",
+      text: "What each chat does, the model it answers with, and its part of its provider's 5-hour window with what it spent there. <b>Pause</b> and <b>Continue</b> work as /pause does in the chat.",
+      action: next,
+    },
+    {
+      target: `${DASHBOARD} [aria-label="Over the day"]`,
+      title: "Over the day",
+      text: "Each window's use over the last day, from the server's readings, and below it each window split among the chats that used it. Statistics draws the cost of each hour or day the same way.",
+      action: next,
+    },
+  ],
+};
+
 /** #2779 D6.2: signing in to an MCP server again from the device in use, in Settings → Tools. */
 const MCP_SIGN_IN_TOUR: Tour = {
   id: "mcp-sign-in-2026-11-01",
@@ -2735,6 +2769,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-dashboard-overview",
+    when: "2026-11-11T05:00:00-06:00",
+    summary:
+      "The dashboard opens on an overview: spend today and this week, the day's tokens and failures, your chats by what they do, and each window as a half ring coloured as it fills. Chats lists every running chat with its model and its part of its window, and pauses or continues it. Usage draws each window's use over the day and each window split among its chats, and Statistics draws the cost of each hour or day, with each model's share coloured.",
+    tours: [DASHBOARD_OVERVIEW_TOUR],
+  },
   {
     id: "2026-11-11-tasks",
     when: "2026-11-11T04:30:00-06:00",

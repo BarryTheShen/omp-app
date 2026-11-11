@@ -37,6 +37,7 @@ import {
   type PrepareNewChatArgs,
   type RemoveUsageRuleArgs,
   RequestId,
+  type RunningModelsResult,
   SessionFilePath,
   type SessionRenameArgs,
   type SetEventOptionsArgs,
@@ -528,6 +529,7 @@ export class ChatSessionPortRuntime {
     usageRuleScopes: () => this.usageRuleScopes(),
     setUsageRuleScope: (args) => this.setUsageRuleScope(args as SetUsageRuleScopeArgs),
     pauseProvider: (args) => this.pauseProvider(args as PauseProviderArgs),
+    runningModels: () => this.runningModels(),
     firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
@@ -1441,6 +1443,29 @@ export class ChatSessionPortRuntime {
         .map((entry) => this.#send(entry, method, {})),
     );
     return { chats: answers.filter((answer) => answer.status === "fulfilled").length };
+  }
+
+  /** The model each running chat answers with now (#15), from its omp's state; a chat that does not say is left out. */
+  async runningModels(): Promise<RunningModelsResult> {
+    const known = new Map([...this.#aliases].map(([page, own]) => [own, page]));
+    const running = [...this.#entries].filter(([, entry]) => this.#isRunning(entry));
+    const states = await Promise.all(
+      running.map(([, entry]) => entry.client.request("get_state", {}).catch(() => null)),
+    );
+    return {
+      chats: running.flatMap(([threadId], index) => {
+        const model = states[index]?.model;
+        if (model === undefined || model === null) return [];
+        return [
+          {
+            threadId: known.get(threadId) ?? threadId,
+            provider: model.provider,
+            model: model.id,
+            name: model.name ?? model.id,
+          },
+        ];
+      }),
+    };
   }
 
   /** Pauses or continues, by hand, every running chat whose model is the provider's (#14), as Pause all does for all. */

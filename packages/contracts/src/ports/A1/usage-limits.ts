@@ -84,6 +84,21 @@ export type UsageWindowPace = z.infer<typeof UsageWindowPace>;
 export const UsagePaceResult = z.strictObject({ windows: z.array(UsageWindowPace).max(1_024) });
 export type UsagePaceResult = z.infer<typeof UsagePaceResult>;
 
+/** One window's readings over the last day (#15), for its graph: `[epoch ms, used percent]`, oldest first. */
+export const UsageWindowHistory = z.strictObject({
+  providerId: z.string().min(1).max(128),
+  label: z.string().min(1).max(64),
+  readings: z
+    .array(z.tuple([z.number().int().nonnegative(), z.number().min(0).max(10_000)]))
+    .max(5_000),
+});
+export type UsageWindowHistory = z.infer<typeof UsageWindowHistory>;
+
+export const UsageHistoryResult = z.strictObject({
+  windows: z.array(UsageWindowHistory).max(1_024),
+});
+export type UsageHistoryResult = z.infer<typeof UsageHistoryResult>;
+
 /**
  * The provider usage limits omp reports for the signed-in accounts (read-only; cached by the host). The host reads them
  * by itself too, and every fresh read goes to every page as `changed` (#2781).
@@ -100,6 +115,12 @@ export const UsageLimitStore = definePort({
     pace: {
       args: z.strictObject({}),
       result: UsagePaceResult,
+      capability: "host.usage-limits",
+    },
+    /** Each window's readings over the last day, from the server's own (#15). */
+    history: {
+      args: z.strictObject({}),
+      result: UsageHistoryResult,
       capability: "host.usage-limits",
     },
   },

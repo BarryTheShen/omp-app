@@ -1,7 +1,10 @@
 import type { AppClient } from "@omp-app/client";
 import { StatsPort, type StatsRange, type StatsSummary } from "@omp-app/contracts";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { seriesColor } from "./palette";
 import { problemWords } from "./problems";
 
 const LATER = "omp's statistics in brief come with the next server update.";
@@ -163,26 +166,60 @@ export function StatsSummaryView({ client }: { readonly client: AppClient }): Re
           </dl>
           {shownSummary.buckets.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div
+              <ChartContainer
+                config={{ cost: { label: "Cost", color: "var(--accent)" } }}
+                className="aspect-auto h-40 w-full"
                 role="img"
                 aria-label={
                   peak === undefined || highest === 0
                     ? `Cost per ${chosen.per}: nothing spent`
                     : `Cost per ${chosen.per} over the last ${chosen.label}; the most, ${costWords(highest)}, ${bucketWords(peak.at, range)}`
                 }
-                className="flex h-24 items-end gap-px rounded-md border border-l2 p-1"
               >
-                {shownSummary.buckets.map((bucket) => (
-                  <div
-                    key={bucket.at}
-                    title={`${bucketWords(bucket.at, range)}: ${costWords(bucket.cost)}, ${whole.format(bucket.requests)} requests`}
-                    className="min-w-px flex-1 rounded-t-sm bg-accent/70"
-                    style={{
-                      height: `${highest === 0 ? 0 : Math.max(2, (bucket.cost / highest) * 100)}%`,
-                    }}
+                <BarChart data={[...shownSummary.buckets]} margin={{ left: 0, right: 8, top: 8 }}>
+                  <CartesianGrid vertical={false} stroke="var(--l2)" />
+                  <XAxis
+                    dataKey="at"
+                    tickFormatter={(at: number) => bucketWords(at, range)}
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={24}
                   />
-                ))}
-              </div>
+                  <YAxis
+                    tickFormatter={(cost: number) => dollars.format(cost)}
+                    tickLine={false}
+                    axisLine={false}
+                    width={56}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(_, payload) => {
+                          const at = payload?.[0]?.payload?.at;
+                          return typeof at === "number" ? bucketWords(at, range) : "";
+                        }}
+                        formatter={(_, __, item) => {
+                          const bucket = item.payload as (typeof shownSummary.buckets)[number];
+                          return (
+                            <span className="flex w-full justify-between gap-3">
+                              <span className="text-t1 tabular-nums">{costWords(bucket.cost)}</span>
+                              <span className="text-t3 tabular-nums">
+                                {whole.format(bucket.requests)} requests
+                              </span>
+                            </span>
+                          );
+                        }}
+                      />
+                    }
+                  />
+                  <Bar
+                    dataKey="cost"
+                    fill="var(--color-cost)"
+                    radius={[3, 3, 0, 0]}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ChartContainer>
               <p className="text-xs text-t3">Cost per {chosen.per}.</p>
             </div>
           )}
@@ -196,22 +233,30 @@ export function StatsSummaryView({ client }: { readonly client: AppClient }): Re
                 </tr>
               </thead>
               <tbody>
-                {shownSummary.models.map((model) => (
-                  <tr key={`${model.provider}/${model.model}`} className="border-t border-l2">
-                    <td
-                      className="max-w-0 truncate py-1 pr-2 text-t1"
-                      title={`${model.provider}/${model.model}`}
-                    >
-                      {model.model}
-                    </td>
-                    <td className="py-1 text-right text-t2 tabular-nums">
-                      {whole.format(model.requests)}
-                    </td>
-                    <td className="py-1 text-right text-t1 tabular-nums">
-                      {costWords(model.cost)}
-                    </td>
-                  </tr>
-                ))}
+                {shownSummary.models.map((model, index) => {
+                  const top = shownSummary.models[0]?.cost ?? 0;
+                  return (
+                    <tr key={`${model.provider}/${model.model}`} className="border-t border-l2">
+                      <td className="max-w-0 py-1 pr-2" title={`${model.provider}/${model.model}`}>
+                        <span className="block truncate text-t1">{model.model}</span>
+                        <span
+                          aria-hidden
+                          className="mt-0.5 block h-1 rounded-full"
+                          style={{
+                            width: `${top === 0 ? 0 : Math.max(2, (model.cost / top) * 100)}%`,
+                            background: seriesColor(index),
+                          }}
+                        />
+                      </td>
+                      <td className="py-1 text-right text-t2 tabular-nums">
+                        {whole.format(model.requests)}
+                      </td>
+                      <td className="py-1 text-right text-t1 tabular-nums">
+                        {costWords(model.cost)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

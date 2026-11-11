@@ -69,4 +69,29 @@ describe("usage readings and their pace (#2836)", () => {
     const later = await UsageReadings.open(path, { now: () => clock.at });
     expect(later.pace().windows.map((window) => window.readings)).toEqual([1]);
   });
+
+  test("a window's history is its day of readings, oldest first, without the ones older than a day", async () => {
+    folder = await mkdtemp(join(tmpdir(), "omp-app-readings-"));
+    const clock = { at: START };
+    const readings = await UsageReadings.open(join(folder, "usage-readings.json"), {
+      now: () => clock.at,
+    });
+    readings.add(read(START, 10));
+    clock.at = START + 30 * MIN;
+    readings.add(read(clock.at, 14));
+    expect(readings.history()).toEqual({
+      windows: [
+        {
+          providerId: "anthropic",
+          label: "5 Hour",
+          readings: [
+            [START, 10],
+            [START + 30 * MIN, 14],
+          ],
+        },
+      ],
+    });
+    clock.at = START + READINGS_KEEP_MS + MIN;
+    expect(readings.history().windows[0]?.readings).toEqual([[START + 30 * MIN, 14]]);
+  });
 });

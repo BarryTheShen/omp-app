@@ -426,6 +426,21 @@ export const PauseProviderArgs = z.strictObject({
 });
 export type PauseProviderArgs = z.infer<typeof PauseProviderArgs>;
 
+/** The model each running chat answers with now (#15), from its omp: for the dashboard's chats. */
+export const RunningModelsResult = z.strictObject({
+  chats: z
+    .array(
+      z.strictObject({
+        threadId: ThreadId,
+        provider: z.string().min(1).max(128),
+        model: z.string().min(1).max(256),
+        name: z.string().max(256),
+      }),
+    )
+    .max(500),
+});
+export type RunningModelsResult = z.infer<typeof RunningModelsResult>;
+
 /** Chats a page lists as running before omp has written their file, and whose first message another page sent (#2825). */
 export const FirstPromptsArgs = z.strictObject({ threadIds: z.array(ThreadId).max(100) });
 export type FirstPromptsArgs = z.infer<typeof FirstPromptsArgs>;
@@ -485,6 +500,8 @@ export const ChatSessionPort = definePort({
     setUsageRuleScope: { args: SetUsageRuleScopeArgs, result: z.null() },
     /** Pauses or continues every running chat on one provider, by hand, as Pause all does for all (#14). */
     pauseProvider: { args: PauseProviderArgs, result: PauseAllResult },
+    /** The model each running chat answers with now (#15). */
+    runningModels: { args: z.strictObject({}), result: RunningModelsResult },
     /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
     firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },

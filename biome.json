@@ -19,6 +19,15 @@
       "linter": {
         "rules": { "a11y": { "useSemanticElements": "off", "useKeyWithClickEvents": "off" } }
       }
+    },
+    {
+      "includes": ["apps/ui/src/components/ui/chart.tsx"],
+      "linter": {
+        "rules": {
+          "security": { "noDangerouslySetInnerHtml": "off" },
+          "suspicious": { "noArrayIndexKey": "off" }
+        }
+      }
     }
   ]
 }

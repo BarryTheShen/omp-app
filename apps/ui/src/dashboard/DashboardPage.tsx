@@ -36,11 +36,14 @@ import { follow } from "../follow";
 import { AccountsSection } from "../panels/usage/UsagePanel";
 import { useShareLink } from "../shares/link";
 import { useRunningChats } from "../sidebar/useRunningChats";
+import { ChatsSection } from "./ChatsSection";
+import { Overview } from "./Overview";
 import { problemWords } from "./problems";
 import { QuestionsSection } from "./QuestionsSection";
 import { StatsSummaryView } from "./StatsSummary";
 import { TasksSection } from "./TasksSection";
 import { TodoSection } from "./TodoSection";
+import { ChatParts, WindowsOverTheDay } from "./UsageCharts";
 
 const RULES_LATER = "Rules come with the next server update.";
 
@@ -985,11 +988,13 @@ function useUsageControl(client: AppClient, running: readonly RunningChat[]) {
 
 /** The dashboard's parts, in the order the page shows them; the section bar scrolls to each. */
 const PARTS = [
-  { id: "questions", label: "Questions" },
-  { id: "todo", label: "To do" },
+  { id: "overview", label: "Overview" },
+  { id: "chats", label: "Chats" },
   { id: "tasks", label: "Tasks" },
   { id: "usage", label: "Usage" },
   { id: "statistics", label: "Statistics" },
+  { id: "questions", label: "Questions" },
+  { id: "todo", label: "To do" },
 ] as const;
 
 /** A part of the page, a card of its sections: its id is the section bar's anchor; its sections carry the names. */
@@ -1039,13 +1044,16 @@ export function DashboardBody({
       <header className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-l2 px-2 py-1">
         {back}
         {heading ?? <h2 className="px-2 text-base font-medium text-t1">Dashboard</h2>}
-        <nav aria-label="Dashboard parts" className="flex gap-1">
+        <nav
+          aria-label="Dashboard parts"
+          className="flex max-w-full gap-1 overflow-x-auto [scrollbar-width:none]"
+        >
           {PARTS.map((part) => (
             <Button
               key={part.id}
               variant="ghost"
               size="sm"
-              className="text-t2 max-sm:h-11 tablet:h-11"
+              className="shrink-0 text-t2 max-sm:h-11 tablet:h-11"
               onClick={() => go(part.id)}
             >
               {part.label}
@@ -1055,7 +1063,38 @@ export function DashboardBody({
       </header>
       <div ref={page} className="@container min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto grid w-full max-w-[1400px] gap-4 p-3 sm:p-4 @5xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] @5xl:items-start">
+          <section
+            id="dashboard-overview"
+            aria-label="Overview"
+            className="min-w-0 scroll-mt-2 @5xl:col-span-2"
+          >
+            <Overview client={client} running={running} />
+          </section>
           <div className="flex min-w-0 flex-col gap-4">
+            <Part id="chats">
+              <Section
+                title="Chats"
+                hint="Every chat running now: what it does, the model it answers with, and its part of its window."
+              >
+                <ChatsSection
+                  client={client}
+                  running={running}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+            </Part>
+            <Part id="tasks">
+              <Section
+                title="Tasks"
+                hint="Messages for your chats, sent in this order as each chat is free, after its window resets, or at a time."
+              >
+                <TasksSection
+                  client={client}
+                  running={running}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+            </Part>
             <Part id="questions">
               <Section
                 title="Questions"
@@ -1078,23 +1117,23 @@ export function DashboardBody({
                 />
               </Section>
             </Part>
-            <Part id="tasks">
-              <Section
-                title="Tasks"
-                hint="Messages for your chats, sent in this order as each chat is free, after its window resets, or at a time."
-              >
-                <TasksSection
-                  client={client}
-                  running={running}
-                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
-                />
-              </Section>
-            </Part>
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <Part id="usage">
               <Section title="Usage windows" hint="Your accounts' windows as omp reports them.">
                 <AccountsSection client={client} />
+              </Section>
+              <Section
+                title="Over the day"
+                hint="Each window's use over the last day, from the server's readings."
+              >
+                <WindowsOverTheDay client={client} />
+              </Section>
+              <Section
+                title="Each chat's part"
+                hint="Each provider's 5-hour window, split among the chats that used it."
+              >
+                <ChatParts client={client} running={running} />
               </Section>
               <Section title="Pace" hint="From the server's readings of the last hour.">
                 <PaceSection client={client} />

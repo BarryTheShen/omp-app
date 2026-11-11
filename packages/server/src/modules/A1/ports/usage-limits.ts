@@ -19,6 +19,10 @@ export function createUsageLimitStoreRegistration(context: A1PortContext): PortR
         assertNotAborted(handlerContext);
         return context.usageReadings.pace();
       },
+      history: async (_args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return context.usageReadings.history();
+      },
     },
     context.publish,
     [

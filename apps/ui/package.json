@@ -45,6 +45,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-hotkeys-hook": "^5.3.3",
+    "recharts": "3.8.0",
     "uqr": "0.1.3"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { UsageLimitsResult, UsagePaceResult } from "@omp-app/contracts";
+import type { UsageHistoryResult, UsageLimitsResult, UsagePaceResult } from "@omp-app/contracts";
 import { type WindowReading, windowPace } from "./pace";
 
 /** How long readings are kept: a day, past any 5-hour window, enough for a day's pattern. */
@@ -85,6 +85,23 @@ export class UsageReadings {
       }
     this.#trim();
     this.#keep();
+  }
+
+  /** Each window's readings over the last day, oldest first, for its graph (#15). */
+  history(): UsageHistoryResult {
+    this.#trim();
+    return {
+      windows: [...this.#windows].map(([key, rows]) => {
+        const [providerId = "", label = ""] = key.split("\u0000");
+        return {
+          providerId,
+          label,
+          readings: rows
+            .slice(-5_000)
+            .map((reading) => [Math.round(reading.at), reading.usedPercent] as [number, number]),
+        };
+      }),
+    };
   }
 
   /** Each window's pace from its readings, and how many readings it has. */
