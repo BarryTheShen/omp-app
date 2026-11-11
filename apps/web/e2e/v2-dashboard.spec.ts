@@ -132,16 +132,21 @@ realTest.describe("new UI: the dashboard", () => {
           .getByRole("navigation", { name: "Dashboard parts" })
           .getByRole("button", { name: "Statistics" })
           .click();
-        await expect(stats.getByText("Requests", { exact: true })).toBeVisible({
-          timeout: 120_000,
-        });
-        await expect(stats.getByText("Cost", { exact: true })).toBeVisible();
+        // The totals, and the chat's model among the models by cost: omp's page reads the chats before each read. A
+        // term's name is not its text, so the totals' terms are found by their text.
+        const term = (text: string) =>
+          stats.getByRole("term").filter({ hasText: new RegExp(`^${text}$`) });
+        await expect(term("Requests")).toBeVisible({ timeout: 120_000 });
+        await expect(term("Cost")).toBeVisible();
+        await expect(stats.getByRole("table", { name: "Models by cost" })).toContainText(
+          "fake-model",
+        );
         const thirty = stats
           .getByRole("group", { name: "Over the last" })
           .getByRole("button", { name: "30 days" });
         await thirty.click();
         await expect(thirty).toHaveAttribute("aria-pressed", "true");
-        await expect(stats.getByText("Requests", { exact: true })).toBeVisible({ timeout: 60_000 });
+        await expect(term("Requests")).toBeVisible({ timeout: 60_000 });
         await expect(stats.getByRole("alert")).toHaveCount(0);
         await stats.getByRole("button", { name: "Show omp's statistics" }).click();
         // omp's page starts on the server and builds itself the first time.
