@@ -32,18 +32,26 @@ realTest.describe("new UI chat list edge, WebKit", () => {
       if (at === null) throw new Error("no edge");
       const x = at.x + at.width / 2;
       const y = at.y + at.height / 2;
+      const hundredMoves = async (): Promise<number> => {
+        const started = Date.now();
+        // A hundred small moves, out and part of the way back, as a hand drags.
+        for (let step = 1; step <= 60; step += 1) await page.mouse.move(x + step * 3, y);
+        for (let step = 59; step >= 20; step -= 1) await page.mouse.move(x + step * 3, y);
+        return Date.now() - started;
+      };
+      // The same moves with no button held: what a move costs on this machine now, its load included.
+      await page.mouse.move(x, y);
+      const idle = await hundredMoves();
       await page.mouse.move(x, y);
       await page.mouse.down();
-      const started = Date.now();
-      // A hundred small moves, out and part of the way back, as a hand drags.
-      for (let step = 1; step <= 60; step += 1) await page.mouse.move(x + step * 3, y);
-      for (let step = 59; step >= 20; step -= 1) await page.mouse.move(x + step * 3, y);
-      const took = Date.now() - started;
+      const took = await hundredMoves();
       // The column follows while the button is held.
       await expect.poll(width).toBe(before + 60);
       await page.mouse.up();
-      // Each move drew the whole app again before: about 30 ms a move here, 3 to 4.5 s for these hundred.
-      expect(took).toBeLessThan(1_500);
+      // Each move drew the whole app again before: about 30 ms a move here, 3 to 4.5 s more for these hundred than
+      // without the button. Against those same moves, since a busy machine slows both alike (alone, a loaded test
+      // machine took the drag to 1.7 to 1.9 s, 1 run in 4 on main).
+      expect(took - idle).toBeLessThan(1_500);
       await page.reload();
       await expect(edge).toBeVisible({ timeout: 60_000 });
       await expect.poll(width).toBe(before + 60);
