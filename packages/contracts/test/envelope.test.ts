@@ -110,14 +110,30 @@ describe("app wire frames", () => {
     ],
     ["other app protocol", { ...serverFrames[1], protocol: "omp-app/2" }],
     ["omp without its release", { ...serverFrames[1], omp: {} }],
-    [
-      "bad capability key",
-      { ...serverFrames[1], capabilities: { "omp.cmd.nope": { state: "available", via: "omp" } } },
-    ],
   ];
 
   test.each(badServerFrames)("rejects a server frame: %s", (_, frame) => {
     expect(parseServerFrame(JSON.stringify(frame)).ok).toBe(false);
+  });
+
+  test("a welcome from a newer server keeps the capabilities this build knows and leaves out the rest", () => {
+    const known = { "omp.ui": { state: "available", via: "omp" } } as const;
+    const parsed = parseServerFrame(
+      JSON.stringify({
+        type: "welcome",
+        protocol: APP_PROTOCOL,
+        instanceId: "server-3",
+        serverVersion: "0.0.0",
+        omp: null,
+        capabilities: {
+          ...known,
+          "omp.cmd.a_method_from_a_newer_server": { state: "available", via: "omp" },
+        },
+      }),
+    );
+    expect(parsed.ok && parsed.value.type === "welcome" ? parsed.value.capabilities : null).toEqual(
+      known,
+    );
   });
 
   test("text that is not JSON fails without echoing it", () => {

@@ -95,9 +95,23 @@ export const CapabilityStatus = z.object({
 });
 export type CapabilityStatus = z.infer<typeof CapabilityStatus>;
 
-/** Status per capability; a key that is absent is unknown, which the UI treats as unavailable. */
-export const CapabilityMap = z.partialRecord(CapabilityKey, CapabilityStatus);
-export type CapabilityMap = z.infer<typeof CapabilityMap>;
+/**
+ * Status per capability; a key that is absent is unknown, which the UI treats as unavailable. A key or a status this
+ * build does not know (a newer server's: an update adds the chat host's methods) is left out, not refused. Refused, it
+ * failed the whole welcome, and every page opened before the update reconnected every 5 seconds until it was reloaded.
+ */
+export const CapabilityMap = z
+  .record(z.string(), z.unknown())
+  .transform((entries): Partial<Record<CapabilityKey, CapabilityStatus>> => {
+    const known: Partial<Record<CapabilityKey, CapabilityStatus>> = {};
+    for (const [key, value] of Object.entries(entries)) {
+      const name = CapabilityKey.safeParse(key);
+      const status = CapabilityStatus.safeParse(value);
+      if (name.success && status.success) known[name.data] = status.data;
+    }
+    return known;
+  });
+export type CapabilityMap = z.output<typeof CapabilityMap>;
 
 /** The capability one of the chat host's methods needs: `omp.cmd.<method>`. */
 export function ompCommandCapability(method: ChatHostMethodName): `omp.cmd.${ChatHostMethodName}` {

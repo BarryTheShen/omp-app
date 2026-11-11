@@ -98,15 +98,17 @@ describe("capabilities", () => {
     }
   });
 
-  test("a capability map holds statuses for valid keys", () => {
+  test("a capability map keeps the statuses it knows and leaves out a newer server's", () => {
+    const drafts = { state: "fallback", via: "host", detail: "local only" } as const;
     expect(
-      CapabilityMap.safeParse({
-        "host.drafts": { state: "fallback", via: "host", detail: "local only" },
-      }).success,
-    ).toBe(true);
-    expect(
-      CapabilityMap.safeParse({ "host.drafts": { state: "maybe", via: "host" } }).success,
-    ).toBe(false);
+      CapabilityMap.parse({
+        "host.drafts": drafts,
+        // A method an update added after this build, and a state it does not know yet.
+        "omp.cmd.a_method_from_a_newer_server": { state: "available", via: "omp" },
+        "host.paste": { state: "maybe", via: "host" },
+      }),
+    ).toEqual({ "host.drafts": drafts });
+    expect(CapabilityMap.safeParse("not a map").success).toBe(false);
   });
 });
 
