@@ -1,4 +1,4 @@
-import type { SessionFilePath, ThreadId, UsagePauseHold } from "@omp-app/contracts";
+import type { SessionFilePath, TaskTarget, ThreadId, UsagePauseHold } from "@omp-app/contracts";
 import type { ChatHostHello } from "@omp-app/contracts/chat-host";
 import type { CommandSession } from "../../modules/A1/gateway/command-session";
 import type { OmpProcess } from "../../process";
@@ -10,6 +10,7 @@ import {
   type WaitingAsks,
 } from "./chat-session";
 import type { A0PortContext, ThreadBootstrap } from "./context";
+import type { TaskDelivery } from "./tasks";
 
 export * from "./app";
 export * from "./browser/browser";
@@ -21,6 +22,7 @@ export * from "./running-chats";
 export * from "./shares/shares";
 export * from "./shares/stats";
 export * from "./stats";
+export * from "./tasks";
 export * from "./todos";
 
 /**
@@ -91,6 +93,13 @@ export interface A0Runtime {
   };
   /** Ends a chat's turn as Esc does, for the running list's Stop (D1; the chat runtime's `abort` request). */
   abortTurn(threadId: ThreadId, call: PortHandlerContext): Promise<unknown>;
+  /** Queued tasks' messages (#14; see the chat runtime): sent when the chat is free, and each chat settling after a turn. */
+  readonly tasks: {
+    deliver(target: TaskTarget, text: string): Promise<TaskDelivery>;
+    /** When the 5-hour window of the chat's provider next resets, by the last usage reading; null: not known. */
+    resetOf(threadId: ThreadId): Promise<number | null>;
+    onTurnEnd(listener: (threadId: ThreadId) => void): () => void;
+  };
   /**
    * Ends the runtime as the server stops: the new chats kept ready stop with their hosts, since they hold no chat a later
    * server could resume, and every chat's host is let go to the next server (D2).
@@ -130,6 +139,11 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     waiting: chat.runtime.waiting,
     abortTurn: (threadId, call) =>
       chat.runtime.request({ threadId, method: "abort", params: {} }, call),
+    tasks: {
+      deliver: (target, text) => chat.runtime.deliverTask(target, text),
+      resetOf: (threadId) => chat.runtime.taskResetOf(threadId),
+      onTurnEnd: (listener) => chat.runtime.onTurnEnd(listener),
+    },
     dispose: () => chat.runtime.dispose(),
   };
 }

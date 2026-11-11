@@ -406,6 +406,17 @@ export class UsagePause {
     });
   }
 
+  /** Whether a mark, a budget or a rule holds the chat now (#14: a queued task waits for it). */
+  isHeld(threadId: ThreadId): boolean {
+    return this.#holds.has(threadId);
+  }
+
+  /** When `providerId`'s 5-hour window next resets, by the last reading (#14); null when no reading says. */
+  resetOf(providerId: string): number | null {
+    if (this.#usage === null) return null;
+    return windowOf(this.#usage.result, providerId, FIVE_HOUR_MS)?.resetsAt ?? null;
+  }
+
   /** Puts the held chats in this order; those it leaves out keep theirs after them. */
   setOrder(threadIds: readonly ThreadId[]): Promise<void> {
     return this.#queue(async () => {

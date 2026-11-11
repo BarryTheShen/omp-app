@@ -84,9 +84,13 @@ import {
   createRunningChatsRuntime,
   createSharesRuntime,
   createStatsRegistration,
+  createTasksRuntime,
   createTodosRuntime,
   OmpStats,
   runningChatTitle,
+  TASKS_CHANGED,
+  TaskQueue,
+  tasksFile,
 } from "../src/ports/A0";
 import {
   type ProbeCacheHit,
@@ -790,6 +794,18 @@ export async function createCompositionServer(
     onProblem: (problem) => logger.warn("todos.siyuan_copy", { problem }),
   });
   const todos = createTodosRuntime({ store: todoStore, mirror: siyuanCopy, publish });
+  // The queue of messages for chats (#14), kept in the app's data folder: each goes when its chat is free.
+  const taskQueue = new TaskQueue({
+    now: Date.now,
+    ...tasksFile(join(appDataDir, "tasks.json")),
+    deliver: (target, text) => a0Runtime.tasks.deliver(target, text),
+    resetOf: (threadId) => a0Runtime.tasks.resetOf(threadId),
+    changed: () => publish(TASKS_CHANGED, { at: Date.now() }),
+    logger,
+  });
+  a0Runtime.tasks.onTurnEnd((threadId) => taskQueue.onTurnEnd(threadId));
+  void taskQueue.restore();
+  const tasks = createTasksRuntime({ queue: taskQueue, publish });
   // Every chat's questions that wait (those asked without waiting, and omp's that stop a chat), for the dashboard, and
   // `changed` to every device.
   const questions = createQuestionsRuntime({
@@ -881,6 +897,7 @@ export async function createCompositionServer(
     shares.registration,
     runningChats.registration,
     todos.registration,
+    tasks.registration,
     questions.registration,
     // omp's statistics in brief for the dashboard, read from the page the shares run (#2836 D6).
     createStatsRegistration({ stats: ompStats }),
@@ -931,6 +948,7 @@ export async function createCompositionServer(
     async stop() {
       try {
         stats.stop();
+        taskQueue.close();
         logger.info("stop");
         await server.stop();
       } finally {

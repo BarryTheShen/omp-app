@@ -39,6 +39,7 @@ import { useRunningChats } from "../sidebar/useRunningChats";
 import { problemWords } from "./problems";
 import { QuestionsSection } from "./QuestionsSection";
 import { StatsSummaryView } from "./StatsSummary";
+import { TasksSection } from "./TasksSection";
 import { TodoSection } from "./TodoSection";
 
 const RULES_LATER = "Rules come with the next server update.";
@@ -986,6 +987,7 @@ function useUsageControl(client: AppClient, running: readonly RunningChat[]) {
 const PARTS = [
   { id: "questions", label: "Questions" },
   { id: "todo", label: "To do" },
+  { id: "tasks", label: "Tasks" },
   { id: "usage", label: "Usage" },
   { id: "statistics", label: "Statistics" },
 ] as const;
@@ -1072,6 +1074,18 @@ export function DashboardBody({
               >
                 <TodoSection
                   client={client}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+            </Part>
+            <Part id="tasks">
+              <Section
+                title="Tasks"
+                hint="Messages for your chats, sent in this order as each chat is free, after its window resets, or at a time."
+              >
+                <TasksSection
+                  client={client}
+                  running={running}
                   {...(onOpenChat === undefined ? {} : { onOpenChat })}
                 />
               </Section>

@@ -48,6 +48,7 @@ import {
   type SetUsageRuleScopeArgs,
   type StreamKey,
   type SubscribeArgs,
+  type TaskTarget,
   ThreadId,
   type UiState,
   type UiStateEvent,
@@ -93,6 +94,7 @@ import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
+import type { TaskDelivery } from "./tasks";
 import { UsagePause, usagePauseExtrasFile, usagePauseFile } from "./usage-pause";
 import { type ResumeOutcome, UsageResume, usageResumeFile } from "./usage-resume";
 
@@ -161,6 +163,8 @@ const SPARE_REFRESH_MS = 9 * 60_000;
 const SLOW_OPEN_MS = 1_000;
 /** How much of a chat's first message other pages get to name it by (#2825): a row shows one line of it. */
 const FIRST_PROMPT_CHARS = 200;
+/** The connection a queued task opens a chat for (#14): no page has it, so the task lets its view go once it has sent. */
+const TASK_CONNECTION = "app:tasks";
 /** The global timer, which does not keep the server running by itself: a spare's refresh, a continue after a limit. */
 const SPARE_TIMER: ProcessTimer = {
   setTimeout: (handler, delayMs) => {
@@ -739,6 +743,8 @@ export class ChatSessionPortRuntime {
   };
 
   readonly #waitingListeners = new Set<() => void>();
+  /** Hear each chat that settles after a turn: a queued task's chat is free again (#14). */
+  readonly #turnEndListeners = new Set<(threadId: ThreadId) => void>();
 
   /**
    * Whether a chat waits for an answer from you (an approval or a question), and each change: the running list (D1);
@@ -1786,6 +1792,7 @@ export class ChatSessionPortRuntime {
       (event.type === "prompt_result" && event.sessionSettled)
     ) {
       this.#context.processRegistry.setBusy(threadId, false);
+      for (const listener of [...this.#turnEndListeners]) listener(threadId);
     } else if (event.type === "pause_changed") {
       this.#context.processRegistry.setPaused(threadId, event.pausedAt);
       this.#usagePause?.onPauseChanged(threadId, event.pausedAt);
@@ -1991,6 +1998,72 @@ export class ChatSessionPortRuntime {
     const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined) return true;
     return (await entry.client.request("get_state", {})).isSettled;
+  }
+
+  /** Calls `listener` each time a chat settles after a turn: a queued task's chat is free again (#14). */
+  onTurnEnd(listener: (threadId: ThreadId) => void): () => void {
+    this.#turnEndListeners.add(listener);
+    return () => {
+      this.#turnEndListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Sends a queued task's message (#14): into the chat, opened again from its file when this server does not run it, or
+   * into a new chat of the folder. A chat a usage rule holds, a paused one, or one in a turn gets nothing yet. A view
+   * the task opened is let go once the message is sent, so the chat stops when idle as any unwatched chat does.
+   */
+  async deliverTask(target: TaskTarget, text: string): Promise<TaskDelivery> {
+    const call: PortHandlerContext = {
+      signal: new AbortController().signal,
+      connectionId: TASK_CONNECTION,
+      requestId: `task-${crypto.randomUUID()}` as RequestId,
+      portContext: undefined,
+    };
+    let threadId =
+      target.kind === "chat" ? (this.#aliases.get(target.threadId) ?? target.threadId) : null;
+    let opened = false;
+    try {
+      if (target.kind === "new") {
+        threadId = (await this.open({ folderPath: target.folder, start: "new" }, call)).threadId;
+        opened = true;
+      } else if (threadId !== null && this.#entryOrUndefined(threadId) === undefined) {
+        threadId = (await this.open({ threadId }, call)).threadId;
+        opened = true;
+      }
+    } catch (failure) {
+      const why = failure instanceof Error ? failure.message : String(failure);
+      return { outcome: "gone", problem: `The chat could not be opened: ${why}` };
+    }
+    const entry = threadId === null ? undefined : this.#entryOrUndefined(threadId);
+    try {
+      if (entry === undefined || threadId === null) {
+        return { outcome: "gone", problem: "The chat is no longer on the server." };
+      }
+      if (this.#usagePause?.isHeld(threadId) === true) return { outcome: "held" };
+      if ((this.#context.processRegistry.pausedOf(threadId) ?? null) !== null) {
+        return { outcome: "paused" };
+      }
+      await this.#ensureRunning(entry);
+      const state = await entry.client.request("get_state", {});
+      if (state.isStreaming || state.isCompacting) return { outcome: "busy" };
+      if (entry.firstPrompt === undefined) {
+        const first = text.replace(/\s+/g, " ").trim();
+        if (first !== "") entry.firstPrompt = first.slice(0, FIRST_PROMPT_CHARS);
+      }
+      await entry.client.send("prompt", { text }).answer;
+      this.#context.logger?.info("chat_session.task_sent", { threadId });
+      return { outcome: "sent", threadId };
+    } finally {
+      if (opened && entry !== undefined) this.#releaseView(entry, TASK_CONNECTION);
+    }
+  }
+
+  /** When the 5-hour window of the chat's provider next resets, by the last usage reading (#14); null: not known. */
+  async taskResetOf(threadId: ThreadId): Promise<number | null> {
+    const own = this.#aliases.get(threadId) ?? threadId;
+    const provider = await this.#providerOf(own).catch(() => null);
+    return provider === null ? null : (this.#usagePause?.resetOf(provider) ?? null);
   }
 
   /**

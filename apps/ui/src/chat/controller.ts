@@ -19,6 +19,8 @@ import {
   SharesPort,
   type SubagentReadResult,
   type SubagentTranscript,
+  TasksPort,
+  type TaskWhen,
   type ThreadId,
   type UsageBudgetsResult,
   type UsageSharesResult,
@@ -720,6 +722,20 @@ export class ChatController {
       return await this.client.port(ChatSessionPort).usageBudgets({});
     } catch (failure) {
       throw olderServer(failure, "keep a chat's budget");
+    }
+  }
+
+  /**
+   * Queues a message for this chat (#14): the server sends it when the chat is free, after its provider's window resets,
+   * or at a time, and the dashboard's Tasks list it until then.
+   */
+  async queueTask(text: string, when: TaskWhen): Promise<void> {
+    const threadId = this.#threadId;
+    if (threadId === null) throw new Error("Send a first message, then queue more for later.");
+    try {
+      await this.client.port(TasksPort).add({ text, target: { kind: "chat", threadId }, when });
+    } catch (failure) {
+      throw olderServer(failure, "queue messages for later");
     }
   }
 

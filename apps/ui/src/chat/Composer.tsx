@@ -1,4 +1,10 @@
-import { type SentFile, splitAttached, splitHostContext, withAttached } from "@omp-app/contracts";
+import {
+  type SentFile,
+  splitAttached,
+  splitHostContext,
+  type TaskWhen,
+  withAttached,
+} from "@omp-app/contracts";
 import type {
   ChatHostImage,
   ChatHostState,
@@ -46,6 +52,7 @@ import { ModelPicker } from "./ModelPicker";
 import { PausedRow } from "./PausedRow";
 import { PlusMenu } from "./PlusMenu";
 import { QueuedMessages } from "./QueuedMessages";
+import { QueueLater } from "./QueueLater";
 import { QuickPanel } from "./QuickPanel";
 import { QuickPromptsKey } from "./QuickPromptsKey";
 import { RoleTrack } from "./RoleTrack";
@@ -535,6 +542,15 @@ export const Composer = memo(function Composer({
       })
       .catch((failure: unknown) => setError(`Not sent: ${errorText(failure)}`))
       .finally(() => setSending(false));
+  };
+  /** Queue for later (#14): the typed message becomes a task for this chat; only what was queued leaves the box. */
+  const queueLater = async (when: TaskWhen): Promise<void> => {
+    const sent = textRef.current;
+    const value = sent.trim();
+    if (value === "") return;
+    await controller.queueTask(value, when);
+    const now = textRef.current;
+    update(now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now);
   };
   suggestRef.current = (suggestion) => {
     const typed =
@@ -1128,6 +1144,12 @@ export const Composer = memo(function Composer({
               >
                 {error === null ? status : null}
               </span>
+              {typed &&
+                attachments.length === 0 &&
+                files.length === 0 &&
+                controller.threadId !== null && (
+                  <QueueLater phone={phone} disabled={closed || sending} onQueue={queueLater} />
+                )}
               {sendOrStop}
             </div>
           )}
