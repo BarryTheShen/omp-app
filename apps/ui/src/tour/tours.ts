@@ -2821,14 +2821,14 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-11-file-links",
-    when: "2026-11-11T09:30:00-06:00",
+    when: "2026-11-11T07:32:00-06:00",
     summary:
       "A reply's link to a file of the chat's folder (a report, a CSV, a page it wrote) opens the file in the app's own viewer, beside the chat or over the screen on a phone, read over the app's own connection like the Files panel: nothing of the folder is put on the network for it. A link out of the chat's folder is not opened, and the app says where it pointed.",
     tours: [FILE_LINKS_TOUR],
   },
   {
     id: "2026-11-11-mcp-servers",
-    when: "2026-11-11T09:00:00-06:00",
+    when: "2026-11-11T07:31:00-06:00",
     summary:
       "Settings → Tools → MCP servers edits them: Add a server takes the command that starts it (its arguments, variables and folder) or its address over HTTP or SSE (its headers), or the server's JSON from its page; each server has a switch, Test, Edit and Remove, and is kept for every folder or for this folder alone. Saved keys never reach the page and stay unless typed over; the open chat reads its servers again after each change.",
     tours: [MCP_SERVERS_TOUR],
