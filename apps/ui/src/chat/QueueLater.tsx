@@ -5,14 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SHEET_ROW } from "./PlusMenu";
 import { fromLocalInput, localInput } from "./taskTime";
 
 const ROW = "flex items-center gap-2 text-[0.8125rem] text-t1";
 
 /**
- * Queue for later (#14), beside Send once something is typed: the message becomes a task for this chat, sent as soon
- * as the chat is free, after its provider's 5-hour window resets, or at a time; till then it waits on the dashboard's
- * Tasks. Not a form of its own: the message box around it is one.
+ * Queue for later (#14), once words are typed: beside Send on a computer, a row of the ＋ sheet on a phone (its sheet
+ * opens over that one). The message becomes a task for this chat, sent as soon as the chat is free, after its
+ * provider's 5-hour window resets, or at a time; till then it waits on the dashboard's Tasks. Not a form of its own:
+ * the message box around it is one.
  */
 export function QueueLater({
   phone,
@@ -64,18 +66,29 @@ export function QueueLater({
     >
       <PopoverTrigger
         render={
-          <Button
-            type="button"
-            variant="ghost"
-            size={phone ? "icon" : "icon-sm"}
-            className={phone ? "size-11 shrink-0" : "tablet:size-11"}
-            aria-label="Queue for later"
-            data-tour="queue-later"
-            disabled={disabled}
-          />
+          phone ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className={SHEET_ROW}
+              data-tour="queue-later"
+              disabled={disabled}
+            />
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="tablet:size-11"
+              aria-label="Queue for later"
+              data-tour="queue-later"
+              disabled={disabled}
+            />
+          )
         }
       >
         <Clock />
+        {phone && "Queue for later"}
       </PopoverTrigger>
       <PopoverContent
         side="top"

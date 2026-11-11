@@ -2248,7 +2248,7 @@ const USAGE_BUDGET_TOUR: Tour = {
   ],
 };
 
-/** #14: the dashboard's Tasks, and Queue for later beside Send. */
+/** #14: the dashboard's Tasks, and Queue for later beside Send (on a phone, in ＋). */
 const TASKS_TOUR: Tour = {
   id: "tasks-2026-11-11",
   title: "Queued tasks",
@@ -2264,7 +2264,7 @@ const TASKS_TOUR: Tour = {
     {
       target: `${DASHBOARD} [aria-label="Tasks"]`,
       title: "Tasks",
-      text: "A task is a message for a chat, or a new chat in a folder, that the server sends as soon as the chat is free, after its provider's 5-hour window resets, or at a time: never while the chat works, is paused or a rule holds it. A chat's tasks go one at a time, in this order: the arrows change it, and <b>Send now</b> lets one go. In a chat, <b>Queue for later</b> beside Send makes the typed message a task.",
+      text: "A task is a message for a chat, or a new chat in a folder, that the server sends as soon as the chat is free, after its provider's 5-hour window resets, or at a time: never while the chat works, is paused or a rule holds it. A chat's tasks go one at a time, in this order: the arrows change it, and <b>Send now</b> lets one go. In a chat, <b>Queue for later</b> beside Send (on a phone, in <b>＋</b>) makes the typed message a task.",
       action: next,
     },
   ],
@@ -2780,7 +2780,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-11-tasks",
     when: "2026-11-11T04:30:00-06:00",
     summary:
-      "The dashboard's Tasks: messages for your chats, or a new chat in a folder, that the server sends in order as each chat is free, after its provider's 5-hour window resets, or at a time, never while the chat works, is paused or a rule holds it. Reorder them, send one now, change or remove it; the sent ones fold below with Open chat. In a chat, Queue for later beside Send makes the typed message a task.",
+      "The dashboard's Tasks: messages for your chats, or a new chat in a folder, that the server sends in order as each chat is free, after its provider's 5-hour window resets, or at a time, never while the chat works, is paused or a rule holds it. Reorder them, send one now, change or remove it; the sent ones fold below with Open chat. In a chat, Queue for later beside Send (on a phone, in ＋) makes the typed message a task.",
     tours: [TASKS_TOUR],
   },
   {

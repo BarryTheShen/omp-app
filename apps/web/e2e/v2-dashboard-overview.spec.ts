@@ -81,12 +81,17 @@ realTest.describe("new UI: the dashboard's overview and graphs", () => {
         { timeout: 30_000 },
       );
 
-      // Statistics: the cost of each day, drawn.
+      // Statistics: the cost of each day, drawn. The section reads omp's statistics once it shows; the parts bar
+      // brings it into view.
+      await dashboard(page)
+        .getByRole("navigation", { name: "Dashboard parts" })
+        .getByRole("button", { name: "Statistics" })
+        .click();
       await expect(
         dashboard(page)
           .getByRole("region", { name: "Statistics" })
           .getByRole("img", { name: /^Cost per day/ }),
-      ).toBeVisible({ timeout: 90_000 });
+      ).toBeVisible({ timeout: 120_000 });
       expect(realApp.problems).toEqual([]);
     },
   );

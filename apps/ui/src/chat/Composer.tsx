@@ -848,6 +848,12 @@ export const Composer = memo(function Composer({
       : "Message omp");
   /** Something to send: text, pictures or files. */
   const typed = text.trim().length > 0 || attachments.length > 0 || files.length > 0;
+  /** Queue for later (#14) takes typed words alone, for a chat that is open. */
+  const canQueue =
+    text.trim().length > 0 &&
+    attachments.length === 0 &&
+    files.length === 0 &&
+    controller.threadId !== null;
   /**
    * The button beside the text, a full-size target on a phone. Send while omp is idle. While omp works: Stop for an
    * empty box, and Queue once something is typed, which hands the message to omp as Enter does (omp takes it in at once
@@ -1056,6 +1062,19 @@ export const Composer = memo(function Composer({
                   setPanel(true);
                   boxRef.current?.blur();
                 }}
+                queueLater={
+                  canQueue ? (
+                    <QueueLater
+                      phone
+                      disabled={closed || sending}
+                      onQueue={async (when) => {
+                        await queueLater(when);
+                        // The message left the box: the ＋ sheet it was queued from closes with its own.
+                        setPlusOpen(false);
+                      }}
+                    />
+                  ) : null
+                }
                 {...(working || pausedAt !== null
                   ? {
                       pause: {
@@ -1144,12 +1163,9 @@ export const Composer = memo(function Composer({
               >
                 {error === null ? status : null}
               </span>
-              {typed &&
-                attachments.length === 0 &&
-                files.length === 0 &&
-                controller.threadId !== null && (
-                  <QueueLater phone={phone} disabled={closed || sending} onQueue={queueLater} />
-                )}
+              {canQueue && (
+                <QueueLater phone={false} disabled={closed || sending} onQueue={queueLater} />
+              )}
               {sendOrStop}
             </div>
           )}

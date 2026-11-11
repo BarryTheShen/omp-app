@@ -4,7 +4,8 @@ import { expect, realTest, startNewChat } from "./real-omp";
 /**
  * Queued tasks (#14) on real omp: Queue for later beside Send makes the typed message a task for the chat, which the
  * server sends as soon as the chat is free (the box clears at once); the dashboard's Tasks list it as sent; a task set
- * for a time waits until Send now lets it go; and two waiting tasks change places with the arrows.
+ * for a time waits until Send now lets it go; and two waiting tasks change places with the arrows. On a phone, Queue
+ * for later is a row of ＋ once words are typed, and its sheet queues the same way.
  */
 const dashboard = (page: Page) => page.locator('[data-tour="dashboard"]');
 const workspaces = (page: Page) => page.getByRole("tablist", { name: "Workspaces" });
@@ -74,6 +75,49 @@ realTest.describe("new UI: queued tasks", () => {
         timeout: 60_000,
       });
       expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "on a phone, Queue for later is a row of ＋ once words are typed, and its sheet queues the message",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      // A phone opens in a new chat.
+      const page = await realApp.open({ path: "/", context });
+      const box = page.getByRole("textbox", { name: "Message" });
+      await expect(box).toHaveAttribute("placeholder", "Fake Model · high", { timeout: 120_000 });
+      await box.fill("hello");
+      await page.getByRole("button", { name: "Send" }).tap();
+      await expect(transcript(page).getByText("pong", { exact: true })).toHaveCount(1, {
+        timeout: 90_000,
+      });
+
+      // Nothing typed: ＋ has no Queue for later.
+      const plus = page.locator("[data-tour='plus-sheet']");
+      await page.getByRole("button", { name: "More" }).tap();
+      await expect(plus.getByRole("button", { name: "Quick prompts" })).toBeVisible();
+      await expect(plus.getByRole("button", { name: "Queue for later" })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(plus).toHaveCount(0);
+
+      // Typed: its row opens its sheet over ＋; queued, both close and the free chat gets it at once.
+      await box.fill("queued from a phone");
+      await page.getByRole("button", { name: "More" }).tap();
+      await plus.getByRole("button", { name: "Queue for later" }).tap();
+      const later = page.getByRole("dialog", { name: "Queue for later" });
+      await later.getByRole("radio", { name: "When this chat is free" }).tap();
+      await later.getByRole("button", { name: "Queue it" }).tap();
+      await expect(later).toHaveCount(0);
+      await expect(plus).toHaveCount(0);
+      await expect(box).toHaveValue("");
+      await expect(transcript(page).getByText("queued from a phone")).toBeVisible({
+        timeout: 60_000,
+      });
+      expect(realApp.problems).toEqual([]);
+      await context.close();
     },
   );
 });
