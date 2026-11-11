@@ -74,24 +74,29 @@ function Section({
   );
 }
 
-/** A labelled group of numbers, as omp's `/session` prints them: a heading, then label and value rows. */
+/**
+ * A labelled group of numbers: a heading, then label and value rows; a row's third part is its exact value, shown on
+ * hover where the row rounds it.
+ */
 function Numbers({
   title,
   rows,
 }: {
   readonly title: string;
-  readonly rows: readonly (readonly [string, string] | false)[];
+  readonly rows: readonly (readonly [string, string, string?] | false)[];
 }): ReactNode {
-  const shown = rows.filter((row): row is readonly [string, string] => row !== false);
+  const shown = rows.filter((row): row is readonly [string, string, string?] => row !== false);
   return (
     // biome-ignore lint/a11y/useSemanticElements: a named group of figures, not of form controls, so not a fieldset
     <div role="group" aria-label={title} className="flex flex-col gap-1">
       <h4 className="text-[0.8125rem] font-medium text-t1">{title}</h4>
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-[0.8125rem]">
-        {shown.map(([label, value]) => (
+        {shown.map(([label, value, exact]) => (
           <div key={label} className="contents">
             <dt className="text-t3">{label}</dt>
-            <dd className="text-right text-t1 tabular-nums">{value}</dd>
+            <dd className="text-right text-t1 tabular-nums" title={exact}>
+              {value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -129,6 +134,14 @@ function Bar({
 }
 
 const count = (value: number): string => value.toLocaleString();
+
+/** A big number in brief: 545.6K, 14.6M. */
+const short = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
+/** Dollars to the cent; below a cent, said so. */
+function dollarsOf(cost: number): string {
+  return cost > 0 && cost < 0.005 ? "under $0.01" : `$${cost.toFixed(2)}`;
+}
 
 /** How often a chat's numbers are read again while its turn runs: omp's counts grow with each finished message. */
 const DURING_TURN_EVERY_MS = 10_000;
@@ -218,43 +231,69 @@ function ChatUsageSection({ chat }: { readonly chat: ChatController }): ReactNod
             tone="normal"
             valueText={`${count(context.tokens)} of ${count(context.contextWindow)} tokens`}
           />
-          <p className="text-xs text-t3 tabular-nums">
-            {count(context.tokens)} of {count(context.contextWindow)} tokens
+          <p
+            className="text-xs text-t3 tabular-nums"
+            title={`${count(context.tokens)} of ${count(context.contextWindow)} tokens`}
+          >
+            {short.format(context.tokens)} of {short.format(context.contextWindow)} tokens in the
+            model's window
           </p>
         </div>
       )}
-      {tokensPerSecond !== null && (
-        <Numbers title="Last reply" rows={[["Speed", `${tokensPerSecond.toFixed(1)} tok/s`]]} />
+      {(stats.cost > 0 || premium > 0) && (
+        <Numbers
+          title="Cost"
+          rows={[
+            stats.cost > 0 && [
+              "Spent in this chat",
+              dollarsOf(stats.cost),
+              `$${stats.cost.toFixed(4)}`,
+            ],
+            premium > 0 && ["Premium requests", premium.toLocaleString()],
+          ]}
+        />
       )}
+      {/* omp's own counts. Left out: tool results (one for each call) and the total, which counts omp's notes too. */}
       <Numbers
         title="Messages"
         rows={[
-          ["User", count(stats.userMessages)],
-          ["Assistant", count(stats.assistantMessages)],
-          ["Tool Calls", count(stats.toolCalls)],
-          ["Tool Results", count(stats.toolResults)],
-          ["Total", count(stats.totalMessages)],
+          ["Yours", count(stats.userMessages)],
+          ["omp's replies", count(stats.assistantMessages)],
+          ["Tool calls", count(stats.toolCalls)],
         ]}
       />
       <Numbers
         title="Tokens"
         rows={[
-          ["Input", count(stats.tokens.input)],
-          ["Output", count(stats.tokens.output)],
-          stats.tokens.cacheRead > 0 && ["Cache Read", count(stats.tokens.cacheRead)],
-          stats.tokens.cacheWrite > 0 && ["Cache Write", count(stats.tokens.cacheWrite)],
-          ["Total", count(stats.tokens.total)],
+          ["New input", short.format(stats.tokens.input), count(stats.tokens.input)],
+          stats.tokens.cacheRead > 0 && [
+            "Read from the cache",
+            short.format(stats.tokens.cacheRead),
+            count(stats.tokens.cacheRead),
+          ],
+          stats.tokens.cacheWrite > 0 && [
+            "Written to the cache",
+            short.format(stats.tokens.cacheWrite),
+            count(stats.tokens.cacheWrite),
+          ],
+          ["Output", short.format(stats.tokens.output), count(stats.tokens.output)],
         ]}
       />
-      {(stats.cost > 0 || premium > 0) && (
+      {stats.tokens.cacheRead > 0 && (
+        <p className="text-xs text-pretty text-t3">
+          Each reply sends the conversation to the model again; what it had before comes from the
+          cache, which costs less than new input. So the cache's count grows with every reply.
+        </p>
+      )}
+      {tokensPerSecond !== null && (
         <Numbers
-          title="Cost"
-          rows={[
-            stats.cost > 0 && ["Total", stats.cost.toFixed(4)],
-            premium > 0 && ["Premium Requests", premium.toLocaleString()],
-          ]}
+          title="Last reply"
+          rows={[["Speed", `${tokensPerSecond.toFixed(1)} tokens a second`]]}
         />
       )}
+      <p className="text-xs text-pretty text-t3">
+        As omp's /session counts them: the messages in this chat's context now, and what they cost.
+      </p>
       {problem !== null && <p className="text-xs text-bad-ink">{problem}</p>}
     </>
   );
