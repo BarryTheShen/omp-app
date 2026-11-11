@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { ChatController } from "../../chat/controller";
+import { writeClipboard } from "../../clipboard";
 import { lastSeen } from "../../lastSeen";
 import { usePhone } from "../../phone";
 import { type DiskChange, FileViewer } from "./FileViewer";
@@ -633,9 +634,7 @@ export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProp
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => void trash(row.path)}>Delete</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => void navigator.clipboard?.writeText(row.path)}>
-          Copy path
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void writeClipboard(row.path)}>Copy path</DropdownMenuItem>
         <DropdownMenuItem
           disabled={chat === null}
           onClick={() => chat?.insertText(`@${row.path} `)}

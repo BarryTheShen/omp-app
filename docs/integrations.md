@@ -54,6 +54,10 @@ The host and the panel talk with `postMessage`. Every message is an object with 
 | host | `tool_result` | `callId` and `result`: `{ content: [{ type: "text", text } or { type: "image", data, mimeType }], isError? }`. |
 | panel | `tool_cancel` | `callId` of a call omp gave up: no answer is needed. |
 | panel | `credential` | `key`: the panel paired, and the host keeps this key. Only for `/lite?embed=1`. |
+| panel | `open` | `url`: an address to open outside the panel, the app's own page or the desktop app's `omp-app://` link, which a frame in an editor's webview may not open itself. |
+| host | `opened` | `url`: the host opened it. Without this answer within a second, the panel opens it as a page would. |
+| panel | `copy` | `id` and `text`: the browser's clipboard refused the panel (VS Code allows clipboard writes only for its own webview pages, not a page framed in one), so it asks the host to put the text in the clipboard. |
+| host | `copied` | `id` and `ok`: whether the text is in the clipboard. Without this answer within 2 seconds, the copy failed. A host copies only right after the person's click or key in the panel. |
 
 **`files`: the project open on the host's computer.** An editor on another computer than the app's server says which project is open: `files: { project, id }`, the project's name (64 characters at most) and an id the host derives from its folder (8 to 64 lowercase hex digits; the VS Code extension takes 16 of the SHA-256 of the folder's path). Only the first `hello` of a load counts. It names the project the host's tools reach; the panel's chats still run where the app's other chats run, in the app's folder on the server, with omp's own tools for the server's files and shell, so a chat in the panel works on both: the server's files with omp's tools, the project on the host's computer with the host's.
 
@@ -77,6 +81,9 @@ openPanel(options: PanelOptions): Panel
 | `params` | The address's parameters for the first paint (`theme`, `greeting`, `placeholder`, the look's colours). |
 | `chat` | The chat to open, as `onReady` named it before: a host that keeps one chat per tab or document gives it back, and the panel opens it again (the lite view's `?chat=<id>`). Left out, the panel starts a new chat. |
 | `onReady` | Called with `{ chat, tools }` when the panel shows a chat. |
+| `onNoAnswer` | Called once when the panel's page has not said it listens 10 seconds after the panel opened: the app is not at the address, cannot be reached from there, or does not let this host frame it. The frame stays, in case the page still comes. |
+| `onOpen` | Opens an address the panel asks to open outside it (`open`) and returns true; for a host whose frame may open no window or other app's link, as an editor's webview. |
+| `onCopy` | Puts text the panel copies in the clipboard and returns true; for a host whose frame may not let the panel write the clipboard, as VS Code's webview. The library calls it only right after the person's click or key in the panel (`copyAllowed`). |
 | `title` | The frame's name for screen readers. |
 
 The `Panel` it returns has `setSettings`, `setContext`, `setTools` and `close`, and the `frame` itself. `appAddressOf(typed)` checks an address a person typed: it gives `{ address }`, the origin, for an `https` address or a loopback `http` one with its port, and `{ problem }`, a sentence to show, for anything else.

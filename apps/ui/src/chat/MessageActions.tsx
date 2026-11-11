@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { writeClipboard } from "../clipboard";
 import { useLongPress } from "../longPress";
 import { usePhone } from "../phone";
 
@@ -47,7 +48,7 @@ export function MessageActions({
     return () => clearTimeout(timer);
   }, [copied]);
   const copy = (): void => {
-    void navigator.clipboard.writeText(text).then(() => setCopied(true));
+    void writeClipboard(text).then(() => setCopied(true));
   };
   if (phone) {
     return (

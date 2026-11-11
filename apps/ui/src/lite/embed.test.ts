@@ -159,6 +159,44 @@ describe("the lite view's end of the embed protocol", () => {
     await expect(endpoint.open("omp-app://open", 20)).resolves.toBe(false);
   });
 
+  test("asks the host to copy: true once it says it did, false when it could not, with no host, no answer in time, or once the view closes", async () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    const stop = endpoint.start();
+    // No hello yet: no host to ask.
+    await expect(endpoint.copy("const x = 1;", 20)).resolves.toBe(false);
+    receive(hello());
+    const asked = endpoint.copy("const x = 1;", 2_000);
+    const request = sent.at(-1);
+    expect(request).toMatchObject({
+      message: { ...envelope, type: "copy", text: "const x = 1;" },
+      origin: HOST,
+    });
+    const id = request?.message.id;
+    expect(typeof id).toBe("string");
+    let settled = false;
+    void asked.then(() => {
+      settled = true;
+    });
+    // An answer to another copy, or from another origin, is not this one's.
+    receive({ ...envelope, type: "copied", id: "another", ok: true });
+    receive({ ...envelope, type: "copied", id, ok: true }, "https://other.example");
+    await ticks();
+    expect(settled).toBe(false);
+    receive({ ...envelope, type: "copied", id, ok: true });
+    await expect(asked).resolves.toBe(true);
+    // A host that could not copy.
+    const refused = endpoint.copy("again", 2_000);
+    receive({ ...envelope, type: "copied", id: sent.at(-1)?.message.id, ok: false });
+    await expect(refused).resolves.toBe(false);
+    // A host that does not answer (an extension from before copying went through it): false once the wait is over.
+    await expect(endpoint.copy("silent", 20)).resolves.toBe(false);
+    // The view closing ends a copy still waiting.
+    const waiting = endpoint.copy("last", 2_000);
+    stop();
+    await expect(waiting).resolves.toBe(false);
+  });
+
   test("a panel whose host keeps its key signs in with the one its hello brings, and hands a new one to that host only", async () => {
     const { window, sent, receive } = frame();
     const endpoint = new EmbedEndpoint(window, true);

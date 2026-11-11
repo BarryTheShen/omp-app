@@ -9,6 +9,7 @@ import {
 import { ChevronDown, ChevronRight, Copy, ExternalLink } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { writeClipboard } from "../../clipboard";
 import { useShareLink } from "../../shares/link";
 import { fmtDuration } from "../../vendor/collab-web/lib/format";
 
@@ -264,7 +265,7 @@ function SharedRow({
           disabled={url === null}
           onClick={() => {
             if (url === null) return;
-            void navigator.clipboard.writeText(url).then(() => {
+            void writeClipboard(url).then(() => {
               setCopied(true);
               used();
               setTimeout(() => setCopied(false), 4_000);

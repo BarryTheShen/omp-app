@@ -102,6 +102,9 @@ const panel = openPanel({
   onNoAnswer: () => vscode.postMessage({ type: "no-answer" }),
   // VS Code's frames open no window or other app's link: the extension has VS Code open it.
   onOpen: async (url) => (await ask({ what: "open", url })) === true,
+  // VS Code lets only its own webview pages write the clipboard, not the app's page framed in this one: the extension
+  // has VS Code write it.
+  onCopy: async (text) => (await ask({ what: "copy", text })) === true,
 });
 
 window.addEventListener("message", (event: MessageEvent) => {

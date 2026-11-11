@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { ChatTarget } from "../chat/controller";
+import { writeClipboard } from "../clipboard";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
 import { usePhone } from "../phone";
@@ -684,9 +685,7 @@ export function TodoSection({
               className="ml-auto max-sm:h-11"
               onClick={() =>
                 attempt(
-                  navigator.clipboard
-                    .writeText(listMarkdown(shown, lists))
-                    .then(() => setCopied(true)),
+                  writeClipboard(listMarkdown(shown, lists)).then(() => setCopied(true)),
                   "copy the list",
                 )
               }

@@ -16,6 +16,10 @@
  * - **Opening outside the panel**: the full app, or the desktop app's `omp-app://` link, which a frame in an editor's
  *   webview may not open itself. The view asks with `open`; a host that opened it answers `opened` with the same
  *   address. A host that does not answer in time leaves it to the view, which opens it as a page would.
+ * - **Copying**: a frame in an editor's webview may not write the clipboard (VS Code allows it only for its own webview
+ *   pages, not the app framed in one). When the browser's clipboard refuses the view, it asks with `copy`; a host that
+ *   put the text in the clipboard answers `copied` with the same id and `ok: true`, one that could not with `ok: false`.
+ *   A host that does not answer in time leaves the copy failed. Hosts copy only right after the person's click or key.
  */
 import { z } from "zod";
 import { HostContext } from "./host-context";
@@ -26,6 +30,9 @@ export const EMBED_VERSION = 1;
 
 /** The most tools one host gives. */
 export const EMBED_TOOLS_MAX = 64;
+
+/** The most characters one `copy` carries: a long reply copied whole fits. */
+export const EMBED_COPY_MAX = 2_000_000;
 
 /** The look and the words a host sets; each one left out keeps what the address or the app set. */
 export const EmbedSettings = z.strictObject({
@@ -109,6 +116,13 @@ export const EmbedHostMessage = z.discriminatedUnion("type", [
     result: EmbedToolResult,
   }),
   z.strictObject({ ...envelope, type: z.literal("opened"), url: z.string().min(1).max(4_000) }),
+  /** The host's answer to `copy`: whether the text is in the clipboard. */
+  z.strictObject({
+    ...envelope,
+    type: z.literal("copied"),
+    id: z.string().min(1).max(100),
+    ok: z.boolean(),
+  }),
 ]);
 export type EmbedHostMessage = z.infer<typeof EmbedHostMessage>;
 
@@ -133,7 +147,9 @@ export type EmbedAppBody =
   /** The panel paired: the host keeps this key, out of any page's reach, and gives it back in each `hello`. */
   | { readonly type: "credential"; readonly key: string }
   /** Open this address outside the panel: the app's own page, or the desktop app's `omp-app://` link. */
-  | { readonly type: "open"; readonly url: string };
+  | { readonly type: "open"; readonly url: string }
+  /** Put this text in the clipboard: the browser's clipboard refused the view; the host answers `copied`. */
+  | { readonly type: "copy"; readonly id: string; readonly text: string };
 
 /** What the lite view sends its host. */
 export type EmbedAppMessage = EmbedAppBody & {

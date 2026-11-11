@@ -777,6 +777,22 @@ const VSCODE_RIGHT_TOUR: Tour = {
   ],
 };
 
+/** Copying in VS Code's panel, through VS Code (2026-11-11). */
+const VSCODE_COPY_TOUR: Tour = {
+  id: "vscode-copy-2026-11-11",
+  title: "Copy in VS Code's panel",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Copy works in VS Code",
+      text: "In VS Code's panel, a code block's <b>Copy</b>, a message's and the other Copy buttons now put the text in your clipboard: VS Code lets only its own pages write the clipboard, so the panel hands the text to VS Code. It needs this release's <b>omp-app-vscode</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** Another server, in Settings → App → Server; the banner's Change server and the desktop's page lead there (2026-11-09). */
 const CHANGE_SERVER_TOUR: Tour = {
   id: "change-server-2026-11-09",
@@ -2880,6 +2896,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-vscode-copy",
+    when: "2026-11-11T15:01:00-06:00",
+    summary:
+      "Copy works in VS Code's panel: a code block's Copy, a message's and the others said Couldn't copy, because VS Code lets only its own pages write the clipboard. The panel now hands the text to VS Code, which puts it in your clipboard. It needs this release's omp-app-vscode.",
+    tours: [VSCODE_COPY_TOUR],
+  },
   {
     id: "2026-11-11-secrets",
     when: "2026-11-11T12:35:00-06:00",

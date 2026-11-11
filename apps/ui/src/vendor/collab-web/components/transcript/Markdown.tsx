@@ -15,6 +15,14 @@ import { secretPlaceholderExtension } from "./secretPlaceholders";
  */
 export const FileLinkContext = createContext<((href: string) => void) | null>(null);
 
+/**
+ * Writes a code block's text when its Copy is clicked: the browser's clipboard, unless the app gives its own (omp-app's
+ * `writeClipboard`, which goes through the panel's host where the browser's clipboard refuses the page: VS Code's).
+ */
+export const CodeCopyContext = createContext<(text: string) => Promise<void>>((text) =>
+	navigator.clipboard.writeText(text),
+);
+
 function unescapeHtml(raw: string): string {
 	const parseCodePoint = (value: number): string => {
 		if (Number.isFinite(value) && value >= 0 && value <= 0x10ffff) {
@@ -114,9 +122,13 @@ function renderMarkdown(text: string): string {
 
 /**
  * One handler on the rendered Markdown, as its blocks are HTML, not React elements: a link to a file opens it through
- * `openFile` (#17), and a code block's Copy button copies the block's text, the button saying so for a moment.
+ * `openFile` (#17), and a code block's Copy button copies the block's text with `copy`, the button saying so for a moment.
  */
-function clickIn(event: MouseEvent<HTMLDivElement>, openFile: ((href: string) => void) | null): void {
+function clickIn(
+	event: MouseEvent<HTMLDivElement>,
+	openFile: ((href: string) => void) | null,
+	copy: (text: string) => Promise<void>,
+): void {
 	const target = event.target instanceof Element ? event.target : null;
 	const fileLink = target?.closest("a[data-file]");
 	if (fileLink instanceof HTMLAnchorElement) {
@@ -128,7 +140,7 @@ function clickIn(event: MouseEvent<HTMLDivElement>, openFile: ((href: string) =>
 	const button = target?.closest("button[data-copy-code]");
 	if (!(button instanceof HTMLButtonElement)) return;
 	const text = button.parentElement?.querySelector("code")?.textContent ?? "";
-	void navigator.clipboard.writeText(text.replace(/\n$/, "")).then(
+	void copy(text.replace(/\n$/, "")).then(
 		() => sayForAMoment(button, "Copied"),
 		() => sayForAMoment(button, "Couldn't copy"),
 	);
@@ -144,9 +156,10 @@ function sayForAMoment(button: HTMLButtonElement, said: string): void {
 export const Markdown = memo(function Markdown({ text }: { text: string }): ReactNode {
 	const html = useMemo(() => renderMarkdown(text), [text]);
 	const openFile = use(FileLinkContext);
+	const copy = use(CodeCopyContext);
 	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on links and the code blocks' Copy buttons, which take the keyboard themselves
 	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
-	return <div className="tr-md" onClick={(event) => clickIn(event, openFile)} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div className="tr-md" onClick={(event) => clickIn(event, openFile, copy)} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 /**
@@ -259,7 +272,8 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { tex
 		return rendered.html;
 	}, [text]);
 	const openFile = use(FileLinkContext);
+	const copy = use(CodeCopyContext);
 	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on links and the code blocks' Copy buttons, which take the keyboard themselves
 	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
-	return <div className="tr-md" onClick={(event) => clickIn(event, openFile)} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div className="tr-md" onClick={(event) => clickIn(event, openFile, copy)} dangerouslySetInnerHTML={{ __html: html }} />;
 });

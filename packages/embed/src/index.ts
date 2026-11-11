@@ -88,6 +88,13 @@ export interface PanelOptions {
    * opens it itself.
    */
   readonly onOpen?: (url: string) => boolean | Promise<boolean>;
+  /**
+   * Puts text the panel copies in the clipboard, for a host whose frame may not let the panel write it (an editor's
+   * webview: VS Code allows clipboard writes only for its own webview pages, not the app framed in one); returns true
+   * once it did. Called only right after the person's click or key (`copyAllowed`). Left out, the panel's copies use
+   * the browser's clipboard alone.
+   */
+  readonly onCopy?: (text: string) => boolean | Promise<boolean>;
   /** The frame's name for screen readers. */
   readonly title?: string;
 }
@@ -155,6 +162,29 @@ const failed = (text: string): EmbedToolResult => ({
   content: [{ type: "text", text }],
   isError: true,
 });
+
+/** The most characters one `copy` carries: the protocol's `EMBED_COPY_MAX`, kept here as the library takes no code from the contracts. */
+export const COPY_MAX = 2_000_000;
+
+/** The browser's transient activation, as `navigator.userActivation` gives it. */
+export interface Activation {
+  readonly isActive: boolean;
+}
+
+/**
+ * Whether the panel may have text copied now: the person's click or key in it still counts (the browser's transient
+ * activation, which a click in the panel's frame gives this page too), so the panel cannot fill the clipboard unasked.
+ * A browser that does not say (`null`) lets it, as its own clipboard does.
+ */
+export function copyAllowed(
+  text: unknown,
+  activation: Activation | null = (
+    globalThis.navigator as { userActivation?: Activation } | undefined
+  )?.userActivation ?? null,
+): text is string {
+  if (typeof text !== "string" || text.length > COPY_MAX) return false;
+  return activation === null || activation.isActive;
+}
 
 /** The key the host keeps: null when it keeps none, its read fails, or the read takes longer than `KEY_WAIT_MS`. */
 export async function keptKey(keys: KeyKeeper | undefined): Promise<string | null> {
@@ -319,6 +349,22 @@ export function openPanel(options: PanelOptions): Panel {
             if (opened) post({ type: "opened", url });
           })
           .catch(() => undefined);
+        return;
+      }
+      case "copy": {
+        const { id, text } = message;
+        if (typeof id !== "string") return;
+        const copier = options.onCopy;
+        if (copier === undefined || !copyAllowed(text)) {
+          post({ type: "copied", id, ok: false });
+          return;
+        }
+        void Promise.resolve()
+          .then(() => copier(text))
+          .then(
+            (copied) => post({ type: "copied", id, ok: copied === true }),
+            () => post({ type: "copied", id, ok: false }),
+          );
         return;
       }
     }

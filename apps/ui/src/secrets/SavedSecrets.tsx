@@ -13,8 +13,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { writeClipboard } from "../clipboard";
 import { AddSecretDialog } from "./AddSecretDialog";
-import { copyFromServer, copySecret, useSecrets } from "./secrets";
+import { copySecret, useSecrets } from "./secrets";
 
 /** A finger's 44 pt on a phone or tablet. */
 const TOUCH = "max-sm:h-11 tablet:h-11";
@@ -145,8 +146,7 @@ export function SavedSecrets({ client }: { readonly client: AppClient }): ReactN
                     className={TOUCH}
                     onClick={() =>
                       void act(async () => {
-                        const placeholder = secret.placeholder ?? "";
-                        await copyFromServer(async () => placeholder);
+                        await writeClipboard(secret.placeholder ?? "");
                         return `${secret.name}'s placeholder copied: paste it into a message.`;
                       })
                     }

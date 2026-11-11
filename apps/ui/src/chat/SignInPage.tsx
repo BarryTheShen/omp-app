@@ -2,6 +2,7 @@ import type { SignInLink } from "@omp-app/contracts/chat-host";
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { writeClipboard } from "../clipboard";
 import { signInHref } from "./signInHref";
 
 /**
@@ -45,7 +46,7 @@ export function SignInPage({
           size="sm"
           variant="outline"
           onClick={() => {
-            navigator.clipboard.writeText(link.url).then(
+            writeClipboard(link.url).then(
               () => setCopied("copied"),
               () => setCopied("failed"),
             );

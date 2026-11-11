@@ -20,6 +20,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { writeClipboard } from "../../clipboard";
 import { useSidewaysRow } from "../../sidewaysRow";
 
 const failureText = (failure: unknown): string =>
@@ -414,7 +415,7 @@ function EdgeSection({
               size="sm"
               variant="ghost"
               onClick={() => {
-                void navigator.clipboard.writeText(edge.link).then(() => {
+                void writeClipboard(edge.link).then(() => {
                   setCopied(true);
                   setTimeout(() => setCopied(false), 3_000);
                 });

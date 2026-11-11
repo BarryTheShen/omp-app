@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "../../btw/btw";
 import type { ChatController } from "../../chat/controller";
+import { writeClipboard } from "../../clipboard";
 import { isImeEnter } from "../../keys/ime";
 import { useWaiting } from "../../questions/waiting";
 import {
@@ -362,8 +363,7 @@ function BtwHistory({ controller }: { readonly controller: ChatController }): Re
     const text = copyText(current);
     if (text === undefined) return;
     const id = current.id;
-    navigator.clipboard
-      .writeText(text)
+    writeClipboard(text)
       .then(() => setCopiedId(id))
       .catch((failure: unknown) =>
         setProblem(`Could not copy the answer: ${failureText(failure)}`),

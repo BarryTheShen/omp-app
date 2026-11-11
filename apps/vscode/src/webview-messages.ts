@@ -20,7 +20,12 @@ export type Question =
   | { readonly what: "chat"; readonly chat: string }
   | { readonly what: "tool"; readonly name: string; readonly args: Record<string, unknown> }
   /** Open an address outside VS Code (the full app, the desktop app's link); the answer says whether VS Code did. */
-  | { readonly what: "open"; readonly url: string };
+  | { readonly what: "open"; readonly url: string }
+  /**
+   * Put text the app copied in the clipboard: VS Code allows clipboard writes only for its own webview pages, not the
+   * app's page framed in this one. The answer says whether VS Code did.
+   */
+  | { readonly what: "copy"; readonly text: string };
 
 export type ToExtension =
   | ({ readonly type: "ask"; readonly id: number } & Question)

@@ -470,6 +470,9 @@ export class ChatPanel implements vscode.Disposable {
         // Only the app's own pages (the full app) and the desktop app's `omp-app://` link; VS Code says whether it did.
         if (!opensOutside(question.url, new URL(app).origin)) return false;
         return vscode.env.openExternal(vscode.Uri.parse(question.url));
+      case "copy":
+        await vscode.env.clipboard.writeText(question.text);
+        return true;
     }
   }
 

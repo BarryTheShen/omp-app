@@ -232,6 +232,23 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
         await expect(said).toContainText("ran-in-vscode");
         await window.screenshot({ path: testInfo.outputPath("4-done.png") });
 
+        // Copying: VS Code lets only its own webview pages write the clipboard, not the app's page framed in this one,
+        // so the panel hands the text to the extension, which has VS Code put it in the clipboard.
+        await send("stream_code");
+        const block = lite.locator(".tr-code").last();
+        await expect(block).toContainText("export const answer = sum([1, 2, 3]);", {
+          timeout: 60_000,
+        });
+        const code = ((await block.locator("code").textContent()) ?? "").replace(/\n$/, "");
+        expect(code.startsWith("export function sum(values: number[]): number {")).toBe(true);
+        await vscode.evaluate(({ clipboard }) => clipboard.writeText("not copied yet"));
+        const copy = block.getByRole("button", { name: "Copy code" });
+        await copy.click();
+        await expect(copy).toHaveText("Copied");
+        await expect
+          .poll(() => vscode.evaluate(({ clipboard }) => clipboard.readText()))
+          .toBe(code);
+
         // The arrow and Open in the desktop app: VS Code's frames may open no window or other app's link, so the panel
         // asks the extension, and VS Code hands each to the system's opener; the panel stays on the chat.
         const handed = async (): Promise<string[]> =>

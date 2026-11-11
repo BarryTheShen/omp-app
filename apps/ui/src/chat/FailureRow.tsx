@@ -1,6 +1,7 @@
 import { Clock, Copy, Replace, RotateCcw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { writeClipboard } from "../clipboard";
 
 /**
  * When a stopped chat continues by itself, in the reader's own clock: the time alone on the same day (`1:51 AM`), with
@@ -45,7 +46,7 @@ export function FailureRow({
   const long = error.length > 280;
   const continuing = latest && continuesAt !== null;
   const copy = (): void => {
-    navigator.clipboard.writeText(error).then(
+    writeClipboard(error).then(
       () => setCopied("copied"),
       () => setCopied("failed"),
     );

@@ -1,4 +1,5 @@
 import {
+  EMBED_COPY_MAX,
   type EmbedAppBody,
   type EmbedFiles,
   EmbedHostMessage,
@@ -68,6 +69,9 @@ export const HOST_HELLO_WAIT_MS = 3_000;
 /** How long the view waits for the host to say it opened an address, before it opens it itself. */
 export const HOST_OPEN_WAIT_MS = 1_000;
 
+/** How long the view waits for the host to say it copied: the host asks its editor, so longer than `open`. */
+export const HOST_COPY_WAIT_MS = 2_000;
+
 export class EmbedEndpoint {
   readonly #window: EmbedWindow;
   #state: EmbedState = EMPTY;
@@ -77,6 +81,8 @@ export class EmbedEndpoint {
   readonly #waiting = new Map<string, Waiting>();
   /** The addresses the host was asked to open, each with what hears its `opened`. */
   readonly #opening = new Map<string, () => void>();
+  /** The copies the host was asked for, each with what hears its `copied`. */
+  readonly #copying = new Map<string, (ok: boolean) => void>();
   /** The key the first `hello` brought (null when it brought none), once it came. */
   readonly #hello = Promise.withResolvers<string | null>();
   /** The owner name of this page's tool registrations: one per page load. */
@@ -103,6 +109,7 @@ export class EmbedEndpoint {
       for (const waiting of this.#waiting.values()) waiting.resolve(NO_ANSWER);
       this.#waiting.clear();
       this.#opening.clear();
+      for (const done of [...this.#copying.values()]) done(false);
     };
   }
 
@@ -167,6 +174,9 @@ export class EmbedEndpoint {
       case "opened":
         this.#opening.get(message.url)?.();
         return;
+      case "copied":
+        this.#copying.get(message.id)?.(message.ok);
+        return;
     }
   }
 
@@ -228,6 +238,26 @@ export class EmbedEndpoint {
       const timer = setTimeout(() => done(false), waitMs);
       this.#opening.set(url, answered);
       this.#post({ type: "open", url });
+    });
+  }
+
+  /**
+   * Asks the host to put `text` in the clipboard (`copy`), for a view whose own clipboard writes are refused (VS Code
+   * allows them only for its own webview pages): true once the host says it did; false when no host said hello, the
+   * host could not, the text is longer than a copy may be, or no answer comes in `waitMs`.
+   */
+  copy(text: string, waitMs = HOST_COPY_WAIT_MS): Promise<boolean> {
+    if (this.#origin === null || text.length > EMBED_COPY_MAX) return Promise.resolve(false);
+    const id = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const done = (ok: boolean): void => {
+        clearTimeout(timer);
+        this.#copying.delete(id);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => done(false), waitMs);
+      this.#copying.set(id, done);
+      this.#post({ type: "copy", id, text });
     });
   }
 
