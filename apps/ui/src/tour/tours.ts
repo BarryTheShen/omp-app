@@ -890,6 +890,22 @@ const EARLIER_MESSAGES_TOUR: Tour = {
   ],
 };
 
+/** On an iPhone or an iPad, a swipe up stops at the top of what is loaded (2026-11-11). */
+const SWIPE_STOPS_TOUR: Tour = {
+  id: "swipe-stops-2026-11-11",
+  title: "A swipe up a long chat on an iPhone",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "It stops at what is loaded",
+      text: "On an iPhone or an iPad, a swipe up a long chat stops at the top of the messages loaded, where the top says <b>Loading earlier messages…</b>. They go in as soon as the scroll rests, with your place kept, and the next swipe goes on.",
+      action: next,
+    },
+  ],
+};
+
 /** A side panel in a narrow window: the chat list steps aside so the chat keeps its room (2026-11-10). */
 const LIST_STEPS_ASIDE_TOUR: Tour = {
   id: "list-steps-aside-2026-11-10",
@@ -2847,6 +2863,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-swipe-stops",
+    when: "2026-11-11T10:52:00-06:00",
+    summary:
+      "On an iPhone or an iPad, a swipe up a long chat stops at the top of the messages loaded, where the top says Loading earlier messages…; they go in as soon as the scroll rests, with your place kept, and the next swipe goes on. A fling no longer runs far past them into blank space.",
+    tours: [SWIPE_STOPS_TOUR],
+  },
   {
     id: "2026-11-11-this-chat",
     when: "2026-11-11T08:07:00-06:00",

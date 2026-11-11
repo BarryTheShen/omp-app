@@ -152,11 +152,6 @@ export interface ChatSnapshot {
   readonly process: ProcessStatus | null;
   /** Whether the session file holds entries older than the first one shown. */
   readonly hasOlder: boolean;
-  /**
-   * How many of the branch's entries are older than the first one shown, as the server counted them with the last older
-   * window read; null before one is read.
-   */
-  readonly olderEntries: number | null;
   /** The read of the next older window: under way, or failed (the transcript offers Try again). */
   readonly olderLoad: OlderLoad;
   readonly model: ChatModel | null;
@@ -245,7 +240,6 @@ const EMPTY: ChatSnapshot = {
   phase: "connecting",
   process: null,
   hasOlder: false,
-  olderEntries: null,
   olderLoad: "idle",
   model: null,
   thinkingLevel: null,
@@ -408,7 +402,6 @@ export class ChatStore {
   /** Messages taken from events since the file's window was set that the window did not hold (no omp entry id yet). */
   #beyondWindow = false;
   #hasOlder = false;
-  #olderEntries: number | null = null;
   #olderLoad: OlderLoad = "idle";
   #stream: AssistantMessage | null = null;
   #streamDone = false;
@@ -485,8 +478,6 @@ export class ChatStore {
     }
     this.#keys = new Set(this.#entries.map(messageKey).filter((key) => key !== null));
     this.#hasOlder = kept.length > 0 ? this.#hasOlder : hasOlder;
-    // A window read afresh starts the count again: none is known until an older window says it.
-    if (kept.length === 0) this.#olderEntries = null;
     // A window read again came over a working link: an older window that failed may be read again.
     if (this.#olderLoad === "failed") this.#olderLoad = "idle";
     this.#beyondWindow = false;
@@ -503,11 +494,8 @@ export class ChatStore {
     return this.#beyondWindow;
   }
 
-  /**
-   * Adds an older window of the session file in front of the transcript; the read of it has ended. `olderEntries`: the
-   * branch's entries older than it, when the server counted them.
-   */
-  prependWindow(older: readonly SessionEntry[], hasOlder: boolean, olderEntries?: number): void {
+  /** Adds an older window of the session file in front of the transcript; the read of it has ended. */
+  prependWindow(older: readonly SessionEntry[], hasOlder: boolean): void {
     const shown = new Set(this.#entries.map((entry) => entry.id));
     const fresh = older.filter((entry) => !shown.has(entry.id));
     for (const entry of fresh) {
@@ -516,7 +504,6 @@ export class ChatStore {
     }
     this.#entries = [...fresh, ...this.#entries];
     this.#hasOlder = hasOlder;
-    this.#olderEntries = olderEntries ?? null;
     this.#olderLoad = "idle";
     this.#publish();
   }
@@ -1283,7 +1270,6 @@ export class ChatStore {
       phase: this.#phase,
       process: this.#process,
       hasOlder: this.#hasOlder,
-      olderEntries: this.#olderEntries,
       olderLoad: this.#olderLoad,
       model: this.#model,
       thinkingLevel: this.#thinkingLevel,

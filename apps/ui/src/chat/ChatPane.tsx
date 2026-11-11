@@ -57,10 +57,7 @@ export function ChatPane({
   readonly onComposer?: (handle: ComposerHandle | null) => void;
 }): ReactNode {
   const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
-  const loadOlder = useCallback(
-    (windows: number) => void controller.loadOlder(windows),
-    [controller],
-  );
+  const loadOlder = useCallback(() => void controller.loadOlder(), [controller]);
   // Stable, so the role track's timer is not restarted by every render while omp streams.
   const hideRoleTrack = useCallback(
     (id: number) => controller.store.hideRoleTrack(id),

@@ -110,17 +110,6 @@ const keptBtw = (threadId: string) => lastSeen<readonly BtwRecord[]>(`btw:${thre
 /** An older window, read as the reader nears the top: a phone's as small as its first, for the same reason (#2768). */
 const OLDER_WINDOW_BYTES = 1024 * 1024;
 const PHONE_OLDER_WINDOW_BYTES = 128 * 1024;
-/**
- * The most one read of older entries takes: a reader far up the spare room above an iPhone's first message has the read
- * sized to reach them (the transcript asks), as one read in place of one window after another.
- */
-const OLDER_READ_MOST_BYTES = 1024 * 1024;
-
-/** How many older windows one read may take on this device. */
-export function olderReadReach(): number {
-  const window = isPhone() ? PHONE_OLDER_WINDOW_BYTES : OLDER_WINDOW_BYTES;
-  return Math.max(1, Math.floor(OLDER_READ_MOST_BYTES / window));
-}
 
 /** A chat's usage for the side panel: omp's session statistics (its `/session` numbers) and the last reply's speed. */
 export interface ChatUsage {
@@ -1685,13 +1674,12 @@ export class ChatController {
   }
 
   /**
-   * Reads the next older windows of the session file into the transcript: `windows` of them as one read, up to what one
-   * read may take (`olderReadReach`). The transcript shows the read under way, and a read that failed with Try again;
-   * one the link to the app's server dropped under is read again by the transcript once the link is back
-   * (`#olderWhenRelinked`), as the phone's app back from the background has a link that died. It never rejects: the
-   * pane calls it from a scroll.
+   * Reads the next older window of the session file into the transcript. The transcript shows the read under way, and a
+   * read that failed with Try again; one the link to the app's server dropped under is read again by the transcript once
+   * the link is back (`#olderWhenRelinked`), as the phone's app back from the background has a link that died. It never
+   * rejects: the pane calls it from a scroll.
    */
-  async loadOlder(windows = 1): Promise<void> {
+  async loadOlder(): Promise<void> {
     const sessionFile = this.#sessionFile;
     const before = this.store.oldestId;
     if (
@@ -1709,19 +1697,11 @@ export class ChatController {
       const window = await this.client.port(SessionFileStore).readEntryWindow({
         sessionFile,
         before: before as EntryId,
-        byteBudget:
-          (isPhone() ? PHONE_OLDER_WINDOW_BYTES : OLDER_WINDOW_BYTES) *
-          Math.min(olderReadReach(), Math.max(1, Math.floor(windows))),
-        // How many entries are left before it: an iPhone's transcript sizes the room above its first message by it.
-        countOlder: true,
+        byteBudget: isPhone() ? PHONE_OLDER_WINDOW_BYTES : OLDER_WINDOW_BYTES,
       });
       this.#loadingOlder = false;
       if (!this.#disposed)
-        this.store.prependWindow(
-          window.entries as unknown as SessionEntry[],
-          window.hasOlder,
-          window.olderEntries,
-        );
+        this.store.prependWindow(window.entries as unknown as SessionEntry[], window.hasOlder);
     } catch (failure) {
       this.#loadingOlder = false;
       if (this.#disposed) return;

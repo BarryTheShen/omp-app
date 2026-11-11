@@ -281,8 +281,6 @@ export interface TopState {
   /** Entries drawn, and entries read. */
   readonly shown: number;
   readonly read: number;
-  /** Windows of entries read so far. */
-  readonly windows: number;
   /** The reader's scroll has not rested (`useReaderRest`). */
   readonly moving: boolean;
   /** The rests so far: each sets the spare room again. */
@@ -346,7 +344,6 @@ function topSample(
     older: state.older ? 1 : 0,
     shown: state.shown,
     read: state.read,
-    windows: state.windows,
     moving: state.moving ? 1 : 0,
     rests: state.rests,
     over: internals._reportedOverscroll === true ? 1 : 0,
