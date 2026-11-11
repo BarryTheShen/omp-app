@@ -153,13 +153,19 @@ function dollarsOf(cost: number): string {
 /** How often a chat's numbers are read again while its turn runs: omp's counts grow with each finished message. */
 const DURING_TURN_EVERY_MS = 10_000;
 
+/**
+ * How often a chat's whole history is read again while its turn runs: each read has omp's statistics page read the
+ * chats that changed, a few seconds of its work, and a long-running chat may never end its turn while you look.
+ */
+const WHOLE_DURING_TURN_EVERY_MS = 60_000;
+
 /** A chat's whole history in omp's statistics, or why it could not be read. */
 type WholeChat = { readonly chat: StatsChat | null } | { readonly problem: string };
 
 /**
  * The chat's whole history (#19), its subagents' included, from omp's statistics: omp's /session counts only the
- * messages in the chat's context, which a compaction shortens. Read when it shows and after each turn; omp's statistics
- * page reads the chats first, which can take a minute the first time.
+ * messages in the chat's context, which a compaction shortens. Read when it shows, every minute while a turn runs and
+ * when a turn ends; omp's statistics page reads the chats first, which can take a minute the first time.
  */
 function useWholeChat(
   client: AppClient,
@@ -170,17 +176,33 @@ function useWholeChat(
     null,
   );
   useEffect(() => {
-    if (file === undefined || file === "" || working) return;
+    if (file === undefined || file === "") return;
     let alive = true;
-    client
-      .port(StatsPort)
-      .chat({ file })
-      .then(
-        ({ chat }) => alive && setRead({ file, whole: { chat } }),
-        (failure: unknown) => alive && setRead({ file, whole: { problem: failureText(failure) } }),
-      );
+    let reading = false;
+    const readWhole = () => {
+      if (reading) return;
+      reading = true;
+      client
+        .port(StatsPort)
+        .chat({ file })
+        .then(
+          ({ chat }) => alive && setRead({ file, whole: { chat } }),
+          (failure: unknown) =>
+            alive && setRead({ file, whole: { problem: failureText(failure) } }),
+        )
+        .finally(() => {
+          reading = false;
+        });
+    };
+    readWhole();
+    const timer = working
+      ? window.setInterval(() => {
+          if (document.visibilityState === "visible") readWhole();
+        }, WHOLE_DURING_TURN_EVERY_MS)
+      : undefined;
     return () => {
       alive = false;
+      window.clearInterval(timer);
     };
   }, [client, file, working]);
   return read !== null && read.file === file ? read.whole : undefined;

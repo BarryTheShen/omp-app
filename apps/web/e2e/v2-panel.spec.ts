@@ -214,16 +214,21 @@ realTest.describe("new UI side panel", () => {
       await expect(boxes(page).first()).toHaveAttribute("placeholder", /^Message /, {
         timeout: 120_000,
       });
-      // The fake model streams this reply for about a minute.
+      // A turn finished first, so omp's statistics hold the chat; then the fake model streams a reply for about a minute.
+      await send(page, 0, "hello", 1);
       await boxes(page).first().fill("stream_steady");
       await boxes(page).first().press("Enter");
       const stop = page.getByRole("button", { name: "Stop" });
       await expect(stop).toBeVisible({ timeout: 60_000 });
 
-      // Usage opened during the turn, on a page that never read this chat: its numbers come within a read.
+      // Usage opened during the turn, on a page that never read this chat: its numbers come within a read, the whole
+      // chat's too (a chat in a long turn, as a long-running agent's is, would otherwise never show them).
       await page.keyboard.press("Control+Alt+KeyB");
       const user = figure(page, "In its context now", "Your messages");
-      await expect(user).toHaveText("1", { timeout: 20_000 });
+      await expect(user).toHaveText("2", { timeout: 20_000 });
+      await expect(figure(page, "The whole chat", "omp's replies")).toHaveText("1", {
+        timeout: 30_000,
+      });
       await expect(stop).toBeVisible();
 
       expect(realApp.problems).toEqual([]);
