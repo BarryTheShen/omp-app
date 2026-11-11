@@ -21,7 +21,7 @@ import {
   UsagePause,
   type UsagePauseDeps,
   type UsagePauseKept,
-  usageBudgetsFile,
+  usagePauseExtrasFile,
   usagePauseFile,
 } from "./usage-pause";
 
@@ -809,24 +809,84 @@ describe("a chat's own budget (#14)", () => {
     expect(sent).toEqual(["pause A", "resume A"]);
   });
 
-  test("budgets are kept in a file of their own and outlive a restart", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "omp-app-usage-budgets-"));
+  test("budgets and rules' scopes are kept in a file of their own and outlive a restart", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omp-app-usage-extras-"));
     try {
-      const path = join(dir, "usage-budgets.json");
-      const first = setup(NOTHING_KEPT, undefined, usageBudgetsFile(path));
+      const path = join(dir, "usage-pause-extras.json");
+      const first = setup(NOTHING_KEPT, undefined, usagePauseExtrasFile(path));
       await first.rule.restore();
       await first.rule.setBudget(A, FOLDER, 40);
+      await first.rule.setRuleScope("all-anthropic", { everyChat: true, provider: "anthropic" });
       expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
         version: 1,
         budgets: { [A]: { percent: 40, folder: FOLDER } },
+        scopes: { "all-anthropic": { everyChat: true, provider: "anthropic" } },
       });
 
-      const again = setup(NOTHING_KEPT, undefined, usageBudgetsFile(path));
+      const again = setup(NOTHING_KEPT, undefined, usagePauseExtrasFile(path));
       await again.rule.restore();
       const kept: [ThreadId, UsageBudget][] = [[A, { percent: 40, folder: FOLDER }]];
       expect([...again.rule.budgets()]).toEqual(kept);
+      expect([...again.rule.scopes()]).toEqual([
+        ["all-anthropic", { everyChat: true, provider: "anthropic" }],
+      ]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a rule for every chat (#14)", () => {
+  const everyChat = (id: string, fiveHourAt: number): UsageRule => ({
+    id,
+    name: id,
+    chats: [],
+    fiveHourAt,
+    weeklyAt: null,
+    paceAt: null,
+    hours: null,
+    enabled: true,
+  });
+
+  test("a rule for every chat on one provider pauses each running chat on it, one started later too, and none on another", async () => {
+    const live: ThreadId[] = [A, B];
+    const { timer, running, sent, rule } = setup(NOTHING_KEPT, undefined, { chats: () => live });
+    running.set(A, "anthropic");
+    running.set(B, "openai-codex");
+    await rule.setRule(everyChat("all-anthropic", 90));
+    await rule.setRuleScope("all-anthropic", { everyChat: true, provider: "anthropic" });
+    const reset = timer.now + HOUR;
+    const read = (anthropic: number) =>
+      usage({
+        anthropic: { fiveHour: anthropic, resetsAt: reset },
+        "openai-codex": { fiveHour: 99, resetsAt: reset },
+      });
+
+    await rule.onUsage(read(89));
+    expect(sent).toEqual([]);
+    await rule.onUsage(read(90));
+    expect(sent).toEqual(["pause A"]);
+    // C starts later on anthropic: the next reading pauses it too.
+    running.set(C, "anthropic");
+    live.push(C);
+    await rule.onUsage(read(91));
+    expect(sent).toEqual(["pause A", "pause C"]);
+
+    // Back to the chats it lists, which are none: both go on at once.
+    await rule.setRuleScope("all-anthropic", { everyChat: false, provider: null });
+    expect(sent).toEqual(["pause A", "pause C", "resume A", "resume C"]);
+    expect([...rule.scopes()]).toEqual([]);
+  });
+
+  test("removing a rule for every chat continues the chats it held and forgets its scope", async () => {
+    const { timer, running, sent, rule } = setup(NOTHING_KEPT, undefined, { chats: () => [A] });
+    running.set(A, "anthropic");
+    await rule.setRule(everyChat("all", 50));
+    await rule.setRuleScope("all", { everyChat: true, provider: null });
+    await rule.onUsage(usage({ anthropic: { fiveHour: 60, resetsAt: timer.now + HOUR } }));
+    expect(sent).toEqual(["pause A"]);
+    await rule.removeRule("all");
+    expect(sent).toEqual(["pause A", "resume A"]);
+    expect([...rule.scopes()]).toEqual([]);
   });
 });

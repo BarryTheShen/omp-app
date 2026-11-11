@@ -395,6 +395,37 @@ export const UsageBudgetsResult = z.strictObject({
 });
 export type UsageBudgetsResult = z.infer<typeof UsageBudgetsResult>;
 
+/**
+ * Who a usage rule pauses (#14): the chats it lists, or with `everyChat` every chat the server runs, those started later
+ * too; `provider` keeps it to the chats running that provider's models (null: any provider).
+ */
+export const UsageRuleScope = z.strictObject({
+  everyChat: z.boolean(),
+  provider: z.string().min(1).max(128).nullable(),
+});
+export type UsageRuleScope = z.infer<typeof UsageRuleScope>;
+
+/** Sets who a usage rule pauses (#14); a rule with no scope set pauses the chats it lists, on any provider. */
+export const SetUsageRuleScopeArgs = z.strictObject({
+  id: z.string().min(1).max(64),
+  everyChat: z.boolean(),
+  provider: z.string().min(1).max(128).nullable(),
+});
+export type SetUsageRuleScopeArgs = z.infer<typeof SetUsageRuleScopeArgs>;
+
+/** The usage rules' scopes, by rule (#14): a rule left out pauses the chats it lists, on any provider. */
+export const UsageRuleScopesResult = z.strictObject({
+  scopes: z.array(SetUsageRuleScopeArgs).max(200),
+});
+export type UsageRuleScopesResult = z.infer<typeof UsageRuleScopesResult>;
+
+/** Pauses or continues, by hand, every running chat whose model is the provider's (#14). */
+export const PauseProviderArgs = z.strictObject({
+  providerId: z.string().min(1).max(128),
+  paused: z.boolean(),
+});
+export type PauseProviderArgs = z.infer<typeof PauseProviderArgs>;
+
 /** Chats a page lists as running before omp has written their file, and whose first message another page sent (#2825). */
 export const FirstPromptsArgs = z.strictObject({ threadIds: z.array(ThreadId).max(100) });
 export type FirstPromptsArgs = z.infer<typeof FirstPromptsArgs>;
@@ -448,6 +479,12 @@ export const ChatSessionPort = definePort({
     usageBudgets: { args: z.strictObject({}), result: UsageBudgetsResult },
     /** Sets or removes a chat's own budget; it is judged at once (#14). */
     setUsageBudget: { args: SetUsageBudgetArgs, result: z.null() },
+    /** Who each usage rule pauses: its chats, or every chat, on any provider or one (#14). */
+    usageRuleScopes: { args: z.strictObject({}), result: UsageRuleScopesResult },
+    /** Sets who a usage rule pauses; its chats are judged at once (#14). */
+    setUsageRuleScope: { args: SetUsageRuleScopeArgs, result: z.null() },
+    /** Pauses or continues every running chat on one provider, by hand, as Pause all does for all (#14). */
+    pauseProvider: { args: PauseProviderArgs, result: PauseAllResult },
     /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
     firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },

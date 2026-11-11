@@ -2214,10 +2214,10 @@ const USAGE_ACCOUNTS_TOUR: Tour = {
   ],
 };
 
-/** #14: a chat's own part of its provider's 5-hour window in Usage, and a budget that pauses it there. */
+/** #14: a chat's own part of its provider's 5-hour window and its budget; a provider's chats paused at once. */
 const USAGE_BUDGET_TOUR: Tour = {
   id: "usage-budget-2026-11-11",
-  title: "A chat's own budget",
+  title: "A chat's budget, and a provider's chats",
   minutes: 1,
   sandbox: true,
   steps: [
@@ -2231,6 +2231,12 @@ const USAGE_BUDGET_TOUR: Tour = {
       target: `${SIDE_PANEL} [data-tour="usage-budget"]`,
       title: "Its own budget",
       text: "Once a chat has replied, this says how much of its provider's 5-hour window the chat used itself: the window's growth between the app's readings, split by what each chat spent. <b>Pause this chat after its own part</b> pauses it there, as /pause does, until the window resets, while your other chats go on.",
+      action: next,
+    },
+    {
+      target: `${SIDE_PANEL} section[aria-label="Your accounts"]`,
+      title: "A provider's chats",
+      text: "Under each provider, <b>Pause chats</b> and <b>Continue chats</b> act on all its running chats at once. On the dashboard, a rule can pause every chat, or every chat on one provider, also those started later.",
       action: next,
     },
     {
@@ -2709,9 +2715,9 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-11-chat-budget",
-    when: "2026-11-11T04:00:00-06:00",
+    when: "2026-11-11T02:46:00-06:00",
     summary:
-      "Usage → Its own budget says how much of its provider's 5-hour window a chat used itself, an estimate: the window's growth between the app's readings, split by what each chat spent. Pause this chat after its own part pauses it there, as /pause does, until the window resets. The chat, and the dashboard's queue and activity, say when its budget holds it, also after a reload.",
+      "Usage → Its own budget says how much of its provider's 5-hour window a chat used itself, an estimate: the window's growth between the app's readings, split by what each chat spent. Pause this chat after its own part pauses it there, as /pause does, until the window resets; the chat, and the dashboard's queue and activity, say so, also after a reload. Under each provider in Usage, Pause chats and Continue chats act on all its running chats at once, and on the dashboard a rule can pause every chat, or every chat on one provider, also those started later.",
     tours: [USAGE_BUDGET_TOUR],
   },
   {

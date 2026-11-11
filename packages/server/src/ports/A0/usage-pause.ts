@@ -11,6 +11,7 @@ import {
   UsagePauseReason,
   UsageRule,
   type UsageRuleHeld,
+  UsageRuleScope,
 } from "@omp-app/contracts";
 import type { Logger } from "../../logging/logger";
 import type { ProcessTimer } from "../../process/omp-process";
@@ -55,6 +56,14 @@ export interface UsageBudget {
   readonly percent: number;
   readonly folder: string;
 }
+
+/** What is kept beside the pause's own file (#14): the chats' budgets, and who each rule pauses. */
+export interface UsagePauseExtras {
+  readonly budgets: ReadonlyMap<ThreadId, UsageBudget>;
+  readonly scopes: ReadonlyMap<string, UsageRuleScope>;
+}
+
+const NO_EXTRAS: UsagePauseExtras = { budgets: new Map(), scopes: new Map() };
 
 /**
  * Hand resumes (#2836): for each chat resumed by hand while held, each condition that held it and until when it does
@@ -106,9 +115,11 @@ export interface UsagePauseDeps {
    * named; null when it has none (#14).
    */
   readonly shareOf?: (threadId: ThreadId, providerId?: string) => number | null;
-  /** The chats' budgets kept before the server started, in a file of their own (#14); none when absent. */
-  readonly loadBudgets?: () => Promise<ReadonlyMap<ThreadId, UsageBudget>>;
-  readonly saveBudgets?: (budgets: ReadonlyMap<ThreadId, UsageBudget>) => Promise<void>;
+  /** The budgets and the rules' scopes kept before the server started, in a file of their own (#14); none when absent. */
+  readonly loadExtras?: () => Promise<UsagePauseExtras>;
+  readonly saveExtras?: (extras: UsagePauseExtras) => Promise<void>;
+  /** The chats the server runs now: a rule for every chat pauses each of them (#14). */
+  readonly chats?: () => readonly ThreadId[];
   /** The time zone of the rules' hours: the server's own unless given. */
   readonly timeZone?: string;
   readonly logger?: Logger;
@@ -178,6 +189,8 @@ export class UsagePause {
   readonly #marks = new Map<ThreadId, UsagePauseMark>();
   /** The chats' budgets of their provider's 5-hour window (#14). */
   readonly #budgets = new Map<ThreadId, UsageBudget>();
+  /** Who each rule pauses, when not just the chats it lists (#14). */
+  readonly #scopes = new Map<string, UsageRuleScope>();
   readonly #rules = new Map<string, UsageRule>();
   readonly #holds = new Map<ThreadId, UsagePauseHold>();
   readonly #overrides = new Map<ThreadId, Map<UsagePauseReason, number>>();
@@ -217,13 +230,14 @@ export class UsagePause {
       return EMPTY;
     });
     for (const [threadId, mark] of kept.marks) this.#marks.set(threadId, mark);
-    const budgets = await (this.#deps.loadBudgets?.() ?? Promise.resolve(new Map())).catch(
+    const extras = await (this.#deps.loadExtras?.() ?? Promise.resolve(NO_EXTRAS)).catch(
       (failure: unknown) => {
-        this.#deps.logger?.warn("usage_pause.budgets_load_failed", { error: String(failure) });
-        return new Map<ThreadId, UsageBudget>();
+        this.#deps.logger?.warn("usage_pause.extras_load_failed", { error: String(failure) });
+        return NO_EXTRAS;
       },
     );
-    for (const [threadId, budget] of budgets) this.#budgets.set(threadId, budget);
+    for (const [threadId, budget] of extras.budgets) this.#budgets.set(threadId, budget);
+    for (const [id, scope] of extras.scopes) this.#scopes.set(id, scope);
     for (const rule of kept.rules) this.#rules.set(rule.id, rule);
     const now = this.#deps.now();
     for (const [threadId, reasons] of kept.overrides) {
@@ -306,11 +320,35 @@ export class UsagePause {
         this.#budgets.set(threadId, { percent, folder });
         this.#deps.logger?.info("usage_pause.budget_set", { threadId, percent });
       }
-      const budgets = new Map(this.#budgets);
-      await this.#deps.saveBudgets?.(budgets).catch((failure: unknown) => {
-        this.#deps.logger?.warn("usage_pause.budgets_save_failed", { error: String(failure) });
-      });
+      await this.#keepExtras();
       await this.#judge([threadId]);
+    });
+  }
+
+  /** Who each rule pauses, when not just the chats it lists (#14). */
+  scopes(): ReadonlyMap<string, UsageRuleScope> {
+    return this.#scopes;
+  }
+
+  /**
+   * Sets who a rule pauses (#14): the chats it lists, or every chat the server runs, on any provider or one. The chats
+   * it reached before and those it reaches now are judged at once.
+   */
+  setRuleScope(id: string, scope: UsageRuleScope): Promise<void> {
+    const parsed = UsageRuleScope.parse(scope);
+    return this.#queue(async () => {
+      const before = this.#scopes.get(id);
+      if (!parsed.everyChat && parsed.provider === null) this.#scopes.delete(id);
+      else this.#scopes.set(id, parsed);
+      this.#deps.logger?.info("usage_pause.rule_scope_set", {
+        rule: id,
+        chats: parsed.everyChat ? "every chat" : "listed",
+        provider: parsed.provider ?? "any",
+      });
+      await this.#keepExtras();
+      const listed = this.#rules.get(id)?.chats ?? [];
+      const every = before?.everyChat === true || parsed.everyChat ? this.#runningChats() : [];
+      await this.#judge([...new Set([...listed, ...every, ...this.#holds.keys()])]);
     });
   }
 
@@ -326,20 +364,31 @@ export class UsagePause {
       });
       this.#keep();
       this.#ticking();
-      await this.#judge([...new Set([...(before?.chats ?? []), ...parsed.chats])]);
+      const every = this.#scopes.get(parsed.id)?.everyChat === true ? this.#runningChats() : [];
+      await this.#judge([...new Set([...(before?.chats ?? []), ...parsed.chats, ...every])]);
     });
   }
 
-  /** Removes a rule: the chats it held continue, unless another rule or their mark holds them. */
+  /** Removes a rule and its scope: the chats it held continue, unless another rule, a mark or a budget holds them. */
   removeRule(id: string): Promise<void> {
     return this.#queue(async () => {
       const rule = this.#rules.get(id);
       if (rule === undefined) return;
       this.#rules.delete(id);
+      const every = this.#scopes.get(id)?.everyChat === true ? this.#runningChats() : [];
+      if (this.#scopes.delete(id)) await this.#keepExtras();
       this.#deps.logger?.info("usage_pause.rule_removed", { rule: id });
       this.#keep();
       this.#ticking();
-      await this.#judge(rule.chats);
+      await this.#judge([...new Set([...rule.chats, ...every])]);
+    });
+  }
+
+  /** Writes the budgets and the rules' scopes to their own file (#14). */
+  async #keepExtras(): Promise<void> {
+    const extras = { budgets: new Map(this.#budgets), scopes: new Map(this.#scopes) };
+    await this.#deps.saveExtras?.(extras).catch((failure: unknown) => {
+      this.#deps.logger?.warn("usage_pause.extras_save_failed", { error: String(failure) });
     });
   }
 
@@ -491,16 +540,34 @@ export class UsagePause {
     this.#dispatch = null;
   }
 
-  /** Whether the chat is marked, has a budget, or is listed by an enabled rule. */
+  /** Whether an enabled rule pauses the chat (#14): it lists it or is for every chat, and is for any provider or its. */
+  #ruleApplies(rule: UsageRule, threadId: ThreadId, providerId?: string): boolean {
+    if (!rule.enabled) return false;
+    const scope = this.#scopes.get(rule.id);
+    if (scope?.everyChat !== true && !rule.chats.includes(threadId)) return false;
+    return (
+      scope === undefined ||
+      scope.provider === null ||
+      providerId === undefined ||
+      scope.provider === providerId
+    );
+  }
+
+  /** The chats the server runs now, for the rules for every chat. */
+  #runningChats(): readonly ThreadId[] {
+    return this.#deps.chats?.() ?? [];
+  }
+
+  /** Whether the chat is marked, has a budget, or an enabled rule reaches it (its provider is asked later). */
   #watched(threadId: ThreadId): boolean {
     return (
       this.#marks.has(threadId) ||
       this.#budgets.has(threadId) ||
-      [...this.#rules.values()].some((rule) => rule.enabled && rule.chats.includes(threadId))
+      [...this.#rules.values()].some((rule) => this.#ruleApplies(rule, threadId))
     );
   }
 
-  /** The chats a mark, a budget or a rule watches, and those still held. */
+  /** The chats a mark, a budget or a rule watches (every running chat with a rule for every chat), and those held. */
   #watchedChats(): ThreadId[] {
     const chats = new Set<ThreadId>([
       ...this.#marks.keys(),
@@ -508,12 +575,20 @@ export class UsagePause {
       ...this.#holds.keys(),
     ]);
     for (const rule of this.#rules.values()) for (const id of rule.chats) chats.add(id);
+    const everyChat = [...this.#rules.values()].some(
+      (rule) => rule.enabled && this.#scopes.get(rule.id)?.everyChat === true,
+    );
+    if (everyChat) for (const id of this.#runningChats()) chats.add(id);
     return [...chats];
   }
 
-  /** The conditions the chat is watched for: its mark's, its budget's, and each enabled rule's that lists it. */
+  /**
+   * The conditions the chat is watched for: its mark's, its budget's, and each enabled rule's that reaches it, on
+   * `providerId` when given (without it, a rule for one provider counts, so the provider is asked).
+   */
   #conditionsOf(
     threadId: ThreadId,
+    providerId?: string,
   ): { readonly rule: string | undefined; readonly conditions: UsageConditions }[] {
     const mark = this.#marks.get(threadId);
     const budget = this.#budgets.get(threadId);
@@ -526,7 +601,7 @@ export class UsagePause {
         ? []
         : [{ rule: USAGE_BUDGET_HOLD_RULE, conditions: { ...none, shareAt: budget.percent } }]),
       ...[...this.#rules.values()]
-        .filter((rule) => rule.enabled && rule.chats.includes(threadId))
+        .filter((rule) => this.#ruleApplies(rule, threadId, providerId))
         .map((rule) => ({ rule: rule.id, conditions: rule })),
     ];
   }
@@ -559,7 +634,7 @@ export class UsagePause {
     const reading = this.#reading(providerId);
     const overrides = this.#overrides.get(threadId);
     const share = this.#deps.shareOf?.(threadId, providerId) ?? null;
-    return this.#conditionsOf(threadId).flatMap(({ rule, conditions }) =>
+    return this.#conditionsOf(threadId, providerId).flatMap(({ rule, conditions }) =>
       holdingConditions(conditions, reading, now, this.#zone, heldFor, share)
         .filter(({ reason }) => (overrides?.get(reason) ?? 0) <= now)
         .map((holding) => ({ ...holding, rule })),
@@ -935,19 +1010,20 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
 }
 
 /**
- * The chats' budgets (#14), in a file of their own: `{ "version": 1, "budgets": { "<thread>": { "percent", "folder" } }
- * }`. Kept apart from the pause's file, so a server from before budgets reads its own file as it always did.
+ * The chats' budgets and who each rule pauses (#14), in a file of their own: `{ "version": 1, "budgets": { "<thread>":
+ * { "percent", "folder" } }, "scopes": { "<rule>": { "everyChat", "provider" } } }`. Kept apart from the pause's file,
+ * so a server from before them reads its own file as it always did.
  */
-export function usageBudgetsFile(
+export function usagePauseExtrasFile(
   path: string,
-): Pick<UsagePauseDeps, "loadBudgets" | "saveBudgets"> {
+): Pick<UsagePauseDeps, "loadExtras" | "saveExtras"> {
   return {
-    loadBudgets: async () => {
+    loadExtras: async () => {
       let text: string;
       try {
         text = await readFile(path, "utf8");
       } catch (failure) {
-        if ((failure as NodeJS.ErrnoException).code === "ENOENT") return new Map();
+        if ((failure as NodeJS.ErrnoException).code === "ENOENT") return NO_EXTRAS;
         throw failure;
       }
       const saved = JSON.parse(text) as {
@@ -956,9 +1032,10 @@ export function usageBudgetsFile(
           string,
           { readonly percent?: unknown; readonly folder?: unknown }
         >;
+        readonly scopes?: Record<string, unknown>;
       };
+      if (saved.version !== 1) return NO_EXTRAS;
       const budgets = new Map<ThreadId, UsageBudget>();
-      if (saved.version !== 1) return budgets;
       for (const [threadId, { percent, folder }] of Object.entries(saved.budgets ?? {})) {
         if (
           typeof percent !== "number" ||
@@ -970,12 +1047,21 @@ export function usageBudgetsFile(
         if (typeof folder !== "string" || folder.length === 0) continue;
         budgets.set(threadId as ThreadId, { percent, folder });
       }
-      return budgets;
+      const scopes = new Map<string, UsageRuleScope>();
+      for (const [id, scope] of Object.entries(saved.scopes ?? {})) {
+        const parsed = UsageRuleScope.safeParse(scope);
+        if (parsed.success) scopes.set(id, parsed.data);
+      }
+      return { budgets, scopes };
     },
-    saveBudgets: async (budgets) => {
+    saveExtras: async ({ budgets, scopes }) => {
       await mkdir(dirname(path), { recursive: true });
       const temporary = `${path}.${process.pid}.tmp`;
-      const file = { version: 1, budgets: Object.fromEntries(budgets) };
+      const file = {
+        version: 1,
+        budgets: Object.fromEntries(budgets),
+        scopes: Object.fromEntries(scopes),
+      };
       await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`);
       await rename(temporary, path);
     },

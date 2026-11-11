@@ -33,6 +33,7 @@ import {
   type OrderUsageQueueArgs,
   type PauseAllArgs,
   type PauseAllResult,
+  type PauseProviderArgs,
   type PrepareNewChatArgs,
   type RemoveUsageRuleArgs,
   RequestId,
@@ -44,6 +45,7 @@ import {
   type SetSubagentSubscriptionResult,
   type SetUsageBudgetArgs,
   type SetUsagePauseArgs,
+  type SetUsageRuleScopeArgs,
   type StreamKey,
   type SubscribeArgs,
   ThreadId,
@@ -54,6 +56,7 @@ import {
   type UsagePauseHold,
   type UsageQueueResult,
   type UsageRule,
+  type UsageRuleScopesResult,
   type UsageRulesResult,
   type UsageSharesResult,
 } from "@omp-app/contracts";
@@ -90,7 +93,7 @@ import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
-import { UsagePause, usageBudgetsFile, usagePauseFile } from "./usage-pause";
+import { UsagePause, usagePauseExtrasFile, usagePauseFile } from "./usage-pause";
 import { type ResumeOutcome, UsageResume, usageResumeFile } from "./usage-resume";
 
 interface ChatEntry {
@@ -454,9 +457,13 @@ export class ChatSessionPortRuntime {
             now: context.usageResumeClock?.now ?? Date.now,
             timer: context.usageResumeClock?.timer ?? SPARE_TIMER,
             ...usagePauseFile(context.usagePauseFile),
-            ...(context.usageBudgetsFile === undefined
+            ...(context.usagePauseExtrasFile === undefined
               ? {}
-              : usageBudgetsFile(context.usageBudgetsFile)),
+              : usagePauseExtrasFile(context.usagePauseExtrasFile)),
+            chats: () =>
+              [...this.#entries]
+                .filter(([, entry]) => this.#isRunning(entry))
+                .map(([threadId]) => threadId),
             shareOf: (threadId, providerId) =>
               context.usageShares?.shareOf(threadId, providerId) ?? null,
             providerOf: (threadId) => this.#providerOf(threadId),
@@ -514,6 +521,9 @@ export class ChatSessionPortRuntime {
     usageShares: () => this.usageShares(),
     usageBudgets: () => this.usageBudgets(),
     setUsageBudget: (args) => this.setUsageBudget(args as SetUsageBudgetArgs),
+    usageRuleScopes: () => this.usageRuleScopes(),
+    setUsageRuleScope: (args) => this.setUsageRuleScope(args as SetUsageRuleScopeArgs),
+    pauseProvider: (args) => this.pauseProvider(args as PauseProviderArgs),
     firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
@@ -655,6 +665,22 @@ export class ChatSessionPortRuntime {
     const folder = this.#context.processRegistry.folderOf(threadId);
     if (folder === undefined) throw notFound("Open the chat, then set its budget.");
     await usagePause.setBudget(threadId, folder, args.percent);
+    return null;
+  }
+
+  /** Who each usage rule pauses, when not just the chats it lists (#14). */
+  usageRuleScopes(): UsageRuleScopesResult {
+    return {
+      scopes: [...this.#usagePauseOrFail().scopes()].map(([id, scope]) => ({ id, ...scope })),
+    };
+  }
+
+  /** Sets who a usage rule pauses: its chats, or every chat, on any provider or one (#14). */
+  async setUsageRuleScope(args: SetUsageRuleScopeArgs): Promise<null> {
+    await this.#usagePauseOrFail().setRuleScope(args.id, {
+      everyChat: args.everyChat,
+      provider: args.provider,
+    });
     return null;
   }
 
@@ -1407,6 +1433,25 @@ export class ChatSessionPortRuntime {
       [...this.#entries.values()]
         .filter((entry) => this.#isRunning(entry))
         .map((entry) => this.#send(entry, method, {})),
+    );
+    return { chats: answers.filter((answer) => answer.status === "fulfilled").length };
+  }
+
+  /** Pauses or continues, by hand, every running chat whose model is the provider's (#14), as Pause all does for all. */
+  async pauseProvider(args: PauseProviderArgs): Promise<PauseAllResult> {
+    const method = args.paused ? "pause" : "resume";
+    this.#context.logger?.info("chat_session.pause_provider_asked", {
+      method,
+      provider: args.providerId,
+    });
+    const running = [...this.#entries].filter(([, entry]) => this.#isRunning(entry));
+    const providers = await Promise.all(
+      running.map(([threadId]) => this.#providerOf(threadId).catch(() => null)),
+    );
+    const answers = await Promise.allSettled(
+      running
+        .filter((_, index) => providers[index] === args.providerId)
+        .map(([, entry]) => this.#send(entry, method, {})),
     );
     return { chats: answers.filter((answer) => answer.status === "fulfilled").length };
   }

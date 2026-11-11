@@ -1,5 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import {
+  AppFailure,
+  ChatSessionPort,
   USAGE_PAUSE_DEFAULT_PERCENT,
   type UsageLimitProvider,
   UsageLimitStore,
@@ -313,13 +315,35 @@ function LimitBar({
 function ProviderLimits({
   provider,
   now,
+  onPause,
 }: {
   readonly provider: UsageLimitProvider;
   readonly now: Date;
+  /** Pauses or continues every running chat on this provider by hand (#14): how many took it. */
+  readonly onPause?: (paused: boolean) => Promise<number>;
 }): ReactNode {
+  const phone = usePhone();
   const [open, setOpen] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
   const each = useId();
   const accounts = provider.accounts ?? [];
+  const pause = (paused: boolean): void => {
+    if (onPause === undefined) return;
+    setPausing(true);
+    setSaid(null);
+    onPause(paused)
+      .then(
+        (chats) =>
+          setSaid(
+            chats === 0
+              ? `No chat runs on ${provider.providerId} now.`
+              : `${paused ? "Paused" : "Continued"} ${chats === 1 ? "1 chat" : `${chats} chats`}.`,
+          ),
+        (failure: unknown) => setSaid(`Not done: ${failureText(failure)}`),
+      )
+      .finally(() => setPausing(false));
+  };
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2">
@@ -346,6 +370,37 @@ function ProviderLimits({
       {provider.windows.map((window) => (
         <LimitBar key={window.label} name={provider.providerId} window={window} now={now} />
       ))}
+      {onPause !== undefined && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            className={phone ? "h-11" : "tablet:h-11"}
+            aria-label={`Pause chats on ${provider.providerId}`}
+            disabled={pausing}
+            onClick={() => pause(true)}
+          >
+            Pause chats
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            className={phone ? "h-11" : "tablet:h-11"}
+            aria-label={`Continue chats on ${provider.providerId}`}
+            disabled={pausing}
+            onClick={() => pause(false)}
+          >
+            Continue chats
+          </Button>
+          {said !== null && (
+            <span role="status" className="text-xs text-t3">
+              {said}
+            </span>
+          )}
+        </div>
+      )}
       {open && (
         <div id={each} className="flex flex-col gap-3 border-l border-l2 pl-3">
           {accounts.map((account) => (
@@ -415,7 +470,28 @@ export function AccountsSection({ client }: { readonly client: AppClient }): Rea
         <p className="text-[0.8125rem] text-t3">omp reports no usage limits for your accounts.</p>
       )}
       {result.providers.map((provider) => (
-        <ProviderLimits key={provider.providerId} provider={provider} now={now} />
+        <ProviderLimits
+          key={provider.providerId}
+          provider={provider}
+          now={now}
+          onPause={(paused) =>
+            client
+              .port(ChatSessionPort)
+              .pauseProvider({ providerId: provider.providerId, paused })
+              .then(
+                (done) => done.chats,
+                (failure: unknown) => {
+                  throw failure instanceof AppFailure &&
+                    failure.appError.code === "invalid_args" &&
+                    failure.appError.omp === undefined
+                    ? new Error(
+                        "This app server cannot pause a provider's chats yet; it needs an update.",
+                      )
+                    : failure;
+                },
+              )
+          }
+        />
       ))}
       {!Number.isNaN(fetched.getTime()) && (
         <p className="text-xs text-t3">Updated {clock.format(fetched)}</p>
@@ -517,7 +593,7 @@ function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNo
         />
         % of its provider's 5-hour window
       </div>
-      <p className="text-xs text-t3">
+      <p className="text-xs text-pretty text-t3">
         There, its agents hold at their next step, as with /pause, and the chat goes on when the
         window resets.
       </p>
@@ -673,9 +749,9 @@ function UsageBudgetSection({
             commit();
           }}
         />
-        % of the window, used by this chat itself
+        % of its provider's 5-hour window
       </div>
-      <p className="text-xs text-t3">
+      <p className="text-xs text-pretty text-t3">
         Its part is an estimate: the window's growth between the app's readings, split by what each
         chat spent. There its agents hold at their next step, as with /pause, and it goes on when
         the window resets.

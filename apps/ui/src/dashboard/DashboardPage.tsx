@@ -14,6 +14,7 @@ import {
   type UsagePauseReason,
   type UsageQueueResult,
   type UsageRule,
+  type UsageRuleScope,
   type UsageRulesResult,
 } from "@omp-app/contracts";
 import { ArrowDown, ArrowUp, ChevronLeft, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
@@ -21,6 +22,14 @@ import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { ChatTarget } from "../chat/controller";
 import { follow } from "../follow";
@@ -33,6 +42,18 @@ import { StatsSummaryView } from "./StatsSummary";
 import { TodoSection } from "./TodoSection";
 
 const RULES_LATER = "Rules come with the next server update.";
+
+/** Who a rule pauses when no scope is set: the chats it lists, on any provider (#14). */
+const LISTED_CHATS: UsageRuleScope = { everyChat: false, provider: null };
+/** The provider choice that keeps a rule to no provider. */
+const ANY_PROVIDER = "*";
+
+/** Who a rule pauses, in words (#14): "Every chat on anthropic", "2 chats". */
+function scopeWords(rule: UsageRule, scope: UsageRuleScope): string {
+  const on = scope.provider === null ? "" : ` on ${scope.provider}`;
+  if (scope.everyChat) return `Every chat${on}`;
+  return `${rule.chats.length === 1 ? "1 chat" : `${rule.chats.length} chats`}${on}`;
+}
 const QUEUE_LATER = "The queue comes with the next server update.";
 const ACTIVITY_LATER = "The activity comes with the next server update.";
 
@@ -235,13 +256,19 @@ function Condition({
 /** The editor of one rule: its name, its chats and its conditions. */
 function RuleEditor({
   rule,
+  scope,
+  providers,
   running,
   onSave,
   onCancel,
 }: {
   readonly rule: UsageRule;
+  /** Who it pauses (#14): the chats picked, or every chat, on any provider or one. */
+  readonly scope: UsageRuleScope;
+  /** The providers the accounts report, to keep a rule to one (#14). */
+  readonly providers: readonly string[];
   readonly running: readonly RunningChat[];
-  readonly onSave: (rule: UsageRule) => Promise<void>;
+  readonly onSave: (rule: UsageRule, scope: UsageRuleScope) => Promise<void>;
   readonly onCancel: () => void;
 }): ReactNode {
   const [name, setName] = useState(rule.name);
@@ -255,12 +282,20 @@ function RuleEditor({
   const [from, setFrom] = useState(rule.hours?.from ?? "08:00");
   const [to, setTo] = useState(rule.hours?.to ?? "23:00");
   const [hoursOn, setHoursOn] = useState(rule.hours !== null);
+  const [everyChat, setEveryChat] = useState(scope.everyChat);
+  const [provider, setProvider] = useState<string | null>(scope.provider);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const nameId = useId();
   const listed = [
     ...running.map((chat) => chat.threadId),
     ...chats.filter((id) => !running.some((chat) => chat.threadId === id)),
+  ];
+  const providerChoices = [
+    { value: ANY_PROVIDER, label: "any provider" },
+    ...[...new Set([...providers, ...(scope.provider === null ? [] : [scope.provider])])].map(
+      (id) => ({ value: id, label: id }),
+    ),
   ];
 
   const save = async (): Promise<void> => {
@@ -290,15 +325,18 @@ function RuleEditor({
     setSaving(true);
     setProblem(null);
     try {
-      await onSave({
-        ...rule,
-        name: name.trim(),
-        chats: [...chats],
-        fiveHourAt,
-        weeklyAt,
-        paceAt,
-        hours: hoursOn ? { from, to } : null,
-      });
+      await onSave(
+        {
+          ...rule,
+          name: name.trim(),
+          chats: [...chats],
+          fiveHourAt,
+          weeklyAt,
+          paceAt,
+          hours: hoursOn ? { from, to } : null,
+        },
+        { everyChat, provider },
+      );
     } catch (failure) {
       setProblem(problemWords(failure, RULES_LATER, "save the rule"));
       setSaving(false);
@@ -381,22 +419,67 @@ function RuleEditor({
       </fieldset>
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 text-xs text-t3">The chats it pauses</legend>
-        {listed.length === 0 && <p className="text-[0.8125rem] text-t3">No chat is running now.</p>}
-        {listed.map((id) => (
-          <label key={id} className="flex min-h-11 items-center gap-2 text-[0.8125rem] text-t1">
-            <input
-              type="checkbox"
-              className="size-4"
-              checked={chats.includes(id)}
-              onChange={(event) =>
-                setChats((now) =>
-                  event.target.checked ? [...now, id] : now.filter((each) => each !== id),
-                )
-              }
-            />
-            {chatName(id, running)}
+        <RadioGroup
+          aria-label="The chats it pauses"
+          className="gap-0"
+          value={everyChat ? "every" : "picked"}
+          onValueChange={(picked) => setEveryChat(picked === "every")}
+        >
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the round mark inside is the control */}
+          <label className="flex min-h-11 items-center gap-2 text-[0.8125rem] text-t1">
+            <RadioGroupItem value="picked" aria-label="The chats I pick" />
+            The chats I pick
           </label>
-        ))}
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the round mark inside is the control */}
+          <label className="flex min-h-11 items-center gap-2 text-[0.8125rem] text-t1">
+            <RadioGroupItem value="every" aria-label="Every chat, also those started later" />
+            Every chat, also those started later
+          </label>
+        </RadioGroup>
+        <div className="flex min-h-11 flex-wrap items-center gap-2 text-[0.8125rem] text-t1">
+          Running a model of
+          <Select
+            items={providerChoices}
+            value={provider ?? ANY_PROVIDER}
+            onValueChange={(next) => {
+              if (typeof next === "string") setProvider(next === ANY_PROVIDER ? null : next);
+            }}
+          >
+            <SelectTrigger
+              aria-label="Provider"
+              size="sm"
+              className="min-w-36 justify-between dark:bg-transparent"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {providerChoices.map((choice) => (
+                <SelectItem key={choice.value} value={choice.value}>
+                  {choice.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {!everyChat && listed.length === 0 && (
+          <p className="text-[0.8125rem] text-t3">No chat is running now.</p>
+        )}
+        {!everyChat &&
+          listed.map((id) => (
+            <label key={id} className="flex min-h-11 items-center gap-2 text-[0.8125rem] text-t1">
+              <input
+                type="checkbox"
+                className="size-4"
+                checked={chats.includes(id)}
+                onChange={(event) =>
+                  setChats((now) =>
+                    event.target.checked ? [...now, id] : now.filter((each) => each !== id),
+                  )
+                }
+              />
+              {chatName(id, running)}
+            </label>
+          ))}
       </fieldset>
       {problem !== null && (
         <p role="alert" className="text-xs text-bad-ink">
@@ -431,9 +514,49 @@ function RulesSection({
 }): ReactNode {
   const [editing, setEditing] = useState<UsageRule | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [scopes, setScopes] = useState<ReadonlyMap<string, UsageRuleScope>>(new Map());
+  const [providers, setProviders] = useState<readonly string[]>([]);
   const session = client.port(ChatSessionPort);
-  const save = async (rule: UsageRule): Promise<void> => {
+  // Read again with each read of the rules: a rule saved or removed may have changed its scope.
+  useEffect(() => {
+    if (rules === null) return;
+    let alive = true;
+    client
+      .port(ChatSessionPort)
+      .usageRuleScopes({})
+      .then(
+        (read) =>
+          alive &&
+          setScopes(
+            new Map(
+              read.scopes.map(({ id, everyChat, provider }) => [id, { everyChat, provider }]),
+            ),
+          ),
+        () => undefined,
+      );
+    return () => {
+      alive = false;
+    };
+  }, [client, rules]);
+  useEffect(() => {
+    let alive = true;
+    client
+      .port(UsageLimitStore)
+      .read({})
+      .then(
+        (read) =>
+          alive &&
+          read.state === "ready" &&
+          setProviders(read.providers.map((each) => each.providerId)),
+        () => undefined,
+      );
+    return () => {
+      alive = false;
+    };
+  }, [client]);
+  const save = async (rule: UsageRule, scope: UsageRuleScope): Promise<void> => {
     await session.setUsageRule(rule);
+    await session.setUsageRuleScope({ id: rule.id, ...scope });
     setEditing(null);
     reload();
   };
@@ -448,8 +571,8 @@ function RulesSection({
     <div className="flex flex-col gap-2">
       {rules.rules.length === 0 && editing === null && (
         <p className="text-[0.8125rem] text-t3">
-          No rules yet. A rule pauses the chats you pick while a condition holds: a window's use,
-          the pace, or the hours of the day.
+          No rules yet. A rule pauses the chats you pick, or every chat on a provider, while a
+          condition holds: a window's use, the pace, or the hours of the day.
         </p>
       )}
       <ul className="flex flex-col gap-2">
@@ -458,6 +581,8 @@ function RulesSection({
             <li key={rule.id}>
               <RuleEditor
                 rule={editing}
+                scope={scopes.get(editing.id) ?? LISTED_CHATS}
+                providers={providers}
                 running={running}
                 onSave={save}
                 onCancel={() => setEditing(null)}
@@ -472,7 +597,7 @@ function RulesSection({
                 <span className="text-[0.8125rem] font-medium text-t1">{rule.name}</span>
                 <span className="text-xs text-t3">{conditionWords(rule)}</span>
                 <span className="text-xs text-t3">
-                  {rule.chats.length === 1 ? "1 chat" : `${rule.chats.length} chats`}
+                  {scopeWords(rule, scopes.get(rule.id) ?? LISTED_CHATS)}
                   {held.length > 0 ? ` · holding ${held.length} now` : ""}
                 </span>
               </div>
@@ -504,6 +629,8 @@ function RulesSection({
       {editing !== null && !rules.rules.some(({ rule }) => rule.id === editing.id) ? (
         <RuleEditor
           rule={editing}
+          scope={scopes.get(editing.id) ?? LISTED_CHATS}
+          providers={providers}
           running={running}
           onSave={save}
           onCancel={() => setEditing(null)}

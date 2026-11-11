@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -84,11 +84,23 @@ realTest.describe("new UI: a chat's own budget of its provider's window", () => 
       await box.press("Enter");
       await expect(first.getByText("pong", { exact: true })).toBeVisible({ timeout: 90_000 });
 
-      // Every chat the server ran so far gets a part of 25%, kept where the server keeps its count, read at its start.
-      const threads = [
-        ...new Set([...realApp.log().matchAll(/thread=([0-9a-f-]{36})/g)].map((found) => found[1])),
-      ].filter((id): id is string => id !== undefined);
-      expect(threads.length).toBeGreaterThan(0);
+      // The chat's id is its omp session's, as its file is named (`<time>_<id>.jsonl`): the newest such file.
+      const sessions = join(realApp.agentDir, "sessions");
+      const files = readdirSync(sessions, { recursive: true, encoding: "utf8" });
+      const named = files
+        .map((name) => ({
+          name,
+          id: /_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/.exec(
+            name,
+          )?.[1],
+        }))
+        .filter((file): file is { name: string; id: string } => file.id !== undefined)
+        .sort(
+          (a, b) =>
+            statSync(join(sessions, b.name)).mtimeMs - statSync(join(sessions, a.name)).mtimeMs,
+        );
+      expect(named.length, files.join(", ")).toBeGreaterThan(0);
+      const threads = [named[0]?.id ?? ""];
       const context = first.context();
       await first.close();
       await writeFile(join(realApp.appDataDir, "usage-shares.json"), sharesFile(threads));

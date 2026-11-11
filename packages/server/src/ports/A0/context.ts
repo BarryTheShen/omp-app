@@ -108,8 +108,8 @@ export interface A0PortContext {
    * (#2781 part 3; `<app data>/usage-pause.json`). Absent: no chat pauses at a usage limit.
    */
   readonly usagePauseFile?: string;
-  /** Where the chats' own budgets of their 5-hour window are kept (#14; `<app data>/usage-budgets.json`). */
-  readonly usageBudgetsFile?: string;
+  /** Where the chats' budgets and the usage rules' scopes are kept (#14; `<app data>/usage-pause-extras.json`). */
+  readonly usagePauseExtrasFile?: string;
   /** Each chat's part of its provider's 5-hour window (#14), from its replies; absent: no parts, and budgets never hold. */
   readonly usageShares?: UsageShares;
   /** The server's own usage reads (the usage watch), which the usage pause judges; absent: it never pauses a chat. */

@@ -464,7 +464,7 @@ export async function createCompositionServer(
     newChatsReady,
     usageResumeFile: join(appDataDir, "usage-resume.json"),
     usagePauseFile: join(appDataDir, "usage-pause.json"),
-    usageBudgetsFile: join(appDataDir, "usage-budgets.json"),
+    usagePauseExtrasFile: join(appDataDir, "usage-pause-extras.json"),
     usageShares,
     usageLimits: usageLimitStore,
     usagePace: () => usageReadings.pace(),
