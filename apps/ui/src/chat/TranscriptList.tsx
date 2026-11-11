@@ -31,6 +31,7 @@ import {
 } from "../vendor/collab-web/components/transcript/Transcript";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
+import { olderReadReach } from "./controller";
 import { FailureRow } from "./FailureRow";
 import { MessageActions, userText } from "./MessageActions";
 import { buildRows, drawn, type TranscriptRow, toolResults } from "./rows";
@@ -352,6 +353,24 @@ function spareFor(
   left: number | null,
   shown: number,
 ): number {
+  const { mean, growth } = rowHeights(rows, sizes, firstHeight);
+  if (!hasOlder) return Math.round(growth);
+  const perWindow = (mean * rows.length) / Math.max(1, windows);
+  const rest = left === null || shown === 0 ? 0 : (left * mean * rows.length * REST_MARGIN) / shown;
+  const cap = screen > 0 ? SPARE_CAP_SCREENS * screen : Number.POSITIVE_INFINITY;
+  const room = Math.min(cap, Math.max(SPARE_WINDOWS * perWindow, SPARE_SCREENS * screen, rest));
+  return Math.round(room + 1.25 * growth);
+}
+
+/**
+ * The rows' mean height, of those measured (a typical row's before any is), and what the rows not measured yet will
+ * grow by: each to the mean.
+ */
+function rowHeights(
+  rows: readonly TranscriptRow[],
+  sizes: ReadonlyMap<unknown, number>,
+  firstHeight: (index: number) => number,
+): { readonly mean: number; readonly growth: number } {
   let measuredPx = 0;
   let measuredRows = 0;
   let guessedPx = 0;
@@ -366,15 +385,8 @@ function spareFor(
       measuredRows += 1;
     }
   });
-  // A row not measured yet grows to the mean of the rows measured, and to a typical row's height before any is.
   const mean = measuredRows === 0 ? TYPICAL_ROW_PX : measuredPx / measuredRows;
-  const growth = Math.max(0, mean * guessedRows - guessedPx);
-  if (!hasOlder) return Math.round(growth);
-  const perWindow = (mean * rows.length) / Math.max(1, windows);
-  const rest = left === null || shown === 0 ? 0 : (left * mean * rows.length * REST_MARGIN) / shown;
-  const cap = screen > 0 ? SPARE_CAP_SCREENS * screen : Number.POSITIVE_INFINITY;
-  const room = Math.min(cap, Math.max(SPARE_WINDOWS * perWindow, SPARE_SCREENS * screen, rest));
-  return Math.round(room + 1.25 * growth);
+  return { mean, growth: Math.max(0, mean * guessedRows - guessedPx) };
 }
 
 /** How many older windows the spare room takes before the next rest: a long swipe up reads one after another. */
@@ -592,8 +604,8 @@ export function TranscriptList({
   edge = false,
 }: {
   readonly snapshot: ChatSnapshot;
-  /** Reads the next older window (the chat's `loadOlder`); also Try again's. */
-  readonly onNearTop: () => void;
+  /** Reads the next older windows, as many as asked, as one read (the chat's `loadOlder`); also Try again's, with one. */
+  readonly onNearTop: (windows: number) => void;
   readonly actions: RowActions;
   /**
    * A new chat's greeting while it is empty, and what a suggestion row does when picked (the lite view's, #2845); null
@@ -647,8 +659,10 @@ export function TranscriptList({
   // The room above the first row: a computer's 24 px, and a chat's top band.
   const headRoom = (phone ? 0 : 24) + (edge && rows.length > 0 ? EDGE_PX : 0);
   // What the spare room should be: read at rest with the sizes measured since this draw.
-  /** The windows of entries read so far: the first, and each older one put in front. */
+  /** The windows of entries read so far, in windows of this device's size: the first, and what each older read asked. */
   const windows = useRef(0);
+  /** The windows the older read under way asked for: counted once its entries go in front. */
+  const asked = useRef(0);
   const spareWanted = (sizes: ReadonlyMap<unknown, number>): number =>
     ios && edge
       ? spareFor(
@@ -674,7 +688,8 @@ export function TranscriptList({
       front.current === undefined ? -1 : rows.findIndex((row) => row.key === front.current);
     if (front.current === undefined) windows.current = 1;
     else if (at > 0) {
-      windows.current += 1;
+      windows.current += asked.current;
+      asked.current = 0;
       let added = 0;
       for (let index = 0; index < at; index += 1)
         added += measured.current.get(rows[index]?.key) ?? firstHeight(index);
@@ -809,9 +824,23 @@ export function TranscriptList({
   const nearTop =
     positioned && offset !== null && offset - spare.current < NEAR_TOP_SCREENS * screen;
   const oldestKey = rows[0]?.key;
+  // On iOS, from inside the spare room, one read takes as many windows as reach the reader, up to what one read may
+  // take: one window after another left a reader far up the room in blank room for as many round trips.
+  const readWindows = useRef<() => number>(() => 1);
+  readWindows.current = () => {
+    if (!(ios && edge) || offset === null || offset >= spare.current) return 1;
+    const perWindow =
+      (rowHeights(rows, virtualizer.itemSizeCache, firstHeight).mean * rows.length) /
+      Math.max(1, windows.current);
+    const distance = spare.current - offset + NEAR_TOP_SCREENS * screen;
+    return Math.min(olderReadReach(), Math.max(1, Math.ceil(distance / Math.max(1, perWindow))));
+  };
   useEffect(() => {
-    if (nearTop && hasOlder && waiting === 0 && olderLoad === "idle" && oldestKey !== undefined)
-      onNearTop();
+    if (nearTop && hasOlder && waiting === 0 && olderLoad === "idle" && oldestKey !== undefined) {
+      const count = readWindows.current();
+      asked.current = count;
+      onNearTop(count);
+    }
   }, [nearTop, hasOlder, waiting, olderLoad, oldestKey, onNearTop]);
   // The top band sits right above the first row where the list draws it (its layout place, shifted back by a correction
   // TanStack holds), whether or not the first row is among the rows drawn now: placed anywhere else, rows were drawn
@@ -869,7 +898,15 @@ export function TranscriptList({
               ) : olderLoad === "failed" && waiting === 0 ? (
                 <>
                   <span>Couldn't load earlier messages.</span>
-                  <Button size="sm" variant="secondary" className="max-sm:h-11" onClick={onNearTop}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="max-sm:h-11"
+                    onClick={() => {
+                      asked.current = 1;
+                      onNearTop(1);
+                    }}
+                  >
                     Try again
                   </Button>
                 </>
