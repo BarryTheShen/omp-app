@@ -13,6 +13,7 @@ import type { ChatController } from "../../chat/controller";
 import { pauseAllChats } from "../../chat/pauseAll";
 import { lastSeen } from "../../lastSeen";
 import { fmtDuration } from "../../vendor/collab-web/lib/format";
+import { openInChat } from "../panel-state";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -224,7 +225,7 @@ function Jobs({ chat }: { readonly chat: ChatController }): ReactNode {
                     now={now}
                     onOpen={() =>
                       job.type === "task" && job.agentId !== undefined
-                        ? chat.agentHub.open(job.agentId)
+                        ? openInChat(() => chat.agentHub.open(job.agentId))
                         : setOpenId(job.id)
                     }
                   />

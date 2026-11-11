@@ -5,7 +5,8 @@ import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
  * The new UI's Agent Hub (`apps/ui`, under `/v2/`) on real omp: a chat's subagents in a pill above the message box and
- * in the Hub, with the chosen one's transcript, Kill and a message to it; Alt+A and Esc; a task card's agent opens it.
+ * in the Hub, with the chosen one's transcript, Kill and a message to it; Alt+A and Esc; a task card's agent opens it;
+ * on a phone, an agent picked in the chat's details opens the Hub over them (#18).
  */
 
 /** A subagent type that runs inline: `blocking: true` makes the parent wait, so its task card shows it running. */
@@ -164,4 +165,36 @@ realTest.describe("new UI Agent Hub", () => {
     );
     expect(realApp.problems).toEqual([]);
   });
+
+  realTest(
+    "on a phone, an agent picked in the chat's details opens the Hub on it, the details stepping aside (#18)",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      // A phone opens in a new chat.
+      const page = await realApp.open({ path: "/", context });
+      await expect(box(page)).toHaveAttribute("placeholder", /^Fake Model/, { timeout: 120_000 });
+      await box(page).fill("spawn_steerable_subagent");
+      await page.getByRole("button", { name: "Send" }).tap();
+      // With agents, the top bar's details button says so and opens the details at Agents.
+      const detailsButton = page.getByRole("button", { name: "1 agent running. Details" });
+      await expect(detailsButton).toBeVisible({ timeout: 60_000 });
+
+      await detailsButton.tap();
+      const details = page.getByRole("region", { name: "Chat details" });
+      await expect(details.getByRole("tab", { name: "Agents" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await details.getByRole("button", { name: /^SteerProbe/ }).tap();
+      await expect(details).toHaveCount(0);
+      await expect(
+        hubOf(page).getByRole("region", { name: "SteerProbe", exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
 });

@@ -2,6 +2,7 @@ import type { SubagentSnapshot } from "@omp-app/contracts/chat-host";
 import { type ReactNode, useSyncExternalStore } from "react";
 import { agentsSaid } from "../../agents/AgentsPill";
 import type { ChatController } from "../../chat/controller";
+import { openInChat } from "../panel-state";
 
 /** Each of omp's subagent states: the word the Agent Hub shows, and the colour of its dot. */
 const STATUS = {
@@ -21,7 +22,7 @@ const doingNow = (agent: SubagentSnapshot): string | undefined =>
 
 /**
  * The focused chat's subagents, compact: each one's name, kind and state, and what it does now. A click opens the Agent
- * Hub on it, in the chat's pane, with its live transcript.
+ * Hub on it, in the chat's pane, with its live transcript; on a phone the details step aside for it (#18).
  */
 export function AgentsPanel({ chat }: { readonly chat: ChatController | null }): ReactNode {
   if (chat === null) {
@@ -52,7 +53,7 @@ function AgentList({ chat }: { readonly chat: ChatController }): ReactNode {
             <li key={agent.id}>
               <button
                 type="button"
-                onClick={() => chat.agentHub.open(agent.id)}
+                onClick={() => openInChat(() => chat.agentHub.open(agent.id))}
                 aria-label={`${name}: ${agent.agent}, ${status.said}${now === undefined ? "" : `, ${now}`}`}
                 className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-l1 focus-visible:ring-2 focus-visible:ring-ring"
               >

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { isPhone } from "../phone";
 
 /** Where this browser keeps the side panel's state. */
 const STORAGE_KEY = "omp-app.ui.panel";
@@ -52,6 +53,15 @@ export const togglePanel = (): void => update({ ...current(), open: !current().o
 /** Shows the side column on one panel. */
 export const showPanel = (panel: string): void => update({ open: true, panel });
 export const hidePanel = (): void => update({ ...current(), open: false });
+
+/**
+ * Opens something a panel shows in the chat's own pane, the Agent Hub (#18): on a phone the panel is a screen in the
+ * chat's place (`ChatDetails`), so it steps aside for the chat, where what it opened is; on a desktop it stays beside it.
+ */
+export function openInChat(open: () => void): void {
+  open();
+  if (isPhone()) hidePanel();
+}
 
 const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener);
