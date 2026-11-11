@@ -145,11 +145,6 @@ const count = (value: number): string => value.toLocaleString();
 /** A big number in brief: 545.6K, 14.6M. */
 const short = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
-/** Dollars to the cent; below a cent, said so. */
-function dollarsOf(cost: number): string {
-  return cost > 0 && cost < 0.005 ? "under $0.01" : `$${cost.toFixed(2)}`;
-}
-
 /** How often a chat's numbers are read again while its turn runs: omp's counts grow with each finished message. */
 const DURING_TURN_EVERY_MS = 10_000;
 
@@ -226,7 +221,7 @@ function WholeChatNumbers({ whole }: { readonly whole: WholeChat | undefined }):
     <Numbers
       title={title}
       rows={[
-        ["Spent", dollarsOf(chat.cost), `$${chat.cost.toFixed(4)}`],
+        ["Spent", spendWords(chat.cost), `$${chat.cost.toFixed(4)}`],
         ["omp's replies", count(chat.requests)],
         ["Tool calls", count(chat.toolCalls)],
         chat.subagents > 0 && ["Subagents", count(chat.subagents)],
@@ -345,7 +340,7 @@ function ChatUsageSection({
       <Numbers
         title="In its context now"
         rows={[
-          stats.cost > 0 && ["Spent", dollarsOf(stats.cost), `$${stats.cost.toFixed(4)}`],
+          stats.cost > 0 && ["Spent", spendWords(stats.cost), `$${stats.cost.toFixed(4)}`],
           premium > 0 && ["Premium requests", premium.toLocaleString()],
           ["Your messages", count(stats.userMessages)],
           ["omp's replies", count(stats.assistantMessages)],

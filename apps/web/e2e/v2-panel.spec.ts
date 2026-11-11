@@ -185,7 +185,7 @@ realTest.describe("new UI side panel", () => {
       const replies = figure(page, "The whole chat", "omp's replies");
       await expect(replies).toHaveText("1", { timeout: 120_000 });
       await expect(figure(page, "The whole chat", "Spent")).toHaveText(
-        /^(\$\d+\.\d\d|under \$0\.01)$/,
+        /^(\$\d{1,3}(,\d{3})*\.\d\d|under \$0\.01)$/,
       );
       // A turn's end reads them again.
       await send(page, 0, "hello again", 2);
