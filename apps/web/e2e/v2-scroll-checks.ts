@@ -117,6 +117,23 @@ function settled(page: Page): Promise<void> {
 }
 
 /**
+ * Takes the transcript to the top of what is loaded as a reader dragging the scroll bar there does: the reader's own
+ * input first (a wheel step up, which leaves the end, so the transcript no longer follows the latest output), then the
+ * position. A position written with no input before it is not the reader's: the transcript, following the latest
+ * output, takes it back to the end within 100 ms, so a check after such a write ran at the chat's end, and the older
+ * entries were asked only when a render at the top came first.
+ */
+async function readerToTop(page: Page): Promise<void> {
+  await page.getByRole("region", { name: "Transcript" }).hover();
+  await page.mouse.wheel(0, -300);
+  await settled(page);
+  await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
+    if (root !== null) root.scrollTop = 0;
+  });
+}
+
+/**
  * Where the row whose text starts with `text` is, from the transcript's top edge, and its place in the list (it grows
  * when older entries load above); null when the row is not drawn.
  */
@@ -266,10 +283,7 @@ export function defineScrollChecks(engine: string): void {
         // An open reads the newest window only: older entries cost a phone's slow link a megabyte before it was live
         // (#2768).
         expect(olderReads).toBe(0);
-        await page.evaluate(() => {
-          const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
-          if (root !== null) root.scrollTop = 0;
-        });
+        await readerToTop(page);
         await expect.poll(() => olderReads, { timeout: 15_000 }).toBeGreaterThan(0);
         expect(realApp.problems).toEqual([]);
       },
@@ -319,10 +333,7 @@ export function defineScrollChecks(engine: string): void {
             }),
         });
         await openLongChat(page);
-        await page.evaluate(() => {
-          const root = document.querySelector<HTMLElement>("section[aria-label='Transcript']");
-          if (root !== null) root.scrollTop = 0;
-        });
+        await readerToTop(page);
         // At the top of what is loaded, the page asks for the next older entries.
         await expect.poll(() => asked, { timeout: 30_000 }).toBe(true);
         await page.waitForTimeout(300);
