@@ -1778,6 +1778,8 @@ export class ChatController {
         sessionFile,
         ...(this.#leaf === undefined ? {} : { leafId: this.#leaf as EntryId }),
         byteBudget: firstWindowBytes(),
+        // The reader may scroll up from here: the server gets the earlier windows ready meanwhile.
+        prepareOlder: true,
       });
     } catch (failure) {
       // omp writes a new chat's file once its first reply is done. Opened again before then (a reload, or the server

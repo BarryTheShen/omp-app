@@ -21,6 +21,33 @@ const HEAD_FINGERPRINT_BYTES = 256;
 const TAIL_FINGERPRINT_BYTES = 256;
 const CACHED_FILES = 4;
 const NEWLINE = 10;
+const CLOSE_BRACE = 0x7d;
+/**
+ * A character of a JSON string that is printable ASCII and neither a quote nor a backslash. The index decodes a line's
+ * ends as latin1, which reads these as UTF-8 does; a line whose type or id holds any other character is parsed whole.
+ */
+const PLAIN = String.raw`[ !#-\[\]-~]`;
+/**
+ * An entry line's head as omp writes most entries, `{"type":…,"id":…,"parentId":…`: the index reads these three from it
+ * and never parses the rest of the line, which can hold megabytes of tool output or pictures.
+ */
+const ENTRY_HEAD = new RegExp(
+  String.raw`^\{"type":"(${PLAIN}*)","id":"(${PLAIN}+)","parentId":(?:null|"(${PLAIN}*)")[,}]`,
+);
+/** The type at the head of a line whose id comes later. */
+const ENTRY_TYPE = new RegExp(String.raw`^\{"type":"(${PLAIN}*)"`);
+/**
+ * The end of a line omp writes with its id last (`custom` and `custom_message` entries, after their data), with the
+ * `runtime` object of strings omp 18.12 added after the timestamp: only the line's own object can end there, as an
+ * object inside it would leave one more brace at the end. A line in neither shape is parsed whole.
+ */
+const ENTRY_TAIL = new RegExp(
+  `,"id":"(${PLAIN}+)","parentId":(?:null|"(${PLAIN}*)"),"timestamp":"${PLAIN}*"` +
+    String.raw`(?:,"runtime":\{(?:"${PLAIN}*":"${PLAIN}*"(?:,"${PLAIN}*":"${PLAIN}*")*)?\})?\}$`,
+);
+/** Enough of a line's start for its head, and of its end for its tail, with ids as long as a UUID. */
+const ENTRY_HEAD_BYTES = 160;
+const ENTRY_TAIL_BYTES = 192;
 
 /** Where one entry's JSON line sits in the file. */
 export interface EntryRecord {
@@ -49,6 +76,8 @@ export interface WindowRequest {
   readonly byteBudget?: number;
   /** Also count the branch's entries older than a window read before an entry (`olderEntries`). */
   readonly countOlder?: boolean;
+  /** The reader may scroll up from this window: the file's index is built meanwhile, so the earlier windows are ready. */
+  readonly prepareOlder?: boolean;
   /** omp's blob folder beside the sessions: where the pictures a window's references point at are kept. */
   readonly blobsDir?: string;
 }
@@ -98,17 +127,47 @@ function parseEntryLine(
   return { id, record: { parentId, offset, length }, entry: value };
 }
 
-/** Records one complete line in a forward index. */
-function recordLine(
-  line: Buffer,
+/** The answer for a line in neither of omp's shapes: it is parsed whole. */
+const WHOLE_LINE = Symbol("whole line");
+
+/**
+ * One line's id and parent for the index, from its head, or from its type at the head and its id at its tail, when it
+ * has omp's shape; undefined for a line no branch holds, as `parseEntryLine` skips. The strings the patterns take are
+ * never empty, which is all an entry id asks.
+ */
+function indexShape(
+  head: Buffer,
+  tail: Buffer,
+): { id: EntryId; parentId: EntryId | null } | undefined | typeof WHOLE_LINE {
+  if (tail[tail.length - 1] !== CLOSE_BRACE) return WHOLE_LINE;
+  const text = head.toString("latin1");
+  let type: string | undefined;
+  let id: string | undefined;
+  let parentId: string | undefined;
+  const whole = ENTRY_HEAD.exec(text);
+  if (whole !== null) {
+    [, type, id, parentId] = whole;
+  } else {
+    type = ENTRY_TYPE.exec(text)?.[1];
+    const end = type === undefined ? null : ENTRY_TAIL.exec(tail.toString("latin1"));
+    if (end !== null) [, id, parentId] = end;
+  }
+  if (type === undefined || id === undefined) return WHOLE_LINE;
+  if (type === "session" || type === "title") return undefined;
+  return {
+    id: id as EntryId,
+    parentId: parentId === undefined || parentId === "" ? null : (parentId as EntryId),
+  };
+}
+
+/** One line's id and parent from the whole line, read again from the file. `length` counts the newline. */
+async function indexWhole(
+  handle: FileHandle,
   offset: number,
   length: number,
-  records: Map<EntryId, EntryRecord>,
-): EntryId | undefined {
-  const parsed = parseEntryLine(line, offset, length);
-  if (parsed === undefined) return undefined;
-  records.set(parsed.id, parsed.record);
-  return parsed.id;
+): Promise<{ id: EntryId; parentId: EntryId | null } | undefined> {
+  const parsed = parseEntryLine(await readBytes(handle, offset, length - 1), offset, length);
+  return parsed === undefined ? undefined : { id: parsed.id, parentId: parsed.record.parentId };
 }
 
 interface BackwardLine {
@@ -159,49 +218,105 @@ async function* readLinesBackwards(handle: FileHandle, size: number): AsyncGener
   }
 }
 
-/** Scans the complete lines from `from` to `to`; a partial last line is left for the next scan. */
+const NO_BYTES = Buffer.alloc(0);
+
+/**
+ * Scans the complete lines from `from` to `to`; a partial last line is left for the next scan. Of a line only its first
+ * and last bytes are looked at, so a line of megabytes (a tool's output, a picture) is never copied whole.
+ */
 async function scanRange(
   handle: FileHandle,
   from: number,
   to: number,
   records: Map<EntryId, EntryRecord>,
 ): Promise<{ scannedTo: number; lastId: EntryId | undefined }> {
-  let base = from;
-  let carry = Buffer.alloc(0);
+  const chunk = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
   let position = from;
+  // The line being read: where it starts, and its first and last bytes from earlier chunks.
+  let lineStart = from;
+  let head = NO_BYTES;
+  let tail = NO_BYTES;
   let lastId: EntryId | undefined;
   while (position < to) {
-    const chunk = await readBytes(handle, position, Math.min(SCAN_CHUNK_BYTES, to - position));
-    if (chunk.length === 0) break;
-    position += chunk.length;
-    const buffer = carry.length === 0 ? chunk : Buffer.concat([carry, chunk]);
+    const { bytesRead } = await handle.read(
+      chunk,
+      0,
+      Math.min(SCAN_CHUNK_BYTES, to - position),
+      position,
+    );
+    if (bytesRead === 0) break;
+    const view = chunk.subarray(0, bytesRead);
     let start = 0;
-    let newline = buffer.indexOf(NEWLINE, start);
+    let newline = view.indexOf(NEWLINE, start);
     while (newline !== -1) {
-      const id = recordLine(
-        buffer.subarray(start, newline),
-        base + start,
-        newline - start + 1,
-        records,
-      );
-      if (id !== undefined) lastId = id;
+      const own = view.subarray(start, newline);
+      const lineHead =
+        head.length === 0
+          ? own.subarray(0, ENTRY_HEAD_BYTES)
+          : Buffer.concat([head, own.subarray(0, Math.max(0, ENTRY_HEAD_BYTES - head.length))]);
+      const lineTail =
+        tail.length === 0 || own.length >= ENTRY_TAIL_BYTES
+          ? own.subarray(Math.max(0, own.length - ENTRY_TAIL_BYTES))
+          : Buffer.concat([tail, own]).subarray(-ENTRY_TAIL_BYTES);
+      const length = position + newline + 1 - lineStart;
+      const shaped = indexShape(lineHead, lineTail);
+      const indexed = shaped === WHOLE_LINE ? await indexWhole(handle, lineStart, length) : shaped;
+      if (indexed !== undefined) {
+        records.set(indexed.id, { parentId: indexed.parentId, offset: lineStart, length });
+        lastId = indexed.id;
+      }
+      lineStart = position + newline + 1;
+      head = NO_BYTES;
+      tail = NO_BYTES;
       start = newline + 1;
-      newline = buffer.indexOf(NEWLINE, start);
+      newline = view.indexOf(NEWLINE, start);
     }
-    carry = Buffer.from(buffer.subarray(start));
-    base += start;
+    if (start < bytesRead) {
+      // The line goes on in the next chunk: its first and last bytes are copied, since the chunk is read into again.
+      const rest = view.subarray(start);
+      if (head.length < ENTRY_HEAD_BYTES) {
+        head = Buffer.concat([head, rest.subarray(0, ENTRY_HEAD_BYTES - head.length)]);
+      }
+      tail = Buffer.from(
+        rest.length >= ENTRY_TAIL_BYTES
+          ? rest.subarray(rest.length - ENTRY_TAIL_BYTES)
+          : Buffer.concat([tail, rest]).subarray(-ENTRY_TAIL_BYTES),
+      );
+    }
+    position += bytesRead;
   }
-  return { scannedTo: base, lastId };
+  return { scannedTo: lineStart, lastId };
 }
+
+/** Index builds running now, one per file: a read and the opening's own build share one scan. */
+const building = new Map<string, Promise<FileIndex>>();
 
 /**
  * The index of one session file as it is now. A cached index is returned as it is while the file's size and mtime are
  * unchanged. A longer file whose first bytes, and whose bytes just before the indexed end, are unchanged had lines
  * appended, so only the new lines are scanned. Anything else is scanned from the first byte: omp also rewrites session
  * files in place (its maintenance's `rewriteEntries`), which moves every line after the first change. `fresh` asks for
- * that full scan whatever the cache holds. Only the size at the start of the call is read.
+ * that full scan whatever the cache holds. A build already running for the file is waited for, then the cache checked.
  */
-export async function indexSessionFile(file: string, fresh = false): Promise<FileIndex> {
+export function indexSessionFile(file: string, fresh = false): Promise<FileIndex> {
+  const running = building.get(file);
+  if (running !== undefined && !fresh) {
+    return running.then(
+      () => buildIndex(file, false),
+      () => buildIndex(file, false),
+    );
+  }
+  const job = buildIndex(file, fresh);
+  building.set(file, job);
+  const done = (): void => {
+    if (building.get(file) === job) building.delete(file);
+  };
+  job.then(done, done);
+  return job;
+}
+
+/** One index build; only the size at its start is read. */
+async function buildIndex(file: string, fresh: boolean): Promise<FileIndex> {
   const handle = await open(file, "r");
   try {
     const { size, mtimeMs } = await handle.stat();
@@ -258,6 +373,21 @@ export function branchPath(
     path.push(current);
     current = record.parentId;
   }
+  return path;
+}
+
+/**
+ * The last branch a window was read along, kept with its index: a reader paging up reads along one branch, and walking a
+ * long chat's branch again for each window took tens of milliseconds. An index is current only while its file is
+ * unchanged, so its branches are too.
+ */
+const branches = new WeakMap<FileIndex, { readonly leafId: EntryId; readonly path: EntryId[] }>();
+
+function branchOf(index: FileIndex, leafId: EntryId): EntryId[] | undefined {
+  const kept = branches.get(index);
+  if (kept?.leafId === leafId) return kept.path;
+  const path = branchPath(index.records, leafId);
+  if (path !== undefined) branches.set(index, { leafId, path });
   return path;
 }
 
@@ -485,7 +615,7 @@ async function readEntryWindowFromIndex(
         hasOlder: false,
       };
     }
-    const path = branchPath(index.records, leafId);
+    const path = branchOf(index, leafId);
     if (path === undefined) throw notFound("That entry is not in this session file");
     let from = 0;
     if (request.before !== undefined) {
@@ -539,11 +669,19 @@ async function readFileLastId(file: string): Promise<EntryId | null> {
 
 export async function readEntryWindow(file: string, request: WindowRequest): Promise<WindowResult> {
   if (request.before !== undefined) return readEntryWindowFromIndex(file, request);
-  if (request.leafId === undefined) return readEntryWindowFromEnd(file, request);
-  if ((await readFileLastId(file)) !== request.leafId) {
+  if (request.leafId !== undefined && (await readFileLastId(file)) !== request.leafId) {
     return readEntryWindowFromIndex(file, request);
   }
-  return readEntryWindowFromEnd(file, request);
+  const window = await readEntryWindowFromEnd(file, request);
+  // The first window comes from the file's end; the earlier ones need the file's index and the branch walked in it,
+  // which a long chat takes a moment to build: asked for, they are made now, so scrolling up finds them ready.
+  if (request.prepareOlder === true && window.hasOlder && window.leafId !== null) {
+    const leafId = window.leafId;
+    indexSessionFile(file)
+      .then((index) => branchOf(index, leafId))
+      .catch(() => undefined);
+  }
+  return window;
 }
 
 /** One entry as omp wrote it, with no output cut. */

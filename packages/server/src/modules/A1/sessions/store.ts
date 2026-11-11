@@ -653,6 +653,7 @@ export class SessionFileStore {
       ...(args.before === undefined ? {} : { before: args.before }),
       ...(args.byteBudget === undefined ? {} : { byteBudget: args.byteBudget }),
       ...(args.countOlder === true ? { countOlder: true } : {}),
+      ...(args.prepareOlder === true ? { prepareOlder: true } : {}),
       blobsDir: this.blobsDir,
     });
     return { sessionFile: args.sessionFile, ...window };

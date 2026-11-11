@@ -153,6 +153,11 @@ export const SessionEntryWindowArgs = z.strictObject({
    * sizes the room above its first message by. Asked for, so a page from before it never gets a field it does not know.
    */
   countOlder: z.boolean().optional(),
+  /**
+   * The reader may scroll up from this window, as in a chat just opened: the server makes the earlier windows ready
+   * meanwhile (a long chat's file takes a moment to index). A chat list reading its chats' first windows does not ask.
+   */
+  prepareOlder: z.boolean().optional(),
 });
 export type SessionEntryWindowArgs = z.infer<typeof SessionEntryWindowArgs>;
 

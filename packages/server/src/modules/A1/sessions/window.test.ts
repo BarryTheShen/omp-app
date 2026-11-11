@@ -236,6 +236,59 @@ describe("session entry windows", () => {
     }
   });
 
+  test("pages back through entries in each shape omp writes, past lines longer than a scan chunk, and only along entries", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "orders.jsonl");
+      const at = "2026-10-04T12:00:00.000Z";
+      const lines = [
+        header("orders"),
+        message("o1", null, "first"),
+        // omp writes type, id and parentId first; a line in another order is read whole.
+        JSON.stringify({
+          id: "o2",
+          parentId: "o1",
+          type: "message",
+          timestamp: at,
+          message: { role: "user", content: [{ type: "text", text: "second" }] },
+        }),
+        // A tool's output past the scanner's 1 MB chunks, and a line of the session's own that no branch holds.
+        toolResult("o3", "o2", "y".repeat(2_500_000)),
+        JSON.stringify({ type: "title", id: "t1", parentId: "o3", title: "Named" }),
+        // A custom entry as omp 18.12 writes it: its id after its data, which has ids of its own, then a runtime.
+        JSON.stringify({
+          type: "custom",
+          customType: "tool_execution_start",
+          data: { id: "inner", parentId: "o1", timestamp: at },
+          id: "o4",
+          parentId: "o3",
+          timestamp: at,
+          runtime: { version: "18.12.1" },
+        }),
+        message("o5", "o4", "fifth"),
+        // Ids only inside its data: its end reads like an entry's, but it is none, so the file still ends at o5.
+        JSON.stringify({
+          type: "custom",
+          customType: "note",
+          data: { name: "n", id: "n1", parentId: "o5", timestamp: at },
+        }),
+      ];
+      await writeFile(file, `${lines.join("\n")}\n`, "utf8");
+
+      const seen: unknown[] = [];
+      let page = await readEntryWindow(file, { byteBudget: 1 });
+      seen.unshift(...ids(page.entries));
+      while (page.hasOlder) {
+        page = await readEntryWindow(file, { byteBudget: 1, before: page.oldestId ?? undefined });
+        expect(page.fileLastId).toBe(EntryId.parse("o5"));
+        seen.unshift(...ids(page.entries));
+      }
+      expect(seen).toEqual(["o1", "o2", "o3", "o4", "o5"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("pages near the start of a middle leaf's branch like the index path", async () => {
     const root = await makeTempRoot();
     try {
