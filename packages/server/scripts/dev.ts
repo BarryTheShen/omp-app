@@ -67,6 +67,7 @@ import { createSessionPinStore } from "../src/modules/A1/pins";
 import { createPlanDocumentStore } from "../src/modules/A1/plans";
 import { type A1PortContext, createA1PortRegistrations } from "../src/modules/A1/ports";
 import { createRuleStore } from "../src/modules/A1/rules";
+import { hideSecretsThrough, SecretStoreService } from "../src/modules/A1/secrets";
 import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
@@ -636,6 +637,15 @@ export async function createCompositionServer(
     watchRegistry: fileWatch,
   });
   const modelPreferenceStore = new ModelPreferenceStoreService({ appDataDir });
+  const secretStore = new SecretStoreService({
+    agentDir,
+    hideSecrets: hideSecretsThrough(configStore),
+    watchRegistry: fileWatch,
+    onError: (error) =>
+      logger.warn("secrets.error", {
+        detail: error instanceof Error ? error.message : String(error),
+      }),
+  });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
   const extensionCatalog = createExtensionCatalog({
     env,
@@ -717,6 +727,7 @@ export async function createCompositionServer(
     backgroundJobStopStore,
     sessionPinStore,
     modelPreferenceStore,
+    secretStore,
     providerAccountStore,
     usageLimitStore,
     usageReadings,

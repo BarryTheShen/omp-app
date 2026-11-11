@@ -529,7 +529,10 @@ export class ConfigStoreService {
     // (a credential in its query, fragment or userinfo) also takes a secret set or unset, so its Replace and Clear
     // work; a plain value still replaces it.
     const resolved = this.resolveSetting(key, current)?.value;
-    const secret = this.isSecretEntry(key, resolved);
+    // A setting with no value anywhere (no default known, as for `omp-app secret`) is judged by the value written: a
+    // boolean under a credential-looking name (`secrets.enabled`) is plain, as it is once it has one.
+    const judged = resolved ?? (value === "unset" || value.secret ? undefined : value.value);
+    const secret = this.isSecretEntry(key, judged);
     const hiddenUrl = !secret && resolved !== undefined && hidesUrlSetting(key, resolved);
     // Taking a value out shows nothing, so an unset takes any setting.
     if (value !== "unset" && secret !== value.secret && !(hiddenUrl && value.secret)) {

@@ -79,6 +79,7 @@ import { downloadBytes, readFileBytes, uploadBlob } from "../panels/files/transf
 import { clientTags, frameMarks, watchFrames } from "../perf/frames";
 import { isPhone } from "../phone";
 import { QuestionsStore } from "../questions/questions";
+import { AddSecretToggle } from "../secrets/secrets";
 import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
@@ -176,6 +177,8 @@ export class ChatController {
   readonly questions = new QuestionsStore((text) => this.store.toast(text, "info"));
   /** Whether this pane's Models dialog (omp's Alt+M) is open. */
   readonly modelHubToggle = new ModelHubToggle();
+  /** Whether this pane's "Add a secret" dialog is open: its message box's key button, ＋ row, or the palette. */
+  readonly addSecretToggle = new AddSecretToggle();
   /** This pane's Agent Hub: closed, or open on a subagent or on the list alone. */
   readonly agentHub = new AgentHubState();
   /** Reads this chat's live events for what its runs settle with (the inbox's rows). */

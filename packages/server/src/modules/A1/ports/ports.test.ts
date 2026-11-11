@@ -26,6 +26,7 @@ import {
   ProviderAccountStore,
   ProviderErrorPort,
   RuleStore,
+  SecretStore,
   SessionFilePath,
   SessionFileStore,
   SessionImportPort,
@@ -224,6 +225,13 @@ function createContext(
       set: async () => ({ favorites: [], hidden: [], revision: "revision-2" }),
       subscribe: () => () => undefined,
     },
+    secretStore: {
+      list: async () => ({ hidden: false, secrets: [], others: 0, path: "/agent/secrets.yml" }),
+      add: async () => ({ name: "API_KEY", placeholder: "$$APIKEY_2XUBD7NWOZ1U$$", length: 20 }),
+      remove: async () => undefined,
+      reveal: async () => ({ value: "value-0123456789" }),
+      subscribe: () => () => undefined,
+    },
     sessionPinStore: {
       list: async () => ({ pins: [], revision: "revision-1", readAt: "2026-01-01T00:00:00.000Z" }),
       set: async () => ({
@@ -418,6 +426,7 @@ describe("A1.9 port registrations", () => {
       ["A1.githubRefs", "search", { folder: "/workspace", query: "test", kind: "issue", limit: 5 }],
       ["A1.urlCatalog", "list", { query: "", limit: 10 }],
       ["A1.pasteFileStore", "save", { threadId: "session-1", text: "pasted text" }],
+      ["A1.secretStore", "list", {}],
     ];
     for (const [index, [port, method, args]] of calls.entries()) {
       const result = await call(session, socket, `call-${index}`, port, method, args);
@@ -449,6 +458,7 @@ describe("A1.9 port registrations", () => {
       ProviderAccountStore,
       ProviderErrorPort,
       RuleStore,
+      SecretStore,
       SessionFileStore,
       SessionImportPort,
       SessionPinStore,

@@ -117,12 +117,14 @@ import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import { ensureTheme, initTheme } from "@oh-my-pi/pi-tui/theme";
 import {
   directoryIsMissing,
+  getAgentDir,
   getProjectDir,
   normalizePathForComparison,
   setProjectDir,
 } from "@oh-my-pi/pi-utils/dirs";
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
+import { LiveSecrets } from "./live-secrets";
 import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
 
@@ -348,12 +350,15 @@ export async function createChatSession(
   }
 
   // The app's own tools, beside omp's: questions the agent asks without waiting (`questions.ts`), and the to-do list it
-  // shares with the person and the other chats (`shared-todos.ts`).
+  // shares with the person and the other chats (`shared-todos.ts`). Secrets saved while the chat runs reach it through
+  // `live-secrets.ts`'s hook.
   const askAsync = new AskAsyncTool();
   const sharedTodos = new SharedTodosTool();
+  const liveSecrets = new LiveSecrets();
   const created = await createAgentSession({
     ...sessionOptions,
     customTools: [askAsync.definition, sharedTodos.definition],
+    extensions: [...(sessionOptions.extensions ?? []), liveSecrets.extension],
     eventBus,
     subagentEventBus,
     preloadedExtensions: extensions,
@@ -403,6 +408,12 @@ export async function createChatSession(
   }
   settings.startWatching();
   postmortem.register("settings-file-watcher", () => settings.stopWatching(), { exitOnly: true });
+  liveSecrets.attach(session, settings, {
+    cwd: session.sessionManager.getCwd(),
+    agentDir: sessionOptions.agentDir ?? getAgentDir(),
+    keyDir: sessionOptions.agentDir,
+  });
+  postmortem.register("live-secrets", () => liveSecrets.dispose(), { exitOnly: true });
   return {
     session,
     setToolUIContext: created.setToolUIContext,

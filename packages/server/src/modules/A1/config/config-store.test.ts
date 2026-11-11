@@ -448,6 +448,40 @@ describe("credential names and value types", () => {
       isSet: true,
     });
   });
+  test("a boolean is written as a plain setting under a credential-looking name that has no value yet; a string is not", async () => {
+    const root = await temporaryDirectory();
+    // No defaults known, as for `omp-app secret`, which turns Hide Secrets on without the app running.
+    const store = createConfigStore({
+      agentDir: join(root, "agent"),
+      appDataDir: join(root, "app"),
+    });
+    try {
+      const { revision } = await store.list({ folder: null });
+      await store.write({
+        key: "secrets.enabled",
+        layer: "global",
+        value: { secret: false, value: true },
+        folder: null,
+        expectedRevision: revision,
+      });
+      expect(await store.read({ key: "secrets.enabled", folder: null })).toMatchObject({
+        secret: false,
+        value: true,
+      });
+      const after = await store.list({ folder: null });
+      await expect(
+        store.write({
+          key: "secrets.apiToken",
+          layer: "global",
+          value: { secret: false, value: "plain-text-token" },
+          folder: null,
+          expectedRevision: after.revision,
+        }),
+      ).rejects.toThrow("Credential settings require a secret write.");
+    } finally {
+      store.dispose();
+    }
+  });
 });
 
 describe("ConfigStoreService defaults handed over after creation", () => {

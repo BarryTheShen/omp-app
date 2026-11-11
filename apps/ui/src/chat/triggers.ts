@@ -1,3 +1,4 @@
+import { startsWithSecretPlaceholder } from "@omp-app/contracts";
 import type { ChatHostCommand } from "@omp-app/contracts/chat-host";
 
 /**
@@ -154,7 +155,8 @@ export function replaceTrigger(
 
 /**
  * omp's shell prefixes: `!` runs a command in bash and `$` code in Python, both recorded in the chat; doubled (`!!`,
- * `$$`) the run stays out of the model's context.
+ * `$$`) the run stays out of the model's context. A message that starts with a secret's placeholder ("Add a secret"
+ * puts one at the caret, often in an empty box) is a message: the placeholder is not Python.
  */
 export interface ShellRun {
   readonly method: "bash" | "python";
@@ -163,6 +165,7 @@ export interface ShellRun {
 }
 
 export function shellRun(text: string): ShellRun | null {
+  if (startsWithSecretPlaceholder(text)) return null;
   const prefix = ["!!", "$$", "!", "$"].find((candidate) => text.startsWith(candidate));
   if (prefix === undefined) return null;
   return {

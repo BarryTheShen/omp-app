@@ -492,6 +492,17 @@
 	font-size: 0.86em;
 }
 
+/* A Hide Secrets placeholder (`secretPlaceholders.ts`): the lock and the secret's name, the placeholder in its title. */
+.tr-md .tr-secret {
+	padding: 1px 6px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: var(--bg-raised);
+	font-family: var(--font-mono);
+	font-size: 0.86em;
+	white-space: nowrap;
+}
+
 .tr-md pre {
 	margin: 10px 0;
 	padding: 12px 14px;

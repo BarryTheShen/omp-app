@@ -43,4 +43,13 @@ describe("firstPromptTextOf: the words a chat lists as its first prompt", () => 
   test("a message with no block is its own text", () => {
     expect(firstPromptTextOf("plain words")).toBe("plain words");
   });
+
+  test("a secret's placeholder lists as a lock and the secret's name, not the placeholder", () => {
+    expect(firstPromptTextOf("$$AMOJWTSECRET_2XUBD7NWOZ1U:L$$ is the key, please set it")).toBe(
+      "🔒 AMOJWTSECRET is the key, please set it",
+    );
+    expect(firstPromptTextOf(wrapPastedBlock("use $$2XUBD7NWOZ1U$$ here"))).toBe(
+      "use 🔒 secret here",
+    );
+  });
 });

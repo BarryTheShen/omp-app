@@ -137,6 +137,13 @@ function chatModes(
     keys: keycap(KEYS.modelHub),
     run: () => close(() => controller.modelHubToggle.show()),
   });
+  items.push({
+    key: "chat:secret",
+    group: "Commands",
+    label: "Add a secret…",
+    detail: "The AI sees only its placeholder",
+    run: () => close(() => controller.addSecretToggle.show()),
+  });
   return items;
 }
 

@@ -76,13 +76,15 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * lite view (`setWidget(key, lines, { host })`). `answers_together`: the answers to `ask_async` questions wait until
  * every open question of the chat has one, whichever ask it came from, then go together. `shared_todos`: the chat's
  * agent has the `shared_todos` tool, the to-do list it shares with the person and the other chats (`app.todos`).
- * `silent_skips`: a skipped `ask_async` question gets no answer, and skips alone send the agent nothing.
+ * `silent_skips`: a skipped `ask_async` question gets no answer, and skips alone send the agent nothing. `secrets_live`:
+ * a secret saved while the chat runs (`secrets.yml`) is hidden from its AI at once, and its tool calls get its value.
  */
 export const CHAT_HOST_FEATURES = [
   "message_host",
   "answers_together",
   "shared_todos",
   "silent_skips",
+  "secrets_live",
 ] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */

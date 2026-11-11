@@ -61,6 +61,7 @@ import { traceFollow } from "./perf/followTrace";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
 import { isPhone, usePhone } from "./phone";
+import { SecretNotice } from "./secrets/SecretNotice";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { ListEdge } from "./sidebar/ListEdge";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -512,6 +513,7 @@ function Shell({
     >
       <ConnectionBanner client={client} onChangeServer={showServers} />
       <RequestPrompt client={client} />
+      <SecretNotice client={client} />
       <Sidebar
         folderMenu={<FolderMenu client={client} choice={choice} />}
         folder={folder}

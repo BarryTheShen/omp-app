@@ -7,8 +7,10 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
+import { SecretName } from "@omp-app/contracts";
 import { z } from "zod";
 import { stateDirectory } from "../logging";
+import type { SecretCommand } from "./secrets-cli";
 
 export const DEFAULT_PORT = 4317;
 
@@ -16,6 +18,7 @@ export const USAGE = `Usage: omp-app [folder] [options]
        omp-app tui [folder] [-- omp's options]
        omp-app pair
        omp-app devices [remove <device>]
+       omp-app secret [add <name> | remove <name>]
        omp-app logs [--lines <n>]
        omp-app debug-report
 
@@ -43,6 +46,16 @@ Each device that opens the app pairs once, and stays paired until it is removed:
 The app's link (the address with #token=) opens it on this computer only, and stays the same when
 the app restarts. Every other device pairs.
 
+Secrets for omp's Hide Secrets, which a chat's AI sees only as placeholders (also in the app:
+Settings → Providers → Secrets):
+  secret         list the saved secrets: each name and the placeholder a chat's AI sees
+  secret add <name>
+                 save what comes in (a pipe, or typed into the terminal: it is not shown) as a
+                 secret, and turn Hide Secrets on. A command a chat runs with its placeholder gets
+                 the value. For example: openssl rand -hex 32 | omp-app secret add API_KEY
+  secret remove <name>
+                 remove a saved secret
+
 Problems? The app keeps a log of what it does (never your prompts, files or keys):
   logs           print where the log is and its last lines (--lines sets how many, default 100)
   debug-report   write omp-app-debug-<time>.log in this folder, ready to attach to a GitHub issue
@@ -57,6 +70,7 @@ export type LauncherArgs = {
     | "tui"
     | "pair"
     | "devices"
+    | "secret"
     | "logs"
     | "debug-report";
   readonly folder: string | undefined;
@@ -68,6 +82,8 @@ export type LauncherArgs = {
   readonly ompArgs: readonly string[];
   /** For `devices remove <device>`: the device, by its id, the start of its id, or its name. */
   readonly removeDevice: string | undefined;
+  /** For `secret`: list, or add or remove one secret, by its name. */
+  readonly secret?: SecretCommand;
 };
 
 export type ParsedArgs =
@@ -93,6 +109,25 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
     return argv[1] === "remove" && argv.length === 3 && device !== ""
       ? { ok: true, args: { ...NO_ARGS, command: "devices", removeDevice: device } }
       : { ok: false, message: "Use omp-app devices, or omp-app devices remove <device>." };
+  }
+  if (argv[0] === "secret") {
+    const [, action = "list", name = "", ...rest] = argv;
+    if (action === "list" && argv.length <= 2) {
+      return { ok: true, args: { ...NO_ARGS, command: "secret", secret: { action: "list" } } };
+    }
+    if ((action === "add" || action === "remove") && name !== "" && rest.length === 0) {
+      if (!SecretName.safeParse(name).success) {
+        return {
+          ok: false,
+          message: `"${name}" cannot name a secret: use letters, digits, '_', '.' and '-', starting with a letter or digit.`,
+        };
+      }
+      return { ok: true, args: { ...NO_ARGS, command: "secret", secret: { action, name } } };
+    }
+    return {
+      ok: false,
+      message: "Use omp-app secret, omp-app secret add <name>, or omp-app secret remove <name>.",
+    };
   }
   let command: LauncherArgs["command"] = "run";
   let folder: string | undefined;

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatController } from "../chat/controller";
+import { SavedSecrets } from "../secrets/SavedSecrets";
 import { AppPage } from "./AppPage";
 import { loadSettingsData, type SettingDef, type SettingsData, type SettingsTab } from "./data";
 import { McpServers } from "./McpServers";
@@ -341,6 +342,7 @@ function SettingsSheet({
                     <>
                       <SignIn controller={controller} />
                       <SearchKeys controller={controller} onClose={onClose} />
+                      <SavedSecrets client={client} />
                     </>
                   ) : tab.id === "tools" ? (
                     <McpServers client={client} folder={folder} controller={controller} />

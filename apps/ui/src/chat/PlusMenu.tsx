@@ -1,4 +1,4 @@
-import { Paperclip, Pause, Play, Plus, Zap } from "lucide-react";
+import { KeyRound, Paperclip, Pause, Play, Plus, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,8 +9,9 @@ export const SHEET_ROW = "h-11 w-full justify-start gap-3 px-3 text-base text-t1
 /**
  * The phone's ＋ beside the message box (#2837): one sheet for what the box does besides typing, so nothing comes up
  * between the box and the keyboard. Pause or Resume while omp works or the chat is paused, Photo or file (the
- * device's picker: the photo library, the camera, Files), the quick prompts, Queue for later once words are typed
- * (#14), then the box's settings (model, thinking, plan mode, goal); Queue for later's sheet and the settings' menus
+ * device's picker: the photo library, the camera, Files), a secret (omp's Hide Secrets: its placeholder goes in the
+ * message), the quick prompts, Queue for later once words are typed (#14), then the box's settings (model, thinking,
+ * plan mode, goal); Queue for later's sheet and the settings' menus
  * open over it. Its open state is the box's: the model menu opened from elsewhere opens the sheet, where the model's
  * chip is.
  */
@@ -20,6 +21,7 @@ export function PlusMenu({
   settings,
   closed,
   onAttach,
+  onAddSecret,
   onQuickPrompts,
   pause,
   queueLater,
@@ -32,6 +34,8 @@ export function PlusMenu({
   readonly closed: boolean;
   /** Opens the device's picker; within the tap, as iOS asks. */
   readonly onAttach: () => void;
+  /** Opens "Add a secret", whose placeholder goes into the message. */
+  readonly onAddSecret: () => void;
   /** Opens the quick panel in the keyboard's place. */
   readonly onQuickPrompts: () => void;
   /** Pause or Resume: shown while omp works or the chat is paused. */
@@ -75,6 +79,7 @@ export function PlusMenu({
           disabled={closed}
           onPress={act(onAttach)}
         />
+        <Row label="Secret" icon={<KeyRound />} tour="add-secret" onPress={act(onAddSecret)} />
         <Row label="Quick prompts" icon={<Zap />} onPress={act(onQuickPrompts)} />
         {queueLater}
         <fieldset

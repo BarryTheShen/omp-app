@@ -890,6 +890,23 @@ const EARLIER_MESSAGES_TOUR: Tour = {
   ],
 };
 
+/** Secrets the AI never sees (omp's Hide Secrets), from the message box (2026-11-11). */
+const SECRETS_TOUR: Tour = {
+  id: "secrets-2026-11-11",
+  title: "Secrets the AI never sees",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    PLUS_STEP,
+    {
+      target: part("add-secret"),
+      title: "Add a secret",
+      text: "Paste a key or a password here, with a name. The AI never sees it: your message gets its placeholder, shown as a lock and the name, and omp puts the value in a command that uses it. When the AI saves a value for you, a notice offers <b>Copy</b>. Your secrets are in Settings → Providers → <b>Secrets</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** On an iPhone or an iPad, a swipe up stops at the top of what is loaded (2026-11-11). */
 const SWIPE_STOPS_TOUR: Tour = {
   id: "swipe-stops-2026-11-11",
@@ -2863,6 +2880,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-secrets",
+    when: "2026-11-11T12:35:00-06:00",
+    summary:
+      "Secrets the AI never sees: the key button in the message box (Secret in ＋ on a phone) saves a key or password under a name, and puts its placeholder in your message. omp's Hide Secrets shows the AI the placeholder wherever the value would appear, and puts the value in a command that uses it, also in a chat already running. The AI can hand a value back the same way, with a notice to copy it. They are listed in Settings → Providers → Secrets, and omp-app secret lists, adds and removes them in a terminal.",
+    tours: [SECRETS_TOUR],
+  },
   {
     id: "2026-11-11-swipe-stops",
     when: "2026-11-11T10:52:00-06:00",

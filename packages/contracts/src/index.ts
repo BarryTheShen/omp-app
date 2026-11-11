@@ -10,5 +10,6 @@ export * from "./core/message-host";
 export * from "./core/omp";
 export * from "./core/pasted-block";
 export * from "./core/provenance";
+export * from "./core/secret-placeholder";
 export * from "./ports/A0";
 export * from "./ports/A1";

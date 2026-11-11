@@ -6,8 +6,8 @@
  */
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
-import { DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
+import { dirname, join, resolve } from "node:path";
+import { AppFailure, DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
 import { probeOmp } from "../src/capabilities/omp-version";
 import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { keepLaunchToken, launchTokenFile } from "../src/launch-token";
@@ -35,6 +35,7 @@ import {
   startOrAttach,
   USAGE,
 } from "../src/launcher/launcher";
+import { readSecretValue, runSecretCommand } from "../src/launcher/secrets-cli";
 import {
   TUI_SETTINGS,
   tuiCommands,
@@ -51,6 +52,8 @@ import {
   readLogTail,
   stateDirectory,
 } from "../src/logging";
+import { createConfigStore } from "../src/modules/A1/config";
+import { hideSecretsThrough, SecretStoreService } from "../src/modules/A1/secrets";
 import { ompCommand } from "../src/omp-host/chat-command";
 import { appDataFolder, handBackHosts, hostsFolder } from "../src/process";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
@@ -148,6 +151,33 @@ if (args.command === "version") {
 const home = homedir();
 const logDir = stateDirectory(Bun.env, home);
 const chatHost = chatHostBinary();
+
+if (args.command === "secret" && args.secret !== undefined) {
+  // omp's agent folder as the server finds it: inside a chat this is the chat's own, so a secret a command saves is
+  // in the file every chat reads.
+  const agentDir = resolve(Bun.env.PI_CODING_AGENT_DIR ?? join(home, ".omp", "agent"));
+  const config = createConfigStore({ env: Bun.env, homeDir: home, agentDir });
+  const store = new SecretStoreService({ agentDir, hideSecrets: hideSecretsThrough(config) });
+  const command = args.secret;
+  try {
+    console.log(
+      await runSecretCommand(command, store, () =>
+        readSecretValue(
+          process.stdin,
+          command.action === "list" ? "" : command.name,
+          () => Bun.stdin.text(),
+          (text) => process.stderr.write(text),
+        ),
+      ),
+    );
+  } catch (error) {
+    fail(error instanceof AppFailure ? error.appError.message : String(error));
+  } finally {
+    store.dispose();
+    config.dispose();
+  }
+  process.exit(0);
+}
 
 if (args.command === "tui") {
   if (chatHost !== undefined && !existsSync(chatHost)) {

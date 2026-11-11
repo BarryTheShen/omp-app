@@ -226,4 +226,15 @@ describe("shellRun", () => {
     expect(shellRun("!!")).toEqual({ method: "bash", input: "", excludeFromContext: true });
     expect(shellRun("list the files")).toBeNull();
   });
+
+  test("a message that starts with a secret's placeholder is a message, not Python's `$$`", () => {
+    expect(shellRun("$$AMOJWTSECRET_2XUBD7NWOZ1U:L$$ is the key, please set it")).toBeNull();
+    expect(shellRun("$$2XUBD7NWOZ1U$$")).toBeNull();
+    // Python whose first word only looks like one is still Python.
+    expect(shellRun("$$X_1 = 2")).toEqual({
+      method: "python",
+      input: "X_1 = 2",
+      excludeFromContext: true,
+    });
+  });
 });

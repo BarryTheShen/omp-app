@@ -7,6 +7,7 @@ import { isFileHref } from "./fileHref";
 import { escapeHtml } from "../../lib/format";
 import { highlightCode } from "../../tool-render/highlight";
 import { mathExtension } from "./math";
+import { secretPlaceholderExtension } from "./secretPlaceholders";
 
 /**
  * Opens a reply's link to a file (#17): the chat's pane gives it, and opens the file in the app's own viewer. Without
@@ -100,6 +101,8 @@ const md = new Marked({
 	breaks: true,
 });
 md.use(mathExtension);
+// After math: marked tries the newest extension first, and a Hide Secrets placeholder would read as an equation.
+md.use(secretPlaceholderExtension);
 
 function renderMarkdown(text: string): string {
 	try {

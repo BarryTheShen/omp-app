@@ -11,7 +11,7 @@ import type {
   GoalAnswer,
   PlanModeStatus,
 } from "@omp-app/contracts/chat-host";
-import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, FileText, KeyRound, Paperclip, Square, X } from "lucide-react";
 import {
   type KeyboardEvent,
   memo,
@@ -39,6 +39,7 @@ import { sizeText } from "../panels/files/transfer";
 import { showPanel } from "../panels/panel-state";
 import { usePhone } from "../phone";
 import { PlanChip } from "../plan/PlanChip";
+import { AddSecretDialog } from "../secrets/AddSecretDialog";
 import { useSidewaysRow } from "../sidewaysRow";
 import { TodoPill } from "../todos/TodoPill";
 import { type AttachedFile, MAX_FILE_BYTES, pastesCopiedFiles } from "./attachedFiles";
@@ -836,6 +837,48 @@ export const Composer = memo(function Composer({
     </Tooltip>
   );
   /**
+   * "Add a secret" (omp's Hide Secrets): a key or password pasted into a hidden field goes to omp's secrets file, and
+   * its placeholder goes into the message where the caret is, so the AI sees the placeholder and omp puts the value in
+   * a command that uses it. The key button on a computer, a row of the ＋ sheet on a phone, and the palette.
+   */
+  const addingSecret = useSyncExternalStore(
+    controller.addSecretToggle.subscribe,
+    controller.addSecretToggle.getSnapshot,
+  );
+  const secretDialog = (
+    <AddSecretDialog
+      client={controller.client}
+      open={addingSecret}
+      onOpenChange={(open) =>
+        open ? controller.addSecretToggle.show() : controller.addSecretToggle.hide()
+      }
+      intro="Its placeholder goes into your message where the cursor is."
+      onSaved={(saved) => {
+        if (saved.placeholder !== null) insertRef.current(saved.placeholder);
+      }}
+    />
+  );
+  const secretButton = (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-t3 hover:text-t1 tablet:size-11"
+            aria-label="Add a secret"
+            data-tour="add-secret"
+            onClick={() => controller.addSecretToggle.show()}
+          >
+            <KeyRound />
+          </Button>
+        }
+      />
+      <TooltipContent>Add a secret: the AI sees only its placeholder</TooltipContent>
+    </Tooltip>
+  );
+  /**
    * The framing app's text in the lite view (#2845). On a phone the model and its level are behind ＋: the empty box
    * names them ("Claude Opus 5.5 · high"), on one line beside ⚡ and Send.
    */
@@ -1048,6 +1091,7 @@ export const Composer = memo(function Composer({
             </ul>
           )}
           {pickerInput}
+          {secretDialog}
           {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
           {/* ＋, the text, ⚡ and Send are a finger's 44 pt each: an even inset keeps them centred, the box no taller. */}
           <div className={phone ? "flex items-end gap-1.5 p-[3px]" : undefined}>
@@ -1058,6 +1102,7 @@ export const Composer = memo(function Composer({
                 settings={settings}
                 closed={closed}
                 onAttach={() => picker.current?.click()}
+                onAddSecret={() => controller.addSecretToggle.show()}
                 onQuickPrompts={() => {
                   setPanel(true);
                   boxRef.current?.blur();
@@ -1154,6 +1199,7 @@ export const Composer = memo(function Composer({
                 className="row-scroll -m-[3px] flex min-w-0 items-center gap-1 p-[3px]"
               >
                 {attachButton}
+                {secretButton}
                 {shellBadge}
                 {settings}
               </div>

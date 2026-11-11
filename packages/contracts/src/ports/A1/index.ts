@@ -17,6 +17,7 @@ export * from "./plan-documents";
 export * from "./provider-accounts";
 export * from "./provider-error";
 export * from "./rule-store";
+export * from "./secret-store";
 export * from "./session-file-store";
 export * from "./session-import";
 export * from "./session-pin-store";

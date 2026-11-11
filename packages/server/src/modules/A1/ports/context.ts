@@ -18,6 +18,7 @@ import type { PasteFileStoreService } from "../paste-files";
 import type { SessionPinStoreService } from "../pins";
 import type { PlanDocumentStoreService } from "../plans";
 import type { RuleStoreService } from "../rules";
+import type { SecretStoreService } from "../secrets";
 import type { SessionImportStoreService } from "../session-import";
 import type { SessionFileStore } from "../sessions";
 import type { UrlCatalogService } from "../url-catalog";
@@ -35,6 +36,8 @@ export interface A1PortContext {
   readonly sessionPinStore: SessionPinStoreService;
   /** The model menu's stars and hidden models, in the app's data folder. */
   readonly modelPreferenceStore: ModelPreferenceStoreService;
+  /** omp's secrets for Hide Secrets, its `<agent folder>/secrets.yml`. */
+  readonly secretStore: SecretStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
   readonly usageLimitStore: UsageLimitStoreService;
   /** Each usage window's readings over the last day and its pace (#2836). */
