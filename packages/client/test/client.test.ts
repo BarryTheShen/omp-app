@@ -55,7 +55,13 @@ class FakeSocket implements WebSocketLike {
     this.onSend(this, data);
   }
 
-  close(): void {
+  /** As a browser's WebSocket: a code other than 1000 or 3000 to 4999 throws, and the socket stays open. */
+  close(code?: number): void {
+    if (code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+      throw Object.assign(new Error(`close code ${code} is not allowed`), {
+        name: "InvalidAccessError",
+      });
+    }
     if (this.closed) return;
     this.closed = true;
     this.onclose?.({});
@@ -868,6 +874,16 @@ describe("createAppClient", () => {
     await eventually(() => kept.length === 1);
     expect(seen).toEqual(["releases"]);
     client.dispose();
+  });
+
+  test("a frame it cannot read closes that link, as a browser lets it, and a new one opens", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const first = server.current().socket;
+    first.onmessage?.({ data: "{ not a frame" });
+    await eventually(() => server.connections.length === 2 && client.connectionState === "open");
+    // Left open, each link the page gives up on stays with the server until the page is reloaded.
+    expect(first.closed).toBe(true);
   });
 
   test("a call made after the server refused the token fails with that refusal instead of waiting", async () => {

@@ -1208,7 +1208,9 @@ class AppClientImpl implements AppClient {
     this.rejectPending(appFailure("internal", "Invalid server frame", false));
     if (socket && this.socket === socket) {
       try {
-        socket.close(1002, "invalid server frame");
+        // 4002, not the protocol's 1002: a browser's close() takes only 1000 and 3000 to 4999 and throws for the rest,
+        // which left each link the page gave up on open with the server until the page was reloaded.
+        socket.close(4002, "invalid server frame");
       } catch {
         this.scheduleReconnect();
       }
