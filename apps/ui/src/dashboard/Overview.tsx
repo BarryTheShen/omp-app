@@ -23,6 +23,9 @@ const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFra
 const whole = new Intl.NumberFormat("en-US");
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
 
+const requestWords = (count: number): string =>
+  count === 1 ? "1 request" : `${whole.format(count)} requests`;
+
 /** omp's statistics for `range`, read once the dashboard shows (its first read can take omp a minute). */
 function useStats(client: AppClient, range: StatsRange): StatsSummary | null {
   const [summary, setSummary] = useState<StatsSummary | null>(null);
@@ -188,22 +191,18 @@ export function Overview({
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-3 @2xl:grid-cols-3 @5xl:grid-cols-5">
         <Tile
-          name="Spent today"
+          name="Spent in 24 hours"
           value={today === null ? "…" : dollars.format(today.totals.cost)}
-          note={
-            today === null
-              ? "Reading omp's statistics"
-              : `${whole.format(today.totals.requests)} requests`
-          }
+          note={today === null ? "Reading omp's statistics" : requestWords(today.totals.requests)}
           tone="accent"
         />
         <Tile
-          name="Spent this week"
+          name="Spent in 7 days"
           value={week === null ? "…" : dollars.format(week.totals.cost)}
-          note={week === null ? "" : `${whole.format(week.totals.requests)} requests`}
+          note={week === null ? "" : requestWords(week.totals.requests)}
         />
         <Tile
-          name="Tokens today"
+          name="Tokens in 24 hours"
           value={
             today === null
               ? "…"
@@ -216,9 +215,13 @@ export function Overview({
           note={today === null ? "" : `${percent.format(today.totals.cacheRate)} from the cache`}
         />
         <Tile
-          name="Failed today"
+          name="Failed in 24 hours"
           value={today === null ? "…" : percent.format(failed)}
-          note={today === null ? "" : `${whole.format(today.totals.failed)} requests`}
+          note={
+            today === null
+              ? ""
+              : `${whole.format(today.totals.failed)} of ${requestWords(today.totals.requests)}`
+          }
           tone={failed >= 0.05 ? "bad" : failed > 0 ? "warn" : "plain"}
         />
         <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-l2 bg-panel px-3 py-2.5">

@@ -36,7 +36,11 @@ function durationWords(ms: number | null): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
 }
 
-/** A bucket's start as the chart names it: the hour for 24 hours, else the day. */
+/**
+ * A bucket's start as the chart names it: the hour for 24 hours, else the day. omp counts days from midnight UTC (its
+ * day buckets are whole multiples of a day since 1970), so a day is named in UTC: in local time a day west of Greenwich
+ * would read as the day before.
+ */
 function bucketWords(at: number, range: StatsRange): string {
   return range === "24h"
     ? new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
@@ -44,6 +48,7 @@ function bucketWords(at: number, range: StatsRange): string {
         weekday: "short",
         day: "numeric",
         month: "short",
+        timeZone: "UTC",
       });
 }
 
@@ -220,7 +225,11 @@ export function StatsSummaryView({ client }: { readonly client: AppClient }): Re
                   />
                 </BarChart>
               </ChartContainer>
-              <p className="text-xs text-t3">Cost per {chosen.per}.</p>
+              <p className="text-xs text-t3">
+                {chosen.per === "day"
+                  ? "Cost per day, the days from midnight UTC, as omp counts them."
+                  : "Cost per hour."}
+              </p>
             </div>
           )}
           {shownSummary.models.length > 0 && (

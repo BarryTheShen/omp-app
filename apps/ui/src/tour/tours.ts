@@ -2286,7 +2286,7 @@ const DASHBOARD_OVERVIEW_TOUR: Tour = {
     {
       target: `${DASHBOARD} [aria-label="Overview"]`,
       title: "At a glance",
-      text: "What you spent today and this week, the tokens and failures of the day, your chats by what they do, and each window as a half ring, coloured as it fills: calm, then warning from 75%, then danger from 90%.",
+      text: "What you spent in the last 24 hours and 7 days, the tokens and failures of the last 24 hours, your chats by what they do, and each window as a half ring, coloured as it fills: calm, then warning from 75%, then danger from 90%.",
       action: next,
     },
     {
@@ -2771,14 +2771,14 @@ export interface Update {
 export const UPDATES: readonly Update[] = [
   {
     id: "2026-11-11-dashboard-overview",
-    when: "2026-11-11T05:00:00-06:00",
+    when: "2026-11-11T07:12:00-06:00",
     summary:
-      "The dashboard opens on an overview: spend today and this week, the day's tokens and failures, your chats by what they do, and each window as a half ring coloured as it fills. Chats lists every running chat with its model and its part of its window, and pauses or continues it. Usage draws each window's use over the day and each window split among its chats, and Statistics draws the cost of each hour or day, with each model's share coloured.",
+      "The dashboard opens on an overview: spend in the last 24 hours and 7 days, the tokens and failures of the last 24 hours, your chats by what they do, and each window as a half ring coloured as it fills. Chats lists every running chat with its model and its part of its window, and pauses or continues it. Usage draws each window's use over the day and each window split among its chats, and Statistics draws the cost of each hour or day, with each model's share coloured. Statistics and the overview now have omp's statistics page read the chats first, so they count the latest requests.",
     tours: [DASHBOARD_OVERVIEW_TOUR],
   },
   {
     id: "2026-11-11-tasks",
-    when: "2026-11-11T04:30:00-06:00",
+    when: "2026-11-11T07:12:00-06:00",
     summary:
       "The dashboard's Tasks: messages for your chats, or a new chat in a folder, that the server sends in order as each chat is free, after its provider's 5-hour window resets, or at a time, never while the chat works, is paused or a rule holds it. Reorder them, send one now, change or remove it; the sent ones fold below with Open chat. In a chat, Queue for later beside Send (on a phone, in ＋) makes the typed message a task.",
     tours: [TASKS_TOUR],

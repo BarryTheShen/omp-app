@@ -59,7 +59,7 @@ realTest.describe("new UI: the dashboard's overview and graphs", () => {
 
       await page.getByRole("button", { name: "Dashboard", exact: true }).click();
       const overview = dashboard(page).getByRole("region", { name: "Overview" });
-      await expect(overview).toContainText("Spent today");
+      await expect(overview).toContainText("Spent in 24 hours");
       await expect(overview).toContainText("Chats running");
       await expect(overview.getByRole("img", { name: /^fake, 5 Hour: 60% used/ })).toBeVisible({
         timeout: 60_000,
