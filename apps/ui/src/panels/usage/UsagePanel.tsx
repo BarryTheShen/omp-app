@@ -5,6 +5,7 @@ import {
   UsageLimitStore,
   UsageLimitsResult,
   type UsageLimitWindow,
+  type UsageSharesResult,
 } from "@omp-app/contracts";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from "react";
@@ -12,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { ChatController, ChatUsage } from "../../chat/controller";
-import { holdLimitWords, holdResumeWords } from "../../chat/usagePause";
+import { budgetHold, holdLimitWords, holdResumeWords } from "../../chat/usagePause";
 import { follow } from "../../follow";
 import { lastSeen } from "../../lastSeen";
 import { usePhone } from "../../phone";
@@ -21,9 +22,14 @@ import {
   combinedShare,
   type LimitTone,
   limitTone,
+  partWords,
   resetAtWords,
   resetsInWords,
+  spendWords,
 } from "./usage-words";
+
+/** The budget a chat's field shows before one is set (#14). */
+const BUDGET_DEFAULT_PERCENT = 40;
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -515,7 +521,7 @@ function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNo
         There, its agents hold at their next step, as with /pause, and the chat goes on when the
         window resets.
       </p>
-      {usagePause?.hold != null && (
+      {usagePause?.hold != null && !budgetHold(usagePause.hold) && (
         <p role="status" className="text-xs text-warn-ink">
           Paused {holdLimitWords(usagePause.percent, usagePause.hold)} ·{" "}
           {holdResumeWords(usagePause.percent, usagePause.hold)}
@@ -523,6 +529,164 @@ function UsagePauseSection({ chat }: { readonly chat: ChatController }): ReactNo
       )}
       {!saved && (
         <p className="text-xs text-t3">Send a first message, then this chat can be marked.</p>
+      )}
+      {problem !== null && <p className="text-xs text-bad-ink">{problem}</p>}
+    </div>
+  );
+}
+
+/**
+ * The chat's own part of its provider's 5-hour window and its budget (#14). With a budget, the chat pauses as omp's
+ * `/pause` does once its own part reaches it, and goes on when the window resets. The part is the server's estimate:
+ * the window's growth between its readings, split by what each chat spent. The server keeps the budget, so every device
+ * shows it; each fresh reading of the limits moves the part on.
+ */
+function UsageBudgetSection({
+  client,
+  chat,
+}: {
+  readonly client: AppClient;
+  readonly chat: ChatController;
+}): ReactNode {
+  const phone = usePhone();
+  const fieldId = useId();
+  const saved = useSyncExternalStore(chat.store.subscribe, () => chat.threadId !== null);
+  const provider = useSyncExternalStore(
+    chat.store.subscribe,
+    () => chat.store.getSnapshot().model?.provider ?? null,
+  );
+  /** What holds the chat, as the server says; a budget's hold names `USAGE_BUDGET_HOLD_RULE`. */
+  const hold = useSyncExternalStore(
+    chat.store.subscribe,
+    () => chat.store.getSnapshot().usagePause?.hold ?? null,
+  );
+  const [shares, setShares] = useState<UsageSharesResult | null>(null);
+  /** The chat's budget as the server keeps it; undefined until read. */
+  const [budget, setBudget] = useState<number | null | undefined>(undefined);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const readParts = (): void => {
+      chat.usageShares().then(
+        (read) => alive && setShares(read),
+        (failure: unknown) => alive && setProblem(failureText(failure)),
+      );
+    };
+    readParts();
+    chat.usageBudgets().then(
+      (read) =>
+        alive &&
+        setBudget(read.budgets.find((each) => each.threadId === chat.threadId)?.percent ?? null),
+      (failure: unknown) => alive && setProblem(failureText(failure)),
+    );
+    const stop = follow(client.subscribe(UsageLimitStore, "changed"), readParts);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [client, chat]);
+
+  const window =
+    provider === null ? undefined : shares?.providers.find((each) => each.providerId === provider);
+  const part = window?.chats.find((each) => each.threadId === chat.threadId);
+  const set = budget !== undefined && budget !== null;
+  const shown = draft ?? String(budget ?? BUDGET_DEFAULT_PERCENT);
+  const held = hold !== null && budgetHold(hold);
+
+  const save = (percent: number | null): void => {
+    setBusy(true);
+    setProblem(null);
+    chat
+      .setUsageBudget(percent)
+      .then(
+        () => {
+          setBudget(percent);
+          setDraft(null);
+        },
+        (failure: unknown) => setProblem(`Not set: ${failureText(failure)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+  /** A typed budget counts once the field is left or Enter is pressed; with none set, it waits for the switch. */
+  const commit = (): void => {
+    if (draft === null) return;
+    const percent = percentOf(draft);
+    if (percent === null) {
+      setProblem("Type a whole number from 1 to 100.");
+      return;
+    }
+    if (set && percent !== budget) save(percent);
+    else if (set) setDraft(null);
+  };
+
+  return (
+    <div data-tour="usage-budget" className="flex flex-col gap-2">
+      {saved && provider !== null && shares !== null && (
+        <p className="text-[0.8125rem] text-t2">
+          {window === undefined
+            ? `No reading of ${provider}'s 5-hour window yet: the part counts from the next one.`
+            : part === undefined
+              ? `No part of ${provider}'s 5-hour window counted for this chat yet.`
+              : `This chat used about ${partWords(part.share)} of ${provider}'s 5-hour window (${spendWords(part.cost)}).`}
+        </p>
+      )}
+      <label
+        htmlFor={fieldId}
+        className={`flex items-center justify-between gap-3 text-[0.8125rem] text-t1 ${phone ? "min-h-11" : "tablet:min-h-11"}`}
+      >
+        Pause this chat after its own part
+        <Switch
+          id={fieldId}
+          checked={set}
+          disabled={!saved || busy || budget === undefined}
+          onCheckedChange={(on) => {
+            if (!on) {
+              save(null);
+              return;
+            }
+            const percent = percentOf(shown);
+            if (percent === null) setProblem("Type a whole number from 1 to 100.");
+            else save(percent);
+          }}
+        />
+      </label>
+      <div className="flex items-center gap-2 text-[0.8125rem] text-t2">
+        At
+        <Input
+          aria-label="Pause after this chat's own percent"
+          value={shown}
+          inputMode="numeric"
+          disabled={!saved || busy || budget === undefined}
+          aria-invalid={problem !== null && draft !== null}
+          className={`dark:bg-transparent text-right ${phone ? "h-11 w-20" : "h-8 w-16 tablet:h-11"}`}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setProblem(null);
+          }}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            commit();
+          }}
+        />
+        % of the window, used by this chat itself
+      </div>
+      <p className="text-xs text-t3">
+        Its part is an estimate: the window's growth between the app's readings, split by what each
+        chat spent. There its agents hold at their next step, as with /pause, and it goes on when
+        the window resets.
+      </p>
+      {held && (
+        <p role="status" className="text-xs text-warn-ink">
+          Paused at its own {budget ?? ""}% · {holdResumeWords(null, hold)}
+        </p>
+      )}
+      {!saved && (
+        <p className="text-xs text-t3">Send a first message, then this chat can have a budget.</p>
       )}
       {problem !== null && <p className="text-xs text-bad-ink">{problem}</p>}
     </div>
@@ -549,6 +713,11 @@ export function UsagePanel({
       {chat !== null && (
         <Section title="Pause at the limit">
           <UsagePauseSection key={chat.threadId ?? "new"} chat={chat} />
+        </Section>
+      )}
+      {chat !== null && (
+        <Section title="Its own budget">
+          <UsageBudgetSection key={chat.threadId ?? "new"} client={client} chat={chat} />
         </Section>
       )}
       <Section title="Your accounts">

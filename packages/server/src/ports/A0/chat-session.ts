@@ -42,6 +42,7 @@ import {
   type SetEventOptionsResult,
   type SetSubagentSubscriptionArgs,
   type SetSubagentSubscriptionResult,
+  type SetUsageBudgetArgs,
   type SetUsagePauseArgs,
   type StreamKey,
   type SubscribeArgs,
@@ -49,10 +50,12 @@ import {
   type UiState,
   type UiStateEvent,
   type UsageActivityResult,
+  type UsageBudgetsResult,
   type UsagePauseHold,
   type UsageQueueResult,
   type UsageRule,
   type UsageRulesResult,
+  type UsageSharesResult,
 } from "@omp-app/contracts";
 import {
   type ChatEvent,
@@ -87,7 +90,7 @@ import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
-import { UsagePause, usagePauseFile } from "./usage-pause";
+import { UsagePause, usageBudgetsFile, usagePauseFile } from "./usage-pause";
 import { type ResumeOutcome, UsageResume, usageResumeFile } from "./usage-resume";
 
 interface ChatEntry {
@@ -451,6 +454,11 @@ export class ChatSessionPortRuntime {
             now: context.usageResumeClock?.now ?? Date.now,
             timer: context.usageResumeClock?.timer ?? SPARE_TIMER,
             ...usagePauseFile(context.usagePauseFile),
+            ...(context.usageBudgetsFile === undefined
+              ? {}
+              : usageBudgetsFile(context.usageBudgetsFile)),
+            shareOf: (threadId, providerId) =>
+              context.usageShares?.shareOf(threadId, providerId) ?? null,
             providerOf: (threadId) => this.#providerOf(threadId),
             pause: (threadId) => this.#holdAgents(threadId, "pause"),
             resume: (threadId) => this.#holdAgents(threadId, "resume"),
@@ -503,6 +511,9 @@ export class ChatSessionPortRuntime {
     continueHeld: (args) => this.continueHeld(args as { threadId: ThreadId }),
     skipHeld: (args) => this.skipHeld(args as { threadId: ThreadId }),
     usageActivity: () => this.usageActivity(),
+    usageShares: () => this.usageShares(),
+    usageBudgets: () => this.usageBudgets(),
+    setUsageBudget: (args) => this.setUsageBudget(args as SetUsageBudgetArgs),
     firstPrompts: (args) => this.firstPrompts(args as FirstPromptsArgs),
   };
 
@@ -609,6 +620,42 @@ export class ChatSessionPortRuntime {
   /** What the usage pause did, newest first (#2836). */
   usageActivity(): UsageActivityResult {
     return { entries: [...this.#usagePauseOrFail().activity()] };
+  }
+
+  /** Each provider's 5-hour window split among the chats that used it, chats named by the ids the pages know (#14). */
+  usageShares(): UsageSharesResult {
+    const shares = this.#context.usageShares?.snapshot() ?? { providers: [] };
+    const known = new Map([...this.#aliases].map(([page, own]) => [own, page]));
+    return {
+      providers: shares.providers.map((provider) => ({
+        ...provider,
+        chats: provider.chats.map((chat) => ({
+          ...chat,
+          threadId: known.get(chat.threadId) ?? chat.threadId,
+        })),
+      })),
+    };
+  }
+
+  /** The chats' own budgets (#14). */
+  usageBudgets(): UsageBudgetsResult {
+    const known = new Map([...this.#aliases].map(([page, own]) => [own, page]));
+    return {
+      budgets: [...this.#usagePauseOrFail().budgets()].map(([threadId, { percent }]) => ({
+        threadId: known.get(threadId) ?? threadId,
+        percent,
+      })),
+    };
+  }
+
+  /** Gives the chat its own budget of its provider's 5-hour window, or removes it (#14). */
+  async setUsageBudget(args: SetUsageBudgetArgs): Promise<null> {
+    const usagePause = this.#usagePauseOrFail();
+    const threadId = this.#aliases.get(args.threadId) ?? args.threadId;
+    const folder = this.#context.processRegistry.folderOf(threadId);
+    if (folder === undefined) throw notFound("Open the chat, then set its budget.");
+    await usagePause.setBudget(threadId, folder, args.percent);
+    return null;
   }
 
   /** The chats marked to pause at their usage limit, by folder, and each change with the chat's folder (#2781). */
@@ -1686,6 +1733,7 @@ export class ChatSessionPortRuntime {
    */
   #trackTurn(threadId: ThreadId, event: ChatEvent): void {
     this.#usageResume?.onEvent(threadId, event);
+    this.#context.usageShares?.onEvent(threadId, event);
     if (event.type === "agent_start") {
       this.#context.processRegistry.setBusy(threadId, true);
     } else if (

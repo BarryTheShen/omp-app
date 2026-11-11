@@ -20,6 +20,8 @@ export interface UsageConditions {
   readonly weeklyAt: number | null;
   readonly paceAt: number | null;
   readonly hours: { readonly from: string; readonly to: string } | null;
+  /** The chat's own part of its provider's 5-hour window at or past this percent: a chat's budget (#14). */
+  readonly shareAt?: number | null;
 }
 
 /** One of a provider's windows in a reading: its used percent and its reset (epoch ms; null when omp gave none). */
@@ -177,7 +179,8 @@ function windowHolds(
  * The conditions of `rule` that hold at `now` for a chat whose provider was read as `reading`, each with when it is
  * expected to end. `heldFor` is what the chat is held for now: a chat held for a window stays held while the reading is
  * stale, until the window's reset, and while its provider is missing from the reading, until the end its hold
- * expected; one held for its pace continues only `PACE_MARGIN` points under the rule's percent.
+ * expected; one held for its pace continues only `PACE_MARGIN` points under the rule's percent. `share` is the chat's
+ * own part of the 5-hour window (`UsageShares`), for a budget.
  */
 export function holdingConditions(
   rule: UsageConditions,
@@ -185,6 +188,7 @@ export function holdingConditions(
   now: number,
   zone: string,
   heldFor: HeldFor | null,
+  share: number | null = null,
 ): Holding[] {
   const holding: Holding[] = [];
   if (rule.hours !== null && inHours(now, rule.hours, zone))
@@ -199,6 +203,20 @@ export function holdingConditions(
   if (rule.weeklyAt !== null) {
     const until = windowHolds(reading?.weekly, rule.weeklyAt, now, heldAs("weekly"), fresh);
     if (until !== false) holding.push({ reason: "weekly", until });
+  }
+  if (rule.shareAt !== undefined && rule.shareAt !== null) {
+    // A budget (#14) is of the 5-hour window, so it holds as that window's condition: until its reset, when the chat's
+    // part starts over. A hold of it reads "five_hour" to every page, as older pages know no other reason for it.
+    const window = reading?.fiveHour;
+    const held = heldAs("five_hour");
+    if (window === undefined) {
+      const until = held === null ? false : heldUnread(held, now);
+      if (until !== false) holding.push({ reason: "five_hour", until });
+    } else if (window.resetsAt === null || now < window.resetsAt) {
+      const until = window.resetsAt === null ? null : window.resetsAt + RESUME_GRACE_MS;
+      if ((share ?? 0) >= rule.shareAt || (held !== null && !fresh))
+        holding.push({ reason: "five_hour", until });
+    }
   }
   if (rule.paceAt !== null) {
     const window = reading?.fiveHour;

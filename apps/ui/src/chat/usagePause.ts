@@ -1,4 +1,4 @@
-import type { UsagePauseHold } from "@omp-app/contracts";
+import { USAGE_BUDGET_HOLD_RULE, type UsagePauseHold } from "@omp-app/contracts";
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
@@ -6,11 +6,16 @@ const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-d
 const markHold = (percent: number | null, hold: UsagePauseHold): percent is number =>
   percent !== null && hold.rule === undefined;
 
+/** Whether the hold is the chat's own budget's (#14): its own part of its provider's 5-hour window. */
+export const budgetHold = (hold: UsagePauseHold): boolean => hold.rule === USAGE_BUDGET_HOLD_RULE;
+
 /**
- * What holds a chat: "at 95% of anthropic's 5-hour limit" for its own mark (#2781 part 3), or the condition of the usage
- * rule that holds it, "by a usage rule's hours" (#2836).
+ * What holds a chat: "at 95% of anthropic's 5-hour limit" for its own mark (#2781 part 3), "at its own part of
+ * anthropic's 5-hour window" for its budget (#14), or the condition of the usage rule that holds it, "by a usage rule's
+ * hours" (#2836).
  */
 export function holdLimitWords(percent: number | null, hold: UsagePauseHold): string {
+  if (budgetHold(hold)) return `at its own part of ${hold.providerId}'s 5-hour window`;
   if (markHold(percent, hold)) return `at ${percent}% of ${hold.providerId}'s 5-hour limit`;
   switch (hold.reason ?? "five_hour") {
     case "five_hour":
@@ -27,6 +32,7 @@ export function holdLimitWords(percent: number | null, hold: UsagePauseHold): st
 /** When a held chat goes on: at the hold's expected end, or once a reading says so (no end known). */
 export function holdResumeWords(percent: number | null, hold: UsagePauseHold): string {
   if (hold.until !== null) return `resumes at ${clock.format(new Date(hold.until))}`;
+  if (budgetHold(hold)) return "resumes when the window resets";
   return markHold(percent, hold)
     ? `resumes once its usage is under ${percent}% again`
     : "resumes once the rule's condition ends";

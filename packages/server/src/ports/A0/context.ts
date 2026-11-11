@@ -12,6 +12,7 @@ import type {
 } from "@omp-app/contracts";
 import type { Logger } from "../../logging";
 import type { FileWatchRegistry } from "../../modules/A1/fs/file-watch-registry";
+import type { UsageShares } from "../../modules/A1/usage-limits/shares";
 import type { ExternalOmpState, OmpProcessRegistry, ProcessTimer } from "../../process";
 import type { EventReplayHub } from "../../replay";
 import type { CallingChat } from "../../todos/agent";
@@ -107,6 +108,10 @@ export interface A0PortContext {
    * (#2781 part 3; `<app data>/usage-pause.json`). Absent: no chat pauses at a usage limit.
    */
   readonly usagePauseFile?: string;
+  /** Where the chats' own budgets of their 5-hour window are kept (#14; `<app data>/usage-budgets.json`). */
+  readonly usageBudgetsFile?: string;
+  /** Each chat's part of its provider's 5-hour window (#14), from its replies; absent: no parts, and budgets never hold. */
+  readonly usageShares?: UsageShares;
   /** The server's own usage reads (the usage watch), which the usage pause judges; absent: it never pauses a chat. */
   readonly usageLimits?: {
     readonly subscribe: (listener: (result: UsageLimitsResult) => void) => () => void;

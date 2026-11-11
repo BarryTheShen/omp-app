@@ -72,7 +72,7 @@ import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { sessionDisplayTitle } from "../src/modules/A1/sessions/title-card";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
-import { createUsageLimitStore, UsageReadings } from "../src/modules/A1/usage-limits";
+import { createUsageLimitStore, UsageReadings, UsageShares } from "../src/modules/A1/usage-limits";
 import { createWorkspaceFiles } from "../src/modules/A1/workspace-files";
 import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
 import {
@@ -438,7 +438,13 @@ export async function createCompositionServer(
   const usageReadings = await UsageReadings.open(join(appDataDir, "usage-readings.json"), {
     logger,
   });
-  usageLimitStore.subscribe((result) => usageReadings.add(result));
+  // Each chat's part of its provider's 5-hour window (#14), from its replies and these reads. This listener comes before
+  // the usage pause's, so a read reaches the parts before the pause judges the chats' budgets by them.
+  const usageShares = await UsageShares.open(join(appDataDir, "usage-shares.json"), { logger });
+  usageLimitStore.subscribe((result) => {
+    usageReadings.add(result);
+    usageShares.onReading(result);
+  });
   // The to-do list for you and your chats' agents (D7), kept in the app's data folder.
   const todoStore = await TodoStore.open(appDataDir, {
     onUnreadable: (movedTo, reason) => logger.warn("todos.unreadable", { movedTo, reason }),
@@ -458,6 +464,8 @@ export async function createCompositionServer(
     newChatsReady,
     usageResumeFile: join(appDataDir, "usage-resume.json"),
     usagePauseFile: join(appDataDir, "usage-pause.json"),
+    usageBudgetsFile: join(appDataDir, "usage-budgets.json"),
+    usageShares,
     usageLimits: usageLimitStore,
     usagePace: () => usageReadings.pace(),
     todos: {

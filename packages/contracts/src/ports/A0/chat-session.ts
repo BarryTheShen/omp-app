@@ -340,6 +340,61 @@ export type OrderUsageQueueArgs = z.infer<typeof OrderUsageQueueArgs>;
 export const RemoveUsageRuleArgs = z.strictObject({ id: z.string().min(1).max(64) });
 export type RemoveUsageRuleArgs = z.infer<typeof RemoveUsageRuleArgs>;
 
+/** One chat's part of its provider's 5-hour window (#14): the window's use its spend made, its spend and its tokens there. */
+export const UsageShareChat = z.strictObject({
+  threadId: ThreadId,
+  /** Percent of the window, as the window's own percent counts (the parts and `outside` add up to `used`). */
+  share: z.number().min(0),
+  /** What the chat spent in this window, in US dollars as omp prices it (also a subscription's requests). */
+  cost: z.number().min(0),
+  tokens: z.number().int().min(0),
+});
+export type UsageShareChat = z.infer<typeof UsageShareChat>;
+
+/**
+ * A provider's 5-hour window split among the chats that used it (#14), an estimate: the window's growth between two of
+ * the server's readings goes to the chats by what each spent then; growth while no chat spent is outside the app (omp
+ * in a terminal, other computers), as is the use before the server first read it (`since`, epoch ms). With two or more
+ * accounts, `used` is theirs together: their shares added up over how many there are.
+ */
+export const UsageShareProvider = z.strictObject({
+  providerId: z.string().min(1).max(128),
+  used: z.number().min(0),
+  resetsAt: z.int().nonnegative().nullable(),
+  outside: z.number().min(0),
+  since: z.int().nonnegative(),
+  chats: z.array(UsageShareChat).max(500),
+});
+export type UsageShareProvider = z.infer<typeof UsageShareProvider>;
+
+export const UsageSharesResult = z.strictObject({
+  providers: z.array(UsageShareProvider).max(64),
+});
+export type UsageSharesResult = z.infer<typeof UsageSharesResult>;
+
+/**
+ * The rule a hold of a chat's own budget names (#14): no usage rule has it, so a page that knows budgets says so, and an
+ * older one reads it as a rule it no longer has.
+ */
+export const USAGE_BUDGET_HOLD_RULE = "@budget";
+
+/**
+ * A chat's own budget (#14): it pauses, as `/pause`, once its part of its provider's 5-hour window reaches `percent`, and
+ * continues when the window resets; null removes it.
+ */
+export const SetUsageBudgetArgs = z.strictObject({
+  threadId: ThreadId,
+  percent: z.int().min(1).max(100).nullable(),
+});
+export type SetUsageBudgetArgs = z.infer<typeof SetUsageBudgetArgs>;
+
+export const UsageBudgetsResult = z.strictObject({
+  budgets: z
+    .array(z.strictObject({ threadId: ThreadId, percent: z.int().min(1).max(100) }))
+    .max(500),
+});
+export type UsageBudgetsResult = z.infer<typeof UsageBudgetsResult>;
+
 /** Chats a page lists as running before omp has written their file, and whose first message another page sent (#2825). */
 export const FirstPromptsArgs = z.strictObject({ threadIds: z.array(ThreadId).max(100) });
 export type FirstPromptsArgs = z.infer<typeof FirstPromptsArgs>;
@@ -387,6 +442,12 @@ export const ChatSessionPort = definePort({
     skipHeld: { args: ThreadRef, result: z.null() },
     /** What the usage pause did, newest first (#2836). */
     usageActivity: { args: z.strictObject({}), result: UsageActivityResult },
+    /** Each provider's 5-hour window split among the chats that used it, an estimate (#14). */
+    usageShares: { args: z.strictObject({}), result: UsageSharesResult },
+    /** The chats' own budgets of their provider's 5-hour window (#14). */
+    usageBudgets: { args: z.strictObject({}), result: UsageBudgetsResult },
+    /** Sets or removes a chat's own budget; it is judged at once (#14). */
+    setUsageBudget: { args: SetUsageBudgetArgs, result: z.null() },
     /** The first messages of chats not yet written to a file, so every page names them as the page that sent them (#2825). */
     firstPrompts: { args: FirstPromptsArgs, result: FirstPromptsResult },
   },

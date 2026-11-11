@@ -2214,6 +2214,34 @@ const USAGE_ACCOUNTS_TOUR: Tour = {
   ],
 };
 
+/** #14: a chat's own part of its provider's 5-hour window in Usage, and a budget that pauses it there. */
+const USAGE_BUDGET_TOUR: Tour = {
+  id: "usage-budget-2026-11-11",
+  title: "A chat's own budget",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Usage",
+      text: "Click <b>Usage</b>, the first button on this rail.",
+      action: { kind: "appears", selector: SIDE_PANEL },
+    },
+    {
+      target: `${SIDE_PANEL} [data-tour="usage-budget"]`,
+      title: "Its own budget",
+      text: "Once a chat has replied, this says how much of its provider's 5-hour window the chat used itself: the window's growth between the app's readings, split by what each chat spent. <b>Pause this chat after its own part</b> pauses it there, as /pause does, until the window resets, while your other chats go on.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Hide it",
+      text: "Click <b>Usage</b> again to hide the side panel.",
+      action: { kind: "disappears", selector: SIDE_PANEL },
+    },
+  ],
+};
+
 /** #2779 D6.2: signing in to an MCP server again from the device in use, in Settings → Tools. */
 const MCP_SIGN_IN_TOUR: Tour = {
   id: "mcp-sign-in-2026-11-01",
@@ -2679,6 +2707,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-chat-budget",
+    when: "2026-11-11T04:00:00-06:00",
+    summary:
+      "Usage → Its own budget says how much of its provider's 5-hour window a chat used itself, an estimate: the window's growth between the app's readings, split by what each chat spent. Pause this chat after its own part pauses it there, as /pause does, until the window resets. The chat, and the dashboard's queue and activity, say when its budget holds it, also after a reload.",
+    tours: [USAGE_BUDGET_TOUR],
+  },
   {
     id: "2026-11-10-usage-accounts",
     when: "2026-11-10T22:23:00-06:00",

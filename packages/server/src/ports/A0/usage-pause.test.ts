@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-  ThreadId,
-  UsageActivityEntry,
-  UsageLimitsResult,
-  UsagePaceResult,
-  UsagePauseHold,
-  UsageRule,
+import {
+  type ThreadId,
+  USAGE_BUDGET_HOLD_RULE,
+  type UsageActivityEntry,
+  type UsageLimitsResult,
+  type UsagePaceResult,
+  type UsagePauseHold,
+  type UsageRule,
 } from "@omp-app/contracts";
 import type { ProcessTimer } from "../../process/omp-process";
 import {
@@ -16,8 +17,11 @@ import {
   USAGE_PAUSE_AFTER_START_MS,
   USAGE_PAUSE_RESUME_GRACE_MS,
   USAGE_PAUSE_WINDOW_MS,
+  type UsageBudget,
   UsagePause,
+  type UsagePauseDeps,
   type UsagePauseKept,
+  usageBudgetsFile,
   usagePauseFile,
 } from "./usage-pause";
 
@@ -77,7 +81,11 @@ const nameOf = (threadId: ThreadId): string => (threadId === A ? "A" : threadId 
 const ZONE = "America/Chicago";
 
 /** The chats that run (and on which provider), which are paused, and every pause and resume sent, in order. */
-function setup(kept: UsagePauseKept = NOTHING_KEPT, pace?: () => UsagePaceResult) {
+function setup(
+  kept: UsagePauseKept = NOTHING_KEPT,
+  pace?: () => UsagePaceResult,
+  more: Partial<UsagePauseDeps> = {},
+) {
   const timer = new FakeTimer();
   const running = new Map<ThreadId, string>();
   const paused = new Set<ThreadId>();
@@ -108,6 +116,7 @@ function setup(kept: UsagePauseKept = NOTHING_KEPT, pace?: () => UsagePaceResult
     folderOf: () => FOLDER,
     timeZone: ZONE,
     ...(pace === undefined ? {} : { pace }),
+    ...more,
   });
   rule.onChange((threadId, _folder, percent, hold) => changes.push([threadId, percent, hold]));
   return { timer, running, paused, sent, saved, changes, rule };
@@ -743,5 +752,81 @@ describe("the usage queue (#2836)", () => {
     });
     // The oldest went.
     expect(activity.at(-1)?.at).toBe(1);
+  });
+});
+
+describe("a chat's own budget (#14)", () => {
+  test("a chat pauses once its own part of the window reaches its budget, and continues a minute after the reset", async () => {
+    const parts = new Map<ThreadId, number>();
+    const { timer, running, sent, rule } = setup(NOTHING_KEPT, undefined, {
+      shareOf: (threadId) => parts.get(threadId) ?? null,
+    });
+    running.set(A, "anthropic");
+    running.set(B, "anthropic");
+    await rule.setBudget(A, FOLDER, 40);
+    const reset = timer.now + 2 * HOUR;
+
+    // The window is at 70%; A's own part is 39%, under its budget. B has no budget: its part never pauses it.
+    parts.set(A, 39);
+    parts.set(B, 31);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 70, resetsAt: reset } }));
+    expect(sent).toEqual([]);
+    parts.set(A, 40);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 72, resetsAt: reset } }));
+    expect(sent).toEqual(["pause A"]);
+    expect(rule.queue()).toEqual([
+      {
+        id: A,
+        hold: {
+          providerId: "anthropic",
+          until: reset + USAGE_PAUSE_RESUME_GRACE_MS,
+          reason: "five_hour",
+          rule: USAGE_BUDGET_HOLD_RULE,
+          since: timer.now,
+        },
+        continuesAt: null,
+      },
+    ]);
+
+    await timer.advance(2 * HOUR);
+    expect(sent).toEqual(["pause A"]);
+    await timer.advance(USAGE_PAUSE_RESUME_GRACE_MS);
+    expect(sent).toEqual(["pause A", "resume A"]);
+  });
+
+  test("a budget set under the chat's part pauses it at once; removing the budget continues it", async () => {
+    const parts = new Map<ThreadId, number>([[A, 50]]);
+    const { timer, running, sent, rule } = setup(NOTHING_KEPT, undefined, {
+      shareOf: (threadId) => parts.get(threadId) ?? null,
+    });
+    running.set(A, "anthropic");
+    await rule.onUsage(usage({ anthropic: { fiveHour: 60, resetsAt: timer.now + HOUR } }));
+    await rule.setBudget(A, FOLDER, 60);
+    expect(sent).toEqual([]);
+    await rule.setBudget(A, FOLDER, 45);
+    expect(sent).toEqual(["pause A"]);
+    await rule.setBudget(A, FOLDER, null);
+    expect(sent).toEqual(["pause A", "resume A"]);
+  });
+
+  test("budgets are kept in a file of their own and outlive a restart", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omp-app-usage-budgets-"));
+    try {
+      const path = join(dir, "usage-budgets.json");
+      const first = setup(NOTHING_KEPT, undefined, usageBudgetsFile(path));
+      await first.rule.restore();
+      await first.rule.setBudget(A, FOLDER, 40);
+      expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
+        version: 1,
+        budgets: { [A]: { percent: 40, folder: FOLDER } },
+      });
+
+      const again = setup(NOTHING_KEPT, undefined, usageBudgetsFile(path));
+      await again.rule.restore();
+      const kept: [ThreadId, UsageBudget][] = [[A, { percent: 40, folder: FOLDER }]];
+      expect([...again.rule.budgets()]).toEqual(kept);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

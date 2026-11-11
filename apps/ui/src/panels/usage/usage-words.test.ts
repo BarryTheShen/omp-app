@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { barPercent, combinedShare, limitTone, resetsInWords } from "./usage-words";
+import {
+  barPercent,
+  combinedShare,
+  limitTone,
+  partWords,
+  resetsInWords,
+  spendWords,
+} from "./usage-words";
 
 describe("combinedShare", () => {
   test("two accounts' shares add up as omp's combined line counts them, and the bar shows their share of both", () => {
@@ -57,5 +64,22 @@ describe("resetsInWords", () => {
   test("a reset omp did not say when it happens reads as unknown", () => {
     expect(resetsInWords(null, now)).toBe("reset time unknown");
     expect(resetsInWords("not a time", now)).toBe("reset time unknown");
+  });
+});
+
+describe("partWords and spendWords (#14)", () => {
+  test("a chat's part: whole from 10%, one decimal under it, and a sliver said as under 0.1%", () => {
+    expect(partWords(15.4)).toBe("15%");
+    expect(partWords(9.96)).toBe("10%");
+    expect(partWords(4.24)).toBe("4.2%");
+    expect(partWords(0.04)).toBe("under 0.1%");
+    expect(partWords(0)).toBe("0%");
+  });
+
+  test("a spend in dollars with cents, and one too small to show said as under a cent", () => {
+    expect(spendWords(3.4)).toBe("$3.40");
+    expect(spendWords(8.1941)).toBe("$8.19");
+    expect(spendWords(0.004)).toBe("under $0.01");
+    expect(spendWords(0)).toBe("$0.00");
   });
 });

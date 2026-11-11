@@ -20,6 +20,8 @@ import {
   type SubagentReadResult,
   type SubagentTranscript,
   type ThreadId,
+  type UsageBudgetsResult,
+  type UsageSharesResult,
   WorkspaceFilesPort,
   WorkspaceRelativePath,
   withHostContext,
@@ -645,8 +647,9 @@ export class ChatController {
   }
 
   /**
-   * This chat's usage pause (#2781 part 3): read once, then followed, as the continue above. A server older than this has
-   * neither, and the chat's menu does not offer it.
+   * This chat's usage pause (#2781 part 3): read once, then followed, as the continue above. A chat a usage rule or its
+   * own budget holds has no mark (#2836, #14), so its hold is read from the held chats' queue. A server older than this
+   * has neither, and the chat's menu does not offer it.
    */
   #followUsagePause(): void {
     let heard = false;
@@ -666,12 +669,20 @@ export class ChatController {
     this.client
       .port(SessionFileStore)
       .listUsagePauses({ folder: this.folder })
-      .then((listed) => {
+      .then(async (listed) => {
         if (this.#disposed || heard) return;
         const mine = listed.chats.find((chat) => chat.id === this.#threadId);
-        this.store.setUsagePause(
-          mine === undefined ? null : { percent: mine.percent, hold: mine.hold },
-        );
+        if (mine !== undefined) {
+          this.store.setUsagePause({ percent: mine.percent, hold: mine.hold });
+          return;
+        }
+        const queued = await this.client
+          .port(ChatSessionPort)
+          .usageQueue({})
+          .catch(() => null);
+        if (this.#disposed || heard) return;
+        const held = queued?.chats.find((chat) => chat.id === this.#threadId);
+        this.store.setUsagePause(held === undefined ? null : { percent: null, hold: held.hold });
       })
       .catch(() => undefined);
   }
@@ -692,6 +703,38 @@ export class ChatController {
     if (threadId === null)
       throw new Error("Send a first message, then set the chat's usage pause.");
     await this.client.port(ChatSessionPort).setUsagePause({ threadId, percent });
+  }
+
+  /** Each provider's 5-hour window split among the chats that used it, an estimate (#14). */
+  async usageShares(): Promise<UsageSharesResult> {
+    try {
+      return await this.client.port(ChatSessionPort).usageShares({});
+    } catch (failure) {
+      throw olderServer(failure, "count each chat's part of the window");
+    }
+  }
+
+  /** The chats' own budgets of their provider's 5-hour window (#14). */
+  async usageBudgets(): Promise<UsageBudgetsResult> {
+    try {
+      return await this.client.port(ChatSessionPort).usageBudgets({});
+    } catch (failure) {
+      throw olderServer(failure, "keep a chat's budget");
+    }
+  }
+
+  /**
+   * Gives this chat its own budget (#14): it pauses, as `/pause`, once its part of its provider's 5-hour window reaches
+   * `percent`, and goes on when the window resets; null removes it. The server keeps it, so every device sees it.
+   */
+  async setUsageBudget(percent: number | null): Promise<void> {
+    const threadId = this.#threadId;
+    if (threadId === null) throw new Error("Send a first message, then give the chat a budget.");
+    try {
+      await this.client.port(ChatSessionPort).setUsageBudget({ threadId, percent });
+    } catch (failure) {
+      throw olderServer(failure, "keep a chat's budget");
+    }
   }
 
   #mark(step: string): void {

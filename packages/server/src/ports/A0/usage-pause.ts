@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   type ThreadId,
+  USAGE_BUDGET_HOLD_RULE,
   type UsageActivityAction,
   UsageActivityEntry,
   type UsageLimitsResult,
@@ -45,6 +46,12 @@ const OVERRIDE_FALLBACK_MS = FIVE_HOUR_MS;
 
 /** A chat's mark: pause at `percent` of its provider's 5-hour window; `folder` lists it with the folder's chats. */
 export interface UsagePauseMark {
+  readonly percent: number;
+  readonly folder: string;
+}
+
+/** A chat's budget (#14): pause once its own part of its provider's 5-hour window reaches `percent`. */
+export interface UsageBudget {
   readonly percent: number;
   readonly folder: string;
 }
@@ -94,6 +101,14 @@ export interface UsagePauseDeps {
   readonly folderOf?: (threadId: ThreadId) => string | undefined;
   /** Each window's pace from the server's readings (#2836): a rule's pace condition reads its 5-hour window's. */
   readonly pace?: () => UsagePaceResult;
+  /**
+   * A chat's own part of a provider's 5-hour window (`UsageShares`), or of the fullest of its parts with no provider
+   * named; null when it has none (#14).
+   */
+  readonly shareOf?: (threadId: ThreadId, providerId?: string) => number | null;
+  /** The chats' budgets kept before the server started, in a file of their own (#14); none when absent. */
+  readonly loadBudgets?: () => Promise<ReadonlyMap<ThreadId, UsageBudget>>;
+  readonly saveBudgets?: (budgets: ReadonlyMap<ThreadId, UsageBudget>) => Promise<void>;
   /** The time zone of the rules' hours: the server's own unless given. */
   readonly timeZone?: string;
   readonly logger?: Logger;
@@ -161,6 +176,8 @@ export class UsagePause {
   readonly #deps: UsagePauseDeps;
   readonly #zone: string;
   readonly #marks = new Map<ThreadId, UsagePauseMark>();
+  /** The chats' budgets of their provider's 5-hour window (#14). */
+  readonly #budgets = new Map<ThreadId, UsageBudget>();
   readonly #rules = new Map<string, UsageRule>();
   readonly #holds = new Map<ThreadId, UsagePauseHold>();
   readonly #overrides = new Map<ThreadId, Map<UsagePauseReason, number>>();
@@ -200,6 +217,13 @@ export class UsagePause {
       return EMPTY;
     });
     for (const [threadId, mark] of kept.marks) this.#marks.set(threadId, mark);
+    const budgets = await (this.#deps.loadBudgets?.() ?? Promise.resolve(new Map())).catch(
+      (failure: unknown) => {
+        this.#deps.logger?.warn("usage_pause.budgets_load_failed", { error: String(failure) });
+        return new Map<ThreadId, UsageBudget>();
+      },
+    );
+    for (const [threadId, budget] of budgets) this.#budgets.set(threadId, budget);
     for (const rule of kept.rules) this.#rules.set(rule.id, rule);
     const now = this.#deps.now();
     for (const [threadId, reasons] of kept.overrides) {
@@ -260,6 +284,32 @@ export class UsagePause {
       }
       this.#keep();
       this.#notify(threadId, folder);
+      await this.#judge([threadId]);
+    });
+  }
+
+  /** The chats' budgets (#14). */
+  budgets(): ReadonlyMap<ThreadId, UsageBudget> {
+    return this.#budgets;
+  }
+
+  /**
+   * Gives the chat a budget of `percent` of its provider's 5-hour window, or removes it (`null`) (#14). It is judged
+   * against the chat's part at once: a part already past it pauses the chat now, a higher budget can end its hold.
+   */
+  setBudget(threadId: ThreadId, folder: string, percent: number | null): Promise<void> {
+    return this.#queue(async () => {
+      if (percent === null) {
+        if (!this.#budgets.delete(threadId)) return;
+        this.#deps.logger?.info("usage_pause.budget_removed", { threadId });
+      } else {
+        this.#budgets.set(threadId, { percent, folder });
+        this.#deps.logger?.info("usage_pause.budget_set", { threadId, percent });
+      }
+      const budgets = new Map(this.#budgets);
+      await this.#deps.saveBudgets?.(budgets).catch((failure: unknown) => {
+        this.#deps.logger?.warn("usage_pause.budgets_save_failed", { error: String(failure) });
+      });
       await this.#judge([threadId]);
     });
   }
@@ -441,35 +491,40 @@ export class UsagePause {
     this.#dispatch = null;
   }
 
-  /** Whether the chat is marked or listed by an enabled rule. */
+  /** Whether the chat is marked, has a budget, or is listed by an enabled rule. */
   #watched(threadId: ThreadId): boolean {
     return (
       this.#marks.has(threadId) ||
+      this.#budgets.has(threadId) ||
       [...this.#rules.values()].some((rule) => rule.enabled && rule.chats.includes(threadId))
     );
   }
 
-  /** The chats a mark or rule watches, and those still held. */
+  /** The chats a mark, a budget or a rule watches, and those still held. */
   #watchedChats(): ThreadId[] {
-    const chats = new Set<ThreadId>([...this.#marks.keys(), ...this.#holds.keys()]);
+    const chats = new Set<ThreadId>([
+      ...this.#marks.keys(),
+      ...this.#budgets.keys(),
+      ...this.#holds.keys(),
+    ]);
     for (const rule of this.#rules.values()) for (const id of rule.chats) chats.add(id);
     return [...chats];
   }
 
-  /** The conditions the chat is marked or listed for: its mark's, and each enabled rule's that lists it. */
+  /** The conditions the chat is watched for: its mark's, its budget's, and each enabled rule's that lists it. */
   #conditionsOf(
     threadId: ThreadId,
   ): { readonly rule: string | undefined; readonly conditions: UsageConditions }[] {
     const mark = this.#marks.get(threadId);
+    const budget = this.#budgets.get(threadId);
+    const none = { fiveHourAt: null, weeklyAt: null, paceAt: null, hours: null } as const;
     return [
       ...(mark === undefined
         ? []
-        : [
-            {
-              rule: undefined,
-              conditions: { fiveHourAt: mark.percent, weeklyAt: null, paceAt: null, hours: null },
-            },
-          ]),
+        : [{ rule: undefined, conditions: { ...none, fiveHourAt: mark.percent } }]),
+      ...(budget === undefined
+        ? []
+        : [{ rule: USAGE_BUDGET_HOLD_RULE, conditions: { ...none, shareAt: budget.percent } }]),
       ...[...this.#rules.values()]
         .filter((rule) => rule.enabled && rule.chats.includes(threadId))
         .map((rule) => ({ rule: rule.id, conditions: rule })),
@@ -503,8 +558,9 @@ export class UsagePause {
   ): RuleHolding[] {
     const reading = this.#reading(providerId);
     const overrides = this.#overrides.get(threadId);
+    const share = this.#deps.shareOf?.(threadId, providerId) ?? null;
     return this.#conditionsOf(threadId).flatMap(({ rule, conditions }) =>
-      holdingConditions(conditions, reading, now, this.#zone, heldFor)
+      holdingConditions(conditions, reading, now, this.#zone, heldFor, share)
         .filter(({ reason }) => (overrides?.get(reason) ?? 0) <= now)
         .map((holding) => ({ ...holding, rule })),
     );
@@ -515,11 +571,15 @@ export class UsagePause {
     const result = this.#usage?.result;
     const fiveHour = result === undefined ? 0 : fullestWindow(result, FIVE_HOUR_MS);
     const weekly = result === undefined ? 0 : fullestWindow(result, WEEK_MS);
+    const share = this.#deps.shareOf?.(threadId) ?? 0;
     return this.#conditionsOf(threadId).some(
       ({ conditions }) =>
         (conditions.hours !== null && inHours(now, conditions.hours, this.#zone)) ||
         (conditions.fiveHourAt !== null && fiveHour >= conditions.fiveHourAt) ||
         (conditions.weeklyAt !== null && weekly >= conditions.weeklyAt) ||
+        (conditions.shareAt !== undefined &&
+          conditions.shareAt !== null &&
+          share >= conditions.shareAt) ||
         (conditions.paceAt !== null && result !== undefined && this.#deps.pace !== undefined),
     );
   }
@@ -868,6 +928,54 @@ export function usagePauseFile(path: string): Pick<UsagePauseDeps, "load" | "sav
         order: kept.order,
         activity: kept.activity,
       };
+      await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`);
+      await rename(temporary, path);
+    },
+  };
+}
+
+/**
+ * The chats' budgets (#14), in a file of their own: `{ "version": 1, "budgets": { "<thread>": { "percent", "folder" } }
+ * }`. Kept apart from the pause's file, so a server from before budgets reads its own file as it always did.
+ */
+export function usageBudgetsFile(
+  path: string,
+): Pick<UsagePauseDeps, "loadBudgets" | "saveBudgets"> {
+  return {
+    loadBudgets: async () => {
+      let text: string;
+      try {
+        text = await readFile(path, "utf8");
+      } catch (failure) {
+        if ((failure as NodeJS.ErrnoException).code === "ENOENT") return new Map();
+        throw failure;
+      }
+      const saved = JSON.parse(text) as {
+        readonly version?: unknown;
+        readonly budgets?: Record<
+          string,
+          { readonly percent?: unknown; readonly folder?: unknown }
+        >;
+      };
+      const budgets = new Map<ThreadId, UsageBudget>();
+      if (saved.version !== 1) return budgets;
+      for (const [threadId, { percent, folder }] of Object.entries(saved.budgets ?? {})) {
+        if (
+          typeof percent !== "number" ||
+          !Number.isInteger(percent) ||
+          percent < 1 ||
+          percent > 100
+        )
+          continue;
+        if (typeof folder !== "string" || folder.length === 0) continue;
+        budgets.set(threadId as ThreadId, { percent, folder });
+      }
+      return budgets;
+    },
+    saveBudgets: async (budgets) => {
+      await mkdir(dirname(path), { recursive: true });
+      const temporary = `${path}.${process.pid}.tmp`;
+      const file = { version: 1, budgets: Object.fromEntries(budgets) };
       await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`);
       await rename(temporary, path);
     },

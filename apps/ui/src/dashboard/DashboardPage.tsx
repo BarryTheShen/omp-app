@@ -5,6 +5,7 @@ import {
   type Share,
   SharesPort,
   type ThreadId,
+  USAGE_BUDGET_HOLD_RULE,
   type UsageActivityEntry,
   type UsageActivityResult,
   UsageLimitStore,
@@ -153,7 +154,12 @@ function conditionWords(rule: UsageRule): string {
 function holdWords(hold: UsagePauseHold, rules: readonly UsageRule[], now: number): string {
   const rule = rules.find((each) => each.id === hold.rule);
   const until = hold.until === null ? "" : ` until ${whenWords(hold.until, now)}`;
-  const by = rule === undefined ? "Its own limit" : rule.name;
+  const by =
+    hold.rule === USAGE_BUDGET_HOLD_RULE
+      ? "Its own budget"
+      : rule === undefined
+        ? "Its own limit"
+        : rule.name;
   switch (hold.reason ?? "five_hour") {
     case "five_hour":
       return `${by}: the 5-hour window is at its limit${until}`;
@@ -684,7 +690,9 @@ function ActivitySection({
           const by =
             entry.rule === null
               ? "Its own limit"
-              : (rules.find((each) => each.id === entry.rule)?.name ?? "A removed rule");
+              : entry.rule === USAGE_BUDGET_HOLD_RULE
+                ? "Its own budget"
+                : (rules.find((each) => each.id === entry.rule)?.name ?? "A removed rule");
           const reason = entry.reason === null ? "" : `: ${REASON_WORDS[entry.reason]}`;
           return (
             <li

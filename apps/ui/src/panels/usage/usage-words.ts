@@ -58,3 +58,24 @@ export function combinedShare(window: {
     left: `${Math.max(0, window.accounts - window.usedAccounts).toFixed(2)}× quota left`,
   };
 }
+
+/** A chat's part of a window as words (#14): "under 0.1%", one decimal under 10% ("4.2%"), whole from 10% ("15%"). */
+export function partWords(share: number): string {
+  if (!Number.isFinite(share) || share <= 0) return "0%";
+  if (share < 0.1) return "under 0.1%";
+  if (share < 9.95) return `${(Math.round(share * 10) / 10).toString()}%`;
+  return `${Math.round(share)}%`;
+}
+
+const dollars = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** A cost in US dollars as words: "$3.40", and "under $0.01" for one too small to show. */
+export function spendWords(cost: number): string {
+  if (!Number.isFinite(cost) || cost <= 0) return "$0.00";
+  return cost < 0.005 ? "under $0.01" : dollars.format(cost);
+}
