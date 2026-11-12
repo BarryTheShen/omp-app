@@ -859,6 +859,39 @@ describe("OmpProcessRegistry", () => {
       await Bun.sleep(0);
       expect(registry.has(thread)).toBe(false);
     });
+
+    test("past the cap on unwatched chats, the ones that never got a message go before the ones with history", () => {
+      const registry = new OmpProcessRegistry({
+        timer: new ManualTimer(),
+        idleCloseMs: 60 * minute,
+        maxIdle: 2,
+        isUnused: (thread) => thread.startsWith("new-"),
+        createProcess: (processOptions) => new StubProcess(processOptions),
+      });
+      // The chat with history left longest ago is not the one that goes: the new chat just left is.
+      const oldest = leave(registry, "history-oldest");
+      const next = leave(registry, "history-next");
+      const passing = leave(registry, "new-passing");
+      expect([oldest, next, passing].map((thread) => registry.has(thread))).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      // Another passing chat goes the same way, and the two chats with history stay.
+      const another = leave(registry, "new-another");
+      expect([oldest, next, another].map((thread) => registry.has(thread))).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      // With only chats with history past the cap, the one left longest ago goes, as before.
+      const third = leave(registry, "history-third");
+      expect([oldest, next, third].map((thread) => registry.has(thread))).toEqual([
+        false,
+        true,
+        true,
+      ]);
+    });
   });
 
   describe("the cap on unwatched threads", () => {

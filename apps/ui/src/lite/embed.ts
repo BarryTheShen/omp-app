@@ -158,9 +158,17 @@ export class EmbedEndpoint {
       case "settings":
         this.#set({ settings: { ...this.#state.settings, ...message.settings } });
         return;
-      case "context":
-        this.#set({ context: message.context, contextLeftOut: false });
+      case "context": {
+        // "Don't send this" holds for the same address, whatever the page does to its title or selection meanwhile (a page
+        // may change both by itself); another address asks again.
+        const { context: before, contextLeftOut } = this.#state;
+        const sameAddress =
+          before?.uri !== undefined &&
+          message.context?.uri !== undefined &&
+          before.uri === message.context.uri;
+        this.#set({ context: message.context, contextLeftOut: contextLeftOut && sameAddress });
         return;
+      }
       case "tools":
         this.#set({ tools: message.tools });
         return;

@@ -83,7 +83,7 @@ describe("the lite view's end of the embed protocol", () => {
     });
   });
 
-  test("the context goes with messages until the person leaves it out, and again once the host says another", () => {
+  test("the context goes with messages until the person leaves it out; it stays out for the same address, and comes back with another", () => {
     const { window, receive } = frame();
     const endpoint = new EmbedEndpoint(window);
     endpoint.start();
@@ -91,10 +91,25 @@ describe("the lite view's end of the embed protocol", () => {
     expect(endpoint.contextForMessage()).toEqual({ host: "zen", context: PAGE });
     endpoint.leaveContextOut();
     expect(endpoint.contextForMessage()).toBeNull();
-    receive({ ...envelope, type: "context", context: { ...PAGE, title: "Next page" } });
+    // The page changing its own title or selection (a page may do both by itself) does not ask again.
+    receive({ ...envelope, type: "context", context: { ...PAGE, title: "Next title" } });
+    expect(endpoint.contextForMessage()).toBeNull();
+    receive({ ...envelope, type: "context", context: { ...PAGE, selection: "hidden words" } });
+    expect(endpoint.contextForMessage()).toBeNull();
+    // Another address does.
+    receive({
+      ...envelope,
+      type: "context",
+      context: { ...PAGE, title: "Next page", uri: "https://example.com/next" },
+    });
     expect(endpoint.contextForMessage()?.context.title).toBe("Next page");
     receive({ ...envelope, type: "context", context: null });
     expect(endpoint.contextForMessage()).toBeNull();
+    // Left out once more, and a context with no address is a new context each time.
+    receive({ ...envelope, type: "context", context: PAGE });
+    endpoint.leaveContextOut();
+    receive({ ...envelope, type: "context", context: { kind: "note", title: "A note" } });
+    expect(endpoint.contextForMessage()?.context.title).toBe("A note");
   });
 
   test("a tool call goes to the host and its answer comes back; omp giving up tells the host; the panel closing ends the rest", async () => {

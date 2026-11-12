@@ -43,8 +43,8 @@ declare namespace browser {
       openerTabId?: number;
       windowId?: number;
     }): Promise<Tab>;
-    function captureVisibleTab(
-      windowId: number,
+    function captureTab(
+      tabId: number,
       options: { format: "png" | "jpeg"; quality?: number },
     ): Promise<string>;
     const onUpdated: Listener<(tabId: number, change: ChangeInfo, tab: Tab) => void>;

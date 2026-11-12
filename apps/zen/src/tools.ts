@@ -21,7 +21,8 @@ export interface TabScope {
 export interface TabsApi {
   run<A extends unknown[], R>(tabId: number, func: (...args: A) => R, args: A): Promise<Awaited<R>>;
   get(tabId: number): Promise<browser.tabs.Tab>;
-  capture(windowId: number): Promise<string>;
+  /** A picture of that tab itself, not of whichever tab is visible when the picture is taken. */
+  capture(tabId: number): Promise<string>;
   navigate(tabId: number, url: string): Promise<browser.tabs.Tab>;
   open(url: string, opener: number): Promise<browser.tabs.Tab>;
   sleep(ms: number): Promise<void>;
@@ -182,10 +183,11 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
       description: "A picture of what the person's tab shows now (its visible part).",
       parameters: objectOf({}),
       run: async (args): Promise<EmbedToolResult> => {
-        const tab = await api.get(tabOf(scope, args));
+        const tabId = tabOf(scope, args);
+        const tab = await api.get(tabId);
         if (!tab.active) throw new Error("That tab is not in front, so it cannot be photographed.");
         if (blocked.includes(originOf(tab.url) ?? "")) throw new Error(OFF_LIMITS);
-        const data = await api.capture(tab.windowId);
+        const data = await api.capture(tabId);
         return {
           content: [
             {
@@ -349,7 +351,7 @@ export const firefoxTabs: TabsApi = {
     return first.result as never;
   },
   get: (tabId) => browser.tabs.get(tabId),
-  capture: (windowId) => browser.tabs.captureVisibleTab(windowId, { format: "png" }),
+  capture: (tabId) => browser.tabs.captureTab(tabId, { format: "png" }),
   navigate: (tabId, url) => browser.tabs.update(tabId, { url }),
   open: (url, opener) => browser.tabs.create({ url, active: false, openerTabId: opener }),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),

@@ -193,6 +193,13 @@ export class TaskQueue {
     if (this.#inFlight.delete(`chat:${threadId}`) || this.#waiting().length > 0) void this.#pump();
   }
 
+  /** Whether a task waits to go into this chat (a task that makes a new chat names no chat yet). */
+  hasWaitingFor(threadId: ThreadId): boolean {
+    return this.#waiting().some(
+      (task) => task.target.kind === "chat" && task.target.threadId === threadId,
+    );
+  }
+
   close(): void {
     this.#closed = true;
     if (this.#timer !== null) this.#clock.clearTimeout(this.#timer);

@@ -81,6 +81,8 @@ export interface A0Runtime {
         hold: UsagePauseHold | null,
       ) => void,
     ): () => void;
+    /** Whether a mark or a budget is set for the chat. */
+    isSetFor(threadId: ThreadId): boolean;
   };
   /**
    * Whether a chat waits for an answer from you, and each change, for the running list (D1; see the chat runtime); and

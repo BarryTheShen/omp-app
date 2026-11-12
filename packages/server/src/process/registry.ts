@@ -674,14 +674,25 @@ export class OmpProcessRegistry {
   }
 
   /**
-   * Past `maxIdle` unwatched threads, the ones unwatched longest are checked now instead of after the idle wait, each
-   * stopped once omp says it is settled. One that is not keeps its timer and is not asked again by this trim.
+   * Past `maxIdle` unwatched threads, some are checked now instead of after the idle wait, each stopped once omp says it
+   * is settled: first the ones that never got a message (`isUnused`: a person passing through tabs starts many, and
+   * stopping one loses nothing), then the ones with history, unwatched longest first within each. One that is not
+   * settled keeps its timer and is not asked again by this trim.
    */
   #trimIdle(): void {
-    const idle = [...this.#entries.values()]
-      .filter((entry) => entry.idleOrder !== undefined && entry.idleTimer !== undefined)
-      .sort((a, b) => (a.idleOrder ?? 0) - (b.idleOrder ?? 0));
-    for (const entry of idle.slice(0, Math.max(0, idle.length - this.#maxIdle))) {
+    const idle = [...this.#entries.values()].filter(
+      (entry) => entry.idleOrder !== undefined && entry.idleTimer !== undefined,
+    );
+    const excess = idle.length - this.#maxIdle;
+    if (excess <= 0) return;
+    const evictable = idle
+      .map((entry) => ({ entry, unused: this.#isUnused?.(entry.key) === true }))
+      .sort(
+        (a, b) =>
+          Number(b.unused) - Number(a.unused) ||
+          (a.entry.idleOrder ?? 0) - (b.entry.idleOrder ?? 0),
+      );
+    for (const { entry } of evictable.slice(0, excess)) {
       this.#cancelIdle(entry);
       void this.#closeIfIdle(entry, 0, false);
     }

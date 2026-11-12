@@ -84,6 +84,7 @@ import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
 import {
+  chatIsGone,
   lostWithTheLink,
   notOpenOnServer,
   openFailureAction,
@@ -358,15 +359,15 @@ export class ChatController {
    * Opens the chat for this pane. A failure is said in the transcript, with what to do: Try again, or New chat for a
    * chat the server no longer has or whose omp stopped as it started. An open the link to the server dropped under is
    * made afresh by itself once the link is back. A pane that went away meanwhile says nothing. `newChatIfGone`: for a
-   * chat a page was asked to open by its id, when the server no longer has it nothing is said and the pane is asked for
-   * a new chat in its place.
+   * chat a page was asked to open by its id, when the server says the chat is not there at all (`chatIsGone`) nothing is
+   * said and the pane is asked for a new chat in its place; any other failure is said as above.
    */
   async open({ newChatIfGone = false }: { readonly newChatIfGone?: boolean } = {}): Promise<void> {
     try {
       await this.#open();
     } catch (failure) {
       if (this.#disposed) return;
-      if (newChatIfGone && notOpenOnServer(failure)) {
+      if (newChatIfGone && chatIsGone(failure)) {
         this.store.setPhase("ended");
         this.startNewChat();
         return;
@@ -2007,18 +2008,21 @@ export class ChatController {
   }
 
   /**
-   * A new chat with nothing in it yet that the server no longer has, or whose omp stopped before it was saved (an empty
-   * chat leaves no file to open again), starts again in its place, in the same folder, and this window follows it: its
-   * view, its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onHeld`).
-   * What is typed stays in the box. Whether it was renewed.
+   * A chat with nothing in it yet that the server no longer has, or whose omp stopped before it was saved (an empty chat
+   * leaves no file to open again), starts again in its place, in the same folder, and this window follows it: its view,
+   * its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onHeld`). A new chat is
+   * one; so is a chat opened by its id that turned out empty (a host's panel keeps the id of the chat it showed before
+   * anything was written). What is typed stays in the box. Whether it was renewed.
    */
   async #renewEmpty(): Promise<boolean> {
     const old = this.#threadId;
-    if (this.target.kind !== "new" || old === null || this.#disposed || this.#parked) return false;
+    if (old === null || this.#disposed || this.#parked) return false;
+    // A chat opened by its id counts as empty only once its transcript was read and held nothing.
+    if (this.target.kind !== "new" && !this.#windowRead) return false;
     const now = this.store.getSnapshot();
     if (now.stream !== null || now.entries.some((entry) => entry.type === "message")) return false;
     const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
-    const opened = await chat.open({ folderPath: this.target.folder, start: "new" });
+    const opened = await chat.open({ folderPath: this.folder, start: "new" });
     if (this.#disposed || this.#parked) {
       await chat.close({ threadId: opened.threadId }).catch(() => undefined);
       return false;

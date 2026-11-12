@@ -954,7 +954,7 @@ describe("the chat session runtime: opening a chat", () => {
 
     await expect(
       getHandler(handlers, "open")({ threadId: authorityThread }, call("unknown")),
-    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+    ).rejects.toMatchObject({ appError: { code: "not_found", notFoundReason: "chat_gone" } });
     expect(created).toHaveLength(0);
   });
 
@@ -971,10 +971,37 @@ describe("the chat session runtime: opening a chat", () => {
     await expect(
       getHandler(handlers, "open")({ threadId: authorityThread }, call("missing-file")),
     ).rejects.toMatchObject({
-      appError: { code: "not_found", message: `Session file not found: ${missingFile}` },
+      appError: {
+        code: "not_found",
+        message: `Session file not found: ${missingFile}`,
+        notFoundReason: "chat_gone",
+      },
     });
     expect(created).toHaveLength(0);
     expect(missingContext.processRegistry.has(authorityThread)).toBe(false);
+  });
+
+  test("a host that stops while it opens a chat that exists fails as not_found without the reason that says the chat is gone", async () => {
+    const created: FakeChatHost[] = [];
+    const handlers = handlersFor({
+      ...context(created),
+      processRegistry: registryKeeping(created, (process) => {
+        process.startFailure = new AppFailure({
+          code: "omp_exited",
+          message: "omp exited (exit code 1)",
+          retryable: true,
+        });
+      }),
+    });
+    const failure = await Promise.resolve(
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("exits")),
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+    expect(failure.appError.code).toBe("not_found");
+    expect(failure.appError.notFoundReason).toBeUndefined();
   });
 
   test("two opens of one saved chat at the same moment start its host once", async () => {

@@ -365,4 +365,50 @@ realTest.describe("new UI lite view", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a chat opened by its id that nothing was written in, whose omp then stopped, still sends: a new chat starts in its place",
+    async ({ realApp }) => {
+      const first = await realApp.open({ path: "/lite" });
+      await expect(box(first)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      const link = await first
+        .getByRole("link", { name: "Open in the full app" })
+        .getAttribute("href");
+      const asked = decodeURIComponent(link?.split("#chat=")[1] ?? "");
+      expect(asked).not.toBe("");
+      await first.close();
+
+      // The panel as a host builds it for a tab that showed this chat before anything was written in it: the server
+      // still has the chat, with nothing in it.
+      const page = await realApp.open({
+        path: "/lite",
+        search: `?chat=${encodeURIComponent(asked)}`,
+      });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      const started = [
+        ...realApp.log().matchAll(/omp\.process thread=(\S+) status=running pid=(\d+)/g),
+      ].at(-1);
+      expect(started).toBeDefined();
+      const [, thread = "", pid = "0"] = started ?? [];
+      process.kill(Number(pid), "SIGKILL");
+      await expect
+        .poll(
+          () =>
+            new RegExp(`omp\\.process thread=${thread} status=(exited|error|stopped)`).test(
+              realApp.log(),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+
+      // What the box sends reaches a chat, started in the stopped one's place: the reply comes, and nothing says it was
+      // not sent or that the chat could not open.
+      await send(page, "hello");
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText(/^Not sent/)).toHaveCount(0);
+      await expect(box(page)).toHaveValue("");
+      expect(new URL(page.url()).searchParams.get("chat")).not.toBe(asked);
+    },
+  );
 });

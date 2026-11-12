@@ -21,10 +21,23 @@ function boundTabOf(search: string): number | null {
 const chatKey = (tabId: number): string => `chat:${tabId}`;
 const ownedKey = (tabId: number): string => `owned:${tabId}`;
 
-/** Binds the panel to a tab: from now on, that tab shows this panel, with its own chat. */
-async function bindTo(tabId: number): Promise<void> {
+/** Counts each look for the tab in front (`bindActive`): only the latest may move the panel. */
+let latestBind = 0;
+
+/**
+ * Binds the panel to a tab: from now on, that tab shows this panel, with its own chat. The person may have gone to
+ * another tab while this waited, and the panel must never end up on a tab that is not in front: then it asks again.
+ */
+async function bindTo(tabId: number, generation: number): Promise<void> {
   const panel = browser.runtime.getURL(`panel.html?tab=${tabId}`);
   await browser.sidebarAction.setPanel({ tabId, panel });
+  if (generation !== latestBind) return;
+  const [front] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (generation !== latestBind) return;
+  if (front?.id !== tabId) {
+    await bindActive();
+    return;
+  }
   location.replace(panel);
 }
 
@@ -71,14 +84,17 @@ function askForAddress(): void {
 
 /** The tab in front gets its chat as soon as the sidebar shows it: nothing is asked. */
 async function bindActive(): Promise<void> {
+  const generation = ++latestBind;
   const [active] = await browser.tabs.query({ active: true, currentWindow: true });
+  // A newer call knows better which tab is in front: it alone goes on.
+  if (generation !== latestBind) return;
   if (active?.id === undefined) {
     root.replaceChildren(
       element("p", { className: "setup", textContent: "No tab to chat about." }),
     );
     return;
   }
-  await bindTo(active.id);
+  await bindTo(active.id, generation);
 }
 
 /** A tab's address as it goes with each message: no query and no fragment, where sign-in codes and tokens travel. */
@@ -167,6 +183,11 @@ async function showChat(app: string, tabId: number): Promise<void> {
     if (sent.type !== "omp-app-selection" || typeof sent.selection !== "string") return;
     selection = sent.selection.trim();
     panel.setContext(contextOf(tab, selection));
+  });
+  // The person went to another tab of this window while this panel still shows the one it is bound to: the panel then
+  // follows the tab in front, as the sidebar's own switch would (the other tab may have a panel of its own, or none).
+  browser.tabs.onActivated.addListener((now) => {
+    if (now.windowId === tab.windowId && now.tabId !== tabId) void bindActive();
   });
 }
 

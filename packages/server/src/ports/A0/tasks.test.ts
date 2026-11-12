@@ -162,6 +162,32 @@ describe("the task queue (#14)", () => {
     expect(queue.list()).toEqual([]);
   });
 
+  test("hasWaitingFor says whether a task still waits to go into the chat, not once it was sent or for another chat", async () => {
+    let busy = true;
+    const { timer, queue } = setup({
+      deliver: async (target) =>
+        busy
+          ? { outcome: "busy" }
+          : {
+              outcome: "sent",
+              threadId: target.kind === "chat" ? target.threadId : ("new-chat" as ThreadId),
+            },
+    });
+    await queue.add({ text: "later for A", target: toChat(A), when: free });
+    await queue.add({
+      text: "for a new chat",
+      target: { kind: "new", folder: FOLDER },
+      when: free,
+    });
+    await settle();
+    expect(queue.hasWaitingFor(A)).toBe(true);
+    expect(queue.hasWaitingFor(B)).toBe(false);
+    // Sent at a later look: nothing waits for the chat any more.
+    busy = false;
+    await timer.advance(TASKS_TICK_MS);
+    expect(queue.hasWaitingFor(A)).toBe(false);
+  });
+
   test("a task for a chat that is gone fails with the reason; a new chat's task goes to the chat it made", async () => {
     const { sent, answers, queue } = setup();
     answers.set(A, ["gone"]);

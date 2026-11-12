@@ -57,3 +57,16 @@ export function lostWithTheLink(failure: unknown): boolean {
 export function notOpenOnServer(failure: unknown): boolean {
   return failure instanceof AppFailure && failure.appError.code === "not_found";
 }
+
+/**
+ * The server says the chat is not there at all: no running chat and no session file under its id. Only then may a page
+ * that was asked to open the chat by its id start a new one in its place; any other `not_found` (omp stopped as it opened a
+ * chat that exists) says what happened and offers Try again and New chat.
+ */
+export function chatIsGone(failure: unknown): boolean {
+  return (
+    failure instanceof AppFailure &&
+    failure.appError.code === "not_found" &&
+    failure.appError.notFoundReason === "chat_gone"
+  );
+}
