@@ -15,11 +15,22 @@ export const STATS_MODELS_SHOWN = 6;
 /** How long one read of omp's page may take once it runs. */
 const READ_MS = 30_000;
 
-/** How long a read waits for omp's page to read the chats first, the minute the section says it can take. */
+/**
+ * How long a read waits for omp's page to read the chats first when it has not read them since it started, the minute the
+ * section says it can take.
+ */
 const SYNC_MS = 60_000;
 
+/**
+ * How long a read waits for a newer reading once the page has one. omp's watcher keeps that one current (`OmpStats`
+ * starts it), so a reading usually ends within a moment; only a long one, such as a long chat read whole on a busy
+ * computer, runs past this, and the read then answers with the reading before it rather than wait on. A turn's end reads
+ * the chat's numbers once, so this leaves room for the reading of that turn.
+ */
+const SYNC_HELD_MS = 10_000;
+
 /** How often it asks whether the page has. */
-const SYNC_POLL_MS = 200;
+const SYNC_POLL_MS = 50;
 
 /**
  * omp's page's own state (`LiveStatus`: `POST /api/sync`'s answer, `GET /api/status`): `sync.lastSyncedAt` is when its
@@ -85,6 +96,8 @@ export interface StatsContext {
   /** omp's statistics page on this machine: its port, started when first asked (`OmpStats`). */
   readonly stats: { start(): Promise<number> };
   readonly fetch?: typeof fetch;
+  /** `SYNC_HELD_MS`, shorter in tests. */
+  readonly heldMs?: number;
 }
 
 /** omp's statistics in brief (D7): read from omp's own page, on the loopback address, its numbers checked. */
@@ -108,11 +121,13 @@ export function createStatsRegistration(context: StatsContext): PortRegistration
     return parsed.data;
   };
   /**
-   * omp's page reads the chats only while one of its own pages listens (`/api/events`) or when asked (`POST /api/sync`);
+   * omp's page reads the chats only while its watcher runs (`OmpStats` starts it) or when asked (`POST /api/sync`);
    * asked by nobody, it keeps what it last read, and nothing on a new machine. So each read first asks it to read the
-   * chats (only what changed since), and waits until a reading finished after the ask, its sums built, up to a minute;
-   * a reading that failed, or a page that cannot be asked, holds no read.
+   * chats (only what changed since), and waits until a reading finished after the ask, its sums built: up to a minute
+   * while the page has none, and `SYNC_HELD_MS` once it has one. A reading that failed, or a page that cannot be asked,
+   * holds no read. Reads at the same time share one ask and its wait.
    */
+  const held = context.heldMs ?? SYNC_HELD_MS;
   const readChats = async (port: number): Promise<void> => {
     const asked = Date.now();
     if ((await read(port, "/api/sync", Status, "POST").catch(() => null)) === null) return;
@@ -125,16 +140,25 @@ export function createStatsRegistration(context: StatsContext): PortRegistration
           status.sync.lastSyncedAt !== null &&
           status.sync.lastSyncedAt >= asked &&
           status.indexingHours === 0);
-      if (done || Date.now() - asked >= SYNC_MS) return;
+      const waited = Date.now() - asked;
+      const hasReading = status !== null && status.sync.lastSyncedAt !== null;
+      if (done || waited >= SYNC_MS || (hasReading && waited >= held)) return;
       await Bun.sleep(SYNC_POLL_MS);
     }
+  };
+  let reading: Promise<void> | null = null;
+  const readChatsOnce = (port: number): Promise<void> => {
+    reading ??= readChats(port).finally(() => {
+      reading = null;
+    });
+    return reading;
   };
   const handlers = {
     summary: async (args: unknown): Promise<StatsSummary> => {
       const { range } = args as { range: StatsRange };
       try {
         const port = await context.stats.start();
-        await readChats(port);
+        await readChatsOnce(port);
         const query = `?range=${encodeURIComponent(range)}`;
         const [overview, byModel] = await Promise.all([
           read(port, `/api/stats/overview${query}`, Overview),
@@ -187,7 +211,7 @@ export function createStatsRegistration(context: StatsContext): PortRegistration
       const name = basename((args as { file: string }).file);
       try {
         const port = await context.stats.start();
-        await readChats(port);
+        await readChatsOnce(port);
         const rows = await read(
           port,
           `/api/sessions?limit=10&q=${encodeURIComponent(name)}`,

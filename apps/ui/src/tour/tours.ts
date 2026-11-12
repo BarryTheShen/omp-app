@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** omp's statistics answer at once (2026-11-12). */
+const STATS_AT_ONCE_TOUR: Tour = {
+  id: "stats-at-once-2026-11-12",
+  title: "Statistics answer at once",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Statistics answer at once",
+      text: "The dashboard's overview and Statistics, and Usage → This chat, no longer wait while omp's statistics page reads the chats: the page now keeps reading them as they change, so the numbers are current when they are asked for. When a long reading still runs after ten seconds, they show the numbers of the reading before it instead of waiting on, and after the app restarts its statistics page starts by itself a little later, before the dashboard opens.",
+      action: next,
+    },
+  ],
+};
+
 /** A device that pairs is named for what it is and the computer it is on (2026-11-12). */
 const DEVICE_NAMES_TOUR: Tour = {
   id: "device-names-2026-11-12",
@@ -2972,6 +2988,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-stats-at-once",
+    when: "2026-11-12T03:18:00-06:00",
+    summary:
+      "omp's statistics answer at once: the dashboard's overview and Statistics, and Usage → This chat, waited each time while omp's statistics page read the chats, up to a minute after the app restarted. The page now keeps reading the chats as they change, starts a little after the app does, and a view waits at most ten seconds for a reading still running, then shows the one before it.",
+    tours: [STATS_AT_ONCE_TOUR],
+  },
   {
     id: "2026-11-12-device-names",
     when: "2026-11-12T03:11:00-06:00",

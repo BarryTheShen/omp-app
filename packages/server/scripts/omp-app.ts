@@ -386,6 +386,7 @@ try {
         uiRoot: uiRoot(),
         chatHostBinary: chatHost,
         newChatsReady: true,
+        earlyStats: true,
         cwd: folder,
         env: { PATH: searchPath },
         serverVersion: version,

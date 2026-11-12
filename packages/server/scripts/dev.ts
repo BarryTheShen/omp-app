@@ -168,6 +168,8 @@ export interface CompositionServerOptions {
   readonly logger?: Logger;
   /** How often the memory and process figures are logged; the default is 30 seconds. */
   readonly statsIntervalMs?: number;
+  /** Starts omp's statistics page `STATS_EARLY_MS` after the server listens, as the app's own launch does. */
+  readonly earlyStats?: boolean;
   /** Test seam for short capability-probe deadlines; normal launches use the production defaults. */
   readonly capabilityProbeSettings?: Pick<
     PatientProbeOptions,
@@ -199,6 +201,12 @@ function environmentWithOverrides(
   }
   return environment;
 }
+
+/**
+ * How long after it listens the server starts omp's statistics page when it does early: after the devices' reconnection
+ * burst, so omp's first reading of every chat runs while nobody waits for it, before the dashboard is first opened.
+ */
+const STATS_EARLY_MS = 20_000;
 
 /** Builds the complete app composition without starting a server until all registrations exist. */
 export async function createCompositionServer(
@@ -953,12 +961,20 @@ export async function createCompositionServer(
     processes: () => processRegistry.list(),
     ...(options.statsIntervalMs === undefined ? {} : { intervalMs: options.statsIntervalMs }),
   });
+  const statsEarly = options.earlyStats
+    ? setTimeout(() => {
+        ompStats
+          .start()
+          .catch((error: unknown) => logger.warn("stats.early_failed", { error: String(error) }));
+      }, STATS_EARLY_MS)
+    : undefined;
   return {
     ...server,
     processRegistry,
     health,
     remoteUrl: remote?.origin,
     async stop() {
+      clearTimeout(statsEarly);
       try {
         stats.stop();
         taskQueue.close();

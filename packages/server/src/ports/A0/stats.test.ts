@@ -45,9 +45,11 @@ function handlersOf(
   asked: string[] = [],
   statuses: (() => unknown)[] = [() => status("idle")],
   syncs = true,
+  heldMs?: number,
 ) {
   const registration = createStatsRegistration({
     stats: { start: async () => 4321 },
+    ...(heldMs === undefined ? {} : { heldMs }),
     fetch: (async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       asked.push(`${method} ${url}`);
@@ -185,6 +187,44 @@ describe("omp's statistics in brief", () => {
       "GET /api/stats/overview",
       "GET /api/stats/models",
     ]);
+  });
+
+  test("reads asked at the same time share one ask and its wait", async () => {
+    const asked: string[] = [];
+    const handlers = handlersOf(quiet, asked, [() => status("syncing"), () => status("idle")]);
+    await Promise.all([handlers.summary({ range: "7d" }), handlers.summary({ range: "24h" })]);
+    expect(paths(asked).filter((entry) => entry === "POST /api/sync")).toHaveLength(1);
+    expect(paths(asked).filter((entry) => entry === "GET /api/stats/overview")).toHaveLength(2);
+  });
+
+  test("once the page has a reading, a read waits for a newer one only a while, then answers with that one", async () => {
+    const asked: string[] = [];
+    // The page read the chats before (at 1), and its next reading runs on and on.
+    const handlers = handlersOf(quiet, asked, [() => status("syncing", 1)], true, 200);
+    const started = Date.now();
+    const summary = await handlers.summary({ range: "7d" });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(summary.totals.requests).toBe(2);
+    expect(paths(asked).at(-1)).toBe("GET /api/stats/models");
+  });
+
+  test("a page that has not read the chats yet is waited for past that while", async () => {
+    const asked: string[] = [];
+    const handlers = handlersOf(
+      quiet,
+      asked,
+      [
+        () => status("syncing"),
+        () => status("syncing"),
+        () => status("syncing"),
+        () => status("syncing"),
+        () => status("idle"),
+      ],
+      true,
+      10,
+    );
+    await handlers.summary({ range: "7d" });
+    expect(paths(asked).filter((entry) => entry === "GET /api/status")).toHaveLength(5);
   });
 });
 

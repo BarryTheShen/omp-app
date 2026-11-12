@@ -19,6 +19,22 @@ setInterval(() => console.log("still here"), 20);
 /** A stand-in that ends before it names a page. */
 const BROKEN = `console.log("no page today"); process.exit(3);`;
 
+/** A stand-in that counts the openings of its live stream (`/api/events`), and answers any other address with that count. */
+const WATCHED = `
+let watched = 0;
+const server = Bun.serve({
+  port: 0,
+  hostname: "127.0.0.1",
+  fetch: (request) => {
+    if (new URL(request.url).pathname !== "/api/events") return new Response(String(watched));
+    watched += 1;
+    return new Response("data: {}\\n\\n", { headers: { "Content-Type": "text/event-stream" } });
+  },
+});
+console.log("Dashboard available at: http://127.0.0.1:" + server.port);
+setInterval(() => console.log("still here"), 20);
+`;
+
 const started: OmpStats[] = [];
 let directory = "";
 
@@ -70,5 +86,19 @@ describe("omp's statistics page (#2836 D6)", () => {
   test("an omp that ends before naming a page is a failure to start", async () => {
     const stats = await standIn(BROKEN);
     await expect(stats.start()).rejects.toThrow("omp's statistics page did not start.");
+  }, 20_000);
+
+  test("once its page listens, it opens omp's live stream once, which keeps omp's numbers current", async () => {
+    const stats = await standIn(WATCHED);
+    const port = await stats.start();
+    let watched: string | null = null;
+    for (let tries = 0; tries < 40 && watched !== "1"; tries += 1) {
+      watched = await answers(port);
+      if (watched !== "1") await Bun.sleep(50);
+    }
+    expect(watched).toBe("1");
+    expect(await stats.start()).toBe(port);
+    await Bun.sleep(200);
+    expect(await answers(port)).toBe("1");
   }, 20_000);
 });

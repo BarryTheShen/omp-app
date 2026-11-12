@@ -3,6 +3,9 @@ import type { Logger } from "../../../logging/logger";
 /** How long omp's stats page may take to start listening: its first start builds its page. */
 export const STATS_START_MS = 120_000;
 
+/** How long the server waits for omp's live stream to answer once, which starts omp's watcher. */
+const LIVE_MS = 10_000;
+
 /** The line `omp stats` prints once its page listens, `Dashboard available at: http://127.0.0.1:43123`: its port. */
 const READY = /Dashboard available at:\s*https?:\/\/[^\s/:]+:(\d+)/;
 
@@ -16,7 +19,8 @@ export interface OmpStatsOptions {
 
 /**
  * omp's statistics page (#2836 D6): `omp stats` on a port of the system's choosing at 127.0.0.1, started when first asked
- * and kept while the server runs, so the shares can open it on the paired devices. omp opens the page in a browser
+ * (the app's own launch asks a little after it starts, `earlyStats`) and kept while the server runs, so the shares can
+ * open it on the paired devices. omp opens the page in a browser
  * after it starts; `BROWSER=true` makes that a no-op on a server, where no one sits at the screen.
  */
 export class OmpStats {
@@ -73,6 +77,7 @@ export class OmpStats {
     }
     this.#port = port;
     this.#options.logger?.info("stats.started", { port, pid: child.pid });
+    void this.#live(port);
     void child.exited.then((code) => {
       if (this.#child !== child) return;
       this.#child = null;
@@ -80,6 +85,28 @@ export class OmpStats {
       this.#options.logger?.info("stats.ended", { code });
     });
     return port;
+  }
+
+  /**
+   * Opens omp's live stream (`/api/events`) once and closes it after its first answer. Opening it starts omp's watcher,
+   * which runs as long as the page does: omp then reads a chat again shortly after each write, and all of them every few
+   * minutes, so its numbers are current when the app asks instead of read while the app waits.
+   */
+  async #live(port: number): Promise<void> {
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), LIVE_MS);
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/events`, {
+        signal: stop.signal,
+        redirect: "error",
+      });
+      await response.body?.getReader().read();
+    } catch {
+      // A page that cannot be watched is still read when asked.
+    } finally {
+      clearTimeout(timer);
+      stop.abort();
+    }
   }
 
   /**
