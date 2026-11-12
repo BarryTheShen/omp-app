@@ -267,7 +267,7 @@ realTest.describe("questions omp asks without waiting", () => {
   );
 
   realTest(
-    "your own answer to a question with choices takes several lines: it wraps, Shift+Enter starts a line, Enter sends",
+    "your own answer to a question with choices takes several lines: it wraps, Shift+Enter starts a line, Enter moves to the button and never sends",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -308,7 +308,12 @@ realTest.describe("questions omp asks without waiting", () => {
       expect(fits.sideways).toBeLessThanOrEqual(1);
       expect(fits.hidden).toBeLessThanOrEqual(1);
 
-      // Enter sends it, both lines, as the person's message.
+      // Enter finishes the answer and moves to the button; it sends nothing by itself.
+      await page.keyboard.press("Enter");
+      const send = card.getByRole("button", { name: "Send answer" });
+      await expect(send).toBeFocused();
+      await expect(own).toHaveValue(`${first}\n${second}`);
+      // Enter on the button sends it, both lines, as the person's message.
       await page.keyboard.press("Enter");
       const answer = transcript(page).getByText('Answer to your question "Colour" (colour):', {
         exact: false,
@@ -316,6 +321,59 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(answer).toBeVisible({ timeout: 60_000 });
       await expect(answer).toContainText(first);
       await expect(answer).toContainText(second);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "Enter in one question's own answer moves to the next question, sending nothing; Ctrl+Enter sends the card",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const two = {
+        questions: [
+          {
+            id: "colour",
+            header: "Colour",
+            question: "Which colour for the theme?",
+            options: [{ label: "Blue" }, { label: "Green" }],
+          },
+          {
+            id: "size",
+            header: "Size",
+            question: "Which size for the text?",
+            options: [{ label: "Small" }, { label: "Large" }],
+            recommended: 1,
+          },
+        ],
+      };
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(two)}`);
+      await box(page).press("Enter");
+      await rail(page)
+        .getByRole("button", { name: "Questions, 2 waiting for you" })
+        .click({ timeout: 90_000 });
+      const card = panel(page).getByRole("article", { name: "Questions: Colour, Size" });
+      await card.getByRole("radio", { name: "Other…" }).first().click();
+      const own = card.getByRole("textbox", {
+        name: "Your own answer: Which colour for the theme?",
+      });
+      await own.fill("A warm red");
+      await own.press("Enter");
+      // On to the next question's picked choice: the second question is still the person's to answer.
+      await expect(card.getByRole("radio", { name: "Large" })).toBeFocused();
+      await expect(own).toHaveValue("A warm red");
+      await expect(card.getByRole("button", { name: "Send answers" })).toBeEnabled();
+      await page.keyboard.press("Control+Enter");
+      // One message from the person with both answers: the own answer and the second question's picked choice.
+      const message = transcript(page)
+        .locator(".tl-item")
+        .filter({ hasText: "Answers to your questions:" });
+      await expect(message).toHaveCount(1, { timeout: 60_000 });
+      await expect(message).toContainText('"Colour" (colour):');
+      await expect(message).toContainText("A warm red");
+      await expect(message).toContainText('"Size" (size):');
+      await expect(message).toContainText("Large");
       expect(realApp.problems).toEqual([]);
     },
   );

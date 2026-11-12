@@ -355,6 +355,7 @@ function AskCard({
       ),
   );
   const [sending, setSending] = useState(false);
+  const sendButton = useRef<HTMLButtonElement>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const draft = (record: QuestionRecord): Draft =>
     drafts.get(record.id) ?? draftOf(record, record.answer?.held === true ? record.answer : null);
@@ -392,11 +393,36 @@ function AskCard({
       }
     })();
   };
-  const enterSends = (event: KeyboardEvent<HTMLElement>): void => {
-    if (event.key === "Enter" && !event.shiftKey && !isImeEnter(event)) {
-      event.preventDefault();
-      send();
+  /**
+   * Enter in a written answer finishes that answer and moves on: to the next question's choice or box, or after the last
+   * to the button that sends, never sending by itself. The other questions already have the recommended choice picked,
+   * so an Enter that sent would answer them before the person got to them. Shift+Enter starts a line.
+   */
+  const enterMoves = (event: KeyboardEvent<HTMLElement>): void => {
+    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey) return;
+    if (isImeEnter(event)) return;
+    event.preventDefault();
+    const here = event.currentTarget.closest<HTMLElement>("section[data-id]");
+    const questions = [
+      ...(here?.parentElement?.querySelectorAll<HTMLElement>(":scope > section[data-id]") ?? []),
+    ];
+    for (const next of questions.slice(questions.indexOf(here as HTMLElement) + 1)) {
+      // Its picked round mark, else its first round mark, tick box or box: never Skip, which Enter would press.
+      const control =
+        next.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ??
+        next.querySelector<HTMLElement>('[role="radio"], [role="checkbox"], textarea');
+      if (control !== null) {
+        control.focus();
+        return;
+      }
     }
+    sendButton.current?.focus();
+  };
+  /** Ctrl+Enter (⌘+Enter on a Mac) anywhere in the card sends it, as the button does. */
+  const sendKeys = (event: KeyboardEvent<HTMLElement>): void => {
+    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey) || isImeEnter(event)) return;
+    event.preventDefault();
+    send();
   };
 
   const [wide, setWide] = useState(false);
@@ -423,7 +449,7 @@ function AskCard({
             record={record}
             draft={draft(record)}
             onChange={(next) => setDrafts((now) => new Map(now).set(record.id, next))}
-            onEnter={enterSends}
+            onEnter={enterMoves}
             onReadAll={clamp ? () => setWide(true) : undefined}
           />
         ),
@@ -439,7 +465,13 @@ function AskCard({
             Cancel
           </Button>
         )}
-        <Button type="button" size="sm" disabled={!ready || sending} onClick={send}>
+        <Button
+          ref={sendButton}
+          type="button"
+          size="sm"
+          disabled={!ready || sending}
+          onClick={send}
+        >
           {sending ? (label.startsWith("Save") ? "Saving…" : "Sending…") : label}
         </Button>
       </footer>
@@ -451,6 +483,7 @@ function AskCard({
       ref={card}
       data-ask={ask.toolCallId}
       aria-label={askName(ask)}
+      onKeyDown={sendKeys}
       className="flex flex-col gap-3 rounded-xl border border-l3 bg-card p-3 shadow-sm"
     >
       {wide ? (
@@ -633,7 +666,7 @@ function QuestionFields({
             </RadioGroup>
           )}
           {choices && otherOn && (
-            // Several lines, as the written answer above: Enter sends, Shift+Enter starts a new line.
+            // Several lines, as the written answer above: Enter moves on, Shift+Enter starts a line, Ctrl+Enter sends.
             <Textarea
               aria-label={`Your own answer: ${record.question}`}
               rows={2}

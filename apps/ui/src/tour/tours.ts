@@ -537,6 +537,22 @@ const ANSWERS_TOGETHER_TOUR: Tour = {
   ],
 };
 
+/** Enter in a question's written answer moves on; only the button or Ctrl+Enter sends (2026-11-11). */
+const ENTER_MOVES_ON_TOUR: Tour = {
+  id: "questions-enter-2026-11-11",
+  title: "Enter moves to the next question",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Enter moves on",
+      text: "In the <b>Questions</b> panel, Enter in an answer you write (your own answer, or a box to write in) finishes it and moves to the next question, then to the button that sends: it never sends the card by itself, so the questions after it are still yours to answer. The button sends, and so does Ctrl+Enter (⌘+Enter on a Mac) from anywhere in the card. Shift+Enter starts a new line.",
+      action: next,
+    },
+  ],
+};
+
 /** Answers to separate asks wait for each other too (2026-11-07). */
 const ANSWERS_ACROSS_ASKS_TOUR: Tour = {
   id: "answers-across-asks-2026-11-07",
@@ -2913,6 +2929,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-questions-enter",
+    when: "2026-11-11T19:38:00-06:00",
+    summary:
+      "In the Questions panel, Enter in an answer you write moves to the next question, then to the button, and never sends the card by itself: before, it sent every question at once, the ones you had not reached with their recommended choice. The button or Ctrl+Enter (⌘+Enter) sends.",
+    tours: [ENTER_MOVES_ON_TOUR],
+  },
   {
     id: "2026-11-11-secrets-guard",
     when: "2026-11-11T19:22:00-06:00",
