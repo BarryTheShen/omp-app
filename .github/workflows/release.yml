@@ -185,12 +185,37 @@ jobs:
           # Only whether the repository has an addons.mozilla.org API key (Developer Hub → Tools → Manage API Keys) as
           # its Actions secrets AMO_JWT_ISSUER and AMO_JWT_SECRET, never the key: the signing step alone gets it.
           HAS_AMO_KEY: ${{ secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           bun run --cwd apps/zen build "$VERSION"
           # Unsigned: Firefox and Zen load it for one session (about:debugging → Load Temporary Add-on).
           (cd apps/zen/dist && zip -qr "$GITHUB_WORKSPACE/dist/release/omp-app-zen_${VERSION}_unsigned.zip" .)
           (cd dist/release && sha256sum "omp-app-zen_${VERSION}_unsigned.zip" >>SHA256SUMS)
+          # Mozilla signs a limited number of versions a day (a release past it gets none), so an extension the newest
+          # signed release already has goes out as that release's signed file, under its own version, and nothing is
+          # sent to Mozilla. packaging/zen-fingerprint.sh compares the two without their versions.
+          last_signed() {
+            local tag signed
+            for tag in $(gh release list --limit 30 --json tagName --jq '.[].tagName'); do
+              signed=$(gh release view "$tag" --json assets \
+                --jq '[.assets[].name | select(test("^omp-app-zen_[0-9.]+\\.xpi$"))] | first // empty')
+              if [ -n "$signed" ]; then
+                echo "$tag $signed"
+                return
+              fi
+            done
+          }
+          built=$(bash packaging/zen-fingerprint.sh apps/zen/dist)
+          if read -r tag signed < <(last_signed) \
+            && gh release download "$tag" --pattern "$signed" --dir "$RUNNER_TEMP/last-signed" \
+            && unzip -q "$RUNNER_TEMP/last-signed/$signed" -d "$RUNNER_TEMP/last-signed/unpacked" \
+            && [ "$(bash packaging/zen-fingerprint.sh "$RUNNER_TEMP/last-signed/unpacked")" = "$built" ]; then
+            cp "$RUNNER_TEMP/last-signed/$signed" "dist/release/$signed"
+            (cd dist/release && sha256sum "$signed" >>SHA256SUMS)
+            echo "The extension is the one $tag signed ($signed): nothing to sign."
+            exit 0
+          fi
           if [ "$HAS_AMO_KEY" != "true" ]; then
             echo "No addons.mozilla.org key: the release has the unsigned extension only."
             exit 0
@@ -260,8 +285,11 @@ jobs:
             "dist/release/omp-app-zen_${VERSION}_unsigned.zip"
             "dist/release/omp-app-vscode_${VERSION}.vsix"
           )
-          if [ -f "dist/release/omp-app-zen_${VERSION}.xpi" ]; then
-            assets+=("dist/release/omp-app-zen_${VERSION}.xpi")
-          fi
+          # This version's signed extension, or the earlier one it equals (the extension step above).
+          for xpi in dist/release/omp-app-zen_*.xpi; do
+            if [ -f "$xpi" ]; then
+              assets+=("$xpi")
+            fi
+          done
           gh release create "v$VERSION" "${assets[@]}" dist/release/SHA256SUMS \
             --target "$(git rev-parse HEAD)" --title "omp app $VERSION" --notes-file dist/release/notes.md
