@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
+import { drawnAfterClick } from "./timing";
 
 /** The WCAG contrast ratio of two computed `rgb(…)` colours. */
 function contrast(first: string, second: string): number {
@@ -82,6 +83,31 @@ realTest.describe("new UI: the Files panel", () => {
       await appendFile(join(realApp.folder, "notes", "plan.md"), "- from outside\n");
       await expect(editor(page)).toContainText("from outside", { timeout: 10_000 });
       await expect(page.getByText("Updated", { exact: true })).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the code editor loads while the panel shows, so the first file opened draws in it at once",
+    async ({ realApp }) => {
+      await writeFile(join(realApp.folder, "app.ts"), "export const answer = 42;\n");
+      const fetched: string[] = [];
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (opened) => {
+          opened.on("request", (request) => fetched.push(request.url()));
+        },
+      });
+      await openFiles(page);
+      await expect
+        .poll(() => fetched.some((url) => /\/CodeEditor-[^/]+\.js$/.test(url)), { timeout: 15_000 })
+        .toBe(true);
+      // An editor whose first draw waits for its code shows no sooner than 300 ms after the click (React holds content
+      // that was loading that long after its fallback, "Loading the editor…").
+      const drawn = drawnAfterClick(page, ".cm-content");
+      await row(page, "app.ts").click();
+      expect(await drawn).toBeLessThan(250);
+      await expect(editor(page)).toContainText("export const answer = 42;");
       expect(realApp.problems).toEqual([]);
     },
   );

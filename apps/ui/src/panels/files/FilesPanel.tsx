@@ -56,7 +56,7 @@ import type { ChatController } from "../../chat/controller";
 import { writeClipboard } from "../../clipboard";
 import { lastSeen } from "../../lastSeen";
 import { usePhone } from "../../phone";
-import { type DiskChange, FileViewer } from "./FileViewer";
+import { codeEditor, type DiskChange, FileViewer } from "./FileViewer";
 import { baseName, childPath, keepBothName, parentOf } from "./names";
 import { PageShare } from "./PageShare";
 import { downloadBytes, failureCode, readFileBytes, uploadBytes } from "./transfer";
@@ -165,6 +165,10 @@ export interface FilesPanelProps {
  */
 export function FilesPanel({ client, folder, chat, openFileTab }: FilesPanelProps): ReactNode {
   const files = useMemo(() => client.port(WorkspaceFilesPort), [client]);
+  // The code editor loads while the list shows, so the first file opened draws in it at once.
+  useEffect(() => {
+    void codeEditor.preload().catch(() => undefined);
+  }, []);
   const phone = usePhone();
   const [showIgnored, setShowIgnored] = useState(false);
   const [listings, setListings] = useState<ReadonlyMap<string, Listing>>(() =>

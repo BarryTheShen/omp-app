@@ -1,12 +1,14 @@
 import type { IDockviewPanelProps } from "dockview-react";
-import { lazy, type ReactNode, Suspense, use } from "react";
+import { type ReactNode, Suspense, use } from "react";
+import { loadable } from "../loadable";
 import { PaneHostContext } from "../workspace/ChatPanel";
 import type { DashboardPaneParams } from "./dashboardPane";
 
-/** The dashboard's page, loaded when it first shows. */
-const DashboardBody = lazy(() =>
-  import("./DashboardPage").then((module) => ({ default: module.DashboardBody })),
+/** The dashboard's page, loaded a little after the app is ready (`preloadPages` in `App.tsx`), or when it first shows. */
+export const dashboardBody = loadable(() =>
+  import("./DashboardPage").then((module) => module.DashboardBody),
 );
+const DashboardBody = dashboardBody.Component;
 
 /**
  * The dashboard as a pane: a page in a workspace, as a chat is. It opens in a workspace of its own, and like any pane it

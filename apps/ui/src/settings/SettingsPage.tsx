@@ -9,7 +9,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ChatController } from "../chat/controller";
 import { SavedSecrets } from "../secrets/SavedSecrets";
 import { AppPage } from "./AppPage";
-import { loadSettingsData, type SettingDef, type SettingsData, type SettingsTab } from "./data";
+import {
+  loadSettingsData,
+  type SettingDef,
+  type SettingsData,
+  type SettingsTab,
+  settingsDataNow,
+} from "./data";
 import { McpServers } from "./McpServers";
 import { ModelRoles } from "./ModelRoles";
 import { changedHere, type Entries, inForce, matches, sections, shown, valueText } from "./model";
@@ -86,7 +92,7 @@ function SettingsSheet({
   readonly onClose: () => void;
   readonly onWhatsNew: () => void;
 }): ReactNode {
-  const [data, setData] = useState<SettingsData | null>(null);
+  const [data, setData] = useState<SettingsData | null>(settingsDataNow);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;

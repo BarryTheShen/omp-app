@@ -755,6 +755,28 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** Settings, the dashboard and the first file open at once the first time too (2026-11-12). */
+const FIRST_OPEN_TOUR: Tour = {
+  id: "first-open-2026-11-12",
+  title: "Settings, the dashboard and files open at once, the first time too",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings at once",
+      text: "{settings} or this gear opens settings: now at once from the first time, where the first open of each session took about a third of a second. Try it.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings. The dashboard's first open is as quick, and so is the first file you open from the Files panel.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** A workspace not shown is left out of the browser's work (2026-11-12). */
 const HIDDEN_TABS_TOUR: Tour = {
   id: "hidden-tabs-2026-11-12",
@@ -3084,6 +3106,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-first-open",
+    when: "2026-11-12T08:31:00-06:00",
+    summary:
+      'Settings, the dashboard and the first file you open now come up at once the first time too: their first open in each session took about a third of a second (354 ms for Settings, 338 for the dashboard, the later ones under 60), because the page waited out a pause React keeps after showing something that was still loading, though Settings and the dashboard had been loaded in the background long before. The Files panel now loads the code editor while it shows, so the first file opened draws in it at once instead of saying "Loading the editor…", and Settings opens with omp\'s settings in it from the start.',
+    tours: [FIRST_OPEN_TOUR],
+  },
   {
     id: "2026-11-12-hidden-tabs",
     when: "2026-11-12T08:10:00-06:00",

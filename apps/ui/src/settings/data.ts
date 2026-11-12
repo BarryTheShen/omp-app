@@ -54,9 +54,18 @@ export interface SettingsData {
 }
 
 let loading: Promise<SettingsData> | undefined;
+let loaded: SettingsData | undefined;
 
 /** omp's settings, read once, when the settings page first opens (the file stays out of the first load). */
 export function loadSettingsData(): Promise<SettingsData> {
-  loading ??= import("./omp-settings.json").then((module) => module.default as SettingsData);
+  loading ??= import("./omp-settings.json").then((module) => {
+    loaded = module.default as SettingsData;
+    return loaded;
+  });
   return loading;
+}
+
+/** omp's settings if they were read already (`loadSettingsData`), so that the page draws with them from the start. */
+export function settingsDataNow(): SettingsData | null {
+  return loaded ?? null;
 }

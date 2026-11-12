@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
+import { drawnAfterClick } from "./timing";
 
 /**
  * The new UI's settings (`apps/ui`, under `/v2/`) on real omp: omp's own settings by tab, search, each kind of control
@@ -25,7 +26,7 @@ realTest.describe("new UI settings", () => {
   }
 
   realTest(
-    "Settings, omp's settings and the dashboard load in the background once the app is up, before anything opens them",
+    "Settings, omp's settings and the dashboard load in the background once the app is up, and their first open draws at once",
     async ({ realApp }) => {
       const fetched: string[] = [];
       const page = await realApp.open({
@@ -44,7 +45,19 @@ realTest.describe("new UI settings", () => {
           .poll(() => fetched.some((url) => chunk.test(url)), { timeout: 15_000 })
           .toBe(true);
       await expect(sheet(page)).toHaveCount(0);
+      // A page whose first draw waits for its code shows no sooner than 300 ms after the click (React holds content
+      // that was loading that long after its empty fallback); drawn at once, it takes about 50 ms.
+      const settingsDrawn = drawnAfterClick(page, 'nav[aria-label="Settings sections"] button');
       await openSettings(page);
+      expect(await settingsDrawn).toBeLessThan(250);
+      await page.keyboard.press("Escape");
+      await expect(sheet(page)).toBeHidden();
+      const dashboardDrawn = drawnAfterClick(page, '[data-tour="dashboard"]');
+      await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+      expect(await dashboardDrawn).toBeLessThan(250);
+      await expect(
+        page.locator('[data-tour="dashboard"]').getByRole("heading", { name: "Dashboard" }),
+      ).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

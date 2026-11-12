@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { loadable } from "../../loadable";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 import { previewDocument } from "./htmlPreview";
 import { baseName } from "./names";
@@ -32,8 +33,13 @@ import { type ConflictChoice, resolveConflict, saveText } from "./save";
 import { downloadBytes, type FilesClient, readFileBytes, sizeText } from "./transfer";
 import { chooseViewer, decodeText, TEXT_EDIT_BYTES, type ViewerChoice } from "./viewer";
 
-/** CodeMirror and its merge view load only when a text viewer opens (#2782: the main script stays small). */
-const CodeEditor = lazy(() => import("./CodeEditor"));
+/**
+ * CodeMirror loads only when the Files panel shows or a text viewer opens (#2782: the main script stays small); the panel
+ * preloads it, so that the first file opens in it at once (`loadable`).
+ */
+export const codeEditor = loadable(() => import("./CodeEditor").then((module) => module.default));
+const CodeEditor = codeEditor.Component;
+/** The merge view loads only when a save meets a changed file. */
 const MergeCompare = lazy(() => import("./MergeCompare"));
 /** PDF.js loads only when a PDF is shown (#2785). */
 const PdfView = lazy(() => import("./PdfView"));

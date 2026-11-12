@@ -11,7 +11,6 @@ import { cn } from "cn";
 import { ChevronLeft, PanelLeftOpen, SquarePen } from "lucide-react";
 import {
   type CSSProperties,
-  lazy,
   type ReactNode,
   Suspense,
   useCallback,
@@ -29,6 +28,7 @@ import { PhoneDetailsButton } from "./chat/PhoneDetailsButton";
 import { prefetchWindow } from "./chat/prefetch";
 import { forgetAllWindows } from "./chat/windowCache";
 import { connect, readToken } from "./connection";
+import { dashboardBody } from "./dashboard/DashboardPane";
 import { useDashboardWaiting } from "./dashboard/waiting";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
 import {
@@ -48,6 +48,7 @@ import { watchLink } from "./linkCheck";
 import { embed } from "./lite/embed";
 import { LiteShell } from "./lite/LiteShell";
 import { isLiteView } from "./lite/lite";
+import { loadable } from "./loadable";
 import { setPageErrorSink } from "./pageErrors";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
@@ -80,32 +81,33 @@ import {
   type WorkspaceView,
 } from "./workspace/Workspace";
 
-const loadSettingsPage = () => import("./settings/SettingsPage");
-const loadDashboardPage = () => import("./dashboard/DashboardPage");
-
-/** The settings sheet and omp's settings with it, loaded a little after the app is ready (`preloadPages`). */
-const SettingsPage = lazy(() =>
-  loadSettingsPage().then((module) => ({ default: module.SettingsPage })),
+/** The settings sheet, loaded a little after the app is ready (`preloadPages`). */
+const settingsPage = loadable(() =>
+  import("./settings/SettingsPage").then((module) => module.SettingsPage),
 );
+const SettingsPage = settingsPage.Component;
 
-/** The dashboard (#2836), loaded a little after the app is ready (`preloadPages`). */
-const DashboardPage = lazy(() =>
-  loadDashboardPage().then((module) => ({ default: module.DashboardPage })),
+/** The dashboard (#2836) as a phone's page, loaded a little after the app is ready (`preloadPages`). */
+const dashboardPage = loadable(() =>
+  import("./dashboard/DashboardPage").then((module) => module.DashboardPage),
 );
+const DashboardPage = dashboardPage.Component;
 
 /** How long after the app is ready Settings and the dashboard load in the background, when the page is idle. */
 const PRELOAD_AFTER_MS = 2_000;
 
 /**
  * Loads Settings, omp's settings (about 260 kB) and the dashboard in the background once the app has settled, so that
- * their first open draws at once instead of fetching them first: about 400 ms on a fast network, more over a slower
- * one, and again after every release, which renames the files. Returns what cancels it.
+ * their first open draws at once instead of fetching them first (about 400 ms on a fast network, more over a slower
+ * one, and again after every release, which renames the files) and then waiting out React's hold on content that was
+ * loading (`loadable`). Returns what cancels it.
  */
 function preloadPages(): () => void {
   const load = (): void => {
-    void loadSettingsPage().catch(() => undefined);
+    void settingsPage.preload().catch(() => undefined);
     void import("./settings/data").then((data) => data.loadSettingsData()).catch(() => undefined);
-    void loadDashboardPage().catch(() => undefined);
+    void dashboardPage.preload().catch(() => undefined);
+    void dashboardBody.preload().catch(() => undefined);
   };
   let idle: number | undefined;
   const timer = window.setTimeout(() => {
