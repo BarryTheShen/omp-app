@@ -12,7 +12,12 @@ import {
   SOCKET_PROTOCOL,
 } from "@omp-app/contracts";
 import { type AppServer, createAppServer } from "../server";
-import { type DevicePairing, openDevicePairing } from "./index";
+import {
+  createMachineNames,
+  type DevicePairing,
+  type MachineNamer,
+  openDevicePairing,
+} from "./index";
 
 const DATA = join(import.meta.dir, "../../../../.data");
 const FIXTURES = new URL("../test-fixtures", import.meta.url).pathname;
@@ -24,7 +29,9 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function serve(): Promise<{ app: AppServer; pairing: DevicePairing; origin: string }> {
+async function serve(
+  machineOf?: MachineNamer,
+): Promise<{ app: AppServer; pairing: DevicePairing; origin: string }> {
   await Bun.write(join(DATA, ".keep"), "");
   const root = await mkdtemp(join(DATA, "pairing-"));
   roots.push(root);
@@ -35,6 +42,7 @@ async function serve(): Promise<{ app: AppServer; pairing: DevicePairing; origin
     uiRoot: `${FIXTURES}/ui`,
     remote: REMOTE,
     devices: pairing,
+    ...(machineOf === undefined ? {} : { machineOf }),
   });
   apps.push(app);
   return { app, pairing, origin: app.url };
@@ -46,8 +54,9 @@ function post(
   path: string,
   body: unknown,
   from: "page" | "https" | "elsewhere" = "page",
+  more: Record<string, string> = {},
 ) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = { "content-type": "application/json", ...more };
   if (from === "page") headers.origin = app.url;
   if (from === "https") {
     headers.origin = REMOTE.origin;
@@ -315,6 +324,44 @@ describe("device pairing on a running server", () => {
     });
     const listed = await fetch(`${app.url}${PAIRING_PATHS.devices}`, { headers: bearer });
     expect(await listed.json()).toEqual({ devices: [], requests: [] });
+  });
+
+  test("the machine route names the computer a page is on, to the app's own pages and by POST only", async () => {
+    const { app } = await serve(
+      createMachineNames({
+        whois: async (ip) => (ip === "100.64.1.2" ? "my-phone" : undefined),
+        hostname: () => "my-laptop",
+      }),
+    );
+    // A page on the server's computer: no proxy marked it, so the server's own name.
+    const here = await post(app, PAIRING_PATHS.machine, undefined);
+    expect(here.status).toBe(200);
+    expect(await here.json()).toEqual({ machine: "my-laptop" });
+    // A page through Tailscale Serve: the address it added to the request names the computer, after any the page sent.
+    const there = await post(app, PAIRING_PATHS.machine, undefined, "https", {
+      "x-forwarded-for": "10.0.0.1, 100.64.1.2",
+    });
+    expect(await there.json()).toEqual({ machine: "my-phone" });
+    const unknown = await post(app, PAIRING_PATHS.machine, undefined, "https", {
+      "x-forwarded-for": "198.51.100.7",
+    });
+    expect(await unknown.json()).toEqual({ machine: null });
+
+    // Only the app's own pages ask, and only by POST.
+    expect((await post(app, PAIRING_PATHS.machine, undefined, "elsewhere")).status).toBe(403);
+    expect((await fetch(`${app.url}${PAIRING_PATHS.machine}`, { method: "POST" })).status).toBe(
+      403,
+    );
+    const got = await fetch(`${app.url}${PAIRING_PATHS.machine}`, {
+      headers: { origin: app.url },
+    });
+    expect(got.status).toBe(405);
+  });
+
+  test("without a way to name computers, the machine route answers null", async () => {
+    const { app } = await serve();
+    const answer = await post(app, PAIRING_PATHS.machine, undefined);
+    expect(await answer.json()).toEqual({ machine: null });
   });
 
   test("the page a paired device loads sets its key's cookie again; another page's load sets none", async () => {

@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import type { Page } from "@playwright/test";
 import { expect, realTest } from "./real-omp";
 
@@ -22,6 +23,15 @@ async function ask(phone: Page): Promise<string> {
   await expect(digits).toBeVisible();
   return (await digits.textContent()) ?? "";
 }
+
+/**
+ * The name a page on the harness's computer is suggested: its browser (Chromium's user agent says Chrome) and the
+ * server's own hostname, since a page on the server's computer has no proxy in front of it. The wait for the hostname
+ * is what shows the app answered: before that the suggestion carries the system's name. A hostname that is no valid
+ * computer name (dots, say) is left out by the app, so only the shape is checked.
+ */
+const THIS_COMPUTER = /^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/.test(hostname()) ? hostname() : null;
+const SUGGESTED = THIS_COMPUTER === null ? /^Chrome on \S+/ : `Chrome on ${THIS_COMPUTER}`;
 
 realTest.describe("new UI device pairing", () => {
   realTest.setTimeout(180_000);
@@ -110,11 +120,26 @@ realTest.describe("new UI device pairing", () => {
       await expect(
         devices(owner).getByRole("list", { name: "Paired devices" }).getByRole("listitem"),
       ).toHaveCount(1);
+      // It was named as the other path names a device: after the computer's name came.
+      await expect(
+        devices(owner).getByRole("list", { name: "Paired devices" }).getByRole("listitem"),
+      ).toContainText(SUGGESTED);
 
       // Used once, the code no longer works.
       await codeField.fill(shown);
       await tablet.getByRole("button", { name: "Pair", exact: true }).click();
       await expect(tablet.getByRole("status")).toContainText("That code no longer works.");
+    },
+  );
+
+  realTest(
+    "the suggested name says the browser and the computer the page is on",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/", hash: "", expectApp: false });
+      await expect(pairingHeading(page)).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByLabel("This device's name")).toHaveValue(SUGGESTED, {
+        timeout: 30_000,
+      });
     },
   );
 });

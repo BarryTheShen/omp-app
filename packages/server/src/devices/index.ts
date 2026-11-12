@@ -34,5 +34,6 @@ export async function openDevicePairing(options: DevicePairingOptions): Promise<
 export { DeviceConnections } from "./connections";
 export { deviceCookie, deviceKeyOf, deviceKeyOfProtocols, offeredProtocols } from "./cookie";
 export { pairingRoute } from "./http";
+export { createMachineNames, type MachineNamer, tailscaleWhois } from "./machine";
 export { PairingDesk } from "./pairing";
 export { DeviceStore, deviceKeyHash } from "./store";

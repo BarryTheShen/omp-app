@@ -152,6 +152,8 @@ export const PAIRING_PATHS = {
   devices: "/pair/devices",
   /** POST `{ deviceId }`, the launch token as a bearer, on the server only → `DeviceList` (`omp-app devices remove`). */
   remove: "/pair/remove",
+  /** POST, no body → `PairingMachine`: the computer the page is on, to suggest the new device's name. */
+  machine: "/pair/machine",
 } as const;
 
 export const PairingAsk = z.object({ name: DeviceName, kind: DeviceKind }).strict();
@@ -166,6 +168,13 @@ export const PairingAsked = z
   })
   .strict();
 export type PairingAsked = z.infer<typeof PairingAsked>;
+
+/**
+ * The name of the computer a pairing page is on, as Tailscale knows it; the server's own name for a page on the server's
+ * computer; null when neither is known. The pairing screen suggests it in the new device's name ("Firefox on my-laptop").
+ */
+export const PairingMachine = z.strictObject({ machine: z.string().nullable() });
+export type PairingMachine = z.infer<typeof PairingMachine>;
 
 /**
  * A panel framed by another app (an extension's, an editor's) cannot keep the key's cookie: the browser keeps no

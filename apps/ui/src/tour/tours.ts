@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** A device that pairs is named for what it is and the computer it is on (2026-11-12). */
+const DEVICE_NAMES_TOUR: Tour = {
+  id: "device-names-2026-11-12",
+  title: "Devices named for where they are",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Devices named for where they are",
+      text: 'A device you pair is now named for what it is and the computer it is on, as "Zen sidebar on my-laptop", "VS Code on my-laptop", "Firefox on my-laptop" or "Home Screen app on my-phone", instead of "Linux · Firefox". The computer\'s name is the one Tailscale knows it by, or the system\'s (Linux, iPhone) when the app cannot tell. You can still change the name while pairing and in Settings → App → Devices.',
+      action: next,
+    },
+  ],
+};
+
 /** Lists answer at once after a long chat changes (2026-11-12). */
 const LONG_CHATS_TOUR: Tour = {
   id: "long-chats-2026-11-12",
@@ -2956,6 +2972,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-device-names",
+    when: "2026-11-12T03:11:00-06:00",
+    summary:
+      'A device you pair is named for what it is and the computer it is on, as "Zen sidebar on my-laptop", "VS Code on my-laptop", "Firefox on my-laptop" or "Home Screen app on my-phone": the computer\'s name as Tailscale knows it, or the system\'s (Linux, iPhone) when the app cannot tell. You can still change it while pairing and in Settings → App → Devices.',
+    tours: [DEVICE_NAMES_TOUR],
+  },
   {
     id: "2026-11-12-integrations-gone",
     when: "2026-11-12T03:06:00-06:00",
