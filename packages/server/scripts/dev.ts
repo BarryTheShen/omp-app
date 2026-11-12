@@ -168,7 +168,10 @@ export interface CompositionServerOptions {
   readonly logger?: Logger;
   /** How often the memory and process figures are logged; the default is 30 seconds. */
   readonly statsIntervalMs?: number;
-  /** Starts omp's statistics page `STATS_EARLY_MS` after the server listens, as the app's own launch does. */
+  /**
+   * Starts omp's statistics page `STATS_EARLY_MS` after the server listens, as the app's own launch does, where omp has a
+   * statistics database already (`hasOmpStats`).
+   */
   readonly earlyStats?: boolean;
   /** Test seam for short capability-probe deadlines; normal launches use the production defaults. */
   readonly capabilityProbeSettings?: Pick<
@@ -207,6 +210,19 @@ function environmentWithOverrides(
  * burst, so omp's first reading of every chat runs while nobody waits for it, before the dashboard is first opened.
  */
 const STATS_EARLY_MS = 20_000;
+
+/**
+ * Whether omp has read statistics on this computer before: its database (`stats.db`, in omp's folder, or under
+ * `XDG_DATA_HOME` when that is set). Only then does the server start omp's statistics page early. In a fresh home the
+ * page creates the database just as a new chat's omp starts, and that omp imports its history from a database it finds
+ * (omp's `#kickModelPerfBackfill`): the likely reason the desktop check's first turn never reached the model when the page
+ * started there 20 s in. A fresh home starts the page when it is first asked for, as before.
+ */
+function hasOmpStats(homeDir: string, env: Record<string, string>): boolean {
+  const places = [join(homeDir, ".omp", "stats.db")];
+  if (env.XDG_DATA_HOME !== undefined) places.push(join(env.XDG_DATA_HOME, "omp", "stats.db"));
+  return places.some((place) => existsSync(place));
+}
 
 /** Builds the complete app composition without starting a server until all registrations exist. */
 export async function createCompositionServer(
@@ -961,13 +977,14 @@ export async function createCompositionServer(
     processes: () => processRegistry.list(),
     ...(options.statsIntervalMs === undefined ? {} : { intervalMs: options.statsIntervalMs }),
   });
-  const statsEarly = options.earlyStats
-    ? setTimeout(() => {
-        ompStats
-          .start()
-          .catch((error: unknown) => logger.warn("stats.early_failed", { error: String(error) }));
-      }, STATS_EARLY_MS)
-    : undefined;
+  const statsEarly =
+    options.earlyStats && hasOmpStats(homeDir, env)
+      ? setTimeout(() => {
+          ompStats
+            .start()
+            .catch((error: unknown) => logger.warn("stats.early_failed", { error: String(error) }));
+        }, STATS_EARLY_MS)
+      : undefined;
   return {
     ...server,
     processRegistry,
