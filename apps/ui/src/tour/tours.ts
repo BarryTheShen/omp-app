@@ -793,6 +793,22 @@ const VSCODE_RIGHT_TOUR: Tour = {
   ],
 };
 
+/** Lists answer at once after a long chat changes (2026-11-12). */
+const LONG_CHATS_TOUR: Tour = {
+  id: "long-chats-2026-11-12",
+  title: "Lists answer at once",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Lists answer at once",
+      text: "The running chats, the chat list and a chat's name no longer wait while the server reads a long chat again after omp renamed it: the list shows it as it was, the server reads it once in the background, and the list updates when that is done.",
+      action: next,
+    },
+  ],
+};
+
 /** A panel's key goes in its connection's handshake, and the sidebar's tools know the app by each of its names (2026-11-12). */
 const PANEL_KEY_TOUR: Tour = {
   id: "panel-key-2026-11-12",
@@ -3012,6 +3028,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-long-chats",
+    when: "2026-11-12T02:55:00-06:00",
+    summary:
+      "Lists answer at once after a long chat changes. When omp renamed a long chat (hundreds of megabytes), the server read the whole chat again for each device that asked for the running chats or the chat list, one after another, so the lists took seconds, sometimes over half a minute. Now a long chat is shown as it was at once and read again only once, in the background, and the lists update when that is done.",
+    tours: [LONG_CHATS_TOUR],
+  },
   {
     id: "2026-11-12-theme-click",
     when: "2026-11-12T00:30:00-06:00",

@@ -145,3 +145,23 @@ export async function readSummary(
     await handle.close();
   }
 }
+
+/**
+ * The summary carried on from `prior` when the file still holds the bytes it was read from (a file that only grew), and
+ * undefined when it does not, so that the caller can choose not to wait for a whole read: omp rewrites the header and the
+ * title slot in place, after which a large chat can only be read whole.
+ */
+export async function resumeSummary(
+  sessionFile: string,
+  size: number,
+  prior: ResumeState,
+): Promise<SummaryRead | undefined> {
+  if (prior.offset <= 0 || prior.offset > size) return undefined;
+  const handle = await fs.open(sessionFile, "r");
+  try {
+    const head = await rangeOf(handle, 0, Math.min(PREFIX_HASH_BYTES, size));
+    return await resumeFrom(handle, sessionFile, size, prior, head);
+  } finally {
+    await handle.close();
+  }
+}

@@ -355,8 +355,17 @@ export class DispatcherSession {
       clearTimeout(lagTimer);
       const ms = performance.now() - startedAt;
       if (ms > 250) {
+        // A chat request's method (a fixed name its port checked, never words of the user): which of them was slow.
+        const method =
+          typeof args === "object" &&
+          args !== null &&
+          "method" in args &&
+          typeof args.method === "string"
+            ? args.method
+            : undefined;
         this.#logger?.warn("port.slow", {
           call: label,
+          ...(method === undefined ? {} : { method }),
           ms: Math.round(ms),
           rss_before_mb: rssBeforeMb,
           rss_after_mb: Math.round(process.memoryUsage().rss / 1_048_576),

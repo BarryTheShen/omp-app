@@ -763,4 +763,90 @@ describe("SessionFileStore summary cache", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("a large chat whose title omp rewrote in place is served from its earlier summary at once, and read whole once in the background", async () => {
+    const { root, cwd, bucket, options } = await fixture();
+    try {
+      const chat = path.join(bucket, "2026-10-01_large.jsonl");
+      // Over the listing's 16 MiB: a large chat, whose earlier bytes changing means reading it whole.
+      const filler = Array.from({ length: 18 }, (_, index) =>
+        assistantLine(`a${index}`, at(1, 2), "x".repeat(1_000_000)),
+      ).join("");
+      await writeChat(
+        chat,
+        titleSlotLine("Before") +
+          headerLine("large", cwd, at(1)) +
+          userLine("u1", at(1, 1), "one") +
+          filler,
+      );
+      let calls = 0;
+      const held = gate();
+      const store = new SessionFileStore({
+        ...options,
+        summarizeFile: async (file, size, prior) => {
+          calls += 1;
+          if (calls > 1) await held.wait;
+          return readSummary(file, size, prior);
+        },
+      });
+      try {
+        expect((await store.readSessionRow(chat)).title).toBe("Before");
+        // omp rewrites the title slot in place, at the same size.
+        const text = await readFile(chat, "utf8");
+        await writeFile(chat, titleSlotLine("After") + text.slice(text.indexOf("\n") + 1));
+        const refreshed = nextBackground(store, "refreshed");
+        // Four pages asking at once are answered while the whole read is still held.
+        const rows = await Promise.all([1, 2, 3, 4].map(() => store.readSessionRow(chat)));
+        expect(rows.map((row) => row.title)).toEqual(["Before", "Before", "Before", "Before"]);
+        held.open();
+        await refreshed;
+        expect((await store.readSessionRow(chat)).title).toBe("After");
+        expect(calls).toBe(2);
+      } finally {
+        await store.close();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rows of the same chat asked for at once share one read", async () => {
+    const { root, cwd, bucket, options } = await fixture();
+    try {
+      const chat = path.join(bucket, "2026-10-01_shared.jsonl");
+      await writeChat(
+        chat,
+        titleSlotLine("Shared") +
+          headerLine("shared", cwd, at(1)) +
+          userLine("u1", at(1, 1), "one"),
+      );
+      let calls = 0;
+      const held = gate();
+      const store = new SessionFileStore({
+        ...options,
+        summarizeFile: async (file, size, prior) => {
+          calls += 1;
+          await held.wait;
+          return readSummary(file, size, prior);
+        },
+      });
+      try {
+        const rows = Promise.all([1, 2, 3, 4].map(() => store.readSessionRow(chat)));
+        // Long enough for all four to reach the read while it is held.
+        await Bun.sleep(100);
+        held.open();
+        expect((await rows).map((row) => row.title)).toEqual([
+          "Shared",
+          "Shared",
+          "Shared",
+          "Shared",
+        ]);
+        expect(calls).toBe(1);
+      } finally {
+        await store.close();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

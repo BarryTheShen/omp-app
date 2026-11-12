@@ -26,7 +26,7 @@ import {
   sessionBucketName,
   sessionBucketPath,
 } from "./paths";
-import { REFRESH_READ_LIMITS, ReadBudget } from "./read-budget";
+import { LISTING_READ_LIMITS, REFRESH_READ_LIMITS, ReadBudget } from "./read-budget";
 import { createSubagentScanCache, type SubagentScanCache } from "./subagent-cache";
 import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
 import { collectSubagentTranscripts, type WorkerLeaseProbe } from "./subagents";
@@ -42,7 +42,7 @@ import {
   storedSummaryOf,
   summaryOf,
 } from "./summary-cache";
-import { type ResumeState, readSummary, type SummaryRead } from "./summary-resume";
+import { type ResumeState, readSummary, resumeSummary, type SummaryRead } from "./summary-resume";
 import type {
   ListFoldersArgs,
   ListSessionsArgs,
@@ -344,6 +344,19 @@ export class SessionFileStore {
   readonly #refreshes = new Map<string, { cancelled: boolean }>();
   /** The refreshes under way until each settles: `close` waits for them. */
   readonly #refreshing = new Set<Promise<void>>();
+  /**
+   * The summary reads under way, by real path, with the file identity each reads: a caller that asks while one runs shares
+   * it (pages asking for the same list together) instead of reading the file again behind it in the budget.
+   */
+  readonly #summaryReads = new Map<
+    string,
+    { readonly identity: FileIdentity; readonly stored: Promise<StoredSummary> }
+  >();
+  /**
+   * A file's summary from before it changed, kept in memory after a newer read of the file (its update time) replaced the
+   * cache entry, until a summary of the file as it is now is kept: a large changed chat is served from it (`#largeChanged`).
+   */
+  readonly #earlierSummaries = new Map<string, StoredSummary>();
   /** Set by `close`: no refresh starts, and nothing is cached, after it. */
   #closed = false;
   /** Reads a chat's summary for a listing and a background refresh: the store's own reader unless one is given. */
@@ -1173,6 +1186,10 @@ export class SessionFileStore {
   ): void {
     const cached = this.#cache.get(real);
     const kept = sameIdentity(cached?.identity, identity) ? cached : undefined;
+    if (read.summary !== undefined) this.#earlierSummaries.delete(real);
+    else if (kept === undefined && cached?.summary !== undefined) {
+      this.#earlierSummaries.set(real, cached.summary);
+    }
     const updatedAt = read.updatedAt ?? kept?.updatedAt;
     const summary = read.summary ?? kept?.summary;
     const resume =
@@ -1198,8 +1215,10 @@ export class SessionFileStore {
 
   /**
    * A listed file's summary: its cached one while the file is as it was when the summary was read. A file changed since a
-   * summary loaded from the cache file is served as cached and refreshed in the background. Any other change is read now,
-   * from the state the last read kept for the file: a file that only grew folds the lines appended to it.
+   * summary loaded from the cache file is served as cached and refreshed in the background, and so is a large file whose
+   * earlier bytes changed (`#largeChanged`). Any other change is read now, from the state the last read kept for the file:
+   * a file that only grew folds the lines appended to it. Callers asking for the same file and identity at once share one
+   * read.
    */
   async #summary(candidate: SessionCandidate): Promise<SessionSummary> {
     const identity = identityOf(candidate);
@@ -1214,18 +1233,79 @@ export class SessionFileStore {
         return summaryOf(cached.summary, candidate.file);
       }
     }
+    const earlier = cached?.summary ?? this.#earlierSummaries.get(candidate.real);
+    if (earlier !== undefined && candidate.size > LISTING_READ_LIMITS.largeBytes) {
+      return this.#largeChanged(candidate, identity, cached, earlier);
+    }
+    const running = this.#summaryReads.get(candidate.real);
+    if (running !== undefined && sameIdentity(running.identity, identity)) {
+      return summaryOf(await running.stored, candidate.file);
+    }
+    const stored = this.#readSummary(candidate, identity, cached);
+    this.#summaryReads.set(candidate.real, { identity, stored });
+    try {
+      return summaryOf(await stored, candidate.file);
+    } finally {
+      if (this.#summaryReads.get(candidate.real)?.stored === stored) {
+        this.#summaryReads.delete(candidate.real);
+      }
+    }
+  }
+
+  /** Reads a file's summary now, through the listing's budget, and keeps it. */
+  async #readSummary(
+    candidate: SessionCandidate,
+    identity: FileIdentity,
+    cached: SummaryCacheEntry | undefined,
+  ): Promise<StoredSummary> {
     let read: SummaryRead;
     try {
       read = await this.#budget.run(candidate.size, () =>
         this.#summarize(candidate.file, candidate.size, priorOf(cached, identity)),
       );
     } catch (error) {
-      if (isMissing(error)) this.#cache.delete(candidate.real);
+      if (isMissing(error)) this.#drop(candidate.real);
       throw error;
     }
     const stored = storedSummaryOf(read.summary);
     this.#remember(candidate.real, identity, { summary: stored, resume: read.resume ?? null });
-    return summaryOf(stored, candidate.file);
+    return stored;
+  }
+
+  /**
+   * A large chat changed since its summary. The lines appended to it are folded now, a short read charged by those bytes
+   * alone. A chat whose earlier bytes changed (omp rewrites the header and the title slot in place) can only be read whole,
+   * which takes seconds for a large one, and every list that asked meanwhile used to wait for it, one read after another:
+   * it is served as cached and read whole in the background, which reports it refreshed.
+   */
+  async #largeChanged(
+    candidate: SessionCandidate,
+    identity: FileIdentity,
+    cached: SummaryCacheEntry | undefined,
+    summary: StoredSummary,
+  ): Promise<SessionSummary> {
+    const prior = priorOf(cached, identity);
+    if (prior !== undefined) {
+      let resumed: SummaryRead | undefined;
+      try {
+        resumed = await this.#budget.run(Math.max(0, candidate.size - prior.offset), () =>
+          resumeSummary(candidate.file, candidate.size, prior),
+        );
+      } catch (error) {
+        if (isMissing(error)) this.#drop(candidate.real);
+        throw error;
+      }
+      if (resumed !== undefined) {
+        const stored = storedSummaryOf(resumed.summary);
+        this.#remember(candidate.real, identity, {
+          summary: stored,
+          resume: resumed.resume ?? null,
+        });
+        return summaryOf(stored, candidate.file);
+      }
+    }
+    this.#refresh(candidate.file, candidate.real);
+    return summaryOf(summary, candidate.file);
   }
 
   /**
@@ -1263,6 +1343,7 @@ export class SessionFileStore {
           summary,
           ...(read.resume === undefined ? {} : { resume: read.resume }),
         });
+        this.#earlierSummaries.delete(real);
         if (summary.header !== null) {
           report = {
             kind: "refreshed",
@@ -1274,7 +1355,7 @@ export class SessionFileStore {
       }
     } catch (error) {
       if (!job.cancelled) {
-        this.#cache.delete(real);
+        this.#drop(real);
         // A chat that is gone was deleted meanwhile: there is nothing to report.
         if (!isMissing(error)) {
           report = {
@@ -1294,9 +1375,15 @@ export class SessionFileStore {
     for (const listener of this.#backgroundListeners) listener(event);
   }
 
+  /** Drops a file's cached facts, and the summary kept from before it changed. */
+  #drop(real: string): void {
+    this.#cache.delete(real);
+    this.#earlierSummaries.delete(real);
+  }
+
   /** Forgets a removed chat's cached facts, and stops a refresh of it that is under way. */
   #forget(real: string): void {
-    this.#cache.delete(real);
+    this.#drop(real);
     const job = this.#refreshes.get(real);
     if (job !== undefined) job.cancelled = true;
   }
