@@ -177,33 +177,48 @@ jobs:
           (cd dist/release && sha256sum "omp-app-desktop_${VERSION}_amd64.deb" >>SHA256SUMS)
           cat dist/release/SHA256SUMS
 
-      - name: Build the Firefox and Zen extension, and have Mozilla sign it
+      - name: Build the Firefox and Zen extension, and run Mozilla's checks on it
+        id: zen
         if: steps.changes.outputs.changed == 'true'
         env:
           VERSION: ${{ steps.changes.outputs.version }}
-          # An addons.mozilla.org API key (Developer Hub → Tools → Manage API Keys) as the repository's Actions secrets;
-          # without them the release has the unsigned extension only.
-          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
-          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          # Only whether the repository has an addons.mozilla.org API key (Developer Hub → Tools → Manage API Keys) as
+          # its Actions secrets AMO_JWT_ISSUER and AMO_JWT_SECRET, never the key: the signing step alone gets it.
+          HAS_AMO_KEY: ${{ secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != '' }}
         run: |
           set -euo pipefail
           bun run --cwd apps/zen build "$VERSION"
           # Unsigned: Firefox and Zen load it for one session (about:debugging → Load Temporary Add-on).
           (cd apps/zen/dist && zip -qr "$GITHUB_WORKSPACE/dist/release/omp-app-zen_${VERSION}_unsigned.zip" .)
           (cd dist/release && sha256sum "omp-app-zen_${VERSION}_unsigned.zip" >>SHA256SUMS)
-          if [ -z "$WEB_EXT_API_KEY" ] || [ -z "$WEB_EXT_API_SECRET" ]; then
+          if [ "$HAS_AMO_KEY" != "true" ]; then
             echo "No addons.mozilla.org key: the release has the unsigned extension only."
             exit 0
           fi
-          # Mozilla's own checks first, then signing for self-distribution ("unlisted"), which Zen keeps installed. The
-          # source that builds it goes along, for Mozilla's review. Neither stops the release: the app's packages are out
+          # Mozilla's web-ext at the versions and checksums packaging/web-ext/bun.lock holds; Bun runs no install script.
+          bun install --frozen-lockfile --cwd packaging/web-ext
+          # The repository's source goes along with the signing, for Mozilla's review: it builds the extension as above.
+          git archive --format=zip -o "$RUNNER_TEMP/zen-source.zip" HEAD
+          # Mozilla's own checks first. Neither they nor the signing stop the release: the app's packages are out
           # either way, and the unsigned extension is attached.
-          git archive --format=zip -o "$RUNNER_TEMP/zen-source.zip" HEAD \
-            apps/zen packages/embed packages/contracts package.json bun.lock tsconfig.base.json
-          if npx --yes web-ext@10.8.0 lint --source-dir apps/zen/dist \
-            && npx --yes web-ext@10.8.0 sign --channel unlisted --source-dir apps/zen/dist \
-              --artifacts-dir "$RUNNER_TEMP/zen-signed" --upload-source-code "$RUNNER_TEMP/zen-source.zip" \
-              --approval-timeout 900000; then
+          if packaging/web-ext/node_modules/.bin/web-ext lint --source-dir apps/zen/dist; then
+            echo "sign=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::Mozilla's checks failed; the release has the unsigned extension only."
+          fi
+
+      - name: Have Mozilla sign the Firefox and Zen extension
+        if: steps.zen.outputs.sign == 'true'
+        env:
+          VERSION: ${{ steps.changes.outputs.version }}
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          # Signed for self-distribution ("unlisted"), which Zen keeps installed.
+          if packaging/web-ext/node_modules/.bin/web-ext sign --channel unlisted --source-dir apps/zen/dist \
+            --artifacts-dir "$RUNNER_TEMP/zen-signed" --upload-source-code "$RUNNER_TEMP/zen-source.zip" \
+            --approval-timeout 900000; then
             cp "$RUNNER_TEMP"/zen-signed/*.xpi "dist/release/omp-app-zen_${VERSION}.xpi"
             (cd dist/release && sha256sum "omp-app-zen_${VERSION}.xpi" >>SHA256SUMS)
           else

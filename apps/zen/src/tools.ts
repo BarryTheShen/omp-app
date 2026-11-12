@@ -27,6 +27,9 @@ export interface TabsApi {
   sleep(ms: number): Promise<void>;
 }
 
+/** What a tool says on omp app's own pages: the page functions throw the same words (`page.ts`). */
+export const OFF_LIMITS = "omp app's own pages are off limits to this panel.";
+
 /** How much of a page's text `read_page` reads when not told, and at most. */
 export const READ_DEFAULT_CHARS = 20_000;
 export const READ_MAX_CHARS = 100_000;
@@ -91,6 +94,21 @@ export function webAddress(text: string): string {
   return url.href;
 }
 
+/** The origin of an address; null for one that has none. */
+function originOf(address: string | undefined): string | null {
+  try {
+    return address === undefined ? null : new URL(address).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** A web address that is not omp app's own: the panel's chat never goes to the app's pages. */
+export function awayFromApp(address: string, app: string): string {
+  if (originOf(address) === app) throw new Error(OFF_LIMITS);
+  return address;
+}
+
 function outcome(result: PageOutcome): string {
   if ("error" in result) throw new Error(result.error);
   return result.done;
@@ -118,8 +136,11 @@ async function loaded(api: TabsApi, tabId: number): Promise<browser.tabs.Tab> {
   return api.get(tabId);
 }
 
-/** The panel's tools: each acts on the panel's own tab, or on a tab it opened. */
-export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
+/**
+ * The panel's tools: each acts on the panel's own tab, or on a tab it opened, and never on a page of omp app itself
+ * (`app`, its origin): a chat there could answer its own approvals, a pairing request or the settings.
+ */
+export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[] {
   return [
     {
       name: "read_page",
@@ -136,7 +157,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
       run: async (args) => {
         const asked = numberArg(args, "max_chars") ?? READ_DEFAULT_CHARS;
         const chars = Math.min(READ_MAX_CHARS, Math.max(1_000, Math.round(asked)));
-        return readingText(await api.run(tabOf(scope, args), readPage, [chars, READ_LINKS]));
+        return readingText(await api.run(tabOf(scope, args), readPage, [app, chars, READ_LINKS]));
       },
     },
     {
@@ -146,6 +167,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
       run: async (args): Promise<EmbedToolResult> => {
         const tab = await api.get(tabOf(scope, args));
         if (!tab.active) throw new Error("That tab is not in front, so it cannot be photographed.");
+        if (originOf(tab.url) === app) throw new Error(OFF_LIMITS);
         const data = await api.capture(tab.windowId);
         return {
           content: [
@@ -169,6 +191,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
       run: async (args) =>
         outcome(
           await api.run(tabOf(scope, args), clickTarget, [
+            app,
             textArg(args, "selector"),
             textArg(args, "text"),
           ]),
@@ -191,6 +214,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
         if (text === null) throw new Error('Say "text".');
         return outcome(
           await api.run(tabOf(scope, args), typeInto, [
+            app,
             textArg(args, "selector"),
             text,
             args.submit === true,
@@ -212,6 +236,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
           throw new Error('"to" is top or bottom.');
         return outcome(
           await api.run(tabOf(scope, args), scrollPage, [
+            app,
             to as "top" | "bottom" | null,
             numberArg(args, "by"),
             textArg(args, "selector"),
@@ -226,7 +251,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
       parameters: objectOf({ url: { type: "string" } }, ["url"]),
       run: async (args) => {
         const tabId = tabOf(scope, args);
-        await api.navigate(tabId, webAddress(requiredText(args, "url")));
+        await api.navigate(tabId, awayFromApp(webAddress(requiredText(args, "url")), app));
         const tab = await loaded(api, tabId);
         return `Loaded “${tab.title ?? ""}” at ${tab.url ?? ""}.`;
       },
@@ -242,7 +267,10 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
         additionalProperties: false,
       },
       run: async (args) => {
-        const tab = await api.open(webAddress(requiredText(args, "url")), scope.bound);
+        const tab = await api.open(
+          awayFromApp(webAddress(requiredText(args, "url")), app),
+          scope.bound,
+        );
         if (tab.id === undefined) throw new Error("The tab could not be opened.");
         scope.own(tab.id);
         return `Opened tab ${tab.id} in the background at ${tab.url ?? ""}. Pass "tab": ${tab.id} to act on it.`;
@@ -263,7 +291,7 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
         const text = requiredText(args, "text");
         const limit = Math.min(WAIT_MAX_MS, Math.max(100, numberArg(args, "timeout_ms") ?? 10_000));
         for (let waited = 0; ; waited += 500) {
-          if (await api.run(tabId, hasText, [text])) return `The page shows “${text}”.`;
+          if (await api.run(tabId, hasText, [app, text])) return `The page shows “${text}”.`;
           if (waited >= limit || signal.aborted) break;
           await api.sleep(500);
         }
@@ -276,9 +304,14 @@ export function pageTools(scope: TabScope, api: TabsApi): HostTool[] {
   ];
 }
 
-/** Firefox's own pages and the add-ons site keep extensions out; other failures say what failed. */
+/**
+ * Firefox's own pages and the add-ons site keep extensions out, and the page functions refuse omp app's own pages; other
+ * failures say what failed. What a page script threw comes back as Firefox cloned it: an error, or an object with a message.
+ */
 export function scriptFailureText(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+  const said = (error as { message?: unknown } | null)?.message;
+  const message = typeof said === "string" ? said : String(error);
+  if (message.includes(OFF_LIMITS)) return OFF_LIMITS;
   if (/missing host permission|cannot access|not allowed|restricted/i.test(message))
     return "Firefox does not let extensions into this page (its own pages and the add-ons site).";
   return `The page could not be reached: ${message}`;

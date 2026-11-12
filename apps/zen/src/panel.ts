@@ -1,5 +1,5 @@
 import { appAddressOf, type HostContext, openPanel } from "@omp-app/embed";
-import { STORED, storedAppAddress } from "./address";
+import { keepKeyFor, keyFor, saveAppAddress, storedAppAddress } from "./address";
 import { watchSelection } from "./page";
 import { firefoxTabs, pageTools, type TabScope } from "./tools";
 
@@ -63,7 +63,7 @@ function askForAddress(): void {
       problem.textContent = checked.problem;
       return;
     }
-    void browser.storage.local.set({ [STORED.app]: checked.address }).then(() => location.reload());
+    void saveAppAddress(checked.address).then(() => location.reload());
   });
   root.replaceChildren(element("div", { className: "setup" }, [form]));
   field.focus();
@@ -80,7 +80,13 @@ async function offerChat(): Promise<void> {
   }
   const tabId = active.id;
   const start = element("button", { type: "button", textContent: "Chat about this tab" });
-  start.addEventListener("click", () => void bindTo(tabId));
+  start.addEventListener("click", () => {
+    // The person may have switched tabs since this was shown: only the tab it names is bound.
+    void browser.tabs.query({ active: true, currentWindow: true }).then(([now]) => {
+      if (now?.id === tabId) void bindTo(tabId);
+      else void offerChat();
+    });
+  });
   root.replaceChildren(
     element("div", { className: "setup" }, [
       element("h1", { textContent: "omp app" }),
@@ -90,6 +96,18 @@ async function offerChat(): Promise<void> {
       start,
     ]),
   );
+}
+
+/** A tab's address as it goes with each message: no query and no fragment, where sign-in codes and tokens travel. */
+function bareAddress(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === "null"
+      ? `${parsed.protocol}${parsed.pathname}`
+      : `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.split(/[?#]/)[0] ?? "";
+  }
 }
 
 /** What the tab shows, as the chat's messages carry it. */
@@ -104,7 +122,7 @@ function contextOf(tab: browser.tabs.Tab, selection: string): HostContext {
   return {
     kind: "page",
     title,
-    ...(tab.url === undefined ? {} : { uri: tab.url.slice(0, 2_000) }),
+    ...(tab.url === undefined ? {} : { uri: bareAddress(tab.url).slice(0, 2_000) }),
     ...(selection === "" ? {} : { selection: selection.slice(0, 8_000) }),
   };
 }
@@ -140,19 +158,16 @@ async function showChat(app: string, tabId: number): Promise<void> {
     title: "omp app",
     ...(typeof chat === "string" ? { chat } : {}),
     context: contextOf(tab, selection),
-    tools: pageTools(scope, firefoxTabs),
+    tools: pageTools(scope, firefoxTabs, app),
     keys: {
-      get: async () => {
-        const kept = (await browser.storage.local.get(STORED.key))[STORED.key];
-        return typeof kept === "string" ? kept : null;
-      },
-      set: (key) => browser.storage.local.set({ [STORED.key]: key }),
+      get: () => keyFor(app),
+      set: (key) => keepKeyFor(app, key),
     },
     onReady: (ready) => void browser.storage.session.set({ [chatKey(tabId)]: ready.chat }),
   });
 
   const watch = (): void => {
-    void firefoxTabs.run(tabId, watchSelection, []).catch(() => undefined);
+    void firefoxTabs.run(tabId, watchSelection, [app]).catch(() => undefined);
   };
   watch();
   browser.tabs.onUpdated.addListener((updated, change, next) => {
@@ -180,6 +195,8 @@ async function start(): Promise<void> {
   }
   const bound = boundTabOf(location.search);
   if (bound === null) {
+    // The panel of tabs that have none of their own: it follows the tab in front.
+    browser.tabs.onActivated.addListener(() => void offerChat());
     await offerChat();
     return;
   }

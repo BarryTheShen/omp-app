@@ -1,8 +1,19 @@
 import { appAddressOf, type EmbedToolResult, type HostTool } from "@omp-app/embed";
 import { describe, expect, test } from "vitest";
-import { pageTools, READ_MAX_CHARS, type TabScope, type TabsApi, tabOf, webAddress } from "./tools";
+import {
+  OFF_LIMITS,
+  pageTools,
+  READ_MAX_CHARS,
+  scriptFailureText,
+  type TabScope,
+  type TabsApi,
+  tabOf,
+  webAddress,
+} from "./tools";
 
 const BOUND = 7;
+/** omp app's own origin, as the panel passes it. */
+const APP = "https://omp.example.com";
 
 function scopeOf(owned: number[] = []): TabScope {
   const set = new Set(owned);
@@ -85,12 +96,16 @@ describe("the tab a call acts on", () => {
   test("a tab opened with open_tab becomes the panel's; other tools then act on it", async () => {
     const scope = scopeOf();
     const { api, calls, opened } = standIn();
-    const tools = pageTools(scope, api);
+    const tools = pageTools(scope, api, APP);
     const said = await toolOf(tools, "open_tab").run({ url: "https://example.com/next" }, never);
     expect(opened).toEqual([{ url: "https://example.com/next", opener: BOUND }]);
     expect(said).toContain('Pass "tab": 42');
     await toolOf(tools, "click").run({ tab: 42, text: "Next" }, never);
-    expect(calls.at(-1)).toMatchObject({ tabId: 42, name: "clickTarget", args: [null, "Next"] });
+    expect(calls.at(-1)).toMatchObject({
+      tabId: 42,
+      name: "clickTarget",
+      args: [APP, null, "Next"],
+    });
     await expect(toolOf(tools, "click").run({ tab: 43, text: "Next" }, never)).rejects.toThrow(
       "only on its own tab",
     );
@@ -134,40 +149,40 @@ describe("the tools", () => {
       links: [{ text: "Next", href: "https://example.com/next" }],
     };
     const { api, calls } = standIn(() => reading);
-    const read = toolOf(pageTools(scopeOf(), api), "read_page");
+    const read = toolOf(pageTools(scopeOf(), api, APP), "read_page");
     const said = await read.run({ max_chars: 5 }, never);
-    expect(calls[0]).toMatchObject({ tabId: BOUND, name: "readPage", args: [1_000, 100] });
+    expect(calls[0]).toMatchObject({ tabId: BOUND, name: "readPage", args: [APP, 1_000, 100] });
     expect(said).toContain("Title: Docs");
     expect(said).toContain("Selected: the words");
     expect(said).toContain("- Next: https://example.com/next");
     expect(said).toContain("The page has more text");
     await read.run({ max_chars: 10_000_000 }, never);
-    expect(calls[1]?.args[0]).toBe(READ_MAX_CHARS);
+    expect(calls[1]?.args[1]).toBe(READ_MAX_CHARS);
   });
 
   test("what the page refuses comes back as the call's error", async () => {
     const { api } = standIn(() => ({ error: 'Nothing on the page matches "#go".' }));
     await expect(
-      toolOf(pageTools(scopeOf(), api), "click").run({ selector: "#go" }, never),
+      toolOf(pageTools(scopeOf(), api, APP), "click").run({ selector: "#go" }, never),
     ).rejects.toThrow('Nothing on the page matches "#go".');
   });
 
   test("screenshot photographs the tab in front, and refuses one that is not", async () => {
     const { api, tabs } = standIn();
-    const shot = (await toolOf(pageTools(scopeOf([42]), api), "screenshot").run(
+    const shot = (await toolOf(pageTools(scopeOf([42]), api, APP), "screenshot").run(
       {},
       never,
     )) as EmbedToolResult;
     expect(shot.content).toEqual([{ type: "image", data: "AAAA", mimeType: "image/png" }]);
     tabs.set(42, { id: 42, windowId: 1, active: false });
     await expect(
-      toolOf(pageTools(scopeOf([42]), api), "screenshot").run({ tab: 42 }, never),
+      toolOf(pageTools(scopeOf([42]), api, APP), "screenshot").run({ tab: 42 }, never),
     ).rejects.toThrow("not in front");
   });
 
   test("navigate goes to web addresses only, and says what loaded", async () => {
     const { api } = standIn();
-    const navigate = toolOf(pageTools(scopeOf(), api), "navigate");
+    const navigate = toolOf(pageTools(scopeOf(), api, APP), "navigate");
     await expect(navigate.run({ url: "javascript:alert(1)" }, never)).rejects.toThrow(
       "Only http and https",
     );
@@ -180,15 +195,53 @@ describe("the tools", () => {
     let checks = 0;
     const shows = standIn(() => ++checks >= 3);
     expect(
-      await toolOf(pageTools(scopeOf(), shows.api), "wait_for_text").run({ text: "Done" }, never),
+      await toolOf(pageTools(scopeOf(), shows.api, APP), "wait_for_text").run(
+        { text: "Done" },
+        never,
+      ),
     ).toBe("The page shows “Done”.");
     expect(checks).toBe(3);
     const never_shows = standIn(() => false);
     await expect(
-      toolOf(pageTools(scopeOf(), never_shows.api), "wait_for_text").run(
+      toolOf(pageTools(scopeOf(), never_shows.api, APP), "wait_for_text").run(
         { text: "Done", timeout_ms: 1_000 },
         never,
       ),
     ).rejects.toThrow("did not show “Done” within 1 second.");
+  });
+
+  test("omp app's own pages: the tools neither go there nor photograph a tab showing one", async () => {
+    const { api, opened, tabs } = standIn();
+    const tools = pageTools(scopeOf(), api, APP);
+    await expect(
+      toolOf(tools, "navigate").run({ url: `${APP}/chat/1?approve=1` }, never),
+    ).rejects.toThrow(OFF_LIMITS);
+    await expect(toolOf(tools, "open_tab").run({ url: `${APP}/` }, never)).rejects.toThrow(
+      OFF_LIMITS,
+    );
+    expect(opened).toEqual([]);
+    // Another port is another site.
+    expect(
+      await toolOf(tools, "navigate").run({ url: "https://omp.example.com:8443/" }, never),
+    ).toBe("Loaded “Next” at https://omp.example.com:8443/.");
+    tabs.set(BOUND, {
+      id: BOUND,
+      windowId: 1,
+      active: true,
+      status: "complete",
+      url: `${APP}/settings`,
+    });
+    await expect(toolOf(tools, "screenshot").run({}, never)).rejects.toThrow(OFF_LIMITS);
+  });
+
+  test("a page's refusal comes back in its own words, as Firefox clones it", () => {
+    expect(scriptFailureText(new Error(OFF_LIMITS))).toBe(OFF_LIMITS);
+    expect(scriptFailureText({ message: `Error: ${OFF_LIMITS}` })).toBe(OFF_LIMITS);
+    expect(scriptFailureText(new Error("Missing host permission for the tab"))).toContain(
+      "Firefox does not let extensions into this page",
+    );
+    expect(scriptFailureText({ message: "the tab closed" })).toBe(
+      "The page could not be reached: the tab closed",
+    );
   });
 });

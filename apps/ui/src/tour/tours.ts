@@ -793,6 +793,22 @@ const VSCODE_RIGHT_TOUR: Tour = {
   ],
 };
 
+/** The Firefox and Zen sidebar's safety fixes, after a security review (2026-11-11). */
+const ZEN_SAFETY_TOUR: Tour = {
+  id: "zen-safety-2026-11-11",
+  title: "A safer browser panel",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "The browser panel is safer",
+      text: "In the Firefox and Zen sidebar, the chat's tools never act on omp app's own pages, so a chat cannot answer its own approval; clicking a field no longer says what it holds; the tab's address goes with your messages without its query and fragment; and the browser's key goes only to the address it paired with. It needs this release's <b>omp-app-zen</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** Copying in VS Code's panel, through VS Code (2026-11-11). */
 const VSCODE_COPY_TOUR: Tour = {
   id: "vscode-copy-2026-11-11",
@@ -2946,6 +2962,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-zen-safety",
+    when: "2026-11-11T21:44:00-06:00",
+    summary:
+      "The Firefox and Zen sidebar is safer, after a security review: its tools never act on omp app's own pages, so a chat cannot answer its own approval or a pairing request; clicking a field no longer reports what it holds (a password the browser filled stays unread); the tab's address goes with your messages without its query and fragment, where sign-in codes travel; the browser's key goes only to the address it paired with (a new address pairs again); page reading is capped; and Chat about this tab binds the tab you are looking at. It needs this release's omp-app-zen.",
+    tours: [ZEN_SAFETY_TOUR],
+  },
   {
     id: "2026-11-11-secrets-commands",
     when: "2026-11-11T20:23:00-06:00",

@@ -1,0 +1,9 @@
+{
+  "name": "omp-app-web-ext",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mozilla's web-ext for the release's checks and signing of the Firefox and Zen extension, pinned with every dependency's version and checksum in this folder's bun.lock (installed with --frozen-lockfile; Bun runs no dependency's install script).",
+  "dependencies": {
+    "web-ext": "10.8.0"
+  }
+}

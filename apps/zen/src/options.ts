@@ -1,7 +1,10 @@
 import { appAddressOf } from "@omp-app/embed";
-import { STORED, storedAppAddress } from "./address";
+import { forgetKey, saveAppAddress, storedAppAddress } from "./address";
 
-/** The extension's settings: omp app's address, and forgetting this browser's key (it then pairs again). */
+/**
+ * The extension's settings: omp app's address, and forgetting this browser's key (it then pairs again). A new address
+ * forgets the key too: it was paired with the old one.
+ */
 const form = document.getElementById("address") as HTMLFormElement;
 const field = document.getElementById("app") as HTMLInputElement;
 const status = document.getElementById("status") as HTMLParagraphElement;
@@ -20,14 +23,16 @@ form.addEventListener("submit", (event) => {
     return;
   }
   field.value = checked.address;
-  void browser.storage.local.set({ [STORED.app]: checked.address }).then(() => {
+  void saveAppAddress(checked.address).then((forgotten) => {
     status.className = "";
-    status.textContent = "Saved. Panels opened from now on use it.";
+    status.textContent = forgotten
+      ? "Saved. This browser's key was for another address, so the next panel pairs again; remove the old one in omp app's Settings → App → Devices too."
+      : "Saved. Panels opened from now on use it.";
   });
 });
 
 forget.addEventListener("click", () => {
-  void browser.storage.local.remove(STORED.key).then(() => {
+  void forgetKey().then(() => {
     status.className = "";
     status.textContent =
       "Forgotten. The next panel pairs again; remove this browser in omp app's Settings → App → Devices too.";

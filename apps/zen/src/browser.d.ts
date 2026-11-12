@@ -49,6 +49,9 @@ declare namespace browser {
     ): Promise<string>;
     const onUpdated: Listener<(tabId: number, change: ChangeInfo, tab: Tab) => void>;
     const onRemoved: Listener<(tabId: number) => void>;
+    const onActivated: Listener<
+      (info: { readonly tabId: number; readonly windowId: number }) => void
+    >;
   }
 
   namespace scripting {

@@ -2,6 +2,10 @@
  * What the extension runs inside its tab, through `scripting.executeScript`: Firefox sends each function's source to the
  * page, so a function here uses nothing outside itself (no imports, no helpers of this module), and takes and returns only
  * plain data.
+ *
+ * Each takes omp app's own origin first and refuses to run on a page of it (`OFF_LIMITS` in `tools.ts`, the same words):
+ * the check runs in the page itself, so a tab that went to the app a moment before is refused too. A chat acting on the
+ * app's pages could answer its own approvals, a pairing request or the settings.
  */
 
 export interface PageLink {
@@ -23,7 +27,11 @@ export interface PageReading {
 export type PageOutcome = { readonly done: string } | { readonly error: string };
 
 /** The page's title, address, selection, text (the first `maxChars`) and its first `maxLinks` web links. */
-export function readPage(maxChars: number, maxLinks: number): PageReading {
+export function readPage(blocked: string, maxChars: number, maxLinks: number): PageReading {
+  if (location.origin === blocked)
+    throw new Error("omp app's own pages are off limits to this panel.");
+  // A title, an address or a link of any length would make one reading as long as the page wants.
+  const LONGEST = 2_000;
   const collapse = (value: string): string =>
     value
       .replace(/[ \t\u00a0]+/g, " ")
@@ -38,11 +46,11 @@ export function readPage(maxChars: number, maxLinks: number): PageReading {
     const text = collapse(
       (anchor as HTMLElement).innerText || anchor.getAttribute("aria-label") || "",
     ).slice(0, 120);
-    links.push({ text, href });
+    links.push({ text, href: href.slice(0, LONGEST) });
   }
   return {
-    title: document.title,
-    url: location.href,
+    title: document.title.slice(0, LONGEST),
+    url: location.href.slice(0, LONGEST),
     selection: collapse(String(getSelection() ?? "")).slice(0, 8_000),
     text: full.slice(0, maxChars),
     truncated: full.length > maxChars,
@@ -51,17 +59,28 @@ export function readPage(maxChars: number, maxLinks: number): PageReading {
 }
 
 /** Clicks the element `selector` matches, or the first visible link or button whose words hold `text`. */
-export function clickTarget(selector: string | null, text: string | null): PageOutcome {
+export function clickTarget(
+  blocked: string,
+  selector: string | null,
+  text: string | null,
+): PageOutcome {
+  if (location.origin === blocked)
+    throw new Error("omp app's own pages are off limits to this panel.");
   const visible = (element: Element): boolean => {
     const box = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return box.width > 0 && box.height > 0 && style.visibility !== "hidden";
   };
+  // A field's value is what the person typed, or a password the browser filled: only a button's value is its words.
+  const buttonValue = (element: Element): string =>
+    element instanceof HTMLInputElement && /^(button|submit|reset)$/i.test(element.type)
+      ? element.value
+      : "";
   const wordsOf = (element: Element): string =>
     (
       (element as HTMLElement).innerText ||
       element.getAttribute("aria-label") ||
-      (element as HTMLInputElement).value ||
+      buttonValue(element) ||
       element.getAttribute("title") ||
       ""
     )
@@ -102,7 +121,14 @@ export function clickTarget(selector: string | null, text: string | null): PageO
 }
 
 /** Types `text` into the field `selector` matches (or the one with the focus), as a person would; `submit` sends its form. */
-export function typeInto(selector: string | null, text: string, submit: boolean): PageOutcome {
+export function typeInto(
+  blocked: string,
+  selector: string | null,
+  text: string,
+  submit: boolean,
+): PageOutcome {
+  if (location.origin === blocked)
+    throw new Error("omp app's own pages are off limits to this panel.");
   let field: Element | null = null;
   if (selector !== null) {
     try {
@@ -151,10 +177,13 @@ export function typeInto(selector: string | null, text: string, submit: boolean)
 
 /** Scrolls to the top or the bottom, by some pixels, or to the element `selector` matches. */
 export function scrollPage(
+  blocked: string,
   to: "top" | "bottom" | null,
   by: number | null,
   selector: string | null,
 ): PageOutcome {
+  if (location.origin === blocked)
+    throw new Error("omp app's own pages are off limits to this panel.");
   if (selector !== null) {
     let target: Element | null;
     try {
@@ -173,15 +202,19 @@ export function scrollPage(
 }
 
 /** Whether the page's text holds `text`, in any case. */
-export function hasText(text: string): boolean {
+export function hasText(blocked: string, text: string): boolean {
+  if (location.origin === blocked)
+    throw new Error("omp app's own pages are off limits to this panel.");
   return (document.body?.innerText ?? "").toLowerCase().includes(text.toLowerCase());
 }
 
 /**
  * Tells the panel what is selected, a moment after it changes, until the page is left: run once in the bound tab after
- * each load. Firefox gives the function its extension's `browser` in the page's content-script world.
+ * each load. Firefox gives the function its extension's `browser` in the page's content-script world. On omp app's own
+ * pages it watches nothing.
  */
-export function watchSelection(): void {
+export function watchSelection(blocked: string): void {
+  if (location.origin === blocked) return;
   const flag = "__ompAppWatchesSelection";
   const scope = window as unknown as Record<string, unknown>;
   if (scope[flag] === true) return;
