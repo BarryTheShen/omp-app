@@ -93,6 +93,7 @@ import {
 import { newestCopy } from "../../modules/A1/sessions/continuation";
 import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
+import type { ReplayPart } from "../../replay";
 import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
@@ -430,6 +431,21 @@ function requestFailure(method: string, error: unknown): AppFailure {
     default:
       return new AppFailure({ code: "omp_error", message: error.message, retryable: false, omp });
   }
+}
+
+/**
+ * How a chat event stands in a replay: a streamed message's updates are pieces of the message its end carries whole, so
+ * a page that opens the chat after the message ended gets the end without them (its store keeps nothing of them past
+ * the end).
+ */
+function replayPart(payload: ChatSessionEvent): ReplayPart | undefined {
+  if (payload.kind !== "event") return undefined;
+  const { event } = payload;
+  if (event.type === "message_update" && "messageId" in event)
+    return { key: event.messageId, whole: false };
+  if (event.type === "message_end" && "messageId" in event)
+    return { key: event.messageId, whole: true };
+  return undefined;
 }
 
 /** A0's stateful bridge between the chat session port and one chat host process per chat. */
@@ -1733,7 +1749,7 @@ export class ChatSessionPortRuntime {
 
   /** Publishes on the chat's stream, and keeps the open requests and the UI state in step with what was published. */
   #publish(entry: ChatEntry, payload: ChatSessionEvent): void {
-    const { seq } = this.#context.replay.publish(entry.stream, payload);
+    const { seq } = this.#context.replay.publish(entry.stream, payload, replayPart(payload));
     for (const listener of [...entry.payloadListeners]) listener(payload);
     if (payload.kind === "host_request") {
       const open = entry.openRequests.get(payload.request.id);

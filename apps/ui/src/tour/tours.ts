@@ -787,6 +787,22 @@ const ZEN_ONE_CHAT_TOUR: Tour = {
   ],
 };
 
+/** A chat opens faster in Safari and the desktop app, and What's new opens at once (2026-11-12). */
+const WEBKIT_OPEN_TOUR: Tour = {
+  id: "webkit-open-2026-11-12",
+  title: "Chats open faster on an iPhone",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Chats open faster on an iPhone",
+      text: "On an iPhone, an iPad and in the desktop app, a chat that ran since the app started opens without redrawing it for each thing it did: the app draws its history once. What's new lays out the updates you scroll to only.",
+      action: next,
+    },
+  ],
+};
+
 /** Sending in a long chat does less: the What's new list is no longer rebuilt behind the scenes (2026-11-12). */
 const LIGHTER_SEND_TOUR: Tour = {
   id: "lighter-send-2026-11-12",
@@ -3154,6 +3170,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-webkit-open",
+    when: "2026-11-12T14:05:00-06:00",
+    summary:
+      "On an iPhone, an iPad and in the desktop app, a chat that ran since the app started opens faster: the server sends its history without each streamed piece of the replies that ended, and the app draws that history once instead of once for each thing in it (about 75 draws, a third to half a second there). What's new lays out only the updates you scroll to, and opens in about 90 ms there instead of 150.",
+    tours: [WEBKIT_OPEN_TOUR],
+  },
   {
     id: "2026-11-12-zen-one-chat",
     when: "2026-11-12T13:25:00-06:00",

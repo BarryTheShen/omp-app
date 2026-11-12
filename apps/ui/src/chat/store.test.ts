@@ -109,6 +109,27 @@ describe("ChatStore", () => {
     expect([...snapshot.activeTools.keys()]).toEqual(["call-1"]);
   });
 
+  test("events the server replays at the open are drawn together at the next frame; a live one at once", () => {
+    const store = new ChatStore();
+    let heard = 0;
+    store.subscribe(() => {
+      heard += 1;
+    });
+    const user = { role: "user", content: [{ type: "text", text: "hi" }], timestamp: T };
+    store.apply(event({ type: "agent_start" }), true);
+    store.apply(event({ type: "message_end", messageId: "msg-1", message: user }), true);
+    store.apply(event({ type: "agent_end", messages: [] }), true);
+    expect(heard).toBe(0);
+    vi.advanceTimersToNextFrame();
+    expect(heard).toBe(1);
+    expect(store.getSnapshot().entries).toHaveLength(1);
+    expect(store.getSnapshot().working).toBe(false);
+
+    store.apply(event({ type: "agent_start" }));
+    expect(heard).toBe(2);
+    expect(store.getSnapshot().working).toBe(true);
+  });
+
   test("a message the file already holds is not added again when the live stream ends it", () => {
     const store = new ChatStore();
     const user = { role: "user", content: [{ type: "text", text: "hi" }], timestamp: T };

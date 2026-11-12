@@ -56,7 +56,9 @@ export function WhatsNewList({
 
 /**
  * The updates' rows, drawn only while the list shows: the dialog draws its content only then, and the app draws the
- * list's dialog at each of its own draws (each message from the server), which built every row each time.
+ * list's dialog at each of its own draws (each message from the server), which built every row each time. A row out of
+ * view is laid out only when it scrolls into view (`content-visibility: auto`): laying out all of them made the list
+ * open in about 150 ms in WebKit, 84 without.
  */
 function UpdateRows({
   onOpenChange,
@@ -68,7 +70,10 @@ function UpdateRows({
   return (
     <ol className="flex flex-col">
       {UPDATES.map((update) => (
-        <li key={update.id} className="border-b border-l2 px-5 py-3 last:border-b-0">
+        <li
+          key={update.id}
+          className="border-b border-l2 px-5 py-3 [contain-intrinsic-size:auto_7rem] [content-visibility:auto] last:border-b-0"
+        >
           <section aria-label={timeOf(update.when)}>
             <h3 className="text-xs font-medium text-t3">
               <time dateTime={update.when}>{timeOf(update.when)}</time>

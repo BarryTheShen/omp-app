@@ -451,6 +451,44 @@ describe("createAppClient", () => {
     client.dispose();
   });
 
+  test("a replayed frame standing for the frames left out before it continues the sequence; a frame that skips more is a gap", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const resyncs: string[] = [];
+    client.onResync((event) => resyncs.push(event.reason));
+    server.replay.push(
+      EventFrame.parse({
+        type: "event",
+        stream: "A0.testEvents/updated/thread-1",
+        seq: 1,
+        payload: { value: "one" },
+      }),
+      EventFrame.parse({
+        type: "event",
+        stream: "A0.testEvents/updated/thread-1",
+        seq: 4,
+        from: 2,
+        payload: { value: "four" },
+      }),
+    );
+    const received: Array<{ value: string; seq: number }> = [];
+    await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      afterSeq: 0,
+      onEvent: (payload, seq) => received.push({ value: payload.value, seq }),
+    });
+    expect(received).toEqual([
+      { value: "one", seq: 1 },
+      { value: "four", seq: 4 },
+    ]);
+    expect(resyncs).toEqual([]);
+
+    server.emit("A0.testEvents/updated/thread-1", 6, { value: "six" });
+    await eventually(() => received.length === 3);
+    expect(resyncs).toEqual(["gap"]);
+    client.dispose();
+  });
+
   test("an explicit afterSeq of zero is the cursor, and a reconnect before any event sends it again", async () => {
     const server = new FakeServer();
     const client = await openClient(server);

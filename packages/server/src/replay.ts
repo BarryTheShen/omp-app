@@ -14,9 +14,23 @@ export interface ReplayResult {
 
 export type StreamActivityListener = (stream: StreamKey, active: boolean) => void;
 
+/**
+ * How a frame stands in a replay (`publish`): a piece (`whole: false`) of what a frame with the same `key` carries whole
+ * (`whole: true`), as a streamed message's updates and its end. A replay that carries the whole leaves its pieces out.
+ */
+export interface ReplayPart {
+  readonly key: string;
+  readonly whole: boolean;
+}
+
+interface Kept {
+  readonly frame: ReplayEventFrame;
+  readonly part?: ReplayPart;
+}
+
 interface StreamState {
   nextSeq: number;
-  frames: ReplayEventFrame[];
+  frames: Kept[];
 }
 
 type Subscriber = (frame: ReplayEventFrame) => void;
@@ -35,7 +49,7 @@ export class EventReplayHub {
     this.#limit = limit;
   }
 
-  publish(stream: StreamKey, payload: unknown): ReplayEventFrame {
+  publish(stream: StreamKey, payload: unknown, part?: ReplayPart): ReplayEventFrame {
     const validStream = StreamKeySchema.parse(stream);
     const state = this.#streams.get(validStream) ?? { nextSeq: 0, frames: [] };
     const frame = EventFrameSchema.parse({
@@ -45,7 +59,7 @@ export class EventReplayHub {
       payload,
     });
     state.nextSeq = frame.seq;
-    state.frames.push(frame);
+    state.frames.push(part === undefined ? { frame } : { frame, part });
     if (state.frames.length > this.#limit) state.frames.shift();
     this.#streams.set(validStream, state);
 
@@ -76,7 +90,7 @@ export class EventReplayHub {
     const validStream = StreamKeySchema.parse(stream);
     const state = this.#streams.get(validStream) ?? { nextSeq: 0, frames: [] };
     if (afterSeq === undefined) return { frames: [] };
-    const oldestSeq = state.frames[0]?.seq ?? state.nextSeq + 1;
+    const oldestSeq = state.frames[0]?.frame.seq ?? state.nextSeq + 1;
     if (afterSeq > state.nextSeq || afterSeq < oldestSeq - 1) {
       return {
         error: {
@@ -86,7 +100,7 @@ export class EventReplayHub {
         },
       };
     }
-    return { frames: state.frames.filter((frame) => frame.seq > afterSeq) };
+    return { frames: compact(state.frames.filter((kept) => kept.frame.seq > afterSeq)) };
   }
 
   /** Register a callback for first/last activity of every stream beginning with `prefix`. */
@@ -147,7 +161,7 @@ export class EventReplayHub {
     this.#streams.delete(source);
     this.#streams.set(target, {
       nextSeq: state.nextSeq,
-      frames: state.frames.map((frame) => ({ ...frame, stream: target })),
+      frames: state.frames.map((kept) => ({ ...kept, frame: { ...kept.frame, stream: target } })),
     });
   }
 
@@ -157,4 +171,24 @@ export class EventReplayHub {
       for (const listener of [...listeners]) listener(stream, active);
     }
   }
+}
+
+/**
+ * A replay's frames without the pieces whose whole it carries: the frame after each run left out says where the run
+ * began (`from`), so a client still sees an unbroken sequence.
+ */
+function compact(kept: readonly Kept[]): ReplayEventFrame[] {
+  const wholes = new Set<string>();
+  for (const { part } of kept) if (part?.whole === true) wholes.add(part.key);
+  const frames: ReplayEventFrame[] = [];
+  let from: number | undefined;
+  for (const { frame, part } of kept) {
+    if (part !== undefined && !part.whole && wholes.has(part.key)) {
+      from ??= frame.seq;
+      continue;
+    }
+    frames.push(from === undefined ? frame : { ...frame, from });
+    from = undefined;
+  }
+  return frames;
 }

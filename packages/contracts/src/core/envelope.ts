@@ -127,6 +127,11 @@ export const EventFrame = z.object({
   type: z.literal("event"),
   stream: StreamKey,
   seq: Seq,
+  /**
+   * In a replay, the first sequence number this frame stands for: the frames from `from` up to it were left out, being
+   * pieces of what a later frame of the replay carries whole (a streamed message's updates before its end).
+   */
+  from: Seq.optional(),
   /** Validated by the client against the port event's `payload` schema. */
   payload: z.unknown(),
 });

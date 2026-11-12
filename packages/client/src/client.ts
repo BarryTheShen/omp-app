@@ -853,7 +853,8 @@ class AppClientImpl implements AppClient {
     const record = this.subscriptions.get(frame.stream);
     if (!record?.active) return;
     if (frame.seq <= record.lastSeq) return;
-    if (record.lastSeq > 0 && frame.seq !== record.lastSeq + 1) {
+    // A replay leaves out pieces of what it carries whole; the frame after them says where they began (`from`).
+    if (record.lastSeq > 0 && (frame.from ?? frame.seq) !== record.lastSeq + 1) {
       this.emitResync({ reason: "gap", stream: record.stream });
     }
     const payload = record.payload.safeParse(frame.payload);

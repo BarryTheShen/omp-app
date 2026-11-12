@@ -34,3 +34,39 @@ describe("EventReplayHub.moveStream", () => {
     expect(hub.publish(next, { n: 1 }).seq).toBe(1);
   });
 });
+
+describe("a replay leaves out the pieces of what it carries whole", () => {
+  const stream = chatSessionEventStream(ThreadId.parse("thread-pieces"));
+  const frame = (seq: number, from?: number) => ({
+    type: "event" as const,
+    stream,
+    seq,
+    ...(from === undefined ? {} : { from }),
+    payload: { n: seq },
+  });
+
+  test("a message's updates go when its end is in the replay, and the frame after them says where they began", () => {
+    const hub = new EventReplayHub();
+    hub.publish(stream, { n: 1 }, { key: "msg-1", whole: false });
+    hub.publish(stream, { n: 2 }, { key: "msg-1", whole: false });
+    hub.publish(stream, { n: 3 }, { key: "msg-1", whole: true });
+    hub.publish(stream, { n: 4 }, { key: "msg-2", whole: false });
+    hub.publish(stream, { n: 5 });
+
+    expect(hub.replay(stream, 0)).toEqual({ frames: [frame(3, 1), frame(4), frame(5)] });
+    // From the middle of the message: the updates after the cursor go.
+    expect(hub.replay(stream, 1)).toEqual({ frames: [frame(3, 2), frame(4), frame(5)] });
+  });
+
+  test("live frames, and a message still streaming in a replay, keep every update", () => {
+    const hub = new EventReplayHub();
+    const live: unknown[] = [];
+    hub.subscribe(stream, (sent) => live.push(sent));
+    hub.publish(stream, { n: 1 }, { key: "msg-1", whole: false });
+    hub.publish(stream, { n: 2 }, { key: "msg-1", whole: true });
+    hub.publish(stream, { n: 3 }, { key: "msg-2", whole: false });
+
+    expect(live).toEqual([frame(1), frame(2), frame(3)]);
+    expect(hub.replay(stream, 2)).toEqual({ frames: [frame(3)] });
+  });
+});

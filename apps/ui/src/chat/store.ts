@@ -833,10 +833,15 @@ export class ChatStore {
     if (excludeFromContext) this.#excluded.add(input);
   }
 
-  apply(payload: ChatSessionEvent): void {
+  /**
+   * Applies an event or status of the chat. `replayed`: it is history the server replays at the chat's open, shown with
+   * the rest of it at the next frame rather than drawn on its own; drawing each one cost an open about 75 draws of the
+   * chat, 5 to 7 ms each in WebKit.
+   */
+  apply(payload: ChatSessionEvent, replayed = false): void {
     switch (payload.kind) {
       case "event":
-        if (this.#applyEvent(payload.event)) {
+        if (this.#applyEvent(payload.event) || replayed) {
           this.#publishSoon();
           return;
         }
@@ -884,7 +889,8 @@ export class ChatStore {
         // Host requests come through the controller, which tells live ones from replayed history.
         return;
     }
-    this.#publish();
+    if (replayed) this.#publishSoon();
+    else this.#publish();
   }
 
   /** Applies one chat-host event; true when it may wait for the next frame to be shown. */

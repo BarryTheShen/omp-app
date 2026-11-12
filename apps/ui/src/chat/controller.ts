@@ -1828,7 +1828,8 @@ export class ChatController {
     // A side question's answer redraws its sheet only, not the chat; so does a question asked without waiting.
     if (payload.kind === "event" && this.btw.apply(payload.event)) return;
     if (payload.kind === "event" && this.questions.apply(payload.event, this.#live)) return;
-    this.store.apply(payload);
+    // The server's replay at the open is drawn together, at the next frame.
+    this.store.apply(payload, !this.#live);
     // The server's replay of the chat's history is not news.
     if (this.#live) {
       const attention = this.#attention.take(payload);
