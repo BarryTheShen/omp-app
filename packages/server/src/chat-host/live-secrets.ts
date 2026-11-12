@@ -24,13 +24,23 @@ import { logger } from "@oh-my-pi/pi-utils";
 const FILE = "secrets.yml";
 /** Writes come as a burst (a new file renamed over the old): one rebuild after it settles. */
 const SETTLE_MS = 100;
-/** The roles omp's own message obfuscation knows; the app's other messages are walked whole. */
-const MESSAGE_ROLES: ReadonlySet<string> = new Set([
-  "user",
-  "developer",
-  "assistant",
-  "toolResult",
-]);
+/**
+ * The messages omp's own obfuscation hides secrets in (`obfuscateMessageBatch`): the person's, tool results, the AI's
+ * replies, and developer messages the person sent. The agent's own notes (a finished background job's, which quotes its
+ * command and output; summaries; extensions' messages) go to the model as other developer messages, which it passes over.
+ */
+function ompHides(message: AgentMessage): boolean {
+  switch (message.role) {
+    case "user":
+    case "toolResult":
+    case "assistant":
+      return true;
+    case "developer":
+      return message.attribution === "user";
+    default:
+      return false;
+  }
+}
 
 function mapStrings(value: unknown, map: (text: string) => string): unknown {
   if (typeof value === "string") return map(value);
@@ -58,7 +68,8 @@ export interface LiveSecretsPlace {
  * after each change, a secret omp's obfuscator does not know is hidden in what goes to the AI (`context`, which runs
  * before omp's own hiding), and a tool call with its placeholder gets its value (`tool_call`). What omp knows is left
  * to omp, so those calls are saved with placeholders as before; the session's own obfuscator, which the chat's events
- * show values with, is the one built from the file as it is now.
+ * show values with, is the one built from the file as it is now. The messages omp's own hiding passes over (`ompHides`)
+ * are hidden here with every secret.
  */
 export class LiveSecrets {
   #session: AgentSession | undefined;
@@ -171,13 +182,20 @@ export class LiveSecrets {
   async #context(event: ContextEvent): Promise<ContextEventResult | undefined> {
     // omp's own obfuscator came after the last rebuild: what it does not know is worked out again.
     if (this.#followOmp()) await this.reload();
-    const extra = this.#extra;
-    if (extra === undefined || !this.#hiding()) return undefined;
+    if (!this.#hiding()) return undefined;
+    const every = this.#current ?? this.#omps;
+    if (every === undefined || !every.hasSecrets()) return undefined;
     const walked = event.messages.map((message) =>
-      MESSAGE_ROLES.has(message.role) ? message : (extra.obfuscateObject(message) as AgentMessage),
+      ompHides(message) ? message : (every.obfuscateObject(message) as AgentMessage),
     );
-    // Only messages omp knows are changed by `obfuscateMessages`; the others were walked above.
-    return { messages: obfuscateMessages(extra, walked as Message[]) as AgentMessage[] };
+    // The messages omp hides itself get only what its obfuscator does not know.
+    const extra = this.#extra;
+    return {
+      messages:
+        extra === undefined
+          ? walked
+          : (obfuscateMessages(extra, walked as Message[]) as AgentMessage[]),
+    };
   }
 
   #toolCall(event: ToolCallEvent): ToolCallEventResult | undefined {

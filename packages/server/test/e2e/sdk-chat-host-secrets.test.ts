@@ -3,7 +3,8 @@
  * once, when a chat starts; a secret the app saves later is hidden from the chat's AI at once, and a command with its
  * placeholder runs with its value. The fake model calls a tool with `call_tool bash <json>`, then says what the tool
  * gave it ("tool said: …"): the chat's file keeps the model's words as the model wrote them, placeholders and all.
- * Runs from source and compiled (`sdk-chat-host-harness.ts`).
+ * And every secret stays hidden in the agent's own notes (`secrets_every_message`), which omp's hiding passes over: the
+ * fake provider logs every request it gets (`requests.jsonl`). Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -18,43 +19,77 @@ afterEach(() => chats.stopAll(), 60_000);
 const STORE = resolve(import.meta.dir, "../../src/modules/A1/secrets/store.ts");
 
 /**
- * Saves a secret the way the app does (`SecretStoreService`, as Settings → Providers → Secrets and `omp-app secret add`), in
- * another process with the chat's own folders, and gives back the placeholder the app shows for it.
+ * Runs `script` with `store`, a `SecretStoreService` made the way the app makes it (Settings → Providers → Secrets,
+ * `omp-app secret`), in another process with the chat's own folders, and gives back what the script writes.
  */
-async function saveSecret(folder: string, name: string, value: string): Promise<string> {
+async function withStore(
+  folder: string,
+  script: string,
+  env: Record<string, string>,
+): Promise<string> {
   const scratch = await mkdtemp(join(tmpdir(), "omp-app-save-secret-"));
   try {
-    const script = join(scratch, "save.ts");
+    const file = join(scratch, "store.ts");
     await writeFile(
-      script,
+      file,
       `import { SecretStoreService } from ${JSON.stringify(STORE)};
 const store = new SecretStoreService({
   agentDir: process.env.PI_CODING_AGENT_DIR,
   hideSecrets: { isOn: async () => true, turnOn: async () => {}, onChange: () => () => {} },
 });
-const saved = await store.add({ name: process.env.SECRET_NAME, value: process.env.SECRET_VALUE });
-process.stdout.write(saved.placeholder ?? "");
+${script}
 `,
     );
     const root = dirname(folder);
-    const saving = Bun.spawn(["bun", script], {
+    const running = Bun.spawn(["bun", file], {
       env: {
         ...Bun.env,
         HOME: join(root, "home"),
         PI_CODING_AGENT_DIR: join(root, "agent"),
-        SECRET_NAME: name,
-        SECRET_VALUE: value,
+        ...env,
       },
       stdout: "pipe",
       stderr: "inherit",
     });
-    const placeholder = await new Response(saving.stdout).text();
-    if ((await saving.exited) !== 0 || placeholder === "")
-      throw new Error("the secret was not saved");
-    return placeholder;
+    const written = await new Response(running.stdout).text();
+    if ((await running.exited) !== 0) throw new Error("the secrets store failed");
+    return written;
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+}
+
+/** Saves a secret as the app does, and gives back the placeholder the app shows for it. */
+async function saveSecret(folder: string, name: string, value: string): Promise<string> {
+  const placeholder = await withStore(
+    folder,
+    `const saved = await store.add({ name: process.env.SECRET_NAME, value: process.env.SECRET_VALUE });
+process.stdout.write(saved.placeholder ?? "");`,
+    { SECRET_NAME: name, SECRET_VALUE: value },
+  );
+  if (placeholder === "") throw new Error("the secret was not saved");
+  return placeholder;
+}
+
+/** The placeholder the app lists for a saved secret. */
+async function placeholderOf(folder: string, name: string): Promise<string> {
+  const placeholder = await withStore(
+    folder,
+    `const listed = await store.list();
+process.stdout.write(listed.secrets.find((secret) => secret.name === process.env.SECRET_NAME)?.placeholder ?? "");`,
+    { SECRET_NAME: name },
+  );
+  if (placeholder === "") throw new Error(`no placeholder is listed for ${name}`);
+  return placeholder;
+}
+
+/** Every request body the fake provider got for this chat: all the model was sent. */
+async function sentToModel(folder: string): Promise<{ messages: unknown[] }[]> {
+  const log = await readFile(join(dirname(folder), "requests.jsonl"), "utf8");
+  return log
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => JSON.parse(line) as { messages: unknown[] });
 }
 
 /** Every line of the chat's files under its agent folder: the model's messages as omp keeps them. */
@@ -104,6 +139,45 @@ describe("a secret saved while a chat runs", () => {
         const kept = await sessionText(chat.folder);
         expect(kept).toContain(`tool said: ${placeholder}`);
         expect(kept).not.toContain(`tool said: ${value}`);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: every secret stays hidden in a finished background job's note, which quotes its command and output`,
+      async () => {
+        // Known when the chat starts: omp's own hiding has it, and passes over the agent's notes.
+        const value = "known-at-start-secret-8910";
+        const chat = await chats.start(command, {
+          config: "secrets:\n  enabled: true\n",
+          agentFiles: {
+            "secrets.yml": YAML.stringify([
+              { type: "plain", content: value, mode: "obfuscate", friendlyName: "KNOWN_ONE" },
+            ]),
+          },
+        });
+        const hello = await chat.client.hello;
+        expect(hello.features ?? []).toContain("secrets_every_message");
+        const placeholder = await placeholderOf(chat.folder, "KNOWN_ONE");
+
+        const run = `printf %s '${placeholder}' > job.txt; cat job.txt`;
+        await chat.client.request("prompt", {
+          text: `call_tool bash ${JSON.stringify({ command: run, async: true })}`,
+        });
+        await chat.next(resultOf("1"));
+        // The job ends at once; its note starts a turn of its own, and the chat settles after that turn.
+        await chat.next((event) => event.type === "session_settled");
+        expect(await readFile(join(chat.folder, "job.txt"), "utf8")).toBe(value);
+
+        const sent = await sentToModel(chat.folder);
+        const notes = sent
+          .flatMap((request) => request.messages)
+          .map((message) => JSON.stringify(message))
+          .filter((message) => message.includes("has completed"));
+        // The note went out, naming the job by its command and giving its output, with the placeholder for the value.
+        expect(notes.length).toBeGreaterThan(0);
+        for (const note of notes) expect(note).toContain(placeholder);
+        expect(JSON.stringify(sent)).not.toContain(value);
       },
       60_000,
     );

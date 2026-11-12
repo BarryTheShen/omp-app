@@ -78,6 +78,8 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * agent has the `shared_todos` tool, the to-do list it shares with the person and the other chats (`app.todos`).
  * `silent_skips`: a skipped `ask_async` question gets no answer, and skips alone send the agent nothing. `secrets_live`:
  * a secret saved while the chat runs (`secrets.yml`) is hidden from its AI at once, and its tool calls get its value.
+ * `secrets_every_message`: every saved secret is hidden in every message the AI is sent, the agent's own notes too (a
+ * finished background job's, a summary), which omp's own hiding passes over.
  */
 export const CHAT_HOST_FEATURES = [
   "message_host",
@@ -85,6 +87,7 @@ export const CHAT_HOST_FEATURES = [
   "shared_todos",
   "silent_skips",
   "secrets_live",
+  "secrets_every_message",
 ] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */
