@@ -27,6 +27,7 @@ import { ConnectionDot } from "./ConnectionDot";
 import type { ChatController, ChatTarget } from "./chat/controller";
 import { PhoneDetailsButton } from "./chat/PhoneDetailsButton";
 import { prefetchWindow } from "./chat/prefetch";
+import { forgetAllWindows } from "./chat/windowCache";
 import { connect, readToken } from "./connection";
 import { useDashboardWaiting } from "./dashboard/waiting";
 import { desktopBridge, openDesktopWindow, refusalText } from "./desktop/bridge";
@@ -123,6 +124,8 @@ export function App(): ReactNode {
       // A refusal shows at once, before the app is ready: a device not paired pairs; a refused link says why.
       const stopWatching = client.onConnectionState(({ refusal }) => {
         if (!active || refusal === undefined) return;
+        // The chats kept in this browser belonged to a pairing the server no longer has.
+        if (refusal === "unpaired") forgetAllWindows();
         setConnection((now) => {
           if (now.kind === "ready") return now;
           if (refusal === "unpaired") return { kind: "pairing", linkRefused: false };

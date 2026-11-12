@@ -86,8 +86,8 @@ export function AddSecretDialog({
         <DialogHeader>
           <DialogTitle>Add a secret</DialogTitle>
           <DialogDescription className="text-pretty">
-            The AI never sees it: a chat gets its placeholder, and omp puts the value in a command
-            that uses it. {intro}
+            The AI is shown its placeholder, not the value, and omp puts the value in a command that
+            uses it. {intro}
           </DialogDescription>
         </DialogHeader>
         <form

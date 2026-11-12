@@ -906,10 +906,10 @@ const EARLIER_MESSAGES_TOUR: Tour = {
   ],
 };
 
-/** Secrets the AI never sees (omp's Hide Secrets), from the message box (2026-11-11). */
+/** Secrets the AI is shown only as placeholders (omp's Hide Secrets), from the message box (2026-11-11). */
 const SECRETS_TOUR: Tour = {
   id: "secrets-2026-11-11",
-  title: "Secrets the AI never sees",
+  title: "Secrets as placeholders",
   minutes: 1,
   sandbox: false,
   steps: [
@@ -917,7 +917,24 @@ const SECRETS_TOUR: Tour = {
     {
       target: part("add-secret"),
       title: "Add a secret",
-      text: "Paste a key or a password here, with a name. The AI never sees it: your message gets its placeholder, shown as a lock and the name, and omp puts the value in a command that uses it. When the AI saves a value for you, a notice offers <b>Copy</b>. Your secrets are in Settings → Providers → <b>Secrets</b>.",
+      text: "Paste a key or a password here, with a name. The AI is shown its placeholder, not the value: your message gets the placeholder, shown as a lock and the name, and omp puts the value in a command that uses it. When the AI saves a value for you, a notice offers <b>Copy</b>. Your secrets are in Settings → Providers → <b>Secrets</b>.",
+      action: next,
+    },
+  ],
+};
+
+/** Secrets kept from the AI more thoroughly, after a review of Hide Secrets (2026-11-11). */
+const SECRETS_GUARD_TOUR: Tour = {
+  id: "secrets-guard-2026-11-11",
+  title: "Secrets, guarded more closely",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    PLUS_STEP,
+    {
+      target: part("add-secret"),
+      title: "Where a secret stays hidden",
+      text: "A saved secret is now hidden in everything the AI is sent: the notes about commands that finished in the background, its own instructions, its summaries. A secret you remove stops working at once, also in chats already running. And a picture in the AI's reply is a link you choose to open, so nothing in a reply is fetched by itself.",
       action: next,
     },
   ],
@@ -2897,6 +2914,13 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-11-secrets-guard",
+    when: "2026-11-11T19:22:00-06:00",
+    summary:
+      "Secrets are guarded more closely, after a review: a saved secret is hidden in everything the AI is sent, notes about finished background commands and its own instructions too; a removed secret stops working at once, also in running chats; a picture in a reply is a link, never fetched by itself; and omp-app secret refuses a pasted value of several lines rather than keeping its first.",
+    tours: [SECRETS_GUARD_TOUR],
+  },
+  {
     id: "2026-11-11-vscode-copy",
     when: "2026-11-11T15:01:00-06:00",
     summary:
@@ -2907,7 +2931,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-11-secrets",
     when: "2026-11-11T12:35:00-06:00",
     summary:
-      "Secrets the AI never sees: the key button in the message box (Secret in ＋ on a phone) saves a key or password under a name, and puts its placeholder in your message. omp's Hide Secrets shows the AI the placeholder wherever the value would appear, and puts the value in a command that uses it, also in a chat already running. The AI can hand a value back the same way, with a notice to copy it. They are listed in Settings → Providers → Secrets, and omp-app secret lists, adds and removes them in a terminal.",
+      "Secrets as placeholders: the key button in the message box (Secret in ＋ on a phone) saves a key or password under a name, and puts its placeholder in your message. omp's Hide Secrets shows the AI the placeholder wherever the value would appear, and puts the value in a command that uses it, also in a chat already running. The AI can hand a value back the same way, with a notice to copy it. They are listed in Settings → Providers → Secrets, and omp-app secret lists, adds and removes them in a terminal.",
     tours: [SECRETS_TOUR],
   },
   {

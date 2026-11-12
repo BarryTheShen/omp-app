@@ -79,7 +79,8 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * `silent_skips`: a skipped `ask_async` question gets no answer, and skips alone send the agent nothing. `secrets_live`:
  * a secret saved while the chat runs (`secrets.yml`) is hidden from its AI at once, and its tool calls get its value.
  * `secrets_every_message`: every saved secret is hidden in every message the AI is sent, the agent's own notes too (a
- * finished background job's, a summary), which omp's own hiding passes over.
+ * finished background job's, a summary), which omp's own hiding passes over. `secrets_removed`: a tool call that would
+ * get the value of a secret removed while the chat runs is refused before it runs.
  */
 export const CHAT_HOST_FEATURES = [
   "message_host",
@@ -88,6 +89,7 @@ export const CHAT_HOST_FEATURES = [
   "silent_skips",
   "secrets_live",
   "secrets_every_message",
+  "secrets_removed",
 ] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */

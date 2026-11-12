@@ -97,6 +97,20 @@ const md = new Marked({
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
 		},
+		// An image is a link, never fetched by itself: a reply is shown with omp's Hide Secrets values filled in, so an
+		// image address holding a placeholder would hand the secret to that server with no click.
+		image({ href, title, text }) {
+			const label = escapeHtml(text.trim() === "" ? "Image" : `Image: ${text}`);
+			if (isFileHref(href)) {
+				const named = href.trim();
+				const titleAttr = ` title="${escapeHtml(title || `Open ${named} here`)}"`;
+				return `<a href="#" data-file="${escapeHtml(named)}"${titleAttr}>${label}</a>`;
+			}
+			const url = safeHref(href);
+			if (url === null) return label;
+			const titleAttr = ` title="${escapeHtml(title || url)}"`;
+			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
+		},
 		// A code block, with a Copy button that `clickIn` handles; in code's colours where its language is known (#2801).
 		code({ text, lang, escaped }) {
 			const language = (lang ?? "").match(/^\S*/)?.[0] ?? "";

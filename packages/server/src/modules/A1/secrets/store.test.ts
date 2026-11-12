@@ -154,6 +154,23 @@ describe("the secrets of omp's Hide Secrets", () => {
     ]);
   });
 
+  test("a value YAML reads specially is kept exactly, as reveal and omp's own loading give it", async () => {
+    const { store, chatObfuscator } = await setup();
+    const values = [
+      "key: value # not a comment",
+      "- leading dash value",
+      "0123456789",
+      "'single' and \"double\" quotes",
+      "ünïcödé-🔑-value",
+    ];
+    for (const [index, value] of values.entries()) {
+      await store.add({ name: `TRICKY_${index}`, value });
+      expect(await store.reveal({ name: `TRICKY_${index}` })).toEqual({ value });
+    }
+    const omp = await chatObfuscator();
+    for (const value of values) expect(omp.obfuscate(`before ${value} after`)).not.toContain(value);
+  });
+
   test("a file omp cannot read is never written over", async () => {
     const broken = "type: plain\ncontent: not-a-list\n";
     const { store, fileText } = await setup(broken);

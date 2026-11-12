@@ -103,7 +103,7 @@ describe("omp-app secret", () => {
 
   test("typed into a terminal, the value is read without echo up to Enter, with Backspace; Ctrl+C gives none", async () => {
     const prompts: string[] = [];
-    const typed = terminal("hunter2-secret\u007fT\rignored");
+    const typed = terminal("hunter2-secret\u007fT\r");
     const value = await readSecretValue(
       typed,
       "API_KEY",
@@ -130,5 +130,23 @@ describe("omp-app secret", () => {
         () => undefined,
       ),
     ).toBe("from a pipe\n");
+  });
+
+  test("a paste of several lines is refused, not cut to its first line, and the terminal is given back", async () => {
+    for (const pasted of [
+      "first-line-of-it\nsecond-line-of-it\n",
+      "-----BEGIN PRIVATE KEY-----\r",
+    ]) {
+      const typed = terminal(pasted);
+      await expect(
+        readSecretValue(
+          typed,
+          "DEPLOY_KEY",
+          async () => "piped",
+          () => undefined,
+        ),
+      ).rejects.toThrow("Pipe it in instead: … | omp-app secret add DEPLOY_KEY");
+      expect(typed.raw).toEqual([true, false]);
+    }
   });
 });

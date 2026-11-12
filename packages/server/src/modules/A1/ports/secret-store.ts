@@ -24,7 +24,13 @@ export function createSecretStoreRegistration(context: A1PortContext): PortRegis
       },
       reveal: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
-        return store.reveal(args);
+        const revealed = await store.reveal(args);
+        // Which secret went to which connection, never its value: a page that copies or shows one is on record.
+        context.logger?.info("secret.revealed", {
+          name: args.name,
+          connection: handlerContext.connectionId,
+        });
+        return revealed;
       },
     },
     context.publish,

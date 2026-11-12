@@ -1,5 +1,5 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
-import { createStore, del, get, set } from "idb-keyval";
+import { clear, createStore, del, get, set } from "idb-keyval";
 
 /**
  * The newest window of each recently opened chat, kept in this browser so a chat opened again shows at once, before
@@ -55,4 +55,12 @@ export function forgetWindow(threadId: string): void {
       );
     })
     .catch(() => undefined);
+}
+
+/**
+ * Forgets every kept window, when the server says this device is no longer paired: they hold chats' tool output as it
+ * came, a secret's value among it, and they belonged to the pairing that ended.
+ */
+export function forgetAllWindows(): void {
+  writing = writing.then(() => clear(store)).catch(() => undefined);
 }

@@ -70,9 +70,9 @@ export function SavedSecrets({ client }: { readonly client: AppClient }): ReactN
         </Button>
       </div>
       <p className="mt-1 text-xs text-pretty text-t3">
-        Keys and passwords the AI never sees: a chat gets each one as its placeholder, and omp puts
-        the value in a command that uses it. Also in a chat's message box (the key button) and with
-        omp-app secret in a terminal.
+        Keys and passwords the AI is shown only as placeholders: omp puts the value in a command
+        that uses it. Also in a chat's message box (the key button) and with omp-app secret in a
+        terminal.
       </p>
       {list !== null && !list.hidden && (
         <p className="mt-2 text-xs text-pretty text-warn-ink">

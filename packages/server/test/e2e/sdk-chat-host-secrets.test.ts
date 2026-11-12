@@ -11,7 +11,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { YAML } from "bun";
-import { chatHostChats, PROGRAMS, realTest, resultOf } from "./sdk-chat-host-harness";
+import { chatHostChats, lastReply, PROGRAMS, realTest, resultOf } from "./sdk-chat-host-harness";
 
 const chats = chatHostChats();
 afterEach(() => chats.stopAll(), 60_000);
@@ -139,6 +139,66 @@ describe("a secret saved while a chat runs", () => {
         const kept = await sessionText(chat.folder);
         expect(kept).toContain(`tool said: ${placeholder}`);
         expect(kept).not.toContain(`tool said: ${value}`);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a secret removed while the chat runs is not filled in any more`,
+      async () => {
+        // Known when the chat starts: omp's own obfuscator keeps it after the file loses it.
+        const value = "removed-later-secret-2468";
+        const chat = await chats.start(command, {
+          config: "secrets:\n  enabled: true\n",
+          agentFiles: {
+            "secrets.yml": YAML.stringify([
+              { type: "plain", content: value, mode: "obfuscate", friendlyName: "GONE_SOON" },
+            ]),
+          },
+        });
+        const hello = await chat.client.hello;
+        expect(hello.features ?? []).toContain("secrets_removed");
+        const placeholder = await placeholderOf(chat.folder, "GONE_SOON");
+        await withStore(chat.folder, "await store.remove({ name: process.env.SECRET_NAME });", {
+          SECRET_NAME: "GONE_SOON",
+        });
+        // The host reads the file again a moment after it changes.
+        await Bun.sleep(500);
+
+        const run = `printf %s '${placeholder}' > gone.txt`;
+        await chat.client.request("prompt", {
+          text: `call_tool bash ${JSON.stringify({ command: run })}`,
+        });
+        await chat.next(resultOf("1"));
+        // The call is refused before it runs, and the AI is told why.
+        expect(await Bun.file(join(chat.folder, "gone.txt")).exists()).toBe(false);
+        expect(lastReply(chat)).toContain("GONE_SOON, which has been removed");
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a saved value is hidden even where omp's own hiding never looks, as in the system prompt`,
+      async () => {
+        const value = "in-the-system-prompt-1357";
+        const chat = await chats.start(command, {
+          config: "secrets:\n  enabled: true\n",
+          // omp hides secrets in the conversation only; its system prompt and tool schemas go out as they are.
+          args: ["--append-system-prompt", `The deploy key is ${value}.`],
+          agentFiles: {
+            "secrets.yml": YAML.stringify([
+              { type: "plain", content: value, mode: "obfuscate", friendlyName: "DEPLOY_KEY" },
+            ]),
+          },
+        });
+        await chat.client.hello;
+        const placeholder = await placeholderOf(chat.folder, "DEPLOY_KEY");
+        await chat.client.request("prompt", { text: "hello" });
+        await chat.next(resultOf("1"));
+
+        const sent = JSON.stringify(await sentToModel(chat.folder));
+        expect(sent).toContain(`The deploy key is ${placeholder}.`);
+        expect(sent).not.toContain(value);
       },
       60_000,
     );

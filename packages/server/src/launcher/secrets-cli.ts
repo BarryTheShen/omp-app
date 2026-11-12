@@ -72,7 +72,9 @@ export interface KeyInput {
 
 /**
  * A secret's value: typed or pasted into a terminal, read without showing it, up to Enter; else everything that comes
- * in (a pipe). Ctrl+C or Ctrl+D with nothing typed gives "".
+ * in (a pipe). Ctrl+C or Ctrl+D with nothing typed gives "". A paste of several lines is refused rather than cut to its
+ * first line: keys arrive one at a time, a paste in one piece, so text after a line break in the same piece is more of
+ * the value; so is a key's lone first line (`-----BEGIN … KEY-----`).
  */
 export async function readSecretValue(
   input: KeyInput,
@@ -83,11 +85,23 @@ export async function readSecretValue(
   if (input.isTTY !== true || input.setRawMode === undefined) return readPiped();
   prompt(`Paste or type the value of ${name} (it is not shown), then press Enter: `);
   input.setRawMode(true);
-  const { promise, resolve } = Promise.withResolvers<string>();
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+  const severalLines = () =>
+    reject(
+      new Error(
+        `The value of ${name} has more than one line, and a terminal gives only the first. Pipe it in instead: … | omp-app secret add ${name}`,
+      ),
+    );
   let value = "";
   const onData = (chunk: Buffer | string) => {
-    for (const char of String(chunk)) {
-      if (char === "\r" || char === "\n") return resolve(value);
+    const chars = Array.from(String(chunk));
+    for (const [index, char] of chars.entries()) {
+      if (char === "\r" || char === "\n") {
+        if (chars.slice(index + 1).some((next) => next !== "\r" && next !== "\n"))
+          return severalLines();
+        if (/^-----BEGIN [A-Z0-9 ]+-----$/.test(value.trim())) return severalLines();
+        return resolve(value);
+      }
       if (char === "\u0003" || char === "\u0004") return resolve("");
       if (char === "\u007f" || char === "\b") value = value.slice(0, -1);
       else value += char;

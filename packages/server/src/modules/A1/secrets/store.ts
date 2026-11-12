@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   getSecretPlaceholderKey,
@@ -19,6 +19,7 @@ import {
   type SecretsList,
 } from "@omp-app/contracts";
 import { YAML } from "bun";
+import { syncDirectory } from "../fs/atomic-file";
 import type { FileWatchRegistry } from "../fs/file-watch-registry";
 import { type FileWatcher, watchFile } from "../fs/file-watcher";
 
@@ -148,6 +149,12 @@ export class SecretStoreService {
         ...entries,
         { type: "plain", content: value, mode: "obfuscate", friendlyName: args.name },
       ]);
+      // Read as omp will read it, the file gives the value back exactly, or it is not kept.
+      const back = (await this.#read()).map(namedOf).find((secret) => secret?.name === args.name);
+      if (back?.content !== value) {
+        await this.#write(entries);
+        throw refused("This value could not be saved exactly as given, so it was not saved.");
+      }
     });
     await this.#options.hideSecrets.turnOn();
     const saved = (await this.list()).secrets.find((secret) => secret.name === args.name);
@@ -261,18 +268,29 @@ export class SecretStoreService {
     return parsed;
   }
 
-  /** Writes the whole file at once (a new file renamed over the old), readable by the user only. */
+  /**
+   * Writes the whole file at once: a new file, readable by the user only from its first byte and on disk before it is
+   * renamed over the old, then the rename on disk. Not `writeFileAtomic`: the file watcher would take this process's
+   * writes as its own and tell no listener, while a second store in the process must hear them.
+   */
   async #write(entries: readonly unknown[]): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
     const temp = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
+    const body = entries.length === 0 ? "[]" : YAML.stringify(entries, null, 2).trimEnd();
     try {
-      const body = entries.length === 0 ? "[]" : YAML.stringify(entries, null, 2).trimEnd();
-      await writeFile(temp, `${HEADER}${body}\n`, { mode: 0o600 });
+      const file = await open(temp, "wx", 0o600);
+      try {
+        await file.writeFile(`${HEADER}${body}\n`);
+        await file.sync();
+      } finally {
+        await file.close();
+      }
       await rename(temp, this.path);
     } catch (error) {
       await rm(temp, { force: true });
       throw error;
     }
+    await syncDirectory(dirname(this.path));
   }
 
   /** Runs one change at a time: this process's in turn, other processes' (`omp-app secret`) by a lock file. */

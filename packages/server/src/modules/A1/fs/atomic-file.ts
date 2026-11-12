@@ -365,7 +365,8 @@ async function writeTempFile(
   }
 }
 
-async function syncDirectory(directory: string): Promise<void> {
+/** Puts a folder's entries on disk, so a file renamed into it is there after a crash. */
+export async function syncDirectory(directory: string): Promise<void> {
   const handle = await fs.open(directory, "r");
   try {
     await handle.sync();

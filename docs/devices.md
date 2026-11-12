@@ -115,7 +115,7 @@ A paired device keeps its key in a cookie that only the app's own pages send. Th
 **Settings → App → Devices** lists the paired devices with their kind (Home Screen app, desktop window or browser), when each was paired, and when it last connected ("Last seen" and the time, or "Not connected yet"). The device you are using is marked "This device".
 
 - **Rename** names a device (up to 60 characters); **Save** keeps the name.
-- **Remove** asks "Remove <name>?" and, once you confirm with **Remove**, closes the device's open windows and ends its sessions, including on every shared port. It pairs again to come back. Removing the device you are using closes this page the same way.
+- **Remove** asks "Remove <name>?" and, once you confirm with **Remove**, closes the device's open windows and ends its sessions, including on every shared port. It pairs again to come back. Removing the device you are using closes this page the same way. The next time a removed device's page reaches the app, it forgets the chats it kept for opening them quickly (the newest part of up to 40 chats, kept in that browser).
 - **Pair a new device** makes a one-time code, as above.
 
 On this computer, `omp-app devices` lists the same devices, with the start of each id, and `omp-app devices remove <device>` removes one, named by its id, the start of it, or its name. Both need the app to be running.

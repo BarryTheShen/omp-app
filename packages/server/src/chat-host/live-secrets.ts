@@ -4,6 +4,7 @@ import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { Message } from "@oh-my-pi/pi-ai";
 import type { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type {
+  BeforeProviderRequestEvent,
   ContextEvent,
   ContextEventResult,
   ExtensionFactory,
@@ -17,6 +18,7 @@ import {
   SecretObfuscator,
 } from "@oh-my-pi/pi-coding-agent/secrets/index";
 import { obfuscateMessages } from "@oh-my-pi/pi-coding-agent/secrets/message-transform";
+import type { SecretEntry } from "@oh-my-pi/pi-coding-agent/secrets/obfuscator";
 import { cfgSecretsEnabled } from "@oh-my-pi/pi-coding-agent/secrets/settings";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { logger } from "@oh-my-pi/pi-utils";
@@ -69,7 +71,8 @@ export interface LiveSecretsPlace {
  * before omp's own hiding), and a tool call with its placeholder gets its value (`tool_call`). What omp knows is left
  * to omp, so those calls are saved with placeholders as before; the session's own obfuscator, which the chat's events
  * show values with, is the one built from the file as it is now. The messages omp's own hiding passes over (`ompHides`)
- * are hidden here with every secret.
+ * are hidden here with every secret. omp's obfuscator also keeps filling in a secret removed since it was built, so a
+ * tool call that would get a removed secret's value is refused before it runs.
  */
 export class LiveSecrets {
   #session: AgentSession | undefined;
@@ -81,6 +84,12 @@ export class LiveSecrets {
   #current: SecretObfuscator | undefined;
   /** The secrets of the files that omp's obfuscator does not know, for hiding what goes to the AI. */
   #extra: SecretObfuscator | undefined;
+  /** Every value this chat has seen saved, with its name: omp's obfuscator keeps those it was built with. */
+  readonly #seen = new Map<string, string | undefined>();
+  /** The values saved in the files now. */
+  #saved: ReadonlySet<string> = new Set();
+  /** Every value this chat has seen saved, for the last look at each request before it leaves. */
+  #plain: SecretObfuscator | undefined;
   readonly #watchers: FSWatcher[] = [];
   #timer: ReturnType<typeof setTimeout> | undefined;
   #stopListening: (() => void) | undefined;
@@ -90,6 +99,7 @@ export class LiveSecrets {
   readonly extension: ExtensionFactory = (api) => {
     api.on("context", (event) => this.#context(event));
     api.on("tool_call", (event) => this.#toolCall(event));
+    api.on("before_provider_request", (event) => this.#beforeRequest(event));
   };
 
   /** Starts following the files and Hide Secrets, once the session exists. */
@@ -111,6 +121,12 @@ export class LiveSecrets {
       }
     }
     this.#stopListening = cfgSecretsEnabled.listen(settings, () => this.#schedule());
+    // What omp's obfuscator was built with, so a secret removed later is known as removed.
+    this.#reloading = this.#reloading
+      .then(async () => this.#remember(await loadSecrets(place.cwd, place.agentDir)))
+      .catch((error: unknown) =>
+        logger.warn("Saved secrets were not read", { error: String(error) }),
+      );
   }
 
   dispose(): void {
@@ -164,7 +180,9 @@ export class LiveSecrets {
     }
     const built = await buildSecretObfuscator(place.cwd, place.agentDir, place.keyDir);
     const omps = this.#omps;
-    const unknown = (await loadSecrets(place.cwd, place.agentDir)).filter(
+    const entries = await loadSecrets(place.cwd, place.agentDir);
+    await this.#remember(entries);
+    const unknown = entries.filter(
       (entry) =>
         entry.type === "plain" &&
         (omps === undefined || omps.obfuscate(entry.content) === entry.content),
@@ -202,16 +220,24 @@ export class LiveSecrets {
     const current = this.#current;
     this.#followOmp();
     const omps = this.#omps;
-    if (current === undefined || current === omps || !this.#hiding()) return undefined;
+    if (current === undefined || !this.#hiding()) return undefined;
     let needed = false;
+    let removed: string | undefined;
     const fill = (text: string): string => {
       if (!text.includes("$$")) return text;
       const byOmp = omps?.deobfuscate(text) ?? text;
       const filled = current.deobfuscate(byOmp);
       if (filled !== byOmp) needed = true;
+      removed ??= this.#removedIn(filled, text);
       return filled;
     };
     const input = mapStrings(event.input, fill) as Record<string, unknown>;
+    if (removed !== undefined) {
+      return {
+        block: true,
+        reason: `This uses the secret ${removed}, which has been removed from the saved secrets, so it is not filled in. Ask for it to be saved again if it is still needed.`,
+      };
+    }
     if (!needed) return undefined;
     // An edit's hook input is not the input it runs with (omp adds the paths it reads from the patch).
     if (event.toolName === "edit") {
@@ -222,5 +248,43 @@ export class LiveSecrets {
       };
     }
     return { input };
+  }
+
+  /** The last look at a request before it leaves, for what omp's own hiding passes over (the system prompt, its
+   * compaction, side questions and advisors): every value this chat has seen saved becomes its placeholder. */
+  #beforeRequest(event: BeforeProviderRequestEvent): unknown {
+    const plain = this.#plain;
+    if (plain === undefined || !this.#hiding()) return undefined;
+    const payload = plain.obfuscateObject(event.payload);
+    return payload === event.payload ? undefined : payload;
+  }
+
+  async #remember(entries: readonly SecretEntry[]): Promise<void> {
+    const saved = new Set<string>();
+    for (const entry of entries) {
+      if (entry.type !== "plain") continue;
+      saved.add(entry.content);
+      this.#seen.set(entry.content, entry.friendlyName);
+    }
+    this.#saved = saved;
+    if (this.#seen.size === 0 || this.#place === undefined) return;
+    this.#plain = new SecretObfuscator(
+      [...this.#seen].map(([content, friendlyName]) => ({
+        type: "plain" as const,
+        content,
+        mode: "obfuscate" as const,
+        friendlyName,
+      })),
+      await getSecretPlaceholderKey(this.#place.keyDir),
+    );
+  }
+
+  /** The name of a removed secret whose value filling in put into `filled`, where `written` did not hold it. */
+  #removedIn(filled: string, written: string): string | undefined {
+    for (const [value, name] of this.#seen) {
+      if (!this.#saved.has(value) && filled.includes(value) && !written.includes(value))
+        return name ?? "a saved secret";
+    }
+    return undefined;
   }
 }
