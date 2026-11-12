@@ -102,13 +102,32 @@ async function sessionText(folder: string): Promise<string> {
   return text;
 }
 
+/** The tool calls of the AI's replies as the chat's file keeps them, by tool name. */
+async function savedCalls(folder: string): Promise<{ name: string; arguments: unknown }[]> {
+  const calls: { name: string; arguments: unknown }[] = [];
+  for (const line of (await sessionText(folder)).split("\n")) {
+    if (line === "") continue;
+    const entry = JSON.parse(line) as {
+      type?: string;
+      message?: { role?: string; content?: unknown };
+    };
+    if (entry.type !== "message" || entry.message?.role !== "assistant") continue;
+    const content = Array.isArray(entry.message.content) ? entry.message.content : [];
+    for (const part of content as { type?: string; name?: string; arguments?: unknown }[]) {
+      if (part.type === "toolCall" && part.name !== undefined)
+        calls.push({ name: part.name, arguments: part.arguments });
+    }
+  }
+  return calls;
+}
+
 describe("a secret saved while a chat runs", () => {
   for (const program of PROGRAMS) {
     const programTest = program.command === undefined ? test.skip : realTest;
     const command = program.command ?? [];
 
     programTest(
-      `${program.name}: is hidden from the chat's AI at once, and a command with its placeholder runs with the value`,
+      `${program.name}: is hidden from the chat's AI at once, and a command with its placeholder runs with the value, kept with the placeholder`,
       async () => {
         const old = "old-secret-known-at-start-0123";
         const chat = await chats.start(command, {
@@ -121,6 +140,7 @@ describe("a secret saved while a chat runs", () => {
         });
         const hello = await chat.client.hello;
         expect(hello.features ?? []).toContain("secrets_live");
+        expect(hello.features ?? []).toContain("secrets_in_place");
 
         const value = "new-secret-saved-later-4567";
         const placeholder = await saveSecret(chat.folder, "NEW_TOKEN", value);
@@ -139,6 +159,46 @@ describe("a secret saved while a chat runs", () => {
         const kept = await sessionText(chat.folder);
         expect(kept).toContain(`tool said: ${placeholder}`);
         expect(kept).not.toContain(`tool said: ${value}`);
+        // The chat's own omp filled the value in when the command ran: the call is kept as the model wrote it.
+        expect((await savedCalls(chat.folder)).filter((call) => call.name === "bash")).toEqual([
+          { name: "bash", arguments: { command: run } },
+        ]);
+      },
+      60_000,
+    );
+
+    programTest(
+      `${program.name}: a secret's placeholder goes only into commands: any other tool call that carries one is refused`,
+      async () => {
+        // Known when the chat starts, so omp's own obfuscator would fill it into any tool.
+        const value = "known-at-start-for-files-1122";
+        const chat = await chats.start(command, {
+          config: "secrets:\n  enabled: true\n",
+          agentFiles: {
+            "secrets.yml": YAML.stringify([
+              { type: "plain", content: value, mode: "obfuscate", friendlyName: "FILE_KEY" },
+            ]),
+          },
+        });
+        const hello = await chat.client.hello;
+        expect(hello.features ?? []).toContain("secrets_commands");
+        const placeholder = await placeholderOf(chat.folder, "FILE_KEY");
+
+        const write = { path: "leak.txt", content: `key=${placeholder}\n` };
+        await chat.client.request("prompt", { text: `call_tool write ${JSON.stringify(write)}` });
+        await chat.next(resultOf("1"));
+        // Refused before it ran, and the AI is told why and what to use.
+        expect(await Bun.file(join(chat.folder, "leak.txt")).exists()).toBe(false);
+        expect(lastReply(chat)).toContain("only for commands");
+        expect(lastReply(chat)).toContain("FILE_KEY");
+
+        // A command with the same placeholder writes the file.
+        const run = `printf 'key=%s\\n' '${placeholder}' > key.txt`;
+        await chat.client.request("prompt", {
+          text: `call_tool bash ${JSON.stringify({ command: run })}`,
+        });
+        await chat.next(resultOf("2"));
+        expect(await readFile(join(chat.folder, "key.txt"), "utf8")).toBe(`key=${value}\n`);
       },
       60_000,
     );

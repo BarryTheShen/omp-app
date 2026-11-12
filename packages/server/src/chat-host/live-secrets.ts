@@ -44,15 +44,18 @@ function ompHides(message: AgentMessage): boolean {
   }
 }
 
-function mapStrings(value: unknown, map: (text: string) => string): unknown {
-  if (typeof value === "string") return map(value);
-  if (Array.isArray(value)) return value.map((item) => mapStrings(item, map));
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, mapStrings(item, map)]),
-    );
-  }
-  return value;
+/**
+ * The tools a saved secret's value is filled into: commands, which the person reads in full in the tool card. Any other
+ * tool call that carries a placeholder (a file write, a page fetch, an MCP tool, a to-do, a question) is refused.
+ */
+const COMMANDS: ReadonlySet<string> = new Set(["bash", "eval"]);
+
+/** Visits every string in a tool call's arguments. */
+function eachString(value: unknown, visit: (text: string) => void): void {
+  if (typeof value === "string") visit(value);
+  else if (Array.isArray(value)) for (const item of value) eachString(item, visit);
+  else if (value !== null && typeof value === "object")
+    for (const item of Object.values(value)) eachString(item, visit);
 }
 
 /** Where the chat's omp reads secrets: its agent folder's file and the folder's own `.omp/secrets.yml`. */
@@ -65,14 +68,15 @@ export interface LiveSecretsPlace {
 
 /**
  * Secrets saved while a chat runs. omp reads `secrets.yml` once, when a chat starts (or when Hide Secrets first comes
- * on), and hides secrets from the AI, and fills them back into tool calls, with the obfuscator it built then. This
- * keeps a running chat in step with the file (Settings → Providers → Secrets, `omp-app secret add`, an edit by hand):
- * after each change, a secret omp's obfuscator does not know is hidden in what goes to the AI (`context`, which runs
- * before omp's own hiding), and a tool call with its placeholder gets its value (`tool_call`). What omp knows is left
- * to omp, so those calls are saved with placeholders as before; the session's own obfuscator, which the chat's events
- * show values with, is the one built from the file as it is now. The messages omp's own hiding passes over (`ompHides`)
- * are hidden here with every secret. omp's obfuscator also keeps filling in a secret removed since it was built, so a
- * tool call that would get a removed secret's value is refused before it runs.
+ * on), and hides secrets from the AI, and fills them into a tool call when it runs, with the obfuscator it built then.
+ * This keeps a running chat in step with the file (Settings → Providers → Secrets, `omp-app secret add`, an edit by
+ * hand): omp's own obfuscator is extended (`#extend`) so that it fills in the secrets saved since, when a call runs, and
+ * the call is saved as the model wrote it, placeholders and all; a secret omp's obfuscator does not know is hidden in
+ * what goes to the AI (`context`, which runs before omp's own hiding); the session's own obfuscator, which the chat's
+ * events show values with, is the one built from the file as it is now. The messages omp's own hiding passes over
+ * (`ompHides`) are hidden here with every secret, and each request gets a last look before it leaves. A secret's value
+ * goes only into commands (`COMMANDS`): any other tool call that carries a placeholder is refused before it runs, as is
+ * a call that would get the value of a secret removed since (omp's obfuscator keeps filling those in).
  */
 export class LiveSecrets {
   #session: AgentSession | undefined;
@@ -90,6 +94,8 @@ export class LiveSecrets {
   #saved: ReadonlySet<string> = new Set();
   /** Every value this chat has seen saved, for the last look at each request before it leaves. */
   #plain: SecretObfuscator | undefined;
+  /** omp's own obfuscators this chat has extended (`#extend`), once each. */
+  readonly #extended = new WeakSet<SecretObfuscator>();
   readonly #watchers: FSWatcher[] = [];
   #timer: ReturnType<typeof setTimeout> | undefined;
   #stopListening: (() => void) | undefined;
@@ -109,6 +115,7 @@ export class LiveSecrets {
     this.#place = place;
     this.#omps = session.obfuscator;
     this.#current = session.obfuscator;
+    if (this.#omps !== undefined) this.#extend(this.#omps);
     for (const dir of [place.agentDir, join(place.cwd, ".omp")]) {
       try {
         const watcher = watch(dir, { persistent: false }, (_event, filename) => {
@@ -160,6 +167,7 @@ export class LiveSecrets {
     if (installed === undefined || installed === this.#current || installed === this.#omps)
       return false;
     this.#omps = installed;
+    this.#extend(installed);
     return true;
   }
 
@@ -217,37 +225,56 @@ export class LiveSecrets {
   }
 
   #toolCall(event: ToolCallEvent): ToolCallEventResult | undefined {
-    const current = this.#current;
     this.#followOmp();
-    const omps = this.#omps;
-    if (current === undefined || !this.#hiding()) return undefined;
-    let needed = false;
+    // omp's own obfuscator, extended with the secrets saved since; else the files' one.
+    const fill = this.#omps ?? this.#current;
+    if (fill === undefined || !this.#hiding()) return undefined;
     let removed: string | undefined;
-    const fill = (text: string): string => {
-      if (!text.includes("$$")) return text;
-      const byOmp = omps?.deobfuscate(text) ?? text;
-      const filled = current.deobfuscate(byOmp);
-      if (filled !== byOmp) needed = true;
-      removed ??= this.#removedIn(filled, text);
-      return filled;
-    };
-    const input = mapStrings(event.input, fill) as Record<string, unknown>;
+    let carried: string | undefined;
+    eachString(event.input, (text) => {
+      if (!text.includes("$$")) return;
+      const filled = fill.deobfuscate(text);
+      if (filled === text) return;
+      const secret = this.#filledIn(filled, text);
+      if (secret?.removed === true) removed ??= secret.name;
+      else carried ??= secret?.name ?? "a saved secret";
+    });
     if (removed !== undefined) {
       return {
         block: true,
         reason: `This uses the secret ${removed}, which has been removed from the saved secrets, so it is not filled in. Ask for it to be saved again if it is still needed.`,
       };
     }
-    if (!needed) return undefined;
-    // An edit's hook input is not the input it runs with (omp adds the paths it reads from the patch).
-    if (event.toolName === "edit") {
-      return {
-        block: true,
-        reason:
-          "This edit uses a secret saved after this chat started, and edit cannot fill it in here. Write the file with the write tool or a command, or start a new chat.",
-      };
-    }
-    return { input };
+    // A command runs with the value: omp fills it in when the call runs, so the call is saved with the placeholder.
+    if (carried === undefined || COMMANDS.has(event.toolName)) return undefined;
+    return {
+      block: true,
+      reason: `Saved secrets are filled in only for commands (${[...COMMANDS].join(", ")}), and this ${event.toolName} call holds the placeholder of ${carried}. Put the value where it is needed with a command instead.`,
+    };
+  }
+
+  /**
+   * Extends omp's own obfuscator in place. omp fills a tool call's arguments when the call runs through its public
+   * `hasSecrets` and `deobfuscate` (`deobfuscateToolArguments`), and has no way to take in a secret saved later; those
+   * two are given the secrets of the files as they are now (`#current`), so omp fills a later secret itself, at run
+   * time, and the call is saved as the model wrote it. Once per obfuscator; one omp builds later is extended too.
+   */
+  #extend(omps: SecretObfuscator): void {
+    if (this.#extended.has(omps)) return;
+    this.#extended.add(omps);
+    const ownFill = omps.deobfuscate.bind(omps);
+    const ownHas = omps.hasSecrets.bind(omps);
+    // The files' obfuscator, unless it is this one (before the first rebuild), which would only fill itself again.
+    const later = (): SecretObfuscator | undefined => {
+      const current = this.#current;
+      return current === undefined || current === omps ? undefined : current;
+    };
+    omps.deobfuscate = (text: string): string => {
+      const filled = ownFill(text);
+      const current = later();
+      return current === undefined || !filled.includes("$$") ? filled : current.deobfuscate(filled);
+    };
+    omps.hasSecrets = (): boolean => ownHas() || (later()?.hasSecrets() ?? false);
   }
 
   /** The last look at a request before it leaves, for what omp's own hiding passes over (the system prompt, its
@@ -279,12 +306,21 @@ export class LiveSecrets {
     );
   }
 
-  /** The name of a removed secret whose value filling in put into `filled`, where `written` did not hold it. */
-  #removedIn(filled: string, written: string): string | undefined {
+  /**
+   * The saved secret whose value filling in put into `filled`, where `written` did not hold it, and whether it has been
+   * removed since; a removed one first.
+   */
+  #filledIn(
+    filled: string,
+    written: string,
+  ): { readonly name: string; readonly removed: boolean } | undefined {
+    let found: { readonly name: string; readonly removed: boolean } | undefined;
     for (const [value, name] of this.#seen) {
-      if (!this.#saved.has(value) && filled.includes(value) && !written.includes(value))
-        return name ?? "a saved secret";
+      if (!filled.includes(value) || written.includes(value)) continue;
+      const removed = !this.#saved.has(value);
+      if (removed) return { name: name ?? "a saved secret", removed };
+      found ??= { name: name ?? "a saved secret", removed };
     }
-    return undefined;
+    return found;
   }
 }

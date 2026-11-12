@@ -80,7 +80,9 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * a secret saved while the chat runs (`secrets.yml`) is hidden from its AI at once, and its tool calls get its value.
  * `secrets_every_message`: every saved secret is hidden in every message the AI is sent, the agent's own notes too (a
  * finished background job's, a summary), which omp's own hiding passes over. `secrets_removed`: a tool call that would
- * get the value of a secret removed while the chat runs is refused before it runs.
+ * get the value of a secret removed while the chat runs is refused before it runs. `secrets_commands`: a secret's value
+ * is filled only into commands (bash, eval); any other tool call that carries a placeholder is refused. `secrets_in_place`:
+ * the chat's own omp fills in a secret saved while it runs, when the call runs, so the call is saved with the placeholder.
  */
 export const CHAT_HOST_FEATURES = [
   "message_host",
@@ -90,6 +92,8 @@ export const CHAT_HOST_FEATURES = [
   "secrets_live",
   "secrets_every_message",
   "secrets_removed",
+  "secrets_commands",
+  "secrets_in_place",
 ] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */

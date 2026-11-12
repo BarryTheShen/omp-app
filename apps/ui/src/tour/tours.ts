@@ -956,6 +956,23 @@ const SECRETS_GUARD_TOUR: Tour = {
   ],
 };
 
+/** A secret goes only into commands, and a running chat takes a new one in with no restart (2026-11-11). */
+const SECRETS_COMMANDS_TOUR: Tour = {
+  id: "secrets-commands-2026-11-11",
+  title: "Secrets go only into commands",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    PLUS_STEP,
+    {
+      target: part("add-secret"),
+      title: "Only commands get a secret",
+      text: "A saved secret is filled in only for commands (bash, eval), whose text you read in full in the card. Any other tool the AI calls with a secret's placeholder, such as writing a file, fetching a page or an MCP tool, is refused, so a secret cannot slip into a web request or a file unseen. A secret you save while a chat runs works in it at once, with no restart, and the chat keeps the command with the placeholder.",
+      action: next,
+    },
+  ],
+};
+
 /** On an iPhone or an iPad, a swipe up stops at the top of what is loaded (2026-11-11). */
 const SWIPE_STOPS_TOUR: Tour = {
   id: "swipe-stops-2026-11-11",
@@ -2929,6 +2946,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-secrets-commands",
+    when: "2026-11-11T20:23:00-06:00",
+    summary:
+      "Secrets go only into commands: a saved secret is filled in for bash and eval, and any other tool call that carries a secret's placeholder (a file write, a page fetch, an MCP tool, a to-do, a question) is refused. A secret saved while a chat runs is filled in by the chat's own omp when the command runs, with no restart, and the chat keeps the command with the placeholder.",
+    tours: [SECRETS_COMMANDS_TOUR],
+  },
   {
     id: "2026-11-11-questions-enter",
     when: "2026-11-11T19:38:00-06:00",
