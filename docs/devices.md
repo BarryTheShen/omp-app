@@ -105,6 +105,7 @@ Open the address on the new device. It shows **Pair this device** and a field, "
 - Five wrong entries end it. The new device says "That code is not right" with the tries left, and then "That code no longer works".
 - **New code** (or running `omp-app pair` again) makes a new code, and the old one stops working.
 - The address shown with the code is the one `OMP_APP_REMOTE_ORIGIN` names. Without that variable it is this computer's own address, `http://127.0.0.1:<port>`, which no other device can open.
+- A code in an address (`#pair=`, what the QR code opens) is used only by a page of its own: a page inside another app's frame ignores it, so no frame can use up a code with wrong tries.
 
 A paired device keeps its key in a cookie that only the app's own pages send. The app keeps only a hash of each key. A panel inside another app (an extension's, an editor's) gets no cookie of the app, so its host keeps the key instead and hands it back at each start; see [Integrations](integrations.md#how-does-a-panel-sign-in). Browser extensions and VS Code may always show the app in a panel, with nothing to turn on: each pairs once like any other device, and pairing is what keeps an unpaired panel out.
 

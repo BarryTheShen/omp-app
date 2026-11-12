@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { notifyDesktop } from "../desktop/bridge";
 import { DEVICE_KIND_WORDS } from "./device-name";
+import { panelWarning } from "./framed-by";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -72,6 +73,7 @@ export function RequestPrompt({ client }: { readonly client: AppClient }): React
   }, [requests]);
 
   const request = requests.find((each) => !putAway.has(each.id));
+  const warning = request === undefined ? null : panelWarning(request);
   const answer = (allow: boolean): void => {
     if (request === undefined) return;
     setPending(true);
@@ -100,6 +102,7 @@ export function RequestPrompt({ client }: { readonly client: AppClient }): React
         <p className="text-center text-3xl font-medium tracking-wider text-t1 tabular-nums">
           {request === undefined ? "" : `${request.code.slice(0, 3)} ${request.code.slice(3)}`}
         </p>
+        {warning !== null && <p className="text-sm font-medium text-t1">{warning}</p>}
         {problem !== null && (
           <p role="alert" className="text-sm text-bad-ink">
             {problem}

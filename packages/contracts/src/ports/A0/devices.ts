@@ -18,6 +18,18 @@ export type DeviceKind = z.infer<typeof DeviceKind>;
 export const DeviceName = z.string().trim().min(1).max(60);
 export type DeviceName = z.infer<typeof DeviceName>;
 
+/**
+ * The origin of the page that frames a pairing page: another app's panel (a browser extension's, VS Code's webview, a
+ * site's frame) in which the page runs, when the page could learn it. A device that paired from a panel holds its key
+ * for that app, so whoever allows it is told which app the panel is inside. A pairing page in a frame says `framed`
+ * always, and `framedBy` when it knows the origin: a frame whose app does not say who it is still shows as a panel.
+ */
+export const FramedBy = z
+  .string()
+  .max(200)
+  .regex(/^(moz-extension|chrome-extension|vscode-webview|vscode-file|https?):\/\/[^\s/]+$/);
+export type FramedBy = z.infer<typeof FramedBy>;
+
 /** The cookie that carries a paired device's key: set by the server, never readable by the page (HttpOnly). */
 export const DEVICE_COOKIE = "omp-app-device";
 
@@ -71,6 +83,10 @@ export const PairedDevice = z
     pairedAt: z.string(),
     /** ISO time it last connected; null before its first connection. */
     lastSeenAt: z.string().nullable(),
+    /** It paired from a panel inside another app; absent when it paired as a page of its own (or before this was kept). */
+    framed: z.boolean().optional(),
+    /** The app whose panel it paired from, when that was known. */
+    framedBy: FramedBy.optional(),
   })
   .strict();
 export type PairedDevice = z.infer<typeof PairedDevice>;
@@ -85,6 +101,12 @@ export const PairingRequest = z
     code: z.string().regex(/^\d{6}$/),
     requestedAt: z.string(),
     expiresAt: z.string(),
+    /** The device asks from a panel inside another app; absent when it asks as a page of its own. */
+    framed: z.boolean().optional(),
+    /** The app whose panel is asking, when that is known. */
+    framedBy: FramedBy.optional(),
+    /** With `framedBy`: the name of a device that paired from the same app before, else null. */
+    framedBefore: z.string().nullable().optional(),
   })
   .strict();
 export type PairingRequest = z.infer<typeof PairingRequest>;
@@ -156,7 +178,14 @@ export const PAIRING_PATHS = {
   machine: "/pair/machine",
 } as const;
 
-export const PairingAsk = z.object({ name: DeviceName, kind: DeviceKind }).strict();
+export const PairingAsk = z
+  .object({
+    name: DeviceName,
+    kind: DeviceKind,
+    framed: z.boolean().optional(),
+    framedBy: FramedBy.optional(),
+  })
+  .strict();
 export type PairingAsk = z.infer<typeof PairingAsk>;
 
 export const PairingAsked = z
@@ -206,6 +235,8 @@ export const PairingCodeEntry = z
     name: DeviceName,
     kind: DeviceKind,
     keep: KeepWithHost.optional(),
+    framed: z.boolean().optional(),
+    framedBy: FramedBy.optional(),
   })
   .strict();
 export type PairingCodeEntry = z.infer<typeof PairingCodeEntry>;

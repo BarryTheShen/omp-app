@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** A pairing request from a panel inside another app says so, and which app (2026-11-12). */
+const PAIRING_ORIGIN_TOUR: Tour = {
+  id: "pairing-origin-2026-11-12",
+  title: "Panels say which app they are inside",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Panels say which app they are inside",
+      text: "When a panel inside another app (a browser extension, VS Code) asks to pair, the prompt now says <b>In a panel inside</b> that app and that the panel will hold the device's key, and whether that app paired before and as which device. Settings → App → Devices shows the same under a request and under a device that paired from a panel. A one-time code in an address (<b>#pair=</b>, what a QR code opens) is used only by a page of its own, never inside another app's frame.",
+      action: next,
+    },
+  ],
+};
+
 /** A device that pairs is named for what it is and the computer it is on (2026-11-12). */
 const DEVICE_NAMES_TOUR: Tour = {
   id: "device-names-2026-11-12",
@@ -2972,6 +2988,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-pairing-origin",
+    when: "2026-11-12T06:00:00-06:00",
+    summary:
+      "A pairing request from a panel inside another app (a browser extension, VS Code) says so when you are asked to allow it: which app the panel is inside, and whether that app paired before, since an allowed panel keeps its own key. A one-time code in an address works only in a page of its own, not inside another app's frame.",
+    tours: [PAIRING_ORIGIN_TOUR],
+  },
   {
     id: "2026-11-12-device-names",
     when: "2026-11-12T03:11:00-06:00",

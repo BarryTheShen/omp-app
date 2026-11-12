@@ -16,6 +16,7 @@ import {
   type PairingAsked,
   type PairingRequest,
 } from "@omp-app/contracts";
+import type { Framing } from "./framing";
 
 /** At most this many requests wait at once; more are refused until one ends. */
 export const WAITING_REQUESTS_MAX = 5;
@@ -27,6 +28,8 @@ interface Ask {
   readonly secret: string;
   readonly name: string;
   readonly kind: DeviceKind;
+  /** Whether the asking page runs in a panel inside another app, and which. */
+  readonly framing: Framing;
   readonly code: string;
   readonly requestedAt: number;
   readonly expiresAt: number;
@@ -42,7 +45,12 @@ interface OneTimeCode {
 
 export type ClaimResult =
   | { readonly status: "waiting" }
-  | { readonly status: "allowed"; readonly name: string; readonly kind: DeviceKind }
+  | {
+      readonly status: "allowed";
+      readonly name: string;
+      readonly kind: DeviceKind;
+      readonly framing: Framing;
+    }
   | { readonly status: "denied" }
   | { readonly status: "expired" };
 
@@ -54,6 +62,8 @@ export type CodeResult =
 export interface PairingDeskOptions {
   readonly now?: () => number;
   readonly randomBytes?: (count: number) => Uint8Array;
+  /** The name of a device that paired from the app at an origin before; null when none did. */
+  readonly framedBefore?: (framedBy: string) => string | null;
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -68,16 +78,18 @@ export class PairingDesk {
   readonly #listeners = new Set<() => void>();
   readonly #now: () => number;
   readonly #randomBytes: (count: number) => Uint8Array;
+  readonly #framedBefore: (framedBy: string) => string | null;
   #code: OneTimeCode | undefined;
 
   constructor(options: PairingDeskOptions = {}) {
     this.#now = options.now ?? Date.now;
+    this.#framedBefore = options.framedBefore ?? (() => null);
     this.#randomBytes =
       options.randomBytes ?? ((count) => crypto.getRandomValues(new Uint8Array(count)));
   }
 
-  /** A device asks to pair; "busy" while as many requests wait as are allowed. */
-  ask(name: string, kind: DeviceKind): PairingAsked | "busy" {
+  /** A device asks to pair, from a panel inside another app when `framing` says so; "busy" while as many requests wait as are allowed. */
+  ask(name: string, kind: DeviceKind, framing: Framing = {}): PairingAsked | "busy" {
     this.#prune();
     if (this.waiting().length >= WAITING_REQUESTS_MAX) return "busy";
     const now = this.#now();
@@ -87,6 +99,7 @@ export class PairingDesk {
       secret: Buffer.from(this.#randomBytes(32)).toString("base64url"),
       name,
       kind,
+      framing,
       code: String(digits).padStart(6, "0"),
       requestedAt: now,
       expiresAt: now + PAIRING_REQUEST_MS,
@@ -114,7 +127,7 @@ export class PairingDesk {
     if (ask.state === "waiting") return { status: "waiting" };
     this.#end(ask);
     return ask.state === "allowed"
-      ? { status: "allowed", name: ask.name, kind: ask.kind }
+      ? { status: "allowed", name: ask.name, kind: ask.kind, framing: ask.framing }
       : { status: "denied" };
   }
 
@@ -141,6 +154,11 @@ export class PairingDesk {
         code: ask.code,
         requestedAt: new Date(ask.requestedAt).toISOString(),
         expiresAt: new Date(ask.expiresAt).toISOString(),
+        ...ask.framing,
+        // Known only for an app whose origin is known: an app that did not say who it is matches none.
+        ...(ask.framing.framedBy === undefined
+          ? {}
+          : { framedBefore: this.#framedBefore(ask.framing.framedBy) }),
       }));
   }
 

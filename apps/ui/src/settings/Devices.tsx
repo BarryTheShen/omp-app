@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEVICE_KIND_WORDS } from "../pairing/device-name";
+import { panelInside, panelWarning } from "../pairing/framed-by";
 import { Qr } from "../pairing/Qr";
 import { relTime } from "../vendor/collab-web/lib/format";
 
@@ -105,12 +106,17 @@ export function Devices({ client }: { readonly client: AppClient }): ReactNode {
                   key={request.id}
                   className="flex flex-wrap items-center gap-3 border-b border-l1 py-3 text-sm"
                 >
-                  <span className="min-w-0 flex-1 text-t1">
-                    {request.name} asks to pair, showing{" "}
-                    <span className="font-medium tabular-nums">
-                      {request.code.slice(0, 3)} {request.code.slice(3)}
+                  <div className="min-w-0 flex-1">
+                    <span className="text-t1">
+                      {request.name} asks to pair, showing{" "}
+                      <span className="font-medium tabular-nums">
+                        {request.code.slice(0, 3)} {request.code.slice(3)}
+                      </span>
                     </span>
-                  </span>
+                    {panelWarning(request) !== null && (
+                      <p className="mt-0.5 text-xs text-t2">{panelWarning(request)}</p>
+                    )}
+                  </div>
                   <Button
                     size="sm"
                     variant="outline"
@@ -224,6 +230,9 @@ function DeviceRow({
             {DEVICE_KIND_WORDS[device.kind]} · Paired {day.format(Date.parse(device.pairedAt))} ·{" "}
             {seen}
           </p>
+          {panelInside(device) !== null && (
+            <p className="mt-0.5 text-xs text-t3">In a panel inside {panelInside(device)}</p>
+          )}
         </div>
       ) : (
         <form onSubmit={save} className="flex min-w-0 flex-1 items-center gap-2">

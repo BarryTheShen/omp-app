@@ -18,6 +18,7 @@ import {
 import { z } from "zod";
 import type { Logger } from "../logging";
 import { deviceCookie } from "./cookie";
+import { type Framing, framingOf } from "./framing";
 import type { DevicePairing } from "./index";
 import type { MachineNamer } from "./machine";
 
@@ -89,9 +90,10 @@ export async function pairingRoute(
     name: string,
     kind: PairingAsk["kind"],
     via: string,
+    framing: Framing,
   ): Promise<{ deviceId: string; cookie: string; key: string } | Response> => {
     try {
-      const { device, key } = await store.add(name, kind);
+      const { device, key } = await store.add(name, kind, framing);
       options.logger?.info("device.paired", { via, kind, device: device.id.slice(0, 8) });
       return { deviceId: device.id, cookie: deviceCookie(key, options.overHttps(request)), key };
     } catch {
@@ -109,7 +111,7 @@ export async function pairingRoute(
       if (url.pathname === PAIRING_PATHS.ask) {
         const ask = await bodyOf(request, PairingAsk);
         if (ask instanceof Response) return ask;
-        const asked = desk.ask(ask.name, ask.kind);
+        const asked = desk.ask(ask.name, ask.kind, framingOf(ask));
         if (asked === "busy")
           return refused(429, "Too many devices are asking to pair. Try again in a few minutes.");
         options.logger?.info("device.pairing_asked", { kind: ask.kind });
@@ -120,7 +122,7 @@ export async function pairingRoute(
         if (claim instanceof Response) return claim;
         const result = desk.claim(claim.requestId);
         if (result.status !== "allowed") return json(200, result satisfies PairingClaimed);
-        const paired = await pair(result.name, result.kind, "allow");
+        const paired = await pair(result.name, result.kind, "allow", result.framing);
         if (paired instanceof Response) return paired;
         // A panel in another app's frame gets its key to hand to that app (`keep: "host"`).
         const kept = claim.keep === "host" ? { key: paired.key } : {};
@@ -138,7 +140,7 @@ export async function pairingRoute(
         return json(200, result satisfies PairingCodeEntered);
       }
       if (result.status === "expired") return json(200, result satisfies PairingCodeEntered);
-      const paired = await pair(entry.name, entry.kind, "code");
+      const paired = await pair(entry.name, entry.kind, "code", framingOf(entry));
       if (paired instanceof Response) return paired;
       const kept = entry.keep === "host" ? { key: paired.key } : {};
       return json(
