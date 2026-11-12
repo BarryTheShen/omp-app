@@ -191,8 +191,14 @@ realTest.describe("new UI lite view in another site's panel, its key kept by its
         const prompt = owner.getByRole("alertdialog", { name: "A device wants to pair" });
         const inside = `In a panel inside localhost:${port}. It will hold this device's key.`;
 
-        // The first request from this app: the prompt names the app, and says it has not paired before.
+        // The page in the frame says which app it is inside before anything is asked; the first request from this app:
+        // the prompt names the app, and says it has not paired before.
         await expect(asking).toBeVisible({ timeout: 60_000 });
+        await expect(
+          panel.getByText(
+            `This page is a panel inside localhost:${port}: pairing gives that app this device's key.`,
+          ),
+        ).toBeVisible();
         await asking.click();
         await expect(prompt).toContainText(`${inside} This app has not paired before.`);
         await prompt.getByRole("button", { name: "Allow" }).click();

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { embed, useEmbed } from "../lite/embed";
 import { guessThisDevice } from "./device-name";
-import { frameOfThisPage } from "./framed-by";
+import { frameOfThisPage, pairingInsideNotice } from "./framed-by";
 import { askMachine, askToPair, claimPairing, enterPairingCode } from "./pairing-api";
 
 /** How often the screen asks whether its request was answered. */
@@ -45,7 +45,9 @@ export function PairingScreen({
   /** The one-time code of the QR code this page was opened from, taken out of its address. */
   readonly scannedCode: string | null;
 }): ReactNode {
-  const { host } = useEmbed();
+  const { host, origin } = useEmbed();
+  // In another app's frame, the page says which app it is inside before anything is asked or typed.
+  const inside = pairingInsideNotice(window.parent !== window, origin);
   // The computer's name comes from the app a moment after the page opens (`askMachine`).
   const [machine, setMachine] = useState<string | null>(null);
   const [machineAsked, setMachineAsked] = useState(false);
@@ -198,6 +200,7 @@ export function PairingScreen({
             This device opens the app once it is paired: allow it on a device that is already
             paired, or enter a one-time code.
           </p>
+          {inside !== null && <p className="text-sm font-medium text-t1">{inside}</p>}
         </div>
 
         {mode === "ask" ? (

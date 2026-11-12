@@ -80,3 +80,14 @@ export function panelWarning(request: Framed): string | null {
     ? `${held} This app has not paired before.`
     : `${held} The same app paired before as ${request.framedBefore}.`;
 }
+
+/**
+ * What a pairing page in a frame tells the person on it before they ask or type a code: the app it is inside, and that
+ * pairing gives that app the device's key. Null for a page of its own.
+ */
+export function pairingInsideNotice(framed: boolean, origin: string | null): string | null {
+  if (!framed) return null;
+  const framedBy = framedByOf(origin, window.location.ancestorOrigins?.[0]);
+  const inside = panelInside(framedBy === null ? { framed: true } : { framed: true, framedBy });
+  return `This page is a panel inside ${inside}: pairing gives that app this device's key.`;
+}

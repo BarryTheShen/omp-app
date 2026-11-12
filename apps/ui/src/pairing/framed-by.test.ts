@@ -73,6 +73,9 @@ describe("the origin of a frame", () => {
       framedByOf("null", "file:///index.html", "https://a/b", `https://${"a".repeat(200)}`),
     ).toBeNull();
     expect(framedByOf()).toBeNull();
+    // Only what an origin's host holds: letters, digits, dots, dashes, a port, an IPv6 address.
+    expect(framedByOf("http://[::1]:8443")).toBe("http://[::1]:8443");
+    expect(framedByOf("https://Allow,it:it'is_safe")).toBeNull();
   });
 });
 

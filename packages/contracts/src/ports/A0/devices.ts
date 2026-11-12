@@ -27,7 +27,9 @@ export type DeviceName = z.infer<typeof DeviceName>;
 export const FramedBy = z
   .string()
   .max(200)
-  .regex(/^(moz-extension|chrome-extension|vscode-webview|vscode-file|https?):\/\/[^\s/]+$/);
+  .regex(
+    /^(moz-extension|chrome-extension|vscode-webview|vscode-file|https?):\/\/[A-Za-z0-9.:[\]-]+$/,
+  );
 export type FramedBy = z.infer<typeof FramedBy>;
 
 /** The cookie that carries a paired device's key: set by the server, never readable by the page (HttpOnly). */

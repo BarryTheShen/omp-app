@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** The pairing page in a panel says which app it is inside (2026-11-12). */
+const PAIRING_NOTICE_TOUR: Tour = {
+  id: "pairing-notice-2026-11-12",
+  title: "The pairing page names the app around it",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "The pairing page names the app around it",
+      text: "The pairing page inside another app's panel (a browser extension, VS Code) now says which app it is inside and that pairing gives that app this device's key, before you ask or type a code. The notification of a pairing request says the same as the prompt.",
+      action: next,
+    },
+  ],
+};
+
 /** Settings, the dashboard and the palette open at once (2026-11-12). */
 const OPENS_AT_ONCE_TOUR: Tour = {
   id: "opens-at-once-2026-11-12",
@@ -3036,6 +3052,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-pairing-notice",
+    when: "2026-11-12T04:10:00-06:00",
+    summary:
+      "The pairing page inside another app's panel says which app it is inside, and that pairing gives that app this device's key, before you ask or type a one-time code; the notification of a pairing request says so too.",
+    tours: [PAIRING_NOTICE_TOUR],
+  },
   {
     id: "2026-11-12-opens-at-once",
     when: "2026-11-12T03:41:00-06:00",

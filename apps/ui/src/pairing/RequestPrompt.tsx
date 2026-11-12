@@ -67,8 +67,13 @@ export function RequestPrompt({ client }: { readonly client: AppClient }): React
     for (const request of requests) {
       if (told.current.has(request.id)) continue;
       told.current.add(request.id);
-      if (!document.hasFocus())
-        notifyDesktop("A device wants to pair", `${request.name} shows ${request.code}`);
+      if (!document.hasFocus()) {
+        const notice = panelWarning(request);
+        notifyDesktop(
+          "A device wants to pair",
+          `${request.name} shows ${request.code}${notice === null ? "" : `. ${notice}`}`,
+        );
+      }
     }
   }, [requests]);
 
