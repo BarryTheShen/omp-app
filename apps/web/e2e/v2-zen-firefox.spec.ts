@@ -83,7 +83,6 @@ realTest.describe("new UI: the Firefox and Zen extension in a real Firefox", () 
     "needs Firefox and geckodriver (OMP_APP_FIREFOX, as the build server's test image has them)",
   );
   realTest.setTimeout(300_000);
-  realTest.use({ serverEnv: { OMP_APP_FRAME_ANCESTORS: "moz-extension:" } });
 
   realTest(
     "it pairs once, reads and clicks its own tab, acts on a tab it opened, and is refused any other tab",

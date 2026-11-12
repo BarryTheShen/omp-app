@@ -5,9 +5,8 @@ import type { Browser, Page } from "@playwright/test";
 import { APP_ROOT, expect, realTest } from "./real-omp";
 
 /**
- * The lite view in another app's panel (Integrations, part 1): which pages may frame it is a setting (Settings → App →
- * Integrations), counted from the panel's next load; and a panel in another site's frame, where the browser keeps no
- * cookie of the app, pairs once and is signed in after that with the key its host keeps.
+ * The lite view in another site's panel, where the browser keeps no cookie of the app: the panel pairs once and is
+ * signed in after that with the key its host keeps.
  */
 const ready = /^(Fake Model|Message omp)/;
 
@@ -16,37 +15,6 @@ async function stop(server: Server): Promise<void> {
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 }
-
-/** A host page on its own port, at `localhost`: another site than the app's `127.0.0.1`. */
-async function hostServer(
-  page: (app: string) => string,
-  app: string,
-): Promise<{ origin: string; server: Server }> {
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { "Content-Type": "text/html" });
-    response.end(page(app));
-  });
-  const port = await new Promise<number>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      resolve(typeof address === "object" && address !== null ? address.port : 0);
-    });
-  });
-  return { origin: `http://localhost:${port}`, server };
-}
-
-/** Frames the lite view with the launch link, and notes whether the panel spoke (it does as soon as it loads). */
-const linkedHost = (token: string) => (app: string) =>
-  `<!doctype html><title>host</title>
-<iframe title="omp" style="width:420px;height:760px;border:0" src="${app}/lite#token=${encodeURIComponent(token)}"></iframe>
-<script>
-window.listening = false;
-const frame = document.querySelector("iframe");
-window.addEventListener("message", (event) => {
-  if (event.origin === ${JSON.stringify(app)} && event.source === frame.contentWindow && event.data?.type === "listening") window.listening = true;
-});
-</script>`;
 
 /** `@omp-app/embed` as a host loads it: one module, built from the source. */
 function embedLibrary(): string {
@@ -103,93 +71,12 @@ openPanel({
 });
 </script>`;
 
-const listening = (host: Page): Promise<boolean> =>
-  host.evaluate(() => (window as unknown as { listening: boolean }).listening);
-
-async function frameRule(app: string): Promise<string> {
-  const response = await fetch(`${app}/lite`);
-  return response.headers.get("content-security-policy") ?? "";
-}
-
-async function openIntegrations(page: Page) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const section = page.getByRole("region", { name: "Integrations" });
-  await expect(section.getByRole("list", { name: "Kinds of panel" })).toBeVisible({
-    timeout: 30_000,
-  });
-  return section;
-}
-
 async function hostPage(browser: Browser, origin: string): Promise<Page> {
   const context = await browser.newContext();
   const host = await context.newPage();
   await host.goto(`${origin}/doc`);
   return host;
 }
-
-realTest.describe("new UI lite view in another app's panel", () => {
-  realTest.setTimeout(240_000);
-
-  realTest(
-    "who may frame it is a setting: a page not named cannot; named, it can from its next load; taken off, it cannot again; no page of the internet",
-    async ({ realApp, browser }) => {
-      const owner = await realApp.open({ path: "/" });
-      const app = new URL(owner.url()).origin;
-      const { origin, server } = await hostServer(linkedHost(realApp.token), app);
-      try {
-        // Not named: the lite view may not be framed, and the panel never speaks.
-        expect(await frameRule(app)).not.toContain(origin);
-        const host = await hostPage(browser, origin);
-        await host.waitForTimeout(3_000);
-        expect(await listening(host)).toBe(false);
-
-        // Named in Settings: the next load shows the panel, with no restart.
-        const section = await openIntegrations(owner);
-        await section.getByLabel("Another page's address").fill(`${origin}/`);
-        await section.getByRole("button", { name: "Add", exact: true }).click();
-        await expect(section.getByRole("list", { name: "Pages that may show it" })).toContainText(
-          origin,
-        );
-        expect(await frameRule(app)).toContain(`frame-ancestors ${origin}`);
-        await host.reload();
-        const panel = host.frameLocator('iframe[title="omp"]');
-        await expect(panel.getByRole("textbox", { name: "Message" })).toHaveAttribute(
-          "placeholder",
-          ready,
-          { timeout: 120_000 },
-        );
-        expect(await listening(host)).toBe(true);
-
-        // A page on another computer over plain HTTP is refused, and the list stays as it was.
-        await section.getByLabel("Another page's address").fill("http://example.com");
-        await section.getByRole("button", { name: "Add", exact: true }).click();
-        await expect(section.getByRole("alert")).toContainText(
-          '"http://example.com" is not one of these',
-        );
-        expect(await frameRule(app)).not.toContain("example.com");
-
-        // A kind of panel: every Firefox and Zen extension.
-        await section.getByRole("switch", { name: "Firefox and Zen extensions" }).click();
-        await expect(
-          section.getByRole("switch", { name: "Firefox and Zen extensions" }),
-        ).toBeChecked();
-        expect(await frameRule(app)).toContain("moz-extension:");
-
-        // Taken off: the next load is refused again.
-        await section.getByRole("button", { name: `Remove ${origin}` }).click();
-        await expect(section.getByRole("button", { name: `Remove ${origin}` })).toHaveCount(0);
-        expect(await frameRule(app)).not.toContain(origin);
-        await host.reload();
-        await host.waitForTimeout(3_000);
-        expect(await listening(host)).toBe(false);
-        await host.context().close();
-      } finally {
-        await stop(server);
-      }
-      expect(realApp.problems).toEqual([]);
-    },
-  );
-});
 
 realTest.describe("new UI lite view in another site's panel, its key kept by its host", () => {
   realTest.setTimeout(240_000);

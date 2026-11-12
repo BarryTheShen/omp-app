@@ -7,11 +7,8 @@ import {
   type ClientErrorReport,
   type ClientTraceReport,
   type DebugReport,
-  type Embedders,
-  type SetEmbeddersArgs,
   UsableModels,
 } from "@omp-app/contracts";
-import { EmbedderRefused } from "../../embedders";
 import { truncate } from "../../logging";
 import { fileWatchMessage } from "../../modules/A1/fs/file-watch-registry";
 import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
@@ -49,34 +46,6 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
         AppHealth.parse(currentHealth(context)),
       usableModels: async (_args: unknown, _call: PortHandlerContext) =>
         UsableModels.parse({ models: [...((await context.usableModels?.()) ?? [])] }),
-      embedders: (_args: unknown, _call: PortHandlerContext): Embedders => ({
-        fixed: [...(context.embedders?.fixed ?? [])],
-        saved: [...(context.embedders?.store.list() ?? [])],
-      }),
-      setEmbedders: async (args: unknown, _call: PortHandlerContext): Promise<Embedders> => {
-        const embedders = context.embedders;
-        if (embedders === undefined) {
-          throw new AppFailure({
-            code: "unavailable",
-            message: "This run of the app keeps no settings for which pages may show it.",
-            retryable: false,
-          });
-        }
-        try {
-          const saved = await embedders.store.set((args as SetEmbeddersArgs).sources);
-          context.logger?.info("embedders.saved", { count: saved.length });
-          return { fixed: [...embedders.fixed], saved: [...saved] };
-        } catch (error) {
-          if (error instanceof EmbedderRefused) {
-            throw new AppFailure({
-              code: "invalid_args",
-              message: error.message,
-              retryable: false,
-            });
-          }
-          throw error;
-        }
-      },
       reportClientError: (args: unknown, _call: PortHandlerContext): null => {
         const report = args as ClientErrorReport;
         const now = Date.now();

@@ -167,7 +167,6 @@ interface NoteButton {
 const SET: NoteButton = { label: "Set the address", ask: "settings" };
 const ADDRESS_FIRST =
   "Give omp app's address to show its chat here: the address you open it at in a browser.";
-const TURN_ON = "In omp app, also turn on <b>Settings → App → Integrations → VS Code</b>.";
 
 /** A page that says something in place of the chat, each paragraph HTML, with its buttons. */
 function notePage(
@@ -280,7 +279,7 @@ export class ChatPanel implements vscode.Disposable {
     this.#app = null;
     if ("problem" in checked) {
       const said = typed === "" ? ADDRESS_FIRST : escapeHtml(checked.problem);
-      this.#webview.html = notePage(nonce, [said, TURN_ON], [SET]);
+      this.#webview.html = notePage(nonce, [said], [SET]);
       return;
     }
     const app = checked.address;

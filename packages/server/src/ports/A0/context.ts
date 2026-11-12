@@ -86,17 +86,6 @@ export interface A0PortContext {
   /** Lists the models omp can use now (`omp models --json`), for the picker that opens a chat omp cannot restore. */
   readonly usableModels?: () => Promise<readonly UsableModel[]>;
   /**
-   * Who may frame the lite view: the pages named when the app started (`OMP_APP_FRAME_ANCESTORS`) and those saved in
-   * Settings → App → Integrations (`embedders.ts`). Absent: the page reads none and cannot save any.
-   */
-  readonly embedders?: {
-    readonly fixed: readonly string[];
-    readonly store: {
-      list(): readonly string[];
-      set(sources: readonly string[]): Promise<readonly string[]>;
-    };
-  };
-  /**
    * Where the app keeps the chats it continues itself after a usage limit (#2781; `<app data>/usage-resume.json`).
    * Absent: continuing is left to omp's own retry.
    */

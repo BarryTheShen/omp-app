@@ -43,7 +43,7 @@ export async function whyNotShown(app: string, signal?: AbortSignal): Promise<No
     const reason = cause instanceof Error ? cause.message : String(cause);
     return {
       kind: "unreachable",
-      text: `omp app can't be reached at ${app} (${reason}). Check the address, that this computer can reach that server, and that Settings → App → Integrations → VS Code is on in omp app.`,
+      text: `omp app can't be reached at ${app} (${reason}). Check the address, and that this computer can reach that server.`,
     };
   }
   await response.body?.cancel().catch(() => undefined);
@@ -55,7 +55,7 @@ export async function whyNotShown(app: string, signal?: AbortSignal): Promise<No
   if (!framesVsCode(response.headers.get("content-security-policy")))
     return {
       kind: "not-allowed",
-      text: `omp app at ${app} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`,
+      text: `omp app at ${app} doesn't let VS Code show it: it is older than this extension. Update omp app, then click Try again.`,
     };
   return null;
 }

@@ -49,8 +49,7 @@ function askForAddress(): void {
   const form = element("form", {}, [
     element("h1", { textContent: "omp app" }),
     element("p", {
-      textContent:
-        "Where is omp app? Its address, as you open it in a browser. In omp app, also turn on Settings → App → Integrations → Firefox and Zen extensions.",
+      textContent: "Where is omp app? Its address, as you open it in a browser.",
     }),
     field,
     element("button", { type: "submit", textContent: "Save" }),

@@ -96,7 +96,7 @@
         "ompApp.address": {
           "type": "string",
           "default": "",
-          "markdownDescription": "omp app's address, as you open it in a browser: an HTTPS address such as `https://omp.example.com`, or `http://127.0.0.1` with its port when the app runs on this computer. In omp app, also turn on **Settings → App → Integrations → VS Code**."
+          "markdownDescription": "omp app's address, as you open it in a browser: an HTTPS address such as `https://omp.example.com`, or `http://127.0.0.1` with its port when the app runs on this computer."
         },
         "ompApp.reviewEdits": {
           "type": "boolean",

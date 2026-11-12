@@ -32,7 +32,7 @@ describe("whyNotShown", () => {
     expect(await whyNotShown(await app(200))).toBeNull();
   });
 
-  test("an app that does not let VS Code frame it: what to turn on in the app", async () => {
+  test("an app that does not let VS Code frame it is older than the extension: it says to update omp app", async () => {
     for (const policy of [
       "frame-ancestors https://notes.example.com",
       "frame-ancestors 'none'",
@@ -41,7 +41,7 @@ describe("whyNotShown", () => {
       const address = await app(200, { "content-security-policy": policy });
       expect(await whyNotShown(address)).toEqual({
         kind: "not-allowed",
-        text: `omp app at ${address} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`,
+        text: `omp app at ${address} doesn't let VS Code show it: it is older than this extension. Update omp app, then click Try again.`,
       });
     }
   });

@@ -15,8 +15,8 @@ import { REVIEW_SCHEME, Reviews } from "../src/review";
 import { WorkspaceTools } from "../src/workspace";
 
 /**
- * omp app's lite view as a stand-in: the frame rule the app sends when VS Code's switch is on (Settings → App →
- * Integrations), and the protocol's steps: it listens, hands over a key, says which chat it shows, and calls a tool.
+ * omp app's lite view as a stand-in: the frame rule the app sends for VS Code's panel, and the protocol's steps: it
+ * listens, hands over a key, says which chat it shows, and calls a tool.
  * What the panel sends back it posts to `/seen`.
  */
 const STAND_IN = `<!doctype html><script>
