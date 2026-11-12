@@ -149,7 +149,17 @@ export type EmbedAppBody =
   /** Open this address outside the panel: the app's own page, or the desktop app's `omp-app://` link. */
   | { readonly type: "open"; readonly url: string }
   /** Put this text in the clipboard: the browser's clipboard refused the view; the host answers `copied`. */
-  | { readonly type: "copy"; readonly id: string; readonly text: string };
+  | { readonly type: "copy"; readonly id: string; readonly text: string }
+  /**
+   * A reply runs in the chat shown (`working`), including while omp runs it again by itself (a retry, its queued
+   * message), or none does any more. `sent`: the person's message in the view (Retry too), sent while no reply ran,
+   * began it; left out for a reply begun any other way (another device, a queued task, Resume, answers, a plan's
+   * approval, the app's continue after a usage limit, one already running when the view loaded); a message sent into a
+   * running reply sends nothing. A host whose tools act on what is in front of the person (a browser's tab) keeps them on
+   * what was in front when the person's message began the reply, and on nothing otherwise. Sent again whenever it
+   * changes, and when the view shows another chat.
+   */
+  | { readonly type: "turn"; readonly working: boolean; readonly sent?: boolean };
 
 /** What the lite view sends its host. */
 export type EmbedAppMessage = EmbedAppBody & {

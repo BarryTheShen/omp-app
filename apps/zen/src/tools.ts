@@ -10,7 +10,10 @@ import {
   typeInto,
 } from "./page";
 
-/** The tabs one panel may act on: the tab it was opened on, and the tabs it opened itself. */
+/**
+ * The tabs one panel may act on, only while a reply the person began from it runs: the tab in front when they sent its
+ * message (`bound`, which refuses otherwise; `Follower`), and the tabs the panel opened itself.
+ */
 export interface TabScope {
   readonly bound: number;
   readonly owned: ReadonlySet<number>;
@@ -42,7 +45,7 @@ export const WAIT_MAX_MS = 30_000;
 const TAB_PARAMETER = {
   type: "integer",
   description:
-    "A tab this panel opened with open_tab. Leave it out to act on the panel's own tab, the one the person sees.",
+    "A tab this panel opened with open_tab. Leave it out to act on the tab the person had in front when they sent the message.",
 } as const;
 
 const objectOf = (properties: Record<string, unknown>, required: readonly string[] = []) => ({
@@ -52,13 +55,17 @@ const objectOf = (properties: Record<string, unknown>, required: readonly string
   additionalProperties: false,
 });
 
-/** The tab a call acts on: the panel's own, or one it opened; any other is refused. */
+/**
+ * The tab a call acts on: the one the chat is pointed at, or one it opened; any other is refused, and every one while no
+ * reply the person began from the panel runs (`bound` refuses then).
+ */
 export function tabOf(scope: TabScope, args: Record<string, unknown>): number {
+  const bound = scope.bound;
   const asked = args.tab;
-  if (asked === undefined || asked === null || asked === scope.bound) return scope.bound;
+  if (asked === undefined || asked === null || asked === bound) return bound;
   if (typeof asked === "number" && scope.owned.has(asked)) return asked;
   throw new Error(
-    "This panel acts only on its own tab and the tabs it opened with open_tab; that tab is neither.",
+    "This panel acts only on the tab in front when the message was sent and the tabs it opened with open_tab; that tab is neither.",
   );
 }
 

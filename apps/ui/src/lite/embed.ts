@@ -83,6 +83,13 @@ const NO_ANSWER: EmbedToolResult = {
   isError: true,
 };
 
+/**
+ * What a call of the host's tools gets while the person's message here holds them for a reply not seen to start yet: the
+ * call is from another reply (`bindChat`).
+ */
+const NOT_THIS_REPLY =
+  "The panel's tools are held for the reply the panel's own message is starting, and this call is from another reply.";
+
 /** How long a panel whose host keeps its key waits for the host's `hello` before it connects without one. */
 export const HOST_HELLO_WAIT_MS = 3_000;
 
@@ -103,6 +110,12 @@ export class EmbedEndpoint {
   readonly #opening = new Map<string, () => void>();
   /** The copies the host was asked for, each with what hears its `copied`. */
   readonly #copying = new Map<string, (ok: boolean) => void>();
+  /** The chat the panel shows (`bindChat`): only its replies are told to the host. */
+  #shown: EmbedChat | null = null;
+  /** Whether a reply runs in it, as the host was last told (`turn`); null while nothing was told of this chat. */
+  #told: boolean | null = null;
+  /** The person's message began a reply not seen to start yet (`began`): the chat being idle does not end it. */
+  #starting = false;
   /** The key the first `hello` brought (null when it brought none), once it came. */
   readonly #hello = Promise.withResolvers<string | null>();
   /** The owner name of this page's tool registrations: one per page load. */
@@ -230,6 +243,65 @@ export class EmbedEndpoint {
     this.#post({ type: "ready", chat, tools });
   }
 
+  /** The chat the panel shows from now on: the host hears of its replies (`working`, `began`). */
+  show(chat: EmbedChat): void {
+    this.#shown = chat;
+    this.#told = null;
+    this.#starting = false;
+  }
+
+  /** The panel no longer shows the chat: a reply of it holds the host's tools no longer. */
+  hide(chat: EmbedChat): void {
+    if (this.#shown !== chat) return;
+    if (this.#told === true) this.#post({ type: "turn", working: false });
+    this.#shown = null;
+    this.#told = null;
+    this.#starting = false;
+  }
+
+  /**
+   * Tells the host whether a reply runs in the chat shown (`turn`), when that changed since it was last told, so a host
+   * whose tools act on what is in front of the person (a browser's tab) holds them where the reply began. A reply the
+   * person's message began (`began`) is not over before it was seen to start.
+   */
+  working(chat: EmbedChat, running: boolean): void {
+    if (chat !== this.#shown || this.#state.host === null) return;
+    if (running) this.#starting = false;
+    else if (this.#starting) return;
+    if (running === this.#told) return;
+    this.#told = running;
+    this.#post({ type: "turn", working: running });
+  }
+
+  /**
+   * The person's message in the chat shown, sent while no reply runs there, begins one (`turn` with `sent`): the host
+   * holds its tools on what is in front of the person now, for that reply alone. What an earlier reply held goes first.
+   */
+  began(chat: EmbedChat): void {
+    if (chat !== this.#shown || this.#state.host === null) return;
+    if (this.#told !== false) this.#post({ type: "turn", working: false });
+    this.#told = true;
+    this.#starting = true;
+    this.#post({ type: "turn", working: true, sent: true });
+  }
+
+  /**
+   * What the person's message held goes: the message began no reply after all (omp handled it where it stood, refused it,
+   * or it joined a reply nobody began here), or the person stopped the reply. The host hears whether a reply runs.
+   */
+  letGo(chat: EmbedChat): void {
+    if (chat !== this.#shown || this.#told !== true) return;
+    this.#starting = false;
+    this.#told = false;
+    this.#post({ type: "turn", working: false });
+    this.working(chat, running(chat));
+  }
+
+  /** The person's message in the chat shown holds the host's tools for a reply not seen to start yet (`began`). */
+  holding(chat: EmbedChat): boolean {
+    return chat === this.#shown && this.#starting;
+  }
+
   /** Hands a call of one of the host's tools to the host; resolves with its answer, or an error when the view closes. */
   call(request: HostToolCall): Promise<EmbedToolResult> {
     return new Promise((resolve) => {
@@ -318,7 +390,14 @@ export function hostToolDefinitions(tools: readonly EmbedTool[]): HostToolDefini
 /** What binding the shown chat needs of its controller (`chat/controller.ts`), which imports this module. */
 export interface EmbedChat {
   readonly threadId: string | null;
-  readonly store: { subscribe(listener: () => void): () => void };
+  readonly store: {
+    subscribe(listener: () => void): () => void;
+    /**
+     * `working`: from omp's `agent_start` to its `agent_end`; `continuing`: omp ended a run that it starts again by
+     * itself (a retry, the queued message), so the reply goes on.
+     */
+    getSnapshot(): { readonly working: boolean; readonly continuing: boolean };
+  };
   setHostTools(owner: string, tools: readonly HostToolDefinition[]): Promise<readonly string[]>;
   onHostToolCall(
     call: (request: HostToolCall) => void,
@@ -334,6 +413,12 @@ export interface EmbedChat {
   onHeld(listener: () => void): () => void;
 }
 
+/** Whether a reply runs in the chat: omp works on it, or ended a run of it that it starts again by itself. */
+function running(chat: EmbedChat): boolean {
+  const { working, continuing } = chat.store.getSnapshot();
+  return working || continuing;
+}
+
 /**
  * Gives the chat the panel shows the host's tools once the server holds it open for this page, again whenever they
  * change and again each time it is held anew (a dropped link takes them off the chat), hands their calls to the host,
@@ -346,6 +431,9 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   let given: ReadonlySet<string> = new Set();
   let registered: { readonly tools: readonly EmbedTool[]; readonly chat: string } | null = null;
   let writes: Promise<unknown> = Promise.resolve();
+  const turn = (): void => {
+    if (!stopped) endpoint.working(chat, running(chat));
+  };
   const sync = (): void => {
     const threadId = chat.threadId;
     const { host, tools } = endpoint.getSnapshot();
@@ -361,11 +449,29 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
       endpoint.announce(threadId, names);
     });
   };
-  const stopChat = chat.store.subscribe(sync);
-  const stopEmbed = endpoint.subscribe(sync);
+  const stopChat = chat.store.subscribe(() => {
+    sync();
+    turn();
+  });
+  const stopEmbed = endpoint.subscribe(() => {
+    sync();
+    turn();
+  });
   const stopCalls = chat.onHostToolCall(
     (request) => {
       if (!given.has(request.params.toolName)) return;
+      // omp calls tools only while a reply runs, so a call that comes while the person's message here holds the host's
+      // tools for a reply not seen to start yet is from another reply, one this page did not see start: the host is not
+      // asked.
+      if (endpoint.holding(chat) && !chat.store.getSnapshot().working) {
+        void chat
+          .answerToolCall(request.id, {
+            content: [{ type: "text", text: NOT_THIS_REPLY }],
+            isError: true,
+          })
+          .catch(() => undefined);
+        return;
+      }
       void endpoint
         .call(request)
         .then((result) => chat.answerToolCall(request.id, result))
@@ -377,13 +483,17 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
     registered = null;
     sync();
   });
+  endpoint.show(chat);
   sync();
+  turn();
   return () => {
     stopped = true;
     stopChat();
     stopEmbed();
     stopCalls();
     stopHeld();
+    // The reply of a chat the panel no longer shows holds the host's tools no longer.
+    endpoint.hide(chat);
     // A chat kept open behind the panel keeps no tool whose calls nothing here would hear.
     if (registered !== null) {
       void writes.then(() => chat.setHostTools(endpoint.owner, [])).catch(() => undefined);

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "omp app",
   "version": "0.1.0",
-  "description": "omp app's chat in the sidebar: it reads and acts on the tab you open it on, and on tabs it opens, and no other.",
+  "description": "omp app's chat in the sidebar, pointed at the tab in front: it reads and acts on that tab, and on tabs it opens, and no other.",
   "browser_specific_settings": {
     "gecko": {
       "id": "zen-panel@omp-app.dev",
@@ -22,7 +22,7 @@
     "scripts": ["background.js"]
   },
   "action": {
-    "default_title": "omp app: chat about this tab",
+    "default_title": "omp app: open the sidebar",
     "default_icon": "icon.svg"
   },
   "sidebar_action": {

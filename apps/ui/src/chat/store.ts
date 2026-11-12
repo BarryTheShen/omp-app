@@ -131,6 +131,12 @@ export interface ChatSnapshot {
   readonly jobs: ReadonlyMap<string, unknown>;
   /** From omp's `agent_start` to its `agent_end`. */
   readonly working: boolean;
+  /**
+   * omp ended a run that it starts again by itself (`agent_end` with `isTerminal: false`: a retry after an error, the
+   * queued message, another agent's message), so the reply goes on; not a wait for background work, whose result begins
+   * a reply of its own later. From that `agent_end` to the next `agent_start`, or until the retry gives up.
+   */
+  readonly continuing: boolean;
   /** When the chat's pause began (omp's pause gate holds its agents, `/pause`); null while it runs. */
   readonly pausedAt: number | null;
   /**
@@ -233,6 +239,7 @@ const EMPTY: ChatSnapshot = {
   activeTools: new Map(),
   jobs: new Map(),
   working: false,
+  continuing: false,
   pausedAt: null,
   held: [],
   continuesAt: null,
@@ -422,6 +429,7 @@ export class ChatStore {
   #continuesAt: number | null = null;
   #usagePause: ChatUsagePause | null = null;
   #retry: { readonly attempt: number; readonly maxAttempts: number } | null = null;
+  #continuing = false;
   #requests: readonly HostDialogRequest[] = [];
   #shell: ChatShellRun | null = null;
   /** Commands and code this browser sent with `!!` or `$$`, until omp starts them. */
@@ -634,6 +642,7 @@ export class ChatStore {
     this.#working = false;
     this.#activeTools = new Map();
     this.#retry = null;
+    this.#continuing = false;
   }
 
   #setCompacting(compacting: boolean): void {
@@ -969,6 +978,7 @@ export class ChatStore {
       case "agent_start":
         this.#turnMark += 1;
         this.#working = true;
+        this.#continuing = false;
         this.#workingSince = Date.now();
         // A retried tool batch (omp's tool replay): the calls run again, so their old results go.
         if (event.resumedToolCallIds !== undefined && event.resumedToolCallIds.length > 0)
@@ -977,6 +987,7 @@ export class ChatStore {
       case "agent_end":
         this.#turnMark += 1;
         this.#stopWorking();
+        this.#continuing = event.isTerminal === false && event.awaitingAsyncWork !== true;
         this.#dropPending();
         return false;
       case "prompt_result": {
@@ -1011,6 +1022,7 @@ export class ChatStore {
         return false;
       case "auto_retry_end":
         this.#retry = null;
+        if (!event.success) this.#continuing = false;
         return false;
       case "ui_cancel":
       case "ui_answered":
@@ -1263,6 +1275,7 @@ export class ChatStore {
       activeTools: this.#activeTools,
       jobs: this.#jobs,
       working: this.#working,
+      continuing: this.#continuing,
       pausedAt: this.#pausedAt,
       held: this.#held,
       continuesAt: this.#continuesAt,

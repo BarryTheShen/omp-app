@@ -771,6 +771,22 @@ const NOTE_FOLD_TOUR: Tour = {
   ],
 };
 
+/** The Firefox and Zen sidebar stays open with one chat, pointed at the tab in front (2026-11-12). */
+const ZEN_ONE_CHAT_TOUR: Tour = {
+  id: "zen-one-chat-2026-11-12",
+  title: "The sidebar stays open, with one chat",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "The sidebar stays open, with one chat",
+      text: "The Firefox and Zen sidebar is one panel for the window: it stays open and loaded while you go from tab to tab, with one chat, which comes back when you open the sidebar again. The chat is pointed at the tab in front: the chip above the box names it, and your next message carries it. The reply your message begins acts on that tab until it ends, never on one you turn to while it runs; a reply begun anywhere else acts on no tab. <b>New chat</b> starts a fresh one. It needs this release's <b>omp-app-zen</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** Sending in a long chat does less: the What's new list is no longer rebuilt behind the scenes (2026-11-12). */
 const LIGHTER_SEND_TOUR: Tour = {
   id: "lighter-send-2026-11-12",
@@ -3138,6 +3154,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-zen-one-chat",
+    when: "2026-11-12T13:25:00-06:00",
+    summary:
+      "The Firefox and Zen sidebar stays open as you go from tab to tab: one panel for the window, with one chat, instead of a panel and a chat for each tab that loaded again at every switch. The chat is pointed at the tab in front: the chip above the box names it, and each message carries it. The reply your message begins acts on that tab until it ends, though you turn to another; a reply begun any other way (on another device, from a task, by Resume, by the app after a usage limit) acts on no tab. It needs this release's omp-app-zen.",
+    tours: [ZEN_ONE_CHAT_TOUR],
+  },
   {
     id: "2026-11-12-note-fold",
     when: "2026-11-12T12:45:00-06:00",

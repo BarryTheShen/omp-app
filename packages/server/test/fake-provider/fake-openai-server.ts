@@ -442,6 +442,26 @@ function reply(request: Request): Reply {
       };
     return { text: "loop finished" };
   }
+  // `call_tools <name> <json> then <name> <json>`: two calls in one turn, the second after the first's result, then the
+  // second's result said back, as `call_tool`'s "tool said" answer does. A spec changes something between them while the
+  // turn runs (the Zen sidebar's tab in front, which the turn's calls must not follow). The first call's arguments are
+  // one flat JSON object.
+  const pair = /call_tools\s+(\S+)\s+(\{[^{}]*\})\s+then\s+(\S+)\s+(\{.*\})/.exec(
+    lastUser >= 0 ? text(messages[lastUser]?.content) : "",
+  );
+  if (pair !== null) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    const [name, json] = done === 0 ? [pair[1], pair[2]] : [pair[3], pair[4]];
+    if (done < 2 && name !== undefined && json !== undefined)
+      return {
+        tool: name,
+        args: JSON.parse(json) as Record<string, unknown>,
+        id: `call_pair_${done}_${messages.length}`,
+      };
+    return {
+      text: `both calls done; tool said: ${last?.role === "tool" ? text(last.content) : ""}`,
+    };
+  }
   // Plan mode (#768): the model writes its plan to `local://<slug>-plan.md`, then submits the slug to `xd://propose`, as
   // omp's plan prompt asks (`prompts/system/plan-mode-active.md` at 18.12.6). The run on the approved plan starts with
   // omp's synthetic developer message, not a user message, so it is not this script's.

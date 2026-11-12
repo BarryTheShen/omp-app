@@ -31,6 +31,7 @@ const app = ${JSON.stringify(app)};
 window.calls = [];
 window.ready = [];
 window.opens = [];
+window.log = [];
 const send = (message) => frame.contentWindow.postMessage({ omp: "embed", v: 1, ...message }, app);
 window.setContext = (context) => send({ type: "context", context });
 window.addEventListener("message", (event) => {
@@ -47,8 +48,10 @@ window.addEventListener("message", (event) => {
     });
   }
   if (message.type === "ready") window.ready.push(message);
+  if (message.type === "turn") window.log.push({ turn: message.working, sent: message.sent === true });
   if (message.type === "tool_call") {
     window.calls.push(message);
+    window.log.push({ call: message.name });
     send({ type: "tool_result", callId: message.callId, result: { content: [{ type: "text", text: "host title: Host page title" }] } });
   }
   if (message.type === "open" && ${vscode}) {
@@ -134,6 +137,76 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
           }),
         );
         await expect(sentWith).toContainText("Looking at Another page");
+      } finally {
+        await context.close();
+        await stop(server);
+      }
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the host hears which replies the panel's own messages began: one begun on another page of the app is not",
+    async ({ realApp, browser }) => {
+      const app = new URL((await realApp.open({ path: "/lite" })).url()).origin;
+      const server = createServer((_request, response) => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(hostPage(app, realApp.token));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(HOST_PORT, "127.0.0.1", resolve);
+      });
+      const context = await browser.newContext();
+      try {
+        const host = await context.newPage();
+        await host.goto(`${HOST_APP}/doc`);
+        const panel = host.frameLocator('iframe[title="omp"]');
+        const box = panel.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+        /** What the host heard, in order: each `turn` (whether a reply runs, and whether the panel's message began it) and each call of its tool. */
+        type Heard = { readonly turn?: boolean; readonly sent?: boolean; readonly call?: string };
+        const heard = () => host.evaluate(() => (window as unknown as { log: Heard[] }).log);
+
+        // The panel's message begins the reply: the host hears it as the person's before the reply calls its tool, and
+        // hears the reply end.
+        await box.fill("call_tool page_title {}");
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(panel.getByText("tool said: host title: Host page title")).toBeVisible({
+          timeout: 60_000,
+        });
+        await expect.poll(async () => (await heard()).at(-1)).toEqual({ turn: false, sent: false });
+        const mine = await heard();
+        const call = mine.findIndex((each) => each.call === "page_title");
+        expect(call).toBeGreaterThan(0);
+        expect(
+          mine
+            .slice(0, call)
+            .filter((each) => each.turn !== undefined)
+            .at(-1),
+        ).toEqual({ turn: true, sent: true });
+
+        // The same chat on another page of the app, as on another device: its message begins a reply the host hears
+        // run, never as one the panel's message began.
+        const chat = await host.evaluate(
+          () => (window as unknown as { ready: { chat: string }[] }).ready.at(-1)?.chat ?? "",
+        );
+        expect(chat).not.toBe("");
+        const other = await realApp.open({
+          path: "/lite",
+          search: `?chat=${encodeURIComponent(chat)}`,
+        });
+        const otherBox = other.getByRole("textbox", { name: "Message" });
+        await expect(otherBox).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+        await otherBox.fill("count_reply elsewhere");
+        await other.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(panel.getByText(/count-\d+ elsewhere/)).toBeVisible({ timeout: 60_000 });
+        await expect
+          .poll(async () => (await heard()).slice(mine.length))
+          .toEqual([
+            { turn: true, sent: false },
+            { turn: false, sent: false },
+          ]);
       } finally {
         await context.close();
         await stop(server);

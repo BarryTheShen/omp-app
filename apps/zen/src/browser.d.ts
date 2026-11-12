@@ -35,6 +35,8 @@ declare namespace browser {
       readonly title?: string;
     }
     function get(tabId: number): Promise<Tab>;
+    /** The tab the calling page is in; undefined for a page that is no tab, as a sidebar's panel. */
+    function getCurrent(): Promise<Tab | undefined>;
     function query(query: {
       active?: boolean;
       currentWindow?: boolean;
@@ -78,11 +80,25 @@ declare namespace browser {
     }
     const local: Area;
     const session: Area;
+    /** A value stored changed: by key, its old and new value; `areaName` is "local", "session" and the like. */
+    const onChanged: Listener<
+      (
+        changes: Record<string, { readonly oldValue?: unknown; readonly newValue?: unknown }>,
+        areaName: string,
+      ) => void
+    >;
   }
 
   namespace sidebarAction {
-    function setPanel(details: { panel: string | null; tabId?: number }): Promise<void>;
     function open(): Promise<void>;
+  }
+
+  namespace windows {
+    interface Window {
+      readonly id?: number;
+    }
+    /** The window the calling page is in: for a sidebar's panel, the window beside whose tabs it is. */
+    function getCurrent(): Promise<Window>;
   }
 
   namespace action {

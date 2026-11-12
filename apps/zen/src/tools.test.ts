@@ -89,13 +89,13 @@ const toolOf = (tools: HostTool[], name: string): HostTool => {
 const never = new AbortController().signal;
 
 describe("the tab a call acts on", () => {
-  test("the panel's own tab, or one it opened; any other is refused", () => {
+  test("the tab the chat is pointed at, or one it opened; any other is refused", () => {
     const scope = scopeOf([42]);
     expect(tabOf(scope, {})).toBe(BOUND);
     expect(tabOf(scope, { tab: BOUND })).toBe(BOUND);
     expect(tabOf(scope, { tab: 42 })).toBe(42);
-    expect(() => tabOf(scope, { tab: 8 })).toThrow("only on its own tab and the tabs it opened");
-    expect(() => tabOf(scope, { tab: "42" })).toThrow("only on its own tab");
+    expect(() => tabOf(scope, { tab: 8 })).toThrow();
+    expect(() => tabOf(scope, { tab: "42" })).toThrow();
   });
 
   test("a tab opened with open_tab becomes the panel's; other tools then act on it", async () => {
@@ -111,9 +111,30 @@ describe("the tab a call acts on", () => {
       name: "clickTarget",
       args: [[APP], null, "Next"],
     });
-    await expect(toolOf(tools, "click").run({ tab: 43, text: "Next" }, never)).rejects.toThrow(
-      "only on its own tab",
-    );
+    await expect(toolOf(tools, "click").run({ tab: 43, text: "Next" }, never)).rejects.toThrow();
+  });
+
+  test("while no reply the person began from the panel runs, every tool refuses, also on a tab it opened, and nothing runs", async () => {
+    const refused = new Error("no reply holds a tab");
+    const scope: TabScope = {
+      get bound(): number {
+        throw refused;
+      },
+      owned: new Set([42]),
+      own: () => undefined,
+    };
+    const { api, calls, opened } = standIn();
+    const tools = pageTools(scope, api, APP);
+    for (const [name, args] of [
+      ["read_page", {}],
+      ["read_page", { tab: 42 }],
+      ["click", { tab: 42, text: "Next" }],
+      ["screenshot", {}],
+      ["open_tab", { url: "https://example.com/next" }],
+    ] as const)
+      await expect(toolOf(tools, name).run(args, never)).rejects.toBe(refused);
+    expect(calls).toEqual([]);
+    expect(opened).toEqual([]);
   });
 });
 

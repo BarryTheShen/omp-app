@@ -132,6 +132,9 @@ export type PaneAsk =
   | { readonly kind: "reopen"; readonly by: "person" | "link" }
   | { readonly kind: "new-chat"; readonly draft?: string };
 
+/** What a sent message did: began a reply, went into the reply running, or was handled where it stood (`send`). */
+type SendOutcome = "began" | "joined" | "none";
+
 export type ChatTarget =
   | {
       readonly kind: "existing";
@@ -858,6 +861,38 @@ export class ChatController {
     images: readonly ChatHostImage[] = [],
   ): Promise<void> {
     await this.#planSwitch;
+    // In another app's side panel whose tools act on what is in front there (a browser's tab), a message sent while no
+    // reply runs begins one, which holds them on what is in front now (`began`, `lite/embed.ts`). One sent into a running
+    // reply moves nothing (omp waiting to run it again included), and a paused chat's message waits, so the reply it
+    // starts later holds nothing.
+    const { working, continuing, pausedAt } = this.store.getSnapshot();
+    let holds = !working && !continuing && pausedAt === null;
+    if (holds) embed?.began(this);
+    /** The message begins no reply of its own after all: what it held goes at once. */
+    const letGo = (): void => {
+      if (!holds) return;
+      holds = false;
+      embed?.letGo(this);
+    };
+    let outcome: SendOutcome = "none";
+    try {
+      outcome = await this.#sendNow(text, mode, images, letGo);
+    } finally {
+      if (outcome !== "began") letGo();
+    }
+  }
+
+  /**
+   * Sends the message: "began" when a reply follows it (omp's `resultFollows`), "joined" when it went into the reply
+   * running, "none" when omp handled it where it stood. `joining`: omp turned it down as busy with a reply this page did
+   * not see start, which it then joins.
+   */
+  async #sendNow(
+    text: string,
+    mode: "auto" | "followUp",
+    images: readonly ChatHostImage[],
+    joining: () => void,
+  ): Promise<SendOutcome> {
     // Named as the server names it: what was typed, or the files' names when only files were sent (#2830).
     const named = (): void => {
       if (this.target.kind === "new" && this.#threadId !== null)
@@ -877,9 +912,9 @@ export class ChatController {
     const behind = { streamingBehavior: mode === "followUp" ? "followUp" : "steer" } as const;
     if (this.store.getSnapshot().working) {
       await this.#request("prompt", { ...message, ...behind });
-      return;
+      return "joined";
     }
-    const prompt = async (): Promise<void> => {
+    const prompt = async (): Promise<SendOutcome> => {
       // The turn's starts and ends seen so far: one seen by the time the answer comes means the message is already in
       // the chat (omp starts later turns at once).
       const asked = this.store.activityMark.turn;
@@ -892,20 +927,23 @@ export class ChatController {
         this.store.getSnapshot().pausedAt === null
       )
         this.store.sendStarted(sent, images);
+      return answer.resultFollows ? "began" : "none";
     };
     try {
-      await prompt();
+      return await prompt();
     } catch (failure) {
       if (!(failure instanceof AppFailure)) throw failure;
       if (failure.appError.code === "agent_busy") {
+        // A reply this page did not see start runs: the message joins it, and holds nothing in it.
+        joining();
         this.store.markWorking();
         await this.#request("prompt", { ...message, ...behind });
-        return;
+        return "joined";
       }
       const gone = failure.appError.code === "not_found" || failure.appError.code === "omp_exited";
       if (!gone || !(await this.#bringBack(failure).catch(() => false))) throw failure;
       named();
-      await prompt();
+      return await prompt();
     }
   }
 
@@ -926,10 +964,11 @@ export class ChatController {
 
   /**
    * Stops the reply as omp's Escape does: every queued message comes back, in order, with its pictures, for the message
-   * box.
+   * box. In another app's side panel, what the stopped reply held there goes (`letGo`, `lite/embed.ts`).
    */
   async stop(): Promise<readonly QueuedMessage[]> {
     if (this.#threadId === null) return [];
+    embed?.letGo(this);
     const restored = await this.#request("abort_and_restore_queue", {});
     return [...restored.steering, ...restored.followUp];
   }

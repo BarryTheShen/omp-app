@@ -295,6 +295,11 @@ function chat(): EmbedChat & {
   relink(): void;
   emit(request: HostToolCall): void;
   emitCancel(id: string): void;
+  /**
+   * omp's `agent_start` (true) or `agent_end` (false; `continuing` when omp starts the reply's next run by itself, as
+   * after a retry); the store tells its listeners either way.
+   */
+  work(working: boolean, continuing?: boolean): void;
 } {
   const storeListeners = new Set<() => void>();
   const heldListeners = new Set<() => void>();
@@ -306,6 +311,8 @@ function chat(): EmbedChat & {
   const answers: { id: string; answer: ToolCallAnswer }[] = [];
   let threadId: string | null = null;
   let held = false;
+  let working = false;
+  let continuing = false;
   return {
     get threadId() {
       return threadId;
@@ -318,6 +325,7 @@ function chat(): EmbedChat & {
         storeListeners.add(listener);
         return () => storeListeners.delete(listener);
       },
+      getSnapshot: () => ({ working, continuing }),
     },
     setHostTools: async (_owner: string, tools: readonly HostToolDefinition[]) => {
       given.push(tools.map((tool) => tool.name));
@@ -356,6 +364,11 @@ function chat(): EmbedChat & {
     },
     emitCancel(id) {
       for (const listener of [...callListeners]) listener.cancel(id);
+    },
+    work(now, goesOn = false) {
+      working = now;
+      continuing = goesOn;
+      for (const listener of [...storeListeners]) listener();
     },
   };
 }
@@ -396,6 +409,17 @@ describe("the chat the panel shows, bound to its host", () => {
     expect(shown.answers).toEqual([
       { id: "req-1", answer: { content: [{ type: "text", text: "Example Domain" }] } },
     ]);
+
+    // While the person's message here holds the host's tools for a reply not seen to start yet, a call is from another
+    // reply: it fails here, and the host never hears of it. Once the reply starts, calls go to the host again.
+    endpoint.began(shown);
+    shown.emit(toolCall("req-3", "read_page"));
+    await ticks();
+    expect(sent.filter((each) => each.message.type === "tool_call")).toHaveLength(1);
+    expect(shown.answers.at(-1)).toMatchObject({ id: "req-3", answer: { isError: true } });
+    shown.work(true);
+    shown.emit(toolCall("req-4", "read_page"));
+    expect(sent.filter((each) => each.message.type === "tool_call")).toHaveLength(2);
 
     receive({ ...envelope, type: "tools", tools: [READ_PAGE, { ...READ_PAGE, name: "click" }] });
     await ticks();
@@ -450,5 +474,106 @@ describe("the chat the panel shows, bound to its host", () => {
     shown.relink();
     await ticks();
     expect(shown.given.at(-1)).toEqual([]);
+  });
+
+  /** The `turn` messages the host was sent: whether a reply runs, and whether the person's message began it. */
+  const turnsIn = (sent: readonly { message: Record<string, unknown> }[]) =>
+    sent
+      .filter((each) => each.message.type === "turn")
+      .map((each) => (each.message.sent === true ? "sent" : each.message.working));
+
+  test("tells the host when a reply begins and ends in the chat shown, once a host said hello, and that none runs once the panel moves on", async () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    const shown = chat();
+    const unbind = bindChat(endpoint, shown);
+    // No host yet: nothing to tell, and nothing counts as told.
+    shown.work(true);
+    expect(turnsIn(sent)).toEqual([]);
+    // The host says hello during the reply: it hears that one runs.
+    receive(hello());
+    expect(turnsIn(sent)).toEqual([true]);
+    // The store changes for other reasons while the reply runs: nothing new to tell.
+    shown.open("thread-1");
+    await ticks();
+    expect(turnsIn(sent)).toEqual([true]);
+    shown.work(false);
+    shown.work(true);
+    expect(turnsIn(sent)).toEqual([true, false, true]);
+    // The panel shows another chat while this one's reply runs: that reply holds the host's tools no more.
+    unbind();
+    expect(turnsIn(sent)).toEqual([true, false, true, false]);
+    shown.work(false);
+    expect(turnsIn(sent)).toEqual([true, false, true, false]);
+  });
+
+  test("a reply omp runs again by itself, as after a retry, does not end for the host between its runs", () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    receive(hello());
+    const shown = chat();
+    bindChat(endpoint, shown);
+    shown.work(true);
+    shown.work(false, true);
+    shown.work(true);
+    expect(turnsIn(sent)).toEqual([false, true]);
+    shown.work(false);
+    expect(turnsIn(sent)).toEqual([false, true, false]);
+  });
+
+  test("the person's message holds what is in front from its send until its reply ends, though omp starts the reply later", () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    receive(hello());
+    const shown = chat();
+    bindChat(endpoint, shown);
+    endpoint.began(shown);
+    expect(turnsIn(sent)).toEqual([false, "sent"]);
+    // The store changes before omp's `agent_start` (the message shown, the box emptied): still idle, not an end.
+    shown.work(false);
+    shown.work(true);
+    expect(turnsIn(sent)).toEqual([false, "sent"]);
+    shown.work(false);
+    expect(turnsIn(sent)).toEqual([false, "sent", false]);
+  });
+
+  test("a message that began no reply lets go of what it held; one that joined a reply begun elsewhere leaves it holding nothing", () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    receive(hello());
+    const shown = chat();
+    bindChat(endpoint, shown);
+    // omp handled it where it stood (a command): nothing runs.
+    endpoint.began(shown);
+    endpoint.letGo(shown);
+    expect(turnsIn(sent)).toEqual([false, "sent", false]);
+    // omp was busy with a reply this page had not seen start: the message joined it, and that reply holds nothing.
+    endpoint.began(shown);
+    shown.work(true);
+    endpoint.letGo(shown);
+    expect(turnsIn(sent)).toEqual([false, "sent", false, "sent", false, true]);
+  });
+
+  test("only the chat shown tells the host of its replies, and moving on lets go of what its message held", () => {
+    const { window, sent, receive } = frame();
+    const endpoint = new EmbedEndpoint(window);
+    endpoint.start();
+    receive(hello());
+    const first = chat();
+    const unbindFirst = bindChat(endpoint, first);
+    endpoint.began(first);
+    unbindFirst();
+    expect(turnsIn(sent)).toEqual([false, "sent", false]);
+    const second = chat();
+    bindChat(endpoint, second);
+    // The first chat's send ends after the panel moved on: the chat shown hears nothing of it.
+    endpoint.letGo(first);
+    endpoint.began(first);
+    first.work(true);
+    expect(turnsIn(sent)).toEqual([false, "sent", false, false]);
   });
 });

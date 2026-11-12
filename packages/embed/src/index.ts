@@ -77,6 +77,14 @@ export interface PanelOptions {
   /** The panel shows a chat: its id and the host's tools it took; again whenever it shows another. */
   readonly onReady?: (ready: { readonly chat: string; readonly tools: readonly string[] }) => void;
   /**
+   * A reply runs in the chat the panel shows (`working` true), including while omp runs it again by itself, or none does
+   * any more (false). `sent`: the person's message in the panel (Retry too), sent while no reply ran, began it; false for
+   * a reply begun any other way (a message sent into a running reply sends nothing). A host whose tools act on what is in
+   * front of the person, as a browser's tab, keeps them on what was in front when the person's message began the reply,
+   * and on nothing otherwise, so a reply never acts on what the person turned to while it ran.
+   */
+  readonly onTurn?: (working: boolean, sent: boolean) => void;
+  /**
    * The panel's page did not say it listens within `NO_ANSWER_MS` of the panel opening: the app is not at the address,
    * cannot be reached from here, or does not let this host frame it. Called at
    * most once; the frame stays, in case the page still comes.
@@ -327,6 +335,10 @@ export function openPanel(options: PanelOptions): Panel {
         return;
       case "ready":
         options.onReady?.({ chat: message.chat, tools: message.tools });
+        return;
+      case "turn":
+        if (typeof message.working === "boolean")
+          options.onTurn?.(message.working, message.sent === true);
         return;
       case "tool_call":
         void answer(message.callId, message.name, message.arguments);
