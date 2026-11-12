@@ -8,6 +8,7 @@ import {
   PairingAsked,
   PairingClaimed,
   PairingCodeEntered,
+  PairingMachine,
 } from "@omp-app/contracts";
 
 /** What a contracts schema offers that this file uses: a checked parse. */
@@ -22,7 +23,12 @@ export type Answer<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly message: string };
 
-async function post<T>(path: string, body: unknown, schema: Checks<T>): Promise<Answer<T>> {
+async function post<T>(
+  path: string,
+  body: unknown,
+  schema: Checks<T>,
+  timeoutMs?: number,
+): Promise<Answer<T>> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -30,6 +36,7 @@ async function post<T>(path: string, body: unknown, schema: Checks<T>): Promise<
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
       credentials: "same-origin",
+      ...(timeoutMs === undefined ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
     });
   } catch {
     return { ok: false, message: "The app could not be reached." };
@@ -77,6 +84,15 @@ export function enterPairingCode(
     { code, name, kind, ...(keep === null ? {} : { keep }) },
     PairingCodeEntered,
   );
+}
+
+/** How long the pairing screen waits for the computer's name before it goes on without one. */
+export const MACHINE_WAIT_MS = 1_500;
+
+/** The name of the computer this page is on, as the app knows it; null when it knows none or does not answer in time. */
+export async function askMachine(): Promise<string | null> {
+  const answer = await post(PAIRING_PATHS.machine, undefined, PairingMachine, MACHINE_WAIT_MS);
+  return answer.ok ? answer.value.machine : null;
 }
 
 /** The one-time code a QR code's address carries (`/#pair=K7F3QX9M`); null when it carries none. */

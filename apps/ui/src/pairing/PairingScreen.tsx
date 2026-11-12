@@ -1,10 +1,10 @@
 import { formatPairingCode, normalizePairingCode, type PairingAsked } from "@omp-app/contracts";
-import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { embed } from "../lite/embed";
+import { embed, useEmbed } from "../lite/embed";
 import { guessThisDevice } from "./device-name";
-import { askToPair, claimPairing, enterPairingCode } from "./pairing-api";
+import { askMachine, askToPair, claimPairing, enterPairingCode } from "./pairing-api";
 
 /** How often the screen asks whether its request was answered. */
 const CLAIM_EVERY_MS = 1_500;
@@ -44,10 +44,16 @@ export function PairingScreen({
   /** The one-time code of the QR code this page was opened from, taken out of its address. */
   readonly scannedCode: string | null;
 }): ReactNode {
-  const guess = useRef(guessThisDevice());
+  const { host } = useEmbed();
+  // The computer's name comes from the app a moment after the page opens (`askMachine`).
+  const [machine, setMachine] = useState<string | null>(null);
+  const [machineAsked, setMachineAsked] = useState(false);
+  const guess = useMemo(() => guessThisDevice(host, machine), [host, machine]);
+  // What the person typed; until then the field shows the suggestion, which follows the host and the computer's name.
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const name = typedName ?? guess.name;
   const nameId = useId();
   const codeId = useId();
-  const [name, setName] = useState(guess.current.name);
   const fromQr = useRef(scannedCode);
   const [mode, setMode] = useState<"ask" | "code">(fromQr.current === null ? "ask" : "code");
   const [ask, setAsk] = useState<AskState>({ kind: "idle" });
@@ -55,6 +61,18 @@ export function PairingScreen({
   const [codeNote, setCodeNote] = useState<ReactNode>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void askMachine().then((asked) => {
+      if (!alive) return;
+      setMachine(asked);
+      setMachineAsked(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // While a request waits, the screen asks whether it was answered, 1.5 s after each answer: one question at a time, so
   // a slow answer never overtakes the one that pairs.
@@ -95,7 +113,7 @@ export function PairingScreen({
   const startAsking = (): void => {
     setProblem(null);
     setAsk({ kind: "asking" });
-    void askToPair(name.trim(), guess.current.kind).then((answer) => {
+    void askToPair(name.trim(), guess.kind).then((answer) => {
       if (answer.ok) setAsk({ kind: "waiting", asked: answer.value });
       else {
         setAsk({ kind: "idle" });
@@ -110,7 +128,7 @@ export function PairingScreen({
     setBusy(true);
     setProblem(null);
     setCodeNote(null);
-    void enterPairingCode(normalizePairingCode(code), name.trim(), guess.current.kind, keep)
+    void enterPairingCode(normalizePairingCode(code), name.trim(), guess.kind, keep)
       .then((answer) => {
         if (!answer.ok) {
           setProblem(answer.message);
@@ -134,10 +152,11 @@ export function PairingScreen({
       .finally(() => setBusy(false));
   };
 
-  // A QR code's address pairs at once.
+  // A QR code's address pairs at once, once the computer's name is known (or is not coming in time): the device is named
+  // the same way as on the other path.
   const scanned = useRef(false);
   useEffect(() => {
-    if (fromQr.current === null || scanned.current) return;
+    if (fromQr.current === null || scanned.current || !machineAsked) return;
     scanned.current = true;
     submitCode();
   });
@@ -151,7 +170,7 @@ export function PairingScreen({
         id={nameId}
         value={name}
         maxLength={60}
-        onChange={(event) => setName(event.target.value)}
+        onChange={(event) => setTypedName(event.target.value)}
         disabled={ask.kind === "asking" || ask.kind === "waiting"}
       />
     </div>

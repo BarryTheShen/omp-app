@@ -13,6 +13,7 @@ import {
   deviceCookie,
   deviceKeyOf,
   deviceKeyOfProtocols,
+  type MachineNamer,
   offeredProtocols,
   pairingRoute,
 } from "./devices";
@@ -63,6 +64,8 @@ export interface AppServerOptions {
   readonly earlierLaunchTokens?: ReadonlySet<string>;
   /** Device pairing: a paired device signs in with its key's cookie, and `/pair/*` pairs new ones. */
   readonly devices?: DevicePairing;
+  /** Names the computer a pairing page is on, for the suggested name of a new device (`devices/machine.ts`); none by default. */
+  readonly machineOf?: MachineNamer;
 }
 
 export interface AppServer {
@@ -376,6 +379,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           overHttps,
           isLaunchToken: (candidate) => constantTimeEqual(token, candidate),
           address: () => options.remote?.origin ?? `http://127.0.0.1:${bunServer.port ?? port}`,
+          ...(options.machineOf === undefined ? {} : { machineOf: options.machineOf }),
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         });
         if (answer !== undefined) return answer;

@@ -1,5 +1,5 @@
 /**
- * The pairing routes (`PAIRING_PATHS`). Three are for a device with no key yet, which has no connection: they take the
+ * The pairing routes (`PAIRING_PATHS`). Four are for a device with no key yet, which has no connection: they take the
  * app's own pages only (the WebSocket's Host and Origin check). Three are for `omp-app pair` and `omp-app devices` on
  * the server: they take the launch token as a bearer, on the loopback address only.
  */
@@ -13,11 +13,13 @@ import {
   type PairingCode,
   type PairingCodeEntered,
   PairingCodeEntry,
+  type PairingMachine,
 } from "@omp-app/contracts";
 import { z } from "zod";
 import type { Logger } from "../logging";
 import { deviceCookie } from "./cookie";
 import type { DevicePairing } from "./index";
+import type { MachineNamer } from "./machine";
 
 /** A pairing request's body is small: more is refused. */
 const BODY_BYTES_MAX = 4096;
@@ -34,6 +36,8 @@ export interface PairingRouteOptions {
   readonly isLaunchToken: (candidate: string) => boolean;
   /** What to open on a new device. */
   readonly address: () => string;
+  /** Names the computer a request's page is on, for the suggested name of a new device; without it, no name is known. */
+  readonly machineOf?: MachineNamer;
   readonly logger?: Logger;
 }
 
@@ -142,6 +146,12 @@ export async function pairingRoute(
         { status: "paired", deviceId: paired.deviceId, ...kept } satisfies PairingCodeEntered,
         { "Set-Cookie": paired.cookie },
       );
+    }
+    case PAIRING_PATHS.machine: {
+      if (request.method !== "POST") return refused(405, "Method not allowed");
+      if (!options.fromAppPage(request)) return refused(403, "Not this app's page");
+      const machine = (await options.machineOf?.(request)) ?? null;
+      return json(200, { machine } satisfies PairingMachine);
     }
     case PAIRING_PATHS.newCode:
     case PAIRING_PATHS.devices:

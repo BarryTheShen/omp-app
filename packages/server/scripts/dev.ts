@@ -29,7 +29,7 @@ import {
   probeOmpPatiently,
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
-import { openDevicePairing } from "../src/devices";
+import { createMachineNames, openDevicePairing, tailscaleWhois } from "../src/devices";
 import { EmbeddersStore } from "../src/embedders";
 import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { openLaunchHistory } from "../src/launch-history";
@@ -934,6 +934,7 @@ export async function createCompositionServer(
     ...(frameAncestors.length === 0 ? {} : { frameAncestors }),
     embedders,
     devices,
+    machineOf: createMachineNames({ whois: tailscaleWhois, hostname }),
   });
   appAddress = remote?.origin ?? server.url;
   appPort = server.port;
