@@ -99,7 +99,6 @@ export const CHAT_HOST_METHOD_NAMES = [
   "set_search_key",
   "remove_search_key",
   "test_search",
-  "ask_first",
 ] as const;
 
 export type ChatHostMethodName = (typeof CHAT_HOST_METHOD_NAMES)[number];

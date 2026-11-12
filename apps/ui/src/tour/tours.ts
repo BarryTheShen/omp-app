@@ -793,22 +793,6 @@ const VSCODE_RIGHT_TOUR: Tour = {
   ],
 };
 
-/** The chats of the Firefox and Zen sidebar ask before commands and file changes (2026-11-11). */
-const PANEL_ASKS_TOUR: Tour = {
-  id: "panel-asks-2026-11-11",
-  title: "The browser panel asks first",
-  minutes: 1,
-  sandbox: true,
-  steps: [
-    {
-      target: TRANSCRIPT,
-      title: "Commands wait for you",
-      text: "In the Firefox and Zen sidebar, a command, a file change or an MCP action now waits for your <b>Approve</b> or <b>Deny</b> in the panel, shown whole: a page the chat reads can carry instructions its AI may follow. Reading stays free, the page's own tools work as before, and your other chats keep running without asking.",
-      action: next,
-    },
-  ],
-};
-
 /** The Firefox and Zen sidebar's safety fixes, after a security review (2026-11-11). */
 const ZEN_SAFETY_TOUR: Tour = {
   id: "zen-safety-2026-11-11",
@@ -2978,13 +2962,6 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
-  {
-    id: "2026-11-11-panel-asks",
-    when: "2026-11-11T22:39:00-06:00",
-    summary:
-      "Chats in the Firefox and Zen sidebar ask before commands and file changes: a page the chat reads can carry instructions its AI may follow, so a command, a file change, an MCP action or a change to the shared to-do list waits for your Approve or Deny in the panel, shown whole, with no approval for the rest of the session. They no longer message subagents or write long-term memory. Reading stays free, the page's own tools work as before, your other chats keep running without asking, and a chat the panel showed keeps asking wherever the app opens it later.",
-    tours: [PANEL_ASKS_TOUR],
-  },
   {
     id: "2026-11-11-zen-safety",
     when: "2026-11-11T21:44:00-06:00",

@@ -173,12 +173,6 @@ class HostTool<TParams extends TSchema = TSchema> implements AgentTool<TParams, 
   declare parameters: TParams;
   readonly strict = true;
   concurrency: "shared" | "exclusive" = "shared";
-  /**
-   * omp's approval tier: "read", so a chat in omp's "always-ask" mode (`ask-first.ts`) lets the call through. The page
-   * that gave the tool answers each call and asks its person itself where it should (VS Code's edits and commands);
-   * omp's approval mode is for omp's own tools on the server.
-   */
-  readonly approval = "read" as const;
   readonly loadMode: ToolLoadMode;
   readonly #tools: HostTools;
 

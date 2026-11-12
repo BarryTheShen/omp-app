@@ -48,8 +48,10 @@ function toolCall(id: string, toolName: string): HostToolCall {
   } as HostToolCall;
 }
 
-/** Lets promise chains run: a timer fires only once every pending promise step has run. */
-const ticks = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+/** Lets promise chains run. */
+const ticks = async (count = 5): Promise<void> => {
+  for (let index = 0; index < count; index += 1) await Promise.resolve();
+};
 
 describe("the lite view's end of the embed protocol", () => {
   test("says it listens, then hears only the framing window, from the origin of its first hello", () => {
@@ -252,15 +254,11 @@ describe("the lite view's end of the embed protocol", () => {
 function chat(): EmbedChat & {
   readonly given: (readonly string[])[];
   readonly answers: { id: string; answer: ToolCallAnswer }[];
-  /** What the binding asked, in order: `ask_first <chat>` and `tools`. */
-  readonly order: string[];
   know(threadId: string): void;
   open(threadId: string): void;
   relink(): void;
   emit(request: HostToolCall): void;
   emitCancel(id: string): void;
-  /** The next `times` asks to ask first are refused, as an omp from before the request does. */
-  refuseAskFirst(times: number): void;
 } {
   const storeListeners = new Set<() => void>();
   const heldListeners = new Set<() => void>();
@@ -270,10 +268,8 @@ function chat(): EmbedChat & {
   }>();
   const given: (readonly string[])[] = [];
   const answers: { id: string; answer: ToolCallAnswer }[] = [];
-  const order: string[] = [];
   let threadId: string | null = null;
   let held = false;
-  let refusals = 0;
   return {
     get threadId() {
       return threadId;
@@ -289,14 +285,7 @@ function chat(): EmbedChat & {
     },
     setHostTools: async (_owner: string, tools: readonly HostToolDefinition[]) => {
       given.push(tools.map((tool) => tool.name));
-      order.push("tools");
       return tools.map((tool) => tool.name);
-    },
-    askFirst: async () => {
-      order.push(`ask_first ${threadId}`);
-      if (refusals === 0) return true;
-      refusals -= 1;
-      return false;
     },
     onHostToolCall: (call, cancel) => {
       const listener = { call, cancel };
@@ -312,7 +301,6 @@ function chat(): EmbedChat & {
     },
     given,
     answers,
-    order,
     know(id) {
       threadId = id;
       for (const listener of [...storeListeners]) listener();
@@ -332,9 +320,6 @@ function chat(): EmbedChat & {
     },
     emitCancel(id) {
       for (const listener of [...callListeners]) listener.cancel(id);
-    },
-    refuseAskFirst(times) {
-      refusals = times;
     },
   };
 }
@@ -429,63 +414,5 @@ describe("the chat the panel shows, bound to its host", () => {
     shown.relink();
     await ticks();
     expect(shown.given.at(-1)).toEqual([]);
-  });
-
-  test("a browser panel's chat is told to ask first, before its tools, and again when held anew; another host's is not", async () => {
-    const zen = frame();
-    const browserPanel = new EmbedEndpoint(zen.window);
-    browserPanel.start();
-    zen.receive(hello({ tools: [READ_PAGE] }));
-    const shown = chat();
-    const unbind = bindChat(browserPanel, shown);
-    shown.open("thread-1");
-    await ticks();
-    expect(shown.order).toEqual(["ask_first thread-1", "tools"]);
-    // Told once while held: the tools changing tells it nothing more.
-    zen.receive({
-      ...envelope,
-      type: "tools",
-      tools: [READ_PAGE, { ...READ_PAGE, name: "click" }],
-    });
-    await ticks();
-    expect(shown.order).toEqual(["ask_first thread-1", "tools", "tools"]);
-    // Held anew (a new omp may hold it): told again, before the tools again.
-    shown.relink();
-    await ticks();
-    expect(shown.order.slice(3)).toEqual(["ask_first thread-1", "tools"]);
-    unbind();
-
-    const editor = frame();
-    const editorPanel = new EmbedEndpoint(editor.window);
-    editorPanel.start();
-    editor.receive(hello({ host: "vscode", tools: [READ_PAGE] }));
-    const inEditor = chat();
-    const unbindEditor = bindChat(editorPanel, inEditor);
-    inEditor.open("thread-2");
-    await ticks();
-    expect(inEditor.order).toEqual(["tools"]);
-    unbindEditor();
-  });
-
-  test("a browser panel's chat whose omp refuses to ask first gets no tools; held anew, it is told again and gets them", async () => {
-    const zen = frame();
-    const browserPanel = new EmbedEndpoint(zen.window);
-    browserPanel.start();
-    zen.receive(hello({ tools: [READ_PAGE] }));
-    const shown = chat();
-    shown.refuseAskFirst(1);
-    const unbind = bindChat(browserPanel, shown);
-    shown.open("thread-1");
-    await ticks();
-    expect(shown.order).toEqual(["ask_first thread-1"]);
-    expect(shown.given).toEqual([]);
-    expect(zen.sent.filter((each) => each.message.type === "ready")).toHaveLength(0);
-
-    // A new omp holds it (the old one moved to the new build): told again, and only then given the tools.
-    shown.relink();
-    await ticks();
-    expect(shown.order).toEqual(["ask_first thread-1", "ask_first thread-1", "tools"]);
-    expect(zen.sent.filter((each) => each.message.type === "ready")).toHaveLength(1);
-    unbind();
   });
 });

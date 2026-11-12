@@ -124,7 +124,6 @@ import {
 } from "@oh-my-pi/pi-utils/dirs";
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
-import { AskFirst } from "./ask-first";
 import { LiveSecrets } from "./live-secrets";
 import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
@@ -139,8 +138,6 @@ export interface ChatSession {
   readonly askAsync: AskAsyncTool;
   /** The app's `shared_todos` tool; the loop gives it the host's line to the server. */
   readonly sharedTodos: SharedTodosTool;
-  /** `ask_first`: the chat asks before commands and file changes (`ask-first.ts`). */
-  readonly askFirst: AskFirst;
 }
 
 /** Where omp's launch notices go: omp prints them on stderr in a protocol mode, and so does the chat host. */
@@ -354,15 +351,14 @@ export async function createChatSession(
 
   // The app's own tools, beside omp's: questions the agent asks without waiting (`questions.ts`), and the to-do list it
   // shares with the person and the other chats (`shared-todos.ts`). Secrets saved while the chat runs reach it through
-  // `live-secrets.ts`'s hook; a browser panel's chat asks first through `ask-first.ts`'s.
+  // `live-secrets.ts`'s hook.
   const askAsync = new AskAsyncTool();
   const sharedTodos = new SharedTodosTool();
   const liveSecrets = new LiveSecrets();
-  const askFirst = new AskFirst();
   const created = await createAgentSession({
     ...sessionOptions,
     customTools: [askAsync.definition, sharedTodos.definition],
-    extensions: [...(sessionOptions.extensions ?? []), liveSecrets.extension, askFirst.extension],
+    extensions: [...(sessionOptions.extensions ?? []), liveSecrets.extension],
     eventBus,
     subagentEventBus,
     preloadedExtensions: extensions,
@@ -372,8 +368,6 @@ export async function createChatSession(
   modelRegistry.refreshInBackground();
   const { session } = created;
   try {
-    // A chat a browser panel once showed asks first again, whichever page starts its host (`ask-first.ts`).
-    askFirst.attach(session);
     session.validateRetryFallbackChains();
     validateToolNames(initialArgs.tools, session.getAllToolNames());
     AgentLifecycleManager.global().setPersistedSubagentReviverFactory(
@@ -427,7 +421,6 @@ export async function createChatSession(
     subagentEventBus,
     askAsync,
     sharedTodos,
-    askFirst,
   };
 }
 

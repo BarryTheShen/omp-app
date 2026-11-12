@@ -67,7 +67,6 @@ function embedLibrary(): string {
 /**
  * The minimal host of `docs/integrations.md`, with the library: a panel whose host keeps its key (here in this page's
  * storage) and gives back the chat it showed, and one tool. It notes the keys it was handed and the calls it answered.
- * `?host=<name>` names the host (`testhost` otherwise): `zen` plays the Firefox and Zen extension.
  */
 const keepingHost = (app: string) => `<!doctype html><title>host</title>
 <div id="panel" style="width:420px;height:760px"></div>
@@ -79,7 +78,7 @@ const chat = localStorage.getItem("omp-chat");
 openPanel({
   app: ${JSON.stringify(app)},
   into: document.getElementById("panel"),
-  host: new URLSearchParams(location.search).get("host") ?? "testhost",
+  host: "testhost",
   title: "omp",
   ...(chat === null ? {} : { chat }),
   onReady: (ready) => localStorage.setItem("omp-chat", ready.chat),
@@ -271,76 +270,6 @@ realTest.describe("new UI lite view in another site's panel, its key kept by its
         await host.evaluate(() => localStorage.removeItem("omp-key"));
         await host.reload();
         await expect(pairing).toBeVisible({ timeout: 60_000 });
-        await host.context().close();
-      } finally {
-        await stop(server);
-      }
-      expect(realApp.problems).toEqual([]);
-    },
-  );
-
-  realTest(
-    "a browser panel's chat asks before a command, and runs it once approved; another host's runs it at once",
-    async ({ realApp, browser }) => {
-      const owner = await realApp.open({ path: "/" });
-      const app = new URL(owner.url()).origin;
-      await owner.getByRole("button", { name: "Settings", exact: true }).click();
-      const devices = owner.getByRole("region", { name: "Devices" });
-      await devices.getByRole("button", { name: "Pair a new device" }).click();
-      const shown = devices
-        .getByRole("region", { name: "One-time code" })
-        .getByText(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
-      await expect(shown).toBeVisible();
-      const code = (await shown.textContent()) ?? "";
-
-      const library = embedLibrary();
-      const server = createServer((request, response) => {
-        if (request.url === "/omp-embed.js") {
-          response.writeHead(200, { "Content-Type": "text/javascript" });
-          response.end(library);
-          return;
-        }
-        response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(keepingHost(app));
-      });
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, "127.0.0.1", resolve);
-      });
-      try {
-        const host = await hostPage(browser, `http://localhost:${port}`);
-        const panel = host.frameLocator('iframe[title="omp"]');
-        await expect(panel.getByRole("heading", { name: "Pair this device" })).toBeVisible({
-          timeout: 60_000,
-        });
-        await panel.getByRole("button", { name: "Enter a code instead" }).click();
-        await panel.getByLabel("One-time code").fill(code);
-        await panel.getByRole("button", { name: "Pair", exact: true }).click();
-        const box = panel.getByRole("textbox", { name: "Message" });
-        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
-        const send = async (text: string): Promise<void> => {
-          await box.fill(text);
-          await panel.getByRole("button", { name: "Send", exact: true }).click();
-        };
-        const deny = panel.getByRole("button", { name: "Deny", exact: true });
-
-        // Another host's chat: omp's default, the command runs with no asking.
-        await send(`call_tool bash ${JSON.stringify({ command: "printf ran-freely" })}`);
-        await expect(panel.getByText("tool said: ran-freely")).toBeVisible({ timeout: 60_000 });
-        await expect(deny).toHaveCount(0);
-
-        // The browser extension's panel, a new chat: the command waits for the person.
-        await host.evaluate(() => localStorage.removeItem("omp-chat"));
-        await host.goto(`http://localhost:${port}/doc?host=zen`);
-        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
-        await send(`call_tool bash ${JSON.stringify({ command: "printf asked-first" })}`);
-        await expect(deny).toBeVisible({ timeout: 60_000 });
-        await expect(panel.getByText("tool said: asked-first")).toHaveCount(0);
-        await panel
-          .getByRole("button", { name: /^Approve/ })
-          .first()
-          .click();
-        await expect(panel.getByText("tool said: asked-first")).toBeVisible({ timeout: 60_000 });
         await host.context().close();
       } finally {
         await stop(server);

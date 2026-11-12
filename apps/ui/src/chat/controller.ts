@@ -974,20 +974,6 @@ export class ChatController {
   }
 
   /**
-   * Tells the chat to ask before commands and file changes from now on, also after its omp starts again (`ask_first`):
-   * a browser panel's chats read pages, which can carry instructions. False when the chat's omp predates it (it moves
-   * to the new build once its reply ends) or the server is older; the panel tries again.
-   */
-  async askFirst(): Promise<boolean> {
-    try {
-      await this.#request("ask_first", {});
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Uploads a file attached to a message into the chat's folder, under its own name, or `name (n).ext` when the folder or
    * `reserved()` (the box's other files, read as the name is chosen) holds that name; `onName` hears it at once, so two
    * files picked together never take one name. Returns the name.

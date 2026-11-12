@@ -9,7 +9,6 @@ import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { isLiteView } from "../lite/lite";
 import type { ChatController } from "./controller";
 import { FormDialog } from "./FormDialog";
 import { OptionText, QuestionsDialog } from "./QuestionsDialog";
@@ -190,12 +189,7 @@ function RequestCard({
   );
 }
 
-/**
- * omp's tool approval, with omp's own choices in omp's order (`tools/approval.ts`, `approvalChoiceLabels`). In the lite
- * view (another app's panel, a browser panel's chats asking first) it shows everything omp sent at once, so a second line
- * of a command is never hidden, and offers no approval for the rest of the session: a page the chat reads could make
- * use of one later.
- */
+/** omp's tool approval, with omp's own choices in omp's order (`tools/approval.ts`, `approvalChoiceLabels`). */
 function Approval({
   dialog,
   busy,
@@ -206,8 +200,7 @@ function Approval({
   readonly onAnswer: Answer;
 }): ReactNode {
   const { prompt } = dialog;
-  const lite = isLiteView();
-  const [full, setFull] = useState(lite);
+  const [full, setFull] = useState(false);
   const details = (full ? prompt.full : prompt.compact).split("\n").slice(1).join("\n").trim();
   const grants = prompt.grants ?? [];
   const choices: readonly { label: string; answer: ApproveAnswer }[] = [
@@ -220,7 +213,7 @@ function Approval({
       answer: { grant: grant.scope, always: true } as const,
     })),
     { label: grants.length > 0 ? "Approve Once" : "Approve", answer: "once" },
-    ...(prompt.session === undefined || lite
+    ...(prompt.session === undefined
       ? []
       : [{ label: prompt.session, answer: "session" as const }]),
     { label: "Deny", answer: "deny" },
