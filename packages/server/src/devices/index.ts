@@ -13,7 +13,7 @@ export interface DevicePairing {
   readonly connections: DeviceConnections;
 }
 
-export interface DevicePairingOptions extends PairingDeskOptions {
+export interface DevicePairingOptions extends Omit<PairingDeskOptions, "framedBefore"> {
   readonly appDataDir: string;
   readonly logger?: Logger;
 }
@@ -24,7 +24,11 @@ export async function openDevicePairing(options: DevicePairingOptions): Promise<
     appDataDir: options.appDataDir,
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
-  const desk = new PairingDesk(options);
+  // A request from a panel says whether a device paired from the same app before: the store knows.
+  const desk = new PairingDesk({
+    ...options,
+    framedBefore: (framedBy) => store.namedFramedBy(framedBy),
+  });
   const connections = new DeviceConnections();
   // A removed device's open pages are disconnected at once.
   store.onRemoved((deviceId) => connections.closeDevice(deviceId));

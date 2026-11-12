@@ -1,15 +1,16 @@
 /**
- * The paired devices (`<app data>/devices.json`, owner-only): each device's name, kind and times, and the SHA-256 of its
- * key, never the key itself. Only this server writes the file. A key is checked in memory, so a connection's sign-in
- * reads no file.
+ * The paired devices (`<app data>/devices.json`, owner-only): each device's name, kind, times and the app whose panel
+ * it paired from, and the SHA-256 of its key, never the key itself. Only this server writes the file. A key is checked
+ * in memory, so a connection's sign-in reads no file.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DeviceKind, DeviceName, type PairedDevice } from "@omp-app/contracts";
+import { DeviceKind, DeviceName, FramedBy, type PairedDevice } from "@omp-app/contracts";
 import { z } from "zod";
 import type { Logger } from "../logging";
 import { writeFileAtomic } from "../modules/A1/fs/atomic-file";
+import type { Framing } from "./framing";
 
 const FILE_NAME = "devices.json";
 /** A device's last connection is saved at most this often: the list shows it in minutes. */
@@ -22,6 +23,8 @@ const SavedDevice = z.object({
   keyHash: z.string().regex(/^[0-9a-f]{64}$/),
   pairedAt: z.string(),
   lastSeenAt: z.string().nullable(),
+  framed: z.boolean().optional(),
+  framedBy: FramedBy.optional(),
 });
 type SavedDevice = z.infer<typeof SavedDevice>;
 
@@ -41,12 +44,22 @@ function isMissing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-const shown = ({ id, name, kind, pairedAt, lastSeenAt }: SavedDevice): PairedDevice => ({
+const shown = ({
   id,
   name,
   kind,
   pairedAt,
   lastSeenAt,
+  framed,
+  framedBy,
+}: SavedDevice): PairedDevice => ({
+  id,
+  name,
+  kind,
+  pairedAt,
+  lastSeenAt,
+  ...(framed === true ? { framed } : {}),
+  ...(framedBy === undefined ? {} : { framedBy }),
 });
 
 export interface DeviceStoreOptions {
@@ -112,8 +125,18 @@ export class DeviceStore {
       .map(shown);
   }
 
+  /** The name of the device paired last from the app at that origin (see `Framing`); null when none was. */
+  namedFramedBy(framedBy: string): string | null {
+    const named = this.list().filter((device) => device.framedBy === framedBy);
+    return named.at(-1)?.name ?? null;
+  }
+
   /** Pairs a device: its key is returned once, and only its hash is kept. Rejects when the file cannot be written. */
-  async add(name: string, kind: DeviceKind): Promise<{ device: PairedDevice; key: string }> {
+  async add(
+    name: string,
+    kind: DeviceKind,
+    framing: Framing = {},
+  ): Promise<{ device: PairedDevice; key: string }> {
     const key = newDeviceKey();
     const device: SavedDevice = {
       id: randomUUID(),
@@ -122,6 +145,7 @@ export class DeviceStore {
       keyHash: deviceKeyHash(key),
       pairedAt: this.#now().toISOString(),
       lastSeenAt: null,
+      ...framing,
     };
     this.#devices.set(device.id, device);
     this.#idByHash.set(device.keyHash, device.id);

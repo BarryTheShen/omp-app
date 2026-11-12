@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { embed, useEmbed } from "../lite/embed";
 import { guessThisDevice } from "./device-name";
+import { frameOfThisPage } from "./framed-by";
 import { askMachine, askToPair, claimPairing, enterPairingCode } from "./pairing-api";
 
 /** How often the screen asks whether its request was answered. */
@@ -113,13 +114,15 @@ export function PairingScreen({
   const startAsking = (): void => {
     setProblem(null);
     setAsk({ kind: "asking" });
-    void askToPair(name.trim(), guess.kind).then((answer) => {
-      if (answer.ok) setAsk({ kind: "waiting", asked: answer.value });
-      else {
-        setAsk({ kind: "idle" });
-        setProblem(answer.message);
-      }
-    });
+    void frameOfThisPage()
+      .then((frame) => askToPair(name.trim(), guess.kind, frame))
+      .then((answer) => {
+        if (answer.ok) setAsk({ kind: "waiting", asked: answer.value });
+        else {
+          setAsk({ kind: "idle" });
+          setProblem(answer.message);
+        }
+      });
   };
 
   const submitCode = (event?: FormEvent): void => {
@@ -128,7 +131,10 @@ export function PairingScreen({
     setBusy(true);
     setProblem(null);
     setCodeNote(null);
-    void enterPairingCode(normalizePairingCode(code), name.trim(), guess.kind, keep)
+    void frameOfThisPage()
+      .then((frame) =>
+        enterPairingCode(normalizePairingCode(code), name.trim(), guess.kind, keep, frame),
+      )
       .then((answer) => {
         if (!answer.ok) {
           setProblem(answer.message);

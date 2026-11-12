@@ -32,6 +32,7 @@ describe("pairing by a paired device's answer", () => {
       status: "allowed",
       name: "iPhone · Home Screen app",
       kind: "home-screen-app",
+      framing: {},
     });
     // Collected once: the same secret gets nothing more.
     expect(desk.claim(asked.requestId)).toEqual({ status: "expired" });
@@ -79,6 +80,47 @@ describe("pairing by a paired device's answer", () => {
     desk.ask("Laptop", "browser");
     desk.allow(desk.waiting()[0]?.id ?? "");
     expect(heard).toBe(2);
+    desk.dispose();
+  });
+
+  test("a request from a panel carries its frame to the list and to the answer; a paired-before name is looked up for a known origin only", () => {
+    const KNOWN = "moz-extension://1a2b3c4d-0000-4000-8000-000000000001";
+    const NEW = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+    const desk = new PairingDesk({
+      now: () => 1_000_000,
+      framedBefore: (origin) => (origin === KNOWN ? "Zen sidebar on my-laptop" : null),
+    });
+    desk.ask("Again", "browser", { framed: true, framedBy: KNOWN });
+    desk.ask("First", "browser", { framed: true, framedBy: NEW });
+    const unknown = desk.ask("Unnamed", "browser", { framed: true });
+    desk.ask("Page", "browser");
+    if (unknown === "busy") throw new Error("busy");
+
+    const rows = new Map(desk.waiting().map((row) => [row.name, row]));
+    expect(rows.get("Again")).toMatchObject({
+      framed: true,
+      framedBy: KNOWN,
+      framedBefore: "Zen sidebar on my-laptop",
+    });
+    expect(rows.get("First")).toMatchObject({ framed: true, framedBy: NEW, framedBefore: null });
+    // A frame that did not say whose it is is a panel all the same, and matches no earlier device.
+    const unnamed = rows.get("Unnamed");
+    expect(unnamed).toMatchObject({ framed: true });
+    expect(unnamed).not.toHaveProperty("framedBy");
+    expect(unnamed).not.toHaveProperty("framedBefore");
+    // A page of its own says nothing of a frame.
+    const page = rows.get("Page");
+    expect(page).not.toHaveProperty("framed");
+    expect(page).not.toHaveProperty("framedBy");
+    expect(page).not.toHaveProperty("framedBefore");
+
+    desk.allow(unnamed?.id ?? "");
+    expect(desk.claim(unknown.requestId)).toEqual({
+      status: "allowed",
+      name: "Unnamed",
+      kind: "browser",
+      framing: { framed: true },
+    });
     desk.dispose();
   });
 });

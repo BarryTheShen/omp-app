@@ -10,6 +10,7 @@ import {
   PairingCodeEntered,
   PairingMachine,
 } from "@omp-app/contracts";
+import type { PageFrame } from "./framed-by";
 
 /** What a contracts schema offers that this file uses: a checked parse. */
 interface Checks<T> {
@@ -56,8 +57,12 @@ async function post<T>(
 }
 
 /** Asks the paired devices to allow this one: the request's secret and the 6 digits to show. */
-export function askToPair(name: string, kind: DeviceKind): Promise<Answer<PairingAsked>> {
-  return post(PAIRING_PATHS.ask, { name, kind }, PairingAsked);
+export function askToPair(
+  name: string,
+  kind: DeviceKind,
+  frame: PageFrame = {},
+): Promise<Answer<PairingAsked>> {
+  return post(PAIRING_PATHS.ask, { name, kind, ...frame }, PairingAsked);
 }
 
 /** Whether the request was answered; when it was allowed, the key comes as a cookie, and to the page when `keep`. */
@@ -78,10 +83,11 @@ export function enterPairingCode(
   name: string,
   kind: DeviceKind,
   keep: "host" | null = null,
+  frame: PageFrame = {},
 ): Promise<Answer<PairingCodeEntered>> {
   return post(
     PAIRING_PATHS.code,
-    { code, name, kind, ...(keep === null ? {} : { keep }) },
+    { code, name, kind, ...(keep === null ? {} : { keep }), ...frame },
     PairingCodeEntered,
   );
 }
@@ -103,9 +109,11 @@ export function codeFromAddress(hash: string): string | null {
 
 /**
  * Takes the one-time code a QR code's address carries out of the address (its other parts stay), so a paired device
- * that scans one shows a clean address; the pairing screen gets the code from the caller.
+ * that scans one shows a clean address; the pairing screen gets the code from the caller. A page in a frame takes none:
+ * a QR code opens a page of its own, and a frame that loads `#pair=` must not use up a code (five wrong tries end it).
  */
 export function takePairingCode(): string | null {
+  if (window.parent !== window) return null;
   const code = codeFromAddress(window.location.hash);
   if (code === null) return null;
   const params = new URLSearchParams(window.location.hash.slice(1));

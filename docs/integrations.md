@@ -23,7 +23,7 @@ After that, a panel on a page of the app's own site (the same host name, on anot
 2. When the panel pairs, the app hands the key to the panel's page, which passes it to the host (`credential`).
 3. The host keeps it in its own storage (an extension's `storage.local`, an editor's secret storage), out of any web page's reach, and gives it back in its `hello` each time the panel loads. The panel signs in with it, sending it in its connection's handshake (the WebSocket's protocols), never in an address, where a proxy could log it.
 
-The key is the device: whoever holds it is signed in as that panel. Removing the panel in **Settings → App → Devices** ends it at once.
+The key is the device: whoever holds it is signed in as that panel. Removing the panel in **Settings → App → Devices** ends it at once. Because the panel's host holds the key, the prompt that asks you to allow a panel (and the request in Settings → App → Devices) says "In a panel inside" the app (an extension by the start of its id, VS Code by name, any other page by its address, or "another app that did not say which"), "It will hold this device's key", and whether that app paired before and as which device.
 
 ## What can a host do?
 

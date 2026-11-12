@@ -78,6 +78,25 @@ async function hostPage(browser: Browser, origin: string): Promise<Page> {
   return host;
 }
 
+/** The host page of `keepingHost` and the embed library, listening on `port`. */
+async function serveHost(app: string, port: number): Promise<Server> {
+  const library = embedLibrary();
+  const server = createServer((request, response) => {
+    if (request.url === "/omp-embed.js") {
+      response.writeHead(200, { "Content-Type": "text/javascript" });
+      response.end(library);
+      return;
+    }
+    response.writeHead(200, { "Content-Type": "text/html" });
+    response.end(keepingHost(app));
+  });
+  const listening = Promise.withResolvers<void>();
+  server.once("error", listening.reject);
+  server.listen(port, "127.0.0.1", listening.resolve);
+  await listening.promise;
+  return server;
+}
+
 realTest.describe("new UI lite view in another site's panel, its key kept by its host", () => {
   realTest.setTimeout(240_000);
   const port = 41_000 + Math.floor(Math.random() * 20_000);
@@ -97,20 +116,7 @@ realTest.describe("new UI lite view in another site's panel, its key kept by its
       await expect(shown).toBeVisible();
       const code = (await shown.textContent()) ?? "";
 
-      const library = embedLibrary();
-      const server = createServer((request, response) => {
-        if (request.url === "/omp-embed.js") {
-          response.writeHead(200, { "Content-Type": "text/javascript" });
-          response.end(library);
-          return;
-        }
-        response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(keepingHost(app));
-      });
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, "127.0.0.1", resolve);
-      });
+      const server = await serveHost(app, port);
       try {
         const host = await hostPage(browser, `http://localhost:${port}`);
         const panel = host.frameLocator('iframe[title="omp"]');
@@ -164,6 +170,50 @@ realTest.describe("new UI lite view in another site's panel, its key kept by its
         await host.evaluate(() => localStorage.removeItem("omp-key"));
         await host.reload();
         await expect(pairing).toBeVisible({ timeout: 60_000 });
+        await host.context().close();
+      } finally {
+        await stop(server);
+      }
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a panel's request to pair tells the person who allows it which app it is inside, and whether that app paired before",
+    async ({ realApp, browser }) => {
+      const owner = await realApp.open({ path: "/" });
+      const app = new URL(owner.url()).origin;
+      const server = await serveHost(app, port);
+      try {
+        const host = await hostPage(browser, `http://localhost:${port}`);
+        const panel = host.frameLocator('iframe[title="omp"]');
+        const asking = panel.getByRole("button", { name: /^Ask (to pair|again)$/ });
+        const prompt = owner.getByRole("alertdialog", { name: "A device wants to pair" });
+        const inside = `In a panel inside localhost:${port}. It will hold this device's key.`;
+
+        // The first request from this app: the prompt names the app, and says it has not paired before.
+        await expect(asking).toBeVisible({ timeout: 60_000 });
+        await asking.click();
+        await expect(prompt).toContainText(`${inside} This app has not paired before.`);
+        await prompt.getByRole("button", { name: "Allow" }).click();
+        const box = panel.getByRole("textbox", { name: "Message" });
+        await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+
+        // Settings → Devices shows the app under the device that paired from it.
+        await owner.getByRole("button", { name: "Settings", exact: true }).click();
+        const devices = owner.getByRole("region", { name: "Devices" });
+        await expect(
+          devices.getByRole("list", { name: "Paired devices" }).getByRole("listitem"),
+        ).toContainText(`In a panel inside localhost:${port}`);
+
+        // The host loses its key and the panel asks again: the prompt names the device the same app paired as.
+        await host.evaluate(() => localStorage.removeItem("omp-key"));
+        await host.reload();
+        await expect(asking).toBeVisible({ timeout: 60_000 });
+        await asking.click();
+        await expect(prompt).toContainText(inside);
+        await expect(prompt).toContainText(/The same app paired before as testhost panel on .+\./);
+        await prompt.getByRole("button", { name: "Deny" }).click();
         await host.context().close();
       } finally {
         await stop(server);

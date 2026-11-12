@@ -64,10 +64,12 @@ describe("the lite view's end of the embed protocol", () => {
     receive(hello(), HOST, {});
     receive({ hello: true });
     expect(endpoint.getSnapshot().host).toBeNull();
+    expect(endpoint.getSnapshot().origin).toBeNull();
 
     receive(hello({ settings: { greeting: "Ask about this page" }, context: PAGE }));
     expect(endpoint.getSnapshot()).toMatchObject({
       host: "zen",
+      origin: HOST,
       settings: { greeting: "Ask about this page" },
       context: PAGE,
     });
@@ -79,6 +81,7 @@ describe("the lite view's end of the embed protocol", () => {
     receive(hello({ host: "other" }), "https://other.example");
     expect(endpoint.getSnapshot()).toMatchObject({
       host: "zen",
+      origin: HOST,
       settings: { greeting: "Ask about this page" },
     });
   });

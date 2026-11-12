@@ -1,6 +1,12 @@
 import { PAIRING_PATHS, pairingLink } from "@omp-app/contracts";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { askMachine, codeFromAddress } from "./pairing-api";
+import {
+  askMachine,
+  askToPair,
+  codeFromAddress,
+  enterPairingCode,
+  takePairingCode,
+} from "./pairing-api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,6 +19,58 @@ describe("a pairing QR code's address", () => {
     expect(codeFromAddress(opened.hash)).toBe("K7F3QX9M");
     expect(codeFromAddress("#token=abc&folder=%2Fhome")).toBeNull();
     expect(codeFromAddress("")).toBeNull();
+  });
+});
+
+describe("taking the one-time code from the address", () => {
+  /** A page at `/#pair=K7F3QX9M`, on its own or in a frame; what `history.replaceState` was told. */
+  function page(framed: boolean) {
+    const replaced: string[] = [];
+    const self: { parent: unknown; location: unknown; history: unknown } = {
+      parent: null,
+      location: { hash: "#pair=K7F3QX9M&x=1", pathname: "/", search: "?embed=1" },
+      history: {
+        replaceState: (_state: unknown, _title: string, url: string) => replaced.push(url),
+      },
+    };
+    self.parent = framed ? {} : self;
+    vi.stubGlobal("window", self);
+    return replaced;
+  }
+
+  test("a page of its own takes it out of the address, and the rest of the address stays", () => {
+    const replaced = page(false);
+    expect(takePairingCode()).toBe("K7F3QX9M");
+    expect(replaced).toEqual(["/?embed=1#x=1"]);
+  });
+
+  test("a page in a frame takes none and leaves the address: a frame must not use up a code with five wrong tries", () => {
+    const replaced = page(true);
+    expect(takePairingCode()).toBeNull();
+    expect(replaced).toEqual([]);
+  });
+});
+
+describe("the frame a pairing page tells the app", () => {
+  const bodies: Record<string, unknown>[] = [];
+  const answer = (status: Record<string, unknown>) => async (_path: string, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Response.json(status);
+  };
+
+  test("is sent with a request and with a code, and left out for a page of its own", async () => {
+    vi.stubGlobal("fetch", answer({ requestId: "r", code: "123456", expiresAt: "t" }));
+    await askToPair("Panel", "browser", { framed: true, framedBy: "vscode-webview://abc" });
+    await askToPair("Panel", "browser", { framed: true });
+    await askToPair("Page", "browser");
+    vi.stubGlobal("fetch", answer({ status: "expired" }));
+    await enterPairingCode("K7F3QX9M", "Panel", "browser", "host", { framed: true });
+    expect(bodies.splice(0)).toEqual([
+      { name: "Panel", kind: "browser", framed: true, framedBy: "vscode-webview://abc" },
+      { name: "Panel", kind: "browser", framed: true },
+      { name: "Page", kind: "browser" },
+      { code: "K7F3QX9M", name: "Panel", kind: "browser", keep: "host", framed: true },
+    ]);
   });
 });
 

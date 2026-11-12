@@ -364,6 +364,74 @@ describe("device pairing on a running server", () => {
     expect(await answer.json()).toEqual({ machine: null });
   });
 
+  test("a request from a panel is listed with its frame and the app that paired before; a device keeps its frame; a frame that is no origin is refused", async () => {
+    const { app, pairing } = await serve();
+    const ORIGIN = "moz-extension://1a2b3c4d-0000-4000-8000-000000000001";
+    const ask = (body: Record<string, unknown>) =>
+      post(app, PAIRING_PATHS.ask, { kind: "browser", ...body });
+    const last = () => pairing.desk.waiting().at(-1);
+
+    const first = await ask({ name: "Panel", framed: true, framedBy: ORIGIN });
+    expect(first.status).toBe(200);
+    expect(last()).toMatchObject({
+      name: "Panel",
+      framed: true,
+      framedBy: ORIGIN,
+      framedBefore: null,
+    });
+    pairing.desk.allow(last()?.id ?? "");
+    const { requestId } = (await first.json()) as { requestId: string };
+    const claimed = await post(app, PAIRING_PATHS.claim, { requestId, keep: "host" });
+    expect(((await claimed.json()) as { status: string }).status).toBe("paired");
+    expect(pairing.store.list()).toMatchObject([{ name: "Panel", framed: true, framedBy: ORIGIN }]);
+
+    // The same app asks again: the person is told which device it paired as.
+    await ask({ name: "Panel again", framed: true, framedBy: ORIGIN });
+    expect(last()).toMatchObject({ name: "Panel again", framedBefore: "Panel" });
+
+    // A frame that did not say whose it is, and an origin alone, which is a frame too.
+    await ask({ name: "Unnamed", framed: true });
+    const unnamed = last();
+    expect(unnamed).toMatchObject({ name: "Unnamed", framed: true });
+    expect(unnamed).not.toHaveProperty("framedBy");
+    expect(unnamed).not.toHaveProperty("framedBefore");
+    await ask({ name: "Only an origin", framedBy: ORIGIN });
+    expect(last()).toMatchObject({ name: "Only an origin", framed: true, framedBy: ORIGIN });
+
+    // A one-time code keeps the frame with the device too.
+    const { code } = pairing.desk.newCode();
+    await post(app, PAIRING_PATHS.code, {
+      code,
+      name: "Coded panel",
+      kind: "browser",
+      framed: true,
+      framedBy: ORIGIN,
+    });
+    expect(pairing.store.list().at(-1)).toMatchObject({
+      name: "Coded panel",
+      framed: true,
+      framedBy: ORIGIN,
+    });
+
+    // Only an origin of a kind the app can name, within 200 characters, is taken.
+    for (const bad of [
+      "",
+      "null",
+      "javascript:alert(1)",
+      "ftp://host",
+      "https://host/path",
+      "https://a b",
+      `https://${"a".repeat(200)}`,
+    ]) {
+      expect((await ask({ name: "Bad", framedBy: bad })).status).toBe(400);
+    }
+    expect(pairing.desk.waiting().map((row) => row.name)).toEqual([
+      "Panel again",
+      "Unnamed",
+      "Only an origin",
+    ]);
+  });
+
   test("the page a paired device loads sets its key's cookie again; another page's load sets none", async () => {
     const { app, pairing } = await serve();
     const { code } = pairing.desk.newCode();

@@ -27,6 +27,8 @@ import { isLiteView } from "./lite";
 export interface EmbedState {
   /** The host's name from its `hello`; null until one came. */
   readonly host: string | null;
+  /** The origin of the page that framed this one, as its first `hello` came from it (the browser's word, not the host's); null until one came. */
+  readonly origin: string | null;
   readonly settings: EmbedSettings;
   /** What the person is looking at in the host; null when it said nothing or nothing is open. */
   readonly context: HostContext | null;
@@ -39,6 +41,7 @@ export interface EmbedState {
 
 const EMPTY: EmbedState = {
   host: null,
+  origin: null,
   settings: {},
   context: null,
   contextLeftOut: false,
@@ -146,6 +149,7 @@ export class EmbedEndpoint {
       case "hello":
         this.#set({
           host: message.host,
+          origin: this.#origin,
           settings: { ...this.#state.settings, ...message.settings },
           context: message.context ?? null,
           contextLeftOut: false,

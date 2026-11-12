@@ -93,4 +93,62 @@ describe("the paired devices", () => {
     const { key } = await store.add("Laptop", "browser");
     expect((await DeviceStore.open({ appDataDir: dir })).deviceForKey(key)).toBeDefined();
   });
+
+  test("a device keeps the frame it paired from; the app that paired last names the origin, and records from before read as pages of their own", async () => {
+    const ORIGIN = "vscode-webview://0a1b2c3d4e5f";
+    const now = { value: Date.parse("2026-11-12T10:00:00Z") };
+    const dir = await folder();
+    const store = await DeviceStore.open({ appDataDir: dir, now: () => new Date(now.value) });
+    expect(store.namedFramedBy(ORIGIN)).toBeNull();
+    const first = await store.add("First panel", "browser", { framed: true, framedBy: ORIGIN });
+    expect(first.device).toMatchObject({ framed: true, framedBy: ORIGIN });
+    now.value += 1_000;
+    await store.add("Second panel", "browser", { framed: true, framedBy: ORIGIN });
+    now.value += 1_000;
+    const unnamed = await store.add("Unnamed panel", "browser", { framed: true });
+    expect(unnamed.device).toMatchObject({ framed: true });
+    expect(unnamed.device).not.toHaveProperty("framedBy");
+    const plain = await store.add("Plain page", "browser");
+    expect(plain.device).not.toHaveProperty("framed");
+    expect(plain.device).not.toHaveProperty("framedBy");
+
+    expect(store.namedFramedBy(ORIGIN)).toBe("Second panel");
+    expect(store.namedFramedBy("moz-extension://other")).toBeNull();
+
+    // A new start reads the frames back.
+    const again = await DeviceStore.open({ appDataDir: dir });
+    expect(again.list().map(({ name, framed, framedBy }) => ({ name, framed, framedBy }))).toEqual([
+      { name: "First panel", framed: true, framedBy: ORIGIN },
+      { name: "Second panel", framed: true, framedBy: ORIGIN },
+      { name: "Unnamed panel", framed: true, framedBy: undefined },
+      { name: "Plain page", framed: undefined, framedBy: undefined },
+    ]);
+
+    // A device file written before frames were kept still reads, as pages of their own.
+    const old = await folder();
+    await writeFile(
+      join(old, "devices.json"),
+      JSON.stringify({
+        version: 1,
+        devices: [
+          {
+            id: "d1",
+            name: "Old laptop",
+            kind: "browser",
+            keyHash: "a".repeat(64),
+            pairedAt: "2026-11-01T10:00:00.000Z",
+            lastSeenAt: null,
+          },
+        ],
+      }),
+    );
+    const [oldDevice] = (await DeviceStore.open({ appDataDir: old })).list();
+    expect(oldDevice).toEqual({
+      id: "d1",
+      name: "Old laptop",
+      kind: "browser",
+      pairedAt: "2026-11-01T10:00:00.000Z",
+      lastSeenAt: null,
+    });
+  });
 });
