@@ -305,24 +305,64 @@ export interface EmbedChat {
    * chat had on the old one), and after a new chat starts in its place.
    */
   onHeld(listener: () => void): () => void;
+  /**
+   * Tells the chat to ask before commands and file changes from now on, also after its omp starts again (`ask_first`).
+   * False when its omp or the server predates it; the panel then gives it no tools and tries again.
+   */
+  askFirst(): Promise<boolean>;
 }
+
+/**
+ * Hosts whose panel reads and acts in web pages (the Firefox and Zen extension, `apps/zen`): a page can carry
+ * instructions the chat's model may follow, so their chats ask before commands and file changes (`ask_first`).
+ */
+const ASKS_FIRST: ReadonlySet<string> = new Set(["zen"]);
+
+/** How long after a refused `ask_first` it is tried again. */
+const ASK_FIRST_RETRY_MS = 5_000;
 
 /**
  * Gives the chat the panel shows the host's tools once the server holds it open for this page, again whenever they
  * change and again each time it is held anew (a dropped link takes them off the chat), hands their calls to the host,
  * and tells the host the chat shows (`ready`). An open chat's id is known before its open answers; tools given then
- * were refused, and never given again. Returns what takes the tools back off the chat, as when the panel shows another.
+ * were refused, and never given again. A browser panel's chat gets them only once it said it asks before commands and
+ * file changes, told again each time it is held; a refusal is tried again after a while. Returns what takes the tools
+ * back off the chat, as when the panel shows another.
  */
 export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   let stopped = false;
   /** The tools the chat took: only their calls go to the host. */
   let given: ReadonlySet<string> = new Set();
   let registered: { readonly tools: readonly EmbedTool[]; readonly chat: string } | null = null;
+  /** The chat that said it asks first since it was last held; null until one did. */
+  let asksFirst: string | null = null;
+  let asking = false;
+  /** After a refusal (an omp from before it), tried again once this time has passed. */
+  let retryAt = 0;
+  let retry: ReturnType<typeof setTimeout> | undefined;
   let writes: Promise<unknown> = Promise.resolve();
   const sync = (): void => {
     const threadId = chat.threadId;
     const { host, tools } = endpoint.getSnapshot();
     if (stopped || threadId === null || host === null || !chat.held) return;
+    // A browser panel's chat is told to ask first before it gets the page's tools: until it says it does (an omp from
+    // before the request refuses it), the page gives it nothing.
+    if (ASKS_FIRST.has(host) && asksFirst !== threadId) {
+      if (asking || Date.now() < retryAt) return;
+      asking = true;
+      writes = writes.then(async () => {
+        const told = await chat.askFirst();
+        asking = false;
+        if (told) asksFirst = threadId;
+        else {
+          retryAt = Date.now() + ASK_FIRST_RETRY_MS;
+          clearTimeout(retry);
+          retry = setTimeout(sync, ASK_FIRST_RETRY_MS);
+        }
+        sync();
+      });
+      return;
+    }
     if (registered?.tools === tools && registered.chat === threadId) return;
     registered = { tools, chat: threadId };
     writes = writes.then(async () => {
@@ -348,6 +388,9 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
   );
   const stopHeld = chat.onHeld(() => {
     registered = null;
+    // Held anew, maybe by a new omp, or a new chat in its place: told again, at once.
+    asksFirst = null;
+    retryAt = 0;
     sync();
   });
   sync();
@@ -357,6 +400,7 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
     stopEmbed();
     stopCalls();
     stopHeld();
+    clearTimeout(retry);
     // A chat kept open behind the panel keeps no tool whose calls nothing here would hear.
     if (registered !== null) {
       void writes.then(() => chat.setHostTools(endpoint.owner, [])).catch(() => undefined);

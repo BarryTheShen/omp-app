@@ -821,6 +821,17 @@ export interface LocalFolder {
   readonly folder: string;
 }
 
+/**
+ * `ask_first`: from now on the chat asks before commands, file changes and MCP actions (omp's "always-ask" approval
+ * mode; a stricter mode is kept), and again each time its host starts; its own agent no longer messages subagents
+ * (they run without asking once their `task` call was approved) or writes long-term memory. A browser panel's chats read
+ * pages, which can carry instructions.
+ */
+export interface AskFirst {
+  /** The mode in effect: "always-ask", or the stricter "always-ask-cached" the person chose. */
+  readonly approvalMode: "always-ask" | "always-ask-cached";
+}
+
 /** One entry of omp's command list (`buildAvailableSlashCommands`): the fields the app reads. */
 export interface ChatHostCommand {
   readonly name: string;
@@ -899,6 +910,8 @@ export interface ChatHostMethodMap {
   };
   /** The chat's scratch folder (omp's `local://`), where files attached to a message are put for omp's tools. */
   readonly local_folder: { readonly params: EmptyParams; readonly result: LocalFolder };
+  /** The chat asks before commands and file changes from now on, and after every start of its host. */
+  readonly ask_first: { readonly params: EmptyParams; readonly result: AskFirst };
   /** The rows extensions offer for the box's text at the caret (none when no extension adds to the menus). */
   readonly extension_completions: {
     readonly params: ExtensionCompletionsParams;
@@ -1410,6 +1423,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   promote_queued_message: PromoteQueuedMessageParams,
   abort_and_restore_queue: EmptyParams,
   local_folder: EmptyParams,
+  ask_first: EmptyParams,
   extension_completions: ExtensionCompletionsParams,
   get_search_engines: EmptyParams,
   set_search_key: SetSearchKeyParams,

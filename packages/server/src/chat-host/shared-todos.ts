@@ -85,8 +85,12 @@ export class SharedTodosTool {
     label: "Shared to-do list",
     description: SHARED_TODOS_DESCRIPTION,
     parameters: SHARED_TODOS_PARAMETERS as unknown as TSchema,
-    // It changes the app's list, never the computer: an approval for it would ask about nothing on the machine.
-    approval: "read",
+    // Reading the list is free. A change goes into the list every chat reads and acts on, so it is a write: in a chat
+    // that asks first (`ask-first.ts`, a browser panel's) the person approves it; in "yolo" nothing changes.
+    approval: (args: unknown) =>
+      args !== null && typeof args === "object" && (args as { action?: unknown }).action === "list"
+        ? "read"
+        : "write",
     // Shown to the agent with its own tools, not behind a tool search.
     loadMode: "essential",
     strict: false,

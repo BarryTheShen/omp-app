@@ -166,6 +166,8 @@ const BACKGROUND_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   // the chat's other requests.
   "set_search_key",
   "test_search",
+  // A browser panel's chat asks first from the moment the request is read: a message sent after it cannot overtake it.
+  "ask_first",
 ]);
 
 /** How often a host asked to hand its chat back checks that the turn it runs has finished. */
@@ -523,6 +525,7 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       };
     },
     local_folder: async () => localFolder(session),
+    ask_first: async () => chat.askFirst.request(),
     extension_completions: async ({ text, caret }) => ({
       items: await extensionCompletions(stackProviders(ui.completionProviders), text, caret),
     }),
