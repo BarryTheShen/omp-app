@@ -50,7 +50,7 @@ realTest.describe("new UI tours", () => {
       await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
       await expect(card(page)).toBeHidden();
 
-      // The palette offers every tour, oldest first: the What's new list's updates from the bottom, each with its tours.
+      // The palette keeps every tour, oldest first: the What's new list's updates from the bottom, each with its tours.
       await page.getByRole("button", { name: "What's new", exact: true }).click();
       await expect(list(page)).toBeVisible();
       const listed: string[] = [];
@@ -67,11 +67,24 @@ realTest.describe("new UI tours", () => {
       await page.keyboard.press("Control+k");
       const search = palette(page).getByRole("combobox", { name: "Search the palette" });
       await search.fill("Tour:");
+      // A search shows its first 30 matches, oldest first, and says how many more; any tour is found by its name.
       const offered = palette(page).getByRole("option");
-      await expect(offered).toHaveCount(listed.length);
+      const shown = listed.slice(0, 30);
+      await expect(offered).toHaveCount(shown.length);
       expect(
         (await offered.allTextContents()).map((text) => /Tour: (.+?)\s*\d+ min/.exec(text)?.[1]),
-      ).toEqual(listed);
+      ).toEqual(shown);
+      if (listed.length > shown.length)
+        await expect(
+          palette(page).getByText(`${listed.length - shown.length} more matches: keep typing`),
+        ).toBeVisible();
+      const newest = listed.at(-1) ?? "";
+      await search.fill(`Tour: ${newest}`);
+      await expect(
+        palette(page)
+          .getByRole("option", { name: `Tour: ${newest}` })
+          .first(),
+      ).toBeVisible();
 
       expect(realApp.problems).toEqual([]);
     },

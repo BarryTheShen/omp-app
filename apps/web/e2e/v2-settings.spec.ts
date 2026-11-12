@@ -25,6 +25,31 @@ realTest.describe("new UI settings", () => {
   }
 
   realTest(
+    "Settings, omp's settings and the dashboard load in the background once the app is up, before anything opens them",
+    async ({ realApp }) => {
+      const fetched: string[] = [];
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: async (opened) => {
+          opened.on("request", (request) => fetched.push(request.url()));
+        },
+      });
+      await expect(page.locator("[data-app-root='true']")).toBeVisible({ timeout: 30_000 });
+      for (const chunk of [
+        /\/SettingsPage-[^/]+\.js$/,
+        /\/omp-settings-[^/]+\.js$/,
+        /\/DashboardPage-[^/]+\.js$/,
+      ])
+        await expect
+          .poll(() => fetched.some((url) => chunk.test(url)), { timeout: 15_000 })
+          .toBe(true);
+      await expect(sheet(page)).toHaveCount(0);
+      await openSettings(page);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "open by the gear, Ctrl+, and the palette; search finds a setting by its words",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });

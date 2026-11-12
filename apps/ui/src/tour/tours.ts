@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** Settings, the dashboard and the palette open at once (2026-11-12). */
+const OPENS_AT_ONCE_TOUR: Tour = {
+  id: "opens-at-once-2026-11-12",
+  title: "Settings and the palette open at once",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Settings and the palette open at once",
+      text: "Settings and the dashboard open at once: their code and omp's settings load in the background a moment after the app is up, instead of when you first open them, which took about half a second, again after every update. The palette (Ctrl+K) draws far fewer rows: before you type it shows the app's commands and the first chats and models, and says how to find a theme, a tour or one of omp's commands; a search shows the first 30 matches of each kind.",
+      action: next,
+    },
+  ],
+};
+
 /** A setting's switch or choice moves when it is clicked (2026-11-12). */
 const SETTINGS_AT_ONCE_TOUR: Tour = {
   id: "settings-at-once-2026-11-12",
@@ -3020,6 +3036,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-opens-at-once",
+    when: "2026-11-12T03:41:00-06:00",
+    summary:
+      "Settings and the palette open at once. Settings and the dashboard load in the background a moment after the app is up, so their first open no longer waits about half a second for their code and omp's settings, again after every update. The palette (Ctrl+K) draws far fewer rows: before you type, the app's commands and the first chats and models, with a line on how to find themes, tours and omp's commands; a search shows the first 30 matches of each kind.",
+    tours: [OPENS_AT_ONCE_TOUR],
+  },
   {
     id: "2026-11-12-settings-at-once",
     when: "2026-11-12T03:28:00-06:00",

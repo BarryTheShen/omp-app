@@ -80,15 +80,44 @@ import {
   type WorkspaceView,
 } from "./workspace/Workspace";
 
-/** The settings sheet and omp's settings with it load when it first opens. */
+const loadSettingsPage = () => import("./settings/SettingsPage");
+const loadDashboardPage = () => import("./dashboard/DashboardPage");
+
+/** The settings sheet and omp's settings with it, loaded a little after the app is ready (`preloadPages`). */
 const SettingsPage = lazy(() =>
-  import("./settings/SettingsPage").then((module) => ({ default: module.SettingsPage })),
+  loadSettingsPage().then((module) => ({ default: module.SettingsPage })),
 );
 
-/** The dashboard (#2836) loads when it first opens. */
+/** The dashboard (#2836), loaded a little after the app is ready (`preloadPages`). */
 const DashboardPage = lazy(() =>
-  import("./dashboard/DashboardPage").then((module) => ({ default: module.DashboardPage })),
+  loadDashboardPage().then((module) => ({ default: module.DashboardPage })),
 );
+
+/** How long after the app is ready Settings and the dashboard load in the background, when the page is idle. */
+const PRELOAD_AFTER_MS = 2_000;
+
+/**
+ * Loads Settings, omp's settings (about 260 kB) and the dashboard in the background once the app has settled, so that
+ * their first open draws at once instead of fetching them first: about 400 ms on a fast network, more over a slower
+ * one, and again after every release, which renames the files. Returns what cancels it.
+ */
+function preloadPages(): () => void {
+  const load = (): void => {
+    void loadSettingsPage().catch(() => undefined);
+    void import("./settings/data").then((data) => data.loadSettingsData()).catch(() => undefined);
+    void loadDashboardPage().catch(() => undefined);
+  };
+  let idle: number | undefined;
+  const timer = window.setTimeout(() => {
+    if (typeof window.requestIdleCallback === "function")
+      idle = window.requestIdleCallback(load, { timeout: PRELOAD_AFTER_MS });
+    else load();
+  }, PRELOAD_AFTER_MS);
+  return () => {
+    window.clearTimeout(timer);
+    if (idle !== undefined) window.cancelIdleCallback(idle);
+  };
+}
 
 type Connection =
   | { readonly kind: "connecting" }
@@ -179,6 +208,10 @@ export function App(): ReactNode {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  // Settings and the dashboard load in the background once the full app is up, so they open at once.
+  const fullAppReady = connection.kind === "ready" && !isLiteView();
+  useEffect(() => (fullAppReady ? preloadPages() : undefined), [fullAppReady]);
 
   if (connection.kind === "pairing") {
     return <PairingScreen linkRefused={connection.linkRefused} scannedCode={scannedCode.current} />;

@@ -64,6 +64,28 @@ realTest.describe("new UI palette", () => {
   });
 
   realTest(
+    "before anything is typed it leaves out themes, tours and omp's commands; a search shows its first 30 matches",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await newChat(page);
+      await box(page).press("Control+k");
+      await expect(palette(page)).toBeVisible();
+      await expect(palette(page).getByRole("option", { name: /^New chat/ })).toBeVisible();
+      await expect(palette(page).getByRole("option", { name: /^Tour: / })).toHaveCount(0);
+      await expect(palette(page).getByRole("option", { name: /^Theme: / })).toHaveCount(0);
+      await expect(
+        palette(page).getByText("Type to find a theme, a tour or one of omp's commands"),
+      ).toBeVisible();
+
+      // Every update brought a tour, so far more than 30 match.
+      await search(page).fill("Tour:");
+      await expect(palette(page).getByRole("option", { name: /^Tour: / })).toHaveCount(30);
+      await expect(palette(page).getByText(/^\d+ more matches: keep typing$/)).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "puts a file or one of omp's commands into the box, and switches the model",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });

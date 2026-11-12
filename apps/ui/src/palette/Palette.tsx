@@ -49,7 +49,17 @@ interface Item {
   readonly detail?: string | undefined;
   readonly keys?: string | undefined;
   readonly run: () => void;
+  /** Found by typing only (each theme, each tour, each of omp's commands): an empty palette leaves it out. */
+  readonly typed?: true;
 }
+
+/**
+ * The rows a group shows: a palette is searched, not scrolled, and every row is drawn when it opens and at every key.
+ * Before anything is typed the chats and the models show their first ones; once something is, each group its first
+ * matches. A group with more says so under its rows.
+ */
+const BROWSE_ROWS = 8;
+const FOUND_ROWS = 30;
 
 /** The workspace's commands in the palette, with their keys (New chat is a row of its own, with a shorter name). */
 const WORKSPACE_COMMANDS: readonly Exclude<WorkspaceCommand, "newChat">[] = [
@@ -330,6 +340,7 @@ export function Palette({
         key: "theme:system",
         group: "Commands",
         label: "Theme: match the system",
+        typed: true,
         run: () => close(() => setThemeMode("system")),
       },
       ...THEMES.map((theme) => ({
@@ -337,6 +348,7 @@ export function Palette({
         group: "Commands" as const,
         label: `Theme: ${theme.name}`,
         detail: theme.mode === "dark" ? "Dark" : "Light",
+        typed: true as const,
         // Chosen before the palette closes, so the preview never flicks back to the old theme.
         run: () => {
           setSystemTheme(theme.id);
@@ -463,6 +475,7 @@ export function Palette({
         group: "Commands" as const,
         label: `Tour: ${tour.title}`,
         detail: `${tour.minutes} min`,
+        typed: true as const,
         run: () =>
           close(() => {
             if (workspace.current !== null) startTour(tour, workspace.current);
@@ -474,6 +487,7 @@ export function Palette({
         group: "Commands" as const,
         label: `/${command.name}`,
         detail: command.description,
+        typed: true as const,
         run: () => close(() => focused?.composer?.insert(`/${command.name} `)),
       })),
       ...files.map((file) => ({
@@ -508,14 +522,22 @@ export function Palette({
         (scope === "All" || item.group === scope) &&
         // A file is already what the search found for the query.
         (item.group === "Files" ||
-          needle === "" ||
-          `${item.label} ${item.detail ?? ""}`.toLowerCase().includes(needle)),
+          (needle === ""
+            ? item.typed !== true
+            : `${item.label} ${item.detail ?? ""}`.toLowerCase().includes(needle))),
     );
   })();
 
+  const browsing = query.trim() === "";
   const groups = (["Commands", "Files", "Chats", "Models"] as const)
-    .map((group) => [group, items.filter((item) => item.group === group)] as const)
-    .filter(([, members]) => members.length > 0);
+    .map((group) => {
+      const members = items.filter((item) => item.group === group);
+      // Before anything is typed, the commands show whole (their typed-only rows are left out above).
+      const cap = browsing ? (group === "Commands" ? members.length : BROWSE_ROWS) : FOUND_ROWS;
+      return { group, shown: members.slice(0, cap), more: Math.max(0, members.length - cap) };
+    })
+    .filter(({ shown }) => shown.length > 0);
+  const typedOnly = browsing && (scope === "All" || scope === "Commands");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -558,9 +580,9 @@ export function Palette({
                 ? `Type to search ${folder}.`
                 : "Nothing matches."}
             </CommandEmpty>
-            {groups.map(([group, members]) => (
+            {groups.map(({ group, shown, more }) => (
               <CommandGroup key={group} heading={group}>
-                {members.map((item) => (
+                {shown.map((item) => (
                   <CommandItem key={item.key} value={item.key} onSelect={item.run}>
                     <span className="min-w-0 truncate text-t1">{item.label}</span>
                     {item.detail !== undefined && (
@@ -576,6 +598,18 @@ export function Palette({
                     )}
                   </CommandItem>
                 ))}
+                {more > 0 && (
+                  <p className="px-2 py-1.5 text-xs text-t3">
+                    {browsing
+                      ? `Type to find ${more} more`
+                      : `${more} more ${more === 1 ? "match" : "matches"}: keep typing`}
+                  </p>
+                )}
+                {group === "Commands" && typedOnly && (
+                  <p className="px-2 py-1.5 text-xs text-t3">
+                    Type to find a theme, a tour or one of omp's commands
+                  </p>
+                )}
               </CommandGroup>
             ))}
           </CommandList>
