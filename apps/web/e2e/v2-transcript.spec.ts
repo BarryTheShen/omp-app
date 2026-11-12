@@ -184,6 +184,14 @@ const usage = {
   totalTokens: 2,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
+/** A long agent message: it starts folded. */
+const LONG_REPORT = [
+  "**WEBKIT FOLLOW-UP** on the desktop and the phone.",
+  "",
+  "1. theme_pick 256 ms",
+  "2. chat_list_switch 144 ms",
+  "3. Ctrl+Tab 136 ms, the same with and without hidden tabs.",
+].join("\n");
 const NOTICE_ENTRIES = [
   {
     type: "message",
@@ -201,6 +209,14 @@ const NOTICE_ENTRIES = [
     display: true,
     details: { id: "irc-1", from: "StressA", message: "BB probe passed with no findings." },
     timestamp: "2026-11-04T15:00:05.000Z",
+  },
+  {
+    type: "custom_message",
+    customType: "irc:incoming",
+    content: `<irc>\nIncoming IRC message from agent \`CensusProbe\`:\n\n${LONG_REPORT}\n</irc>`,
+    display: true,
+    details: { id: "irc-2", from: "CensusProbe", message: LONG_REPORT },
+    timestamp: "2026-11-04T15:00:06.000Z",
   },
   {
     type: "custom_message",
@@ -250,6 +266,16 @@ realTest.describe("new UI transcript: omp's own messages", () => {
       await expect(transcript.getByText("All done here.")).toBeVisible({ timeout: 60_000 });
       await expect(transcript.getByText("Message from StressA")).toBeVisible();
       await expect(transcript.getByText("BB probe passed with no findings.")).toBeVisible();
+      // A long one starts folded: who wrote it and the start of its first line; its button opens it and folds it again.
+      const report = transcript.getByRole("button", { name: /^Message from CensusProbe/ });
+      await expect(report).toHaveAttribute("aria-expanded", "false");
+      await expect(report).toContainText("WEBKIT FOLLOW-UP on the desktop and the phone.");
+      await expect(transcript.getByText("chat_list_switch 144 ms")).toHaveCount(0);
+      await report.click();
+      await expect(report).toHaveAttribute("aria-expanded", "true");
+      await expect(transcript.getByText("chat_list_switch 144 ms")).toBeVisible();
+      await report.click();
+      await expect(transcript.getByText("chat_list_switch 144 ms")).toHaveCount(0);
       await expect(transcript.getByText("Supervised process completed")).toBeVisible();
       await expect(transcript.getByText("dev-server")).toBeVisible();
       // None of what omp tells the model.

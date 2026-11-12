@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** A long message from another agent starts folded in the chat (2026-11-12). */
+const NOTE_FOLD_TOUR: Tour = {
+  id: "note-fold-2026-11-12",
+  title: "Long agent messages start folded",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Long agent messages start folded",
+      text: "A long message from another agent (a subagent's report) shows who wrote it and the start of its first line; click it to read all of it, and again to fold it. A short one still shows whole.",
+      action: next,
+    },
+  ],
+};
+
 /** Sending in a long chat does less: the What's new list is no longer rebuilt behind the scenes (2026-11-12). */
 const LIGHTER_SEND_TOUR: Tour = {
   id: "lighter-send-2026-11-12",
@@ -3122,6 +3138,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-note-fold",
+    when: "2026-11-12T12:45:00-06:00",
+    summary:
+      "A long message from another agent, such as a subagent's report, starts folded in the chat: who wrote it and the start of its first line. Click it to read all of it, and again to fold it; the pane's fold of tool output opens and folds them too. A short one still shows whole.",
+    tours: [NOTE_FOLD_TOUR],
+  },
   {
     id: "2026-11-12-lighter-send",
     when: "2026-11-12T08:41:00-06:00",

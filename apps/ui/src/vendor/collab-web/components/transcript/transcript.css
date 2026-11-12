@@ -83,6 +83,9 @@
 	flex-direction: column;
 	align-items: flex-start;
 	gap: 4px;
+	/* omp-app: the column's width, not the widest line's: a folded note's one-line start is cut there. */
+	align-self: stretch;
+	min-width: 0;
 }
 
 /* omp-app: the heading of one of omp's messages, from its details (#2827): "Message from StressA". */
@@ -90,6 +93,45 @@
 	color: var(--fg);
 	font-size: 12px;
 	font-weight: 600;
+}
+
+/* omp-app: a long note's heading folds and opens it; folded, the start of its first line follows the heading. */
+.tr-note-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-family: var(--font-ui);
+	text-align: left;
+}
+
+.tr-note-toggle > .tr-note-head {
+	flex: none;
+}
+
+.tr-note-start {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--fg-muted);
+	font-size: 12px;
+}
+
+.tr-note-toggle:hover .tr-note-start {
+	color: var(--fg);
+}
+
+/* A finger's size on a phone, as the app's other buttons there. */
+@media (max-width: 639px) {
+	.tr-note-toggle {
+		min-height: 44px;
+	}
 }
 
 .tr-msg-img {

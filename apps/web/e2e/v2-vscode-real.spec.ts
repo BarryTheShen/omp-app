@@ -156,6 +156,8 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
         await expect(lite.getByRole("heading", { name: "Pair this device" })).toBeVisible({
           timeout: 60_000,
         });
+        // The one-time code comes from Settings → App → Devices on the app's own page.
+        await owner.getByRole("button", { name: "Settings", exact: true }).click();
         const devices = owner.getByRole("region", { name: "Devices" });
         await devices.getByRole("button", { name: "Pair a new device" }).click();
         const shown = devices

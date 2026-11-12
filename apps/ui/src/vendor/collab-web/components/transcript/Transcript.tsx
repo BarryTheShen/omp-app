@@ -332,12 +332,53 @@ function CustomBody({
 	content: string | readonly (TextContent | ImageContent)[];
 }): ReactNode {
 	if (customType === "async-result") return <JobNotice details={details} content={content} />;
+	return <Note customType={customType} details={details} content={content} />;
+}
+
+/** A note's text longer than this, in characters or lines, starts folded (`Note`). */
+const NOTE_FOLD_CHARS = 280;
+const NOTE_FOLD_LINES = 3;
+
+/** The folded note's first line with words, its Markdown marks left out, for after its heading. */
+function firstLineOf(text: string): string {
+	const line = text.split("\n").find(each => each.trim() !== "") ?? "";
+	return line.replace(/^\s*(?:#+|>|[-*+]|\d+[.)])\s+/, "").replace(/[*_`]/g, "").trim();
+}
+
+/**
+ * omp-app: one of omp's messages from its details. A long one (an agent's message of more than a few lines) starts
+ * folded: its heading and the start of its first line, a button that opens the rest and folds it again; the pane's fold
+ * of tool output (`FoldContext.tools`) opens and folds it too. A short one shows whole.
+ */
+function Note({
+	customType,
+	details,
+	content,
+}: {
+	customType: string;
+	details: unknown;
+	content: string | readonly (TextContent | ImageContent)[];
+}): ReactNode {
+	const fold = useContext(FoldContext).tools;
+	const [open, setOpen] = useState(fold.epoch > 0 && fold.open);
+	useEffect(() => {
+		if (fold.epoch > 0) setOpen(fold.open);
+	}, [fold.epoch, fold.open]);
 	const note = describeNotice(customType, details, contentText(content));
 	const images = typeof content === "string" ? [] : content.filter(block => block.type === "image");
+	const folds = note.body.length > NOTE_FOLD_CHARS || note.body.split("\n").length > NOTE_FOLD_LINES;
 	return (
 		<div className="tr-custom" data-custom-type={customType}>
 			{!note.known && <span className="tr-chip">{customType}</span>}
-			{note.heading !== undefined && <span className="tr-note-head">{note.heading}</span>}
+			{folds ? (
+				<button type="button" className="tr-note-toggle" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+					<ChevronRight size={11} className={`tr-chev${open ? " tr-chev--open" : ""}`} />
+					<span className="tr-note-head">{note.heading ?? "Message"}</span>
+					{!open && <span className="tr-note-start">{firstLineOf(note.body)}</span>}
+				</button>
+			) : (
+				note.heading !== undefined && <span className="tr-note-head">{note.heading}</span>
+			)}
 			{note.rows.length > 0 && (
 				<span className="tr-job-rows">
 					{note.rows.map((row, i) => (
@@ -350,7 +391,7 @@ function CustomBody({
 					))}
 				</span>
 			)}
-			{note.body !== "" && <Markdown text={note.body} />}
+			{note.body !== "" && (!folds || open) && <Markdown text={note.body} />}
 			{images.length > 0 && <MsgContent content={images} />}
 		</div>
 	);
