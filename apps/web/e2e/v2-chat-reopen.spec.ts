@@ -138,4 +138,78 @@ realTest.describe("new UI: a chat that could not open", () => {
       await chatWorks(page);
     },
   );
+
+  realTest(
+    "a saved chat rewound to its start that the server then reports gone is not replaced: no new chat starts, and nothing is sent to one",
+    async ({ realApp }) => {
+      // After Edit, the next send finds the chat gone from the server, and the chat cannot be opened again either: the
+      // case where an empty chat is renewed as a new one. The chat is not empty (its messages are in the file, past the
+      // point the edit went back to), so it is never replaced.
+      realApp.allowProblem(/server not have this chat/i);
+      let failing = false;
+      let reopenAsked = 0;
+      const sentWhileFailing: string[] = [];
+      const failure = (socket: WebSocketRoute, id: unknown, code: string): void =>
+        socket.send(
+          JSON.stringify({
+            type: "result",
+            id,
+            ok: false,
+            error: {
+              code,
+              message: "The test made the server not have this chat",
+              retryable: false,
+            },
+          }),
+        );
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+            const server = socket.connectToServer();
+            socket.onMessage((message) => {
+              const text = typeof message === "string" ? message : "";
+              if (failing && text.includes('"port":"A0.chatSession"')) {
+                sentWhileFailing.push(text);
+                const id = (JSON.parse(text) as { id: unknown }).id;
+                if (text.includes('"method":"request"') && text.includes('"method":"prompt"')) {
+                  failure(socket, id, "not_found");
+                  return;
+                }
+                if (isOpenCall(message)) {
+                  reopenAsked += 1;
+                  failure(socket, id, "internal");
+                  return;
+                }
+              }
+              server.send(message);
+            });
+            server.onMessage((message) => socket.send(message));
+          }),
+      });
+      await startNewChat(page);
+      const composer = box(page);
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      const edit = page.getByRole("button", { name: "Edit this message" });
+      await expect(composer).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await composer.fill("first question");
+      await composer.press("Enter");
+      await expect(transcript.getByText("pong")).toHaveCount(1, { timeout: 60_000 });
+      await expect(edit).toHaveCount(1, { timeout: 30_000 });
+
+      await transcript.getByText("first question").hover();
+      await edit.click();
+      await expect(composer).toHaveValue("first question");
+      await expect(transcript.getByText("first question")).toHaveCount(0);
+
+      failing = true;
+      await composer.press("Enter");
+      await expect.poll(() => reopenAsked, { timeout: 30_000 }).toBeGreaterThan(0);
+      // Time for a replacement to be asked for, were it going to be.
+      await page.waitForTimeout(1_500);
+      expect(sentWhileFailing.filter((frame) => frame.includes('"start":"new"'))).toEqual([]);
+      // The chat shown is still the one rewound: it was not given up for a new one.
+      await expect(page.getByText(/^Could not open this chat/)).toHaveCount(0);
+    },
+  );
 });

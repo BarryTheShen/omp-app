@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import { appendFile, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { AppFailure } from "@omp-app/contracts";
 import { sessionLeaseProbe } from "../../../process";
 import { leaseSocketName } from "../../../process/session-lease";
 import {
@@ -738,6 +739,40 @@ describe("SessionFileStore", () => {
       } finally {
         openSpy.mockRestore();
       }
+    } finally {
+      await removeRoot(root);
+    }
+  });
+
+  test("a chat file that cannot be read is not a chat that does not exist: nothing matching with such a file is a retryable unavailable", async () => {
+    const root = await makeTempRoot();
+    try {
+      const home = path.join(root, "home");
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(home, "project");
+      const bucket = path.join(sessionsRoot, "-project");
+      await writeSession(path.join(bucket, "someone-else.jsonl"), {
+        id: "someone-else",
+        cwd,
+        timestamp: "2026-10-01T08:00:00.000Z",
+      });
+      const store = new SessionFileStore({ sessionsRoot, home, tempRoot: path.join(root, "tmp") });
+      const openSpy = spyOn(fs, "open").mockImplementation(async () => {
+        throw Object.assign(new Error("Too many open files"), { code: "EMFILE" });
+      });
+      try {
+        const failure = await store.resolveThread("asked-for").then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+        expect(failure.appError).toMatchObject({ code: "unavailable", retryable: true });
+      } finally {
+        openSpy.mockRestore();
+      }
+      // Read again, the same question has its plain answer: no chat has that id.
+      expect(await store.resolveThread("asked-for")).toBeUndefined();
+      expect(await store.resolveThread("someone-else")).toMatchObject({ cwd });
     } finally {
       await removeRoot(root);
     }

@@ -160,6 +160,7 @@ export function PairingScreen({
   return (
     <main
       aria-label="Pair this device"
+      data-omp-app="true"
       className="grid h-full place-items-center overflow-y-auto px-6 py-10"
     >
       <div className="flex w-full max-w-sm flex-col gap-5">

@@ -860,6 +860,33 @@ describe("OmpProcessRegistry", () => {
       expect(registry.has(thread)).toBe(false);
     });
 
+    test("is asked again when its 30 seconds are up: one that holds something by then (a draft that reached the server) waits the idle close", async () => {
+      const timer = new ClockTimer();
+      let unused = true;
+      const registry = new OmpProcessRegistry({
+        timer,
+        idleCloseMs: 60 * minute,
+        isUnused: () => unused,
+        createProcess: (processOptions) => new StubProcess(processOptions),
+      });
+      registry.setIdleHooks({ isSettled: async () => true, stopped: () => undefined });
+      const thread = leave(registry, "thread-draft-arrives");
+
+      timer.advance(10 * second);
+      unused = false;
+      timer.advance(20 * second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+
+      // Its idle close counts from the look at 30 seconds.
+      timer.advance(59 * minute);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+      timer.advance(minute);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(false);
+    });
+
     test("past the cap on unwatched chats, the ones that never got a message go before the ones with history", () => {
       const registry = new OmpProcessRegistry({
         timer: new ManualTimer(),

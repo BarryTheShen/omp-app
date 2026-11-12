@@ -4,6 +4,7 @@ import {
   clickTarget,
   hasText,
   readPage,
+  refuseApp,
   scrollPage,
   typeInto,
   watchSelection,
@@ -165,26 +166,59 @@ test.describe("the Zen extension's page functions", () => {
     ).toBeUndefined();
   });
 
-  test("a page with omp app's root marker is refused whatever its address, and its selection is not watched", async ({
+  // The app reached at an address the panel was not given (here the test page's own): the marker it sets says what it is,
+  // on its root (`data-app-root`) and on its pairing and other early screens (`data-omp-app`).
+  for (const marker of ["data-app-root", "data-omp-app"]) {
+    test(`a page with omp app's ${marker} marker is refused whatever its address, and its selection is not watched`, async ({
+      page,
+    }) => {
+      await page.evaluate(
+        (attribute) =>
+          document.body.insertAdjacentHTML("beforeend", `<div ${attribute}="true"></div>`),
+        marker,
+      );
+      await expect(inPage(page, readPage, APP, 20_000, 100)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, clickTarget, APP, "#buy", null)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, typeInto, APP, "#query", "x", true)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, scrollPage, APP, "bottom", null, null)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, hasText, APP, "Shoes")).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, refuseApp, APP)).rejects.toThrow(OFF_LIMITS);
+      await inPage(page, watchSelection, APP);
+      const state = await page.evaluate(() => ({
+        watching: (window as unknown as { __ompAppWatchesSelection?: boolean })
+          .__ompAppWatchesSelection,
+        bought: (window as unknown as { bought?: number }).bought,
+      }));
+      expect(state).toEqual({ watching: undefined, bought: undefined });
+    });
+  }
+
+  test("refuseApp lets an ordinary page through", async ({ page }) => {
+    await inPage(page, refuseApp, APP);
+  });
+
+  test("the selection watcher looks again at each change: a page that turns into the app after it was installed is not heard", async ({
     page,
   }) => {
-    // The app reached at an address the panel was not given (here the test page's own): the marker the app and its lite
-    // view set on their root says what it is.
-    await page.evaluate(() =>
-      document.body.insertAdjacentHTML("beforeend", '<div data-app-root="true"></div>'),
-    );
-    await expect(inPage(page, readPage, APP, 20_000, 100)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, clickTarget, APP, "#buy", null)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, typeInto, APP, "#query", "x", true)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, scrollPage, APP, "bottom", null, null)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, hasText, APP, "Shoes")).rejects.toThrow(OFF_LIMITS);
+    await page.evaluate(() => {
+      const heard: string[] = [];
+      const scope = window as unknown as { heard: string[]; browser: unknown };
+      scope.heard = heard;
+      scope.browser = {
+        runtime: {
+          sendMessage: async (message: { selection: string }) => {
+            heard.push(message.selection);
+          },
+        },
+      };
+    });
     await inPage(page, watchSelection, APP);
-    const state = await page.evaluate(() => ({
-      watching: (window as unknown as { __ompAppWatchesSelection?: boolean })
-        .__ompAppWatchesSelection,
-      bought: (window as unknown as { bought?: number }).bought,
-    }));
-    expect(state).toEqual({ watching: undefined, bought: undefined });
+    await page.evaluate(() =>
+      document.body.insertAdjacentHTML("beforeend", '<div data-omp-app="true"></div>'),
+    );
+    await page.locator("h1").dblclick({ position: { x: 8, y: 8 } });
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => (window as unknown as { heard: string[] }).heard)).toEqual([]);
   });
 
   test("the selection watcher reports what the person selects, not what a page script selects by itself", async ({

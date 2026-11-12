@@ -411,4 +411,41 @@ realTest.describe("new UI lite view", () => {
       expect(new URL(page.url()).searchParams.get("chat")).not.toBe(asked);
     },
   );
+
+  realTest(
+    "text typed in a chat the server lost, just before its tab was left, is in the box of the new chat that replaces it",
+    async ({ realApp }) => {
+      const first = await realApp.open({ path: "/lite" });
+      await expect(box(first)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      const gone = "01a1ffff-0000-7000-8000-00000000d0d0";
+      // This browser's copy of the unsent text of a chat the server does not have, as typing there just before leaving
+      // its tab leaves it (the server's copy comes 0.8 s after the last key, which the page may not outlive).
+      await first.evaluate(
+        (id) =>
+          new Promise<void>((resolve, reject) => {
+            const opening = indexedDB.open("omp-app-ui");
+            opening.onerror = () => reject(opening.error);
+            opening.onsuccess = () => {
+              const db = opening.result;
+              const writing = db.transaction("drafts", "readwrite");
+              writing.objectStore("drafts").put("words typed just before leaving", id);
+              writing.oncomplete = () => {
+                db.close();
+                resolve();
+              };
+              writing.onerror = () => reject(writing.error);
+            };
+          }),
+        gone,
+      );
+      await first.goto(`${new URL(first.url()).origin}/lite?chat=${gone}`);
+      await expect
+        .poll(() => new URL(first.url()).searchParams.get("chat"), { timeout: 90_000 })
+        .toBeNull();
+      await expect(box(first)).toHaveValue("words typed just before leaving", { timeout: 60_000 });
+      await expect(
+        first.getByRole("alert").filter({ hasText: "Could not open this chat" }),
+      ).toHaveCount(0);
+    },
+  );
 });

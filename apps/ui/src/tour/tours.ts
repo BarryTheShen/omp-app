@@ -781,7 +781,7 @@ const ZEN_ALWAYS_ON_TOUR: Tour = {
     {
       target: TRANSCRIPT,
       title: "The sidebar is always on",
-      text: "The Firefox and Zen sidebar no longer asks. The tab in front gets its chat as soon as the sidebar shows it: the chat you had there before when there was one, else a new one. A chat you never wrote in stops on the server 30 seconds after you leave its tab, unless something of yours waits in it (an unsent draft, a queued message, a usage budget), so passing through tabs keeps nothing running. A selection goes with your messages only when you make it yourself, the chip shows the selected words when you point at it, and <b>Don't send this</b> holds for the same page until you go to another. It needs this release's <b>omp-app-zen</b>.",
+      text: "The Firefox and Zen sidebar no longer asks. The tab in front gets its chat as soon as the sidebar shows it: the chat you had there before when there was one, else a new one. A chat you never wrote in stops on the server 30 seconds after you leave its tab, unless something of yours waits in it (an unsent draft, a queued message, a usage budget), so passing through tabs keeps nothing running. A selection goes with a message when it follows your own pointer or keys, the chip shows the selected words when you point at it, and <b>Don't send this</b> holds for the same site until you go to another. It needs this release's <b>omp-app-zen</b>.",
       action: next,
     },
   ],
@@ -2976,7 +2976,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-12-zen-always-on",
     when: "2026-11-12T03:30:00-06:00",
     summary:
-      "The Firefox and Zen sidebar no longer asks: the tab in front gets its chat as soon as the sidebar shows it, the chat you had there before when there was one. A chat you never wrote in stops on the server 30 seconds after you leave its tab, unless something of yours waits in it (an unsent draft, a queued message, a usage budget), so passing through tabs keeps nothing running. A selection goes with your messages only when you make it yourself, the chip shows the selected words when you point at it, and Don't send this holds for the same page until you go to another. It needs this release's omp-app-zen.",
+      "The Firefox and Zen sidebar no longer asks: the tab in front gets its chat as soon as the sidebar shows it, the chat you had there before when there was one. A chat you never wrote in stops on the server 30 seconds after you leave its tab, unless something of yours waits in it (an unsent draft, a queued message, a usage budget), so passing through tabs keeps nothing running. A selection goes with a message when it follows your own pointer or keys, the chip shows the selected words when you point at it, and Don't send this holds for the same site until you go to another. It needs this release's omp-app-zen.",
     tours: [ZEN_ALWAYS_ON_TOUR],
   },
   {

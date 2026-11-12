@@ -191,6 +191,26 @@ describe("the tools", () => {
     expect(captured).toEqual([BOUND]);
   });
 
+  test("screenshot refuses a page that says it is omp app's, at any address; one extensions cannot enter is photographed", async () => {
+    const marked = standIn((call) => {
+      if (call.name === "refuseApp") throw new Error(OFF_LIMITS);
+      return { done: "ok" };
+    });
+    await expect(
+      toolOf(pageTools(scopeOf(), marked.api, APP), "screenshot").run({}, never),
+    ).rejects.toThrow(OFF_LIMITS);
+    expect(marked.captured).toEqual([]);
+    expect(marked.calls.at(-1)).toMatchObject({ tabId: BOUND, name: "refuseApp", args: [[APP]] });
+
+    const closed = standIn(() => {
+      throw new Error(
+        "Firefox does not let extensions into this page (its own pages and the add-ons site).",
+      );
+    });
+    await toolOf(pageTools(scopeOf(), closed.api, APP), "screenshot").run({}, never);
+    expect(closed.captured).toEqual([BOUND]);
+  });
+
   test("navigate goes to web addresses only, and says what loaded", async () => {
     const { api } = standIn();
     const navigate = toolOf(pageTools(scopeOf(), api, APP), "navigate");

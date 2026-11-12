@@ -91,7 +91,7 @@ export type SessionBackgroundEvent =
   | { readonly kind: "failed"; readonly sessionFile?: string; readonly message: string };
 
 function appFailure(
-  code: "invalid_args" | "not_found" | "permission" | "internal" | "conflict",
+  code: "invalid_args" | "not_found" | "permission" | "internal" | "conflict" | "unavailable",
   message: string,
   retryable: boolean,
   cause?: unknown,
@@ -625,7 +625,11 @@ export class SessionFileStore {
     const match = headers.find((candidate) => candidate !== undefined);
     return match === undefined ? undefined : (await this.#listingEntry(match)).file;
   }
-  /** Resolves only the cwd and session path from each candidate's bounded header scan. */
+  /**
+   * Resolves only the cwd and session path from each candidate's bounded header scan. A file that cannot be read for a
+   * reason other than being gone (too many open files, no permission) may be the chat's, so when nothing else matches the
+   * answer is a retryable `unavailable`, not "no such chat": the chat is not said to be gone on a doubt.
+   */
   async resolveThread(
     sessionId: string,
   ): Promise<{ readonly cwd: string; readonly sessionFile: string } | undefined> {
@@ -633,6 +637,7 @@ export class SessionFileStore {
     const named = candidates.filter((candidate) =>
       path.basename(candidate.file).includes(sessionId),
     );
+    let unreadable: unknown;
     const readHeader = async (
       candidate: SessionCandidate,
     ): Promise<{ readonly cwd: string; readonly sessionFile: string } | undefined> => {
@@ -643,6 +648,7 @@ export class SessionFileStore {
           : undefined;
       } catch (error) {
         if (fileErrorCode(error) === undefined) throw error;
+        if (!isMissing(error)) unreadable ??= error;
         return undefined;
       }
     };
@@ -652,7 +658,16 @@ export class SessionFileStore {
     }
     const others = candidates.filter((candidate) => !named.includes(candidate));
     const headers = await inBatches(others, readHeader);
-    return headers.find((candidate) => candidate !== undefined);
+    const found = headers.find((candidate) => candidate !== undefined);
+    if (found === undefined && unreadable !== undefined) {
+      throw appFailure(
+        "unavailable",
+        "The server could not read every chat file just now, so it cannot say whether this chat exists. Try again in a moment.",
+        true,
+        unreadable,
+      );
+    }
+    return found;
   }
 
   /**

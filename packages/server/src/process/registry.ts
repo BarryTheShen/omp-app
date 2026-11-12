@@ -659,10 +659,17 @@ export class OmpProcessRegistry {
       return;
     }
     entry.idleOrder ??= ++this.#idleCount;
+    const delay = this.#idleDelayOf(entry);
     entry.idleTimer = this.#timer.setTimeout(() => {
       entry.idleTimer = undefined;
+      // Left as a chat that never got a message, it waited the short time; if something of the person's reached the
+      // server meanwhile (a draft saved after the page left), it is no longer one and waits as the others do.
+      if (delay < this.#idleCloseMs && this.#isUnused?.(entry.key) !== true) {
+        if (this.#entries.get(entry.key) === entry) this.#scheduleIdleIfNeeded(entry, false);
+        return;
+      }
       void this.#closeIfIdle(entry);
-    }, this.#idleDelayOf(entry));
+    }, delay);
     if (trim) this.#trimIdle();
   }
 

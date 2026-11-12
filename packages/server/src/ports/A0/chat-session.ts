@@ -11,6 +11,7 @@
  * H5.3b adds the host's requests (dialogs, approvals, tools, URIs) and the host registrations; H5.3c the arbitration,
  * `!` and `$` runs, and session switches; H5.3d rename and the reopen after a refused delete.
  */
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AbortSignalLike,
@@ -2621,10 +2622,21 @@ export class ChatSessionPortRuntime {
     return { threadId: bootstrap.threadId, folder: bootstrap.folderPath, args: bootstrap.args };
   }
 
-  #hasSessionFile(sessionFile: SessionFilePath): Promise<boolean> {
-    return this.#context.sessionFileExists
-      ? this.#context.sessionFileExists(sessionFile)
-      : Bun.file(sessionFile).exists();
+  /**
+   * Whether the chat's session file is on disk. Only a real miss (no such file or folder) says it is not: a file that
+   * could not be looked at (too many open files, no permission) may well be there, and a chat is not told it is gone on
+   * a doubt (omp then reads the file, or fails in its own words).
+   */
+  async #hasSessionFile(sessionFile: SessionFilePath): Promise<boolean> {
+    if (this.#context.sessionFileExists) return this.#context.sessionFileExists(sessionFile);
+    try {
+      await stat(sessionFile);
+      return true;
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      return !(code === "ENOENT" || code === "ENOTDIR");
+    }
   }
 }
 

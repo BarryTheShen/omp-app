@@ -5,6 +5,7 @@ import {
   type PageOutcome,
   type PageReading,
   readPage,
+  refuseApp,
   scrollPage,
   typeInto,
 } from "./page";
@@ -187,6 +188,13 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
         const tab = await api.get(tabId);
         if (!tab.active) throw new Error("That tab is not in front, so it cannot be photographed.");
         if (blocked.includes(originOf(tab.url) ?? "")) throw new Error(OFF_LIMITS);
+        // The page itself says whether it is omp app's, at whatever address it was reached by (its root marker). A page
+        // extensions cannot enter (Firefox's own) is not the app's, and is photographed.
+        try {
+          await api.run(tabId, refuseApp, [blocked]);
+        } catch (error) {
+          if (error instanceof Error && error.message === OFF_LIMITS) throw error;
+        }
         const data = await api.capture(tabId);
         return {
           content: [
@@ -353,6 +361,10 @@ export const firefoxTabs: TabsApi = {
   get: (tabId) => browser.tabs.get(tabId),
   capture: (tabId) => browser.tabs.captureTab(tabId, { format: "png" }),
   navigate: (tabId, url) => browser.tabs.update(tabId, { url }),
-  open: (url, opener) => browser.tabs.create({ url, active: false, openerTabId: opener }),
+  // Beside the tab that asked, in its window: the panel's own window is the sidebar's, which need not be that one.
+  open: async (url, opener) => {
+    const { windowId } = await browser.tabs.get(opener);
+    return browser.tabs.create({ url, active: false, openerTabId: opener, windowId });
+  },
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };

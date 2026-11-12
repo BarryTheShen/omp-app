@@ -23,6 +23,7 @@ import { ConnectionBanner } from "../ConnectionBanner";
 import { ChatPane } from "../chat/ChatPane";
 import { useChatTitle } from "../chat/chatTitle";
 import { ChatController, type ChatTarget } from "../chat/controller";
+import { ChatDraft } from "../chat/drafts";
 import { firstPromptOf } from "../chat/firstPrompts";
 import { LinkReopens } from "../chat/reopens";
 import { useFolder } from "../folders/useFolder";
@@ -168,7 +169,11 @@ function LiteChats({
       void next.open(shown.askedAtLoad === true && attempt === 0 ? { newChatIfGone: true } : {});
     const stopAsks = next.onPaneAsk((ask) => {
       if (ask.kind === "new-chat") {
-        setShown(newChat(folder));
+        const replacement = newChat(folder);
+        // Text typed in the chat this one replaces is the new chat's, under the key its box reads (`ChatDraft.forNewChat`).
+        if (ask.draft !== undefined)
+          ChatDraft.forNewChat(client, replacement.key).change(ask.draft);
+        setShown(replacement);
         return;
       }
       if (ask.by === "person") reopens.reset();

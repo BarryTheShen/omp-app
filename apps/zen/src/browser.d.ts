@@ -35,7 +35,11 @@ declare namespace browser {
       readonly title?: string;
     }
     function get(tabId: number): Promise<Tab>;
-    function query(query: { active?: boolean; currentWindow?: boolean }): Promise<Tab[]>;
+    function query(query: {
+      active?: boolean;
+      currentWindow?: boolean;
+      windowId?: number;
+    }): Promise<Tab[]>;
     function update(tabId: number, properties: { url?: string; active?: boolean }): Promise<Tab>;
     function create(properties: {
       url: string;
