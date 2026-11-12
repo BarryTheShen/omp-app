@@ -6,16 +6,12 @@ The lite view is one chat and its message box. Its header names the chat; a clic
 
 ## Which pages may show the app in a panel?
 
-None, until you name them. The app runs commands on its computer, so it lets only the pages you name frame it, and never a page of the internet.
+The app runs commands on its computer, so it lets only some pages frame it, and never a page of the internet:
 
-Name them in **Settings → App → Integrations**:
+- **Browser extensions and VS Code, always.** Every Firefox and Zen extension (`moz-extension:`), every Chrome and Edge extension (`chrome-extension:`) and VS Code's panels (`vscode-webview:` with `vscode-file:`) may show the app in a panel. There is nothing to turn on. A panel still has to pair, as any device does (below), so an extension or editor that is not paired sees only the pairing page.
+- **Another page, by its address.** Name it in `OMP_APP_FRAME_ANCESTORS` when the app starts ([Configuration](configuration.md#environment-variables)): an HTTPS address (`https://notes.example.com`, a port allowed) or a loopback address with its port (`http://127.0.0.1:<port>`, `http://localhost:<port>`). Anything else stops the app from starting, and the message says what the app takes. A change needs a restart of the server.
 
-- **Kinds of panel.** One switch each for every Firefox and Zen extension (`moz-extension:`), every Chrome and Edge extension (`chrome-extension:`), and VS Code's panels (`vscode-webview:` with `vscode-file:`).
-- **Another page's address.** An HTTPS address (`https://notes.example.com`, a port allowed), a loopback address with its port (`http://127.0.0.1:<port>`, `http://localhost:<port>`), or one extension's own address (`moz-extension://<uuid>`, `chrome-extension://<id>`). Anything else is refused, and the message says what the app takes.
-
-A change counts from the panel's next load: no restart. The list is kept in `embedders.json` in the app's data folder ([Configuration](configuration.md#the-app-data-folder)). `OMP_APP_FRAME_ANCESTORS` names more pages when the app starts; Settings lists them as set when the app started, and does not change them.
-
-No other page of the app can be framed, whatever the list says.
+No other page of the app can be framed, whatever is named.
 
 ## How does a panel sign in?
 
@@ -90,7 +86,7 @@ The `Panel` it returns has `setSettings`, `setContext`, `setTools` and `close`, 
 
 ## A minimal host
 
-A page of plain HTML that shows the panel, keeps its key in the page's own storage and gives the chat one tool. Serve it from an address the app lets frame it (here `http://localhost:8080`, named in **Settings → App → Integrations**), with `omp-embed.js` beside it:
+A page of plain HTML that shows the panel, keeps its key in the page's own storage and gives the chat one tool. Serve it from an address the app lets frame it (here `http://localhost:8080`, named in `OMP_APP_FRAME_ANCESTORS` when the app starts), with `omp-embed.js` beside it:
 
 ```html
 <!doctype html>
@@ -126,5 +122,5 @@ The first time, the panel asks to pair; allow it, or make a one-time code in **S
 
 ## Hosts in this repository
 
-- **Firefox and Zen** ([apps/zen](../apps/zen/README.md)): the chat in the sidebar, for the tab it was opened on. Its tools read the page, take a picture of it, click, type, scroll, go to an address, open tabs of its own and wait for text, on that tab and the tabs it opened only, and never on omp app's own pages (a chat there could answer its own approvals). Turn on **Firefox and Zen extensions** in Settings → App → Integrations.
-- **VS Code** ([apps/vscode](../apps/vscode/README.md)): the chat in VS Code's secondary side bar, on the right beside its other chat panels, for the folder open there, on the computer VS Code runs on (VS Code 1.106 or newer). Its tools read, list, search and change the folder's files, run commands in it, and show VS Code's errors; each change shows as a diff to accept or reject, and each command asks first. Turn on **VS Code** in Settings → App → Integrations.
+- **Firefox and Zen** ([apps/zen](../apps/zen/README.md)): the chat in the sidebar, for the tab it was opened on. Its tools read the page, take a picture of it, click, type, scroll, go to an address, open tabs of its own and wait for text, on that tab and the tabs it opened only, and never on omp app's own pages (a chat there could answer its own approvals). Nothing to turn on in the app: Firefox and Zen extensions may always show it, and the sidebar pairs once.
+- **VS Code** ([apps/vscode](../apps/vscode/README.md)): the chat in VS Code's secondary side bar, on the right beside its other chat panels, for the folder open there, on the computer VS Code runs on (VS Code 1.106 or newer). Its tools read, list, search and change the folder's files, run commands in it, and show VS Code's errors; each change shows as a diff to accept or reject, and each command asks first. Nothing to turn on in the app: VS Code's panels may always show it, and the panel pairs once.

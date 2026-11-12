@@ -17,6 +17,7 @@ import {
   pairingRoute,
 } from "./devices";
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
+import { liteFrameAncestors } from "./frame-ancestors";
 import { launchTokenDigest } from "./launch-history";
 import { newLaunchToken } from "./launch-token";
 import type { Logger } from "./logging";
@@ -50,12 +51,11 @@ export interface AppServerOptions {
   /** The new UI's built folder, served at the app's root (default: `apps/ui/dist` in the working folder). */
   readonly uiRoot?: string;
   /**
-   * The pages that may show the lite view (`/lite`, #2843) in a frame (`OMP_APP_FRAME_ANCESTORS`, see
-   * `frame-ancestors.ts`); none by default, and no other page of the app may ever be framed.
+   * The pages that may show the lite view (`/lite`, #2843) in a frame, on top of the browser extensions' and
+   * VS Code's panels, which always may (`OMP_APP_FRAME_ANCESTORS`, see `frame-ancestors.ts`); no other page of
+   * the app may ever be framed.
    */
   readonly frameAncestors?: readonly string[];
-  /** More of them, saved in Settings → App → Integrations (`embedders.ts`): read at each load of the lite view. */
-  readonly embedders?: { list(): readonly string[] };
   readonly registry?: PortRegistry;
   /** Where connections and failed calls are recorded; nothing is logged without one. */
   readonly logger?: Logger;
@@ -227,14 +227,16 @@ const STATIC_HEADERS: Readonly<Record<string, string>> = {
 const LITE_PATH = "/lite";
 
 /**
- * The lite view's headers: the pages `frameAncestors` names may frame it, and only those (CSP, which every browser
- * takes over `X-Frame-Options`, which names no page; it is left out so no older browser refuses them). With none
- * named, the static headers: no page may frame it.
+ * The lite view's headers: the browser extensions' and VS Code's panels and the pages `frameAncestors` names may frame
+ * it, and only those (CSP, which every browser takes over `X-Frame-Options`, which names no page; it is left out so no
+ * older browser refuses them). A panel is still paired, as any device.
  */
 function liteHeaders(frameAncestors: readonly string[]): Readonly<Record<string, string>> {
-  if (frameAncestors.length === 0) return STATIC_HEADERS;
   const { "X-Frame-Options": _refused, ...rest } = STATIC_HEADERS;
-  return { ...rest, "Content-Security-Policy": `frame-ancestors ${frameAncestors.join(" ")}` };
+  return {
+    ...rest,
+    "Content-Security-Policy": `frame-ancestors ${liteFrameAncestors(frameAncestors).join(" ")}`,
+  };
 }
 
 /** Where the old UI was served before it was removed: `/old` and everything under it is sent to the app's root. */
@@ -314,11 +316,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
   const uiRoot = options.uiRoot ?? `${process.cwd()}/apps/ui/dist`;
-  // The lite view's frame rule, read at each load: a page named in Settings counts without a restart.
-  const framedBy = (): Readonly<Record<string, string>> =>
-    liteHeaders([
-      ...new Set([...(options.frameAncestors ?? []), ...(options.embedders?.list() ?? [])]),
-    ]);
+  const liteFramedBy = liteHeaders(options.frameAncestors ?? []);
   const port = requestedPort(options);
   const origins = options.origins;
   const devices = options.devices;
@@ -434,9 +432,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const rest = url.pathname.slice(FORMER_UI_PREFIX.length).replace(/^\/+/, "");
         return redirect(`/${rest}${url.search}`);
       }
-      // The lite view: the new UI's page, which a page `frameAncestors` names may frame.
+      // The lite view: the new UI's page, which the panels and the pages `frameAncestors` names may frame.
       if (url.pathname === LITE_PATH) {
-        return renewed(request, await serveStatic(uiRoot, "/index.html", request, framedBy()));
+        return renewed(request, await serveStatic(uiRoot, "/index.html", request, liteFramedBy));
       }
       // The new UI's own files; one it does not have is a 404.
       const page = await serveStatic(uiRoot, url.pathname, request);

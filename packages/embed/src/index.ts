@@ -4,8 +4,9 @@
  * frame, says hello when the panel listens (again after each load of it), sends settings, what is open and tools, answers
  * each call of a tool with its handler, and keeps the panel's key where the host keeps it.
  *
- * The page that uses it must be one the app lets frame it (Settings → App → Integrations, or `OMP_APP_FRAME_ANCESTORS`),
- * and the panel pairs once, as any device. Only types come from the contracts: the library has no other code.
+ * The page that uses it must be one the app lets frame it (`OMP_APP_FRAME_ANCESTORS`; a browser extension's or VS
+ * Code's panel always may), and the panel pairs once, as any device. Only types come from the contracts: the library
+ * has no other code.
  */
 import type {
   EmbedAppMessage,
@@ -77,7 +78,7 @@ export interface PanelOptions {
   readonly onReady?: (ready: { readonly chat: string; readonly tools: readonly string[] }) => void;
   /**
    * The panel's page did not say it listens within `NO_ANSWER_MS` of the panel opening: the app is not at the address,
-   * cannot be reached from here, or does not let this kind of panel show it (Settings → App → Integrations). Called at
+   * cannot be reached from here, or does not let this host frame it. Called at
    * most once; the frame stays, in case the page still comes.
    */
   readonly onNoAnswer?: () => void;

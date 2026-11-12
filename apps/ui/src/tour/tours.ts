@@ -696,31 +696,13 @@ const LITE_FIND_TOUR: Tour = {
   id: "lite-find-2026-11-09",
   title: "The panel: find a chat, open it in the desktop app",
   minutes: 1,
-  sandbox: false,
+  sandbox: true,
   steps: [
     {
-      target: part("settings"),
-      title: "Settings",
-      text: "{settings} or this gear opens settings. Open them.",
-      action: { kind: "appears", selector: SETTINGS_SHEET },
-    },
-    {
-      target: part("settings-tab-app"),
-      title: "App",
-      text: "The panels that show omp app inside another app are set under <b>App</b>. Click it.",
-      action: { kind: "click" },
-    },
-    {
-      target: part("integrations"),
+      target: TRANSCRIPT,
       title: "In a panel",
       text: "In another app's panel, a click on the chat's name lists the folder's recent chats, and <b>Find a chat</b> there finds any of its chats by its title. The arrow beside it opens the chat in the full app: <b>Open in the desktop app</b>, in the menu beside the arrow, opens it in the desktop app's window instead, and the panel keeps that choice. The desktop app takes such links from this update's package on.",
       action: next,
-    },
-    {
-      target: SETTINGS_SHEET,
-      title: "Close settings",
-      text: "{stop} closes settings.",
-      action: { kind: "disappears", selector: SETTINGS_SHEET },
     },
   ],
 };
@@ -730,31 +712,13 @@ const VSCODE_TOUR: Tour = {
   id: "vscode-2026-11-09",
   title: "omp app in VS Code",
   minutes: 1,
-  sandbox: false,
+  sandbox: true,
   steps: [
     {
-      target: part("settings"),
-      title: "Settings",
-      text: "{settings} or this gear opens settings. Open them.",
-      action: { kind: "appears", selector: SETTINGS_SHEET },
-    },
-    {
-      target: part("settings-tab-app"),
-      title: "App",
-      text: "The switch for VS Code is under <b>App</b>. Click it.",
-      action: { kind: "click" },
-    },
-    {
-      target: part("integrations"),
+      target: TRANSCRIPT,
       title: "VS Code",
-      text: "Turn on <b>VS Code</b> here. Then, in VS Code, install <b>omp-app-vscode</b> from this release's files (Extensions → ⋯ → Install from VSIX) and give it this app's address. Its chat sits in VS Code's right-hand side bar, beside the other chat panels (Ctrl+Alt+B shows it), and works on the folder open there, on that computer: each change shows as a diff to accept or reject, and each command asks first.",
+      text: "In VS Code, install <b>omp-app-vscode</b> from this release's files (Extensions → ⋯ → Install from VSIX) and give it this app's address. Its chat sits in VS Code's right-hand side bar, beside the other chat panels (Ctrl+Alt+B shows it), and works on the folder open there, on that computer: each change shows as a diff to accept or reject, and each command asks first.",
       action: next,
-    },
-    {
-      target: SETTINGS_SHEET,
-      title: "Close settings",
-      text: "{stop} closes settings.",
-      action: { kind: "disappears", selector: SETTINGS_SHEET },
     },
   ],
 };
@@ -764,31 +728,29 @@ const VSCODE_RIGHT_TOUR: Tour = {
   id: "vscode-right-2026-11-09",
   title: "VS Code's panel on the right",
   minutes: 1,
-  sandbox: false,
+  sandbox: true,
   steps: [
     {
-      target: part("settings"),
-      title: "Settings",
-      text: "{settings} or this gear opens settings. Open them.",
-      action: { kind: "appears", selector: SETTINGS_SHEET },
-    },
-    {
-      target: part("settings-tab-app"),
-      title: "App",
-      text: "Click <b>App</b>.",
-      action: { kind: "click" },
-    },
-    {
-      target: part("integrations"),
+      target: TRANSCRIPT,
       title: "VS Code's panel",
-      text: "With this release's <b>omp-app-vscode</b>, VS Code shows omp app in its right-hand side bar, beside its other chat panels (Ctrl+Alt+B shows it). When the panel cannot show the app, it says why instead of staying blank: the address cannot be reached, or the <b>VS Code</b> switch here is off. Turn it on, then click <b>Try again</b> in the panel.",
+      text: "With this release's <b>omp-app-vscode</b>, VS Code shows omp app in its right-hand side bar, beside its other chat panels (Ctrl+Alt+B shows it). When the panel cannot show the app, it says why instead of staying blank: the address cannot be reached, or the app is older than the extension. Click <b>Try again</b> in the panel once that is fixed.",
       action: next,
     },
+  ],
+};
+
+/** Panels need no switch: pairing is the lock (2026-11-12). */
+const INTEGRATIONS_GONE_TOUR: Tour = {
+  id: "integrations-gone-2026-11-12",
+  title: "Panels need no switch",
+  minutes: 1,
+  sandbox: true,
+  steps: [
     {
-      target: SETTINGS_SHEET,
-      title: "Close settings",
-      text: "{stop} closes settings.",
-      action: { kind: "disappears", selector: SETTINGS_SHEET },
+      target: TRANSCRIPT,
+      title: "Panels need no switch",
+      text: "Settings → App → Integrations is gone. Browser extensions (Firefox, Zen, Chrome) and VS Code may always show omp app in a panel, and each panel still pairs once before it is signed in, so pairing is the lock.",
+      action: next,
     },
   ],
 };
@@ -1034,40 +996,6 @@ const LIST_STEPS_ASIDE_TOUR: Tour = {
       text: "In a narrow window, a side panel no longer squeezes the chat: the chat list and the panel take turns. While the panel is open, the list steps aside, and it comes back when the panel closes. The button before the tabs or {chatList} brings the list back and closes the panel.",
       action: next,
       notOnPhone: true,
-    },
-  ],
-};
-
-/** Who may show the app in a panel, in Settings → App → Integrations (2026-11-09). */
-const INTEGRATIONS_TOUR: Tour = {
-  id: "integrations-2026-11-09",
-  title: "Show the app in other apps",
-  minutes: 1,
-  sandbox: false,
-  steps: [
-    {
-      target: part("settings"),
-      title: "Settings",
-      text: "{settings} or this gear opens settings. Open them.",
-      action: { kind: "appears", selector: SETTINGS_SHEET },
-    },
-    {
-      target: part("settings-tab-app"),
-      title: "App",
-      text: "Integrations are under <b>App</b>, this app's own settings. Click it.",
-      action: { kind: "click" },
-    },
-    {
-      target: part("integrations"),
-      title: "Integrations",
-      text: "The apps that may show omp app in a panel: a switch for Firefox and Zen extensions, one for Chrome and Edge extensions and one for VS Code, and pages by their address. A change counts from the panel's next load. Each panel pairs once, as any device; inside another app, that app keeps its key.",
-      action: next,
-    },
-    {
-      target: SETTINGS_SHEET,
-      title: "Close settings",
-      text: "{stop} closes settings.",
-      action: { kind: "disappears", selector: SETTINGS_SHEET },
     },
   ],
 };
@@ -1724,7 +1652,7 @@ const LITE_VIEW_TOUR: Tour = {
     {
       target: null,
       title: "One chat, in another app's side panel",
-      text: "Another app, such as your notes app, can show a chat of this app in its side panel: point it at this app's address followed by <b>/lite</b>. It has the chat and its message box, your recent chats in its title's menu, New chat, and a button that opens the chat here. Only the pages named on the computer the app runs on may show it.",
+      text: "Another app, such as your notes app, can show a chat of this app in its side panel: point it at this app's address followed by <b>/lite</b>. It has the chat and its message box, your recent chats in its title's menu, New chat, and a button that opens the chat here. Browser extensions and VS Code may always show it; any other page must be named on the computer the app runs on.",
       action: next,
       centred: true,
     },
@@ -3013,6 +2941,13 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-12-integrations-gone",
+    when: "2026-11-12T03:00:00-06:00",
+    summary:
+      "Settings → App → Integrations is gone: browser extensions (Firefox, Zen, Chrome) and VS Code may always show omp app in a panel, and each panel still pairs once before it is signed in, so pairing is the lock. Other pages that show the app in a frame are named in the server's OMP_APP_FRAME_ANCESTORS, as before.",
+    tours: [INTEGRATIONS_GONE_TOUR],
+  },
+  {
     id: "2026-11-12-theme-click",
     when: "2026-11-12T00:30:00-06:00",
     summary:
@@ -3216,13 +3151,6 @@ export const UPDATES: readonly Update[] = [
     tours: [DASHBOARD_EXTRAS_TOUR],
   },
   {
-    id: "2026-11-09-integrations",
-    when: "2026-11-09T03:36:00-06:00",
-    summary:
-      "Settings → App → Integrations names the apps that may show omp app in a panel (browser extensions, VS Code, pages by address), without a restart; a panel inside another app pairs once, and that app keeps its key.",
-    tours: [INTEGRATIONS_TOUR],
-  },
-  {
     id: "2026-11-09-dashboard-parts",
     when: "2026-11-09T02:32:00-06:00",
     summary:
@@ -3324,7 +3252,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-06-lite-view",
     when: "2026-11-06T19:27:00-06:00",
     summary:
-      "The app can sit in another app's side panel, such as your notes app's: its address followed by /lite shows one chat and its message box, with your recent chats in the title's menu, New chat, and a button that opens the chat in the full app. It takes the light or dark look the other app asks for. Only the pages named on the computer the app runs on may show it.",
+      "The app can sit in another app's side panel, such as your notes app's: its address followed by /lite shows one chat and its message box, with your recent chats in the title's menu, New chat, and a button that opens the chat in the full app. It takes the light or dark look the other app asks for. Browser extensions and VS Code may always show it; any other page must be named on the computer the app runs on.",
     tours: [LITE_VIEW_TOUR],
   },
   {

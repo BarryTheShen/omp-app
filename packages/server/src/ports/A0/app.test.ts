@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import { FolderPath, RequestId } from "@omp-app/contracts";
-import { EmbeddersStore } from "../../embedders";
 import type { Logger } from "../../logging";
 import { OmpProcessRegistry } from "../../process";
 import type { PortHandlerContext } from "../../registry/ports";
@@ -140,36 +136,5 @@ describe("AppPort", () => {
       fileName: "omp-app-debug-x.log",
       text: "report text",
     });
-  });
-
-  test("lists who may frame the lite view, saves a new list, and refuses one with a source it does not take", async () => {
-    const path = join(await mkdtemp(join(tmpdir(), "app-embedders-")), "embedders.json");
-    try {
-      const handlers = appHandlers({
-        embedders: { fixed: ["http://127.0.0.1:9000"], store: await EmbeddersStore.open(path) },
-      });
-      expect(handler(handlers, "embedders")({}, call())).toEqual({
-        fixed: ["http://127.0.0.1:9000"],
-        saved: [],
-      });
-      expect(
-        await handler(handlers, "setEmbedders")({ sources: ["moz-extension:"] }, call()),
-      ).toEqual({ fixed: ["http://127.0.0.1:9000"], saved: ["moz-extension:"] });
-      await expect(
-        handler(handlers, "setEmbedders")(
-          { sources: ["http://example.com"] },
-          call(),
-        ) as Promise<unknown>,
-      ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
-      expect(handler(handlers, "embedders")({}, call())).toMatchObject({
-        saved: ["moz-extension:"],
-      });
-      // A run of the app with no settings for it says so.
-      await expect(
-        handler(appHandlers(), "setEmbedders")({ sources: [] }, call()) as Promise<unknown>,
-      ).rejects.toMatchObject({ appError: { code: "unavailable" } });
-    } finally {
-      await rm(dirname(path), { recursive: true, force: true });
-    }
   });
 });

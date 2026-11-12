@@ -8,10 +8,9 @@ import { APP_ROOT, expect, realTest } from "./real-omp";
 /**
  * The VS Code extension (`apps/vscode`) as a person gets it: packed into its `.vsix` with `vsce`, as the release packs
  * it, and installed into a real VS Code (`OMP_APP_VSCODE`, the folder of a VS Code for Linux, as the build server's test
- * image has it, with `vsce`). Its panel sits in the secondary side bar. While the app does not let VS Code frame it, the
- * panel says so instead of staying blank; after Integrations' VS Code switch and Try again it shows the app, pairs once
- * with a one-time code, and the folder's chat reads a file, changes it once Accept is clicked in VS Code's review, and
- * runs a command once Run is clicked.
+ * image has it, with `vsce`). Its panel sits in the secondary side bar. The app always lets VS Code show it, so the panel
+ * shows the app at once, pairs once with a one-time code, and the folder's chat reads a file, changes it once Accept is
+ * clicked in VS Code's review, and runs a command once Run is clicked.
  */
 const VSCODE = process.env.OMP_APP_VSCODE || null;
 /** The command that packs an extension: `vsce`, or as `OMP_APP_VSCE` names it (`npx --yes @vscode/vsce@4.1.0`). */
@@ -41,7 +40,7 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
   realTest.setTimeout(420_000);
 
   realTest(
-    "installed from its .vsix, it sits on the right, says why the app does not show, then pairs and works on the folder",
+    "installed from its .vsix, it sits on the right, then pairs and works on the folder",
     async ({ realApp }, testInfo) => {
       const scratch = testInfo.outputPath("vscode");
       const project = join(scratch, "demo-project");
@@ -151,19 +150,6 @@ realTest.describe("new UI: the VS Code extension in a real VS Code", () => {
           window.locator(".part.activitybar, .part.sidebar").locator('[aria-label^="omp app"]'),
         ).toHaveCount(0);
         const page = window.frameLocator("iframe.webview").first().frameLocator("#active-frame");
-
-        // The app does not let VS Code frame it yet: the panel says so, not a blank frame.
-        await expect(
-          page.getByText(
-            `omp app at ${app} doesn't let VS Code show it yet. In omp app, turn on Settings → App → Integrations → VS Code, then click Try again.`,
-          ),
-        ).toBeVisible({ timeout: 60_000 });
-        await window.screenshot({ path: testInfo.outputPath("1-not-allowed.png") });
-        await owner.getByRole("button", { name: "Settings", exact: true }).click();
-        const integrations = owner.getByRole("region", { name: "Integrations" });
-        await integrations.getByRole("switch", { name: "VS Code" }).click();
-        await expect(integrations.getByRole("switch", { name: "VS Code" })).toBeChecked();
-        await page.getByRole("button", { name: "Try again" }).click();
 
         // The app, which pairs once with a one-time code typed in the panel.
         const lite = page.frameLocator('iframe[title="omp app"]');

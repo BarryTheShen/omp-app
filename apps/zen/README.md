@@ -14,7 +14,7 @@ bun install
 bun run --cwd apps/zen build [version]
 ```
 
-writes the extension to `apps/zen/dist` (Bun 1.3.14 or newer; a version, such as `0.3.1527`, goes into its manifest). In Firefox or Zen, open `about:debugging` → This Firefox → **Load Temporary Add-on…** and choose `dist/manifest.json`. A temporary add-on stays until the browser closes. In omp app, turn on **Settings → App → Integrations → Firefox and Zen extensions** first, so the sidebar may show the app.
+writes the extension to `apps/zen/dist` (Bun 1.3.14 or newer; a version, such as `0.3.1527`, goes into its manifest). In Firefox or Zen, open `about:debugging` → This Firefox → **Load Temporary Add-on…** and choose `dist/manifest.json`. A temporary add-on stays until the browser closes. Nothing needs turning on in omp app: Firefox and Zen extensions may always show the app, and the sidebar pairs once.
 
 **Each release** attaches the extension twice: `omp-app-zen_<version>_unsigned.zip`, for a temporary install, and, once the repository has an addons.mozilla.org API key as its Actions secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`, `omp-app-zen_<version>.xpi`, signed by Mozilla for self-distribution ("unlisted": not shown in its store). Zen installs only signed extensions for good: about:addons → ⚙ → **Install Add-on From File…** and choose the `.xpi`. A newer release's `.xpi` installs over it. The release runs Mozilla's checks (`web-ext lint`) and signs with `web-ext sign --channel unlisted`, sending the repository's source with it for Mozilla's review; a failure leaves the release with the unsigned zip only. `web-ext` comes from `packaging/web-ext`, pinned with every dependency's checksum in its `bun.lock`, and only the signing step has the key.
 

@@ -5,4 +5,4 @@ The library a host uses to show omp app's chat in its panel: a browser extension
 - `src/index.ts`: `openPanel`, and the `HostTool`, `KeyKeeper`, `PanelOptions` and `Panel` types. Only types come from `@omp-app/contracts`, so the built module has no other code.
 - `bun run build` writes `dist/omp-embed.js`, one ES module for a host to load or bundle.
 
-[docs/integrations.md](../../docs/integrations.md) says which pages may frame the app, how a panel signs in, the protocol, and shows a minimal host page. `apps/web/e2e/v2-embed-hosts.spec.ts` runs that page against the real app.
+[docs/integrations.md](../../docs/integrations.md) says which pages may frame the app (browser extensions and VS Code always may), how a panel signs in, the protocol, and shows a minimal host page. `apps/web/e2e/v2-embed-hosts.spec.ts` runs that page against the real app.

@@ -532,7 +532,7 @@ describe("A0.6 upgrade and static serving", () => {
       await app.stop();
     }
   });
-  test("only the lite view may be framed, by the pages OMP_APP_FRAME_ANCESTORS names; with none, by no page (#2843)", async () => {
+  test("only the lite view may be framed: by the browser extensions' and VS Code's panels with no setting at all, and by the pages OMP_APP_FRAME_ANCESTORS names (#2843)", async () => {
     const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
     const framing = async (url: string) => {
       const response = await fetch(url);
@@ -544,11 +544,16 @@ describe("A0.6 upgrade and static serving", () => {
       };
     };
     const refused = { status: 200, page: true, csp: "frame-ancestors 'none'", xfo: "DENY" };
+    const panels = "moz-extension: chrome-extension: vscode-webview: vscode-file:";
     const named = createAppServer({
       port: 0,
       uiRoot: `${fixtures}/ui`,
       origins: ["http://allowed.test"],
-      frameAncestors: ["https://notes.tail1234.ts.net:8443", "http://127.0.0.1:9000"],
+      frameAncestors: [
+        "https://notes.tail1234.ts.net:8443",
+        "http://127.0.0.1:9000",
+        "moz-extension:",
+      ],
     });
     const none = createAppServer({
       port: 0,
@@ -556,47 +561,31 @@ describe("A0.6 upgrade and static serving", () => {
       origins: ["http://allowed.test"],
     });
     try {
-      // The lite view is the new UI's page, which the named pages may frame (and no browser refuses for X-Frame-Options).
+      // The lite view is the new UI's page, which the panels and the named pages may frame (and no browser refuses for
+      // X-Frame-Options); a panel named again is listed once.
       expect(await framing(`${named.url}/lite?theme=dark`)).toEqual({
         status: 200,
         page: true,
-        csp: "frame-ancestors https://notes.tail1234.ts.net:8443 http://127.0.0.1:9000",
+        csp: `frame-ancestors ${panels} https://notes.tail1234.ts.net:8443 http://127.0.0.1:9000`,
+        xfo: null,
+      });
+      // With nothing named and nothing set, the panels still may.
+      expect(await framing(`${none.url}/lite`)).toEqual({
+        status: 200,
+        page: true,
+        csp: `frame-ancestors ${panels}`,
         xfo: null,
       });
       // Every other page of the app still refuses every frame.
-      expect(await framing(`${named.url}/`)).toEqual(refused);
-      expect((await framing(`${named.url}/assets/app-fixture.js`)).csp).toBe(
-        "frame-ancestors 'none'",
-      );
-      // With no page named, the lite view refuses every frame too.
-      expect(await framing(`${none.url}/lite`)).toEqual(refused);
+      for (const app of [named, none]) {
+        expect(await framing(`${app.url}/`)).toEqual(refused);
+        expect((await framing(`${app.url}/assets/app-fixture.js`)).csp).toBe(
+          "frame-ancestors 'none'",
+        );
+      }
     } finally {
       await named.stop();
       await none.stop();
-    }
-  });
-
-  test("a page or panel saved in Settings frames the lite view from its next load, beside those the variable names", async () => {
-    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
-    let saved: readonly string[] = [];
-    const app = createAppServer({
-      port: 0,
-      uiRoot: `${fixtures}/ui`,
-      origins: ["http://allowed.test"],
-      frameAncestors: ["http://127.0.0.1:9000"],
-      embedders: { list: () => saved },
-    });
-    const csp = async () => (await fetch(`${app.url}/lite`)).headers.get("content-security-policy");
-    try {
-      expect(await csp()).toBe("frame-ancestors http://127.0.0.1:9000");
-      saved = ["moz-extension:", "http://127.0.0.1:9000"];
-      expect(await csp()).toBe("frame-ancestors http://127.0.0.1:9000 moz-extension:");
-      // The rest of the app is never framed, whatever is saved.
-      expect((await fetch(`${app.url}/`)).headers.get("content-security-policy")).toBe(
-        "frame-ancestors 'none'",
-      );
-    } finally {
-      await app.stop();
     }
   });
   test("a built asset is kept for good and goes gzipped to a browser that takes gzip; the page is never kept", async () => {

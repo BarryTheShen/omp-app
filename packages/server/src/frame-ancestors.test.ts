@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseFrameAncestors } from "./frame-ancestors";
+import { liteFrameAncestors, parseFrameAncestors } from "./frame-ancestors";
 
 describe("parseFrameAncestors", () => {
   test("lets no page frame the app when the variable is unset or blank", () => {
@@ -60,5 +60,26 @@ describe("parseFrameAncestors", () => {
     ]) {
       expect(() => parseFrameAncestors(value)).toThrow("OMP_APP_FRAME_ANCESTORS takes");
     }
+  });
+});
+
+describe("liteFrameAncestors", () => {
+  test("lists the four panel kinds first, then the pages named, each once", () => {
+    expect(liteFrameAncestors([])).toEqual([
+      "moz-extension:",
+      "chrome-extension:",
+      "vscode-webview:",
+      "vscode-file:",
+    ]);
+    expect(
+      liteFrameAncestors(["https://notes.example.com", "vscode-webview:", "http://127.0.0.1:9000"]),
+    ).toEqual([
+      "moz-extension:",
+      "chrome-extension:",
+      "vscode-webview:",
+      "vscode-file:",
+      "https://notes.example.com",
+      "http://127.0.0.1:9000",
+    ]);
   });
 });

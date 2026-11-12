@@ -5,8 +5,8 @@ import { realTest } from "./real-omp";
 /**
  * The lite view (#2843): one chat and its message box at `/lite`, for another app's side panel. A whole turn works in
  * it at a narrow panel's size, it switches between the folder's recent chats, its theme follows the framing page's
- * `?theme=` without keeping it, only a page `OMP_APP_FRAME_ANCESTORS` names may frame it, and "Open in the full app"
- * opens the chat there.
+ * `?theme=` without keeping it, only a page `OMP_APP_FRAME_ANCESTORS` names (beside the browser extensions' and VS Code's
+ * panels) may frame it, and "Open in the full app" opens the chat there.
  */
 
 /**

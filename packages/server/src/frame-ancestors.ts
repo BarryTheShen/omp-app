@@ -1,7 +1,8 @@
 /**
- * The pages that may show the app's lite view (`/lite`, #2843) in a frame, such as a notes app's side panel: the origins
- * in `OMP_APP_FRAME_ANCESTORS`, separated by spaces, and those saved in Settings → App → Integrations (`embedders.ts`).
- * Each is one of:
+ * The pages that may show the app's lite view (`/lite`, #2843) in a frame, such as a notes app's side panel. The
+ * browser extensions' and VS Code's panels always may (`PANEL_SOURCES`); the other pages are the origins in
+ * `OMP_APP_FRAME_ANCESTORS`, separated by spaces, and no setting in the app adds one.
+ * Each of those is one of:
  * - an HTTPS address (`https://notes.example.com`, a port allowed), or a loopback address with its port
  *   (`http://127.0.0.1:<port>`, `http://localhost:<port>`): a page on another computer comes over HTTPS, as
  *   `OMP_APP_REMOTE_ORIGIN` does, so what it shows of the app crosses the network encrypted;
@@ -9,7 +10,7 @@
  *   `chrome-extension:` for Chrome and Edge), one extension (`moz-extension://<uuid>`, `chrome-extension://<id>`), or VS
  *   Code's webviews (`vscode-webview:` with `vscode-file:`, the window that holds them).
  * Nothing else, and only the pages named: the app runs commands on this computer. A panel still has to be paired, as any
- * device. None named: no page may frame the app.
+ * device. None named: only the panels may frame the app.
  */
 export const FRAME_ANCESTORS_ENV = "OMP_APP_FRAME_ANCESTORS";
 
@@ -20,6 +21,11 @@ export const PANEL_SOURCES = [
   "vscode-webview:",
   "vscode-file:",
 ] as const;
+
+/** What may frame the lite view: the panels of every kind, then the pages `OMP_APP_FRAME_ANCESTORS` names, each once. */
+export function liteFrameAncestors(named: readonly string[]): readonly string[] {
+  return [...new Set([...PANEL_SOURCES, ...named])];
+}
 
 const FIREFOX_EXTENSION =
   /^moz-extension:\/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
