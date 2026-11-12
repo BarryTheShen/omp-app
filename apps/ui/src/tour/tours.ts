@@ -1962,7 +1962,7 @@ const THEMES_TOUR: Tour = {
     {
       target: THEME_GALLERY,
       title: "Every theme",
-      text: "Each card is a small picture of the app in that theme. Point at one and the whole app shows in it; move away and yours comes back. A click keeps it: a dark theme as your dark theme, a light one as your light theme.",
+      text: "Each card is a small picture of the app in that theme. A click makes it yours: a dark theme as your dark theme, a light one as your light theme.",
       action: next,
     },
     {
@@ -1974,16 +1974,16 @@ const THEMES_TOUR: Tour = {
     {
       target: SETTINGS_SHEET,
       title: "Close settings",
-      text: "{stop} closes settings. The palette ({palette}) lists every theme too: type <b>Theme</b>, and the one you highlight shows.",
+      text: "{stop} closes settings. The palette ({palette}) lists every theme too: type <b>Theme</b> and pick one.",
       action: { kind: "disappears", selector: SETTINGS_SHEET },
     },
   ],
 };
 
-/** Theme previews wait for the pointer to rest, so pointing across the gallery stays smooth (2026-11-11). */
-const THEME_REST_TOUR: Tour = {
-  id: "theme-rest-2026-11-11",
-  title: "Smooth theme previews",
+/** Themes change on a click only: pointing at one no longer redraws the app in it (2026-11-12). */
+const THEME_CLICK_TOUR: Tour = {
+  id: "theme-click-2026-11-12",
+  title: "Themes change on a click",
   minutes: 1,
   sandbox: false,
   steps: [
@@ -2001,14 +2001,14 @@ const THEME_REST_TOUR: Tour = {
     },
     {
       target: THEME_GALLERY,
-      title: "Rest on a theme to see it",
-      text: "Move across the cards: nothing changes while you pass over them. Stop on one for a moment and the whole app shows in it; move away and yours comes back. Before, every card you passed over redrew the whole app, which made sweeping across them lag.",
+      title: "Click a theme to use it",
+      text: "Pointing at a card changes nothing now; a click makes it your theme. Showing a theme redraws every open chat, which made pointing across the cards slow.",
       action: next,
     },
     {
       target: SETTINGS_SHEET,
       title: "Close settings",
-      text: "{stop} closes settings, and your own theme stays. In the palette ({palette}), holding an arrow through the theme rows shows only the row you stop on.",
+      text: "{stop} closes settings. In the palette ({palette}), moving through the theme rows changes nothing either; Enter picks one.",
       action: { kind: "disappears", selector: SETTINGS_SHEET },
     },
   ],
@@ -3013,18 +3013,18 @@ export interface Update {
  */
 export const UPDATES: readonly Update[] = [
   {
+    id: "2026-11-12-theme-click",
+    when: "2026-11-12T00:30:00-06:00",
+    summary:
+      "Themes change on a click only: pointing at a card in Settings → App, or moving through the palette's theme rows, no longer shows the app in that theme. Each of those previews redrew every open chat, which made the gallery slow to point across.",
+    tours: [THEME_CLICK_TOUR],
+  },
+  {
     id: "2026-11-12-panel-key",
     when: "2026-11-12T00:15:00-06:00",
     summary:
       "The Firefox and Zen sidebar and VS Code's panel sign in with their key in the connection's handshake instead of its address, after a security review: an address can end up in the log of a proxy in between, and the key is what signs a panel in. A panel open during the update keeps working, and signs in the new way the next time it loads. The sidebar's tools now also stay off omp app's pages when the app runs on the same computer and a tab names it differently (localhost instead of 127.0.0.1).",
     tours: [PANEL_KEY_TOUR],
-  },
-  {
-    id: "2026-11-11-theme-rest",
-    when: "2026-11-11T23:50:00-06:00",
-    summary:
-      "Pointing at themes no longer makes the app lag: a theme shows once the pointer rests on its card for a moment, so moving across the gallery redraws the app only in the one you stop on, not in every theme you pass over. The palette's theme rows work the same way when you hold an arrow key, and closing settings while pointing at a card brings your own theme back.",
-    tours: [THEME_REST_TOUR],
   },
   {
     id: "2026-11-11-zen-safety",

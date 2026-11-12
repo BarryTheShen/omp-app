@@ -1,36 +1,18 @@
 import { Check } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
-import {
-  pickTheme,
-  previewTheme,
-  THEMES,
-  type ThemeInfo,
-  useSystemThemes,
-  useThemeChoice,
-} from "./theme";
+import type { ReactNode } from "react";
+import { pickTheme, THEMES, type ThemeInfo, useSystemThemes, useThemeChoice } from "./theme";
 
 /**
  * Every theme as a small picture of the app in its own colours (each card is a `data-theme` of its own), your dark
- * themes and your light themes apart. Resting the pointer on a card, or moving to it with the keyboard, shows the whole
- * app in it for a moment (passing over cards shows nothing: `PREVIEW_REST_MS`); leaving it, Esc or closing settings
- * brings yours back; a click keeps it as your theme for its mode (the switch's Light or Dark, and what "Match the
- * system" uses then).
+ * themes and your light themes apart. A click keeps one as your theme for its mode (the switch's Light or Dark, and
+ * what "Match the system" uses then). Pointing at a card changes nothing: drawing the whole app in another theme
+ * restyles every open chat, too slow to do for each card the pointer passes.
  */
 export function ThemeGallery(): ReactNode {
   const choice = useThemeChoice();
   const kept = useSystemThemes();
-  // Settings closed while a card was pointed at: no preview stays, and none still waiting shows.
-  useEffect(() => () => previewTheme(null), []);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: Esc ends a preview the cards started; each card is a button
-    <div
-      data-tour="theme-gallery"
-      className="flex flex-col gap-5"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") previewTheme(null);
-      }}
-      onMouseLeave={() => previewTheme(null)}
-    >
+    <div data-tour="theme-gallery" className="flex flex-col gap-5">
       {(["dark", "light"] as const).map((mode) => (
         <section key={mode} aria-label={mode === "dark" ? "Dark themes" : "Light themes"}>
           <h4 className="mb-2 text-xs font-medium text-t3">
@@ -71,9 +53,6 @@ function ThemeCard({
       aria-label={chosen ? `${theme.name}, your ${theme.mode} theme` : theme.name}
       className="group flex flex-col overflow-hidden rounded-xl border border-l3 bg-panel text-left outline-none transition-shadow hover:border-l4 focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-ring aria-pressed:ring-2 aria-pressed:ring-ring"
       onClick={() => pickTheme(theme.id)}
-      onMouseEnter={() => previewTheme(theme.id)}
-      onFocus={() => previewTheme(theme.id)}
-      onBlur={() => previewTheme(null)}
     >
       <ThemePicture />
       <span className="flex min-w-0 items-center gap-1.5 border-t border-l2 px-2 py-1.5">

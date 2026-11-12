@@ -21,7 +21,7 @@ realTest.describe("themes", () => {
     page.getByRole("dialog", { name: "Settings" }).getByRole("region", { name: "App settings" });
 
   realTest(
-    "Settings → App: pointing at a theme shows it, a click keeps it through a reload, Light is your light theme",
+    "Settings → App: pointing at a theme changes nothing, a click keeps it through a reload, Light is your light theme",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -33,10 +33,10 @@ realTest.describe("themes", () => {
       );
 
       const mocha = dark.getByRole("button", { name: "Catppuccin Mocha" });
+      // Pointing shows nothing: the old preview showed within 150 ms.
       await mocha.hover();
-      await expect.poll(() => shown(page)).toEqual({ theme: "catppuccin-mocha", dark: true });
-      await app(page).getByRole("group", { name: "Theme" }).hover();
-      await expect.poll(() => shown(page)).toEqual({ theme: "tern-dark", dark: true });
+      await page.waitForTimeout(500);
+      expect(await shown(page)).toEqual({ theme: "tern-dark", dark: true });
 
       await mocha.click();
       await expect.poll(() => shown(page)).toEqual({ theme: "catppuccin-mocha", dark: true });
@@ -57,7 +57,7 @@ realTest.describe("themes", () => {
   );
 
   realTest(
-    "the palette lists every theme: a highlighted row shows it, Esc goes back, Enter keeps it",
+    "the palette lists every theme: a highlighted row changes nothing, Enter keeps it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       const search = page
@@ -65,9 +65,9 @@ realTest.describe("themes", () => {
         .getByRole("combobox", { name: "Search the palette" });
       await page.keyboard.press("Control+k");
       await search.fill("Theme: Tokyo Night Storm");
-      await expect.poll(() => shown(page)).toEqual({ theme: "tokyo-night-storm", dark: true });
+      await page.waitForTimeout(500);
+      expect(await shown(page)).toEqual({ theme: "tern-dark", dark: true });
       await search.press("Escape");
-      await expect.poll(() => shown(page)).toEqual({ theme: "tern-dark", dark: true });
 
       await page.keyboard.press("Control+k");
       await search.fill("Theme: Tokyo Night Light");

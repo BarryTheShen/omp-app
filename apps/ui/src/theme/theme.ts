@@ -59,17 +59,9 @@ function systemTheme(mode: "light" | "dark"): ThemeInfo {
 const systemLight = (): MediaQueryList => window.matchMedia("(prefers-color-scheme: light)");
 
 let choice: ThemeChoice = DEFAULT_CHOICE;
-/** A theme shown for a moment (a gallery card, a palette row), not kept. */
-let preview: string | null = null;
-/** A preview asked for that shows once it has been rested on for `PREVIEW_REST_MS`. */
-let pendingPreview: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
 function resolved(): ThemeInfo {
-  if (preview !== null) {
-    const shown = byId.get(preview);
-    if (shown !== undefined) return shown;
-  }
   if (choice === "system") return systemTheme(systemLight().matches ? "light" : "dark");
   return byId.get(choice) ?? (byId.get(DEFAULT_CHOICE) as ThemeInfo);
 }
@@ -92,8 +84,6 @@ export function setThemeChoice(next: ThemeChoice): void {
   const theme = byId.get(next);
   if (theme !== undefined) write(MODE_KEY, theme.mode);
   choice = next;
-  cancelPendingPreview();
-  preview = null;
   changed();
 }
 
@@ -106,41 +96,6 @@ export function setSystemTheme(id: string): void {
 }
 
 /**
- * How long the pointer or the focus rests on a theme before the app shows in it. Showing a theme draws the whole page
- * again, every open chat with it, so sweeping across the gallery's cards or holding an arrow through the palette's theme
- * rows shows only the one it stops on, not each one it passes.
- */
-export const PREVIEW_REST_MS = 150;
-
-function cancelPendingPreview(): void {
-  clearTimeout(pendingPreview);
-  pendingPreview = undefined;
-}
-
-function show(id: string | null): void {
-  if (preview === id) return;
-  preview = id;
-  changed();
-}
-
-/**
- * Shows a theme until the preview ends (null): the kept choice is untouched. A theme shows once it has been rested on for
- * `PREVIEW_REST_MS`; a newer one replaces it while it waits, and the one shown stays until then. The end shows the kept
- * theme at once.
- */
-export function previewTheme(id: string | null): void {
-  cancelPendingPreview();
-  if (id === null) {
-    show(null);
-    return;
-  }
-  pendingPreview = setTimeout(() => {
-    pendingPreview = undefined;
-    show(id);
-  }, PREVIEW_REST_MS);
-}
-
-/**
  * Picks a theme from the gallery or the palette: it becomes the kept theme of its mode. It shows at once, unless the
  * choice follows the system and the system is in the other mode: then it shows when the system turns to its mode.
  */
@@ -149,8 +104,6 @@ export function pickTheme(id: string): void {
   if (theme === undefined) return;
   write(SYSTEM_KEYS[theme.mode], id);
   if (choice === "system") {
-    cancelPendingPreview();
-    preview = null;
     changed();
   } else {
     setThemeChoice(id);
@@ -230,9 +183,4 @@ export function useSystemThemes(): { readonly light: ThemeInfo; readonly dark: T
   const light = useSyncExternalStore(subscribe, () => systemTheme("light"));
   const dark = useSyncExternalStore(subscribe, () => systemTheme("dark"));
   return { light, dark };
-}
-
-/** The theme on screen now: the kept one, or a preview. */
-export function useShownTheme(): ThemeInfo {
-  return useSyncExternalStore(subscribe, resolved);
 }

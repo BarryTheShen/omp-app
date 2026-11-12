@@ -34,7 +34,7 @@ import { KEYS, keycap } from "../keys/table";
 import { showPanel, togglePanel, usePanelState } from "../panels/panel-state";
 import { PANELS } from "../panels/registry";
 import type { ChatList } from "../sidebar/useChatList";
-import { previewTheme, setSystemTheme, setThemeChoice, setThemeMode, THEMES } from "../theme/theme";
+import { setSystemTheme, setThemeChoice, setThemeMode, THEMES } from "../theme/theme";
 import { startTour } from "../tour/runner";
 import { TOURS } from "../tour/tours";
 import type { OpenHow, WorkspaceCommand, WorkspaceHandle } from "../workspace/Workspace";
@@ -67,10 +67,6 @@ const WORKSPACE_COMMANDS: readonly Exclude<WorkspaceCommand, "newChat">[] = [
   "closeTab",
   "reopenTab",
 ];
-
-/** The theme a palette row is: its key without `theme:`; none for other rows and for "match the system". */
-const themeOfRow = (key: string): string | null =>
-  key.startsWith("theme:") && key !== "theme:system" ? key.slice("theme:".length) : null;
 
 const FILE_PAUSE_MS = 120;
 
@@ -248,14 +244,12 @@ export function Palette({
   const focused = open ? (workspace.current?.focused() ?? null) : null;
   const controller = focused?.controller ?? null;
 
-  // Each opening starts afresh: all scopes, nothing typed (however it was closed: Esc, a click or a run). A theme row
-  // shown while it was highlighted goes when the palette closes, unless it was chosen.
+  // Each opening starts afresh: all scopes, nothing typed (however it was closed: Esc, a click or a run).
   useEffect(() => {
     if (open) return;
     setQuery("");
     setScope("All");
     setHighlighted("");
-    previewTheme(null);
   }, [open]);
 
   // What the focused chat offers, read as the palette opens.
@@ -534,12 +528,8 @@ export function Palette({
         <Command
           shouldFilter={false}
           className="h-auto"
-          // A highlighted theme row shows the app in that theme, as VS Code's and Zed's theme pickers do.
           value={highlighted}
-          onValueChange={(value) => {
-            setHighlighted(value);
-            previewTheme(themeOfRow(value));
-          }}
+          onValueChange={setHighlighted}
         >
           <CommandInput
             placeholder="Search commands, files, chats and models"
