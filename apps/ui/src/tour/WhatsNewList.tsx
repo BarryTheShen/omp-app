@@ -7,14 +7,14 @@ import { startTour } from "./runner";
 import { isDone } from "./seen";
 import { UPDATES } from "./tours";
 
-/** An update's time in the reader's own time zone: "Oct 30, 9:47 PM". */
-const timeOf = (when: string): string =>
-  new Date(when).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+/** An update's time in the reader's own time zone: "Oct 30, 9:47 PM". One formatter for all: `toLocaleString` makes one a call. */
+const TIME = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+const timeOf = (when: string): string => TIME.format(new Date(when));
 
 /**
  * Every update of the app, newest first: when it came, what it added, and its tours, each of which can be taken
@@ -48,49 +48,65 @@ export function WhatsNewList({
             Every update, newest first, with the tours that show it.
           </p>
         </div>
-        <ol className="flex flex-col">
-          {UPDATES.map((update) => (
-            <li key={update.id} className="border-b border-l2 px-5 py-3 last:border-b-0">
-              <section aria-label={timeOf(update.when)}>
-                <h3 className="text-xs font-medium text-t3">
-                  <time dateTime={update.when}>{timeOf(update.when)}</time>
-                </h3>
-                <p className="mt-0.5 text-[0.8125rem] text-pretty text-t1">{update.summary}</p>
-                <ul className="mt-1.5 flex flex-col gap-1">
-                  {update.tours.map((tour) => {
-                    const taken = isDone(tour.id);
-                    return (
-                      <li key={tour.id} className="flex items-center gap-2 text-[0.8125rem]">
-                        <span className="min-w-0 flex-1 truncate text-t2">
-                          {tour.title}
-                          <span className="text-t3"> · {tour.minutes} min</span>
-                        </span>
-                        {taken && (
-                          <span className="flex items-center gap-1 text-xs text-ok-ink">
-                            <Check className="size-3.5" />
-                            Taken
-                          </span>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Take the tour: ${tour.title}`}
-                          onClick={() => {
-                            onOpenChange(false);
-                            if (workspace.current !== null) startTour(tour, workspace.current);
-                          }}
-                        >
-                          Take the tour
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            </li>
-          ))}
-        </ol>
+        <UpdateRows onOpenChange={onOpenChange} workspace={workspace} />
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The updates' rows, drawn only while the list shows: the dialog draws its content only then, and the app draws the
+ * list's dialog at each of its own draws (each message from the server), which built every row each time.
+ */
+function UpdateRows({
+  onOpenChange,
+  workspace,
+}: {
+  readonly onOpenChange: (open: boolean) => void;
+  readonly workspace: RefObject<WorkspaceHandle | null>;
+}): ReactNode {
+  return (
+    <ol className="flex flex-col">
+      {UPDATES.map((update) => (
+        <li key={update.id} className="border-b border-l2 px-5 py-3 last:border-b-0">
+          <section aria-label={timeOf(update.when)}>
+            <h3 className="text-xs font-medium text-t3">
+              <time dateTime={update.when}>{timeOf(update.when)}</time>
+            </h3>
+            <p className="mt-0.5 text-[0.8125rem] text-pretty text-t1">{update.summary}</p>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {update.tours.map((tour) => {
+                const taken = isDone(tour.id);
+                return (
+                  <li key={tour.id} className="flex items-center gap-2 text-[0.8125rem]">
+                    <span className="min-w-0 flex-1 truncate text-t2">
+                      {tour.title}
+                      <span className="text-t3"> · {tour.minutes} min</span>
+                    </span>
+                    {taken && (
+                      <span className="flex items-center gap-1 text-xs text-ok-ink">
+                        <Check className="size-3.5" />
+                        Taken
+                      </span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Take the tour: ${tour.title}`}
+                      onClick={() => {
+                        onOpenChange(false);
+                        if (workspace.current !== null) startTour(tour, workspace.current);
+                      }}
+                    >
+                      Take the tour
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </li>
+      ))}
+    </ol>
   );
 }

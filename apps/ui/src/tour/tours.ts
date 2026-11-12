@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** Sending in a long chat does less: the What's new list is no longer rebuilt behind the scenes (2026-11-12). */
+const LIGHTER_SEND_TOUR: Tour = {
+  id: "lighter-send-2026-11-12",
+  title: "Sending does less work",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "Sending does less work",
+      text: "Each message from the server (your sends, replies, the chat list) had the app rebuild this What's new list out of sight, every update in it, about a third of the work of a send in a long chat. It is built only while you look at it now.",
+      action: next,
+    },
+  ],
+};
+
 /** Settings, the dashboard and the first file open at once the first time too (2026-11-12). */
 const FIRST_OPEN_TOUR: Tour = {
   id: "first-open-2026-11-12",
@@ -3106,6 +3122,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-lighter-send",
+    when: "2026-11-12T08:41:00-06:00",
+    summary:
+      "Sending in a long chat does less work: each message from the server had the app rebuild the What's new list out of sight, every update in it with its date written out, about a third of the work of a send (22 ms of it on the test computer). The list is built only while it shows.",
+    tours: [LIGHTER_SEND_TOUR],
+  },
   {
     id: "2026-11-12-first-open",
     when: "2026-11-12T08:31:00-06:00",
