@@ -1229,9 +1229,14 @@ export function Workspace({
                   // A workspace not shown keeps its size, only out of sight, of the pointer, of the keys and of a screen
                   // reader (#2832): hidden with `display: none`, its windows and lists were measured at 0 and back at
                   // every switch, and a chat's list then drew its rows for a scroll place it no longer had (a blank
-                  // chat after a few quick Ctrl+Tabs while it streamed).
+                  // chat after a few quick Ctrl+Tabs while it streamed). The browser also skips its rendering
+                  // (`content-visibility: hidden`, which keeps its size and its layout as it was): a change to the
+                  // whole app (a panel opening, the window's size, a theme) then restyles and lays out the workspace
+                  // in front only, not every chat of every tab.
                   className={
-                    tab.id === tabs.active ? "absolute inset-0" : "invisible absolute inset-0"
+                    tab.id === tabs.active
+                      ? "absolute inset-0"
+                      : "invisible absolute inset-0 [content-visibility:hidden]"
                   }
                   data-hidden={tab.id === tabs.active ? undefined : ""}
                   aria-hidden={tab.id === tabs.active ? undefined : true}

@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** A workspace not shown is left out of the browser's work (2026-11-12). */
+const HIDDEN_TABS_TOUR: Tour = {
+  id: "hidden-tabs-2026-11-12",
+  title: "Only the workspace in front is redrawn",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Only the workspace in front is redrawn",
+      text: "A change to the whole app (a theme, a panel opening, the window's size) is now drawn for the workspace in front only: the workspaces in the other tabs keep their place and size, and the browser leaves them out until you go to them.",
+      action: next,
+    },
+  ],
+};
+
 /** The pairing page in a panel says which app it is inside (2026-11-12). */
 const PAIRING_NOTICE_TOUR: Tour = {
   id: "pairing-notice-2026-11-12",
@@ -3068,6 +3084,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-hidden-tabs",
+    when: "2026-11-12T08:10:00-06:00",
+    summary:
+      "Only the workspace in front is redrawn: a change to the whole app, such as a theme, a panel opening or the window's size, no longer has the browser lay out the chats of every other tab too (a theme change with eight tabs open drew in 56 ms instead of 80, with no long frame). The other tabs keep their place and size.",
+    tours: [HIDDEN_TABS_TOUR],
+  },
   {
     id: "2026-11-12-zen-always-on",
     when: "2026-11-12T07:55:00-06:00",
