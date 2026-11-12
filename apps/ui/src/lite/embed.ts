@@ -32,7 +32,7 @@ export interface EmbedState {
   readonly settings: EmbedSettings;
   /** What the person is looking at in the host; null when it said nothing or nothing is open. */
   readonly context: HostContext | null;
-  /** The person took the context off the next messages: it stays off until the host says another. */
+  /** The person took the context off the next messages: it stays off until the host shows another site. */
   readonly contextLeftOut: boolean;
   readonly tools: readonly EmbedTool[];
   /** The project whose files are on the host's computer, from the first `hello`; null when they are on the server's. */
@@ -48,6 +48,23 @@ const EMPTY: EmbedState = {
   tools: [],
   files: null,
 };
+
+/**
+ * Whether two addresses are of one site: a web address by its origin, any other (a file's path, a note's link) by the whole
+ * of it; false when either is missing. A page's own path and query change without the person's doing, its origin does not.
+ */
+export function sameSite(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  try {
+    const first = new URL(a);
+    const second = new URL(b);
+    const web = (url: URL): boolean => url.protocol === "https:" || url.protocol === "http:";
+    if (web(first) && web(second)) return first.origin === second.origin;
+  } catch {
+    // Not web addresses: compared as they are.
+  }
+  return a === b;
+}
 
 /** The part of a window the endpoint uses: so a test gives it a fake one. */
 export interface EmbedWindow {
@@ -162,9 +179,15 @@ export class EmbedEndpoint {
       case "settings":
         this.#set({ settings: { ...this.#state.settings, ...message.settings } });
         return;
-      case "context":
-        this.#set({ context: message.context, contextLeftOut: false });
+      case "context": {
+        // "Don't send this" holds while the host shows the same site, whatever the page does to its title, its selection
+        // or its path meanwhile (a page may change all three by itself, `history.pushState` included); another site, or
+        // something with no address, asks again.
+        const { context: before, contextLeftOut } = this.#state;
+        const stays = contextLeftOut && sameSite(before?.uri, message.context?.uri);
+        this.#set({ context: message.context, contextLeftOut: stays });
         return;
+      }
       case "tools":
         this.#set({ tools: message.tools });
         return;

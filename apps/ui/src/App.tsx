@@ -225,7 +225,7 @@ export function App(): ReactNode {
   if (connection.kind === "refused") {
     if (connection.refusal === "expired" || connection.refusal === "invalid") {
       return (
-        <div className="grid h-full place-items-center px-6 text-center">
+        <div data-omp-app="true" className="grid h-full place-items-center px-6 text-center">
           <div className="flex flex-col items-center gap-3">
             <p className="text-t3">{REFUSED_WORDS[connection.refusal]}</p>
             <Button
@@ -718,6 +718,11 @@ function Shell({
   );
 }
 
+/** A one-line screen before the app is up. `data-omp-app`: the app's own marker, which the Firefox and Zen panel's tools refuse. */
 function Note({ children }: { readonly children: ReactNode }): ReactNode {
-  return <p className="grid h-full place-items-center px-6 text-center text-t3">{children}</p>;
+  return (
+    <p data-omp-app="true" className="grid h-full place-items-center px-6 text-center text-t3">
+      {children}
+    </p>
+  );
 }

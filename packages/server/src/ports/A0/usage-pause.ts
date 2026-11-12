@@ -307,6 +307,11 @@ export class UsagePause {
     return this.#budgets;
   }
 
+  /** Whether the chat is marked to pause at its usage limit or has a budget: a setting only this server holds for it. */
+  hasMarkOrBudget(threadId: ThreadId): boolean {
+    return this.#marks.has(threadId) || this.#budgets.has(threadId);
+  }
+
   /**
    * Gives the chat a budget of `percent` of its provider's 5-hour window, or removes it (`null`) (#14). It is judged
    * against the chat's part at once: a part already past it pauses the chat now, a higher budget can end its hold.

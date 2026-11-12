@@ -51,6 +51,9 @@ export type StartupReason = z.infer<typeof StartupReason>;
 /** Why a `conflict` has a reason of its own: `held_elsewhere` is another omp (a terminal's) holding the chat's lease. */
 const ConflictReason = z.enum(["held_elsewhere"]);
 
+/** Why a `not_found` has a reason of its own: `chat_gone` is no running chat and no session file under the id. */
+const NotFoundReason = z.enum(["chat_gone"]);
+
 export const AppError = z.object({
   code: AppErrorCode,
   /** Human-readable; never contains secrets or unscrubbed home paths. */
@@ -64,6 +67,11 @@ export const AppError = z.object({
   startup: StartupReason.optional(),
   /** Set on a `conflict` with its reason (see `ConflictReason`): another omp holds the chat, so the open was refused. */
   conflictReason: ConflictReason.optional(),
+  /**
+   * Set on a `not_found` for a chat by its id, with its reason (see `NotFoundReason`): the server holds no such chat, so
+   * nothing is behind the id. A `not_found` without it is not that (omp stopped as it opened a chat that exists).
+   */
+  notFoundReason: NotFoundReason.optional(),
 });
 export type AppError = z.infer<typeof AppError>;
 

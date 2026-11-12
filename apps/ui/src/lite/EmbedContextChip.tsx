@@ -1,7 +1,22 @@
-import { describeHostContext } from "@omp-app/contracts";
+import { describeHostContext, type HostContext } from "@omp-app/contracts";
 import { Eye, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { embed, useEmbed } from "./embed";
+
+/** The most of a selection the chip's tooltip shows. */
+const TOOLTIP_SELECTION_MAX = 300;
+
+/** The tooltip: where it is, and the selected words a message will carry, which the chip itself only counts. */
+function tooltipOf(context: HostContext): string {
+  const where = context.uri ?? context.title;
+  const selected = context.selection?.trim() ?? "";
+  if (selected === "") return where;
+  const shown =
+    selected.length > TOOLTIP_SELECTION_MAX
+      ? `${selected.slice(0, TOOLTIP_SELECTION_MAX)}…`
+      : selected;
+  return `${where}\nSelected: ${shown}`;
+}
 
 /**
  * Above the lite view's message box: what is open in the app that frames the panel, which goes with the next messages
@@ -20,7 +35,7 @@ export function EmbedContextChip(): ReactNode {
     >
       <span
         className="flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-l2 bg-raise pr-0.5 pl-2 max-sm:h-11"
-        title={context.uri ?? context.title}
+        title={tooltipOf(context)}
       >
         <Eye aria-hidden="true" className="size-3.5 shrink-0 text-t3" />
         <span className="min-w-0 truncate">{what}</span>

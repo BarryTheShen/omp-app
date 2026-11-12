@@ -111,7 +111,11 @@ realTest.describe("new UI: the Firefox and Zen extension in a real Firefox", () 
         const shopTab = await firefox.windowHandle();
         await firefox.newTab();
         await firefox.goto(`${origin}/other`);
-        await firefox.newTab();
+        const otherTab = await firefox.windowHandle();
+        // The shop's tab is in front of its window, and the panel's pages open in a window of their own, as the sidebar
+        // is beside the tabs and not one of them: only then is "the tab in front" the shop's, not the panel's page.
+        await firefox.switchToWindow(shopTab);
+        const panelTab = await firefox.newWindow();
 
         // The first open asks for the app's address.
         await firefox.openExtensionPage(PANEL);
@@ -120,7 +124,12 @@ realTest.describe("new UI: the Firefox and Zen extension in a real Firefox", () 
         );
         await firefox.type(field, app);
         await firefox.click(await firefox.waitFor("Save", () => firefox.button("Save")));
-        await firefox.waitForText("Chat about this tab");
+        // Nothing is asked: the panel binds the tab in front at once and shows its chat (here, the tab the panel page
+        // is open in), where it used to offer "Chat about this tab".
+        await intoApp(firefox);
+        await firefox.frame(null);
+        expect(await firefox.run<string>("return location.search;")).toMatch(/^\?tab=\d+$/);
+        expect(await firefox.bodyText()).not.toContain("Chat about this tab");
 
         // The panel of the shop's tab (the toolbar button's binding): it pairs once, with a one-time code.
         const shopId = await tabIdOf(firefox, "/shop");
@@ -180,6 +189,16 @@ realTest.describe("new UI: the Firefox and Zen extension in a real Firefox", () 
         await firefox.frame(null);
         await firefox.switchToWindow(shopTab);
         expect(await firefox.run<number>("return window.bought ?? 0;")).toBe(1);
+
+        // A panel bound to a tab follows the tab brought to the front of that tab's window: the sidebar's own switch, which
+        // the panel (here a page of its own window) heard as the tab's activation.
+        await firefox.switchToWindow(otherTab);
+        await firefox.switchToWindow(panelTab);
+        await firefox.waitFor(
+          "the panel bound to the tab now in front",
+          async () => (await firefox.run<string>("return location.search;")) === `?tab=${otherId}`,
+          30_000,
+        );
       } finally {
         await firefox.close();
         server.closeAllConnections();

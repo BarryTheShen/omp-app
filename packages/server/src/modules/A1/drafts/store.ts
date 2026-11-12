@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   AppFailure,
@@ -346,6 +346,25 @@ export class DraftStoreService {
       }
     }
     return { refs: [...refs.values()], complete };
+  }
+
+  /**
+   * Whether the thread has a draft with something in it (unsent text, an attached file, a failed send). Read at once,
+   * for a decision that cannot wait for the answer (whether a chat's omp may stop): a file that cannot be read counts as
+   * a draft, so nothing is lost on a doubt.
+   */
+  hasThreadDraft(threadId: string): boolean {
+    try {
+      const value = parseStoredValue(
+        readFileSync(this.pathForScope(normalizeScope({ kind: "thread", threadId })), "utf8"),
+      );
+      return (
+        value.kind === "draft" &&
+        (value.text.trim() !== "" || value.attachments.length > 0 || value.failedSends.length > 0)
+      );
+    } catch (error) {
+      return errorCode(error) !== "ENOENT";
+    }
   }
 
   async get(args: DraftGetRequest): Promise<{ draft: Draft | null }> {

@@ -867,6 +867,22 @@ const LONG_CHATS_TOUR: Tour = {
   ],
 };
 
+/** The Firefox and Zen sidebar binds the tab in front by itself, and a chat never written in stops soon (2026-11-12). */
+const ZEN_ALWAYS_ON_TOUR: Tour = {
+  id: "zen-always-on-2026-11-12",
+  title: "The sidebar is always on",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "The sidebar is always on",
+      text: "The Firefox and Zen sidebar no longer asks. The tab in front gets its chat as soon as the sidebar shows it: the chat you had there before when there was one, else a new one. A chat you never wrote in stops on the server 30 seconds after you leave its tab, unless something of yours waits in it (an unsent draft, a queued message, a usage budget), so passing through tabs keeps nothing running. A selection goes with a message when it follows your own pointer or keys, the chip shows the selected words when you point at it, and <b>Don't send this</b> holds for the same site until you go to another. It needs this release's <b>omp-app-zen</b>.",
+      action: next,
+    },
+  ],
+};
+
 /** A panel's key goes in its connection's handshake, and the sidebar's tools know the app by each of its names (2026-11-12). */
 const PANEL_KEY_TOUR: Tour = {
   id: "panel-key-2026-11-12",
@@ -3052,6 +3068,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-zen-always-on",
+    when: "2026-11-12T07:55:00-06:00",
+    summary:
+      "The Firefox and Zen sidebar no longer asks: the tab in front gets its chat as soon as the sidebar shows it, the chat you had there before when there was one. A chat you never wrote in stops on the server 30 seconds after you leave its tab, unless something of yours waits in it (an unsent draft, a queued message, a usage budget), so passing through tabs keeps nothing running. A selection goes with a message when it follows your own pointer or keys, the chip shows the selected words when you point at it, and Don't send this holds for the same site until you go to another. It needs this release's omp-app-zen.",
+    tours: [ZEN_ALWAYS_ON_TOUR],
+  },
   {
     id: "2026-11-12-pairing-notice",
     when: "2026-11-12T04:10:00-06:00",

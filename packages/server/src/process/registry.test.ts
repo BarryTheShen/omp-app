@@ -781,6 +781,146 @@ describe("OmpProcessRegistry", () => {
     expect(registry.has(thread)).toBe(false);
   });
 
+  describe("a chat that never got a message", () => {
+    const second = 1000;
+    const minute = 60 * second;
+    /** The chats that have history; a thread kept ready (`provisional-…`) is never named unused, as the server wires it. */
+    function viewed(idleCloseMs: number, withFile: readonly string[] = []) {
+      const timer = new ClockTimer();
+      const registry = new OmpProcessRegistry({
+        timer,
+        idleCloseMs,
+        isUnused: (thread) => !thread.startsWith("provisional-") && !withFile.includes(thread),
+        createProcess: (processOptions) => new StubProcess(processOptions),
+      });
+      registry.setIdleHooks({ isSettled: async () => true, stopped: () => undefined });
+      return { timer, registry };
+    }
+    const leave = (registry: OmpProcessRegistry, name: string): ThreadId => {
+      const thread = ThreadId.parse(name);
+      registry.acquire(options(name, "/workspace/passing"));
+      registry.release(thread);
+      return thread;
+    };
+
+    test("is stopped 30 seconds after it was left, not after a day", async () => {
+      const { timer, registry } = viewed(24 * 60 * minute);
+      const thread = leave(registry, "thread-never-written");
+
+      timer.advance(29 * second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+
+      timer.advance(second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(false);
+    });
+
+    test("one with history waits the idle close, and one kept ready is never stopped by this rule", async () => {
+      const { timer, registry } = viewed(60 * minute, ["thread-with-history"]);
+      const written = leave(registry, "thread-with-history");
+      const spare = leave(registry, "provisional-spare");
+
+      timer.advance(59 * minute);
+      await Bun.sleep(0);
+      expect(registry.has(written)).toBe(true);
+      expect(registry.has(spare)).toBe(true);
+
+      timer.advance(minute);
+      await Bun.sleep(0);
+      expect(registry.has(written)).toBe(false);
+      expect(registry.has(spare)).toBe(false);
+    });
+
+    test("is not stopped while it is watched, and its 30 seconds start when it is left again", async () => {
+      const { timer, registry } = viewed(24 * 60 * minute);
+      const thread = leave(registry, "thread-came-back");
+
+      timer.advance(20 * second);
+      registry.acquire(options("thread-came-back", "/workspace/passing"));
+      timer.advance(10 * minute);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+
+      registry.release(thread);
+      timer.advance(29 * second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+      timer.advance(second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(false);
+    });
+
+    test("waits no longer than the idle close when that is shorter than 30 seconds", async () => {
+      const { timer, registry } = viewed(10 * second);
+      const thread = leave(registry, "thread-short-close");
+
+      timer.advance(10 * second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(false);
+    });
+
+    test("is asked again when its 30 seconds are up: one that holds something by then (a draft that reached the server) waits the idle close", async () => {
+      const timer = new ClockTimer();
+      let unused = true;
+      const registry = new OmpProcessRegistry({
+        timer,
+        idleCloseMs: 60 * minute,
+        isUnused: () => unused,
+        createProcess: (processOptions) => new StubProcess(processOptions),
+      });
+      registry.setIdleHooks({ isSettled: async () => true, stopped: () => undefined });
+      const thread = leave(registry, "thread-draft-arrives");
+
+      timer.advance(10 * second);
+      unused = false;
+      timer.advance(20 * second);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+
+      // Its idle close counts from the look at 30 seconds.
+      timer.advance(59 * minute);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(true);
+      timer.advance(minute);
+      await Bun.sleep(0);
+      expect(registry.has(thread)).toBe(false);
+    });
+
+    test("past the cap on unwatched chats, the ones that never got a message go before the ones with history", () => {
+      const registry = new OmpProcessRegistry({
+        timer: new ManualTimer(),
+        idleCloseMs: 60 * minute,
+        maxIdle: 2,
+        isUnused: (thread) => thread.startsWith("new-"),
+        createProcess: (processOptions) => new StubProcess(processOptions),
+      });
+      // The chat with history left longest ago is not the one that goes: the new chat just left is.
+      const oldest = leave(registry, "history-oldest");
+      const next = leave(registry, "history-next");
+      const passing = leave(registry, "new-passing");
+      expect([oldest, next, passing].map((thread) => registry.has(thread))).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      // Another passing chat goes the same way, and the two chats with history stay.
+      const another = leave(registry, "new-another");
+      expect([oldest, next, another].map((thread) => registry.has(thread))).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      // With only chats with history past the cap, the one left longest ago goes, as before.
+      const third = leave(registry, "history-third");
+      expect([oldest, next, third].map((thread) => registry.has(thread))).toEqual([
+        false,
+        true,
+        true,
+      ]);
+    });
+  });
+
   describe("the cap on unwatched threads", () => {
     function capped(timer: ManualTimer, created: StubProcess[]): OmpProcessRegistry {
       return new OmpProcessRegistry({

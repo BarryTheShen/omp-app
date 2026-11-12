@@ -11,6 +11,7 @@
  * H5.3b adds the host's requests (dialogs, approvals, tools, URIs) and the host registrations; H5.3c the arbitration,
  * `!` and `$` runs, and session switches; H5.3d rename and the reopen after a refused delete.
  */
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AbortSignalLike,
@@ -305,6 +306,19 @@ function modelArgs(model: ModelChoice | undefined): string[] {
 
 function notFound(message: string): AppFailure {
   return new AppFailure({ code: "not_found", message, retryable: false });
+}
+
+/**
+ * The chat asked for by its id is not here at all: no chat of the server runs under it and no session file holds it. A page
+ * may then start a new chat in its place; any other `not_found` (omp stopped as it opened a chat that exists) is not that.
+ */
+function chatGone(message: string): AppFailure {
+  return new AppFailure({
+    code: "not_found",
+    message,
+    retryable: false,
+    notFoundReason: "chat_gone",
+  });
 }
 
 function cancelled(message: string): AppFailure {
@@ -701,6 +715,8 @@ export class ChatSessionPortRuntime {
         hold: UsagePauseHold | null,
       ) => void,
     ): (() => void) => this.#usagePause?.onChange(listener) ?? (() => undefined),
+    /** Whether a mark or a budget is set for the chat: usage settings only this server holds. */
+    isSetFor: (threadId: ThreadId): boolean => this.#usagePause?.hasMarkOrBudget(threadId) ?? false,
   };
 
   /** The provider of the model a running chat uses now; null when its omp is not running. */
@@ -1890,9 +1906,9 @@ export class ChatSessionPortRuntime {
       const existing = this.#entries.get(args.threadId);
       if (existing !== undefined) return existing.bootstrap;
       const resolved = await this.#context.resolveThread(args.threadId, signal);
-      if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
+      if (resolved === undefined) throw chatGone(`Thread ${args.threadId} was not found`);
       if (!(await this.#hasSessionFile(resolved.sessionFile))) {
-        throw notFound(`Session file not found: ${resolved.sessionFile}`);
+        throw chatGone(`Session file not found: ${resolved.sessionFile}`);
       }
       // omp moved the chat to another file while another omp held it: the newest copy is opened, as omp's own resume
       // opens it, or joined when it runs here (`modules/A1/sessions/continuation.ts`). The open's answer names it.
@@ -2606,10 +2622,21 @@ export class ChatSessionPortRuntime {
     return { threadId: bootstrap.threadId, folder: bootstrap.folderPath, args: bootstrap.args };
   }
 
-  #hasSessionFile(sessionFile: SessionFilePath): Promise<boolean> {
-    return this.#context.sessionFileExists
-      ? this.#context.sessionFileExists(sessionFile)
-      : Bun.file(sessionFile).exists();
+  /**
+   * Whether the chat's session file is on disk. Only a real miss (no such file or folder) says it is not: a file that
+   * could not be looked at (too many open files, no permission) may well be there, and a chat is not told it is gone on
+   * a doubt (omp then reads the file, or fails in its own words).
+   */
+  async #hasSessionFile(sessionFile: SessionFilePath): Promise<boolean> {
+    if (this.#context.sessionFileExists) return this.#context.sessionFileExists(sessionFile);
+    try {
+      await stat(sessionFile);
+      return true;
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      return !(code === "ENOENT" || code === "ENOTDIR");
+    }
   }
 }
 

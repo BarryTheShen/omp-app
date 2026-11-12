@@ -1,6 +1,6 @@
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { lostWithTheLink, openFailureAction, openFailureText } from "./openFailure";
+import { chatIsGone, lostWithTheLink, openFailureAction, openFailureText } from "./openFailure";
 
 const failed = (startup?: "no_model" | "no_credentials" | "other") =>
   new AppFailure({
@@ -63,5 +63,21 @@ describe("why a chat could not open", () => {
       ),
     ).toBe(false);
     expect(lostWithTheLink(new Error("network"))).toBe(false);
+  });
+
+  test("only the server's own word that the chat is not there at all is a chat gone", () => {
+    const gone = new AppFailure({
+      code: "not_found",
+      message: "Thread 01a1b3f2-0cfe-7293-8022-9e1d8b689bc7 was not found",
+      retryable: false,
+      notFoundReason: "chat_gone",
+    });
+    expect(chatIsGone(gone)).toBe(true);
+    // A not_found that says nothing of the kind (omp stopped as it opened a chat that exists), and any other failure.
+    expect(
+      chatIsGone(new AppFailure({ code: "not_found", message: "omp stopped", retryable: false })),
+    ).toBe(false);
+    expect(chatIsGone(failed())).toBe(false);
+    expect(chatIsGone(new Error("Thread was not found"))).toBe(false);
   });
 });

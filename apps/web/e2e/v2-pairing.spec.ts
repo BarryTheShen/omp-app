@@ -42,6 +42,8 @@ realTest.describe("new UI device pairing", () => {
       const owner = await realApp.open({ path: "/" });
       const phone = await realApp.open({ path: "/", hash: "", expectApp: false });
       await expect(pairingHeading(phone)).toBeVisible({ timeout: 30_000 });
+      // The screen carries omp app's marker, so the Firefox and Zen panel's tools refuse it at any address.
+      await expect(phone.locator("main[data-omp-app]")).toBeVisible();
       const name = phone.getByLabel("This device's name");
       await expect(name).not.toHaveValue("");
       await name.fill("Test phone");

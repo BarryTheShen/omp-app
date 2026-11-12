@@ -165,6 +165,20 @@ function usage(
 }
 
 describe("usage pause (#2781 part 3)", () => {
+  test("hasMarkOrBudget says whether a usage mark or a budget is set for the chat, and not after it is taken off", async () => {
+    const { rule } = setup();
+    expect(rule.hasMarkOrBudget(A)).toBe(false);
+    await rule.setMark(A, FOLDER, 95);
+    await rule.setBudget(B, FOLDER, 40);
+    expect(rule.hasMarkOrBudget(A)).toBe(true);
+    expect(rule.hasMarkOrBudget(B)).toBe(true);
+    expect(rule.hasMarkOrBudget(C)).toBe(false);
+    await rule.setMark(A, FOLDER, null);
+    await rule.setBudget(B, FOLDER, null);
+    expect(rule.hasMarkOrBudget(A)).toBe(false);
+    expect(rule.hasMarkOrBudget(B)).toBe(false);
+  });
+
   test("a marked chat pauses at its limit and resumes a minute after its window resets", async () => {
     const { timer, running, sent, rule } = setup();
     running.set(A, "anthropic");

@@ -23,6 +23,7 @@ import { ConnectionBanner } from "../ConnectionBanner";
 import { ChatPane } from "../chat/ChatPane";
 import { useChatTitle } from "../chat/chatTitle";
 import { ChatController, type ChatTarget } from "../chat/controller";
+import { ChatDraft } from "../chat/drafts";
 import { firstPromptOf } from "../chat/firstPrompts";
 import { LinkReopens } from "../chat/reopens";
 import { useFolder } from "../folders/useFolder";
@@ -55,6 +56,8 @@ const HEADER_ICON = "size-[calc(var(--host-text-size,14px)*8/7)]";
 interface Shown {
   readonly key: string;
   readonly target: ChatTarget;
+  /** The chat the page's address named at load (`?chat=`), as against one the person chose. */
+  readonly askedAtLoad?: true;
 }
 
 const newChat = (folder: FolderPath): Shown => ({
@@ -139,6 +142,7 @@ function LiteChats({
       : {
           key: crypto.randomUUID(),
           target: { kind: "existing", threadId: asked, sessionFile: null },
+          askedAtLoad: true,
         };
   });
   /** Each fresh open of the chat shown (Try again, or the link back): a new controller for the same chat. */
@@ -158,10 +162,18 @@ function LiteChats({
       shown.target.kind === "existing" ? chatCache.take(client, shown.target.threadId) : undefined;
     const next = kept ?? new ChatController(client, shown.target, folder, shown.key);
     setOpened({ key: shown.key, attempt, controller: next });
-    if (kept === undefined) void next.open();
+    // The chat the address named at load, if the server no longer has it (a chat nobody wrote in is stopped and forgotten
+    // after a while), is replaced by a new one with nothing said. Its first open only: any other failure, and any
+    // later open, keeps Try again and New chat.
+    if (kept === undefined)
+      void next.open(shown.askedAtLoad === true && attempt === 0 ? { newChatIfGone: true } : {});
     const stopAsks = next.onPaneAsk((ask) => {
       if (ask.kind === "new-chat") {
-        setShown(newChat(folder));
+        const replacement = newChat(folder);
+        // Text typed in the chat this one replaces is the new chat's, under the key its box reads (`ChatDraft.forNewChat`).
+        if (ask.draft !== undefined)
+          ChatDraft.forNewChat(client, replacement.key).change(ask.draft);
+        setShown(replacement);
         return;
       }
       if (ask.by === "person") reopens.reset();

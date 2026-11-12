@@ -31,6 +31,7 @@ interface Call {
 function standIn(answer: (call: Call) => unknown = () => ({ done: "ok" })) {
   const calls: Call[] = [];
   const opened: { url: string; opener: number }[] = [];
+  const captured: number[] = [];
   const tabs = new Map<number, browser.tabs.Tab>([
     [
       BOUND,
@@ -55,7 +56,10 @@ function standIn(answer: (call: Call) => unknown = () => ({ done: "ok" })) {
       if (tab === undefined) throw new Error("no such tab");
       return tab;
     },
-    capture: async () => "data:image/png;base64,AAAA",
+    capture: async (tabId) => {
+      captured.push(tabId);
+      return "data:image/png;base64,AAAA";
+    },
     navigate: async (tabId, url) => {
       const tab = {
         ...(tabs.get(tabId) as browser.tabs.Tab),
@@ -74,7 +78,7 @@ function standIn(answer: (call: Call) => unknown = () => ({ done: "ok" })) {
     },
     sleep: async () => undefined,
   };
-  return { api, calls, opened, tabs };
+  return { api, calls, opened, tabs, captured };
 }
 
 const toolOf = (tools: HostTool[], name: string): HostTool => {
@@ -172,17 +176,39 @@ describe("the tools", () => {
     ).rejects.toThrow('Nothing on the page matches "#go".');
   });
 
-  test("screenshot photographs the tab in front, and refuses one that is not", async () => {
-    const { api, tabs } = standIn();
+  test("screenshot photographs the tab itself, by its id, when it is in front, and refuses one that is not", async () => {
+    const { api, tabs, captured } = standIn();
     const shot = (await toolOf(pageTools(scopeOf([42]), api, APP), "screenshot").run(
       {},
       never,
     )) as EmbedToolResult;
     expect(shot.content).toEqual([{ type: "image", data: "AAAA", mimeType: "image/png" }]);
+    expect(captured).toEqual([BOUND]);
     tabs.set(42, { id: 42, windowId: 1, active: false });
     await expect(
       toolOf(pageTools(scopeOf([42]), api, APP), "screenshot").run({ tab: 42 }, never),
     ).rejects.toThrow("not in front");
+    expect(captured).toEqual([BOUND]);
+  });
+
+  test("screenshot refuses a page that says it is omp app's, at any address; one extensions cannot enter is photographed", async () => {
+    const marked = standIn((call) => {
+      if (call.name === "refuseApp") throw new Error(OFF_LIMITS);
+      return { done: "ok" };
+    });
+    await expect(
+      toolOf(pageTools(scopeOf(), marked.api, APP), "screenshot").run({}, never),
+    ).rejects.toThrow(OFF_LIMITS);
+    expect(marked.captured).toEqual([]);
+    expect(marked.calls.at(-1)).toMatchObject({ tabId: BOUND, name: "refuseApp", args: [[APP]] });
+
+    const closed = standIn(() => {
+      throw new Error(
+        "Firefox does not let extensions into this page (its own pages and the add-ons site).",
+      );
+    });
+    await toolOf(pageTools(scopeOf(), closed.api, APP), "screenshot").run({}, never);
+    expect(closed.captured).toEqual([BOUND]);
   });
 
   test("navigate goes to web addresses only, and says what loaded", async () => {

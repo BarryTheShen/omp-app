@@ -4,7 +4,7 @@ import type {
   ToolCallAnswer,
 } from "@omp-app/contracts/chat-host";
 import { describe, expect, test } from "vitest";
-import { bindChat, type EmbedChat, EmbedEndpoint, type EmbedWindow } from "./embed";
+import { bindChat, type EmbedChat, EmbedEndpoint, type EmbedWindow, sameSite } from "./embed";
 
 const HOST = "https://panel.example";
 
@@ -86,7 +86,7 @@ describe("the lite view's end of the embed protocol", () => {
     });
   });
 
-  test("the context goes with messages until the person leaves it out, and again once the host says another", () => {
+  test("the context goes with messages until the person leaves it out; it stays out for the same site, and comes back with another", () => {
     const { window, receive } = frame();
     const endpoint = new EmbedEndpoint(window);
     endpoint.start();
@@ -94,10 +94,43 @@ describe("the lite view's end of the embed protocol", () => {
     expect(endpoint.contextForMessage()).toEqual({ host: "zen", context: PAGE });
     endpoint.leaveContextOut();
     expect(endpoint.contextForMessage()).toBeNull();
-    receive({ ...envelope, type: "context", context: { ...PAGE, title: "Next page" } });
+    // The page changing its own title, selection or path (a page may do all three by itself) does not ask again.
+    receive({ ...envelope, type: "context", context: { ...PAGE, title: "Next title" } });
+    expect(endpoint.contextForMessage()).toBeNull();
+    receive({ ...envelope, type: "context", context: { ...PAGE, selection: "hidden words" } });
+    expect(endpoint.contextForMessage()).toBeNull();
+    receive({
+      ...envelope,
+      type: "context",
+      context: { ...PAGE, uri: "https://example.com/pushed/state?x=1" },
+    });
+    expect(endpoint.contextForMessage()).toBeNull();
+    // Another site does.
+    receive({
+      ...envelope,
+      type: "context",
+      context: { ...PAGE, title: "Next page", uri: "https://example.org/" },
+    });
     expect(endpoint.contextForMessage()?.context.title).toBe("Next page");
     receive({ ...envelope, type: "context", context: null });
     expect(endpoint.contextForMessage()).toBeNull();
+    // Left out once more, and a context with no address is a new context each time.
+    receive({ ...envelope, type: "context", context: PAGE });
+    endpoint.leaveContextOut();
+    receive({ ...envelope, type: "context", context: { kind: "note", title: "A note" } });
+    expect(endpoint.contextForMessage()?.context.title).toBe("A note");
+  });
+
+  test("sameSite compares web addresses by origin and any other address as a whole", () => {
+    expect(sameSite("https://example.com/a", "https://example.com/b?x#y")).toBe(true);
+    expect(sameSite("https://example.com/", "http://example.com/")).toBe(false);
+    expect(sameSite("https://example.com/", "https://example.com:8443/")).toBe(false);
+    // A file's path is not a site: each file is its own.
+    expect(sameSite("file:///work/a.ts", "file:///work/a.ts")).toBe(true);
+    expect(sameSite("file:///work/a.ts", "file:///work/b.ts")).toBe(false);
+    expect(sameSite("not an address", "not an address")).toBe(true);
+    expect(sameSite(undefined, "https://example.com/")).toBe(false);
+    expect(sameSite(undefined, undefined)).toBe(false);
   });
 
   test("a tool call goes to the host and its answer comes back; omp giving up tells the host; the panel closing ends the rest", async () => {

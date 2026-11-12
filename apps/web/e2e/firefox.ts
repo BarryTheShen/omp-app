@@ -142,6 +142,13 @@ export class FirefoxDriver {
     return made.handle;
   }
 
+  /** A new browser window (with one tab), in front; the handle of its tab. Another window leaves each tab's place alone. */
+  async newWindow(): Promise<string> {
+    const made = await this.command<{ handle: string }>("POST", "/window/new", { type: "window" });
+    await this.switchToWindow(made.handle);
+    return made.handle;
+  }
+
   windowHandle(): Promise<string> {
     return this.command("GET", "/window");
   }

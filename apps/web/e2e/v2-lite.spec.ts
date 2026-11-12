@@ -341,4 +341,111 @@ realTest.describe("new UI lite view", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a chat the address names that the server no longer has is replaced by a new chat, with no error shown",
+    async ({ realApp }) => {
+      // As a host's panel loads again for a tab whose empty chat the server let go of (`?chat=` names it).
+      const page = await realApp.open({
+        path: "/lite",
+        search: "?embed=1&chat=01a1ffff-0000-7000-8000-000000000000",
+      });
+      // The address stops naming the chat that is gone once a new one is in its place: loading again starts a new chat too.
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("chat"), { timeout: 90_000 })
+        .toBeNull();
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Could not open this chat" }),
+      ).toHaveCount(0);
+      // The chat works.
+      await send(page, "hello");
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a chat opened by its id that nothing was written in, whose omp then stopped, still sends: a new chat starts in its place",
+    async ({ realApp }) => {
+      const first = await realApp.open({ path: "/lite" });
+      await expect(box(first)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      const link = await first
+        .getByRole("link", { name: "Open in the full app" })
+        .getAttribute("href");
+      const asked = decodeURIComponent(link?.split("#chat=")[1] ?? "");
+      expect(asked).not.toBe("");
+      await first.close();
+
+      // The panel as a host builds it for a tab that showed this chat before anything was written in it: the server
+      // still has the chat, with nothing in it.
+      const page = await realApp.open({
+        path: "/lite",
+        search: `?chat=${encodeURIComponent(asked)}`,
+      });
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      const started = [
+        ...realApp.log().matchAll(/omp\.process thread=(\S+) status=running pid=(\d+)/g),
+      ].at(-1);
+      expect(started).toBeDefined();
+      const [, thread = "", pid = "0"] = started ?? [];
+      process.kill(Number(pid), "SIGKILL");
+      await expect
+        .poll(
+          () =>
+            new RegExp(`omp\\.process thread=${thread} status=(exited|error|stopped)`).test(
+              realApp.log(),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+
+      // What the box sends reaches a chat, started in the stopped one's place: the reply comes, and nothing says it was
+      // not sent or that the chat could not open.
+      await send(page, "hello");
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText(/^Not sent/)).toHaveCount(0);
+      await expect(box(page)).toHaveValue("");
+      expect(new URL(page.url()).searchParams.get("chat")).not.toBe(asked);
+    },
+  );
+
+  realTest(
+    "text typed in a chat the server lost, just before its tab was left, is in the box of the new chat that replaces it",
+    async ({ realApp }) => {
+      const first = await realApp.open({ path: "/lite" });
+      await expect(box(first)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      const gone = "01a1ffff-0000-7000-8000-00000000d0d0";
+      // This browser's copy of the unsent text of a chat the server does not have, as typing there just before leaving
+      // its tab leaves it (the server's copy comes 0.8 s after the last key, which the page may not outlive).
+      await first.evaluate(
+        (id) =>
+          new Promise<void>((resolve, reject) => {
+            const opening = indexedDB.open("omp-app-ui");
+            opening.onerror = () => reject(opening.error);
+            opening.onsuccess = () => {
+              const db = opening.result;
+              const writing = db.transaction("drafts", "readwrite");
+              writing.objectStore("drafts").put("words typed just before leaving", id);
+              writing.oncomplete = () => {
+                db.close();
+                resolve();
+              };
+              writing.onerror = () => reject(writing.error);
+            };
+          }),
+        gone,
+      );
+      await first.goto(`${new URL(first.url()).origin}/lite?chat=${gone}`);
+      await expect
+        .poll(() => new URL(first.url()).searchParams.get("chat"), { timeout: 90_000 })
+        .toBeNull();
+      await expect(box(first)).toHaveValue("words typed just before leaving", { timeout: 60_000 });
+      await expect(
+        first.getByRole("alert").filter({ hasText: "Could not open this chat" }),
+      ).toHaveCount(0);
+    },
+  );
 });

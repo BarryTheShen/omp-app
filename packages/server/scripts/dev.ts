@@ -423,8 +423,20 @@ export async function createCompositionServer(
   }
   const instanceId = crypto.randomUUID();
   const omp = health.status === "ok" && probe.version !== null ? { version: probe.version } : null;
+  // What a chat may hold that its session file does not: an unsent draft, a message queued for it, a usage mark or budget.
+  // Set once those stores exist; until then (the hosts an earlier server left are taken over first) a chat counts as
+  // holding something, so no chat is stopped early on a guess.
+  let holdsBesidesFile: (threadId: ThreadId) => boolean = () => true;
   const processRegistry = new OmpProcessRegistry({
     ...(options.idleCloseMs === undefined ? {} : { idleCloseMs: options.idleCloseMs }),
+    // A chat that never got a message has no session file yet (omp writes it after the first reply), and holds nothing
+    // else a person would miss. The chat kept ready in each folder (`provisional-…`) is not one a person left. The
+    // runtime does not exist yet: it is asked when needed.
+    isUnused: (threadId) => {
+      if (threadId.startsWith("provisional-")) return false;
+      const file = a0Runtime.sessionFileOf(threadId);
+      return file !== undefined && !existsSync(file) && !holdsBesidesFile(threadId);
+    },
     createProcess: (processOptions) => {
       const spawnOptions = {
         ...processOptions,
@@ -842,6 +854,11 @@ export async function createCompositionServer(
   });
   a0Runtime.tasks.onTurnEnd((threadId) => taskQueue.onTurnEnd(threadId));
   void taskQueue.restore();
+  // A chat with no session file yet still holds what a person put beside it: stopping its omp early would lose it.
+  holdsBesidesFile = (threadId) =>
+    draftStore.hasThreadDraft(threadId) ||
+    taskQueue.hasWaitingFor(threadId) ||
+    a0Runtime.usagePauses.isSetFor(threadId);
   const tasks = createTasksRuntime({ queue: taskQueue, publish });
   // Every chat's questions that wait (those asked without waiting, and omp's that stop a chat), for the dashboard, and
   // `changed` to every device.

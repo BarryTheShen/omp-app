@@ -1,6 +1,14 @@
 /// <reference path="../../zen/src/browser.d.ts" />
 import { expect, type Page, test } from "@playwright/test";
-import { clickTarget, hasText, readPage, scrollPage, typeInto } from "../../zen/src/page";
+import {
+  clickTarget,
+  hasText,
+  readPage,
+  refuseApp,
+  scrollPage,
+  typeInto,
+  watchSelection,
+} from "../../zen/src/page";
 import { OFF_LIMITS } from "../../zen/src/tools";
 
 /**
@@ -156,5 +164,93 @@ test.describe("the Zen extension's page functions", () => {
     expect(
       await page.evaluate(() => (window as unknown as { searched?: string }).searched),
     ).toBeUndefined();
+  });
+
+  // The app reached at an address the panel was not given (here the test page's own): the marker it sets says what it is,
+  // on its root (`data-app-root`) and on its pairing and other early screens (`data-omp-app`).
+  for (const marker of ["data-app-root", "data-omp-app"]) {
+    test(`a page with omp app's ${marker} marker is refused whatever its address, and its selection is not watched`, async ({
+      page,
+    }) => {
+      await page.evaluate(
+        (attribute) =>
+          document.body.insertAdjacentHTML("beforeend", `<div ${attribute}="true"></div>`),
+        marker,
+      );
+      await expect(inPage(page, readPage, APP, 20_000, 100)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, clickTarget, APP, "#buy", null)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, typeInto, APP, "#query", "x", true)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, scrollPage, APP, "bottom", null, null)).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, hasText, APP, "Shoes")).rejects.toThrow(OFF_LIMITS);
+      await expect(inPage(page, refuseApp, APP)).rejects.toThrow(OFF_LIMITS);
+      await inPage(page, watchSelection, APP);
+      const state = await page.evaluate(() => ({
+        watching: (window as unknown as { __ompAppWatchesSelection?: boolean })
+          .__ompAppWatchesSelection,
+        bought: (window as unknown as { bought?: number }).bought,
+      }));
+      expect(state).toEqual({ watching: undefined, bought: undefined });
+    });
+  }
+
+  test("refuseApp lets an ordinary page through", async ({ page }) => {
+    await inPage(page, refuseApp, APP);
+  });
+
+  test("the selection watcher looks again at each change: a page that turns into the app after it was installed is not heard", async ({
+    page,
+  }) => {
+    await page.evaluate(() => {
+      const heard: string[] = [];
+      const scope = window as unknown as { heard: string[]; browser: unknown };
+      scope.heard = heard;
+      scope.browser = {
+        runtime: {
+          sendMessage: async (message: { selection: string }) => {
+            heard.push(message.selection);
+          },
+        },
+      };
+    });
+    await inPage(page, watchSelection, APP);
+    await page.evaluate(() =>
+      document.body.insertAdjacentHTML("beforeend", '<div data-omp-app="true"></div>'),
+    );
+    await page.locator("h1").dblclick({ position: { x: 8, y: 8 } });
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => (window as unknown as { heard: string[] }).heard)).toEqual([]);
+  });
+
+  test("the selection watcher reports what the person selects, not what a page script selects by itself", async ({
+    page,
+  }) => {
+    await page.evaluate(() => {
+      const heard: string[] = [];
+      const scope = window as unknown as { heard: string[]; browser: unknown };
+      scope.heard = heard;
+      scope.browser = {
+        runtime: {
+          sendMessage: async (message: { selection: string }) => {
+            heard.push(message.selection);
+          },
+        },
+      };
+    });
+    await inPage(page, watchSelection, APP);
+    const heard = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { heard: string[] }).heard);
+    // A page script selects text by itself, as a page can with text the person never sees: nothing is reported.
+    await page.evaluate(() => {
+      const range = document.createRange();
+      range.selectNodeContents(document.querySelector("p") as Node);
+      getSelection()?.removeAllRanges();
+      getSelection()?.addRange(range);
+    });
+    await page.waitForTimeout(800);
+    expect(await heard()).toEqual([]);
+    // The person double-clicks a word: a real pointer, so that is reported (after the page script's text was left).
+    await page.locator("h1").dblclick({ position: { x: 8, y: 8 } });
+    await expect.poll(async () => (await heard()).at(-1), { timeout: 10_000 }).toBe("Shoes");
+    expect(await heard()).not.toContain("Winter boots, size 44, in stock.");
   });
 });

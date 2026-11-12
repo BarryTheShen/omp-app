@@ -266,6 +266,49 @@ describe("DraftStoreService", () => {
     store.dispose();
   });
 
+  test("hasThreadDraft says at once whether a thread holds a draft with something in it", async () => {
+    const root = await temporaryDirectory();
+    const store = new DraftStoreService({ appDataDir: join(root, "app") });
+    const scope = { kind: "thread" as const, threadId: "held" };
+    expect(store.hasThreadDraft("held")).toBe(false);
+
+    const saved = await store.save({
+      scope,
+      draft: draftInput("unsent words"),
+      expectedRevision: null,
+    });
+    expect(store.hasThreadDraft("held")).toBe(true);
+    expect(store.hasThreadDraft("another")).toBe(false);
+
+    // Nothing in it any more: no text, no file, no failed send.
+    const emptied = await store.save({
+      scope,
+      draft: { text: "  ", attachments: [], failedSends: [] },
+      expectedRevision: saved.revision,
+    });
+    expect(store.hasThreadDraft("held")).toBe(false);
+    // An attached file alone is something.
+    await store.save({
+      scope,
+      draft: { text: "", attachments: [attachment()], failedSends: [] },
+      expectedRevision: emptied.revision,
+    });
+    expect(store.hasThreadDraft("held")).toBe(true);
+    const current = (await store.get({ scope })).draft;
+    await store.clear({ scope, expectedRevision: current?.revision ?? null });
+    expect(store.hasThreadDraft("held")).toBe(false);
+
+    // A file that cannot be read counts as a draft: nothing is lost on a doubt.
+    await mkdir(join(store.draftsDir, "threads"), { recursive: true });
+    await writeFile(
+      join(store.draftsDir, "threads", `${hashContent("broken")}.json`),
+      "{no",
+      "utf8",
+    );
+    expect(store.hasThreadDraft("broken")).toBe(true);
+    store.dispose();
+  });
+
   test("emits one external change and none for own saves or clears", async () => {
     const root = await temporaryDirectory();
     const app = join(root, "app");

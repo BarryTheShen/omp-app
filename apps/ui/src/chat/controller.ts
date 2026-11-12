@@ -15,6 +15,7 @@ import {
   type McpCommandScope,
   type McpCommandServerSummary,
   McpCommandsPort,
+  RunningChatsPort,
   type SessionEntryWindow,
   SessionFilePath,
   SessionFileStore,
@@ -84,6 +85,7 @@ import { keepShareLink } from "../shares/link";
 import { ChatDraft } from "./drafts";
 import { noteFirstPrompt } from "./firstPrompts";
 import {
+  chatIsGone,
   lostWithTheLink,
   notOpenOnServer,
   openFailureAction,
@@ -124,11 +126,11 @@ export type ThinkingLevelName = ChatHostMethodMap["set_thinking_level"]["params"
 
 /**
  * What a chat that could not open asks of its pane: to open it afresh, after Try again (`person`) or once the link
- * to the server was back (`link`); or a new chat in its place.
+ * to the server was back (`link`); or a new chat in its place, with the text typed in the chat it replaces (`draft`).
  */
 export type PaneAsk =
   | { readonly kind: "reopen"; readonly by: "person" | "link" }
-  | { readonly kind: "new-chat" };
+  | { readonly kind: "new-chat"; readonly draft?: string };
 
 export type ChatTarget =
   | {
@@ -218,6 +220,8 @@ export class ChatController {
   #windowRead = false;
   /** The file the window was read from: a chat omp moved opens as its newest copy, another file, read again. */
   #windowFile: string | null = null;
+  /** The folder an empty chat opened by its id runs in, when the server's running list said; else the pane's folder. */
+  #chatFolder: FolderPath | null = null;
   /**
    * Whether this pane's open took a view of the chat: the server counts it until it is closed, and stops omp once nobody
    * views the chat and its idle time has passed.
@@ -357,13 +361,24 @@ export class ChatController {
   /**
    * Opens the chat for this pane. A failure is said in the transcript, with what to do: Try again, or New chat for a
    * chat the server no longer has or whose omp stopped as it started. An open the link to the server dropped under is
-   * made afresh by itself once the link is back. A pane that went away meanwhile says nothing.
+   * made afresh by itself once the link is back. A pane that went away meanwhile says nothing. `newChatIfGone`: for a
+   * chat a page was asked to open by its id, when the server says the chat is not there at all (`chatIsGone`) nothing is
+   * said and the pane is asked for a new chat in its place; any other failure is said as above.
    */
-  async open(): Promise<void> {
+  async open({ newChatIfGone = false }: { readonly newChatIfGone?: boolean } = {}): Promise<void> {
     try {
       await this.#open();
     } catch (failure) {
       if (this.#disposed) return;
+      if (newChatIfGone && chatIsGone(failure)) {
+        // What was typed in the chat just before its tab was left (this browser's copy is read first, as the box reads it)
+        // goes into the new chat's box: the server may not have had it yet.
+        const typed = await this.#draft.load().catch(() => "");
+        if (this.#disposed) return;
+        this.store.setPhase("ended");
+        this.startNewChat(typed);
+        return;
+      }
       this.store.addNotice(openFailureText(failure), "error", openFailureAction(failure));
       this.store.setPhase("ended");
       if (lostWithTheLink(failure)) this.#reopenWhenLinked();
@@ -381,9 +396,9 @@ export class ChatController {
     this.#askPane({ kind: "reopen", by: "person" });
   }
 
-  /** New chat in place of a chat that could not open. */
-  startNewChat(): void {
-    this.#askPane({ kind: "new-chat" });
+  /** New chat in place of a chat that could not open; `draft`: the text typed in this one, for the new chat's box. */
+  startNewChat(draft?: string): void {
+    this.#askPane({ kind: "new-chat", ...(draft === undefined || draft === "" ? {} : { draft }) });
   }
 
   #askPane(ask: PaneAsk): void {
@@ -479,6 +494,10 @@ export class ChatController {
         return;
       }
     }
+    // A chat opened by its id that holds nothing yet (a host's panel keeps the id of a chat nothing was written in): the
+    // folder it runs in is asked of the server's list of running chats, for a new chat to start there if it is lost.
+    if (this.target.kind === "existing" && this.store.getSnapshot().entries.length === 0)
+      void this.#learnFolder(opened.threadId);
     // The setup goes out with the subscription, not after its answer (#2768): none of it needs the subscription, so the
     // chat is live a round trip sooner, and the store's marks judge a state read asked before the replay (`setState`).
     // The answers come together: the chat is live after the slowest, not after their sum (#2760). omp's ask tool then
@@ -2000,18 +2019,26 @@ export class ChatController {
   }
 
   /**
-   * A new chat with nothing in it yet that the server no longer has, or whose omp stopped before it was saved (an empty
-   * chat leaves no file to open again), starts again in its place, in the same folder, and this window follows it: its
-   * view, its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onHeld`).
-   * What is typed stays in the box. Whether it was renewed.
+   * A chat with nothing in it yet that the server no longer has, or whose omp stopped before it was saved (an empty chat
+   * leaves no file to open again), starts again in its place, in the same folder, and this window follows it: its view,
+   * its stream, the options a chat is opened with, its subagents, and the tools a page gives it (`onHeld`). A new chat is
+   * one; so is a chat opened by its id that turned out empty (a host's panel keeps the id of the chat it showed before
+   * anything was written). What is typed stays in the box. Whether it was renewed.
    */
   async #renewEmpty(): Promise<boolean> {
     const old = this.#threadId;
-    if (this.target.kind !== "new" || old === null || this.#disposed || this.#parked) return false;
+    if (old === null || this.#disposed || this.#parked) return false;
+    // A chat opened by its id counts as empty only once its transcript was read and held nothing, and not when an edit
+    // rewound it to its start (its messages are in the file, past the leaf): such a chat is never replaced.
+    if (this.target.kind !== "new" && !this.#windowRead) return false;
+    if (this.#leaf !== undefined) return false;
     const now = this.store.getSnapshot();
     if (now.stream !== null || now.entries.some((entry) => entry.type === "message")) return false;
     const chat = this.client.port(ChatSessionPort) as ChatSessionClient;
-    const opened = await chat.open({ folderPath: this.target.folder, start: "new" });
+    // In the folder the chat runs in, which is not always the folder of the pane that shows it.
+    const folderPath = this.#chatFolder ?? this.folder;
+    const opened = await chat.open({ folderPath, start: "new" });
+    this.#chatFolder = folderPath;
     if (this.#disposed || this.#parked) {
       await chat.close({ threadId: opened.threadId }).catch(() => undefined);
       return false;
@@ -2042,6 +2069,19 @@ export class ChatController {
     this.#followAgents(opened.threadId).catch(() => undefined);
     this.#tellHeld();
     return true;
+  }
+
+  /** Asks the server's running chats which folder this chat runs in; nothing is said when it does not list it. */
+  async #learnFolder(threadId: ThreadId): Promise<void> {
+    try {
+      const listed = await this.client.port(RunningChatsPort).list({});
+      const mine = listed.chats.find((chat) => chat.threadId === threadId);
+      if (mine !== undefined && !this.#disposed && this.#threadId === threadId) {
+        this.#chatFolder = mine.folder;
+      }
+    } catch {
+      // A server from before the list has none to give: the pane's folder stands.
+    }
   }
 
   /** Lets go of the view this pane's open took, once. */
