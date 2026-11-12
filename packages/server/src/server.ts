@@ -4,10 +4,18 @@ import {
   CapabilityMap,
   LINK_SILENCE_LIMIT_SECONDS,
   ServerFrame as ServerFrameSchema,
+  SOCKET_PROTOCOL,
   WelcomeFrame as WelcomeFrameSchema,
 } from "@omp-app/contracts";
 
-import { type DevicePairing, deviceCookie, deviceKeyOf, pairingRoute } from "./devices";
+import {
+  type DevicePairing,
+  deviceCookie,
+  deviceKeyOf,
+  deviceKeyOfProtocols,
+  offeredProtocols,
+  pairingRoute,
+} from "./devices";
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
 import { launchTokenDigest } from "./launch-history";
 import { newLaunchToken } from "./launch-token";
@@ -141,11 +149,11 @@ function throughProxy(request: Request, policy: UpgradePolicy): boolean {
 
 /**
  * Returns an HTTP rejection for a bad Host, a close decision after upgrade for auth failures, or who was let in: a
- * paired device's key (its cookie, or `?device=` from a panel whose host keeps the key: another app's frame keeps no
- * cookie of the app), else the launch link's token. The key comes first, so a page that holds both is its device. The
- * token is taken from the server's own computer only: a page at the remote address pairs instead, so one with the
- * token and no key is told it is not paired, and so is any request that came through a proxy, whatever Host and Origin
- * it names.
+ * paired device's key (its cookie, or the key a panel whose host keeps it offers in the socket's protocols: another
+ * app's frame keeps no cookie of the app), else the launch link's token. The key comes first, so a page that holds both
+ * is its device. The token is taken from the server's own computer only: a page at the remote address pairs instead, so
+ * one with the token and no key is told it is not paired, and so is any request that came through a proxy, whatever
+ * Host and Origin it names.
  */
 export function authorizeWebSocketUpgrade(
   request: Request,
@@ -157,9 +165,17 @@ export function authorizeWebSocketUpgrade(
   if (!originAllowed(request.headers.get("origin"), policy)) {
     return { closeCode: 4403, reason: "origin not allowed" };
   }
-  const key = deviceKeyOf(request) ?? (url.searchParams.get("device") || undefined);
-  const deviceId = key === undefined ? undefined : policy.deviceForKey?.(key);
-  if (deviceId !== undefined) return { deviceId };
+  // The first key that names a paired device: the cookie, the protocols, then `?device=` (a panel loaded before its key
+  // moved to the protocols sends it in the address until it loads again). A stale cookie hides no valid key after it.
+  const keys = [
+    deviceKeyOf(request),
+    deviceKeyOfProtocols(request),
+    url.searchParams.get("device") || undefined,
+  ];
+  for (const key of keys) {
+    const deviceId = key === undefined ? undefined : policy.deviceForKey?.(key);
+    if (deviceId !== undefined) return { deviceId };
+  }
   const remotePage =
     policy.remote !== undefined && request.headers.get("origin") === policy.remote.origin;
   if (policy.deviceForKey !== undefined && (candidate === "" || remotePage)) {
@@ -373,18 +389,38 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           });
           return authorization;
         }
-        const upgraded = server.upgrade(request, {
-          data: {
-            id: randomId(),
-            client: (request.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
+        // A socket that offers protocols must offer the app's: Bun names the first one offered back by itself, which
+        // for a panel's key protocol alone would be its key.
+        const offered = offeredProtocols(request);
+        if (offered.length > 0 && !offered.includes(SOCKET_PROTOCOL)) {
+          options.logger?.warn("connection.rejected", {
+            reason: "protocol",
             origin: request.headers.get("origin") ?? "none",
-            hadKey: deviceKeyOf(request) !== undefined || url.searchParams.has("device"),
-            hadToken: url.searchParams.has("token"),
-            ...("closeCode" in authorization
-              ? { authFailure: authorization, deviceId: null }
-              : { deviceId: authorization.deviceId }),
-          },
-        });
+          });
+          return new Response("Unknown WebSocket protocol", { status: 400 });
+        }
+        const data: SocketData = {
+          id: randomId(),
+          client: (request.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
+          origin: request.headers.get("origin") ?? "none",
+          hadKey:
+            deviceKeyOf(request) !== undefined ||
+            deviceKeyOfProtocols(request) !== undefined ||
+            url.searchParams.has("device"),
+          hadToken: url.searchParams.has("token"),
+          ...("closeCode" in authorization
+            ? { authFailure: authorization, deviceId: null }
+            : { deviceId: authorization.deviceId }),
+        };
+        // The app's protocol is named back to a socket that offered it; one that offered none gets none (a browser fails
+        // a socket whose server names a protocol it did not offer).
+        const upgraded =
+          offered.length > 0
+            ? server.upgrade(request, {
+                headers: { "Sec-WebSocket-Protocol": SOCKET_PROTOCOL },
+                data,
+              })
+            : server.upgrade(request, { data });
         return upgraded ? undefined : new Response("WebSocket upgrade required", { status: 426 });
       }
       if (request.method !== "GET" && request.method !== "HEAD") {

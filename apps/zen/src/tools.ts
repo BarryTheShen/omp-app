@@ -103,9 +103,23 @@ function originOf(address: string | undefined): string | null {
   }
 }
 
+/** The names a loopback address goes by: an app on this computer is the same app at each of them. */
+const LOOPBACK_NAMES = ["localhost", "127.0.0.1", "[::1]"];
+
+/**
+ * omp app's own origins: its address and, for an app on this computer, the same scheme and port at the other loopback
+ * names, which reach the same app. Its pages are off limits at each.
+ */
+export function appOrigins(app: string): readonly string[] {
+  const url = new URL(app);
+  if (!LOOPBACK_NAMES.includes(url.hostname)) return [url.origin];
+  const port = url.port === "" ? "" : `:${url.port}`;
+  return LOOPBACK_NAMES.map((name) => `${url.protocol}//${name}${port}`);
+}
+
 /** A web address that is not omp app's own: the panel's chat never goes to the app's pages. */
 export function awayFromApp(address: string, app: string): string {
-  if (originOf(address) === app) throw new Error(OFF_LIMITS);
+  if (appOrigins(app).includes(originOf(address) ?? "")) throw new Error(OFF_LIMITS);
   return address;
 }
 
@@ -138,9 +152,10 @@ async function loaded(api: TabsApi, tabId: number): Promise<browser.tabs.Tab> {
 
 /**
  * The panel's tools: each acts on the panel's own tab, or on a tab it opened, and never on a page of omp app itself
- * (`app`, its origin): a chat there could answer its own approvals, a pairing request or the settings.
+ * (`app`, its origin, and `appOrigins`): a chat there could answer its own approvals, a pairing request or the settings.
  */
 export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[] {
+  const blocked = appOrigins(app);
   return [
     {
       name: "read_page",
@@ -157,7 +172,9 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
       run: async (args) => {
         const asked = numberArg(args, "max_chars") ?? READ_DEFAULT_CHARS;
         const chars = Math.min(READ_MAX_CHARS, Math.max(1_000, Math.round(asked)));
-        return readingText(await api.run(tabOf(scope, args), readPage, [app, chars, READ_LINKS]));
+        return readingText(
+          await api.run(tabOf(scope, args), readPage, [blocked, chars, READ_LINKS]),
+        );
       },
     },
     {
@@ -167,7 +184,7 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
       run: async (args): Promise<EmbedToolResult> => {
         const tab = await api.get(tabOf(scope, args));
         if (!tab.active) throw new Error("That tab is not in front, so it cannot be photographed.");
-        if (originOf(tab.url) === app) throw new Error(OFF_LIMITS);
+        if (blocked.includes(originOf(tab.url) ?? "")) throw new Error(OFF_LIMITS);
         const data = await api.capture(tab.windowId);
         return {
           content: [
@@ -191,7 +208,7 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
       run: async (args) =>
         outcome(
           await api.run(tabOf(scope, args), clickTarget, [
-            app,
+            blocked,
             textArg(args, "selector"),
             textArg(args, "text"),
           ]),
@@ -214,7 +231,7 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
         if (text === null) throw new Error('Say "text".');
         return outcome(
           await api.run(tabOf(scope, args), typeInto, [
-            app,
+            blocked,
             textArg(args, "selector"),
             text,
             args.submit === true,
@@ -236,7 +253,7 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
           throw new Error('"to" is top or bottom.');
         return outcome(
           await api.run(tabOf(scope, args), scrollPage, [
-            app,
+            blocked,
             to as "top" | "bottom" | null,
             numberArg(args, "by"),
             textArg(args, "selector"),
@@ -291,7 +308,7 @@ export function pageTools(scope: TabScope, api: TabsApi, app: string): HostTool[
         const text = requiredText(args, "text");
         const limit = Math.min(WAIT_MAX_MS, Math.max(100, numberArg(args, "timeout_ms") ?? 10_000));
         for (let waited = 0; ; waited += 500) {
-          if (await api.run(tabId, hasText, [app, text])) return `The page shows “${text}”.`;
+          if (await api.run(tabId, hasText, [blocked, text])) return `The page shows “${text}”.`;
           if (waited >= limit || signal.aborted) break;
           await api.sleep(500);
         }

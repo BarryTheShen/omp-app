@@ -5,6 +5,7 @@ import {
   AppPort,
   CallFrame,
   CancelFrame,
+  DEVICE_KEY_SHAPE,
   type EventFrame,
   HelloFrame,
   type Port,
@@ -13,6 +14,8 @@ import {
   parseServerFrame,
   RequestId,
   type ResultFrame,
+  SOCKET_DEVICE_PROTOCOL_PREFIX,
+  SOCKET_PROTOCOL,
   type StreamKey,
   SubscribeFrame,
   SubscribeResult,
@@ -36,7 +39,8 @@ export interface WebSocketLike {
   close(code?: number, reason?: string): void;
 }
 
-export type WebSocketFactory = (url: string) => WebSocketLike;
+/** Opens a socket to `url`, offering `protocols` (`Sec-WebSocket-Protocol`) when given. */
+export type WebSocketFactory = (url: string, protocols?: readonly string[]) => WebSocketLike;
 
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 
@@ -115,7 +119,8 @@ export interface CreateAppClientOptions {
   readonly token?: string;
   /**
    * A paired device's key, for a panel in another app's frame, which keeps no cookie of the app: its host keeps the key
-   * and gives it back at each load (the embed protocol's `credential`).
+   * and gives it back at each load (the embed protocol's `credential`). It goes in the socket's protocols
+   * (`SOCKET_DEVICE_PROTOCOL_PREFIX`), never in the address.
    */
   readonly device?: string;
   readonly reconnect?: ReconnectOptions;
@@ -286,10 +291,10 @@ function isTextReader(value: unknown): value is { text(): Promise<unknown> } {
   return typeof value.text === "function";
 }
 
-function defaultWebSocketFactory(url: string): WebSocketLike {
+function defaultWebSocketFactory(url: string, protocols?: readonly string[]): WebSocketLike {
   const WebSocketCtor = (
     globalThis as unknown as {
-      WebSocket?: new (url: string) => WebSocketLike;
+      WebSocket?: new (url: string, protocols?: string[]) => WebSocketLike;
     }
   ).WebSocket;
   if (!WebSocketCtor) {
@@ -300,7 +305,7 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
       "client.websocket",
     );
   }
-  return new WebSocketCtor(url);
+  return protocols === undefined ? new WebSocketCtor(url) : new WebSocketCtor(url, [...protocols]);
 }
 
 function isConflict(error: unknown): error is AppFailure {
@@ -600,10 +605,16 @@ class AppClientImpl implements AppClient {
     if (this.disposed || this.terminal) return;
     let url = this.options.url;
     if (this.options.token !== undefined) url = withParam(url, "token", this.options.token);
-    if (this.options.device !== undefined) url = withParam(url, "device", this.options.device);
+    // Only a key of a key's shape: the browser throws on a protocol with any other character, which would retry for ever;
+    // without it the server answers that the panel is not paired, and the panel pairs again.
+    const device = this.options.device;
+    const protocols =
+      device === undefined || !DEVICE_KEY_SHAPE.test(device)
+        ? undefined
+        : [SOCKET_PROTOCOL, `${SOCKET_DEVICE_PROTOCOL_PREFIX}${device}`];
     let socket: WebSocketLike;
     try {
-      socket = this.factory(url);
+      socket = this.factory(url, protocols);
     } catch (error) {
       this.handleConnectionFailure(
         asAppFailure(error, appFailure("unavailable", "Connection to the app server failed", true)),

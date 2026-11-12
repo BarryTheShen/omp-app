@@ -21,6 +21,19 @@ export type DeviceName = z.infer<typeof DeviceName>;
 /** The cookie that carries a paired device's key: set by the server, never readable by the page (HttpOnly). */
 export const DEVICE_COOKIE = "omp-app-device";
 
+/** A device key: 32 random bytes in base64url (43 characters). Anything else signs nothing in. */
+export const DEVICE_KEY_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * How a panel in another app's frame, which no cookie of the app reaches, signs in: its WebSocket offers
+ * `SOCKET_PROTOCOL`, then `SOCKET_DEVICE_PROTOCOL_PREFIX` followed by its key. So the key travels in the handshake's
+ * `Sec-WebSocket-Protocol` header, not in the address, where a proxy may log it. The server names `SOCKET_PROTOCOL` back.
+ * A key is base64url (`DEVICE_KEY_SHAPE`), which a protocol (a token) carries as is; a page offers nothing else there,
+ * since the browser refuses a protocol with any other character.
+ */
+export const SOCKET_PROTOCOL = "omp-app";
+export const SOCKET_DEVICE_PROTOCOL_PREFIX = "omp-app.device.";
+
 /** A device's request is answered within this time, or it ends. */
 export const PAIRING_REQUEST_MS = 5 * 60_000;
 /** A one-time code works once, within this time. */

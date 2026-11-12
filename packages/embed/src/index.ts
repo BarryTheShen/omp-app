@@ -256,7 +256,9 @@ export function openPanel(options: PanelOptions): Panel {
   const frame = document.createElement("iframe");
   frame.title = options.title ?? "omp app";
   frame.src = address.href;
-  frame.allow = "clipboard-read; clipboard-write";
+  // Writes only: the app copies (Copy buttons) but never reads the clipboard; pasting goes by the paste event, which
+  // needs no permission.
+  frame.allow = "clipboard-write";
   frame.style.cssText = "display:block;width:100%;height:100%;border:0";
 
   const post = (message: HostBody): void => {

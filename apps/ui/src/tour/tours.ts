@@ -793,6 +793,22 @@ const VSCODE_RIGHT_TOUR: Tour = {
   ],
 };
 
+/** A panel's key goes in its connection's handshake, and the sidebar's tools know the app by each of its names (2026-11-12). */
+const PANEL_KEY_TOUR: Tour = {
+  id: "panel-key-2026-11-12",
+  title: "Panel keys stay out of addresses",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Panel keys stay out of addresses",
+      text: "The Firefox and Zen sidebar and VS Code's panel now sign in with their key in the connection's handshake, not in its address, which a proxy in between may write to its log. Nothing changes for you: a panel open during the update keeps working, and signs in the new way the next time it loads. The sidebar's tools also stay off omp app's pages under any of its names on the same computer (localhost or 127.0.0.1).",
+      action: next,
+    },
+  ],
+};
+
 /** The Firefox and Zen sidebar's safety fixes, after a security review (2026-11-11). */
 const ZEN_SAFETY_TOUR: Tour = {
   id: "zen-safety-2026-11-11",
@@ -2996,6 +3012,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-panel-key",
+    when: "2026-11-12T00:15:00-06:00",
+    summary:
+      "The Firefox and Zen sidebar and VS Code's panel sign in with their key in the connection's handshake instead of its address, after a security review: an address can end up in the log of a proxy in between, and the key is what signs a panel in. A panel open during the update keeps working, and signs in the new way the next time it loads. The sidebar's tools now also stay off omp app's pages when the app runs on the same computer and a tab names it differently (localhost instead of 127.0.0.1).",
+    tours: [PANEL_KEY_TOUR],
+  },
   {
     id: "2026-11-11-theme-rest",
     when: "2026-11-11T23:50:00-06:00",

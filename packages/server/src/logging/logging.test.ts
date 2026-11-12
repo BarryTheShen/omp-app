@@ -53,6 +53,18 @@ describe("scrubText", () => {
     }
   });
 
+  test("removes a device key in its cookie and its WebSocket protocol, a key with no digit too", () => {
+    const key = "aBcDeFgHiJ".repeat(4).concat("kLm");
+    for (const sample of [
+      `cookie omp-app-device=${key}`,
+      `offered omp-app, omp-app.device.${key}`,
+    ]) {
+      const scrubbed = scrubText(sample);
+      expect(scrubbed).toContain("[redacted]");
+      expect(scrubbed).not.toContain(key);
+    }
+  });
+
   test("keeps what a debug log needs: paths, ids, versions, git hashes and digests", () => {
     const kept = [
       "/home/user/workspace/projects/omp-app/.worktrees/fix-release-sessions/packages/server",

@@ -15,9 +15,9 @@ function inPage<A extends unknown[], R>(
   return page.evaluate(`(${func.toString()})(...${JSON.stringify(args)})`) as Promise<R>;
 }
 
-/** The test page's own address, and omp app's origin as the panel passes it (another site). */
+/** The test page's own address, and omp app's origins as the panel passes them (another site). */
 const SHOP = "https://shop.example";
-const APP = "https://omp.example.com";
+const APP = ["https://omp.example.com"];
 
 const TEST_PAGE = `<!doctype html>
 <title>Test shop</title>
@@ -142,12 +142,14 @@ test.describe("the Zen extension's page functions", () => {
   test("on omp app's own pages each one refuses, in the words the tools pass on", async ({
     page,
   }) => {
-    // Here the test page plays omp app: its origin is the one the panel passes.
-    await expect(inPage(page, readPage, SHOP, 20_000, 100)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, clickTarget, SHOP, "#buy", null)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, typeInto, SHOP, "#query", "x", true)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, scrollPage, SHOP, "bottom", null, null)).rejects.toThrow(OFF_LIMITS);
-    await expect(inPage(page, hasText, SHOP, "Shoes")).rejects.toThrow(OFF_LIMITS);
+    // Here the test page plays omp app: its origin is one of those the panel passes (for an app on this computer, each
+    // loopback name of it).
+    const app = ["http://localhost:4317", SHOP];
+    await expect(inPage(page, readPage, app, 20_000, 100)).rejects.toThrow(OFF_LIMITS);
+    await expect(inPage(page, clickTarget, app, "#buy", null)).rejects.toThrow(OFF_LIMITS);
+    await expect(inPage(page, typeInto, app, "#query", "x", true)).rejects.toThrow(OFF_LIMITS);
+    await expect(inPage(page, scrollPage, app, "bottom", null, null)).rejects.toThrow(OFF_LIMITS);
+    await expect(inPage(page, hasText, app, "Shoes")).rejects.toThrow(OFF_LIMITS);
     expect(
       await page.evaluate(() => (window as unknown as { bought?: number }).bought),
     ).toBeUndefined();

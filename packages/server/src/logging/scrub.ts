@@ -34,6 +34,9 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
   // The launch link's fragment: `#token=...`.
   /#token=[^\s&"']+/gi,
+  // A paired device's key, in its cookie (`omp-app-device=<key>`) and in a panel's WebSocket protocol
+  // (`omp-app.device.<key>`), whatever characters it has: the rule below needs a digit, which a key may lack.
+  /\bomp-app[.-]device[.=][A-Za-z0-9_-]+/g,
   // Anything that looks like a long random secret: 32+ characters mixing lower case, upper case and
   // digits. Hex digests, git hashes, UUIDs and paths do not match.
   /\b(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]{32,}\b/g,

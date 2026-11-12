@@ -245,10 +245,17 @@ realTest.describe("new UI lite view in another site's panel, its key kept by its
           devices.getByRole("list", { name: "Paired devices" }).getByRole("listitem"),
         ).toHaveCount(1);
 
-        // Each load after: signed in at once, no pairing.
+        // Each load after: signed in at once, no pairing, the key in the socket's protocols and never in an address a
+        // proxy could log.
+        const sockets: string[] = [];
+        host.on("websocket", (socket) => sockets.push(socket.url()));
         await host.reload();
         await expect(box).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
         await expect(pairing).toHaveCount(0);
+        expect(sockets.length).toBeGreaterThan(0);
+        expect(
+          sockets.filter((url) => url.includes(keys[0] ?? "") || /[?&]device=/.test(url)),
+        ).toEqual([]);
 
         // The host's tool, given through the library: its answer reaches the chat.
         await box.fill("call_tool page_title {}");

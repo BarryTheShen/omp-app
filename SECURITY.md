@@ -19,7 +19,9 @@ app can do what your account can do on the computer it runs on, so the app is bu
   address for another computer. Each device pairs once: by matching the six digits the new device shows
   with those on a paired device, or with a one-time code that works once, for 10 minutes. A paired device's key is a
   cookie that only the app's own pages send; the app keeps only a hash of each key, and removing a device ends its
-  sessions.
+  sessions. A panel inside another app (a browser extension's sidebar, an editor's panel) gets no cookie of the app:
+  its host keeps the key, out of any web page's reach, and the panel sends it in its connection's WebSocket protocols,
+  never in an address.
 - **Shared ports and pages** (the Ports panel) open only at this computer's address for shares (its Tailscale address,
   or `OMP_APP_SHARE_ADDRESS`), over plain HTTP, for paired devices, through a link the app hands out. A request that
   another page makes (another share, or another site) is refused, and a shared page serves no hidden files.

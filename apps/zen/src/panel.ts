@@ -1,7 +1,7 @@
 import { appAddressOf, type HostContext, openPanel } from "@omp-app/embed";
 import { keepKeyFor, keyFor, saveAppAddress, storedAppAddress } from "./address";
 import { watchSelection } from "./page";
-import { firefoxTabs, pageTools, type TabScope } from "./tools";
+import { appOrigins, firefoxTabs, pageTools, type TabScope } from "./tools";
 
 /**
  * The sidebar's panel. Opened on a tab (the toolbar button binds the panel to the tab it was pressed on), it shows omp
@@ -167,7 +167,7 @@ async function showChat(app: string, tabId: number): Promise<void> {
   });
 
   const watch = (): void => {
-    void firefoxTabs.run(tabId, watchSelection, [app]).catch(() => undefined);
+    void firefoxTabs.run(tabId, watchSelection, [appOrigins(app)]).catch(() => undefined);
   };
   watch();
   browser.tabs.onUpdated.addListener((updated, change, next) => {

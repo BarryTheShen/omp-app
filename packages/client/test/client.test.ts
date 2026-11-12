@@ -9,6 +9,8 @@ import {
   parseClientFrame,
   type RequestId,
   type ServerFrame,
+  SOCKET_DEVICE_PROTOCOL_PREFIX,
+  SOCKET_PROTOCOL,
   serializeFrame,
   ThreadId,
 } from "@omp-app/contracts";
@@ -320,6 +322,48 @@ describe("createAppClient", () => {
     await expect(failedCall).rejects.toBeInstanceOf(AppFailure);
     await expect(failedCall).rejects.toMatchObject({ appError: { code: "omp_error" } });
     expect(await app.health({})).toEqual({ status: "ok" });
+    client.dispose();
+  });
+
+  /** A panel's client, recording the protocols each of its sockets offered. */
+  const panelClient = (server: FakeServer, device: string) => {
+    const factory = server.connectFactory();
+    const offered: (readonly string[] | undefined)[] = [];
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      device,
+      webSocketFactory: (url, protocols) => {
+        offered.push(protocols);
+        return factory(url);
+      },
+      timers: immediateTimers,
+      reconnect: { baseDelayMs: 0, maxDelayMs: 0 },
+    });
+    return { client, offered };
+  };
+
+  test("a panel's key goes in the socket's protocols, at every connection, never in the address", async () => {
+    const server = new FakeServer();
+    const key = "aB3_-".repeat(8).concat("xyz");
+    const { client, offered } = panelClient(server, key);
+    await eventually(() => client.connectionState === "open");
+    server.closeCurrent();
+    await eventually(() => server.connections.length === 2 && client.connectionState === "open");
+    expect(server.connections.map((connection) => connection.url)).toEqual([
+      "ws://127.0.0.1:4317/ws",
+      "ws://127.0.0.1:4317/ws",
+    ]);
+    const panel = [SOCKET_PROTOCOL, `${SOCKET_DEVICE_PROTOCOL_PREFIX}${key}`];
+    expect(offered).toEqual([panel, panel]);
+    client.dispose();
+  });
+
+  test("a host's key of no key's shape is not offered, which a browser would refuse, so the server can say not paired", async () => {
+    const server = new FakeServer();
+    const { client, offered } = panelClient(server, "a key, with spaces");
+    await eventually(() => client.connectionState === "open");
+    expect(offered).toEqual([undefined]);
+    expect(server.current().url).toBe("ws://127.0.0.1:4317/ws");
     client.dispose();
   });
 

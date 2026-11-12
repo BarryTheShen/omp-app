@@ -1,6 +1,7 @@
 import { appAddressOf, type EmbedToolResult, type HostTool } from "@omp-app/embed";
 import { describe, expect, test } from "vitest";
 import {
+  appOrigins,
   OFF_LIMITS,
   pageTools,
   READ_MAX_CHARS,
@@ -104,7 +105,7 @@ describe("the tab a call acts on", () => {
     expect(calls.at(-1)).toMatchObject({
       tabId: 42,
       name: "clickTarget",
-      args: [APP, null, "Next"],
+      args: [[APP], null, "Next"],
     });
     await expect(toolOf(tools, "click").run({ tab: 43, text: "Next" }, never)).rejects.toThrow(
       "only on its own tab",
@@ -151,7 +152,11 @@ describe("the tools", () => {
     const { api, calls } = standIn(() => reading);
     const read = toolOf(pageTools(scopeOf(), api, APP), "read_page");
     const said = await read.run({ max_chars: 5 }, never);
-    expect(calls[0]).toMatchObject({ tabId: BOUND, name: "readPage", args: [APP, 1_000, 100] });
+    expect(calls[0]).toMatchObject({
+      tabId: BOUND,
+      name: "readPage",
+      args: [[APP], 1_000, 100],
+    });
     expect(said).toContain("Title: Docs");
     expect(said).toContain("Selected: the words");
     expect(said).toContain("- Next: https://example.com/next");
@@ -230,6 +235,35 @@ describe("the tools", () => {
       active: true,
       status: "complete",
       url: `${APP}/settings`,
+    });
+    await expect(toolOf(tools, "screenshot").run({}, never)).rejects.toThrow(OFF_LIMITS);
+  });
+
+  test("an app on this computer is off limits at each of its loopback names; another port is another site", async () => {
+    const local = "http://127.0.0.1:4317";
+    expect(appOrigins(local)).toEqual([
+      "http://localhost:4317",
+      "http://127.0.0.1:4317",
+      "http://[::1]:4317",
+    ]);
+    expect(appOrigins(`${APP}/settings`)).toEqual([APP]);
+    const { api, opened, calls, tabs } = standIn();
+    const tools = pageTools(scopeOf(), api, local);
+    for (const url of ["http://localhost:4317/", "http://[::1]:4317/chat/1"])
+      await expect(toolOf(tools, "open_tab").run({ url }, never)).rejects.toThrow(OFF_LIMITS);
+    expect(opened).toEqual([]);
+    expect(await toolOf(tools, "navigate").run({ url: "http://localhost:5173/" }, never)).toBe(
+      "Loaded “Next” at http://localhost:5173/.",
+    );
+    // The page itself refuses at each name, a tab that went there a moment before too.
+    await toolOf(tools, "scroll").run({ to: "top" }, never);
+    expect(calls.at(-1)?.args[0]).toEqual(appOrigins(local));
+    tabs.set(BOUND, {
+      id: BOUND,
+      windowId: 1,
+      active: true,
+      status: "complete",
+      url: "http://localhost:4317/settings",
     });
     await expect(toolOf(tools, "screenshot").run({}, never)).rejects.toThrow(OFF_LIMITS);
   });

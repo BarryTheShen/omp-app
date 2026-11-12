@@ -1,11 +1,16 @@
 /**
  * Device pairing through a running server: the `/pair/*` routes as a new device's page and `omp-app pair` call them, and
- * a paired device signing in on the WebSocket with its key's cookie.
+ * a paired device signing in on the WebSocket with its key's cookie, or a panel with its key in the socket's protocols.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { DEVICE_COOKIE, PAIRING_PATHS } from "@omp-app/contracts";
+import {
+  DEVICE_COOKIE,
+  PAIRING_PATHS,
+  SOCKET_DEVICE_PROTOCOL_PREFIX,
+  SOCKET_PROTOCOL,
+} from "@omp-app/contracts";
 import { type AppServer, createAppServer } from "../server";
 import { type DevicePairing, openDevicePairing } from "./index";
 
@@ -56,16 +61,29 @@ const keyOf = (response: Response): string =>
   (response.headers.get("set-cookie") ?? "").match(new RegExp(`${DEVICE_COOKIE}=([^;]+)`))?.[1] ??
   "";
 
-/** Opens the WebSocket as a page would (its own origin, or the Tailscale address), and resolves with its welcome or its close. */
+/**
+ * Opens the WebSocket as a page would (its own origin, or the Tailscale address), and resolves with its welcome or its
+ * close, and the protocol the server named back. `offered`: a panel's key in the socket's protocols; `protocols`: the
+ * exact list offered instead; `device`: the key in the address, as a panel loaded before the key moved to the protocols
+ * sends it.
+ */
 function connect(
   app: AppServer,
   options: {
     readonly key?: string;
     readonly token?: string;
     readonly device?: string;
+    readonly offered?: string;
+    readonly protocols?: readonly string[];
     readonly from?: "page" | "https";
   },
-): Promise<{ welcome: boolean; code?: number; reason?: string; socket: WebSocket }> {
+): Promise<{
+  welcome: boolean;
+  protocol: string;
+  code?: number;
+  reason?: string;
+  socket: WebSocket;
+}> {
   const headers: Record<string, string> =
     options.from === "https" ? { origin: REMOTE.origin, host: REMOTE.host } : { origin: app.url };
   if (options.key !== undefined) headers.cookie = `${DEVICE_COOKIE}=${options.key}`;
@@ -74,7 +92,15 @@ function connect(
     ...(options.device === undefined ? {} : { device: options.device }),
   }).toString();
   const url = `${app.url.replace("http", "ws")}/ws${query === "" ? "" : `?${query}`}`;
-  const socket = new WebSocket(url, { headers });
+  const protocols =
+    options.protocols ??
+    (options.offered === undefined
+      ? undefined
+      : [SOCKET_PROTOCOL, `${SOCKET_DEVICE_PROTOCOL_PREFIX}${options.offered}`]);
+  const socket = new WebSocket(url, {
+    headers,
+    ...(protocols === undefined ? {} : { protocols: [...protocols] }),
+  });
   return new Promise((resolve) => {
     socket.onopen = () =>
       socket.send(
@@ -85,10 +111,17 @@ function connect(
         }),
       );
     socket.onmessage = (event) => {
-      if (String(event.data).includes('"welcome"')) resolve({ welcome: true, socket });
+      if (String(event.data).includes('"welcome"'))
+        resolve({ welcome: true, protocol: socket.protocol, socket });
     };
     socket.onclose = (event) =>
-      resolve({ welcome: false, code: event.code, reason: event.reason, socket });
+      resolve({
+        welcome: false,
+        protocol: socket.protocol,
+        code: event.code,
+        reason: event.reason,
+        socket,
+      });
   });
 }
 
@@ -136,7 +169,7 @@ describe("device pairing on a running server", () => {
     expect(claimed.headers.get("set-cookie") ?? "").toContain("Secure");
   });
 
-  test("a panel whose host keeps its key gets it in the answer, and signs in with it in the address; others get none", async () => {
+  test("a panel whose host keeps its key gets it in the answer, and signs in with it in the socket's protocols, which the server names back; others get none", async () => {
     const { app, pairing } = await serve();
     const asked = (await (
       await post(app, PAIRING_PATHS.ask, { name: "Zen panel", kind: "browser" }, "https")
@@ -148,12 +181,32 @@ describe("device pairing on a running server", () => {
     expect(claimed.status).toBe("paired");
     expect(claimed.key).toMatch(/.{20,}/);
 
-    // Through the Tailscale address, where the launch link opens nothing: the key alone signs the panel in.
-    const signedIn = await connect(app, { device: claimed.key ?? "", from: "https" });
-    expect(signedIn.welcome).toBe(true);
+    // Through the Tailscale address, where the launch link opens nothing: the key alone signs the panel in, and the
+    // server names the app's protocol back, which the browser requires of a socket that offered protocols.
+    const signedIn = await connect(app, { offered: claimed.key ?? "", from: "https" });
+    expect(signedIn).toMatchObject({ welcome: true, protocol: SOCKET_PROTOCOL });
     signedIn.socket.close();
-    const wrong = await connect(app, { device: "not-a-key", from: "https" });
+    // A panel loaded before the key moved to the protocols sends it in the address; nothing is named back to it.
+    const before = await connect(app, { device: claimed.key ?? "", from: "https" });
+    expect(before).toMatchObject({ welcome: true, protocol: "" });
+    before.socket.close();
+    const wrong = await connect(app, { offered: "not-a-key", from: "https" });
     expect(wrong).toMatchObject({ welcome: false, code: 4401, reason: "not paired" });
+    // A stale cookie hides no valid key after it.
+    const stale = await connect(app, {
+      key: "s".repeat(43),
+      offered: claimed.key ?? "",
+      from: "https",
+    });
+    expect(stale).toMatchObject({ welcome: true, protocol: SOCKET_PROTOCOL });
+    stale.socket.close();
+    // A socket that offers protocols but not the app's is refused before it opens: the server never names the key's
+    // protocol back.
+    const foreign = await connect(app, {
+      protocols: [`${SOCKET_DEVICE_PROTOCOL_PREFIX}${claimed.key ?? ""}`],
+      from: "https",
+    });
+    expect(foreign).toMatchObject({ welcome: false, protocol: "" });
 
     // A one-time code with no `keep`: the key goes as the cookie only.
     const { code } = pairing.desk.newCode();

@@ -25,7 +25,7 @@ After that, a panel on a page of the app's own site (the same host name, on anot
 
 1. The host frames `/lite?embed=1`. The library does this when you give it a place for the key (`keys`, below).
 2. When the panel pairs, the app hands the key to the panel's page, which passes it to the host (`credential`).
-3. The host keeps it in its own storage (an extension's `storage.local`, an editor's secret storage), out of any web page's reach, and gives it back in its `hello` each time the panel loads. The panel signs in with it.
+3. The host keeps it in its own storage (an extension's `storage.local`, an editor's secret storage), out of any web page's reach, and gives it back in its `hello` each time the panel loads. The panel signs in with it, sending it in its connection's handshake (the WebSocket's protocols), never in an address, where a proxy could log it.
 
 The key is the device: whoever holds it is signed in as that panel. Removing the panel in **Settings → App → Devices** ends it at once.
 

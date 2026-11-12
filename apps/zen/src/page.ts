@@ -3,9 +3,10 @@
  * page, so a function here uses nothing outside itself (no imports, no helpers of this module), and takes and returns only
  * plain data.
  *
- * Each takes omp app's own origin first and refuses to run on a page of it (`OFF_LIMITS` in `tools.ts`, the same words):
- * the check runs in the page itself, so a tab that went to the app a moment before is refused too. A chat acting on the
- * app's pages could answer its own approvals, a pairing request or the settings.
+ * Each takes omp app's own origins first (`appOrigins` in `tools.ts`: its address and, for an app on this computer, the
+ * other loopback names of it) and refuses to run on a page of them (`OFF_LIMITS` in `tools.ts`, the same words): the check
+ * runs in the page itself, so a tab that went to the app a moment before is refused too. A chat acting on the app's pages
+ * could answer its own approvals, a pairing request or the settings.
  */
 
 export interface PageLink {
@@ -27,8 +28,12 @@ export interface PageReading {
 export type PageOutcome = { readonly done: string } | { readonly error: string };
 
 /** The page's title, address, selection, text (the first `maxChars`) and its first `maxLinks` web links. */
-export function readPage(blocked: string, maxChars: number, maxLinks: number): PageReading {
-  if (location.origin === blocked)
+export function readPage(
+  blocked: readonly string[],
+  maxChars: number,
+  maxLinks: number,
+): PageReading {
+  if (blocked.includes(location.origin))
     throw new Error("omp app's own pages are off limits to this panel.");
   // A title, an address or a link of any length would make one reading as long as the page wants.
   const LONGEST = 2_000;
@@ -60,11 +65,11 @@ export function readPage(blocked: string, maxChars: number, maxLinks: number): P
 
 /** Clicks the element `selector` matches, or the first visible link or button whose words hold `text`. */
 export function clickTarget(
-  blocked: string,
+  blocked: readonly string[],
   selector: string | null,
   text: string | null,
 ): PageOutcome {
-  if (location.origin === blocked)
+  if (blocked.includes(location.origin))
     throw new Error("omp app's own pages are off limits to this panel.");
   const visible = (element: Element): boolean => {
     const box = element.getBoundingClientRect();
@@ -122,12 +127,12 @@ export function clickTarget(
 
 /** Types `text` into the field `selector` matches (or the one with the focus), as a person would; `submit` sends its form. */
 export function typeInto(
-  blocked: string,
+  blocked: readonly string[],
   selector: string | null,
   text: string,
   submit: boolean,
 ): PageOutcome {
-  if (location.origin === blocked)
+  if (blocked.includes(location.origin))
     throw new Error("omp app's own pages are off limits to this panel.");
   let field: Element | null = null;
   if (selector !== null) {
@@ -177,12 +182,12 @@ export function typeInto(
 
 /** Scrolls to the top or the bottom, by some pixels, or to the element `selector` matches. */
 export function scrollPage(
-  blocked: string,
+  blocked: readonly string[],
   to: "top" | "bottom" | null,
   by: number | null,
   selector: string | null,
 ): PageOutcome {
-  if (location.origin === blocked)
+  if (blocked.includes(location.origin))
     throw new Error("omp app's own pages are off limits to this panel.");
   if (selector !== null) {
     let target: Element | null;
@@ -202,8 +207,8 @@ export function scrollPage(
 }
 
 /** Whether the page's text holds `text`, in any case. */
-export function hasText(blocked: string, text: string): boolean {
-  if (location.origin === blocked)
+export function hasText(blocked: readonly string[], text: string): boolean {
+  if (blocked.includes(location.origin))
     throw new Error("omp app's own pages are off limits to this panel.");
   return (document.body?.innerText ?? "").toLowerCase().includes(text.toLowerCase());
 }
@@ -213,8 +218,8 @@ export function hasText(blocked: string, text: string): boolean {
  * each load. Firefox gives the function its extension's `browser` in the page's content-script world. On omp app's own
  * pages it watches nothing.
  */
-export function watchSelection(blocked: string): void {
-  if (location.origin === blocked) return;
+export function watchSelection(blocked: readonly string[]): void {
+  if (blocked.includes(location.origin)) return;
   const flag = "__ompAppWatchesSelection";
   const scope = window as unknown as Record<string, unknown>;
   if (scope[flag] === true) return;
