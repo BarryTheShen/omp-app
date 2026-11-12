@@ -61,6 +61,8 @@ const systemLight = (): MediaQueryList => window.matchMedia("(prefers-color-sche
 let choice: ThemeChoice = DEFAULT_CHOICE;
 /** A theme shown for a moment (a gallery card, a palette row), not kept. */
 let preview: string | null = null;
+/** A preview asked for that shows once it has been rested on for `PREVIEW_REST_MS`. */
+let pendingPreview: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
 function resolved(): ThemeInfo {
@@ -90,6 +92,7 @@ export function setThemeChoice(next: ThemeChoice): void {
   const theme = byId.get(next);
   if (theme !== undefined) write(MODE_KEY, theme.mode);
   choice = next;
+  cancelPendingPreview();
   preview = null;
   changed();
 }
@@ -102,11 +105,39 @@ export function setSystemTheme(id: string): void {
   changed();
 }
 
-/** Shows a theme until the preview ends (null): the kept choice is untouched. */
-export function previewTheme(id: string | null): void {
+/**
+ * How long the pointer or the focus rests on a theme before the app shows in it. Showing a theme draws the whole page
+ * again, every open chat with it, so sweeping across the gallery's cards or holding an arrow through the palette's theme
+ * rows shows only the one it stops on, not each one it passes.
+ */
+export const PREVIEW_REST_MS = 150;
+
+function cancelPendingPreview(): void {
+  clearTimeout(pendingPreview);
+  pendingPreview = undefined;
+}
+
+function show(id: string | null): void {
   if (preview === id) return;
   preview = id;
   changed();
+}
+
+/**
+ * Shows a theme until the preview ends (null): the kept choice is untouched. A theme shows once it has been rested on for
+ * `PREVIEW_REST_MS`; a newer one replaces it while it waits, and the one shown stays until then. The end shows the kept
+ * theme at once.
+ */
+export function previewTheme(id: string | null): void {
+  cancelPendingPreview();
+  if (id === null) {
+    show(null);
+    return;
+  }
+  pendingPreview = setTimeout(() => {
+    pendingPreview = undefined;
+    show(id);
+  }, PREVIEW_REST_MS);
 }
 
 /**
@@ -118,6 +149,7 @@ export function pickTheme(id: string): void {
   if (theme === undefined) return;
   write(SYSTEM_KEYS[theme.mode], id);
   if (choice === "system") {
+    cancelPendingPreview();
     preview = null;
     changed();
   } else {

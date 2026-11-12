@@ -1964,6 +1964,40 @@ const THEMES_TOUR: Tour = {
   ],
 };
 
+/** Theme previews wait for the pointer to rest, so pointing across the gallery stays smooth (2026-11-11). */
+const THEME_REST_TOUR: Tour = {
+  id: "theme-rest-2026-11-11",
+  title: "Smooth theme previews",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The themes are under <b>App</b>. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: THEME_GALLERY,
+      title: "Rest on a theme to see it",
+      text: "Move across the cards: nothing changes while you pass over them. Stop on one for a moment and the whole app shows in it; move away and yours comes back. Before, every card you passed over redrew the whole app, which made sweeping across them lag.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings, and your own theme stays. In the palette ({palette}), holding an arrow through the theme rows shows only the row you stop on.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 const ZOOM_TOUR: Tour = {
   id: "zoom-2026-10-31",
   title: "Zoom the window",
@@ -2962,6 +2996,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-11-theme-rest",
+    when: "2026-11-11T23:50:00-06:00",
+    summary:
+      "Pointing at themes no longer makes the app lag: a theme shows once the pointer rests on its card for a moment, so moving across the gallery redraws the app only in the one you stop on, not in every theme you pass over. The palette's theme rows work the same way when you hold an arrow key, and closing settings while pointing at a card brings your own theme back.",
+    tours: [THEME_REST_TOUR],
+  },
   {
     id: "2026-11-11-zen-safety",
     when: "2026-11-11T21:44:00-06:00",

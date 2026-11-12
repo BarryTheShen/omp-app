@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import {
   pickTheme,
   previewTheme,
@@ -11,13 +11,16 @@ import {
 
 /**
  * Every theme as a small picture of the app in its own colours (each card is a `data-theme` of its own), your dark
- * themes and your light themes apart. Pointing at a card or moving to it with the keyboard shows the whole app in it
- * for a moment; leaving it or Esc brings yours back; a click keeps it as your theme for its mode (the switch's Light or
- * Dark, and what "Match the system" uses then).
+ * themes and your light themes apart. Resting the pointer on a card, or moving to it with the keyboard, shows the whole
+ * app in it for a moment (passing over cards shows nothing: `PREVIEW_REST_MS`); leaving it, Esc or closing settings
+ * brings yours back; a click keeps it as your theme for its mode (the switch's Light or Dark, and what "Match the
+ * system" uses then).
  */
 export function ThemeGallery(): ReactNode {
   const choice = useThemeChoice();
   const kept = useSystemThemes();
+  // Settings closed while a card was pointed at: no preview stays, and none still waiting shows.
+  useEffect(() => () => previewTheme(null), []);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Esc ends a preview the cards started; each card is a button
     <div
