@@ -62,7 +62,8 @@ export interface FileIndex {
   /** The file's size and mtime when it was indexed: an unchanged pair means the index is current. */
   readonly size: number;
   readonly mtimeMs: number;
-  readonly head: string;
+  /** The file's first bytes when it was indexed (`HEAD_FINGERPRINT_BYTES`). */
+  readonly head: Buffer;
   readonly scannedTo: number;
   /** The bytes just before `scannedTo` when it was indexed. */
   readonly tail: Buffer;
@@ -292,11 +293,28 @@ async function scanRange(
 const building = new Map<string, Promise<FileIndex>>();
 
 /**
+ * Whether a file's first bytes still lead to the lines an index was made from: the same bytes (perhaps more of them), or
+ * only the first line rewritten to its own length. omp keeps a chat's title in that line (`"type":"title"`, padded to
+ * the same length) and rewrites it in place whenever the title changes, which moves no line after it.
+ */
+function sameStart(head: Buffer, previous: Buffer): boolean {
+  if (head.subarray(0, previous.length).equals(previous)) return true;
+  const lineEnd = previous.indexOf(NEWLINE);
+  return (
+    lineEnd !== -1 &&
+    head.indexOf(NEWLINE) === lineEnd &&
+    head.subarray(lineEnd, previous.length).equals(previous.subarray(lineEnd))
+  );
+}
+
+/**
  * The index of one session file as it is now. A cached index is returned as it is while the file's size and mtime are
- * unchanged. A longer file whose first bytes, and whose bytes just before the indexed end, are unchanged had lines
- * appended, so only the new lines are scanned. Anything else is scanned from the first byte: omp also rewrites session
- * files in place (its maintenance's `rewriteEntries`), which moves every line after the first change. `fresh` asks for
- * that full scan whatever the cache holds. A build already running for the file is waited for, then the cache checked.
+ * unchanged. A file no shorter whose first bytes still lead to the same lines (`sameStart`), and whose bytes just before
+ * the indexed end are unchanged, had lines appended or its title rewritten, so only the lines after the indexed end are
+ * scanned. Anything else is scanned from the first byte: omp also rewrites session files in place (its maintenance's
+ * `rewriteEntries`), which moves every line after the first change, and an entry whose line moved anyway is caught when
+ * it is read (`readEntry`). `fresh` asks for that full scan whatever the cache holds. A build already running for the
+ * file is waited for, then the cache checked.
  */
 export function indexSessionFile(file: string, fresh = false): Promise<FileIndex> {
   const running = building.get(file);
@@ -324,11 +342,11 @@ async function buildIndex(file: string, fresh: boolean): Promise<FileIndex> {
     if (previous !== undefined && previous.size === size && previous.mtimeMs === mtimeMs) {
       return previous;
     }
-    const head = (await readBytes(handle, 0, HEAD_FINGERPRINT_BYTES)).toString("utf8");
+    const head = await readBytes(handle, 0, HEAD_FINGERPRINT_BYTES);
     const extend =
       previous !== undefined &&
-      size > previous.size &&
-      head.startsWith(previous.head) &&
+      size >= previous.size &&
+      sameStart(head, previous.head) &&
       (
         await readBytes(handle, previous.scannedTo - previous.tail.length, previous.tail.length)
       ).equals(previous.tail);

@@ -11,6 +11,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { follow } from "../follow";
 import type { Entries } from "./model";
 
+/** The entries with `key`'s entry replaced, or taken out when there is none. */
+function withEntry(entries: Entries, key: string, entry: ConfigEntry | undefined): Entries {
+  const next = new Map(entries);
+  if (entry === undefined) next.delete(key);
+  else next.set(key, entry);
+  return next;
+}
+
 /** Where the page reads and writes: every folder's settings file (`global`), or one folder's (`project`). */
 export interface ConfigScope {
   readonly layer: ConfigWriteLayer;
@@ -42,7 +50,11 @@ export function useConfig(client: AppClient, scope: ConfigScope): Config {
   }>({ entries: new Map(), loaded: false, problem: null });
   /** The scope's revision that every write is compared against. */
   const revision = useRef<string | null>(null);
-
+  /** The entries as last shown, for a write to remember what it replaces. */
+  const shownEntries = useRef(state.entries);
+  useEffect(() => {
+    shownEntries.current = state.entries;
+  }, [state.entries]);
   const read = useCallback(async (): Promise<void> => {
     const listed = await client.port(ConfigStore).list({ folder });
     revision.current = listed.revision;
@@ -80,21 +92,55 @@ export function useConfig(client: AppClient, scope: ConfigScope): Config {
     };
   }, [client, folder, read]);
 
+  /**
+   * A value shows at once, as this scope's file will hold it, so a switch or a choice moves when it is clicked; the
+   * server's entry replaces it when the write is done, and a write that fails puts back what was shown before (unless
+   * something newer, another page's change, came meanwhile). A secret and Reset wait for the server, which alone knows
+   * what applies after them.
+   */
   const write = useCallback(
     async (key: string, value: ConfigWriteValue | "unset"): Promise<void> => {
       const port = client.port(ConfigStore);
+      const before = shownEntries.current.get(key);
+      const shown: ConfigEntry | undefined =
+        value === "unset" || value.secret
+          ? undefined
+          : {
+              key,
+              secret: false,
+              value: value.value,
+              source: layer,
+              overrides: before?.overrides ?? [],
+            };
+      const show = (): void => {
+        if (shown !== undefined)
+          setState((current) => ({ ...current, entries: withEntry(current.entries, key, shown) }));
+      };
       const attempt = () => {
         const target = { key, layer, folder, expectedRevision: revision.current };
         return value === "unset" ? port.unset(target) : port.write({ ...target, value });
       };
+      show();
       let result: Awaited<ReturnType<typeof attempt>>;
       try {
-        result = await attempt();
+        try {
+          result = await attempt();
+        } catch (failure) {
+          // Another write or a hand edit changed the file first: this one applies to the file as it is now.
+          if (!(failure instanceof AppFailure) || failure.appError.code !== "conflict")
+            throw failure;
+          await read();
+          show();
+          result = await attempt();
+        }
       } catch (failure) {
-        // Another write or a hand edit changed the file first: this one applies to the file as it is now.
-        if (!(failure instanceof AppFailure) || failure.appError.code !== "conflict") throw failure;
-        await read();
-        result = await attempt();
+        if (shown !== undefined)
+          setState((current) =>
+            current.entries.get(key) === shown
+              ? { ...current, entries: withEntry(current.entries, key, before) }
+              : current,
+          );
+        throw failure;
       }
       revision.current = result.revision;
       setState((current) => ({

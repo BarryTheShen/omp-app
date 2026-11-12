@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { EntryId, SessionFilePath } from "@omp-app/contracts";
 import { isJsonObject } from "./parser";
 import { SessionFileStore } from "./store";
-import { IMAGE_BLOB_MAX_BYTES, OUTPUT_CUT_BYTES, readEntryOutput, readEntryWindow } from "./window";
+import {
+  IMAGE_BLOB_MAX_BYTES,
+  indexSessionFile,
+  OUTPUT_CUT_BYTES,
+  readEntryOutput,
+  readEntryWindow,
+} from "./window";
 
 const WORKTREE_DATA = path.resolve(import.meta.dir, "../../../../../../.data");
 
@@ -476,6 +482,47 @@ describe("session entry windows", () => {
       expect(ids(branch.entries)).toEqual(["u1", "u2", "u3", "u4", "u5"]);
       expect(branch.entries.map(textOf)).toEqual(["one", "2222", "3", ...kept]);
       expect(textOf(await readEntryOutput(file, EntryId.parse("u3")))).toBe("3");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a title omp rewrote in place keeps the index: only the lines after its end are read", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "titled.jsonl");
+      // omp's title slot: the first line, padded so that it takes 256 bytes with its newline.
+      const titleSlot = (title: string): string => {
+        const bare = {
+          type: "title",
+          v: 1,
+          title,
+          source: "user",
+          updatedAt: "2026-11-12T00:00:00.000Z",
+        };
+        const pad = " ".repeat(255 - Buffer.byteLength(JSON.stringify({ ...bare, pad: "" })));
+        return JSON.stringify({ ...bare, pad });
+      };
+      const texts = ["one", "two", "three", "four", "five"].map((text) => `${text} `.repeat(30));
+      await writeFile(file, `${titleSlot("First title")}\n${chain(texts)}`, "utf8");
+      expect((await indexSessionFile(file)).records.has(EntryId.parse("u2"))).toBe(true);
+
+      const handle = await open(file, "r+");
+      try {
+        // omp renames the chat: the first line again, as long as before.
+        await handle.write(`${titleSlot("A much longer second title")}\n`, 0, "utf8");
+        // u2's id changes where it is, which only a scan from the first byte would see.
+        const at = (await readFile(file)).indexOf('"id":"u2"');
+        await handle.write('"id":"w2"', at, "utf8");
+      } finally {
+        await handle.close();
+      }
+      await appendFile(file, `${message("u6", "u5", "six")}\n`, "utf8");
+
+      const index = await indexSessionFile(file);
+      expect(index.records.has(EntryId.parse("u2"))).toBe(true);
+      expect(index.records.has(EntryId.parse("w2"))).toBe(false);
+      expect(index.fileLastId).toBe(EntryId.parse("u6"));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

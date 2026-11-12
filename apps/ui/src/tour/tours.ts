@@ -755,6 +755,22 @@ const INTEGRATIONS_GONE_TOUR: Tour = {
   ],
 };
 
+/** A setting's switch or choice moves when it is clicked (2026-11-12). */
+const SETTINGS_AT_ONCE_TOUR: Tour = {
+  id: "settings-at-once-2026-11-12",
+  title: "Settings move when clicked",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "Settings move when clicked",
+      text: "In Settings, a switch, a choice or a menu shows its new value as soon as you click it, instead of after the server has written it to omp's settings file. If the server cannot save it, the setting goes back and its row says why. Scrolling up a long chat after omp renamed it no longer waits while the server reads the whole chat again.",
+      action: next,
+    },
+  ],
+};
+
 /** A pairing request from a panel inside another app says so, and which app (2026-11-12). */
 const PAIRING_ORIGIN_TOUR: Tour = {
   id: "pairing-origin-2026-11-12",
@@ -3004,6 +3020,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-settings-at-once",
+    when: "2026-11-12T03:28:00-06:00",
+    summary:
+      "Settings move when clicked: a switch, a choice or a menu shows its new value at once, not after the server has written omp's settings file; a write the server cannot save puts it back, and the row says why. Scrolling up a long chat after omp renamed it no longer waits while the server reads the whole chat again.",
+    tours: [SETTINGS_AT_ONCE_TOUR],
+  },
   {
     id: "2026-11-12-pairing-origin",
     when: "2026-11-12T03:26:00-06:00",

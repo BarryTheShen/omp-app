@@ -175,6 +175,62 @@ realTest.describe("new UI settings", () => {
   );
 
   realTest(
+    "a switch moves when it is clicked, before its write is done, and goes back with a note when the write fails",
+    async ({ realApp }) => {
+      // The page's writes of Goal Mode are held on their way to the server (`hold`), or sent with a revision the server
+      // does not have (`refuse`), so that it refuses them.
+      const writes = { hold: false, refuse: false };
+      const page = await realApp.open({
+        path: "/",
+        beforeLoad: (opened) =>
+          opened.routeWebSocket(
+            () => true,
+            (webSocket) => {
+              const server = webSocket.connectToServer();
+              webSocket.onMessage((message) => {
+                const goalWrite =
+                  typeof message === "string" &&
+                  message.includes('"port":"A1.configStore"') &&
+                  message.includes('"method":"write"') &&
+                  message.includes('"key":"goal.enabled"');
+                if (goalWrite && writes.refuse)
+                  server.send(
+                    message.replace(
+                      /"expectedRevision":(?:null|"[^"]*")/,
+                      '"expectedRevision":"not-the-file"',
+                    ),
+                  );
+                else if (goalWrite && writes.hold) setTimeout(() => server.send(message), 3_000);
+                else server.send(message);
+              });
+              server.onMessage((message) => webSocket.send(message));
+            },
+          ),
+      });
+      await openSettings(page);
+      await tab(page, "Tasks").click();
+      const goal = sheet(page).getByRole("switch", { name: "Goal Mode" });
+      await expect(goal).toBeChecked();
+      const file = join(realApp.agentDir, "config.yml");
+
+      // The switch moves at once; the server gets the write 3 s later, and keeps it.
+      writes.hold = true;
+      await goal.click();
+      await expect(goal).not.toBeChecked({ timeout: 1_000 });
+      await expect.poll(async () => readFile(file, "utf8")).toMatch(/goal:\n {2}enabled: false/);
+      await expect(goal).not.toBeChecked();
+      writes.hold = false;
+
+      // A write the server refuses puts the switch back, and the row says so.
+      writes.refuse = true;
+      await goal.click();
+      await expect(sheet(page).getByRole("alert")).toContainText("Could not save it");
+      await expect(goal).not.toBeChecked();
+      expect(await readFile(file, "utf8")).toMatch(/goal:\n {2}enabled: false/);
+    },
+  );
+
+  realTest(
     "this folder's settings go to its own file and leave every folder's alone",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
