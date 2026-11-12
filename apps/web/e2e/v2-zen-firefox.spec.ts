@@ -120,7 +120,12 @@ realTest.describe("new UI: the Firefox and Zen extension in a real Firefox", () 
         );
         await firefox.type(field, app);
         await firefox.click(await firefox.waitFor("Save", () => firefox.button("Save")));
-        await firefox.waitForText("Chat about this tab");
+        // Nothing is asked: the panel binds the tab in front at once and shows its chat (here, the tab the panel page
+        // is open in), where it used to offer "Chat about this tab".
+        await intoApp(firefox);
+        await firefox.frame(null);
+        expect(await firefox.run<string>("return location.search;")).toMatch(/^\?tab=\d+$/);
+        expect(await firefox.bodyText()).not.toContain("Chat about this tab");
 
         // The panel of the shop's tab (the toolbar button's binding): it pairs once, with a one-time code.
         const shopId = await tabIdOf(firefox, "/shop");

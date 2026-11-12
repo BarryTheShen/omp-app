@@ -401,6 +401,13 @@ export async function createCompositionServer(
   const omp = health.status === "ok" && probe.version !== null ? { version: probe.version } : null;
   const processRegistry = new OmpProcessRegistry({
     ...(options.idleCloseMs === undefined ? {} : { idleCloseMs: options.idleCloseMs }),
+    // A chat that never got a message has no session file yet (omp writes it after the first reply). The chat kept ready
+    // in each folder (`provisional-…`) is not one a person left. The runtime does not exist yet: it is asked when needed.
+    isUnused: (threadId) => {
+      if (threadId.startsWith("provisional-")) return false;
+      const file = a0Runtime.sessionFileOf(threadId);
+      return file !== undefined && !existsSync(file);
+    },
     createProcess: (processOptions) => {
       const spawnOptions = {
         ...processOptions,

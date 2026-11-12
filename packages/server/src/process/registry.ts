@@ -8,6 +8,12 @@ import type { OmpProcess, OmpProcessOptions, ProcessTimer } from "./omp-process"
  */
 const DEFAULT_IDLE_CLOSE_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * A chat that never got a message holds omp for nothing, and a person passing through tabs or pages starts one each
+ * time: left unwatched, it is stopped after this (when `OmpProcessRegistryOptions.isUnused` says it is one).
+ */
+const UNUSED_IDLE_CLOSE_MS = 30_000;
+
 /** At most this many chats nobody views stay up: past it, the one left unviewed longest is stopped first. */
 const DEFAULT_MAX_IDLE = 12;
 
@@ -42,6 +48,13 @@ export interface OmpProcessRegistryOptions {
   readonly createProcess: (options: OmpProcessOptions) => OmpProcess;
   /** Injectable for deterministic idle-close tests; defaults to the global timer. */
   readonly timer?: ProcessTimer;
+  /**
+   * Says whether a thread never got a message, so no session file exists for it and nothing is lost when its omp stops;
+   * not a new chat kept ready, which is stopped by no rule of its own. An unwatched thread it names is stopped after
+   * `UNUSED_IDLE_CLOSE_MS` (or `idleCloseMs`, when that is shorter), once omp says it is settled, instead of after
+   * `idleCloseMs`. Asked each time the thread is left unwatched. Without it, every thread waits `idleCloseMs`.
+   */
+  readonly isUnused?: (threadId: ThreadId) => boolean;
 }
 
 /**
@@ -110,7 +123,8 @@ class HeldMap<K, V> extends Map<K, V> {
 
 /**
  * One `OmpProcess` per open thread. A thread stays up while it has a watcher or is busy; an
- * unwatched thread's process is stopped after `idleCloseMs`, but only once omp reports it is
+ * unwatched thread's process is stopped after `idleCloseMs` (sooner for a chat that never got a message, see
+ * `isUnused`), but only once omp reports it is
  * settled (see `OmpProcessIdleHooks`). A process that exits on its own (crash) stays registered, so
  * `respawn()` can bring the same logical thread back; a process this registry (or its caller)
  * intentionally `stop()`ped is forgotten, so the next `acquire()` for that thread spawns a fresh
@@ -123,6 +137,7 @@ export class OmpProcessRegistry {
   #idleCount = 0;
   readonly #createProcess: (options: OmpProcessOptions) => OmpProcess;
   readonly #timer: ProcessTimer;
+  readonly #isUnused: ((threadId: ThreadId) => boolean) | undefined;
   readonly #heldListeners = new Set<() => void>();
   /** Every way a thread comes or goes (acquire, adopt, a stop, a rekey, closeAll) tells the running list (D1). */
   readonly #entries = new HeldMap<ThreadId, Entry>(() => this.#notifyHeld());
@@ -142,6 +157,7 @@ export class OmpProcessRegistry {
 
   constructor(options: OmpProcessRegistryOptions) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
+    this.#isUnused = options.isUnused;
     this.#maxIdle = options.maxIdle ?? DEFAULT_MAX_IDLE;
     this.#createProcess = options.createProcess;
     this.#timer = options.timer ?? defaultTimer();
@@ -646,8 +662,15 @@ export class OmpProcessRegistry {
     entry.idleTimer = this.#timer.setTimeout(() => {
       entry.idleTimer = undefined;
       void this.#closeIfIdle(entry);
-    }, this.#idleCloseMs);
+    }, this.#idleDelayOf(entry));
     if (trim) this.#trimIdle();
+  }
+
+  /** How long the entry waits unwatched: a chat that never got a message waits less than one with history. */
+  #idleDelayOf(entry: Entry): number {
+    return this.#isUnused?.(entry.key) === true
+      ? Math.min(UNUSED_IDLE_CLOSE_MS, this.#idleCloseMs)
+      : this.#idleCloseMs;
   }
 
   /**

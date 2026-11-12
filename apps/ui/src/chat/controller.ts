@@ -357,13 +357,20 @@ export class ChatController {
   /**
    * Opens the chat for this pane. A failure is said in the transcript, with what to do: Try again, or New chat for a
    * chat the server no longer has or whose omp stopped as it started. An open the link to the server dropped under is
-   * made afresh by itself once the link is back. A pane that went away meanwhile says nothing.
+   * made afresh by itself once the link is back. A pane that went away meanwhile says nothing. `newChatIfGone`: for a
+   * chat a page was asked to open by its id, when the server no longer has it nothing is said and the pane is asked for
+   * a new chat in its place.
    */
-  async open(): Promise<void> {
+  async open({ newChatIfGone = false }: { readonly newChatIfGone?: boolean } = {}): Promise<void> {
     try {
       await this.#open();
     } catch (failure) {
       if (this.#disposed) return;
+      if (newChatIfGone && notOpenOnServer(failure)) {
+        this.store.setPhase("ended");
+        this.startNewChat();
+        return;
+      }
       this.store.addNotice(openFailureText(failure), "error", openFailureAction(failure));
       this.store.setPhase("ended");
       if (lostWithTheLink(failure)) this.#reopenWhenLinked();

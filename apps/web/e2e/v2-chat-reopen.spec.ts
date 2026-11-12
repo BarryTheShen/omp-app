@@ -123,10 +123,11 @@ realTest.describe("new UI: a chat that could not open", () => {
   realTest(
     "a chat the server no longer has says so, and New chat starts one in its place",
     async ({ realApp }) => {
-      const page = await realApp.open({
-        path: "/lite",
-        search: "?chat=01a1ffff-0000-7000-8000-000000000000",
-      });
+      // The full app, opened on a link that names the chat (`#chat=<id>`). The lite view replaces a chat its address
+      // names at load by itself (v2-lite.spec.ts); only this app asks first.
+      const page = await realApp.open({ path: "/" });
+      const origin = new URL(page.url()).origin;
+      await page.goto(`${origin}/?linked=1#chat=01a1ffff-0000-7000-8000-000000000000`);
       const missing = page.getByRole("alert").filter({
         hasText: "Could not open this chat: the app's server no longer has it.",
       });

@@ -341,4 +341,28 @@ realTest.describe("new UI lite view", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a chat the address names that the server no longer has is replaced by a new chat, with no error shown",
+    async ({ realApp }) => {
+      // As a host's panel loads again for a tab whose empty chat the server let go of (`?chat=` names it).
+      const page = await realApp.open({
+        path: "/lite",
+        search: "?embed=1&chat=01a1ffff-0000-7000-8000-000000000000",
+      });
+      // The address stops naming the chat that is gone once a new one is in its place: loading again starts a new chat too.
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("chat"), { timeout: 90_000 })
+        .toBeNull();
+      await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+      await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Could not open this chat" }),
+      ).toHaveCount(0);
+      // The chat works.
+      await send(page, "hello");
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

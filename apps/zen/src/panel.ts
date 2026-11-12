@@ -4,9 +4,10 @@ import { watchSelection } from "./page";
 import { appOrigins, firefoxTabs, pageTools, type TabScope } from "./tools";
 
 /**
- * The sidebar's panel. Opened on a tab (the toolbar button binds the panel to the tab it was pressed on), it shows omp
- * app's chat for that tab: the chat it showed there before, signed in with this browser's key. Each tab has its own
- * panel (`sidebarAction.setPanel` with `?tab=`); a tab that has none yet offers to start one.
+ * The sidebar's panel: omp app's chat for a tab, the chat it showed there before when there was one, signed in with this
+ * browser's key. Each tab has its own panel (`sidebarAction.setPanel` with `?tab=`). The toolbar button binds the panel
+ * to the tab it was pressed on, and the panel of tabs that have none yet binds the tab in front by itself, on load and
+ * whenever another tab comes to the front, so a tab gets its chat as soon as the sidebar shows it.
  */
 
 const root = document.getElementById("panel") as HTMLElement;
@@ -68,8 +69,8 @@ function askForAddress(): void {
   field.focus();
 }
 
-/** A tab with no chat yet: the person starts one, so passing tabs start nothing. */
-async function offerChat(): Promise<void> {
+/** The tab in front gets its chat as soon as the sidebar shows it: nothing is asked. */
+async function bindActive(): Promise<void> {
   const [active] = await browser.tabs.query({ active: true, currentWindow: true });
   if (active?.id === undefined) {
     root.replaceChildren(
@@ -77,24 +78,7 @@ async function offerChat(): Promise<void> {
     );
     return;
   }
-  const tabId = active.id;
-  const start = element("button", { type: "button", textContent: "Chat about this tab" });
-  start.addEventListener("click", () => {
-    // The person may have switched tabs since this was shown: only the tab it names is bound.
-    void browser.tabs.query({ active: true, currentWindow: true }).then(([now]) => {
-      if (now?.id === tabId) void bindTo(tabId);
-      else void offerChat();
-    });
-  });
-  root.replaceChildren(
-    element("div", { className: "setup" }, [
-      element("h1", { textContent: "omp app" }),
-      element("p", {
-        textContent: `${active.title || "This tab"}: a chat here can read and act on this tab, and on tabs it opens, and no other.`,
-      }),
-      start,
-    ]),
-  );
+  await bindTo(active.id);
 }
 
 /** A tab's address as it goes with each message: no query and no fragment, where sign-in codes and tokens travel. */
@@ -194,16 +178,16 @@ async function start(): Promise<void> {
   }
   const bound = boundTabOf(location.search);
   if (bound === null) {
-    // The panel of tabs that have none of their own: it follows the tab in front.
-    browser.tabs.onActivated.addListener(() => void offerChat());
-    await offerChat();
+    // The panel of tabs that have none of their own: it binds the tab in front, and again when another comes to the front.
+    browser.tabs.onActivated.addListener(() => void bindActive());
+    await bindActive();
     return;
   }
   try {
     await browser.tabs.get(bound);
   } catch {
-    // The tab closed: its panel offers the tab now shown instead.
-    await offerChat();
+    // The tab closed: its panel binds the tab now in front instead.
+    await bindActive();
     return;
   }
   await showChat(app, bound);
