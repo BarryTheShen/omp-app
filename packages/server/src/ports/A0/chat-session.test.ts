@@ -462,6 +462,14 @@ async function ticks(count = 10): Promise<void> {
   }
 }
 
+/**
+ * Waits until `ready()` holds, for up to `ms`: by time, not by a count of turns, which ran out before a host had started,
+ * stopped or come back about one run in four (2026-11-12, main as well). The check after it says what was missing.
+ */
+async function until(ready: () => boolean, ms = 5_000): Promise<void> {
+  for (const end = Date.now() + ms; !ready() && Date.now() < end; ) await Bun.sleep(1);
+}
+
 /** The payloads replayed on a chat's stream from the start. */
 function replayed(runtimeContext: A0PortContext, threadId: ThreadId): unknown[] {
   const frames = runtimeContext.replay.replay(chatSessionEventStream(threadId), 0);
@@ -1376,9 +1384,7 @@ describe("the chat session runtime: viewers and closes", () => {
     const opening = Promise.resolve(
       getHandler(handlers, "open")({ threadId: authorityThread }, call("one")),
     ).catch(() => undefined);
-    for (let turn = 0; turn < 100 && created[0]?.status !== "running"; turn += 1) {
-      await Bun.sleep(0);
-    }
+    await until(() => created[0]?.status === "running");
 
     await expect(
       getHandler(handlers, "close")({ threadId: authorityThread }, call("one")),
@@ -1642,13 +1648,7 @@ describe("the chat session runtime: stops, deletes and chats another omp holds",
 
   /** Waits until the registry counts the chat's host as stopping. */
   async function untilStopping(runtimeContext: A0PortContext, threadId = authorityThread) {
-    for (
-      let turn = 0;
-      turn < 100 && !runtimeContext.processRegistry.isStopping(threadId);
-      turn += 1
-    ) {
-      await Bun.sleep(0);
-    }
+    await until(() => runtimeContext.processRegistry.isStopping(threadId));
     expect(runtimeContext.processRegistry.isStopping(threadId)).toBe(true);
   }
 
@@ -1767,7 +1767,7 @@ describe("the chat session runtime: stops, deletes and chats another omp holds",
       (failure: unknown) => failure,
     );
     // The open waits for the stop only up to its limit, and is then refused.
-    for (let turn = 0; turn < 100 && timer.pending() === 0; turn += 1) await Bun.sleep(0);
+    await until(() => timer.pending() > 0);
     timer.fireAll();
     expect(await rejected).toMatchObject({
       appError: {
@@ -1871,7 +1871,7 @@ describe("the chat session runtime: stops, deletes and chats another omp holds",
     gate.resolve();
 
     // The host exits; a new host opens the chat again for the tab, and it answers the tab's next message.
-    for (let turn = 0; turn < 100 && created.length < 2; turn += 1) await Bun.sleep(0);
+    await until(() => created.length >= 2);
     expect(created).toHaveLength(2);
     await getHandler(handlers, "request")(
       request(authorityThread, "prompt", { text: "after the refusal" }),
@@ -2638,7 +2638,7 @@ describe("the chat session runtime: a host that crashed", () => {
         call("one", controller.signal),
       ),
     );
-    for (let turn = 0; turn < 100 && created.length < 2; turn += 1) await Bun.sleep(0);
+    await until(() => created.length >= 2);
     const revived = created[1];
     if (revived === undefined) throw new Error("the host was not started again");
 
