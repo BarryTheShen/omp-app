@@ -18,6 +18,7 @@ import {
   type AnswerHostRequestArgs,
   type AppError,
   AppFailure,
+  type ChatHostsResult,
   type ChatOpenResult,
   type ChatRequestArgs,
   type ChatSessionEvent,
@@ -45,6 +46,7 @@ import {
   type SetEventOptionsResult,
   type SetSubagentSubscriptionArgs,
   type SetSubagentSubscriptionResult,
+  type SetUpdateHoldArgs,
   type SetUsageBudgetArgs,
   type SetUsagePauseArgs,
   type SetUsageRuleScopeArgs,
@@ -54,6 +56,7 @@ import {
   ThreadId,
   type UiState,
   type UiStateEvent,
+  type UpdateHoldState,
   type UsageActivityResult,
   type UsageBudgetsResult,
   type UsagePauseHold,
@@ -98,6 +101,7 @@ import type { A0PortContext, ThreadBootstrap } from "./context";
 import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 import { startupReason } from "./startup-reason";
 import type { TaskDelivery } from "./tasks";
+import { UpdateHold, updateHoldFile } from "./update-hold";
 import { UsagePause, usagePauseExtrasFile, usagePauseFile } from "./usage-pause";
 import { type ResumeOutcome, UsageResume, usageResumeFile } from "./usage-resume";
 
@@ -114,6 +118,13 @@ interface ChatEntry {
   rekeyed: boolean;
   /** The methods the chat's host answers (`hello.methods`). */
   methods: readonly string[];
+  /** The omp release the chat's host was built from (`hello.ompVersion`); undefined until its host has said hello. */
+  ompVersion?: string;
+  /**
+   * When the chat's host last said it paused (`pause_changed`, epoch ms), null once it resumed. Unlike the registry's,
+   * it is kept through the process's exit, so the process that replaces it, after a crash too, is paused again.
+   */
+  pausedAt?: number | null;
   /** When the chat's current process started: an entry written before it belongs to an earlier process. */
   startedAt: number;
   /** Set while the chat's process is being started again; everyone who needs it waits on it. */
@@ -142,6 +153,8 @@ interface ChatEntry {
   readonly payloadListeners: Set<(payload: ChatSessionEvent) => void>;
   /** A host an earlier server left running on another omp (D2): restarted on this server's omp once the chat settles. */
   restartWhenSettled?: boolean;
+  /** Set when the chat was taken over from an earlier server (D2): listed for an omp update before its takeover ends. */
+  takeover?: { readonly restartWhenSettled: boolean };
   /** The first message sent to the chat through this server, cut short: other pages name the chat by it (#2825). */
   firstPrompt?: string;
 }
@@ -177,6 +190,30 @@ const SPARE_TIMER: ProcessTimer = {
   },
   clearTimeout: (handle) => globalThis.clearTimeout(handle as number | Timer),
 };
+
+/**
+ * Whether a request must have the host of a chat to be paused paused before it reaches it, and so fails when the pause
+ * cannot be sent: every request but reading the chat (`get_…`) and stopping it, which never start agent work and go on,
+ * the failure logged. A method added later is held back this way too.
+ */
+function pauseFirst(method: string): boolean {
+  return !(method.startsWith("get_") || method === "abort" || method === "abort_and_restore_queue");
+}
+
+/** How long a usage rule waits for a chat to pause or resume (a restart under way included) before it judges again. */
+const USAGE_HOLD_MS = 60_000;
+
+/** How long one chat's host may take to answer an omp update's question (its state, a pause) before it counts as silent. */
+const HOST_ANSWER_MS = 5_000;
+
+/** What `promise` gives within `ms` on `timer`; undefined when it takes longer (it goes on, unheard). */
+function within<T>(promise: Promise<T>, ms: number, timer: ProcessTimer): Promise<T | undefined> {
+  let handle: unknown;
+  const late = new Promise<undefined>((resolve) => {
+    handle = timer.setTimeout(() => resolve(undefined), ms);
+  });
+  return Promise.race([promise, late]).finally(() => timer.clearTimeout(handle));
+}
 
 /**
  * A new chat started ahead, for the next "New chat" in its folder (#2760): its process and host are up and its id is
@@ -469,6 +506,10 @@ export class ChatSessionPortRuntime {
   readonly #usageResume: UsageResume | undefined;
   /** The usage pause of the chats marked for it (#2781 part 3); absent without its file. */
   readonly #usagePause: UsagePause | undefined;
+  /** An omp update's hold on queued tasks and the app's continues; absent without its file. */
+  readonly #updateHold: UpdateHold | undefined;
+  /** Settles once the kept hold is back: nothing the hold stops goes before it is known. */
+  readonly #updateHoldRestored: Promise<void>;
   /** Stops following the usage watch. */
   readonly #stopUsageWatch: () => void;
 
@@ -481,10 +522,25 @@ export class ChatSessionPortRuntime {
             now: context.usageResumeClock?.now ?? Date.now,
             timer: context.usageResumeClock?.timer ?? SPARE_TIMER,
             ...usageResumeFile(context.usageResumeFile),
-            resume: (threadId) => this.#continueAfterLimit(threadId),
+            // While an omp update moves the chats to the new omp, a continue waits and is looked at again.
+            resume: async (threadId): Promise<ResumeOutcome> => {
+              await this.#updateHoldRestored;
+              if (this.#updateHold?.held() === true) return "held";
+              return this.#continueAfterLimit(threadId);
+            },
             ...(context.logger === undefined ? {} : { logger: context.logger }),
           });
     void this.#usageResume?.restore();
+    this.#updateHold =
+      context.updateHoldFile === undefined
+        ? undefined
+        : new UpdateHold({
+            now: context.usageResumeClock?.now ?? Date.now,
+            timer: context.usageResumeClock?.timer ?? SPARE_TIMER,
+            ...updateHoldFile(context.updateHoldFile),
+            ...(context.logger === undefined ? {} : { logger: context.logger }),
+          });
+    this.#updateHoldRestored = this.#updateHold?.restore() ?? Promise.resolve();
     this.#usagePause =
       context.usagePauseFile === undefined
         ? undefined
@@ -502,9 +558,16 @@ export class ChatSessionPortRuntime {
             shareOf: (threadId, providerId) =>
               context.usageShares?.shareOf(threadId, providerId) ?? null,
             providerOf: (threadId) => this.#providerOf(threadId),
-            pause: (threadId) => this.#holdAgents(threadId, "pause"),
-            resume: (threadId) => this.#holdAgents(threadId, "resume"),
-            isPaused: (threadId) => (context.processRegistry.pausedOf(threadId) ?? null) !== null,
+            // A chat whose host never answers (one that never says hello) must not stall the rules for every chat.
+            pause: (threadId) =>
+              within(this.#holdAgents(threadId, "pause"), USAGE_HOLD_MS, this.#timer).then(
+                (done) => done === true,
+              ),
+            resume: (threadId) =>
+              within(this.#holdAgents(threadId, "resume"), USAGE_HOLD_MS, this.#timer).then(
+                (done) => done === true,
+              ),
+            isPaused: (threadId) => this.#pausedOrWished(threadId),
             folderOf: (threadId) => context.processRegistry.folderOf(threadId),
             ...(context.usagePace === undefined ? {} : { pace: context.usagePace }),
             ...(context.logger === undefined ? {} : { logger: context.logger }),
@@ -543,6 +606,9 @@ export class ChatSessionPortRuntime {
       this.setSubagentSubscription(args as SetSubagentSubscriptionArgs, call),
     setEventOptions: (args, call) => this.setEventOptions(args as SetEventOptionsArgs, call),
     pauseAll: (args) => this.pauseAll(args as PauseAllArgs),
+    updateHold: () => this.updateHold(),
+    setUpdateHold: (args) => this.setUpdateHold(args as SetUpdateHoldArgs),
+    chatHosts: () => this.chatHosts(),
     cancelContinue: (args) => this.cancelContinue(args as { threadId: ThreadId }),
     setUsagePause: (args) => this.setUsagePause(args as SetUsagePauseArgs),
     usageRules: () => this.usageRules(),
@@ -744,13 +810,11 @@ export class ChatSessionPortRuntime {
     return (await entry.client.request("get_state", {})).model?.provider ?? null;
   }
 
-  /** Pauses or resumes a running chat's agents as omp's `/pause` does; false when its omp is not running. */
+  /** Pauses or resumes a chat's agents as omp's `/pause` does (`#setPause`); false when the server does not hold the chat. */
   async #holdAgents(threadId: ThreadId, method: "pause" | "resume"): Promise<boolean> {
     const entry = this.#entryOrUndefined(threadId);
-    if (entry === undefined || entry.bootstrap.threadId !== threadId || !this.#isRunning(entry)) {
-      return false;
-    }
-    await this.#send(entry, method, {});
+    if (entry === undefined || entry.bootstrap.threadId !== threadId) return false;
+    await this.#setPause(entry, method);
     return true;
   }
 
@@ -1144,6 +1208,9 @@ export class ChatSessionPortRuntime {
     };
     registry.adopt(threadId, hello.session.cwd, process);
     const entry = this.#newEntry(bootstrap, process);
+    // Known from its hello now: an omp update reads it while the takeover is still under way.
+    entry.ompVersion = hello.ompVersion;
+    entry.takeover = { restartWhenSettled: options.restartWhenSettled };
     entry.unsubscribe = this.#listen(entry);
     this.#entries.set(threadId, entry);
     void this.#takeOver(entry, options);
@@ -1192,23 +1259,24 @@ export class ChatSessionPortRuntime {
     if (args.method === "abort" || args.method === "abort_and_restore_queue") {
       this.#usageResume?.cancel(args.threadId);
     }
-    // A chat that is not running has nothing to hold: pausing or resuming it answers so and starts nothing.
+    // A chat that is not held here has nothing to pause; any other takes it as `#setPause` says.
     if (args.method === "pause" || args.method === "resume") {
       const held = this.#entryOrUndefined(args.threadId);
-      if (held === undefined || !this.#isRunning(held)) return { pausedAt: null };
+      if (held === undefined) return { pausedAt: null };
       // Who asked: a hold that stops a chat for no visible reason can be traced to its page (`pause_changed` says when).
       this.#context.logger?.info("chat_session.pause_asked", {
         threadId: args.threadId,
         method: args.method,
         connection: call.connectionId,
       });
+      return { pausedAt: await this.#setPause(held, args.method) };
     }
     // A chat no host here serves may still be open in another omp: the request is refused with the sentence that says so.
     if (this.#entryOrUndefined(args.threadId) === undefined) {
       await this.#refuseWhenHeldElsewhere(args.threadId, call.signal);
     }
     const entry = this.#entry(args.threadId);
-    await this.#ensureRunning(entry);
+    await this.#ensureRunning(entry, pauseFirst(args.method));
     // A call the browser gave up while its chat started again reaches no host: the browser was told it was cancelled,
     // as omp's RPC port refused a cancelled command before writing it.
     if (call.signal.aborted) throw cancelled("The command was cancelled.");
@@ -1465,16 +1533,105 @@ export class ChatSessionPortRuntime {
     return null;
   }
 
-  /** Pauses or resumes every chat this server runs; a chat whose omp started before pause existed stays as it is. */
+  /**
+   * Pauses or resumes every chat this server holds, or only the chats listed (an omp update resumes the ones it paused,
+   * never one paused before it). A chat whose omp is down or restarting keeps the wish, and its next process follows it;
+   * a host that does not answer within `HOST_ANSWER_MS` is not counted (its answer may still come). A chat whose omp
+   * started before pause existed stays as it is.
+   */
   async pauseAll(args: PauseAllArgs): Promise<PauseAllResult> {
     const method = args.paused ? "pause" : "resume";
-    this.#context.logger?.info("chat_session.pause_all_asked", { method });
-    const answers = await Promise.allSettled(
-      [...this.#entries.values()]
-        .filter((entry) => this.#isRunning(entry))
-        .map((entry) => this.#send(entry, method, {})),
+    // An id a page knows from before a session switch names the chat it moved to.
+    const only =
+      args.threadIds === undefined
+        ? undefined
+        : new Set(
+            args.threadIds.map(
+              (threadId) => this.#entryOrUndefined(threadId)?.bootstrap.threadId ?? threadId,
+            ),
+          );
+    this.#context.logger?.info("chat_session.pause_all_asked", {
+      method,
+      ...(only === undefined ? {} : { listed: only.size }),
+    });
+    const timer = this.#timer;
+    const taken = await Promise.all(
+      [...new Set(this.#entries.values())]
+        .filter((entry) => only === undefined || only.has(entry.bootstrap.threadId))
+        .map(async (entry) => {
+          const asked = this.#setPause(entry, method).then(
+            () => true,
+            () => false,
+          );
+          return (await within(asked, HOST_ANSWER_MS, timer)) === true;
+        }),
     );
-    return { chats: answers.filter((answer) => answer.status === "fulfilled").length };
+    return { chats: taken.filter(Boolean).length };
+  }
+
+  /** The omp update's hold on queued tasks and the app's continues, once the kept one is read after a start. */
+  async updateHold(): Promise<UpdateHoldState> {
+    await this.#updateHoldRestored;
+    return this.#updateHold?.state() ?? { held: false, reason: null, since: null, until: null };
+  }
+
+  /** Sets, renews or releases the omp update's hold; it is on disk when this answers. */
+  async setUpdateHold(args: SetUpdateHoldArgs): Promise<UpdateHoldState> {
+    const hold = this.#updateHold;
+    if (hold === undefined) {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "This server keeps no update hold.",
+        retryable: false,
+      });
+    }
+    await this.#updateHoldRestored;
+    return args.action === "hold" ? hold.hold(args.reason, args.minutes) : hold.release();
+  }
+
+  /**
+   * Each running chat's host, for an omp update's checks: the omp it was built from, whether it has settled (null when
+   * it did not answer within `HOST_ANSWER_MS`), whether it is paused, and whether it moves to this server's omp once it
+   * settles. A chat still opening does not know its own id yet: it is listed once it does.
+   */
+  async chatHosts(): Promise<ChatHostsResult> {
+    const registry = this.#context.processRegistry;
+    const timer = this.#timer;
+    // A chat still opening does not know its own id yet; one being taken over does, and is listed while that goes on.
+    const running = [...new Set(this.#entries.values())].filter(
+      (entry) => (entry.rekeyed || entry.takeover !== undefined) && this.#isRunning(entry),
+    );
+    const states = await Promise.all(
+      running.map((entry) =>
+        within(
+          entry.client.request("get_state", {}).then(
+            (state) => ({
+              settled: state.isSettled ?? null,
+              working: state.isStreaming === true || state.isCompacting === true,
+            }),
+            () => undefined,
+          ),
+          HOST_ANSWER_MS,
+          timer,
+        ),
+      ),
+    );
+    return {
+      chats: running.map((entry, index) => {
+        const { threadId } = entry.bootstrap;
+        const state = states[index];
+        return {
+          threadId,
+          ompVersion: entry.ompVersion ?? null,
+          settled: state?.settled ?? null,
+          working: state?.working ?? null,
+          paused: (registry.pausedOf(threadId) ?? null) !== null,
+          movesWhenSettled:
+            entry.restartWhenSettled === true ||
+            (!entry.rekeyed && entry.takeover?.restartWhenSettled === true),
+        };
+      }),
+    };
   }
 
   /** The model each running chat answers with now (#15), from its omp's state; a chat that does not say is left out. */
@@ -1528,6 +1685,52 @@ export class ChatSessionPortRuntime {
       status !== "error" &&
       status !== "stopped"
     );
+  }
+
+  /** The runtime's timer: the one a test gives, the global one otherwise. */
+  get #timer(): ProcessTimer {
+    return this.#context.usageResumeClock?.timer ?? SPARE_TIMER;
+  }
+
+  /** Keeps a pause or resume asked while the chat's omp is down or restarting; its next process follows it. */
+  #wishPause(entry: ChatEntry, method: "pause" | "resume"): number | null {
+    entry.pausedAt = method === "pause" ? Date.now() : null;
+    this.#context.logger?.info("chat_session.pause_wished", {
+      threadId: entry.bootstrap.threadId,
+      paused: entry.pausedAt !== null,
+    });
+    return entry.pausedAt;
+  }
+
+  /** Whether a chat is paused, or is to be paused once its omp is back. */
+  #pausedOrWished(threadId: ThreadId): boolean {
+    if ((this.#context.processRegistry.pausedOf(threadId) ?? null) !== null) return true;
+    const entry = this.#entryOrUndefined(threadId);
+    return entry?.bootstrap.threadId === threadId && (entry.pausedAt ?? null) !== null;
+  }
+
+  /**
+   * Pauses or resumes the chat. Its host takes it once a restart under way is done, and the chat's pause is what the host
+   * answers; a chat whose omp is down keeps it as the wish its next process follows.
+   */
+  async #setPause(entry: ChatEntry, method: "pause" | "resume"): Promise<number | null> {
+    // A restart may follow another: the host acted on is the one that is up once none is under way.
+    while (entry.respawning !== undefined) await entry.respawning.catch(() => undefined);
+    if (!this.#isRunning(entry)) return this.#wishPause(entry, method);
+    const answer = await this.#send(entry, method, {});
+    entry.pausedAt = answer.pausedAt;
+    return answer.pausedAt;
+  }
+
+  /**
+   * Pauses a running host that missed the chat's pause: a new process after a restart or a crash, or one whose pause
+   * did not go through. Nothing when its host is paused already or the chat is not to be paused.
+   */
+  async #keepPause(entry: ChatEntry): Promise<void> {
+    if ((entry.pausedAt ?? null) === null || !entry.methods.includes("pause")) return;
+    if ((this.#context.processRegistry.pausedOf(entry.bootstrap.threadId) ?? null) !== null) return;
+    await this.#send(entry, "pause", {});
+    this.#context.logger?.info("chat_session.pause_kept", { threadId: entry.bootstrap.threadId });
   }
 
   async close(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {
@@ -1618,6 +1821,7 @@ export class ChatSessionPortRuntime {
     this.#usageResume?.close();
     this.#stopUsageWatch();
     this.#usagePause?.close();
+    this.#updateHold?.close();
     const spares = [...this.#spares.values()];
     this.#spares.clear();
     await Promise.all(spares.map((spare) => this.#discardSpare(spare)));
@@ -1675,6 +1879,7 @@ export class ChatSessionPortRuntime {
       this.#awaitingHello.delete(entry);
     }
     entry.methods = hello.methods;
+    entry.ompVersion = hello.ompVersion;
     if (options.replayLive === true) await entry.client.request("replay_live", {});
     this.#receive(entry, { kind: "process", status: "ready", startedAt: entry.startedAt });
   }
@@ -1739,7 +1944,10 @@ export class ChatSessionPortRuntime {
   #receive(entry: ChatEntry, payload: ChatSessionEvent): void {
     // The events of a process that is stopping, its exit among them, reach no viewer and no replay.
     if (this.#context.processRegistry.isStopping(entry.bootstrap.threadId)) return;
-    if (payload.kind === "event") this.#trackTurn(entry.bootstrap.threadId, payload.event);
+    if (payload.kind === "event") {
+      this.#trackTurn(entry.bootstrap.threadId, payload.event);
+      if (payload.event.type === "pause_changed") entry.pausedAt = payload.event.pausedAt;
+    }
     if (!entry.rekeyed) {
       entry.startupEvents.push(payload);
       return;
@@ -1997,12 +2205,25 @@ export class ChatSessionPortRuntime {
     });
   }
 
-  /** Brings the chat's process back before a request when it stopped under the chat or its repair is under way. */
-  async #ensureRunning(entry: ChatEntry): Promise<void> {
+  /**
+   * Brings the chat's process back before a request when it stopped under the chat or its repair is under way, and
+   * pauses a host that missed the chat's pause. When `pauseFirst`, a pause that cannot be sent fails the request (it
+   * would start work on a chat to be paused); otherwise the request goes on, the failure logged.
+   */
+  async #ensureRunning(entry: ChatEntry, pauseFirst = true): Promise<void> {
     const status = entry.process.status;
     const stopped = status === "exited" || status === "error" || status === "stopped";
-    if (entry.respawning === undefined && !stopped) return;
-    await this.#startRespawn(entry);
+    if (entry.respawning !== undefined || stopped) await this.#startRespawn(entry);
+    if (pauseFirst) {
+      await this.#keepPause(entry);
+      return;
+    }
+    await this.#keepPause(entry).catch((error: unknown) => {
+      this.#context.logger?.warn("chat_session.pause_keep_failed", {
+        threadId: entry.bootstrap.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   #startRespawn(entry: ChatEntry): Promise<void> {
@@ -2045,9 +2266,18 @@ export class ChatSessionPortRuntime {
     entry.startedAt = Date.now();
     entry.unsubscribe = this.#listen(entry);
     await this.#start(entry);
+    // omp's pause gate lives in its process: a chat paused before (by hand, Pause all, a usage rule or an omp update),
+    // or asked to pause while it restarted, is paused first, so a restart never lets its agents go. A pause that cannot
+    // be sent still lets the new process be set up as the old one was; the restart then fails, and the next request
+    // pauses it before anything reaches it.
+    const paused = await this.#keepPause(entry).then(
+      () => undefined,
+      (error: unknown) => ({ error }),
+    );
     await this.#reapply(entry);
     // Only what a viewer asked for is told to the new process; a chat nobody tuned keeps the host's defaults.
     if (entry.preferences.size > 0) await this.#arbitrate(entry);
+    if (paused !== undefined) throw paused.error;
   }
 
   /** Whether the chat's host says it has settled; a chat nothing holds counts as settled. */
@@ -2071,6 +2301,9 @@ export class ChatSessionPortRuntime {
    * the task opened is let go once the message is sent, so the chat stops when idle as any unwatched chat does.
    */
   async deliverTask(target: TaskTarget, text: string): Promise<TaskDelivery> {
+    // While an omp update moves the chats to the new omp, a task waits: it would open a chat or start a turn mid-move.
+    await this.#updateHoldRestored;
+    if (this.#updateHold?.held() === true) return { outcome: "held" };
     const call: PortHandlerContext = {
       signal: new AbortController().signal,
       connectionId: TASK_CONNECTION,
@@ -2098,12 +2331,13 @@ export class ChatSessionPortRuntime {
         return { outcome: "gone", problem: "The chat is no longer on the server." };
       }
       if (this.#usagePause?.isHeld(threadId) === true) return { outcome: "held" };
-      if ((this.#context.processRegistry.pausedOf(threadId) ?? null) !== null) {
-        return { outcome: "paused" };
-      }
+      if (this.#pausedOrWished(entry.bootstrap.threadId)) return { outcome: "paused" };
       await this.#ensureRunning(entry);
       const state = await entry.client.request("get_state", {});
       if (state.isStreaming || state.isCompacting) return { outcome: "busy" };
+      // Looked at again with nothing awaited before the send: a hold or a pause that came while the chat opened.
+      if (this.#updateHold?.held() === true) return { outcome: "held" };
+      if (this.#pausedOrWished(entry.bootstrap.threadId)) return { outcome: "paused" };
       if (entry.firstPrompt === undefined) {
         const first = text.replace(/\s+/g, " ").trim();
         if (first !== "") entry.firstPrompt = first.slice(0, FIRST_PROMPT_CHARS);
@@ -2140,10 +2374,13 @@ export class ChatSessionPortRuntime {
     ) {
       return "gone";
     }
-    if ((registry.pausedOf(threadId) ?? null) !== null) return "paused";
+    if (this.#pausedOrWished(threadId)) return "paused";
     await this.#ensureRunning(entry);
     const state = await entry.client.request("get_state", {});
     if (state.isStreaming || state.isCompacting) return "busy";
+    // Looked at again with nothing awaited before the send: a hold or a pause that came while the chat restarted.
+    if (this.#updateHold?.held() === true) return "held";
+    if (this.#pausedOrWished(threadId)) return "paused";
     await entry.client.send("prompt", { text: "/retry" }).answer;
     return "sent";
   }

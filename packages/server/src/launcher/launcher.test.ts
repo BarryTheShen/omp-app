@@ -158,6 +158,39 @@ describe("parseLauncherArgs", () => {
       args: { command: "run", folder: "./devices" },
     });
   });
+
+  test("maintenance names one action: hold needs minutes in range and a reason, resume needs chat ids", () => {
+    expect(parseLauncherArgs(["maintenance", "status"])).toMatchObject({
+      ok: true,
+      args: { command: "maintenance", maintenance: { action: "status" } },
+    });
+    expect(parseLauncherArgs(["maintenance", "hold", "30", "omp", "18.18.9"])).toMatchObject({
+      ok: true,
+      args: { maintenance: { action: "hold", minutes: 30, reason: "omp 18.18.9" } },
+    });
+    // Out of the hold's range, not whole minutes, or no reason: refused, so nothing is held for a time nobody asked.
+    for (const bad of [
+      ["hold", "0", "x"],
+      ["hold", "241", "x"],
+      ["hold", "1.5", "x"],
+      ["hold", "ten", "x"],
+      ["hold", "30"],
+    ]) {
+      expect(parseLauncherArgs(["maintenance", ...bad])).toMatchObject({ ok: false });
+    }
+    const chat = "01a1c6f0-1111-7000-8000-000000000001";
+    expect(parseLauncherArgs(["maintenance", "resume", chat])).toMatchObject({
+      ok: true,
+      args: { maintenance: { action: "resume", threadIds: [chat] } },
+    });
+    // Resume names its chats: a bare resume would also resume chats paused on purpose before an update.
+    expect(parseLauncherArgs(["maintenance", "resume"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["maintenance"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["maintenance", "status", "extra"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["maintenance", "pause", "--port", "4400"])).toMatchObject({
+      ok: false,
+    });
+  });
 });
 
 describe("the one-instance record", () => {

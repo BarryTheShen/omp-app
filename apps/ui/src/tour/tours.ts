@@ -787,6 +787,22 @@ const ZEN_ONE_CHAT_TOUR: Tour = {
   ],
 };
 
+/** A paused chat stays paused when its omp starts again (2026-11-12). */
+const PAUSE_KEPT_TOUR: Tour = {
+  id: "pause-kept-2026-11-12",
+  title: "A paused chat stays paused",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "A paused chat stays paused",
+      text: "When a paused chat's omp starts again, after a crash or when the app moves the chat to a new omp, the new omp is paused too: a message you send waits in the chat until you resume it.",
+      action: next,
+    },
+  ],
+};
+
 /** A chat opens faster in Safari and the desktop app, and What's new opens at once (2026-11-12). */
 const WEBKIT_OPEN_TOUR: Tour = {
   id: "webkit-open-2026-11-12",
@@ -3170,6 +3186,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-12-pause-kept",
+    when: "2026-11-12T20:31:00-06:00",
+    summary:
+      "A paused chat stays paused when its omp starts again, after a crash or when the app moves the chat to a new omp: until now the new omp started unpaused and the chat went on by itself. A message you send it waits until you resume it, as in any paused chat.",
+    tours: [PAUSE_KEPT_TOUR],
+  },
   {
     id: "2026-11-12-webkit-open",
     when: "2026-11-12T14:05:00-06:00",

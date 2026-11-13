@@ -35,6 +35,7 @@ import {
   startOrAttach,
   USAGE,
 } from "../src/launcher/launcher";
+import { runMaintenance } from "../src/launcher/maintenance-cli";
 import { readSecretValue, runSecretCommand } from "../src/launcher/secrets-cli";
 import {
   TUI_SETTINGS,
@@ -317,6 +318,26 @@ if (args.command === "pair" || args.command === "devices") {
     }
   } catch (error) {
     fail(`could not reach the app: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  process.exit(0);
+}
+if (args.command === "maintenance" && args.maintenance !== undefined) {
+  const running = await readRunningInstance(instanceFile(Bun.env, home), {
+    alive: isAlive,
+    responds,
+  });
+  const link = running === null ? undefined : serverLink(running.url);
+  if (link === undefined) {
+    fail(
+      "the app is not running: maintenance acts on the running app. Start it first (systemctl --user start omp-app when it runs as the service, or omp-app).",
+    );
+  }
+  try {
+    console.log(JSON.stringify(await runMaintenance(args.maintenance, link), null, 2));
+  } catch (error) {
+    fail(
+      `could not reach the app: ${error instanceof AppFailure ? error.appError.message : error instanceof Error ? error.message : String(error)}`,
+    );
   }
   process.exit(0);
 }

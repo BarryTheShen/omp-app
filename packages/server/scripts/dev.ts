@@ -506,6 +506,7 @@ export async function createCompositionServer(
     processRegistry,
     newChatsReady,
     usageResumeFile: join(appDataDir, "usage-resume.json"),
+    updateHoldFile: join(appDataDir, "update-hold.json"),
     usagePauseFile: join(appDataDir, "usage-pause.json"),
     usagePauseExtrasFile: join(appDataDir, "usage-pause-extras.json"),
     usageShares,

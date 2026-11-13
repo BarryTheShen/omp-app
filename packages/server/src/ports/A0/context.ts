@@ -93,6 +93,11 @@ export interface A0PortContext {
   /** The clock and timer of those continues; the real ones when absent (tests move them by hand). */
   readonly usageResumeClock?: { readonly now: () => number; readonly timer: ProcessTimer };
   /**
+   * Where the app keeps an omp update's hold on queued tasks and its continues (`<app data>/update-hold.json`); it uses
+   * the clock of `usageResumeClock`. Absent: no update can hold them.
+   */
+  readonly updateHoldFile?: string;
+  /**
    * Where the app keeps the chats marked to pause at their usage limit, the usage rules (#2836) and the holds on them
    * (#2781 part 3; `<app data>/usage-pause.json`). Absent: no chat pauses at a usage limit.
    */

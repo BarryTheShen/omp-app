@@ -20,8 +20,8 @@ export const RESUME_AFTER_START_MS = 30_000;
  */
 export const RESUME_RECHECK_MS = 60_000;
 
-/** What the app's retry found: sent, or why it sent nothing. */
-export type ResumeOutcome = "sent" | "busy" | "paused" | "gone";
+/** What the app's retry found: sent, or why it sent nothing (`held`: an omp update holds the app's continues). */
+export type ResumeOutcome = "sent" | "busy" | "paused" | "gone" | "held";
 
 export interface UsageResumeDeps {
   readonly now: () => number;
@@ -173,8 +173,11 @@ export class UsageResume {
     if (outcome !== undefined) this.#deps.logger?.info("usage_resume.fired", { threadId, outcome });
     // Only a retry sent is a try of the three in a row.
     if (outcome !== "sent") this.#inRow.set(threadId, tries);
-    // A turn runs now: look again; it ending well drops the retry (#2781, 2026-11-01 19:31: dropped as busy, lost).
-    if (outcome === "busy") this.#schedule(threadId, this.#deps.now() + RESUME_RECHECK_MS, true);
+    // A turn runs now, or an omp update holds the app's continues: look again; a turn ending well drops the retry (#2781,
+    // 2026-11-01 19:31: dropped as busy, lost).
+    if (outcome === "busy" || outcome === "held") {
+      this.#schedule(threadId, this.#deps.now() + RESUME_RECHECK_MS, true);
+    }
   }
 
   #notify(threadId: ThreadId, continuesAt: number | null): void {

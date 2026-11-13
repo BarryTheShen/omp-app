@@ -238,12 +238,69 @@ export const ChatSessionEvent = z.discriminatedUnion("kind", [
 ]);
 export type ChatSessionEvent = z.infer<typeof ChatSessionEvent>;
 
-/** Pauses or resumes every chat the server runs (omp's pause gate in each, as `/pause`); ready spare chats are left out. */
-export const PauseAllArgs = z.strictObject({ paused: z.boolean() });
+/**
+ * Pauses or resumes every chat the server runs (omp's pause gate in each, as `/pause`), or only the running chats listed;
+ * ready spare chats are left out.
+ */
+export const PauseAllArgs = z.strictObject({
+  paused: z.boolean(),
+  threadIds: z.array(ThreadId).max(500).optional(),
+});
 export type PauseAllArgs = z.infer<typeof PauseAllArgs>;
 /** How many running chats took it (a chat whose omp started before pause existed does not). */
 export const PauseAllResult = z.strictObject({ chats: z.int().min(0) });
 export type PauseAllResult = z.infer<typeof PauseAllResult>;
+
+/**
+ * The hold an omp update puts on the app's own work while it moves the chats to the new omp: queued tasks wait, and so
+ * do the app's continues after a usage limit. It is kept on disk, so it outlives the install's restart of the server,
+ * and it ends by itself at `until`, so an update that stops part-way cannot leave the chats held.
+ */
+export const UpdateHoldState = z.strictObject({
+  held: z.boolean(),
+  reason: z.string().max(200).nullable(),
+  /** When the hold began (epoch ms); null when there is none. */
+  since: z.int().nullable(),
+  /** When it ends by itself (epoch ms); null when there is none. */
+  until: z.int().nullable(),
+});
+export type UpdateHoldState = z.infer<typeof UpdateHoldState>;
+
+/** The longest an update hold lasts before it is set again: the update renews it at each step. */
+export const UPDATE_HOLD_MOST_MINUTES = 240;
+
+/** Holds (or holds longer, keeping when it began) or releases the update hold. */
+export const SetUpdateHoldArgs = z.discriminatedUnion("action", [
+  z.strictObject({
+    action: z.literal("hold"),
+    reason: z.string().min(1).max(200),
+    minutes: z.int().min(1).max(UPDATE_HOLD_MOST_MINUTES),
+  }),
+  z.strictObject({ action: z.literal("release") }),
+]);
+export type SetUpdateHoldArgs = z.infer<typeof SetUpdateHoldArgs>;
+
+/**
+ * Each running chat's host, for an omp update's checks: the omp it was built from (null until its host has said), whether
+ * it has settled and whether a reply runs now (each null when its host did not answer), whether it is paused, and
+ * whether it moves to this server's omp once it settles. A chat that has not settled while no reply runs is kept busy by
+ * a background job or a queued message, or has a prompt that is about to start: read it again to tell.
+ */
+export const ChatHostsResult = z.strictObject({
+  chats: z
+    .array(
+      z.strictObject({
+        threadId: ThreadId,
+        ompVersion: z.string().max(64).nullable(),
+        settled: z.boolean().nullable(),
+        working: z.boolean().nullable(),
+        paused: z.boolean(),
+        movesWhenSettled: z.boolean(),
+      }),
+    )
+    .max(500),
+});
+export type ChatHostsResult = z.infer<typeof ChatHostsResult>;
 
 /** The usage pause's default limit: a marked chat pauses at 95% of its provider's 5-hour window (#2781). */
 export const USAGE_PAUSE_DEFAULT_PERCENT = 95;
@@ -467,7 +524,14 @@ export const ChatSessionPort = definePort({
       result: SetSubagentSubscriptionResult,
     },
     setEventOptions: { args: SetEventOptionsArgs, result: SetEventOptionsResult },
+    /** Pauses or resumes every running chat, or the ones listed. */
     pauseAll: { args: PauseAllArgs, result: PauseAllResult },
+    /** The omp update's hold on queued tasks and the app's continues. */
+    updateHold: { args: z.strictObject({}), result: UpdateHoldState },
+    /** Sets, renews or releases the omp update's hold. */
+    setUpdateHold: { args: SetUpdateHoldArgs, result: UpdateHoldState },
+    /** Each running chat's host: its omp, settled, a reply running, paused, and whether it moves to this server's omp. */
+    chatHosts: { args: z.strictObject({}), result: ChatHostsResult },
     /** "Don't continue": the app does not continue the chat after its usage limit (#2781). */
     cancelContinue: { args: ThreadRef, result: z.null() },
     /** Marks a chat to pause at its own share of its provider's 5-hour limit, or unmarks it (#2781). */

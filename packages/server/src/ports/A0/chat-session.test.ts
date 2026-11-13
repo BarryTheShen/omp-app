@@ -80,6 +80,10 @@ class FakeChatHost implements OmpProcess {
   holdBash: Promise<void> | undefined = undefined;
   /** When set, the host refuses a `bash` request, like a host that stopped while the command ran. */
   failBash = false;
+  /** How many more times the host refuses each method named, like a request that fails once. */
+  readonly refuse = new Map<string, number>();
+  /** When set, the host's answer to `get_state` waits for this, like a host busy with a long request. */
+  holdState: Promise<void> | undefined = undefined;
   /** When set, `stop()` leaves the process open: a request the host has not answered is still pending after the stop. */
   keepPendingOnStop = false;
   /** When set, `start()` fails with it, like a host that cannot be spawned. */
@@ -94,6 +98,8 @@ class FakeChatHost implements OmpProcess {
   startupEvents: Record<string, unknown>[] = [];
   /** When set, the host refuses `new_session`, like an extension that cancels it. */
   cancelNewSession = false;
+  /** The fake's pause gate, as omp's: when it paused (epoch ms), or null while it runs. */
+  pausedAt: number | null = null;
   #seq = 0;
   #status: OmpProcessEvent["status"] = "starting";
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
@@ -176,12 +182,26 @@ class FakeChatHost implements OmpProcess {
         });
         return;
       }
+      const refusals = this.refuse.get(request.method) ?? 0;
+      if (refusals > 0) {
+        this.refuse.set(request.method, refusals - 1);
+        this.send({
+          kind: "response",
+          id: request.id,
+          ok: false,
+          error: { code: "failed", message: `the host refused ${request.method}` },
+        });
+        return;
+      }
+      if (request.method === "pause" || request.method === "resume") this.#gate(request.method);
       this.send({ kind: "response", id: request.id, ok: true, result: this.resultOf(request) });
     };
     if (request.method === "set_host_tools" && this.holdHostTools !== undefined) {
       void this.holdHostTools.then(respond);
     } else if (request.method === "bash" && this.holdBash !== undefined) {
       void this.holdBash.then(respond);
+    } else if (request.method === "get_state" && this.holdState !== undefined) {
+      void this.holdState.then(respond);
     } else {
       respond();
     }
@@ -235,6 +255,9 @@ class FakeChatHost implements OmpProcess {
         return { schemes: namesOf(request.params.schemes, "scheme") };
       case "bash":
         return { output: "hi\n", exitCode: 0, cancelled: false, truncated: false };
+      case "pause":
+      case "resume":
+        return { pausedAt: this.pausedAt };
       default:
         return {};
     }
@@ -261,10 +284,18 @@ class FakeChatHost implements OmpProcess {
     for (const listener of [...this.#chunkListeners]) listener(bytes);
   }
 
-  /** One of omp's session events (or the app's own), as the host streams it. */
+  /** One of omp's session events (or the app's own), as the host streams it; a pause it tells moves the fake's gate. */
   emitEvent(event: Record<string, unknown>): void {
+    if (event.type === "pause_changed") this.pausedAt = (event.pausedAt as number | null) ?? null;
     this.#seq += 1;
     this.send({ kind: "event", seq: this.#seq, event });
+  }
+
+  /** omp's pause gate: a change is told (`pause_changed`) before the answer, as the real host does. */
+  #gate(method: "pause" | "resume"): void {
+    const next = method === "pause" ? (this.pausedAt ?? 1_700_000_000_000 + this.#seq) : null;
+    if (next === this.pausedAt) return;
+    this.emitEvent({ type: "pause_changed", pausedAt: next });
   }
 
   /** A request of the host's own (a dialog, a tool call), which the server answers. */
@@ -3215,5 +3246,529 @@ describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
         call("one"),
       ),
     ).rejects.toMatchObject({ appError: { code: "not_found" } });
+  });
+});
+
+describe("the chat session runtime: what an omp update relies on", () => {
+  const scratch = join(globalThis.process.cwd(), ".data", `update-hold-${crypto.randomUUID()}`);
+  afterAll(async () => {
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  /** A runtime that keeps an update hold and continues after usage limits, on a clock and timer the test moves. */
+  function updating(
+    created: FakeChatHost[],
+    more: Partial<A0PortContext> = {},
+    startup: FakeStartup = {},
+  ) {
+    const timer = firingTimer();
+    const clock = { now: 1_790_000_000_000 };
+    const runtimeContext: A0PortContext = {
+      ...context(created, undefined, startup),
+      usageResumeFile: join(scratch, crypto.randomUUID(), "usage-resume.json"),
+      updateHoldFile: join(scratch, crypto.randomUUID(), "update-hold.json"),
+      usageResumeClock: { now: () => clock.now, timer },
+      ...more,
+    };
+    const runtime = createA0Runtime(runtimeContext);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet;
+    const hold = (minutes: number) =>
+      getHandler(handlers, "setUpdateHold")(
+        { action: "hold", reason: "omp 18.18.9", minutes },
+        call("updater"),
+      );
+    const release = () =>
+      getHandler(handlers, "setUpdateHold")({ action: "release" }, call("updater"));
+    return { runtimeContext, runtime, handlers, timer, hold, release };
+  }
+
+  test("while an update holds, a queued task is not sent, to its chat or a new one; once released, it is", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers, hold, release } = updating(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    const toChat = { kind: "chat", threadId: authorityThread } as const;
+
+    await hold(30);
+    expect(await runtime.tasks.deliver(toChat, "nightly check")).toEqual({ outcome: "held" });
+    const hostsBefore = created.length;
+    expect(await runtime.tasks.deliver({ kind: "new", folder }, "nightly check")).toEqual({
+      outcome: "held",
+    });
+    expect(created).toHaveLength(hostsBefore);
+    expect(paramsOf(host, "prompt")).toEqual([]);
+
+    await release();
+    expect(await runtime.tasks.deliver(toChat, "nightly check")).toEqual({
+      outcome: "sent",
+      threadId: authorityThread,
+    });
+    expect(paramsOf(host, "prompt")).toEqual([{ text: "nightly check" }]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a hold set before the server restarts holds the new server's first task", async () => {
+    const file = join(scratch, crypto.randomUUID(), "update-hold.json");
+    const before = updating([], { updateHoldFile: file });
+    await before.hold(30);
+    await before.runtime.dispose();
+
+    const after = updating([], { updateHoldFile: file });
+    // At once, before anything else: the hold as kept, once it is read, never "none" while it is being read.
+    expect(await getHandler(after.handlers, "updateHold")({}, call("updater"))).toMatchObject({
+      held: true,
+      reason: "omp 18.18.9",
+    });
+    expect(await after.runtime.tasks.deliver({ kind: "new", folder }, "nightly check")).toEqual({
+      outcome: "held",
+    });
+    await after.release();
+    await after.runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a continue after a usage limit that comes due while an update holds waits, and runs once it ends", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers, timer, hold, release } = updating(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    // omp waits out a usage limit, then gives up.
+    host.emitEvent({ type: "agent_start" });
+    host.emitEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 60_000,
+      errorMessage: "429 rate_limit_error",
+    });
+    host.emitEvent({ type: "auto_retry_end", success: false, attempt: 1, finalError: "429" });
+    host.emitEvent({ type: "agent_end", messages: [] });
+    host.emitEvent({ type: "session_settled" });
+    await ticks();
+    await hold(30);
+
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([]);
+    // Kept, not dropped: it is looked at again.
+    expect(runtime.continuing.continuingIn(folder)).toHaveLength(1);
+
+    await release();
+    timer.fireAll();
+    await ticks();
+    expect(paramsOf(host, "prompt")).toEqual([{ text: "/retry" }]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a chat paused before a restart is paused again in its new omp; one resumed is not", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const first = created[0];
+    if (first === undefined) throw new Error("missing fake host");
+    first.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+
+    await getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    const second = created.at(-1);
+    expect(second).not.toBe(first);
+    expect(paramsOf(second, "pause")).toEqual([{}]);
+
+    // The new omp says it is paused; then the chat is resumed, and restarted again.
+    second?.emitEvent({ type: "pause_changed", pausedAt: 2_000 });
+    second?.emitEvent({ type: "pause_changed", pausedAt: null });
+    await ticks();
+    await getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    const third = created.at(-1);
+    expect(third).not.toBe(second);
+    expect(paramsOf(third, "pause")).toEqual([]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a paused chat whose omp crashed comes back paused before the next message reaches it", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    const crashed = created[0];
+    if (crashed === undefined) throw new Error("missing fake host");
+    crashed.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    crashed.crash();
+
+    await getHandler(handlers, "request")(
+      request(authorityThread, "prompt", { text: "after the crash" }),
+      call("one"),
+    );
+    const revived = created[1];
+    if (revived === undefined) throw new Error("the host was not started again");
+    // Paused first, so the message waits in the chat instead of starting a turn.
+    expect(revived.methods.indexOf("pause")).toBeGreaterThanOrEqual(0);
+    expect(revived.methods.indexOf("pause")).toBeLessThan(revived.methods.indexOf("prompt"));
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a paused chat an earlier server left running on an older omp comes back paused on this server's", async () => {
+    const left: FakeIdentity = {
+      threadId: ThreadId.parse("omp-session-paused-left"),
+      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/paused-left.jsonl"),
+    };
+    const created: FakeChatHost[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created, left),
+      sessionFileExists: async () => true,
+    };
+    const old = new FakeChatHost({ threadId: left.threadId, folder, args: [] }, left);
+    // Like a real host, it says it is paused when the new server asks what is live.
+    const answer = old.writeLine.bind(old);
+    old.writeLine = (line) => {
+      const message = JSON.parse(line) as { kind?: string; method?: string };
+      if (message.kind === "request" && message.method === "replay_live") {
+        old.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+      }
+      return answer(line);
+    };
+    createA0Runtime(runtimeContext).adopt(
+      old,
+      {
+        kind: "hello",
+        protocol: 1,
+        ompVersion: "18.18.5",
+        methods: [...CHAT_HOST_METHODS],
+        session: { id: left.threadId, file: left.sessionFile, cwd: folder },
+      },
+      { restartWhenSettled: true },
+    );
+    await ticks(30);
+    expect(old.status).toBe("stopped");
+    expect(created).toHaveLength(1);
+    expect(paramsOf(created[0], "pause")).toEqual([{}]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("chatHosts says each running chat's omp, whether it has settled, whether a reply runs and whether it is paused", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    const hosts = () => getHandler(handlers, "chatHosts")({}, call("updater"));
+    const chat = { threadId: authorityThread, ompVersion: "18.12.6", movesWhenSettled: false };
+    expect(await hosts()).toEqual({
+      chats: [{ ...chat, settled: true, working: false, paused: false }],
+    });
+
+    // Paused while a reply runs.
+    host.extraState = { isSettled: false, isStreaming: true };
+    host.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    expect(await hosts()).toEqual({
+      chats: [{ ...chat, settled: false, working: true, paused: true }],
+    });
+
+    // Not settled with no reply running: a background job keeps it busy.
+    host.extraState = { isSettled: false, isStreaming: false };
+    expect(await hosts()).toEqual({
+      chats: [{ ...chat, settled: false, working: false, paused: true }],
+    });
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("pauseAll with chats listed resumes only those", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    const pauseAll = getHandler(handlers, "pauseAll");
+    expect(await pauseAll({ paused: false, threadIds: [] }, call("updater"))).toEqual({ chats: 0 });
+    expect(paramsOf(host, "resume")).toEqual([]);
+    expect(
+      await pauseAll({ paused: false, threadIds: [authorityThread] }, call("updater")),
+    ).toEqual({ chats: 1 });
+    expect(paramsOf(host, "resume")).toEqual([{}]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a task whose new chat was still opening when an update began waits, unsent", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, hold } = updating(created, {}, { holdHello: true });
+    const delivering = runtime.tasks.deliver({ kind: "new", folder }, "nightly check");
+    await ticks();
+    await hold(30);
+    created.at(-1)?.sendHello();
+    expect(await delivering).toEqual({ outcome: "held" });
+    expect(paramsOf(created.at(-1), "prompt")).toEqual([]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a paused chat whose new omp refused the pause is paused before its next message reaches it", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created, undefined, {
+      // The omp that replaces the crashed one refuses its first pause.
+      onCreate: (process) => {
+        if (created.length === 2) process.refuse.set("pause", 1);
+      },
+    });
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    const crashed = created[0];
+    if (crashed === undefined) throw new Error("missing fake host");
+    crashed.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    crashed.crash();
+    const send = (text: string) =>
+      getHandler(handlers, "request")(request(authorityThread, "prompt", { text }), call("one"));
+
+    await expect(send("first try")).rejects.toBeDefined();
+    const revived = created[1];
+    if (revived === undefined) throw new Error("the host was not started again");
+    expect(paramsOf(revived, "prompt")).toEqual([]);
+
+    await send("second try");
+    // The refused pause is asked again, before the message.
+    expect(revived.methods.filter((method) => method === "pause")).toHaveLength(2);
+    expect(revived.methods.lastIndexOf("pause")).toBeLessThan(revived.methods.indexOf("prompt"));
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a pause or resume asked while the chat's omp restarts is what its new omp follows", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created, undefined, {
+      onCreate: (process) => {
+        if (created.length >= 2) process.holdHello = true;
+      },
+    });
+    const handlers = handlersFor(runtimeContext);
+    const pauseAll = getHandler(handlers, "pauseAll");
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    created[0]?.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+
+    // Resumed while its omp restarts: the resume waits for the new omp and reaches it, and the chat runs.
+    const restarting = getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    await ticks();
+    const resuming = pauseAll({ paused: false, threadIds: [authorityThread] }, call("updater"));
+    await ticks();
+    created[1]?.sendHello();
+    await restarting;
+    expect(await resuming).toEqual({ chats: 1 });
+    expect(created[1]?.pausedAt).toBeNull();
+
+    // Paused while it restarts again: the next omp ends paused.
+    const again = getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    await ticks();
+    const pausing = pauseAll({ paused: true, threadIds: [authorityThread] }, call("updater"));
+    await ticks();
+    created[2]?.sendHello();
+    await again;
+    expect(await pausing).toEqual({ chats: 1 });
+    expect(created[2]?.pausedAt).not.toBeNull();
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a pause asked while a restarting omp is still being set up, after its own pause step, reaches it", async () => {
+    const created: FakeChatHost[] = [];
+    let answerTools: () => void = () => undefined;
+    const runtimeContext = context(created, undefined, {
+      // The new omp answers the app's tools late: the restart is still under way after its pause step.
+      onCreate: (process) => {
+        if (created.length === 2) {
+          process.holdHostTools = new Promise<void>((resolve) => {
+            answerTools = resolve;
+          });
+        }
+      },
+    });
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    await getHandler(handlers, "request")(
+      registration("set_host_tools", "owner-one", { tools: [toolOne] }),
+      call("one"),
+    );
+    const restarting = getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    await ticks();
+    const pausing = getHandler(handlers, "pauseAll")(
+      { paused: true, threadIds: [authorityThread] },
+      call("updater"),
+    );
+    await ticks();
+    answerTools();
+    await restarting;
+    expect(await pausing).toEqual({ chats: 1 });
+    expect(created[1]?.pausedAt).not.toBeNull();
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a resume that reaches a host whose pause was refused leaves the chat running", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created, undefined, {
+      onCreate: (process) => {
+        if (created.length === 2) process.refuse.set("pause", 1);
+      },
+    });
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    created[0]?.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    created[0]?.crash();
+    const send = (text: string) =>
+      getHandler(handlers, "request")(request(authorityThread, "prompt", { text }), call("one"));
+    await expect(send("first try")).rejects.toBeDefined();
+    const revived = created[1];
+    if (revived === undefined) throw new Error("the host was not started again");
+
+    expect(
+      await getHandler(handlers, "pauseAll")(
+        { paused: false, threadIds: [authorityThread] },
+        call("updater"),
+      ),
+    ).toEqual({ chats: 1 });
+    await send("after the resume");
+    expect(revived.methods.filter((method) => method === "pause")).toHaveLength(1);
+    expect(paramsOf(revived, "prompt")).toEqual([{ text: "after the resume" }]);
+    expect(revived.pausedAt).toBeNull();
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a host that keeps refusing the pause still answers other requests; a message to it is refused", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created, undefined, {
+      onCreate: (process) => {
+        if (created.length === 2) process.refuse.set("pause", 99);
+      },
+    });
+    const handlers = handlersFor(runtimeContext);
+    const ask = (method: string, params: Record<string, unknown> = {}) =>
+      getHandler(handlers, "request")(request(authorityThread, method, params), call("one"));
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    created[0]?.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    created[0]?.crash();
+    await expect(ask("prompt", { text: "first try" })).rejects.toBeDefined();
+
+    await expect(ask("get_state")).resolves.toMatchObject({ isSettled: true });
+    await expect(ask("prompt", { text: "second try" })).rejects.toBeDefined();
+    expect(paramsOf(created[1], "prompt")).toEqual([]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("chatHosts lists a chat still being taken over, with the omp it runs and that it moves", async () => {
+    const left: FakeIdentity = {
+      threadId: ThreadId.parse("omp-session-taking-over"),
+      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/taking-over.jsonl"),
+    };
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, runtime, handlers, timer } = updating(created, {
+      sessionFileExists: async () => true,
+    });
+    const old = new FakeChatHost({ threadId: left.threadId, folder, args: [] }, left);
+    // It has not answered yet: the takeover is under way.
+    old.holdHello = true;
+    runtime.adopt(
+      old,
+      {
+        kind: "hello",
+        protocol: 1,
+        ompVersion: "18.18.5",
+        methods: [...CHAT_HOST_METHODS],
+        session: { id: left.threadId, file: left.sessionFile, cwd: folder },
+      },
+      { restartWhenSettled: true },
+    );
+    const hosts = getHandler(handlers, "chatHosts")({}, call("updater"));
+    await ticks();
+    timer.fireAll();
+    expect(await hosts).toMatchObject({
+      chats: [{ threadId: left.threadId, ompVersion: "18.18.5", movesWhenSettled: true }],
+    });
+    old.sendHello();
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a resume asked while the chat's omp is down leaves its next omp unpaused", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    const crashed = created[0];
+    if (crashed === undefined) throw new Error("missing fake host");
+    crashed.emitEvent({ type: "pause_changed", pausedAt: 1_000 });
+    await ticks();
+    crashed.crash();
+    expect(
+      await getHandler(handlers, "request")(request(authorityThread, "resume"), call("one")),
+    ).toEqual({ pausedAt: null });
+
+    await getHandler(handlers, "request")(
+      request(authorityThread, "prompt", { text: "after the crash" }),
+      call("one"),
+    );
+    expect(paramsOf(created[1], "pause")).toEqual([]);
+    expect(paramsOf(created[1], "prompt")).toEqual([{ text: "after the crash" }]);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("chatHosts lists a chat once it knows its own id, not while it opens", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created, undefined, { holdHello: true });
+    const handlers = handlersFor(runtimeContext);
+    const hosts = () => getHandler(handlers, "chatHosts")({}, call("updater"));
+    const opening = getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await ticks();
+    expect(await hosts()).toEqual({ chats: [] });
+    created[0]?.sendHello();
+    await opening;
+    expect(await hosts()).toMatchObject({ chats: [{ threadId: authorityThread }] });
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("chatHosts says a chat taken over from an older omp moves once it settles", async () => {
+    const left: FakeIdentity = {
+      threadId: ThreadId.parse("omp-session-older-left"),
+      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/older-left.jsonl"),
+    };
+    const created: FakeChatHost[] = [];
+    // Its first reply is not saved yet and a page holds it, so it keeps running on the older omp for now.
+    const runtimeContext: A0PortContext = {
+      ...context(created, left),
+      sessionFileExists: async () => false,
+    };
+    const runtime = createA0Runtime(runtimeContext);
+    runtime.adopt(
+      new FakeChatHost({ threadId: left.threadId, folder, args: [] }, left),
+      {
+        kind: "hello",
+        protocol: 1,
+        ompVersion: "18.18.5",
+        methods: [...CHAT_HOST_METHODS],
+        session: { id: left.threadId, file: left.sessionFile, cwd: folder },
+      },
+      { restartWhenSettled: true },
+    );
+    runtimeContext.processRegistry.acquire({ threadId: left.threadId, folder });
+    await ticks(30);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet;
+    expect(await getHandler(handlers, "chatHosts")({}, call("updater"))).toMatchObject({
+      chats: [{ threadId: left.threadId, movesWhenSettled: true, paused: false }],
+    });
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("chatHosts says settled: null for a host that does not answer in time", async () => {
+    const created: FakeChatHost[] = [];
+    const { runtimeContext, handlers, timer } = updating(created);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    host.holdState = new Promise(() => undefined);
+    const hosts = getHandler(handlers, "chatHosts")({}, call("updater"));
+    await ticks();
+    timer.fireAll();
+    expect(await hosts).toMatchObject({ chats: [{ threadId: authorityThread, settled: null }] });
+    await runtimeContext.processRegistry.closeAll();
   });
 });
