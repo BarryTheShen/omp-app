@@ -7,12 +7,15 @@ import {
   type ClientErrorReport,
   type ClientTraceReport,
   type DebugReport,
+  type OmpUpdates,
+  type SetOmpUpdatesArgs,
   UsableModels,
 } from "@omp-app/contracts";
 import { truncate } from "../../logging";
 import { fileWatchMessage } from "../../modules/A1/fs/file-watch-registry";
 import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
 import type { A0PortContext } from "./context";
+import { readOmpUpdates, setOmpUpdates } from "./omp-updates";
 
 /**
  * The health the page reads: the start-up checks, and the watched files the app cannot see changes for right now.
@@ -46,6 +49,23 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
         AppHealth.parse(currentHealth(context)),
       usableModels: async (_args: unknown, _call: PortHandlerContext) =>
         UsableModels.parse({ models: [...((await context.usableModels?.()) ?? [])] }),
+      ompUpdates: async (_args: unknown, _call: PortHandlerContext): Promise<OmpUpdates> =>
+        context.ompUpdates === undefined
+          ? { enabled: true, job: null }
+          : await readOmpUpdates(context.ompUpdates),
+      setOmpUpdates: async (args: unknown, _call: PortHandlerContext): Promise<OmpUpdates> => {
+        if (context.ompUpdates === undefined) {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "This run of the app keeps no setting for omp updates.",
+            retryable: false,
+          });
+        }
+        const { enabled } = args as SetOmpUpdatesArgs;
+        const after = await setOmpUpdates(context.ompUpdates, enabled);
+        context.logger?.info("omp_updates.set", { enabled });
+        return after;
+      },
       reportClientError: (args: unknown, _call: PortHandlerContext): null => {
         const report = args as ClientErrorReport;
         const now = Date.now();

@@ -507,6 +507,10 @@ export async function createCompositionServer(
     newChatsReady,
     usageResumeFile: join(appDataDir, "usage-resume.json"),
     updateHoldFile: join(appDataDir, "update-hold.json"),
+    ompUpdates: {
+      status: join(appDataDir, "omp-update.json"),
+      settings: join(appDataDir, "omp-update-settings.json"),
+    },
     usagePauseFile: join(appDataDir, "usage-pause.json"),
     usagePauseExtrasFile: join(appDataDir, "usage-pause-extras.json"),
     usageShares,

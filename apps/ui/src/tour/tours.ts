@@ -787,6 +787,40 @@ const ZEN_ONE_CHAT_TOUR: Tour = {
   ],
 };
 
+/** Settings → App → omp: the omp the chats run on, and its automatic updates (2026-11-13). */
+const OMP_UPDATES_TOUR: Tour = {
+  id: "omp-updates-2026-11-13",
+  title: "omp in Settings",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "omp is under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("omp-updates"),
+      title: "omp",
+      text: "The omp release your chats run on. Where omp is updated automatically at night, a switch here turns that on or off, a line says what the last run came to, and another names a new omp that is ready to move to.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /** A paused chat stays paused when its omp starts again (2026-11-12). */
 const PAUSE_KEPT_TOUR: Tour = {
   id: "pause-kept-2026-11-12",
@@ -3186,6 +3220,13 @@ export interface Update {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-13-omp-updates",
+    when: "2026-11-13T00:40:00-06:00",
+    summary:
+      "Settings → App has an omp section: the omp release your chats run on. On a computer where omp is updated automatically at night, it also has a switch that turns those updates on or off, what the last run came to, and a new omp that is ready to move to.",
+    tours: [OMP_UPDATES_TOUR],
+  },
   {
     id: "2026-11-12-pause-kept",
     when: "2026-11-12T20:31:00-06:00",

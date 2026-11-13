@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FolderPath, RequestId } from "@omp-app/contracts";
 import type { Logger } from "../../logging";
 import { OmpProcessRegistry } from "../../process";
@@ -135,6 +138,66 @@ describe("AppPort", () => {
     expect(await handler(withSeam, "debugReport")({}, call())).toEqual({
       fileName: "omp-app-debug-x.log",
       text: "report text",
+    });
+  });
+
+  test("omp updates: on with no job until a job writes; its last word read back; the switch writes what the job reads", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omp-updates-"));
+    try {
+      const files = {
+        status: join(dir, "omp-update.json"),
+        settings: join(dir, "omp-update-settings.json"),
+      };
+      const handlers = appHandlers({ ompUpdates: files });
+      const read = () => handler(handlers, "ompUpdates")({}, call());
+      expect(await read()).toEqual({ enabled: true, job: null });
+
+      // As the night job writes it, with a field of its own that the app passes over.
+      const lastNight = { at: "2026-11-16T06:00:00.012Z", result: "No new omp to try." };
+      await writeFile(
+        files.status,
+        JSON.stringify({ version: 1, lastNight, pending: "18.18.9", told: ["x"] }),
+      );
+      expect(await read()).toEqual({ enabled: true, job: { lastNight, pending: "18.18.9" } });
+      await writeFile(
+        files.status,
+        JSON.stringify({ version: 1, lastNight, blocked: "back on 0.3.1632" }),
+      );
+      expect(((await read()) as { job: unknown }).job).toEqual({
+        lastNight,
+        blocked: "back on 0.3.1632",
+      });
+      // A file of another shape is no job's word: nothing is shown rather than something wrong.
+      await writeFile(files.status, JSON.stringify({ version: 2, lastNight }));
+      expect(((await read()) as { job: unknown }).job).toBeNull();
+
+      const off = await handler(handlers, "setOmpUpdates")({ enabled: false }, call());
+      expect(off).toMatchObject({ enabled: false });
+      expect(JSON.parse(await readFile(files.settings, "utf8"))).toEqual({
+        version: 1,
+        enabled: false,
+      });
+      expect(await handler(handlers, "setOmpUpdates")({ enabled: true }, call())).toMatchObject({
+        enabled: true,
+      });
+
+      // A settings file that cannot be read is off, as the job reads it: the switch never says on while the job is off.
+      await writeFile(files.settings, "{ not json");
+      expect(await read()).toMatchObject({ enabled: false });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("without the files a run reads no job and cannot save the switch", async () => {
+    expect(await handler(appHandlers(), "ompUpdates")({}, call())).toEqual({
+      enabled: true,
+      job: null,
+    });
+    await expect(
+      handler(appHandlers(), "setOmpUpdates")({ enabled: false }, call()),
+    ).rejects.toMatchObject({
+      appError: { code: "unavailable" },
     });
   });
 });

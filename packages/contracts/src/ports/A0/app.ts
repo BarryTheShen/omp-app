@@ -71,6 +71,32 @@ export type UsableModel = z.infer<typeof UsableModel>;
 export const UsableModels = z.object({ models: z.array(UsableModel) }).strict();
 export type UsableModels = z.infer<typeof UsableModels>;
 
+/**
+ * What a job that updates omp beside the app last said (`<app data>/omp-update.json`, which the job writes after every
+ * night and the app only reads): when it last ran and what it came to, a new omp ready for the app to move to, and why
+ * updates stopped, when they did.
+ */
+export const OmpUpdateJob = z
+  .object({
+    lastNight: z.object({ at: z.string().min(1), result: z.string().min(1) }).strict(),
+    /** A new omp, released and checked: the job moves the app to it between 3 and 5 a.m. */
+    pending: z.string().min(1).optional(),
+    /** Why updates stopped until someone looks. */
+    blocked: z.string().min(1).optional(),
+  })
+  .strict();
+export type OmpUpdateJob = z.infer<typeof OmpUpdateJob>;
+
+/**
+ * Settings → App → omp: whether automatic omp updates are on (`<app data>/omp-update-settings.json`, which only the app
+ * writes), and the job's last word; `job` is null where no such job has run.
+ */
+export const OmpUpdates = z.object({ enabled: z.boolean(), job: OmpUpdateJob.nullable() }).strict();
+export type OmpUpdates = z.infer<typeof OmpUpdates>;
+
+export const SetOmpUpdatesArgs = z.object({ enabled: z.boolean() }).strict();
+export type SetOmpUpdatesArgs = z.infer<typeof SetOmpUpdatesArgs>;
+
 export const AppPort = definePort({
   name: "A0.app",
   methods: {
@@ -101,6 +127,14 @@ export const AppPort = definePort({
     usableModels: {
       args: EmptyArgs,
       result: UsableModels,
+    },
+    ompUpdates: {
+      args: EmptyArgs,
+      result: OmpUpdates,
+    },
+    setOmpUpdates: {
+      args: SetOmpUpdatesArgs,
+      result: OmpUpdates,
     },
   },
   events: {},

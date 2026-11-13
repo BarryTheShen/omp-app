@@ -16,6 +16,7 @@ import type { UsageShares } from "../../modules/A1/usage-limits/shares";
 import type { ExternalOmpState, OmpProcessRegistry, ProcessTimer } from "../../process";
 import type { EventReplayHub } from "../../replay";
 import type { CallingChat } from "../../todos/agent";
+import type { OmpUpdateFiles } from "./omp-updates";
 
 /** How a chat starts: its id and file (a provisional pair until its host names its own), and omp's launch flags. */
 export interface ThreadBootstrap {
@@ -97,6 +98,12 @@ export interface A0PortContext {
    * the clock of `usageResumeClock`. Absent: no update can hold them.
    */
   readonly updateHoldFile?: string;
+  /**
+   * A job that updates omp beside the app: its status and the app's on-or-off for it (`<app data>/omp-update.json`,
+   * `<app data>/omp-update-settings.json`), for Settings → App → omp. Absent: no job's status is read, and the switch
+   * cannot be saved.
+   */
+  readonly ompUpdates?: OmpUpdateFiles;
   /**
    * Where the app keeps the chats marked to pause at their usage limit, the usage rules (#2836) and the holds on them
    * (#2781 part 3; `<app data>/usage-pause.json`). Absent: no chat pauses at a usage limit.

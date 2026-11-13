@@ -8,12 +8,13 @@ import { ThemeGallery } from "../theme/ThemeGallery";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { DebugLog } from "./DebugLog";
 import { Devices } from "./Devices";
+import { OmpSection } from "./OmpSection";
 import { QuickPromptsSection } from "./QuickPromptsSection";
 
 /**
  * The app's own settings, before omp's tabs: how it looks, a phone's quick prompts, the server it is connected to, the
- * devices paired with it, its debug log, and its keys; on a phone also What's new, which a desktop has at the list's
- * foot.
+ * omp it runs (and its automatic updates, where a job beside the app makes them), the devices paired with it, its debug
+ * log, and its keys; on a phone also What's new, which a desktop has at the list's foot.
  * `focusServerLink` puts the cursor in the desktop window's field for another server's link.
  */
 export function AppPage({
@@ -31,8 +32,8 @@ export function AppPage({
       <p className="pt-5 text-xs text-t3">App</p>
       <h2 className="mt-1 text-lg font-medium text-t1">App</h2>
       <p className="mt-1 text-sm text-t2">
-        How this app looks, the server it is connected to, the devices paired with it, its debug
-        log, and its keys.
+        How this app looks, the server it is connected to, the omp it runs, the devices paired with
+        it, its debug log, and its keys.
       </p>
       {phone && (
         <button
@@ -62,6 +63,7 @@ export function AppPage({
       </div>
       {phone && <QuickPromptsSection />}
       <ServerSection focusLink={focusServerLink} />
+      <OmpSection client={client} />
       <Devices client={client} />
       <DebugLog client={client} />
       <h3 className="mt-6 mb-3 text-xs font-medium text-t3">Keys</h3>
