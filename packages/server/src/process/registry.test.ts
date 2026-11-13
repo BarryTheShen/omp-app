@@ -976,6 +976,56 @@ describe("OmpProcessRegistry", () => {
       // It keeps an idle timer of its own, so the hour still applies to it.
       expect(timer.callbacks.size).toBe(3);
     });
+
+    test("once the server begins to stop, views let go past the cap stop nothing, and no idle wait is left (D2)", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = capped(timer, created);
+      for (const thread of threads) registry.acquire(options(thread, "/workspace/cap"));
+      // The server's last moment: its pages' connections close and let go of every view.
+      registry.beginShutdown();
+      for (const thread of threads) registry.release(thread);
+      await Bun.sleep(0);
+
+      expect(created.map((process) => process.stopCalls)).toEqual([0, 0, 0]);
+      expect(threads.map((thread) => registry.has(thread))).toEqual([true, true, true]);
+      expect(timer.callbacks.size).toBe(0);
+    });
+
+    test("the server beginning to stop cancels the idle waits under way, and a trim still asking omp then stops nothing", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = capped(timer, created);
+      const [a] = threads as [ThreadId, ThreadId, ThreadId];
+      const answer = Promise.withResolvers<boolean>();
+      registry.setIdleHooks({ isSettled: () => answer.promise, stopped: () => undefined });
+      for (const thread of threads) registry.acquire(options(thread, "/workspace/cap"));
+      for (const thread of threads) registry.release(thread);
+      // Past the cap the trim asks omp whether a has settled; the other two wait their idle time.
+      expect(timer.callbacks.size).toBe(2);
+
+      registry.beginShutdown();
+      expect(timer.callbacks.size).toBe(0);
+      answer.resolve(true);
+      await Bun.sleep(0);
+
+      expect(created.map((process) => process.stopCalls)).toEqual([0, 0, 0]);
+      expect(registry.has(a)).toBe(true);
+    });
+
+    test("a stop asked for by name, as a delete's, still runs while the server stops", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = capped(timer, created);
+      const [a] = threads as [ThreadId, ThreadId, ThreadId];
+      registry.acquire(options(a, "/workspace/cap"));
+      registry.release(a);
+      registry.beginShutdown();
+      await registry.stopIfUnwatched(a, "deleted");
+
+      expect(createdAt(created, 0).stopCalls).toBe(1);
+      expect(registry.has(a)).toBe(false);
+    });
   });
 
   test("stopIfUnwatched stops an unwatched process at once and leaves a watched one running", async () => {

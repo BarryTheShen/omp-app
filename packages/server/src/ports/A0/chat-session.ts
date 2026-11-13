@@ -1170,15 +1170,17 @@ export class ChatSessionPortRuntime {
     spare.refresh = undefined;
   }
 
-  /** Lets a spare go: its host is stopped (nobody holds it, and it has no turn). */
+  /**
+   * Lets a spare go: its host is stopped through the spare's own view (nobody else holds it, and it has no turn). It is
+   * never let go into the idle rule first: counted among the unwatched chats, it pushed the chat unwatched longest past
+   * the cap (`maxIdle`), and that chat's host stopped for nothing.
+   */
   async #discardSpare(spare: Spare): Promise<void> {
     this.#stopRefresh(spare);
     const { entry } = spare;
     entry.unsubscribe();
     entry.client.dispose();
-    const registry = this.#context.processRegistry;
-    registry.release(entry.bootstrap.threadId);
-    await registry.stopIfUnwatched(entry.bootstrap.threadId, "opened").catch(() => undefined);
+    await this.#context.processRegistry.stop(entry.bootstrap.threadId, 1).catch(() => undefined);
   }
 
   /**

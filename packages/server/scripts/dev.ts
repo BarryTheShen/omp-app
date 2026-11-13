@@ -1017,6 +1017,9 @@ export async function createCompositionServer(
       try {
         stats.stop();
         taskQueue.close();
+        // Before the connections close: the views they let go must not push chats past the cap on unwatched chats, or the
+        // idle rule would stop hosts this server is about to hand over to the next one (D2).
+        processRegistry.beginShutdown();
         logger.info("stop");
         await server.stop();
       } finally {

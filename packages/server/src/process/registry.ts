@@ -135,6 +135,8 @@ export class OmpProcessRegistry {
   readonly #maxIdle: number;
   /** Counts each time a thread is left unwatched, so the threads unwatched longest are found first. */
   #idleCount = 0;
+  /** Set once the server begins to stop (`beginShutdown`, `closeAll`): from then on the idle rule stops no thread (D2). */
+  #shuttingDown = false;
   readonly #createProcess: (options: OmpProcessOptions) => OmpProcess;
   readonly #timer: ProcessTimer;
   readonly #isUnused: ((threadId: ThreadId) => boolean) | undefined;
@@ -630,10 +632,22 @@ export class OmpProcessRegistry {
   }
 
   /**
+   * For server shutdown, before its connections close: from now on neither the idle wait nor the cap on unwatched threads
+   * stops a thread, so `closeAll` lets every host go to the next server (D2). The views a stopping server lets go (its
+   * pages', its ready new chats') would otherwise push threads past the cap in its last moment, and the trim would end the
+   * hosts unwatched longest instead of handing them over. A stop asked for by name (a delete's) still runs.
+   */
+  beginShutdown(): void {
+    this.#shuttingDown = true;
+    for (const entry of this.#entries.values()) this.#cancelIdle(entry);
+  }
+
+  /**
    * For server shutdown: stops every registered process, but lets a host that outlives the server (D2) go without
    * ending it, so its chat keeps running.
    */
   async closeAll(): Promise<void> {
+    this.#shuttingDown = true;
     const entries = [...this.#entries.values()];
     this.#entries.clear();
     await Promise.all(
@@ -654,6 +668,7 @@ export class OmpProcessRegistry {
 
   #scheduleIdleIfNeeded(entry: Entry, trim = true): void {
     this.#cancelIdle(entry);
+    if (this.#shuttingDown) return;
     if (entry.watchers > 0 || entry.busy || entry.commands > 0) {
       entry.idleOrder = undefined;
       return;
@@ -668,7 +683,7 @@ export class OmpProcessRegistry {
         if (this.#entries.get(entry.key) === entry) this.#scheduleIdleIfNeeded(entry, false);
         return;
       }
-      void this.#closeIfIdle(entry);
+      void this.#closeIfIdle(entry, 0, "idle");
     }, delay);
     if (trim) this.#trimIdle();
   }
@@ -701,7 +716,7 @@ export class OmpProcessRegistry {
       );
     for (const { entry } of evictable.slice(0, excess)) {
       this.#cancelIdle(entry);
-      void this.#closeIfIdle(entry, 0, false);
+      void this.#closeIfIdle(entry, 0, "trim");
     }
   }
 
@@ -714,12 +729,18 @@ export class OmpProcessRegistry {
     );
   }
 
+  /**
+   * Stops the thread's process if nobody but `ownWatchers` watches it and omp says it has settled. `by` is who asks: the
+   * idle wait or the cap's trim (the idle rule, which stops nothing once the server is stopping, also when shutdown began
+   * while omp was being asked), or a stop asked for by name (`stopIfUnwatched`).
+   */
   async #closeIfIdle(
     entry: Entry,
     ownWatchers = 0,
-    trim = true,
+    by: "idle" | "trim" | "request" = "request",
   ): Promise<{ readonly stopping: Promise<void> } | undefined> {
-    if (!this.#stillUnwatched(entry, ownWatchers)) return undefined;
+    const held = () => by !== "request" && this.#shuttingDown;
+    if (!this.#stillUnwatched(entry, ownWatchers) || held()) return undefined;
     if (this.#idleHooks !== undefined) {
       let settled: boolean;
       try {
@@ -728,9 +749,9 @@ export class OmpProcessRegistry {
         // omp that has exited holds nothing; omp that is only slow to answer is left running.
         settled = ["exited", "error", "stopped"].includes(entry.process.status);
       }
-      if (!this.#stillUnwatched(entry, ownWatchers)) return undefined;
+      if (!this.#stillUnwatched(entry, ownWatchers) || held()) return undefined;
       if (!settled) {
-        this.#scheduleIdleIfNeeded(entry, trim);
+        this.#scheduleIdleIfNeeded(entry, by !== "trim");
         return undefined;
       }
     }

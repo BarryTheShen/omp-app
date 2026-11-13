@@ -2932,6 +2932,32 @@ describe("the chat session runtime: a new chat kept ready (#2760)", () => {
     expect(created[1]?.status).toBe("stopped");
     expect(created[2]?.status).toBe("running");
   });
+
+  test("let go at its refresh, it pushes no unwatched chat past the cap: that chat keeps its omp", async () => {
+    const created: FakeChatHost[] = [];
+    const timer = firingTimer();
+    const base = context(created);
+    const handlers = handlersFor({
+      ...base,
+      // One unwatched chat at most: the chat below fills it, so only the ready chat let go could push it out.
+      processRegistry: new OmpProcessRegistry({ maxIdle: 1, createProcess: fakeHost(created) }),
+      serverInfo: { ...base.serverInfo, launchFolder: folder },
+      newChatsReady: true,
+      spareTimer: timer,
+    });
+    await ticks(20);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await ticks(20);
+    await getHandler(handlers, "close")({ threadId: authorityThread }, call("one"));
+    await ticks(20);
+    // The chat runs on the first host, nobody viewing it; the second is the next ready chat, its refresh due.
+    expect(created.map((host) => host.status)).toEqual(["running", "running"]);
+    expect(timer.pending()).toBe(1);
+
+    timer.fireAll();
+    await ticks(30);
+    expect(created.map((host) => host.status)).toEqual(["running", "stopped", "running"]);
+  });
 });
 
 describe("the chat session runtime: a chat's first message for other pages (#2825)", () => {
