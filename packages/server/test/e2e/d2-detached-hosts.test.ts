@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import { ChatSessionPort, FolderPath, ThreadId } from "@omp-app/contracts";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
+import { runMaintenance } from "../../src/launcher/maintenance-cli";
 import {
   chatFiles,
   closeTerminals,
@@ -244,6 +245,47 @@ describe("D2: hosts that outlive the server", () => {
       });
       await secondTurn;
       await again.close({ threadId: opened.threadId });
+      second.client.dispose();
+    },
+    120_000,
+  );
+
+  realTest(
+    "`omp-app maintenance open` opens a chat whose host handed it back from its file, and it stays up after the command; an id with no file is named as failed",
+    async () => {
+      const { folder, start, stop, sockets } = await setup("3000");
+      const first = await start();
+      const chat = first.client.port(ChatSessionPort);
+      const opened = await chat.open({ folderPath: FolderPath.parse(folder), start: "new" });
+      const events = await first.client.subscribe(ChatSessionPort, "event", {
+        scope: opened.threadId,
+      });
+      const turn = new Promise<void>((done) =>
+        events.onEvent((payload) => isPromptResult(payload) && done()),
+      );
+      await chat.request({ threadId: opened.threadId, method: "prompt", params: { text: "hello" } });
+      await turn;
+      const [socket] = await sockets();
+      await stop(first);
+      await until(() => !existsSync(socket as string), 20_000);
+
+      // The new server runs no chat until the command opens it, as the update's switch does for a chat it found stopped.
+      const second = await start();
+      const hosts = second.client.port(ChatSessionPort);
+      expect((await hosts.chatHosts({})).chats).toEqual([]);
+      const neverWritten = ThreadId.parse("01a1d000-0000-7000-8000-000000000000");
+      const result = await runMaintenance(
+        { action: "open", threadIds: [ThreadId.parse(opened.threadId), neverWritten] },
+        { origin: new URL(second.server.url).origin, token: second.server.token },
+      );
+      expect(result).toEqual({
+        opened: [opened.threadId],
+        failed: [{ threadId: neverWritten, message: expect.any(String) }],
+      });
+      // The command's connection has closed: the chat it opened still runs on this server.
+      expect((await hosts.chatHosts({})).chats.map((each) => each.threadId)).toEqual([
+        opened.threadId,
+      ]);
       second.client.dispose();
     },
     120_000,

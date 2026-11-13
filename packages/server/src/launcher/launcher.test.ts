@@ -159,7 +159,7 @@ describe("parseLauncherArgs", () => {
     });
   });
 
-  test("maintenance names one action: hold needs minutes in range and a reason, resume needs chat ids", () => {
+  test("maintenance names one action: hold needs minutes in range and a reason, resume and open need chat ids", () => {
     expect(parseLauncherArgs(["maintenance", "status"])).toMatchObject({
       ok: true,
       args: { command: "maintenance", maintenance: { action: "status" } },
@@ -185,6 +185,13 @@ describe("parseLauncherArgs", () => {
     });
     // Resume names its chats: a bare resume would also resume chats paused on purpose before an update.
     expect(parseLauncherArgs(["maintenance", "resume"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["maintenance", "open", chat, "provisional-1"])).toMatchObject({
+      ok: true,
+      args: { maintenance: { action: "open", threadIds: [chat, "provisional-1"] } },
+    });
+    // Open names its chats, each a real id: there is nothing to open without one.
+    expect(parseLauncherArgs(["maintenance", "open"])).toMatchObject({ ok: false });
+    expect(parseLauncherArgs(["maintenance", "open", chat, ""])).toMatchObject({ ok: false });
     expect(parseLauncherArgs(["maintenance"])).toMatchObject({ ok: false });
     expect(parseLauncherArgs(["maintenance", "status", "extra"])).toMatchObject({ ok: false });
     expect(parseLauncherArgs(["maintenance", "pause", "--port", "4400"])).toMatchObject({

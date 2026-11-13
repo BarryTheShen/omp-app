@@ -22,7 +22,7 @@ export const USAGE = `Usage: omp-app [folder] [options]
        omp-app secret [add <name> | remove <name>]
        omp-app logs [--lines <n>]
        omp-app debug-report
-       omp-app maintenance status | hold <minutes> <reason> | release | pause | resume <chat id>...
+       omp-app maintenance status | hold <minutes> <reason> | release | pause | resume <chat id>... | open <chat id>...
 
 Starts the omp app and opens it in your browser. The app runs the omp release it is built for,
 which its package holds.
@@ -76,6 +76,9 @@ For an omp update (the app's automatic update uses these; each prints JSON):
                  pause every running chat
   maintenance resume <chat id> [<chat id> ...]
                  resume the chats named
+  maintenance open <chat id> [<chat id> ...]
+                 open the chats named from their files and leave them running (a chat an
+                 update found stopped); prints which opened, and why one did not
 `;
 
 export type LauncherArgs = {
