@@ -35,7 +35,8 @@ import type {
 import { HostMethodError } from "./method-error";
 
 /**
- * The credentials each engine reads: its provider class's `keys.*` calls (omp 18.18.5, `web/search/providers/<id>.ts`).
+ * The credentials each engine reads: its provider class's `keys.*` calls (omp 18.18.5, `web/search/providers/<id>.ts`;
+ * sofya from omp 18.18.9, which reads the `sofya` key or `SOFYA_API_KEY`).
  * Every engine omp lists is here or in {@link KEYLESS_ENGINES} (`search-engines.test.ts`).
  */
 export const ENGINE_KEY_PROVIDERS: Readonly<Record<string, string>> = {
@@ -54,9 +55,13 @@ export const ENGINE_KEY_PROVIDERS: Readonly<Record<string, string>> = {
   kimi: "kimi-code",
   synthetic: "synthetic",
   ollama: "ollama-cloud",
+  sofya: "sofya",
 };
 
-/** The engines that read no key: page scrapers, SearXNG (an address in omp's settings) and Public Web. */
+/**
+ * The engines that read no key: page scrapers, SearXNG (an address in omp's settings), Public Web, and Hacker News (its
+ * public search API, from omp 18.18.9).
+ */
 export const KEYLESS_ENGINES: ReadonlySet<string> = new Set([
   "searxng",
   "startpage",
@@ -65,15 +70,20 @@ export const KEYLESS_ENGINES: ReadonlySet<string> = new Set([
   "google",
   "mojeek",
   "public",
+  "hackernews",
 ]);
 
-/** Where to make a key for the engines omp has no login for, from each engine's own documentation (2026-11-10). */
+/**
+ * Where to make a key for the engines omp has no login for, from each engine's own documentation (2026-11-10; Sofya's
+ * 2026-11-12: keys are made under API keys on its dashboard and start with `sofya_live_`).
+ */
 const KEY_PAGES: Readonly<Record<string, { readonly page: string; readonly hint?: string }>> = {
   tinyfish: { page: "https://agent.tinyfish.ai/api-keys", hint: "sk-tinyfish-..." },
   keenable: { page: "https://app.keenable.ai/console", hint: "keen_..." },
   brave: { page: "https://api-dashboard.search.brave.com/app/keys" },
   jina: { page: "https://jina.ai/?sui=apikey" },
   firecrawl: { page: "https://www.firecrawl.dev/app/api-keys", hint: "fc-..." },
+  sofya: { page: "https://sofya.co/dashboard#keys", hint: "sofya_live_..." },
 };
 
 /** omp's kinds of credential source, in the app's words. */
