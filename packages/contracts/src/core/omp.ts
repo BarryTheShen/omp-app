@@ -11,7 +11,7 @@ export type * as Omp from "../chat-host/omp-types";
  * whose command line the app builds into its chat host and runs, and no other. The contracts package cannot read that file,
  * so `packages/server/src/omp-host/omp-version.test.ts` keeps the two equal.
  */
-export const OMP_FLOOR_VERSION = "18.18.5";
+export const OMP_FLOOR_VERSION = "18.18.9";
 
 /** One of omp's session events (`Omp.SessionEvent`). */
 export type OmpEvent = OmpTypes.SessionEvent;

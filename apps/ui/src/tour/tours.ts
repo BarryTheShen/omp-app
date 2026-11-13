@@ -3215,11 +3215,34 @@ export interface Update {
   readonly tours: readonly Tour[];
 }
 
+/** The app runs omp 18.18.9 (2026-11-13). */
+const OMP_18_18_9_TOUR: Tour = {
+  id: "omp-18-18-9",
+  title: "omp 18.18.9",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "omp 18.18.9",
+      text: "Your chats run on omp 18.18.9 now, up from 18.18.5: the app's automatic omp update tested it first, then moved your chats to it while they were paused. omp's own notes on what changed are in its changelog.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-13-omp-18-18-9",
+    when: "2026-11-13T07:03:13Z",
+    summary:
+      "Your chats run on omp 18.18.9 now, up from 18.18.5: the app's automatic omp update tested it first, then moved your chats to it while they were paused. omp's own notes on what changed are in its changelog.",
+    tours: [OMP_18_18_9_TOUR],
+  },
   {
     id: "2026-11-13-omp-updates",
     when: "2026-11-13T00:40:00-06:00",
