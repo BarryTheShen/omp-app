@@ -138,8 +138,10 @@ realTest.describe("new UI Agent Hub", () => {
   );
 
   realTest("a task card's agent opens the Hub on that agent", async ({ realApp }) => {
-    // omp reads user agents from `~/.omp/agent/agents`; the fixture runs omp with HOME at `<root>/home`.
-    const agents = join(dirname(realApp.agentDir), "home", ".omp", "agent", "agents");
+    // A project agent of the chat's folder (`<folder>/.omp/agents`), which omp reads alike in every version. User agents
+    // moved: omp 18.18.9 reads them from its agent folder (`PI_CODING_AGENT_DIR`), earlier versions from
+    // `~/.omp/agent/agents`, and the fixture keeps those two apart (HOME at `<root>/home`).
+    const agents = join(dirname(realApp.agentDir), "workspace", ".omp", "agents");
     await mkdir(agents, { recursive: true });
     await writeFile(join(agents, "fgprobe.md"), FOREGROUND_AGENT);
     const page = await realApp.open({ path: "/" });
