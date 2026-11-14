@@ -51,8 +51,8 @@ export function jobRows(details: unknown): JobRow[] {
 }
 
 /**
- * What omp delivered for the jobs, for the row to fold out: the text inside omp's `<system-notice>`, without its first
- * line, which tells the model to go on.
+ * What omp delivered for the jobs, for the row to fold out: the text inside omp's `<system-notice>`, without its header
+ * and the line that tells the model to go on (on the header's line up to omp 18.18.9, on a line of its own from 18.20.0).
  */
 export function deliveredText(content: unknown): string {
 	const text =
@@ -68,7 +68,8 @@ export function deliveredText(content: unknown): string {
 				: "";
 	const inner = text.replace(/^\s*<system-notice>\s*/, "").replace(/\s*<\/system-notice>\s*$/, "");
 	const lines = inner.split("\n");
-	if (lines[0]?.startsWith("Background job")) lines.shift();
+	if (/^(Background job |\d+ background jobs )/.test(lines[0] ?? "")) lines.shift();
+	if (lines[0]?.startsWith("Resume your work")) lines.shift();
 	return lines.join("\n").trim();
 }
 

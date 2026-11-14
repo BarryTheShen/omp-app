@@ -147,8 +147,7 @@ describe("requests from the server", () => {
   test("a todo edit uses omp's statuses and keeps a task's notes", () => {
     const task = {
       content: "Fix the check",
-      status: "blocked" as const,
-      blocker: "CI",
+      status: "in_progress" as const,
       notes: ["seen twice"],
     };
     expect(parseChatHostParams("set_todos", { phases: [{ name: "Plan", tasks: [task] }] })).toEqual(
@@ -157,10 +156,13 @@ describe("requests from the server", () => {
         value: { phases: [{ name: "Plan", tasks: [task] }] },
       },
     );
-    const done = { ...task, status: "done" };
-    expect(parseChatHostParams("set_todos", { phases: [{ name: "Plan", tasks: [done] }] }).ok).toBe(
-      false,
-    );
+    // `blocked` left omp's statuses in 18.19.0, with its `blocker` note.
+    for (const status of ["done", "blocked"]) {
+      const refused = { ...task, status };
+      expect(
+        parseChatHostParams("set_todos", { phases: [{ name: "Plan", tasks: [refused] }] }).ok,
+      ).toBe(false);
+    }
     expect(
       parseChatHostParams("set_todos", {
         phases: [{ name: "Plan", tasks: [{ status: "pending" }] }],

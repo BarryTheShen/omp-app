@@ -1,6 +1,6 @@
 import type { ChatHostState } from "@omp-app/contracts/chat-host";
 import { cn } from "cn";
-import { Circle, CircleCheck, CircleDot, CircleMinus, CircleSlash } from "lucide-react";
+import { Circle, CircleCheck, CircleDot, CircleMinus } from "lucide-react";
 import type { ReactNode } from "react";
 
 export type TodoPhases = ChatHostState["todoPhases"];
@@ -10,7 +10,6 @@ type TodoTask = TodoPhases[number]["tasks"][number];
 const STATUS = {
   in_progress: { said: "Now", Icon: CircleDot, icon: "text-accent-ink", text: "text-t1" },
   pending: { said: "To do", Icon: Circle, icon: "text-t3", text: "text-t2" },
-  blocked: { said: "Blocked", Icon: CircleSlash, icon: "text-warn-ink", text: "text-t2" },
   completed: { said: "Done", Icon: CircleCheck, icon: "text-ok-ink", text: "text-t3 line-through" },
   abandoned: { said: "Dropped", Icon: CircleMinus, icon: "text-t3", text: "text-t3 line-through" },
 } as const satisfies Record<TodoTask["status"], unknown>;
@@ -47,9 +46,6 @@ export function TodoList({ phases }: { readonly phases: TodoPhases }): ReactNode
                   <status.Icon className={cn("mt-0.5 size-4 shrink-0", status.icon)} aria-hidden />
                   <span className={cn("min-w-0", status.text)}>
                     {task.content}
-                    {task.status === "blocked" && task.blocker !== undefined && (
-                      <span className="block text-xs text-t3">{task.blocker}</span>
-                    )}
                   </span>
                 </li>
               );

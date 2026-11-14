@@ -1,5 +1,5 @@
 {
-  "omp": "18.18.9",
+  "omp": "18.20.0",
   "tabs": [
     {
       "id": "appearance",
@@ -97,6 +97,7 @@
         "Available Tools",
         "Todos",
         "Grep & Browser",
+        "Find",
         "Computer",
         "IDA Pro",
         "GitHub",
@@ -1260,7 +1261,7 @@
       "group": "Thinking",
       "type": "array",
       "label": "Tool-Call Loop Exempt Tools",
-      "description": "Tool names that may repeat consecutively without triggering the cross-turn loop guard",
+      "description": "Tool names, or xd:// device names of write dispatches (for example mcp__peers_wait), that may repeat consecutively without triggering the cross-turn loop guard",
       "default": [
         "wait"
       ]
@@ -1313,6 +1314,15 @@
       "label": "Include Workspace Tree",
       "description": "Render the workspace directory tree in the system prompt. WARNING: This can bust prompt caching across sessions when files are modified.",
       "default": false
+    },
+    {
+      "key": "encourageEdits",
+      "tab": "model",
+      "group": "Prompt",
+      "type": "boolean",
+      "label": "Encourage Edits",
+      "description": "Require the edit tool for file edits and forbid sed/perl/python edits",
+      "default": true
     },
     {
       "key": "skillful",
@@ -3241,7 +3251,7 @@
       "group": "Notifications",
       "type": "number",
       "label": "Ask Timeout",
-      "description": "Auto-select the recommended ask option after this many seconds (0 disables). Also bounds cfg:// approval prompts; an unanswered approval denies the write instead of auto-selecting",
+      "description": "Submit an ask form's current values (your preselected answers) after this many seconds (0 disables). Also bounds cfg:// approval prompts; an unanswered approval denies the write instead of auto-submitting",
       "default": 0,
       "choices": [
         {
@@ -5896,6 +5906,14 @@
       "default": true
     },
     {
+      "key": "find.verifyModel",
+      "tab": "tools",
+      "group": "Find",
+      "type": "string",
+      "label": "Find Verification Model",
+      "description": "Model selector (e.g. openrouter/liquid/d1-ultra) tried first for find's passage verification, before the judge role; filename and sketch ranking stay on the judge role. Unset: the judge role verifies too"
+    },
+    {
       "key": "find.enabled",
       "tab": "tools",
       "group": "Available Tools",
@@ -6418,7 +6436,7 @@
       "group": "Available Tools",
       "type": "boolean",
       "label": "Browser",
-      "description": "Enable the browser eval prelude for scripted Chromium automation (Puppeteer)",
+      "description": "Enable the browser eval prelude for scripted browser automation",
       "default": true
     },
     {
@@ -6427,7 +6445,7 @@
       "group": "Grep & Browser",
       "type": "string",
       "label": "Browser CDP URL",
-      "description": "Default HTTP CDP discovery endpoint (for example http://127.0.0.1:9222) to attach to instead of launching a browser. Explicit app.cdp_url or app.path on the tool call take precedence."
+      "description": "Default HTTP CDP discovery endpoint (for example http://127.0.0.1:9222) to attach to instead of launching a browser. An explicit app on the tool call takes precedence."
     },
     {
       "key": "browser.relay",
@@ -6452,7 +6470,7 @@
       "group": "Grep & Browser",
       "type": "boolean",
       "label": "Headless Browser",
-      "description": "Launch browser in headless mode (disable to show browser UI)",
+      "description": "Run the browser without a window (disable to show it). omp's WebKit tabs gain or lose their windows at once where the engine ships its viewer (macOS); elsewhere a visible browser is Chromium, launched in the new mode by the next open.",
       "default": true
     },
     {
@@ -6470,8 +6488,25 @@
       "group": "Grep & Browser",
       "type": "boolean",
       "label": "Tern Browser",
-      "description": "Inside a Tern pane, open browser tabs as picture-in-pictures over omp's pane (native web view) instead of headless Chromium; falls back to Chromium when no Tern window can host them. Explicit app options, the relay and Browser CDP URL take precedence; app.tern:false opts one open out. Set PI_BROWSER_TERN=0 or PI_BROWSER_TERN=1 to override.",
+      "description": "Inside a Tern pane, open browser tabs as picture-in-pictures over omp's pane (native web view) instead of omp's own headless browser; falls back to that browser when no Tern window can host them. An explicit app, the relay and Browser CDP URL take precedence; app \"own\" opts one open out. Set PI_BROWSER_TERN=0 or PI_BROWSER_TERN=1 to override.",
       "default": true
+    },
+    {
+      "key": "browser.webkit",
+      "tab": "tools",
+      "group": "Grep & Browser",
+      "type": "boolean",
+      "label": "WebKit Browser",
+      "description": "Open browser tabs in omp's own headless WebKit engine instead of managed Chromium when the engine is installed (omp downloads it to ~/.o2/lib/abkit before Chrome for Testing when no browser is installed; see Browser WebKit Path). Chromium still opens a visible browser where the engine ships no viewer, and tabs the engine fails to start; an explicit app, the relay, Browser CDP URL, Tern and cmux take precedence; app \"chromium\" opts one open out. Set PI_BROWSER_WEBKIT=0 or PI_BROWSER_WEBKIT=1 to override.",
+      "default": true
+    },
+    {
+      "key": "browser.webkitPath",
+      "tab": "tools",
+      "group": "Grep & Browser",
+      "type": "string",
+      "label": "Browser WebKit Path",
+      "description": "omp's WebKit engine: its host executable, or an ABKit engine directory (which holds it as ABHost; ABHost.exe on Windows). If unset, omp runs the installed engine, ~/.o2/lib/abkit/ABHost (ABHost.exe on Windows). Supports ~. PI_BROWSER_WEBKIT_PATH overrides it."
     },
     {
       "key": "browser.freezeOnTurnEnd",
@@ -6479,7 +6514,7 @@
       "group": "Grep & Browser",
       "type": "boolean",
       "label": "Freeze Browser Tabs On Turn End",
-      "description": "Freeze OMP-owned headless browser tabs when a turn settles so animated pages stop burning CPU/GPU while idle. Tabs unfreeze automatically on next use; pass persist:true on open to opt a tab out.",
+      "description": "Freeze OMP-owned headless Chromium tabs when a turn settles so animated pages stop burning CPU/GPU while idle (WebKit tabs draw nothing unless asked). Tabs unfreeze automatically on next use; pass persist:true on open to opt a tab out.",
       "default": true
     },
     {
@@ -6922,6 +6957,37 @@
       ]
     },
     {
+      "key": "task.autoParallel",
+      "tab": "tasks",
+      "group": "Subagents",
+      "type": "enum",
+      "label": "Auto Parallel",
+      "description": "Ask the native judge resolved through the 'judge' role which parts of each new top-level prompt can run concurrently. Needs a native judge and the task tool; without them nothing is judged.",
+      "default": "off",
+      "values": [
+        "off",
+        "suggest",
+        "on"
+      ],
+      "choices": [
+        {
+          "value": "off",
+          "label": "Off",
+          "description": "Never split prompts"
+        },
+        {
+          "value": "suggest",
+          "label": "Suggest",
+          "description": "Judge each prompt and report the split without acting on it"
+        },
+        {
+          "value": "on",
+          "label": "On",
+          "description": "When a prompt splits into independent subtasks, tell the agent to delegate them in parallel"
+        }
+      ]
+    },
+    {
       "key": "task.batch",
       "tab": "tasks",
       "group": "Subagents",
@@ -6931,12 +6997,12 @@
       "default": true
     },
     {
-      "key": "task.file",
+      "key": "task.steps",
       "tab": "tasks",
       "group": "Subagents",
       "type": "boolean",
-      "label": "Task Instructions from Files",
-      "description": "Let the task tool read subagent instructions from a file (taskFile), recording its path and SHA-256.",
+      "label": "Sequential Task Steps",
+      "description": "Spawns take ordered `steps` instead of one `task`: the subagent gets the first step, then each next one once it finishes the previous; past 4 steps, earlier messages carry two or more. The last step's result is the task's result.",
       "default": false
     },
     {

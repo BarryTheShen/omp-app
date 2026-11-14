@@ -32,6 +32,17 @@ describe("background job rows", () => {
 			"<system-notice>\nBackground job bg_5 has completed. Resume your work using the result below.\n#### build\nok\n</system-notice>";
 		expect(deliveredText(content)).toBe("#### build\nok");
 		expect(deliveredText([{ type: "text", text: content }, { type: "image", data: "x" }])).toBe("#### build\nok");
+		// omp 18.20.0 puts the line to the model on a line of its own, and several jobs share one header.
+		expect(
+			deliveredText(
+				"<system-notice>\nBackground job bg_5 has completed.\nResume your work using the result below.\n#### build\nok\n</system-notice>",
+			),
+		).toBe("#### build\nok");
+		expect(
+			deliveredText(
+				"<system-notice>\n2 background jobs have completed. Resume your work using the results below.\n\n── Job bg_5 ──\nok\n</system-notice>",
+			),
+		).toBe("── Job bg_5 ──\nok");
 	});
 });
 

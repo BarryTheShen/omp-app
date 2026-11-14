@@ -727,7 +727,6 @@ const TODO_STATUSES: { readonly [Status in TodoStatus]: Status } = {
   in_progress: "in_progress",
   completed: "completed",
   abandoned: "abandoned",
-  blocked: "blocked",
 };
 
 /** omp's todo list (`TodoPhase`, `TodoItem`), as the user edits it. */
@@ -739,7 +738,6 @@ export const SetTodosParams = z.object({
         z.object({
           content: z.string(),
           status: z.enum(TODO_STATUSES),
-          blocker: z.string().optional(),
           details: z.string().optional(),
           notes: z.array(z.string()).optional(),
         }),

@@ -17,7 +17,6 @@ import {
 } from "@oh-my-pi/pi-coding-agent/goals/state";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
-import { nextActionableTask } from "@oh-my-pi/pi-coding-agent/tools/todo";
 import type { GoalAnswer, GoalParams } from "@omp-app/contracts/chat-host";
 
 /** The `goal.continuationModes` entry that turns automatic continuation on for the app's chats (omp's RPC hosts'). */
@@ -34,7 +33,6 @@ export type GoalSession = Pick<
   | "getEnabledToolNames"
   | "setActiveToolsByName"
   | "sendGoalModeContext"
-  | "getTodoPhases"
   | "promptCustomMessage"
   | "waitForIdle"
   | "isStreaming"
@@ -357,13 +355,7 @@ export class GoalController {
     if (this.#hostStopped || this.#suppressContinuation || session.isDisposed) return false;
     if (session.getPlanModeState()?.enabled) return false;
     const state = session.getGoalModeState();
-    if (!state?.enabled || state.goal.status !== "active") return false;
-    // Every task left is blocked: nothing a continuation could do.
-    const phases = session.getTodoPhases();
-    return !(
-      !nextActionableTask(phases) &&
-      phases.some((phase) => phase.tasks.some((task) => task.status === "blocked"))
-    );
+    return state?.enabled === true && state.goal.status === "active";
   }
 
   /**
