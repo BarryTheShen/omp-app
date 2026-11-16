@@ -49,5 +49,32 @@ describe("the chat host's settle report", () => {
       },
       60_000,
     );
+
+    programTest(
+      `${program.name}: a server that takes the chat over (D2) hears it busy while background work runs between turns, and idle once settled`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        const replayedStart = async (): Promise<boolean> => {
+          const before = chat.events.length;
+          await chat.client.request("replay_live", {});
+          return chat.events.slice(before).some(({ event }) => event.type === "agent_start");
+        };
+        // A settled chat is idle: the replay starts no turn.
+        await chat.client.request("prompt", { text: "hello" });
+        await chat.next(resultOf("1"));
+        await chat.next((event) => event.type === "session_settled");
+        expect(await replayedStart()).toBe(false);
+        // The turn is over and a job it started runs on: the chat is not settled, so it is still at work.
+        await chat.client.request("prompt", { text: "run_background_job" });
+        // Request 3: the first prompt was 1, the replay 2.
+        expect(await chat.next(resultOf("3"))).toMatchObject({
+          status: "completed",
+          sessionSettled: false,
+        });
+        expect(await replayedStart()).toBe(true);
+      },
+      90_000,
+    );
   }
 });

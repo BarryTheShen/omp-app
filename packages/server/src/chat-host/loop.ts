@@ -900,7 +900,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       return { handedBack: true as const };
     },
     replay_live: async () => {
-      if (session.isStreaming) emit({ type: "agent_start" });
+      // Busy as the server before saw it: from a turn's start until the session settles, so also between turns while
+      // background work that will wake it runs (async subagents, jobs). Its `session_settled` still comes when that ends.
+      if (!isSessionSettled(session, scheduledTurn)) emit({ type: "agent_start" });
       // A pause outlives the server that saw it start (D2): the server that takes the chat over hears it too.
       if (agentPauseGate.pausedAt !== undefined) {
         emit({ type: "pause_changed", pausedAt: agentPauseGate.pausedAt });
