@@ -83,6 +83,8 @@ export const OmpUpdateJob = z
     running: z.string().min(1).optional(),
     /** A new omp, released and checked: the job moves the app to it at the install hour. */
     pending: z.string().min(1).optional(),
+    /** The pending omp came from Update now: it installs at the install hour even while automatic updates are off. */
+    byRequest: z.literal(true).optional(),
     /** Why updates stopped until someone looks. */
     blocked: z.string().min(1).optional(),
   })

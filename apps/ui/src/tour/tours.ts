@@ -3263,11 +3263,52 @@ const ZEN_NO_ANSWER_TOUR: Tour = {
   ],
 };
 
+/** Settings → App → omp: how often omp is looked for, the install hour and Update now (2026-11-15). */
+const OMP_UPDATE_SETTINGS_TOUR: Tour = {
+  id: "omp-update-settings-2026-11-15",
+  title: "omp updates, when you want them",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "omp is under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("omp-updates"),
+      title: "When omp updates",
+      text: "<b>Look for a new omp</b> sets how often a newer omp is tested, from every night to every 14 nights, and <b>Install from</b> the hour a new omp that passed may install, for two hours. <b>Update now</b> looks for one at once and tests it, about 45 minutes; it installs at that hour, also while automatic updates are off, and before your app, each install is tried on a throwaway copy of it.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-15-omp-update-settings",
+    when: "2026-11-15T23:20:00-06:00",
+    summary:
+      "Settings → App → omp says when omp updates: Look for a new omp sets how often a newer omp is tested (every night up to every 14 nights, every third as before), and Install from the hour one that passed installs, for two hours (3 a.m. as before). Update now looks for one at once and tests it, about 45 minutes, and it installs at that hour, also while automatic updates are off. Each install is now tried first on a throwaway copy of the app, and your app is touched only when the copy moved over cleanly.",
+    tours: [OMP_UPDATE_SETTINGS_TOUR],
+  },
   {
     id: "2026-11-15-zen-no-answer",
     when: "2026-11-15T22:50:00-06:00",

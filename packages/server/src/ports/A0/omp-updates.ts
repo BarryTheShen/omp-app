@@ -24,12 +24,13 @@ export interface OmpUpdateFiles {
   readonly request: string;
 }
 
-/** The job's file: `{ "version": 1, "lastNight": { "at", "result" }, "running"?, "pending"?, "blocked"? }`; other fields are its own. */
+/** The job's file: `{ "version": 1, "lastNight": { "at", "result" }, "running"?, "pending"?, "byRequest"?, "blocked"? }`; other fields are its own. */
 const StatusFile = z.object({
   version: z.literal(1),
   lastNight: z.object({ at: z.string().min(1), result: z.string().min(1) }),
   running: z.string().min(1).optional(),
   pending: z.string().min(1).optional(),
+  byRequest: z.literal(true).optional(),
   blocked: z.string().min(1).optional(),
 });
 
@@ -94,11 +95,12 @@ function jobFrom(text: string | null): OmpUpdateJob | null {
   if (text === null) return null;
   const status = StatusFile.safeParse(parsed(text));
   if (!status.success) return null;
-  const { lastNight, running, pending, blocked } = status.data;
+  const { lastNight, running, pending, byRequest, blocked } = status.data;
   return {
     lastNight: { at: lastNight.at, result: lastNight.result },
     ...(running === undefined ? {} : { running }),
     ...(pending === undefined ? {} : { pending }),
+    ...(pending === undefined || byRequest === undefined ? {} : { byRequest }),
     ...(blocked === undefined ? {} : { blocked }),
   };
 }

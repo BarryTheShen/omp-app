@@ -1,13 +1,14 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { APP_ROOT, expect, realTest } from "./real-omp";
 
 /**
  * Settings → App → omp, on real omp: the omp release the chats run on; and, where a job beside the app updates omp at
- * night (it writes `<app data>/omp-update.json`), what its last run came to, a new omp ready to move to, why updates
- * stopped, and the switch that turns them on or off by writing `<app data>/omp-update-settings.json`
- * (`{ "version": 1, "enabled": … }`), the file the job reads before anything else.
+ * night (it writes `<app data>/omp-update.json`), what its last run came to and what it does now, a new omp ready to
+ * move to, why updates stopped, and the settings it reads before anything else, which the section writes to
+ * `<app data>/omp-update-settings.json` (`{ "version": 1, "enabled", "everyNights", "installHour" }`): the switch, how
+ * often it looks, the install hour; and Update now, which leaves the job `<app data>/omp-update-request.json`.
  */
 realTest.describe("new UI omp updates", () => {
   realTest.setTimeout(180_000);
@@ -80,7 +81,7 @@ realTest.describe("new UI omp updates", () => {
       await expect(toggle(page)).not.toBeChecked();
       await expect
         .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
-        .toEqual({ version: 1, enabled: false });
+        .toEqual({ version: 1, enabled: false, everyNights: 3, installHour: 3 });
       await expect(section(page)).toContainText(
         "omp 18.18.9 is ready, and waits until automatic updates are on.",
       );
@@ -91,7 +92,7 @@ realTest.describe("new UI omp updates", () => {
       await toggle(page).click();
       await expect
         .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
-        .toEqual({ version: 1, enabled: true });
+        .toEqual({ version: 1, enabled: true, everyNights: 3, installHour: 3 });
     },
   );
 
@@ -113,4 +114,69 @@ realTest.describe("new UI omp updates", () => {
       "Updates stopped until someone looks: back on 0.3.1632 after omp 18.18.9 failed its checks",
     );
   });
+
+  realTest(
+    "how often and from when: each menu writes what the job reads; Update now leaves the job one request and follows what it does",
+    async ({ realApp }) => {
+      const status = join(realApp.appDataDir, "omp-update.json");
+      const settings = join(realApp.appDataDir, "omp-update-settings.json");
+      const request = join(realApp.appDataDir, "omp-update-request.json");
+      const lastNight = { at: "2026-11-15T06:00:00.000Z", result: "Nothing to do tonight." };
+      await writeFile(status, JSON.stringify({ version: 1, lastNight }));
+      const page = await realApp.open({ path: "/" });
+      await openOmp(page);
+      await expect(section(page)).toContainText(
+        "Every third night a newer omp is tested on its own. When it passes, the app moves to it between 3 and 5 a.m., with every chat paused across the move.",
+      );
+
+      await section(page).getByRole("combobox", { name: "Look for a new omp" }).click();
+      await page.getByRole("option", { name: "Every night", exact: true }).click();
+      await expect
+        .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
+        .toEqual({ version: 1, enabled: true, everyNights: 1, installHour: 3 });
+      await section(page).getByRole("combobox", { name: "Install from" }).click();
+      await page.getByRole("option", { name: "01:00", exact: true }).click();
+      await expect
+        .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
+        .toEqual({ version: 1, enabled: true, everyNights: 1, installHour: 1 });
+      await expect(section(page)).toContainText(
+        "Every night a newer omp is tested on its own. When it passes, the app moves to it between 1 and 3 a.m.",
+      );
+
+      const updateNow = section(page).getByRole("button", { name: "Update now" });
+      await updateNow.click();
+      await expect(section(page).getByRole("status")).toContainText("Update now, asked at");
+      await expect(updateNow).toBeDisabled();
+      const asked = JSON.parse(await readFile(request, "utf8")) as { version: number; at: string };
+      expect(asked.version).toBe(1);
+
+      // The job takes the request and says what it does; the section follows it without a reload.
+      await rename(request, `${request}.taken`);
+      const running =
+        "Update now: looking for a new omp and testing it, since 2:14 PM. One that passes installs between 1 and 3 a.m.";
+      await writeFile(status, JSON.stringify({ version: 1, lastNight, running }));
+      await expect(section(page).getByRole("status")).toHaveText(running, { timeout: 30_000 });
+      await expect(updateNow).toBeDisabled();
+      // Done: a release waits for the install hour, also while automatic updates are off, since Update now asked for it.
+      await writeFile(
+        status,
+        JSON.stringify({
+          version: 1,
+          lastNight: {
+            at: "2026-11-15T21:00:00.000Z",
+            result: "omp 18.21.0 is ready; the app moves to it the next night between 1 and 3 a.m.",
+          },
+          pending: "18.21.0",
+          byRequest: true,
+        }),
+      );
+      await expect(section(page).getByRole("status")).toHaveCount(0, { timeout: 30_000 });
+      await expect(updateNow).toBeEnabled();
+      await toggle(page).click();
+      await expect(toggle(page)).not.toBeChecked();
+      await expect(section(page)).toContainText(
+        "omp 18.21.0 is ready: the app moves to it between 1 and 3 a.m.",
+      );
+    },
+  );
 });
