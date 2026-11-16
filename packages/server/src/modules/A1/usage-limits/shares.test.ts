@@ -104,7 +104,19 @@ describe("each chat's part of its provider's 5-hour window (#14)", () => {
     expect(shares.snapshot().providers[0]).toMatchObject({ used: 18, outside: 18 });
   });
 
-  test("a window whose percent falls, or whose reset has passed, starts over", async () => {
+  test("a chat's subagents' replies count as the chat's own, on their own provider", async () => {
+    const clock = { at: START };
+    const shares = await open(clock);
+    shares.onReading(read(10));
+    shares.onEvent(A, reply(1));
+    shares.onEvent(B, { type: "subagent_spend", provider: "anthropic", cost: 3, tokens: 9_000 });
+    shares.onEvent(B, { type: "subagent_spend", provider: "openai-codex", cost: 5, tokens: 9_000 });
+    clock.at += 5 * MIN;
+    shares.onReading(read(18));
+    expect(parts(shares)).toEqual({ [A]: 2, [B]: 6 });
+  });
+
+  test("a window whose reset has passed or moved, or whose percent falls far, starts over", async () => {
     const clock = { at: START };
     const shares = await open(clock);
     shares.onReading(read(40));
@@ -118,11 +130,53 @@ describe("each chat's part of its provider's 5-hour window (#14)", () => {
     shares.onReading(read(4, RESET + FIVE_HOURS));
     expect(parts(shares)).toEqual({ [B]: 4 });
     expect(shares.snapshot().providers[0]).toMatchObject({ outside: 0, since: RESET });
-    // The percent fell without a reset said (an account's window reset): it starts over too.
+    clock.at += 5 * MIN;
+    shares.onEvent(B, reply(1));
+    shares.onReading(read(30, RESET + FIVE_HOURS));
+    expect(parts(shares)).toEqual({ [B]: 30 });
+    // The percent fell far without a reset said (another account's window): it starts over too.
     clock.at += 5 * MIN;
     shares.onEvent(A, reply(1));
     shares.onReading(read(2, RESET + FIVE_HOURS));
     expect(parts(shares)).toEqual({ [A]: 2 });
+    // A reset time hours later, its reset missed between two readings: a new window.
+    clock.at += 5 * MIN;
+    shares.onEvent(B, reply(1));
+    shares.onReading(read(5, RESET + 2 * FIVE_HOURS));
+    expect(parts(shares)).toEqual({ [B]: 5 });
+  });
+
+  test("a reading that wobbles down a point keeps the window: no part is lost and no rise counted twice", async () => {
+    const clock = { at: START };
+    const shares = await open(clock);
+    shares.onReading(read(40));
+    shares.onEvent(A, reply(1));
+    clock.at += 5 * MIN;
+    shares.onReading(read(44));
+    // Anthropic's readings on 2026-11-15: 44, then 43 with the same reset, then 46.
+    clock.at += 2 * MIN;
+    shares.onEvent(B, reply(1));
+    shares.onReading(read(43));
+    expect(parts(shares)).toEqual({ [A]: 4 });
+    expect(shares.snapshot().providers[0]).toMatchObject({ used: 44, outside: 40, since: START });
+    clock.at += 5 * MIN;
+    shares.onReading(read(46));
+    expect(parts(shares)).toEqual({ [A]: 4, [B]: 2 });
+  });
+
+  test("what is spent while the reading does not rise waits for the next rise", async () => {
+    const clock = { at: START };
+    const shares = await open(clock);
+    shares.onReading(read(10));
+    shares.onEvent(A, reply(3));
+    clock.at += 5 * MIN;
+    shares.onReading(read(10));
+    expect(parts(shares)).toEqual({});
+    shares.onEvent(B, reply(1));
+    clock.at += 5 * MIN;
+    shares.onReading(read(14));
+    expect(parts(shares)).toEqual({ [A]: 3, [B]: 1 });
+    expect(shares.snapshot().providers[0]?.outside).toBe(10);
   });
 
   test("two accounts count together: their shares added up, over how many there are", async () => {

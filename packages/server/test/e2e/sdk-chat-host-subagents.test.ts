@@ -55,6 +55,26 @@ describe("the chat host's subagents", () => {
     );
 
     programTest(
+      `${program.name}: each subagent reply's cost reaches the server with subagent events off, for its chat's part of the usage window`,
+      async () => {
+        const chat = await chats.start(command);
+        await chat.client.hello;
+        await chat.client.request("prompt", { text: "spawn_subagent" });
+        await chat.next(resultOf("1"));
+        const spend = await chat.next((event) => event.type === "subagent_spend");
+        expect(spend).toMatchObject({ type: "subagent_spend", provider: expect.any(String) });
+        expect(spend.type === "subagent_spend" ? spend.tokens : 0).toBeGreaterThan(0);
+        // The subagent's own events stay off: only its spend goes out.
+        expect(
+          chat.events.some(
+            ({ event }) => event.type.startsWith("subagent_") && event.type !== "subagent_spend",
+          ),
+        ).toBe(false);
+      },
+      90_000,
+    );
+
+    programTest(
       `${program.name}: a running subagent is listed, and the app's message reaches it`,
       async () => {
         const { chat, id } = await startSubagent(command, "spawn_steerable_subagent");

@@ -130,6 +130,8 @@ export class SubagentRoster {
       bus.on(TASK_SUBAGENT_PROGRESS_CHANNEL, (data) =>
         this.#progress(data as SubagentProgressPayload),
       ),
+      // Every subagent reply's cost, whatever the level: the chat's part of its provider's window counts it.
+      bus.on(TASK_SUBAGENT_EVENT_CHANNEL, (data) => this.#spend(data as SubagentEventPayload)),
     ];
   }
 
@@ -266,6 +268,29 @@ export class SubagentRoster {
   #event(payload: SubagentEventPayload): void {
     if (this.#stale.has(payload.id) || this.#level !== "events") return;
     this.#emit({ type: "subagent_event", payload });
+  }
+
+  #spend(payload: SubagentEventPayload): void {
+    const { event } = payload;
+    if (this.#stale.has(payload.id) || event.type !== "message_end") return;
+    const message = event.message as {
+      readonly role?: unknown;
+      readonly provider?: unknown;
+      readonly usage?: {
+        readonly cost?: { readonly total?: unknown };
+        readonly totalTokens?: unknown;
+      };
+    };
+    if (message.role !== "assistant" || typeof message.provider !== "string") return;
+    const total = message.usage?.cost?.total;
+    const counted = message.usage?.totalTokens;
+    const cost = typeof total === "number" && Number.isFinite(total) ? Math.max(0, total) : 0;
+    const tokens =
+      typeof counted === "number" && Number.isFinite(counted)
+        ? Math.max(0, Math.round(counted))
+        : 0;
+    if (cost === 0 && tokens === 0) return;
+    this.#emit({ type: "subagent_spend", provider: message.provider, cost, tokens });
   }
 }
 

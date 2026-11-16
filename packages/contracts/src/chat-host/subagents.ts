@@ -91,4 +91,19 @@ export interface SubagentSessionEvent {
   readonly payload: SubagentEventPayload;
 }
 
-export type SubagentEvent = SubagentLifecycleEvent | SubagentProgressEvent | SubagentSessionEvent;
+/**
+ * What a subagent's reply cost, sent at every subscription level (the server counts it toward its chat's part of the
+ * provider's usage window): the provider, the price omp gives it in dollars, and its tokens.
+ */
+export interface SubagentSpendEvent {
+  readonly type: "subagent_spend";
+  readonly provider: string;
+  readonly cost: number;
+  readonly tokens: number;
+}
+
+export type SubagentEvent =
+  | SubagentLifecycleEvent
+  | SubagentProgressEvent
+  | SubagentSessionEvent
+  | SubagentSpendEvent;

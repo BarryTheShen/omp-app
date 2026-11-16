@@ -10,8 +10,14 @@ import type { ChatEvent } from "@omp-app/contracts/chat-host";
 
 /** The window a chat's part is counted in: its provider's 5-hour window (#14). */
 const FIVE_HOUR_MS = 5 * 3_600_000;
-/** A window's percent that falls by more than this from one reading to the next started over (a reset, or an account's). */
-const START_OVER_DROP = 0.5;
+/**
+ * A window's percent that falls by more than this from one reading to the next started over without its reset time
+ * saying so (another account's window). A smaller fall is the reading wobbling (Anthropic's went 44, 43, 46 within one
+ * window on 2026-11-15): the window goes on, and its highest reading stands.
+ */
+const START_OVER_DROP = 10;
+/** A reset time this much later than the window's is a new window's (one whose reset passed between two readings). */
+const RESET_MOVED_MS = 30 * 60_000;
 
 interface Logger {
   warn(event: string, fields: Record<string, string | number>): void;
@@ -84,8 +90,9 @@ const finite = (value: unknown): value is number =>
  * Each chat's part of its provider's 5-hour window (#14), an estimate. The server hears every chat's replies, each with
  * omp's price and tokens; at each fresh reading of the usage limits, a window's growth since the last reading goes to
  * the chats by what each spent on that provider meanwhile (by tokens when nothing had a price), and growth while no chat
- * spent goes outside the app (omp in a terminal, other computers), as does the use before the first reading. A window
- * whose percent falls, or whose reset has passed, starts over. Kept on disk, so a restart keeps the window's parts.
+ * spent goes outside the app (omp in a terminal, other computers), as does the use before the first reading. Spend in a
+ * reading that did not rise (whole percents, read every few minutes) waits for the next rise. A window whose reset has
+ * passed or moved, or whose percent falls far, starts over. Kept on disk, so a restart keeps the window's parts.
  */
 export class UsageShares {
   readonly #windows = new Map<string, Window>();
@@ -143,12 +150,24 @@ export class UsageShares {
     return shares;
   }
 
-  /** A chat's event: each reply's price and tokens count to its provider's window at the next reading. */
+  /**
+   * A chat's event: each reply's price and tokens count to its provider's window at the next reading, its subagents'
+   * replies (`subagent_spend`) as its own.
+   */
   onEvent(threadId: ThreadId, event: ChatEvent): void {
-    if (event.type !== "message_end" || event.message.role !== "assistant") return;
-    const { provider, usage } = event.message;
-    const cost = finite(usage?.cost?.total) ? Math.max(0, usage.cost.total) : 0;
-    const tokens = finite(usage?.totalTokens) ? Math.max(0, Math.round(usage.totalTokens)) : 0;
+    let provider: unknown;
+    let cost = 0;
+    let tokens = 0;
+    if (event.type === "subagent_spend") {
+      provider = event.provider;
+      cost = finite(event.cost) ? Math.max(0, event.cost) : 0;
+      tokens = finite(event.tokens) ? Math.max(0, Math.round(event.tokens)) : 0;
+    } else if (event.type === "message_end" && event.message.role === "assistant") {
+      const { usage } = event.message;
+      provider = event.message.provider;
+      cost = finite(usage?.cost?.total) ? Math.max(0, usage.cost.total) : 0;
+      tokens = finite(usage?.totalTokens) ? Math.max(0, Math.round(usage.totalTokens)) : 0;
+    } else return;
     if (typeof provider !== "string" || (cost === 0 && tokens === 0)) return;
     const spent = this.#spent.get(provider) ?? new Map<ThreadId, Spend>();
     const was = spent.get(threadId) ?? { cost: 0, tokens: 0 };
@@ -183,23 +202,32 @@ export class UsageShares {
         });
         continue;
       }
-      const startedOver =
-        use.used < window.used - START_OVER_DROP ||
-        (window.resetsAt !== null && now >= window.resetsAt);
+      const passed = window.resetsAt !== null && now >= window.resetsAt;
+      const moved =
+        window.resetsAt !== null &&
+        use.resetsAt !== null &&
+        use.resetsAt - window.resetsAt > RESET_MOVED_MS;
+      const startedOver = passed || moved || use.used < window.used - START_OVER_DROP;
       if (startedOver) {
         window.used = 0;
         window.outside = 0;
-        window.since = window.resetsAt !== null && now >= window.resetsAt ? window.resetsAt : now;
+        window.since = passed && window.resetsAt !== null ? window.resetsAt : now;
         window.chats = new Map();
       }
       const growth = Math.max(0, use.used - window.used);
+      window.resetsAt = use.resetsAt;
+      if (growth === 0) {
+        // Nothing to share yet: what was spent waits for the next rise of this window.
+        if (spent !== undefined) this.#spent.set(providerId, spent);
+        continue;
+      }
       let cost = 0;
       let tokens = 0;
       for (const each of spent?.values() ?? []) {
         cost += each.cost;
         tokens += each.tokens;
       }
-      if (growth > 0 && cost + tokens === 0) window.outside += growth;
+      if (cost + tokens === 0) window.outside += growth;
       for (const [threadId, each] of spent ?? []) {
         const weight = cost > 0 ? each.cost / cost : tokens > 0 ? each.tokens / tokens : 0;
         const part = window.chats.get(threadId) ?? { share: 0, cost: 0, tokens: 0 };
@@ -210,7 +238,6 @@ export class UsageShares {
         });
       }
       window.used = use.used;
-      window.resetsAt = use.resetsAt;
     }
     this.#keep();
   }

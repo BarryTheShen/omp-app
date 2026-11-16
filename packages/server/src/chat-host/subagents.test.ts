@@ -68,6 +68,27 @@ describe("the subagent roster", () => {
     ]);
   });
 
+  test("each subagent reply's cost goes out at every level, for the chat's part of its provider's window", () => {
+    const { bus, events } = roster();
+    const end = (usage: unknown) => ({
+      id: "a",
+      event: {
+        type: "message_end",
+        message: { role: "assistant", provider: "openai-codex", usage },
+      },
+    });
+    bus.emit(TASK_SUBAGENT_EVENT_CHANNEL, end({ cost: { total: 0.25 }, totalTokens: 4_000.4 }));
+    // Its own messages, the tool results, and a reply that cost nothing say nothing.
+    bus.emit(TASK_SUBAGENT_EVENT_CHANNEL, {
+      id: "a",
+      event: { type: "message_end", message: { role: "user", provider: "openai-codex" } },
+    });
+    bus.emit(TASK_SUBAGENT_EVENT_CHANNEL, end({ cost: { total: 0 }, totalTokens: 0 }));
+    expect(events).toEqual([
+      { type: "subagent_spend", provider: "openai-codex", cost: 0.25, tokens: 4_000 },
+    ]);
+  });
+
   test("after a session change the old subagents are gone, and their late progress is dropped", () => {
     const { bus, roster: subagents } = roster();
     bus.emit(TASK_SUBAGENT_LIFECYCLE_CHANNEL, started("a", "/sessions/a.jsonl"));
