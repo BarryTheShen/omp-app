@@ -106,6 +106,11 @@ export interface UsagePauseDeps {
   readonly resume: (threadId: ThreadId) => Promise<boolean>;
   /** Whether the chat is paused now, whoever paused it (the pause the chat's host reports). */
   readonly isPaused: (threadId: ThreadId) => boolean;
+  /**
+   * Whether the chat has work under way: a turn, or background work that will wake it (the process registry's busy
+   * mark). A held chat with none has nothing to continue, so it is let go at once, out of the stagger.
+   */
+  readonly isBusy?: (threadId: ThreadId) => boolean;
   /** The folder of a chat the server runs: a rule's chat has no mark to say it (#2836). */
   readonly folderOf?: (threadId: ThreadId) => string | undefined;
   /** Each window's pace from the server's readings (#2836): a rule's pace condition reads its 5-hour window's. */
@@ -792,12 +797,30 @@ export class UsagePause {
   }
 
   /**
-   * Continues the first due chat in the queue's order that no condition holds any more, if no chat continued in the last
+   * Lets go at once every due chat with nothing under way (idle when it was paused: nothing to continue); then continues
+   * the first due chat in the queue's order that no condition holds any more, if no chat continued in the last
    * `USAGE_CONTINUE_STAGGER_MS`; the others wait their turn, and one held again meanwhile stays held.
    */
   async #continueNext(): Promise<void> {
     if (this.#due.size === 0) return;
     const now = this.#deps.now();
+    for (const threadId of [...this.#order]) {
+      if (!this.#due.has(threadId) || this.#deps.isBusy?.(threadId) !== false) continue;
+      const hold = this.#holds.get(threadId);
+      if (hold === undefined) {
+        this.#due.delete(threadId);
+        continue;
+      }
+      const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
+      if (holding.length > 0) {
+        this.#due.delete(threadId);
+        this.#log(threadId, "held_again", hold);
+        this.#rehold(threadId, hold, holding);
+        continue;
+      }
+      await this.#release(threadId, "clear");
+    }
+    if (this.#due.size === 0) return;
     const wait = this.#lastContinue + USAGE_CONTINUE_STAGGER_MS - now;
     if (wait > 0) {
       this.#dispatchIn(wait);

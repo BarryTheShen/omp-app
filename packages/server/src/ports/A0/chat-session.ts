@@ -568,6 +568,7 @@ export class ChatSessionPortRuntime {
                 (done) => done === true,
               ),
             isPaused: (threadId) => this.#pausedOrWished(threadId),
+            isBusy: (threadId) => context.processRegistry.busyOf(threadId) === true,
             folderOf: (threadId) => context.processRegistry.folderOf(threadId),
             ...(context.usagePace === undefined ? {} : { pace: context.usagePace }),
             ...(context.logger === undefined ? {} : { logger: context.logger }),

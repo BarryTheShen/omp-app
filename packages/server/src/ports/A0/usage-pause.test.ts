@@ -647,6 +647,32 @@ describe("the usage queue (#2836)", () => {
     expect(pause.queue()).toEqual([]);
   });
 
+  test("after a reset, chats with nothing under way go at once; those at work keep the three-minute turns", async () => {
+    const busy = new Set<ThreadId>([A, B]);
+    const {
+      timer,
+      running,
+      sent,
+      rule: pause,
+    } = setup(NOTHING_KEPT, undefined, {
+      isBusy: (threadId) => busy.has(threadId),
+    });
+    for (const id of [A, B, C]) {
+      running.set(id, "anthropic");
+      await pause.setMark(id, FOLDER, 90);
+    }
+    await pause.onUsage(usage({ anthropic: { fiveHour: 95, resetsAt: timer.now + HOUR } }));
+    expect(sent).toEqual(["pause A", "pause B", "pause C"]);
+
+    await timer.advance(HOUR + USAGE_PAUSE_RESUME_GRACE_MS);
+    // C was idle: nothing to continue, so it does not wait its turn behind A and B.
+    expect(sent).toEqual(["pause A", "pause B", "pause C", "resume C", "resume A"]);
+    expect(pause.queue().map(({ id }) => id)).toEqual([B]);
+    await timer.advance(USAGE_CONTINUE_STAGGER_MS);
+    expect(sent.at(-1)).toBe("resume B");
+    expect(pause.queue()).toEqual([]);
+  });
+
   test("a chat waiting for its turn that the new window holds again stays held", async () => {
     const { timer, running, sent, rule: pause } = setup();
     for (const id of [A, B]) {
