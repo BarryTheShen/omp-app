@@ -79,6 +79,57 @@ realTest.describe("new UI: queued tasks", () => {
   );
 
   realTest(
+    "Queue for later picks a time in any browser: a quick time, the day, the hour on the clock and the minutes",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      const box = page.getByRole("textbox", { name: "Message" });
+      await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await box.fill("at a time I pick");
+      await page.getByRole("button", { name: "Queue for later" }).click();
+      const later = page.getByRole("dialog", { name: "Queue for later" });
+      await later.getByRole("radio", { name: "At a time" }).click();
+
+      // A quick time sets the day and the hour; then the clock, the minutes and the day each change their part.
+      await later.getByRole("button", { name: "Tomorrow, 9 a.m." }).click();
+      const status = later.getByRole("status");
+      await expect(status).toContainText("9:00 AM");
+      const hours = later.getByRole("group", { name: "Hour" });
+      await expect(hours.getByRole("button", { name: "9 a.m.", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await hours.getByRole("button", { name: "10 p.m.", exact: true }).click();
+      await later
+        .getByRole("group", { name: "Minutes" })
+        .getByRole("button", { name: ":45" })
+        .click();
+      await expect(status).toContainText("10:45 PM");
+      const day = new Date(Date.now() + 2 * 86_400_000);
+      const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      await later.getByLabel("Day").fill(iso);
+      const words = day.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      await expect(status).toHaveText(`Goes ${words}, 10:45 PM`);
+
+      await later.getByRole("button", { name: "Queue it" }).click();
+      await expect(later).toHaveCount(0);
+      await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+      const waiting = dashboard(page)
+        .getByRole("region", { name: "Tasks" })
+        .getByRole("list", { name: "Waiting tasks" })
+        .getByRole("listitem");
+      await expect(waiting).toHaveCount(1, { timeout: 30_000 });
+      await expect(waiting.nth(0)).toContainText("at a time I pick");
+      await expect(waiting.nth(0)).toContainText(/ · At \w+ (22:45|10:45\s?PM)/);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "on a phone, Queue for later is a row of ＋ once words are typed, and its sheet queues the message",
     async ({ realApp, browser }) => {
       const context = await browser.newContext({

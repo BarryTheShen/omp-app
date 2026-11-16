@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePhone } from "@/phone";
@@ -39,9 +39,121 @@ function hourArc(dial: Dial, hour: number): string {
 }
 
 /**
- * The install hour on a clock: a button reading the hour ("03:00") opens a dial of the day's 24 hours, a.m. on the outer
- * ring and p.m. on the inner; the window from the chosen hour (`length` hours) is drawn as an arc. Hours past `most`
- * are greyed (the window must end by midnight). Arrow keys move an hour; Enter or a click sets it.
+ * The day's 24 hours on a clock, a.m. on the outer ring and p.m. on the inner: a click (or Enter on the hour the arrow
+ * keys moved to) chooses one. With `length`, the window from the chosen hour is drawn as an arc; hours outside `least`
+ * to `most` are greyed. Shown in a popup by `HourDial`, or as it is inside a form.
+ */
+export function HourFace(props: {
+  readonly label: string;
+  readonly value: number;
+  readonly least?: number;
+  readonly most?: number;
+  /** How many hours the window from the chosen hour lasts; 0 draws none. */
+  readonly length?: number;
+  readonly onChoose: (hour: number) => void;
+}): ReactNode {
+  const dial = usePhone() ? PHONE : DESK;
+  const least = props.least ?? 0;
+  const most = props.most ?? 23;
+  /** The hour the keys have moved to, before it is chosen. */
+  const [focus, setFocus] = useState(props.value);
+  // A value changed from outside (a quick pick beside the dial) moves the highlight with it.
+  useEffect(() => setFocus(props.value), [props.value]);
+  const allowed = (hour: number): boolean => hour >= least && hour <= most;
+  const choose = (hour: number): void => {
+    if (!allowed(hour)) return;
+    setFocus(hour);
+    props.onChoose(hour);
+  };
+  const window = Array.from({ length: props.length ?? 0 }, (_, k) => (focus + k) % 24);
+  const onKeyDown = (event: KeyboardEvent<HTMLFieldSetElement>): void => {
+    const step =
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (step !== 0) {
+      event.preventDefault();
+      const next = Math.min(most, Math.max(least, focus + step));
+      setFocus(next);
+      (event.currentTarget.querySelector(`[data-hour="${next}"]`) as HTMLElement | null)?.focus();
+    }
+  };
+  return (
+    <>
+      <fieldset
+        aria-label={props.label}
+        className="relative m-0 mx-auto min-w-0 border-0 p-0"
+        style={{ width: dial.size, height: dial.size }}
+        onKeyDown={onKeyDown}
+      >
+        <svg aria-hidden="true" width={dial.size} height={dial.size} className="absolute inset-0">
+          <circle cx={dial.size / 2} cy={dial.size / 2} r={dial.size / 2 - 2} className="fill-l1" />
+          {window.map((hour) => (
+            <path
+              key={hour}
+              d={hourArc(dial, hour)}
+              className="fill-none stroke-primary/50"
+              strokeWidth={dial.button}
+              strokeLinecap="round"
+            />
+          ))}
+        </svg>
+        {HOURS.map((hour) => {
+          const at = point(dial, hour, ringOf(dial, hour));
+          const on = hour === focus;
+          const twelve = hour % 12 === 0 ? 12 : hour % 12;
+          return (
+            <button
+              key={hour}
+              type="button"
+              data-hour={hour}
+              aria-pressed={hour === props.value}
+              aria-label={dialHourWords(hour)}
+              disabled={!allowed(hour)}
+              tabIndex={hour === focus ? 0 : -1}
+              onClick={() => choose(hour)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  choose(hour);
+                }
+              }}
+              className={cn(
+                "absolute flex items-center justify-center rounded-full tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                hour < 12
+                  ? "text-[0.8125rem] text-t1 max-sm:text-base"
+                  : "text-xs text-t2 max-sm:text-sm",
+                on && "bg-primary font-medium text-primary-foreground",
+                !on && "hover:bg-l2",
+                "disabled:pointer-events-none disabled:text-t3/40",
+              )}
+              style={{
+                width: dial.button,
+                height: dial.button,
+                left: at.x - dial.button / 2,
+                top: at.y - dial.button / 2,
+              }}
+            >
+              {twelve}
+            </button>
+          );
+        })}
+      </fieldset>
+      {(props.length ?? 0) > 0 && (
+        <p className="mt-2 text-center text-xs text-t2">
+          From {dialHourWords(focus)} to {dialHourWords((focus + (props.length ?? 0)) % 24)}
+        </p>
+      )}
+      <p className="text-center text-[11px] text-t3">a.m. on the outer ring, p.m. on the inner</p>
+    </>
+  );
+}
+
+/**
+ * The install hour on a clock: a button reading the hour ("03:00") opens `HourFace`, with the window from the chosen
+ * hour (`length` hours) drawn as an arc. Hours past `most` are greyed (the window must end by 11 p.m.).
  */
 export function HourDial(props: {
   readonly label: string;
@@ -54,39 +166,8 @@ export function HourDial(props: {
   readonly onChange: (hour: number) => void;
 }): ReactNode {
   const [open, setOpen] = useState(false);
-  const dial = usePhone() ? PHONE : DESK;
-  /** The hour the keys have moved to, before it is set. */
-  const [focus, setFocus] = useState(props.value);
-  const allowed = (hour: number): boolean => hour >= props.least && hour <= props.most;
-  const choose = (hour: number): void => {
-    if (!allowed(hour)) return;
-    setOpen(false);
-    if (hour !== props.value) props.onChange(hour);
-  };
-  const shown = open ? focus : props.value;
-  const window = Array.from({ length: props.length }, (_, k) => (shown + k) % 24);
-  const onKeyDown = (event: KeyboardEvent<HTMLFieldSetElement>): void => {
-    const step =
-      event.key === "ArrowRight" || event.key === "ArrowDown"
-        ? 1
-        : event.key === "ArrowLeft" || event.key === "ArrowUp"
-          ? -1
-          : 0;
-    if (step !== 0) {
-      event.preventDefault();
-      const next = Math.min(props.most, Math.max(props.least, focus + step));
-      setFocus(next);
-      (event.currentTarget.querySelector(`[data-hour="${next}"]`) as HTMLElement | null)?.focus();
-    }
-  };
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) setFocus(props.value);
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -103,74 +184,17 @@ export function HourDial(props: {
         <span className="text-xs text-t3">{dialHourWords(props.value)}</span>
       </PopoverTrigger>
       <PopoverContent aria-label={props.label} className="w-auto p-3">
-        <fieldset
-          aria-label={props.label}
-          className="relative m-0 mx-auto min-w-0 border-0 p-0"
-          style={{ width: dial.size, height: dial.size }}
-          onKeyDown={onKeyDown}
-        >
-          <svg aria-hidden="true" width={dial.size} height={dial.size} className="absolute inset-0">
-            <circle
-              cx={dial.size / 2}
-              cy={dial.size / 2}
-              r={dial.size / 2 - 2}
-              className="fill-l1"
-            />
-            {window.map((hour) => (
-              <path
-                key={hour}
-                d={hourArc(dial, hour)}
-                className="fill-none stroke-primary/50"
-                strokeWidth={dial.button}
-                strokeLinecap="round"
-              />
-            ))}
-          </svg>
-          {HOURS.map((hour) => {
-            const at = point(dial, hour, ringOf(dial, hour));
-            const on = hour === shown;
-            const twelve = hour % 12 === 0 ? 12 : hour % 12;
-            return (
-              <button
-                key={hour}
-                type="button"
-                data-hour={hour}
-                aria-pressed={hour === props.value}
-                aria-label={dialHourWords(hour)}
-                disabled={!allowed(hour)}
-                tabIndex={hour === shown ? 0 : -1}
-                onClick={() => choose(hour)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    choose(hour);
-                  }
-                }}
-                className={cn(
-                  "absolute flex items-center justify-center rounded-full tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  hour < 12
-                    ? "text-[0.8125rem] text-t1 max-sm:text-base"
-                    : "text-xs text-t2 max-sm:text-sm",
-                  on && "bg-primary font-medium text-primary-foreground",
-                  !on && "hover:bg-l2",
-                  "disabled:pointer-events-none disabled:text-t3/40",
-                )}
-                style={{
-                  width: dial.button,
-                  height: dial.button,
-                  left: at.x - dial.button / 2,
-                  top: at.y - dial.button / 2,
-                }}
-              >
-                {twelve}
-              </button>
-            );
-          })}
-        </fieldset>
-        <p className="mt-2 text-center text-xs text-t2">
-          From {dialHourWords(shown)} to {dialHourWords((shown + props.length) % 24)}
-        </p>
-        <p className="text-center text-[11px] text-t3">a.m. on the outer ring, p.m. on the inner</p>
+        <HourFace
+          label={props.label}
+          value={props.value}
+          least={props.least}
+          most={props.most}
+          length={props.length}
+          onChoose={(hour) => {
+            setOpen(false);
+            if (hour !== props.value) props.onChange(hour);
+          }}
+        />
       </PopoverContent>
     </Popover>
   );

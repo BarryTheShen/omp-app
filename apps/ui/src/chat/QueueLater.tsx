@@ -2,11 +2,11 @@ import type { TaskWhen } from "@omp-app/contracts";
 import { Clock } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SHEET_ROW } from "./PlusMenu";
 import { fromLocalInput, localInput } from "./taskTime";
+import { inAnHour, WhenPicker } from "./WhenPicker";
 
 const ROW = "flex items-center gap-2 text-[0.8125rem] text-t1";
 
@@ -27,7 +27,7 @@ export function QueueLater({
 }): ReactNode {
   const [open, setOpen] = useState(false);
   const [when, setWhen] = useState<TaskWhen["kind"]>("free");
-  const [at, setAt] = useState(() => localInput(Date.now() + 60 * 60_000));
+  const [at, setAt] = useState(() => localInput(inAnHour(Date.now())));
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const row = `${ROW} ${phone ? "min-h-11" : "min-h-9 tablet:min-h-11"}`;
@@ -126,15 +126,7 @@ export function QueueLater({
             At a time
           </label>
         </RadioGroup>
-        {when === "at" && (
-          <Input
-            aria-label="Time"
-            type="datetime-local"
-            className={`dark:bg-transparent ${phone ? "h-11" : "tablet:h-11"}`}
-            value={at}
-            onChange={(event) => setAt(event.target.value)}
-          />
-        )}
+        {when === "at" && <WhenPicker value={at} onChange={setAt} phone={phone} />}
         <p className="text-xs text-pretty text-t3">
           It waits on the dashboard's Tasks and goes only while this chat is free: no turn running,
           not paused.

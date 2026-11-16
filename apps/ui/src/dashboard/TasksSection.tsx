@@ -11,7 +11,6 @@ import {
 import { ArrowDown, ArrowUp, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -23,8 +22,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatTarget } from "../chat/controller";
 import { fromLocalInput, localInput } from "../chat/taskTime";
+import { inAnHour, WhenPicker } from "../chat/WhenPicker";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
+import { usePhone } from "../phone";
 import { problemWords } from "./problems";
 
 const LATER = "Tasks come with the next server update.";
@@ -149,12 +150,13 @@ function TaskForm({
   readonly onCancel: () => void;
 }): ReactNode {
   const textId = useId();
+  const phone = usePhone();
   const choices = targetChoices(running);
   const [text, setText] = useState(task?.text ?? "");
   const [picked, setPicked] = useState(choices[0]?.value ?? "");
   const [when, setWhen] = useState<TaskWhen["kind"]>(task?.when.kind ?? "free");
   const [at, setAt] = useState(() =>
-    localInput(task?.when.kind === "at" ? task.when.at : Date.now() + 60 * 60_000),
+    localInput(task?.when.kind === "at" ? task.when.at : inAnHour(Date.now())),
   );
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -281,13 +283,9 @@ function TaskForm({
           </label>
         </RadioGroup>
         {when === "at" && (
-          <Input
-            aria-label="Time"
-            type="datetime-local"
-            className="w-56 dark:bg-transparent"
-            value={at}
-            onChange={(event) => setAt(event.target.value)}
-          />
+          <div className="w-72 max-w-full">
+            <WhenPicker value={at} onChange={setAt} phone={phone} />
+          </div>
         )}
         <p className="text-xs text-t3">
           A task goes only while its chat is free: no turn running, not paused, not held by a usage
