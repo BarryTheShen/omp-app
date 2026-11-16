@@ -188,10 +188,45 @@
 	outline-offset: 1px;
 }
 
-.tr-file:disabled,
-/* omp-app: what was open in the app that embeds the panel, sent with the message: shown, not a button. */
-.tr-context {
+.tr-file:disabled {
 	cursor: default;
+}
+
+/*
+ * omp-app: what was open in the app that embeds the panel when the message was sent: a quiet tag over the message, as
+ * Notion tags the page it read. Over the body's column (the gutter takes the row below it), at the body's edge.
+ */
+.tr-above {
+	grid-column: 2 / -1;
+	display: flex;
+	min-width: 0;
+	max-width: 100%;
+	margin: 0 0 4px;
+	padding: 0;
+	list-style: none;
+}
+
+.tr-context {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	max-width: 100%;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--fg-muted);
+	cursor: default;
+}
+
+.tr-context svg {
+	flex-shrink: 0;
+}
+
+.tr-context-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .tr-file-name {

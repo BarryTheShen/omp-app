@@ -3313,6 +3313,22 @@ const OMP_18_20_2_TOUR: Tour = {
   ],
 };
 
+/** What a side panel's app had open: a tag over the sent message (2026-11-16). */
+const CONTEXT_TAG_TOUR: Tour = {
+  id: "context-tag-2026-11-16",
+  title: "What went with a message",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "What went with a message",
+      text: "In a side panel (VS Code, the browser, a notes app), what you had open when you sent a message now shows as a small tag over the message, not inside it.",
+      action: next,
+    },
+  ],
+};
+
 /** Search chats by meaning: Settings → App → Search by meaning, then the sidebar's Search (2026-11-16). */
 const SEARCH_BY_MEANING_TOUR: Tour = {
   id: "search-by-meaning-2026-11-16",
@@ -3358,6 +3374,13 @@ const SEARCH_BY_MEANING_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-16-context-tag",
+    when: "2026-11-16T13:30:00-06:00",
+    summary:
+      "In a side panel (VS Code, the browser, a notes app), what you had open when you sent a message shows as a small tag over the message instead of a chip inside it.",
+    tours: [CONTEXT_TAG_TOUR],
+  },
   {
     id: "2026-11-16-search-by-meaning",
     when: "2026-11-16T01:24:00-06:00",

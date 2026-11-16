@@ -337,6 +337,19 @@
   border-radius: var(--r-card);
 }
 
+/* What was open in the panel's app when you sent it: a tag over your message, at its right edge, as Notion's. */
+.tl-item .tr-row--user > .tr-above {
+  grid-column: 1 / -1;
+  justify-self: end;
+  max-width: min(85%, 600px);
+  padding-inline: 4px;
+}
+
+.tl-item .tr-context {
+  font-size: calc(var(--host-text-size, 14px) * 12 / 14);
+  color: var(--t3);
+}
+
 /* Copy and Edit under your message (`MessageActions`): in the reader column, at the bubble's right edge. */
 .tl-item > .tr-row--actions {
   padding-block: 0;

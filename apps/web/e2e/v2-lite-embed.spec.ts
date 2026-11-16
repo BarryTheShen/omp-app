@@ -113,13 +113,31 @@ realTest.describe("new UI lite view framed by a host that speaks the embed proto
             (window as unknown as { calls: { name: string }[] }).calls.map((call) => call.name),
           ),
         ).toEqual(["page_title"]);
-        // The message shows what was typed, and what went with it as a chip, not the block.
+        // The message shows what was typed, and what went with it as a tag over the message (outside its bubble), not
+        // the block.
         const transcript = panel.getByRole("region", { name: "Transcript" });
-        await expect(transcript.getByText("call_tool page_title {}")).toBeVisible();
-        await expect(
-          transcript.getByRole("list", { name: "Sent with what was open in testhost" }),
-        ).toContainText("A selection on Host page title");
+        const typed = transcript.getByText("call_tool page_title {}");
+        await expect(typed).toBeVisible();
+        const tag = transcript.getByRole("list", { name: "Sent with what was open in testhost" });
+        await expect(tag).toContainText("A selection on Host page title");
         await expect(transcript.getByText("<host-context", { exact: false })).toHaveCount(0);
+        const bubble = typed.locator("xpath=ancestor::div[contains(@class,'tr-body')][1]");
+        await expect(
+          bubble.getByRole("list", { name: "Sent with what was open in testhost" }),
+        ).toHaveCount(0);
+        const [tagBox, bubbleBox] = [await tag.boundingBox(), await bubble.boundingBox()];
+        expect(tagBox?.y ?? 0).toBeLessThan(bubbleBox?.y ?? 0);
+        expect((tagBox?.y ?? 0) + (tagBox?.height ?? 0)).toBeLessThanOrEqual(
+          (bubbleBox?.y ?? 0) + 1,
+        );
+        // At the bubble's right edge, as the bubble sits.
+        expect(
+          Math.abs(
+            (tagBox?.x ?? 0) +
+              (tagBox?.width ?? 0) -
+              ((bubbleBox?.x ?? 0) + (bubbleBox?.width ?? 0)),
+          ),
+        ).toBeLessThan(12);
 
         // Left out, it goes with no message until the host says something else is open.
         await sentWith.getByRole("button", { name: "Don't send this" }).click();

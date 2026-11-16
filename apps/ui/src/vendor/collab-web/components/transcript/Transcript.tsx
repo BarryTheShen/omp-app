@@ -56,15 +56,19 @@ export function Row({
 	kind,
 	gutter,
 	title,
+	above,
 	children,
 }: {
 	kind: "user" | "assistant" | "custom" | "marker";
 	gutter: ReactNode;
 	title?: string;
+	/** omp-app: drawn over the body, outside it (a sent message's tag for what was open, as Notion tags its page). */
+	above?: ReactNode;
 	children: ReactNode;
 }): ReactNode {
 	return (
 		<div className={`tr-row tr-row--${kind}`}>
+			{above}
 			<div className="tr-gutter" title={title}>
 				{gutter}
 			</div>
@@ -184,16 +188,17 @@ function withoutAdded(content: UserContent): {
 	};
 }
 
-/** omp-app: what was open in the app that embeds the panel when the message was sent, as one chip; its address in a tip. */
+/**
+ * omp-app: what was open in the app that embeds the panel when the message was sent, as a quiet tag over the message
+ * (as Notion tags the page it read), not inside it; its address in a tip.
+ */
 function SentContext({ context }: { context: SentHostContext }): ReactNode {
 	const what = describeHostContext(context);
 	return (
-		<ul className="tr-files" aria-label={`Sent with what was open in ${context.host}`}>
-			<li>
-				<span className="tr-file tr-context" title={context.uri ?? context.title}>
-					<Eye size={14} aria-hidden />
-					<span className="tr-file-name">{what}</span>
-				</span>
+		<ul className="tr-above" aria-label={`Sent with what was open in ${context.host}`}>
+			<li className="tr-context" title={context.uri ?? context.title}>
+				<Eye size={13} aria-hidden />
+				<span className="tr-context-name">{what}</span>
 			</li>
 		</ul>
 	);
@@ -404,16 +409,20 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 			// omp-app: `custom` is omp's own message kind, which the wire's role list does not name.
 			switch (msg.role as string) {
 				case "user": {
-					// omp-app: the files a message names (#2830) are drawn as chips under its text, not as the paragraph; so is
-					// what was open in the app that embeds the panel.
+					// omp-app: the files a message names (#2830) are drawn as chips under its text, not as the paragraph; what
+					// was open in the app that embeds the panel is a tag over the message.
 					const { content, files, context } = withoutAdded(
 						(msg as Extract<typeof msg, { role: "user" }>).content,
 					);
 					return (
-						<Row kind="user" gutter="host" title={entry.timestamp}>
+						<Row
+							kind="user"
+							gutter="host"
+							title={entry.timestamp}
+							above={context === null ? undefined : <SentContext context={context} />}
+						>
 							<MsgContent content={content} />
 							{files.length > 0 && <AttachedFiles files={files} host={host} />}
-							{context !== null && <SentContext context={context} />}
 						</Row>
 					);
 				}
