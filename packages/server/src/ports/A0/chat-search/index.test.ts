@@ -168,6 +168,19 @@ describe("the index", () => {
     expect(found.map((match) => match.threadId)).not.toContain("tools");
   });
 
+  test("a chat kept twice shows once; one only near the best match is left out", async () => {
+    const { add, open } = await setup();
+    await add("garden", "Spring planting", line("user", "water tomatoes garden"));
+    await add("garden-copy", "Spring planting", line("user", "water tomatoes garden"));
+    // Shares two of the three: about 0.58, over the floor but far below the best (1.0).
+    await add("near", "Builds", line("user", "water garden release build"));
+    const index = open();
+    await index.runOnce();
+    const found = await index.search(CONFIG, "water tomatoes garden", 10);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ title: "Spring planting", score: 1 });
+  });
+
   test("a chat that grew is read only from where it was left; one that did not is not read again", async () => {
     const { add, resize, open, stand } = await setup();
     const file = await add("keys", "Secrets", line("user", "rotate the keys"));
@@ -181,7 +194,9 @@ describe("the index", () => {
     await index.runOnce();
     // Only the tail is embedded again, now holding both messages; the title is not.
     expect(stand.calls.at(-1)).toEqual(["rotate the keys\n\nand the release build"]);
-    expect(String((await index.search(CONFIG, "release build", 5))[0]?.threadId)).toBe("keys");
+    expect(String((await index.search(CONFIG, "rotate keys release build", 5))[0]?.threadId)).toBe(
+      "keys",
+    );
   });
 
   test("it is kept across restarts; a removed chat leaves it; another model starts it anew", async () => {

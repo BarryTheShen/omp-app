@@ -44,8 +44,13 @@ const READ_BYTES = 8 * 1024 * 1024;
 /** The query instruction Qwen3-Embedding is trained with (its format `Instruct: <task>\nQuery: `); passages are plain. */
 const QUERY_INSTRUCTION =
   "Instruct: Given a search query, retrieve relevant passages from chats\nQuery: ";
-/** Matches less close than this are left out (cosine; set from real queries, PLAN-search-by-meaning.md M3). */
-export const FLOOR = 0.35;
+/**
+ * Matches less close than this are left out (cosine, Qwen3-Embedding 0.6B). Set from 350 real chats on 2026-11-16: the
+ * real matches scored 0.6 to 0.85, chats about something else 0.45 to 0.5, and a query no chat was about 0.38.
+ */
+export const FLOOR = 0.45;
+/** Matches this far below the best are left out too: one clear match is not followed by the chats merely near it. */
+export const BELOW_BEST = 0.25;
 /** How soon after a chat's turn ends its new talk is indexed. */
 export const NUDGE_MS = 5_000;
 
@@ -343,7 +348,16 @@ export function createChatIndex(options: ChatIndexOptions): ChatSearchIndex & {
         if (top !== undefined && top.score >= FLOOR) best.push({ file, state, ...top });
       }
       best.sort((a, b) => b.score - a.score);
-      return best.slice(0, limit).map(({ file, state, chunk, score }) => ({
+      const cutoff = (best[0]?.score ?? 0) - BELOW_BEST;
+      // A chat kept twice (a copy, a branch with the same start) shows once: its title and passage are the same.
+      const seen = new Set<string>();
+      const unique = best.filter(({ state, chunk, score }) => {
+        const key = `${state.title}\n${chunk.text}`;
+        if (score < cutoff || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return unique.slice(0, limit).map(({ file, state, chunk, score }) => ({
         threadId: state.thread,
         title: state.title,
         folder: state.folder,
