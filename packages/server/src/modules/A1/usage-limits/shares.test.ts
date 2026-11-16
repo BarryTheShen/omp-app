@@ -134,16 +134,23 @@ describe("each chat's part of its provider's 5-hour window (#14)", () => {
     shares.onEvent(B, reply(1));
     shares.onReading(read(30, RESET + FIVE_HOURS));
     expect(parts(shares)).toEqual({ [B]: 30 });
-    // The percent fell far without a reset said (another account's window): it starts over too.
+    // The percent fell far without a reset said (another account's window): it starts over too, and the use the new
+    // window already has came before this count, as on a first reading: outside, not the last few minutes' spenders'.
     clock.at += 5 * MIN;
     shares.onEvent(A, reply(1));
-    shares.onReading(read(2, RESET + FIVE_HOURS));
-    expect(parts(shares)).toEqual({ [A]: 2 });
-    // A reset time hours later, its reset missed between two readings: a new window.
+    shares.onReading(read(12, RESET + FIVE_HOURS));
+    expect(parts(shares)).toEqual({});
+    expect(shares.snapshot().providers[0]).toMatchObject({ used: 12, outside: 12 });
+    // A reset time hours later without its reset having passed (the account changed): a new window, its use outside.
     clock.at += 5 * MIN;
     shares.onEvent(B, reply(1));
-    shares.onReading(read(5, RESET + 2 * FIVE_HOURS));
-    expect(parts(shares)).toEqual({ [B]: 5 });
+    shares.onReading(read(40, RESET + 2 * FIVE_HOURS));
+    expect(parts(shares)).toEqual({});
+    expect(shares.snapshot().providers[0]).toMatchObject({ used: 40, outside: 40 });
+    // The spend meanwhile waited, and goes with the next rise.
+    clock.at += 5 * MIN;
+    shares.onReading(read(44, RESET + 2 * FIVE_HOURS));
+    expect(parts(shares)).toEqual({ [A]: 2, [B]: 2 });
   });
 
   test("a reading that wobbles down a point keeps the window: no part is lost and no rise counted twice", async () => {

@@ -209,9 +209,14 @@ export class UsageShares {
         use.resetsAt - window.resetsAt > RESET_MOVED_MS;
       const startedOver = passed || moved || use.used < window.used - START_OVER_DROP;
       if (startedOver) {
-        window.used = 0;
-        window.outside = 0;
-        window.since = passed && window.resetsAt !== null ? window.resetsAt : now;
+        // The reset passed: the new window's use came since its reset, and goes to the chats that spent meanwhile.
+        // Started over any other way (the percent fell far, the reset moved: another account's window), who used what it
+        // already has is unknown, as on a first reading: outside the app. Else that whole percent went to the chats that
+        // spent in the last few minutes (55% of a window to one chat for $16, 2026-11-16).
+        const reset = passed && window.resetsAt !== null;
+        window.used = reset ? 0 : use.used;
+        window.outside = reset ? 0 : use.used;
+        window.since = reset && window.resetsAt !== null ? window.resetsAt : now;
         window.chats = new Map();
       }
       const growth = Math.max(0, use.used - window.used);
