@@ -33,6 +33,7 @@ import { LOCAL_SERVER_LABEL, remoteServerLabel } from "../desktop/ServerSection"
 import { KEYS, keycap } from "../keys/table";
 import { showPanel, togglePanel, usePanelState } from "../panels/panel-state";
 import { PANELS } from "../panels/registry";
+import { snippet, useMeaningSearch } from "../sidebar/meaning";
 import type { ChatList } from "../sidebar/useChatList";
 import { setSystemTheme, setThemeChoice, setThemeMode, THEMES } from "../theme/theme";
 import { startTour } from "../tour/runner";
@@ -51,6 +52,8 @@ interface Item {
   readonly run: () => void;
   /** Found by typing only (each theme, each tour, each of omp's commands): an empty palette leaves it out. */
   readonly typed?: true;
+  /** Already what a search found for the query (a file, a chat by meaning): the words need not be in its name. */
+  readonly found?: true;
 }
 
 /**
@@ -312,6 +315,21 @@ export function Palette({
     };
   }, [wantsFiles, query, controller]);
 
+  // The chats closest in meaning, asked once typing pauses, while the palette shows chats.
+  const meaning = useMeaningSearch(client, query, open && (scope === "All" || scope === "Chats"));
+  const meaningMatches = meaning.kind === "found" ? meaning.matches : [];
+  // A chat whose title has the words is listed by its title already.
+  const typedWords = query.trim().toLowerCase();
+  const titled = new Set(
+    list.sessions
+      .filter((session) =>
+        (session.displayTitle ?? session.title ?? session.firstPrompt ?? "")
+          .toLowerCase()
+          .includes(typedWords),
+      )
+      .map((session) => session.id),
+  );
+
   const close = (then: () => void): void => {
     onOpenChange(false);
     // After the palette lets go of the focus, so the action can move it.
@@ -508,6 +526,30 @@ export function Palette({
             ),
           ),
       })),
+      // After the chats whose title has the words, the ones whose talk is closest in meaning (Search by meaning).
+      ...meaningMatches
+        .filter((match) => !titled.has(match.threadId))
+        .map((match) => ({
+          key: `meaning:${match.threadId}`,
+          group: "Chats" as const,
+          label: match.title === "" ? "Untitled chat" : match.title,
+          detail: snippet(match.passage, query)
+            .map((part) => part.text)
+            .join(""),
+          found: true as const,
+          run: () =>
+            close(() =>
+              onOpenChat(
+                {
+                  kind: "existing",
+                  threadId: match.threadId,
+                  sessionFile: match.sessionFile,
+                  folder: match.folder,
+                },
+                "front",
+              ),
+            ),
+        })),
       ...models.map((model) => ({
         key: `model:${model.provider}/${model.id}`,
         group: "Models" as const,
@@ -520,8 +562,9 @@ export function Palette({
     return all.filter(
       (item) =>
         (scope === "All" || item.group === scope) &&
-        // A file is already what the search found for the query.
+        // A file, or a chat found by meaning, is already what a search found for the query.
         (item.group === "Files" ||
+          item.found === true ||
           (needle === ""
             ? item.typed !== true
             : `${item.label} ${item.detail ?? ""}`.toLowerCase().includes(needle))),

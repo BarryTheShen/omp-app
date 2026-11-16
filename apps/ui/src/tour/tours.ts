@@ -3313,11 +3313,58 @@ const OMP_18_20_2_TOUR: Tour = {
   ],
 };
 
+/** Search chats by meaning: Settings → App → Search by meaning, then the sidebar's Search (2026-11-16). */
+const SEARCH_BY_MEANING_TOUR: Tour = {
+  id: "search-by-meaning-2026-11-16",
+  title: "Find a chat by what was said",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "Search by meaning is under <b>App</b>, this app's own settings. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("search-by-meaning"),
+      title: "Search by meaning",
+      text: "Set an embedding service here (any OpenAI-style <b>/embeddings</b> address, its model and key), <b>Test</b> it, and turn it on. What you and omp wrote in each chat is indexed in the background, newest chats first; tool output is not.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("search-chats"),
+      title: "Search",
+      text: "Type here as before: chats whose title has the words show at once, and a moment later <b>By meaning</b> lists the chats whose talk is closest to them, each with the passage that matched, even when no word is shared. The palette ({palette}) finds them too.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-16-search-by-meaning",
+    when: "2026-11-16T01:24:00-06:00",
+    summary:
+      "Search finds chats by meaning: once an embedding service is set in Settings → App → Search by meaning, the sidebar's Search and the palette also list the chats whose talk is closest to your words, each with the passage that matched, after the chats whose title has them. What you and omp wrote is indexed in the background; tool output is not, and with it off nothing is sent anywhere.",
+    tours: [SEARCH_BY_MEANING_TOUR],
+  },
   {
     id: "2026-11-16-omp-18-20-2",
     when: "2026-11-16T06:26:46Z",

@@ -14,6 +14,9 @@ import type { TaskDelivery } from "./tasks";
 
 export * from "./app";
 export * from "./browser/browser";
+export * from "./chat-search/index";
+export * from "./chat-search/port";
+export { readChatSearchConfig } from "./chat-search/settings";
 export * from "./chat-session";
 export * from "./context";
 export * from "./devices";

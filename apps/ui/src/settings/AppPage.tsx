@@ -10,6 +10,7 @@ import { DebugLog } from "./DebugLog";
 import { Devices } from "./Devices";
 import { OmpSection } from "./OmpSection";
 import { QuickPromptsSection } from "./QuickPromptsSection";
+import { SearchSection } from "./SearchSection";
 
 /**
  * The app's own settings, before omp's tabs: how it looks, a phone's quick prompts, the server it is connected to, the
@@ -64,6 +65,7 @@ export function AppPage({
       {phone && <QuickPromptsSection />}
       <ServerSection focusLink={focusServerLink} />
       <OmpSection client={client} />
+      <SearchSection client={client} />
       <Devices client={client} />
       <DebugLog client={client} />
       <h3 className="mt-6 mb-3 text-xs font-medium text-t3">Keys</h3>

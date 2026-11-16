@@ -553,6 +553,7 @@ function Shell({
       <RequestPrompt client={client} />
       <SecretNotice client={client} />
       <Sidebar
+        client={client}
         folderMenu={<FolderMenu client={client} choice={choice} />}
         folder={folder}
         home={choice.home}

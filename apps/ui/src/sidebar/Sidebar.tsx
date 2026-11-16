@@ -1,3 +1,4 @@
+import type { AppClient } from "@omp-app/client";
 import type {
   FolderPath,
   RunningChat,
@@ -67,6 +68,7 @@ import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
 import type { OpenHow, WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
+import { snippet, useMeaningSearch } from "./meaning";
 import { titleOf } from "./title";
 import type { ChatList } from "./useChatList";
 
@@ -105,6 +107,7 @@ const REVEAL =
  * them, the chats that run in other folders (D1), each with its folder's name: this folder's are in the list already.
  */
 export function Sidebar({
+  client,
   folderMenu,
   folder,
   home,
@@ -127,6 +130,8 @@ export function Sidebar({
   edge,
   onHide,
 }: {
+  /** The server, for the search by meaning. */
+  readonly client: AppClient;
   /** The folder at the top, with its menu to switch it. */
   readonly folderMenu: ReactNode;
   readonly folder: FolderPath;
@@ -418,6 +423,20 @@ export function Sidebar({
         {needle !== "" && shown.length === 0 && starting.length === 0 && elsewhere.length === 0 && (
           <p className="px-2 py-1 text-xs text-t3">No chat's title has "{query.trim()}".</p>
         )}
+        <ByMeaning
+          client={client}
+          query={query}
+          shownByTitle={
+            new Set([
+              ...shown.map((session) => session.id),
+              ...elsewhere.map((chat) => chat.threadId),
+            ])
+          }
+          home={home}
+          view={view}
+          onOpen={onOpen}
+          onSettings={onSettings}
+        />
       </div>
       {problem !== null && (
         <p role="alert" className="px-2 py-1 text-xs text-bad-ink">
@@ -565,6 +584,92 @@ export function Sidebar({
       </AlertDialog>
       {edge}
     </nav>
+  );
+}
+
+/**
+ * Under the title matches, the chats whose talk is closest in meaning to the search's words (Settings → App → Search by
+ * meaning), each with the passage that matched and its folder; a chat the titles already show is not listed again.
+ */
+function ByMeaning({
+  client,
+  query,
+  shownByTitle,
+  home,
+  view,
+  onOpen,
+  onSettings,
+}: {
+  readonly client: AppClient;
+  readonly query: string;
+  readonly shownByTitle: ReadonlySet<ThreadId>;
+  readonly home: FolderPath | null;
+  readonly view: WorkspaceView;
+  readonly onOpen: (target: ChatTarget, how: OpenHow) => void;
+  readonly onSettings: () => void;
+}): ReactNode {
+  const search = useMeaningSearch(client, query);
+  if (search.kind === "idle") return null;
+  if (search.kind === "searching") {
+    return <p className="px-2 pt-4 text-xs text-t3">Searching by meaning…</p>;
+  }
+  if (search.kind === "off") {
+    return (
+      <p className="px-2 pt-4 text-xs text-t3">
+        Search by meaning is off.{" "}
+        <button type="button" className="text-t2 underline hover:text-t1" onClick={onSettings}>
+          Settings
+        </button>
+      </p>
+    );
+  }
+  if (search.kind === "failed") {
+    return <p className="px-2 pt-4 text-xs text-t3">Search by meaning failed: {search.message}</p>;
+  }
+  const matches = search.matches.filter((match) => !shownByTitle.has(match.threadId));
+  if (matches.length === 0) return null;
+  return (
+    <Section label="By meaning">
+      {matches.map((match) => (
+        <li key={match.threadId} className="rounded-md hover:bg-l1 has-[[aria-current=true]]:bg-l2">
+          <button
+            type="button"
+            className="flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1 text-left text-t2 outline-none hover:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-[current=true]:text-t1 max-sm:min-h-11 tablet:min-h-11"
+            aria-current={view.focused === match.threadId ? "true" : undefined}
+            onClick={(event) =>
+              // As a chat row opens: Ctrl or ⌘ in a workspace behind this one, Alt in a window beside.
+              onOpen(
+                {
+                  kind: "existing",
+                  threadId: match.threadId,
+                  sessionFile: match.sessionFile,
+                  folder: match.folder,
+                },
+                event.altKey ? "beside" : event.ctrlKey || event.metaKey ? "behind" : "front",
+              )
+            }
+          >
+            <span className="truncate text-[0.8125rem]">
+              {match.title === "" ? "Untitled chat" : match.title}
+            </span>
+            <span className="line-clamp-2 text-xs text-t3">
+              {snippet(match.passage, query).map((part, index) =>
+                part.marked ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed text, in order
+                  <mark key={index} className="bg-transparent font-medium text-t1">
+                    {part.text}
+                  </mark>
+                ) : (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed text, in order
+                  <span key={index}>{part.text}</span>
+                ),
+              )}
+            </span>
+            <span className="truncate text-[11px] text-t3">{folderName(match.folder, home)}</span>
+          </button>
+        </li>
+      ))}
+    </Section>
   );
 }
 

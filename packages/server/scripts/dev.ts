@@ -83,6 +83,8 @@ import {
   type A0PortContext,
   createA0Runtime,
   createBrowserRuntime,
+  createChatIndex,
+  createChatSearchRegistration,
   createDevicesPortRegistration,
   createQuestionsRuntime,
   createRunningChatsRuntime,
@@ -90,7 +92,9 @@ import {
   createStatsRegistration,
   createTasksRuntime,
   createTodosRuntime,
+  type IndexedChat,
   OmpStats,
+  readChatSearchConfig,
   runningChatTitle,
   TASKS_CHANGED,
   TaskQueue,
@@ -946,6 +950,41 @@ export async function createCompositionServer(
     watchStreams: watchStreamActivity,
     logger,
   });
+  // Search chats by meaning (Settings → App → Search by meaning): its settings and key in the app's data folder, and its
+  // index of every top-level chat's talk (`chat-index.sqlite`), brought up to date in the background while it is on.
+  const chatSearchFiles = {
+    settings: join(appDataDir, "search-settings.json"),
+    key: join(appDataDir, "search-key"),
+  };
+  const chatIndex = createChatIndex({
+    path: join(appDataDir, "chat-index.sqlite"),
+    chats: async () =>
+      (await sessionFileStore.listSessions({})).sessions.map(
+        (session): IndexedChat => ({
+          threadId: session.id as IndexedChat["threadId"],
+          sessionFile: session.sessionFile as IndexedChat["sessionFile"],
+          // The title the chat list shows: omp's title without its card, or the first message of an untitled chat.
+          title:
+            (session.title === undefined ? null : sessionDisplayTitle(session.title)) ??
+            session.firstPrompt ??
+            "",
+          folder: session.cwd as IndexedChat["folder"],
+          sizeBytes: session.sizeBytes,
+        }),
+      ),
+    config: () => readChatSearchConfig(chatSearchFiles),
+    changed: () => chatSearch.changed(),
+    logger,
+  });
+  const chatSearch = createChatSearchRegistration({
+    files: chatSearchFiles,
+    index: chatIndex,
+    publish,
+    logger,
+  });
+  chatIndex.start();
+  // A chat's new talk is searchable a few seconds after its turn ends.
+  a0Runtime.tasks.onTurnEnd(() => chatIndex.nudge());
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
     createDevicesPortRegistration({
@@ -962,6 +1001,7 @@ export async function createCompositionServer(
     // omp's statistics in brief for the dashboard, read from the page the shares run (#2836 D6).
     createStatsRegistration({ stats: ompStats }),
     browserRuntime.registration,
+    chatSearch,
     ...createA1PortRegistrations(a1Context),
   ]);
   const uiRoot = options.uiRoot ?? resolve(import.meta.dir, "../../..", "apps/ui/dist");
@@ -1049,6 +1089,7 @@ export async function createCompositionServer(
           runningChats.stop();
           todos.stop();
           siyuanCopy.stop();
+          chatIndex.stop();
           questions.stop();
           await openQuestions.settled();
           await browserRuntime.stop();
