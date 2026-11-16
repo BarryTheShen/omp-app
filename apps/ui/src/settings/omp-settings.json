@@ -1,5 +1,5 @@
 {
-  "omp": "18.20.0",
+  "omp": "18.20.2",
   "tabs": [
     {
       "id": "appearance",
@@ -5254,6 +5254,15 @@
       "default": []
     },
     {
+      "key": "bash.allowedEnvVars",
+      "tab": "shell",
+      "group": "Bash",
+      "type": "array",
+      "label": "Bash Allowed Environment Variables",
+      "description": "Exact environment variable names allowed as leading KEY=VALUE prefixes when matching bash.patterns allow rules (no wildcards). Any value is accepted, so list only benign build/test variables; execution-altering variables (PATH, LD_PRELOAD, BASH_ENV, *_RUNNER, *_WRAPPER) allow arbitrary command execution.",
+      "default": []
+    },
+    {
       "key": "bashInterceptor.enabled",
       "tab": "shell",
       "group": "Bash",
@@ -5732,6 +5741,37 @@
       ]
     },
     {
+      "key": "todo.midRunNudges",
+      "tab": "tools",
+      "group": "Todos",
+      "type": "enum",
+      "label": "Mid-Run Todo Nudges",
+      "description": "How often a long turn is reminded to update its todo list while it keeps changing things",
+      "default": "capped",
+      "values": [
+        "off",
+        "capped",
+        "backoff"
+      ],
+      "choices": [
+        {
+          "value": "off",
+          "label": "Off",
+          "description": "Never nudge mid-run"
+        },
+        {
+          "value": "capped",
+          "label": "Capped",
+          "description": "Nudge after 12 edits or commands, at most twice until the todo list changes or you send a message"
+        },
+        {
+          "value": "backoff",
+          "label": "Backoff",
+          "description": "Keep nudging with a doubling gap: after 12, 24, 48, 96, then every 192 edits or commands"
+        }
+      ]
+    },
+    {
       "key": "todo.eager",
       "tab": "tools",
       "group": "Todos",
@@ -5828,7 +5868,7 @@
       "type": "number",
       "label": "Grep Context Before",
       "description": "Lines of context before each grep match",
-      "default": 1,
+      "default": 0,
       "choices": [
         {
           "value": "0",
@@ -5859,7 +5899,7 @@
       "type": "number",
       "label": "Grep Context After",
       "description": "Lines of context after each grep match",
-      "default": 3,
+      "default": 0,
       "choices": [
         {
           "value": "0",
@@ -6005,6 +6045,15 @@
       "type": "boolean",
       "label": "Archive",
       "description": "Enable the read-only archive eval prelude: prompt history, recent projects, past sessions and recaps",
+      "default": true
+    },
+    {
+      "key": "commit.enabled",
+      "tab": "tools",
+      "group": "Available Tools",
+      "type": "boolean",
+      "label": "Selective commit",
+      "description": "Enable the commit eval prelude and /commit: commit only the lines this agent and its subagents wrote",
       "default": true
     },
     {
@@ -7567,6 +7616,23 @@
       "label": "OpenCode Project Commands",
       "description": "Load commands from .opencode/commands/",
       "default": true
+    },
+    {
+      "key": "auth.unpausedProviders",
+      "tab": "providers",
+      "group": "Services",
+      "type": "array",
+      "label": "Unpaused Providers",
+      "description": "Turn providers we paused back on: login, token refresh and stored credentials work again. Each pause names the account risk you accept. Project settings cannot set this",
+      "default": [],
+      "choices": [
+        {
+          "value": "google-antigravity",
+          "label": "Google Antigravity (Gemini, Claude, GPT-OSS)",
+          "description": "Google Antigravity is paused: Google's terms do not allow third-party sign-in and Google has suspended accounts that used it (see #18341). Use GEMINI_API_KEY (AI Studio) or google-vertex instead."
+        }
+      ],
+      "condition": "unpausedProvidersNotProject"
     },
     {
       "key": "providers.maxInFlightRequests",
