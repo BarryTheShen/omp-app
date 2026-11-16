@@ -510,6 +510,7 @@ export async function createCompositionServer(
     ompUpdates: {
       status: join(appDataDir, "omp-update.json"),
       settings: join(appDataDir, "omp-update-settings.json"),
+      request: join(appDataDir, "omp-update-request.json"),
     },
     usagePauseFile: join(appDataDir, "usage-pause.json"),
     usagePauseExtrasFile: join(appDataDir, "usage-pause-extras.json"),

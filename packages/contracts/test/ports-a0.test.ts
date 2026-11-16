@@ -80,4 +80,27 @@ describe("AppPort", () => {
     expect(AppHealth.safeParse({ status: "broken" }).success).toBe(false);
     expect(AppPort.methods.health.args.safeParse({ unexpected: true }).success).toBe(false);
   });
+
+  test("an omp updates change names at least one setting, each within its range", () => {
+    const set = AppPort.methods.setOmpUpdates.args;
+    for (const change of [
+      { enabled: false },
+      { everyNights: 1 },
+      { everyNights: 14 },
+      { installHour: 0 },
+      { installHour: 21, everyNights: 7 },
+    ])
+      expect(set.safeParse(change).success).toBe(true);
+    for (const change of [
+      {},
+      { everyNights: 0 },
+      { everyNights: 15 },
+      { everyNights: 2.5 },
+      { installHour: 22 },
+      { installHour: -1 },
+      { installHour: 3, extra: true },
+    ])
+      expect(set.safeParse(change).success).toBe(false);
+    expect(AppPort.methods.requestOmpUpdate.args.safeParse({}).success).toBe(true);
+  });
 });

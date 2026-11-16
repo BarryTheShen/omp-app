@@ -7,6 +7,8 @@ import {
   type ClientErrorReport,
   type ClientTraceReport,
   type DebugReport,
+  OMP_UPDATE_HOURS,
+  OMP_UPDATE_NIGHTS,
   type OmpUpdates,
   type SetOmpUpdatesArgs,
   UsableModels,
@@ -15,7 +17,12 @@ import { truncate } from "../../logging";
 import { fileWatchMessage } from "../../modules/A1/fs/file-watch-registry";
 import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
 import type { A0PortContext } from "./context";
-import { readOmpUpdates, setOmpUpdates } from "./omp-updates";
+import {
+  type OmpUpdateFiles,
+  readOmpUpdates,
+  requestOmpUpdate,
+  setOmpUpdates,
+} from "./omp-updates";
 
 /**
  * The health the page reads: the start-up checks, and the watched files the app cannot see changes for right now.
@@ -32,6 +39,25 @@ export function currentHealth(context: Pick<A0PortContext, "health" | "fileWatch
 /** A page stuck in a loop must not fill the log: at most this many reports a minute are written. */
 const CLIENT_ERRORS_PER_MINUTE = 30;
 const MINUTE_MS = 60_000;
+
+/** A run with no update job's files (a test, a dev run): updates read as on, the usual schedule, nothing asked or done. */
+const NO_JOB: OmpUpdates = {
+  enabled: true,
+  schedule: { everyNights: OMP_UPDATE_NIGHTS.usual, installHour: OMP_UPDATE_HOURS.usual },
+  request: null,
+  job: null,
+};
+
+function updateFiles(context: A0PortContext): OmpUpdateFiles {
+  if (context.ompUpdates === undefined) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "This run of the app keeps no setting for omp updates.",
+      retryable: false,
+    });
+  }
+  return context.ompUpdates;
+}
 
 export function createAppPortRegistration(context: A0PortContext): PortRegistration {
   let windowStart = 0;
@@ -50,20 +76,16 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
       usableModels: async (_args: unknown, _call: PortHandlerContext) =>
         UsableModels.parse({ models: [...((await context.usableModels?.()) ?? [])] }),
       ompUpdates: async (_args: unknown, _call: PortHandlerContext): Promise<OmpUpdates> =>
-        context.ompUpdates === undefined
-          ? { enabled: true, job: null }
-          : await readOmpUpdates(context.ompUpdates),
+        context.ompUpdates === undefined ? NO_JOB : await readOmpUpdates(context.ompUpdates),
       setOmpUpdates: async (args: unknown, _call: PortHandlerContext): Promise<OmpUpdates> => {
-        if (context.ompUpdates === undefined) {
-          throw new AppFailure({
-            code: "unavailable",
-            message: "This run of the app keeps no setting for omp updates.",
-            retryable: false,
-          });
-        }
-        const { enabled } = args as SetOmpUpdatesArgs;
-        const after = await setOmpUpdates(context.ompUpdates, enabled);
-        context.logger?.info("omp_updates.set", { enabled });
+        const change = args as SetOmpUpdatesArgs;
+        const after = await setOmpUpdates(updateFiles(context), change);
+        context.logger?.info("omp_updates.set", { ...change });
+        return after;
+      },
+      requestOmpUpdate: async (_args: unknown, _call: PortHandlerContext): Promise<OmpUpdates> => {
+        const after = await requestOmpUpdate(updateFiles(context), new Date());
+        context.logger?.info("omp_updates.requested", { at: after.request?.at ?? "taken" });
         return after;
       },
       reportClientError: (args: unknown, _call: PortHandlerContext): null => {

@@ -147,10 +147,16 @@ describe("AppPort", () => {
       const files = {
         status: join(dir, "omp-update.json"),
         settings: join(dir, "omp-update-settings.json"),
+        request: join(dir, "omp-update-request.json"),
       };
       const handlers = appHandlers({ ompUpdates: files });
       const read = () => handler(handlers, "ompUpdates")({}, call());
-      expect(await read()).toEqual({ enabled: true, job: null });
+      expect(await read()).toEqual({
+        enabled: true,
+        schedule: { everyNights: 3, installHour: 3 },
+        request: null,
+        job: null,
+      });
 
       // As the night job writes it, with a field of its own that the app passes over.
       const lastNight = { at: "2026-11-16T06:00:00.012Z", result: "No new omp to try." };
@@ -158,7 +164,16 @@ describe("AppPort", () => {
         files.status,
         JSON.stringify({ version: 1, lastNight, pending: "18.18.9", told: ["x"] }),
       );
-      expect(await read()).toEqual({ enabled: true, job: { lastNight, pending: "18.18.9" } });
+      expect(await read()).toMatchObject({ enabled: true, job: { lastNight, pending: "18.18.9" } });
+      // While a long run goes on, the job says what it does.
+      await writeFile(
+        files.status,
+        JSON.stringify({ version: 1, lastNight, running: "Testing omp 18.21.0 since 23:10." }),
+      );
+      expect(((await read()) as { job: unknown }).job).toEqual({
+        lastNight,
+        running: "Testing omp 18.21.0 since 23:10.",
+      });
       await writeFile(
         files.status,
         JSON.stringify({ version: 1, lastNight, blocked: "back on 0.3.1632" }),
@@ -176,6 +191,8 @@ describe("AppPort", () => {
       expect(JSON.parse(await readFile(files.settings, "utf8"))).toEqual({
         version: 1,
         enabled: false,
+        everyNights: 3,
+        installHour: 3,
       });
       expect(await handler(handlers, "setOmpUpdates")({ enabled: true }, call())).toMatchObject({
         enabled: true,
@@ -183,20 +200,96 @@ describe("AppPort", () => {
 
       // A settings file that cannot be read is off, as the job reads it: the switch never says on while the job is off.
       await writeFile(files.settings, "{ not json");
-      expect(await read()).toMatchObject({ enabled: false });
+      expect(await read()).toMatchObject({
+        enabled: false,
+        schedule: { everyNights: 3, installHour: 3 },
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("without the files a run reads no job and cannot save the switch", async () => {
+  test("omp updates: how often and when, each changed alone and kept with the others; a field out of range reads as usual", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omp-updates-"));
+    try {
+      const files = {
+        status: join(dir, "omp-update.json"),
+        settings: join(dir, "omp-update-settings.json"),
+        request: join(dir, "omp-update-request.json"),
+      };
+      const handlers = appHandlers({ ompUpdates: files });
+      const set = (change: object) => handler(handlers, "setOmpUpdates")(change, call());
+      await set({ enabled: false });
+      expect(await set({ everyNights: 1 })).toMatchObject({
+        enabled: false,
+        schedule: { everyNights: 1, installHour: 3 },
+      });
+      expect(await set({ installHour: 21 })).toMatchObject({
+        enabled: false,
+        schedule: { everyNights: 1, installHour: 21 },
+      });
+      expect(JSON.parse(await readFile(files.settings, "utf8"))).toEqual({
+        version: 1,
+        enabled: false,
+        everyNights: 1,
+        installHour: 21,
+      });
+      // Written by hand out of range: the field reads as usual, as the job reads it; the switch keeps its own.
+      await writeFile(
+        files.settings,
+        JSON.stringify({ version: 1, enabled: true, everyNights: 30, installHour: 2.5 }),
+      );
+      expect(await handler(handlers, "ompUpdates")({}, call())).toMatchObject({
+        enabled: true,
+        schedule: { everyNights: 3, installHour: 3 },
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("Update now leaves the job one request; pressing again while it waits changes nothing; taken, a new one can be left", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omp-updates-"));
+    try {
+      const files = {
+        status: join(dir, "omp-update.json"),
+        settings: join(dir, "omp-update-settings.json"),
+        request: join(dir, "omp-update-request.json"),
+      };
+      const handlers = appHandlers({ ompUpdates: files });
+      const press = () => handler(handlers, "requestOmpUpdate")({}, call());
+      const first = (await press()) as { request: { at: string } | null };
+      expect(first.request?.at).toMatch(/^\d{4}-\d\d-\d\dT/);
+      expect(JSON.parse(await readFile(files.request, "utf8"))).toEqual({
+        version: 1,
+        at: first.request?.at,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      expect(((await press()) as { request: unknown }).request).toEqual(first.request);
+      // The job takes it (it moves the file away) when it starts on it.
+      await rm(files.request);
+      expect(
+        ((await handler(handlers, "ompUpdates")({}, call())) as { request: unknown }).request,
+      ).toBeNull();
+      expect(((await press()) as { request: unknown }).request).not.toEqual(first.request);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("without the files a run reads no job and can neither save nor ask", async () => {
     expect(await handler(appHandlers(), "ompUpdates")({}, call())).toEqual({
       enabled: true,
+      schedule: { everyNights: 3, installHour: 3 },
+      request: null,
       job: null,
     });
     await expect(
       handler(appHandlers(), "setOmpUpdates")({ enabled: false }, call()),
     ).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    await expect(handler(appHandlers(), "requestOmpUpdate")({}, call())).rejects.toMatchObject({
       appError: { code: "unavailable" },
     });
   });

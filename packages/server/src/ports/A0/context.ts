@@ -99,9 +99,9 @@ export interface A0PortContext {
    */
   readonly updateHoldFile?: string;
   /**
-   * A job that updates omp beside the app: its status and the app's on-or-off for it (`<app data>/omp-update.json`,
-   * `<app data>/omp-update-settings.json`), for Settings → App → omp. Absent: no job's status is read, and the switch
-   * cannot be saved.
+   * A job that updates omp beside the app: its status, the app's settings for it and an Update now waiting for it
+   * (`<app data>/omp-update.json`, `<app data>/omp-update-settings.json`, `<app data>/omp-update-request.json`), for
+   * Settings → App → omp. Absent: no job's status is read, and nothing can be saved or asked.
    */
   readonly ompUpdates?: OmpUpdateFiles;
   /**
