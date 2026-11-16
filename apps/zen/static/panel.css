@@ -33,6 +33,10 @@ body,
   color: var(--fg);
 }
 
+#panel {
+  position: relative;
+}
+
 .setup {
   display: flex;
   flex-direction: column;
@@ -101,4 +105,30 @@ button.quiet {
 #status:empty,
 .problem:empty {
   display: none;
+}
+
+/* omp app's page did not open: the note covers the frame, which keeps loading under it. */
+.note {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.note p {
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+}
+
+.note .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.note .actions button + button {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
 }

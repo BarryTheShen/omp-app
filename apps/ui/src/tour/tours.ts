@@ -3247,11 +3247,34 @@ const OMP_18_20_0_TOUR: Tour = {
   ],
 };
 
+/** The Firefox and Zen sidebar says why omp app did not open in it (2026-11-15). */
+const ZEN_NO_ANSWER_TOUR: Tour = {
+  id: "zen-no-answer-2026-11-15",
+  title: "The sidebar says why",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: TRANSCRIPT,
+      title: "The sidebar says why",
+      text: "When omp app doesn't open in the Firefox and Zen sidebar within 10 seconds, the sidebar now says why instead of showing the browser's error page: omp app can't be reached at its address (with the browser's reason), the address answers with something else, or omp app is too old to let the sidebar show it. <b>Try again</b> loads it again, and <b>Set the address</b> opens the extension's options. It needs this release's <b>omp-app-zen</b>.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-15-zen-no-answer",
+    when: "2026-11-15T22:50:00-06:00",
+    summary:
+      "When omp app doesn't open in the Firefox and Zen sidebar within 10 seconds, the sidebar says why instead of showing the browser's error page: omp app can't be reached at its address (with the browser's reason), the address answers with something else, or omp app is too old to let the sidebar show it. Try again loads it again, and Set the address opens the extension's options. It needs this release's omp-app-zen.",
+    tours: [ZEN_NO_ANSWER_TOUR],
+  },
   {
     id: "2026-11-14-omp-18-20-0",
     when: "2026-11-14T18:54:53Z",

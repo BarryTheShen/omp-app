@@ -1,5 +1,6 @@
 import { appAddressOf, type HostContext, openPanel } from "@omp-app/embed";
 import { keepKeyFor, keyFor, STORED, saveAppAddress, storedAppAddress } from "./address";
+import { noAnswerText, whyNotShown } from "./check";
 import { Follower } from "./follow";
 import { watchSelection } from "./page";
 import { appOrigins, firefoxTabs, pageTools, type TabScope } from "./tools";
@@ -15,6 +16,54 @@ const root = document.getElementById("panel") as HTMLElement;
 
 const chatKey = (windowId: number): string => `chat:window:${windowId}`;
 const ownedKey = (windowId: number): string => `owned:window:${windowId}`;
+
+/**
+ * Says why omp app's page has not opened (`onNoAnswer`), with Try again and Set the address, over the frame: the frame
+ * keeps loading under it, hidden, and the page answering takes the note away (`onReady`). Without it the sidebar shows
+ * the browser's own error page, which says nothing about omp app.
+ */
+class NoAnswerNote {
+  #shown: HTMLElement | null = null;
+  #answered = false;
+
+  constructor(
+    private readonly app: string,
+    private readonly frame: () => HTMLIFrameElement | undefined,
+  ) {}
+
+  async show(): Promise<void> {
+    const why = await whyNotShown(this.app, location.origin);
+    if (this.#answered) return;
+    const note = element("div", { className: "setup note", role: "alert" }, [
+      element("h1", { textContent: "omp app didn't open" }),
+      element("p", { textContent: noAnswerText(this.app, why) }),
+      element("div", { className: "actions" }, [
+        button("Try again", () => location.reload()),
+        button("Set the address", () => void browser.runtime.openOptionsPage()),
+      ]),
+    ]);
+    this.#shown?.remove();
+    this.#shown = note;
+    root.append(note);
+    const frame = this.frame();
+    if (frame !== undefined) frame.style.visibility = "hidden";
+  }
+
+  /** The page answered: the note goes, the frame shows. */
+  answered(): void {
+    this.#answered = true;
+    this.#shown?.remove();
+    this.#shown = null;
+    const frame = this.frame();
+    if (frame !== undefined) frame.style.visibility = "";
+  }
+}
+
+function button(label: string, onClick: () => void): HTMLButtonElement {
+  const made = element("button", { type: "button", textContent: label });
+  made.addEventListener("click", onClick);
+  return made;
+}
 
 /**
  * The window this panel serves: the sidebar's own, or, for the panel's page opened as a tab of its own (the tests open
@@ -127,6 +176,8 @@ async function showChat(app: string, windowId: number): Promise<void> {
 
   [front] = await browser.tabs.query({ active: true, windowId });
   follower.front(front?.id ?? null);
+  let frame: HTMLIFrameElement | undefined;
+  const note = new NoAnswerNote(app, () => frame);
   const panel = openPanel({
     app,
     into: root,
@@ -139,9 +190,14 @@ async function showChat(app: string, windowId: number): Promise<void> {
       get: () => keyFor(app),
       set: (key) => keepKeyFor(app, key),
     },
-    onReady: (ready) => void browser.storage.session.set({ [chatKey(windowId)]: ready.chat }),
+    onReady: (ready) => {
+      note.answered();
+      void browser.storage.session.set({ [chatKey(windowId)]: ready.chat });
+    },
     onTurn: (working, sent) => follower.turn(working, sent),
+    onNoAnswer: () => void note.show(),
   });
+  frame = panel.frame;
 
   const watch = (tabId: number): void => {
     void firefoxTabs.run(tabId, watchSelection, [appOrigins(app)]).catch(() => undefined);

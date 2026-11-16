@@ -273,4 +273,57 @@ realTest.describe("new UI: the Firefox and Zen extension in a real Firefox", () 
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "an address nothing answers at: the panel says omp app can't be reached there, over the browser's error page, with Try again and Set the address",
+    async () => {
+      execFileSync("bun", [resolve(APP_ROOT, "apps/zen/scripts/build.ts")], { stdio: "pipe" });
+      // A loopback port a server had a moment ago: nothing answers there.
+      const closed = createServer();
+      const port = await new Promise<number>((done) => {
+        closed.listen(0, "127.0.0.1", () => {
+          const address = closed.address();
+          done(typeof address === "object" && address !== null ? address.port : 0);
+        });
+      });
+      await new Promise((done) => closed.close(() => done(null)));
+      const app = `http://127.0.0.1:${port}`;
+
+      const firefox = await FirefoxDriver.start({
+        "extensions.webextensions.uuids": JSON.stringify({ [ADDON_ID]: UUID }),
+      });
+      try {
+        await firefox.installTemporaryAddon(resolve(APP_ROOT, "apps/zen/dist"));
+        await firefox.newWindow();
+        await firefox.openExtensionPage(PANEL);
+        await firefox.type(
+          await firefox.waitFor("the address field", () => firefox.find('input[type="url"]')),
+          app,
+        );
+        await firefox.click(await firefox.waitFor("Save", () => firefox.button("Save")));
+        // The app's page has 10 s to say it listens (`NO_ANSWER_MS`), then the panel asks the address why.
+        await firefox.waitForText(`omp app can't be reached at ${app} (`, 30_000);
+        const said = await firefox.bodyText();
+        expect(said).toContain("omp app didn't open");
+        expect(said).toContain("Check that omp app is running");
+        expect(await firefox.button("Try again")).not.toBeNull();
+        expect(await firefox.button("Set the address")).not.toBeNull();
+        // The frame keeps loading under the note, hidden: the browser's error page is not what shows.
+        expect(
+          await firefox.run<string>(
+            "return document.querySelector('iframe[title=\"omp app\"]')?.style.visibility ?? 'no frame';",
+          ),
+        ).toBe("hidden");
+        // Try again loads the panel again (a mark on the page is gone), and the note comes back while nothing answers.
+        await firefox.run("window.beforeTryAgain = true; return null;");
+        await firefox.click(await firefox.waitFor("Try again", () => firefox.button("Try again")));
+        await firefox.waitFor("the panel loading again", async () =>
+          (await firefox.run<boolean>("return window.beforeTryAgain === true;")) ? null : true,
+        );
+        await firefox.waitForText(`omp app can't be reached at ${app} (`, 30_000);
+      } finally {
+        await firefox.close();
+      }
+    },
+  );
 });
