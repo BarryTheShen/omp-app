@@ -146,6 +146,16 @@ function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Prop
   );
 }
 
+/**
+ * Base UI's arrows scroll the list only while the mouse moves over them; a click on one with the mouse held still did
+ * nothing. A click scrolls the list a page (less a row, so the last row seen stays in view).
+ */
+function scrollPage(arrow: HTMLElement, direction: 1 | -1): void {
+  const list = arrow.parentElement?.querySelector<HTMLElement>("[role=listbox]");
+  if (list)
+    list.scrollBy({ top: direction * Math.max(list.clientHeight - 32, 32), behavior: "smooth" });
+}
+
 function SelectScrollUpButton({
   className,
   ...props
@@ -157,6 +167,7 @@ function SelectScrollUpButton({
         "top-0 z-10 flex w-full cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
+      onClick={(event) => scrollPage(event.currentTarget, -1)}
       {...props}
     >
       <ChevronUpIcon />
@@ -175,6 +186,7 @@ function SelectScrollDownButton({
         "bottom-0 z-10 flex w-full cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
+      onClick={(event) => scrollPage(event.currentTarget, 1)}
       {...props}
     >
       <ChevronDownIcon />

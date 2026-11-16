@@ -129,18 +129,47 @@ realTest.describe("new UI omp updates", () => {
         "Every third night a newer omp is tested on its own. When it passes, the app moves to it between 3 and 5 a.m., with every chat paused across the move.",
       );
 
+      // A few usual choices and Custom… at the foot, nothing more.
       await section(page).getByRole("combobox", { name: "Look for a new omp" }).click();
+      await expect(page.getByRole("option")).toHaveText([
+        "Every night",
+        "Every 2 nights",
+        "Every 3 nights",
+        "Every week",
+        "Every 2 weeks",
+        "Custom…",
+      ]);
       await page.getByRole("option", { name: "Every night", exact: true }).click();
       await expect
         .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
         .toEqual({ version: 1, enabled: true, everyNights: 1, installHour: 3 });
-      await section(page).getByRole("combobox", { name: "Install from" }).click();
-      await page.getByRole("option", { name: "01:00", exact: true }).click();
+      await section(page).getByRole("combobox", { name: "Look for a new omp" }).click();
+      await page.getByRole("option", { name: "Custom…", exact: true }).click();
+      const custom = section(page).getByRole("spinbutton", { name: "Look for a new omp, custom" });
+      await custom.fill("15");
+      await expect(section(page).getByRole("button", { name: "Set" })).toBeDisabled();
+      await custom.fill("5");
+      await section(page).getByRole("button", { name: "Set" }).click();
       await expect
         .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
-        .toEqual({ version: 1, enabled: true, everyNights: 1, installHour: 1 });
+        .toEqual({ version: 1, enabled: true, everyNights: 5, installHour: 3 });
+      // The value it shows; the button also holds its arrow.
+      await expect(
+        section(page).getByRole("combobox", { name: "Look for a new omp" }),
+      ).toContainText("Every 5 nights");
+
+      // The install hour on a clock: an hour's button sets it; one whose window would run past 11 p.m. is greyed.
+      await section(page).getByRole("button", { name: "Install from: 3 a.m." }).click();
+      const dial = page.getByRole("group", { name: "Install from" });
+      const hour = (name: string) => dial.getByRole("button", { name, exact: true });
+      await expect(hour("3 a.m.")).toHaveAttribute("aria-pressed", "true");
+      await expect(hour("10 p.m.")).toBeDisabled();
+      await hour("1 a.m.").click();
+      await expect
+        .poll(async () => JSON.parse(await readFile(settings, "utf8").catch(() => "null")))
+        .toEqual({ version: 1, enabled: true, everyNights: 5, installHour: 1 });
       await expect(section(page)).toContainText(
-        "Every night a newer omp is tested on its own. When it passes, the app moves to it between 1 and 3 a.m.",
+        "Every 5 nights a newer omp is tested on its own. When it passes, the app moves to it between 1 and 3 a.m.",
       );
 
       const updateNow = section(page).getByRole("button", { name: "Update now" });

@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { HourDial } from "./HourDial";
 
 const words = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -46,9 +47,11 @@ export function windowWords(installHour: number): string {
 
 const ORDINALS = ["", "", "second", "third"] as const;
 
-/** How often the job looks, in words: "Every night", "Every third night", "Every 7 nights". */
+/** How often the job looks, in words: "Every night", "Every third night", "Every week", "Every 5 nights". */
 export function everyWords(nights: number): string {
   if (nights === 1) return "Every night";
+  if (nights === 7) return "Every week";
+  if (nights === 14) return "Every 2 weeks";
   const ordinal = ORDINALS[nights];
   return ordinal === undefined || ordinal === ""
     ? `Every ${nights} nights`
@@ -58,57 +61,125 @@ export function everyWords(nights: number): string {
 /** A sentence's end: a full stop, unless the text already ends with one ("5 a.m."). */
 const ended = (text: string): string => (text.endsWith(".") ? text : `${text}.`);
 
-const range = (least: number, most: number): number[] =>
-  Array.from({ length: most - least + 1 }, (_, index) => least + index);
+/** A menu's row for a number of nights: "Every night", "Every 2 nights", "Every week", "Every 2 weeks". */
+export const nightsLabel = (nights: number): string =>
+  nights === 1
+    ? "Every night"
+    : nights === 7
+      ? "Every week"
+      : nights === 14
+        ? "Every 2 weeks"
+        : `Every ${nights} nights`;
 
-const NIGHT_CHOICES = range(OMP_UPDATE_NIGHTS.least, OMP_UPDATE_NIGHTS.most).map((nights) => ({
-  value: String(nights),
-  label: nights === 1 ? "Every night" : `Every ${nights} nights`,
-}));
-const HOUR_CHOICES = range(OMP_UPDATE_HOURS.least, OMP_UPDATE_HOURS.most).map((hour) => ({
-  value: String(hour),
-  label: `${String(hour).padStart(2, "0")}:00`,
-}));
+/** A menu's few usual choices; any other value is set with Custom… at its foot. */
+export const NIGHT_PRESETS = [1, 2, 3, 7, 14] as const;
 
-/** One of the job's settings: its name and what it does, and the menu that changes it. */
+/** The value of the menu's Custom… row, which opens a field for any value in the range. */
+const CUSTOM = "custom";
+
+/**
+ * A menu's rows: the presets, the value now set when it is none of them (in its place by size), and Custom… last.
+ */
+export function menuChoices(
+  presets: readonly number[],
+  value: number,
+  label: (value: number) => string,
+): { readonly value: string; readonly label: string }[] {
+  const shown = presets.includes(value) ? [...presets] : [...presets, value].sort((a, b) => a - b);
+  return [
+    ...shown.map((each) => ({ value: String(each), label: label(each) })),
+    { value: CUSTOM, label: "Custom…" },
+  ];
+}
+
+/** One of the job's settings: its name and what it does, a menu of usual values, and Custom… for any other. */
 function ScheduleRow(props: {
   readonly label: string;
   readonly detail: string;
   readonly value: number;
-  readonly choices: readonly { readonly value: string; readonly label: string }[];
+  readonly presets: readonly number[];
+  readonly choiceLabel: (value: number) => string;
+  /** The Custom… field: its range and the word after it ("nights"). */
+  readonly custom: { readonly least: number; readonly most: number; readonly unit: string };
   readonly disabled: boolean;
   readonly onChange: (value: number) => void;
 }): ReactNode {
+  const [typing, setTyping] = useState<string | null>(null);
+  const choices = menuChoices(props.presets, props.value, props.choiceLabel);
+  const typed = typing === null ? Number.NaN : Number(typing);
+  const valid =
+    Number.isInteger(typed) && typed >= props.custom.least && typed <= props.custom.most;
+  const set = (): void => {
+    if (!valid) return;
+    setTyping(null);
+    if (typed !== props.value) props.onChange(typed);
+  };
   return (
-    <div className="flex items-center gap-4 py-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-t1">{props.label}</p>
-        <p className="mt-0.5 text-xs text-t3">{props.detail}</p>
-      </div>
-      <Select
-        items={props.choices}
-        value={String(props.value)}
-        disabled={props.disabled}
-        onValueChange={(next) => {
-          if (typeof next === "string" && Number(next) !== props.value)
-            props.onChange(Number(next));
-        }}
-      >
-        <SelectTrigger
-          aria-label={props.label}
-          size="sm"
-          className="min-w-36 justify-between dark:bg-transparent"
+    <div className="py-3">
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-t1">{props.label}</p>
+          <p className="mt-0.5 text-xs text-t3">{props.detail}</p>
+        </div>
+        <Select
+          items={choices}
+          value={String(props.value)}
+          disabled={props.disabled}
+          onValueChange={(next) => {
+            if (next === CUSTOM) setTyping(String(props.value));
+            else if (typeof next === "string") {
+              setTyping(null);
+              if (Number(next) !== props.value) props.onChange(Number(next));
+            }
+          }}
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {props.choices.map((choice) => (
-            <SelectItem key={choice.value} value={choice.value}>
-              {choice.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          <SelectTrigger
+            aria-label={props.label}
+            size="sm"
+            className="min-w-36 justify-between dark:bg-transparent"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {choices.map((choice) => (
+              <SelectItem key={choice.value} value={choice.value}>
+                {choice.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {typing !== null && (
+        <form
+          className="mt-2 flex items-center justify-end gap-2 text-xs text-t2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            set();
+          }}
+        >
+          <input
+            type="number"
+            aria-label={`${props.label}, custom`}
+            min={props.custom.least}
+            max={props.custom.most}
+            step={1}
+            // biome-ignore lint/a11y/noAutofocus: opened by choosing Custom…, for typing the number at once
+            autoFocus
+            value={typing}
+            onChange={(event) => setTyping(event.target.value)}
+            className="h-7 w-16 rounded-md border border-l2 bg-transparent px-2 text-sm text-t1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <span>
+            {props.custom.unit} ({props.custom.least} to {props.custom.most})
+          </span>
+          <Button type="submit" size="sm" variant="secondary" disabled={!valid || props.disabled}>
+            Set
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setTyping(null)}>
+            Cancel
+          </Button>
+        </form>
+      )}
     </div>
   );
 }
@@ -223,18 +294,33 @@ export function OmpSection({ client }: { readonly client: AppClient }): ReactNod
             label="Look for a new omp"
             detail="How often the job looks for a newer omp to test."
             value={schedule.everyNights}
-            choices={NIGHT_CHOICES}
+            presets={NIGHT_PRESETS}
+            choiceLabel={nightsLabel}
+            custom={{
+              least: OMP_UPDATE_NIGHTS.least,
+              most: OMP_UPDATE_NIGHTS.most,
+              unit: "nights",
+            }}
             disabled={saving}
             onChange={(everyNights) => save({ everyNights }, "How often was not saved")}
           />
-          <ScheduleRow
-            label="Install from"
-            detail={ended(`A new omp that passed installs ${window}, when no reply is running`)}
-            value={schedule.installHour}
-            choices={HOUR_CHOICES}
-            disabled={saving}
-            onChange={(installHour) => save({ installHour }, "The install hour was not saved")}
-          />
+          <div className="flex items-center gap-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-t1">Install from</p>
+              <p className="mt-0.5 text-xs text-t3">
+                {ended(`A new omp that passed installs ${window}, when no reply is running`)}
+              </p>
+            </div>
+            <HourDial
+              label="Install from"
+              value={schedule.installHour}
+              least={OMP_UPDATE_HOURS.least}
+              most={OMP_UPDATE_HOURS.most}
+              length={2}
+              disabled={saving}
+              onChange={(installHour) => save({ installHour }, "The install hour was not saved")}
+            />
+          </div>
           <div className="flex items-center gap-4 py-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm text-t1">Update now</p>
