@@ -308,7 +308,9 @@ export function OmpSection({ client }: { readonly client: AppClient }): ReactNod
             <div className="min-w-0 flex-1">
               <p className="text-sm text-t1">Install from</p>
               <p className="mt-0.5 text-xs text-t3">
-                {ended(`A new omp that passed installs ${window}, when no reply is running`)}
+                {ended(
+                  `A new omp that passed installs ${window}. Every chat is paused for the move, a reply under way too, and goes on after it`,
+                )}
               </p>
             </div>
             <HourDial
