@@ -293,13 +293,17 @@ export class ChatController {
     // A server that restarted without the chat's omp (its omp ended with the old server) no longer has the chat open:
     // the pane opens it afresh from its file, as after an open the link dropped under, so no reply shows as still going;
     // a new chat with nothing in it yet starts again in its place, keeping what is typed. One that kept it (a chat whose
-    // omp outlived the old server) is joined again (`#holdAcrossLinks`).
+    // omp outlived the old server) is joined again (`#holdAcrossLinks`). The subagents are read again too: a subagent
+    // whose end was sent while the link was down showed as running until the page was reloaded.
     this.#stopResync = client.onResync((event) => {
       if (event.stream !== this.#subscription?.stream) return;
       this.#refreshWindow();
       this.#refreshState().then(
-        () => {
-          if (event.reason === "instance-changed") void this.#holdAgain();
+        async () => {
+          if (event.reason === "instance-changed") await this.#holdAgain();
+          const threadId = this.#threadId;
+          if (threadId !== null && !this.#disposed)
+            await this.#followAgents(threadId).catch(() => undefined);
         },
         async (failure: unknown) => {
           if (this.#disposed || !notOpenOnServer(failure)) return;

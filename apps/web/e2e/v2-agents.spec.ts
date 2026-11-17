@@ -1,6 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Page, WebSocketRoute } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
@@ -107,6 +107,89 @@ realTest.describe("new UI Agent Hub", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest.describe("through a server restart that keeps the chats' hosts (an install)", () => {
+    realTest.use({ serverEnv: { OMP_APP_DETACHED_HOSTS: "1" } });
+
+    realTest(
+      "a subagent that ends while the page is away and the server restarts shows as ended when the page is back",
+      async ({ realApp }) => {
+        // The restart closes the pages' connections; the owner's launch link expires with it.
+        realApp.allowProblem(/WebSocket|401|403|expired/i);
+        // A paired device, as the desktop window and a phone are: its pairing outlasts the restart, so it comes back alone.
+        const owner = await realApp.open({ path: "/" });
+        await owner.getByRole("button", { name: "Settings", exact: true }).click();
+        const devices = owner.getByRole("region", { name: "Devices" });
+        await devices.getByRole("button", { name: "Pair a new device" }).click();
+        const shown = devices
+          .getByRole("region", { name: "One-time code" })
+          .getByText(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+        await expect(shown).toBeVisible();
+        const code = ((await shown.textContent()) ?? "").replace("-", "");
+        // The page's link to the server, kept away while `away` holds.
+        let away = false;
+        const links: WebSocketRoute[] = [];
+        const page = await realApp.open({
+          path: "/",
+          hash: `#pair=${code}`,
+          beforeLoad: (opened) =>
+            opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+              if (away) {
+                void socket.close({ code: 1001, reason: "going away" });
+                return;
+              }
+              links.push(socket);
+              socket.connectToServer();
+            }),
+        });
+        await newChat(page);
+        await box(page).fill("spawn_intent_subagent 20");
+        await box(page).press("Enter");
+        await expect(page.getByRole("button", { name: "1 agent running" })).toBeVisible({
+          timeout: 60_000,
+        });
+
+        // The page's link drops and stays down while the subagent ends: its end reaches no page.
+        away = true;
+        for (const link of links) await link.close({ code: 1001, reason: "going away" });
+        // The subagent's transcript records its end: its final message (a task subagent answers in plain text, without
+        // `yield`) stops with `stop`; its earlier step stopped with `toolUse`. A name that matches no file means it has
+        // not started writing yet.
+        const ended = async () => {
+          const names = await readdir(realApp.agentDir, { recursive: true });
+          for (const name of names.filter((each) => /IntentProbe\.jsonl$/.test(String(each)))) {
+            const text = await readFile(join(realApp.agentDir, String(name)), "utf8");
+            if (text.includes('"stopReason":"stop"')) return true;
+          }
+          return false;
+        };
+        await expect
+          .poll(ended, { timeout: 90_000, intervals: [1_000] })
+          .toBe(true)
+          .catch(async (failure: unknown) => {
+            const seen = (await readdir(realApp.agentDir, { recursive: true }))
+              .map(String)
+              .filter((name) => name.endsWith(".jsonl"));
+            throw new Error(`no ended IntentProbe transcript; transcripts: ${seen.join(", ")}`, {
+              cause: failure,
+            });
+          });
+        // omp marks a subagent ended some seconds after its last message (5 to 15 in these tests): that end, too, is sent
+        // while the page is away, as when a link is down for minutes and the end comes long before the restart.
+        await page.waitForTimeout(30_000);
+        // The server restarts (an install): what it heard before is gone with it.
+        await realApp.restartServer();
+        away = false;
+
+        // Back on the link, the page reads the chat's subagents again: this one ended.
+        await expect(page.getByRole("button", { name: "1 agent", exact: true })).toBeVisible({
+          timeout: 60_000,
+        });
+        await expect(page.getByRole("button", { name: "1 agent running" })).toHaveCount(0);
+        // The fixture checks the page's problems at the end, leaving out the restart's refused reconnects.
+      },
+    );
+  });
 
   realTest(
     "Alt+A opens the Hub, a message reaches a running subagent, and Alt+A closes it",
