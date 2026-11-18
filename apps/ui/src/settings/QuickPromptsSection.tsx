@@ -32,6 +32,8 @@ export function QuickPromptsSection(): ReactNode {
         <div className="mt-2 flex gap-2">
           <Button
             size="sm"
+            // The App page has other Save buttons: this one names what it saves.
+            aria-label="Save quick prompts"
             disabled={saved || typed.length === 0}
             onClick={() => {
               setQuickPrompts(typed);
