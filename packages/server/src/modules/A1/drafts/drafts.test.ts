@@ -309,19 +309,25 @@ describe("DraftStoreService", () => {
     store.dispose();
   });
 
-  test("emits one external change and none for own saves or clears", async () => {
+  test("announces each change once: its own saves and clears, and a change made outside the app", async () => {
     const root = await temporaryDirectory();
     const app = join(root, "app");
     const scope = { kind: "thread" as const, threadId: "events" };
-    const events: unknown[] = [];
+    const events: { draft: { text: string; revision: string } | null }[] = [];
+    const others: unknown[] = [];
     const store = new DraftStoreService({ appDataDir: app });
     const unsubscribe = store.subscribe(scope, (change) => {
-      events.push(change);
+      events.push(change as (typeof events)[number]);
     });
+    const unsubscribeOther = store.subscribe({ kind: "thread", threadId: "other" }, (change) => {
+      others.push(change);
+    });
+    // Another window open on the chat hears a save made here, with its revision (the file watcher skips own writes).
     const saved = await store.save({ scope, draft: draftInput("own"), expectedRevision: null });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.draft).toMatchObject({ text: "own", revision: saved.revision });
 
-    // Each external write is waited for by the event it makes. An event for our own save or clear would arrive before
-    // that event, so it would show up as an extra event, or as a first event that holds our text instead of the write's.
+    // An external write is waited for by the event it makes; a second event for our own save would show up as an extra.
     const path = join(store.draftsDir, "threads", `${hashContent("events")}.json`);
     const writeExternal = (text: string) =>
       writeFile(
@@ -338,17 +344,22 @@ describe("DraftStoreService", () => {
         "utf8",
       );
     await writeExternal("external");
-    await waitUntil(() => events.length === 1);
-    expect(JSON.stringify(events[0])).toContain("external");
+    await waitUntil(() => events.length === 2);
+    expect(events[1]?.draft?.text).toBe("external");
 
     await store.clear({
       scope,
       expectedRevision: (await store.get({ scope })).draft?.revision ?? saved.revision,
     });
+    expect(events).toHaveLength(3);
+    expect(events[2]?.draft).toBeNull();
     await writeExternal("after clear");
-    await waitUntil(() => events.length === 2);
-    expect(JSON.stringify(events[1])).toContain("after clear");
+    await waitUntil(() => events.length === 4);
+    expect(events[3]?.draft?.text).toBe("after clear");
+    // Another chat's subscriber hears none of it.
+    expect(others).toEqual([]);
     unsubscribe();
+    unsubscribeOther();
     store.dispose();
   });
 });

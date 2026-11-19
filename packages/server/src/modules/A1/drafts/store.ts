@@ -389,7 +389,7 @@ export class DraftStoreService {
       if (isConflict(error)) throw await this.conflictFor(scope);
       throw toFailure(error, "save draft");
     }
-    return {
+    const saved: Draft = {
       scope,
       text: input.text,
       attachments: [...input.attachments],
@@ -397,6 +397,9 @@ export class DraftStoreService {
       revision: result.hash,
       updatedAt,
     };
+    // The file watcher does not report this server's own writes: every window open on the scope hears it here.
+    void this.notify(scopeKey(scope), { scope, draft: saved });
+    return saved;
   }
 
   async clear(args: DraftClearRequest): Promise<DraftClearResult> {
@@ -413,6 +416,7 @@ export class DraftStoreService {
       if (isConflict(error)) throw await this.conflictFor(scope);
       throw toFailure(error, "clear draft");
     }
+    void this.notify(scopeKey(scope), { scope, draft: null });
     return { cleared: true, revision: null };
   }
 
@@ -512,7 +516,16 @@ export class DraftStoreService {
       return;
     }
     const draft = state.kind === "draft" ? materializeDraft(state) : null;
-    const change: DraftChanged = { scope: watcher.scope, draft };
+    await this.notify(key, { scope: watcher.scope, draft });
+  }
+
+  /**
+   * Tells the scope's subscribers what its draft is now: after a save or clear made here (the file watcher does not
+   * report the server's own writes), or a change made outside the app that the watcher saw.
+   */
+  private async notify(key: string, change: DraftChanged): Promise<void> {
+    const watcher = this.#watchers.get(key);
+    if (!watcher) return;
     for (const id of watcher.listeners) {
       const subscription = this.#subscriptions.get(id);
       if (!subscription) continue;

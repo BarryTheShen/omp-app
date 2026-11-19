@@ -379,16 +379,26 @@ export const Composer = memo(function Composer({
     draft.change(next);
   };
 
-  // The kept text comes back when the chat opens, unless something was typed first.
+  // The kept text comes back when the chat opens, unless something was typed first. From then on, a text another window
+  // saved, sent or cleared shows here while this box still shows what the draft held.
   useEffect(() => {
     let active = true;
+    let stop: (() => void) | undefined;
     void draft.load().then((kept) => {
-      if (!active || kept === "" || textRef.current !== "") return;
-      textRef.current = kept;
-      setText(kept);
+      if (!active) return;
+      if (kept !== "" && textRef.current === "") {
+        textRef.current = kept;
+        setText(kept);
+      }
+      stop = draft.follow((before, next) => {
+        if (textRef.current !== before) return;
+        textRef.current = next;
+        setText(next);
+      });
     });
     return () => {
       active = false;
+      stop?.();
     };
   }, [draft]);
 

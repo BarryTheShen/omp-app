@@ -1,6 +1,13 @@
 import type { AppClient } from "@omp-app/client";
-import { type DraftScope, DraftStore, type Revision, type ThreadId } from "@omp-app/contracts";
+import {
+  type DraftChanged,
+  type DraftScope,
+  DraftStore,
+  type Revision,
+  type ThreadId,
+} from "@omp-app/contracts";
 import { createStore, del, get, set } from "idb-keyval";
+import { follow } from "../follow";
 
 const local = createStore("omp-app-ui", "drafts");
 /** Where this browser keeps a new chat's text: under its pane's key. */
@@ -12,6 +19,8 @@ const SERVER_DELAY_MS = 800;
  * A chat's unsent text, kept so typed text is never lost (H2): every change goes to this browser's IndexedDB at once,
  * and to the app's draft store a moment later, where another browser finds it. This browser's copy wins when both
  * exist; an empty box is kept as an empty text, so text sent or deleted here does not come back from the app's copy.
+ * While a window is open it follows the app's copy too (`follow`), so a text another window or browser saved, sent or
+ * cleared shows in its box while nothing of its own waits to be written.
  *
  * A new chat has no id until omp opens it, so its text is kept under its pane's key (`forNewChat`) and, once the chat
  * has an id, under that id too (`keepFor`): a reload that opens the same pane finds it by the pane's key, and one that
@@ -32,6 +41,11 @@ export class ChatDraft {
   /** The text this draft holds: the last typed, or what `load` found. Null until one of them. */
   #text: string | null = null;
   #timer: number | undefined;
+  /** A write to the app's copy is under way: what the app says meanwhile may be that write. */
+  #writing = false;
+  /** Who hears texts other writers saved (`follow`), and the stop of the subscription for the scope followed now. */
+  #follower: ((before: string, next: string) => void) | null = null;
+  #stopFollowing: (() => void) | null = null;
 
   /** The draft of a saved chat, under its id; or, with a pane key, of a new chat that has no id yet. */
   constructor(client: AppClient, home: ThreadId | { readonly paneChat: string }) {
@@ -82,16 +96,72 @@ export class ChatDraft {
     if (!this.#keys.includes(threadId)) this.#keys.push(threadId);
     this.#scope = { kind: "thread", threadId };
     this.#revision = null;
+    this.#followScope();
     if (this.#text === null) return;
     void set(threadId, this.#text, local).catch(() => undefined);
     this.#queue(this.#text);
   }
 
-  /** Writes the app's copy now; the chat is being closed. */
+  /**
+   * Follows the app's copy of this chat's draft while a window shows it: a text another window or browser saved, sent or
+   * cleared becomes this draft's while nothing of this window's own waits to be written (what is typed here wins, as its
+   * write would), and `listener` hears the text held before and the new one, so the box takes it only while it still
+   * shows the old one. Call it once `load` has answered; a new chat follows once `keepFor` gives it an id. Returns the
+   * stop.
+   */
+  follow(listener: (before: string, next: string) => void): () => void {
+    this.#follower = listener;
+    this.#followScope();
+    return () => {
+      if (this.#follower !== listener) return;
+      this.#follower = null;
+      this.#stopFollowing?.();
+      this.#stopFollowing = null;
+    };
+  }
+
+  /** Writes the app's copy now and stops following it; the chat is being closed. */
   dispose(): void {
+    this.#follower = null;
+    this.#stopFollowing?.();
+    this.#stopFollowing = null;
     if (this.#timer === undefined) return;
     clearTimeout(this.#timer);
     void this.#flush();
+  }
+
+  #followScope(): void {
+    this.#stopFollowing?.();
+    this.#stopFollowing = null;
+    const scope = this.#scope;
+    if (this.#follower === null || scope === null || scope.kind !== "thread") return;
+    const started = this.#client.subscribe(DraftStore, "changed", {
+      scope: `thread:${scope.threadId}`,
+    });
+    this.#stopFollowing = follow(started, (changed) => this.#theirs(changed));
+    // A change made between `load`'s read and the subscription's start is read once more.
+    void started
+      .then(() => this.#port().get({ scope }))
+      .then((current) => this.#theirs({ scope, draft: current.draft }))
+      .catch(() => undefined);
+  }
+
+  /** The app's copy as another writer left it; see `follow`. */
+  #theirs(changed: DraftChanged): void {
+    const scope = this.#scope;
+    if (this.#follower === null || scope?.kind !== "thread") return;
+    if (changed.scope.kind !== "thread" || changed.scope.threadId !== scope.threadId) return;
+    const revision = changed.draft?.revision ?? null;
+    // This window's own write, or a text it holds already.
+    if (revision === this.#revision) return;
+    // Something typed here waits to be written, or is being written: it wins, as its write will.
+    if (this.#pending !== null || this.#writing || this.#timer !== undefined) return;
+    const before = this.#text ?? "";
+    const next = changed.draft?.text ?? "";
+    this.#revision = revision;
+    this.#text = next;
+    for (const key of this.#keys) void set(key, next, local).catch(() => undefined);
+    if (next !== before) this.#follower(before, next);
   }
 
   #port() {
@@ -111,6 +181,7 @@ export class ChatDraft {
     // A new chat without an id has no app copy to write; `keepFor` queues its text again once it has one.
     if (text === null || scope === null) return;
     this.#pending = null;
+    this.#writing = true;
     try {
       await this.#write(scope, text);
     } catch {
@@ -120,6 +191,8 @@ export class ChatDraft {
         .catch(() => null);
       this.#revision = current?.draft?.revision ?? null;
       await this.#write(scope, text).catch(() => undefined);
+    } finally {
+      this.#writing = false;
     }
   }
 
