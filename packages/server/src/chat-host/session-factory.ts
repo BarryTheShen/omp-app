@@ -12,7 +12,8 @@
  *   overrides (1978); `--hide-thinking`, `--advisor`, `--external-thinking` (1997-2007); `initTheme` (2009); the scoped
  *   models (2040); `--continue <id>` (2051); `--from-*` refused (2061); the session manager (2118); the resume folder
  *   switch (2135, `switchToResumedProject` below, copied from `main.ts:947` because it is not exported); the pending
- *   tool-call warning (2239); the daemon presence (2256); the marketplace auto-update (2262); the session options with
+ *   tool-call warning (2239); the marketplace auto-update (2262; omp 19 dropped the project daemon presence that came
+ *   before it, its shared processes now run under one daemon per user); the session options with
  *   the rpc-ui values (2268-2288); telemetry export (2295); `--api-key` (2310); the extensions and their flags
  *   (2383-2446); `createAgentSession` with the background model refresh (2323, 2504); the retry-chain and tool-name
  *   checks (2522-2536); the subagent reviver (2545); the scoped-model rebuild and watch (2574-2600); the model checks
@@ -63,7 +64,6 @@ import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensi
 import type { LoadExtensionsResult } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { scheduleMarketplaceAutoUpdate } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/marketplace-auto-update";
 import { cfgGoalEnabled } from "@oh-my-pi/pi-coding-agent/goals/settings";
-import { registerDaemonProjectPresence } from "@oh-my-pi/pi-coding-agent/launch/presence";
 import {
   buildSessionOptions,
   createSessionManager,
@@ -112,7 +112,10 @@ import {
   isTelemetryExportEnabled,
 } from "@oh-my-pi/pi-coding-agent/telemetry-export";
 import { cfgTelemetryOtlpExportEnabled } from "@oh-my-pi/pi-coding-agent/telemetry-settings";
-import { cfgToolsApprovalMode } from "@oh-my-pi/pi-coding-agent/tools/settings";
+import {
+  cfgToolsApprovalMode,
+  cfgToolsIntentTracing,
+} from "@oh-my-pi/pi-coding-agent/tools/settings";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import { ensureTheme, initTheme } from "@oh-my-pi/pi-tui/theme";
 import {
@@ -196,6 +199,10 @@ export async function createChatSession(
     cfgToolsApprovalMode.override(settings, "yolo");
   }
   applyProtocolDefaults("rpc", settings);
+  // The app's tool cards show each call's intent, as omp's terminal does; omp 19 turns intents off by default outside
+  // its terminal (`sdk.ts` `intentTracingActive`). Pinned as omp pins a default: a `tools.intentTracing` the person set
+  // in any layer, or `PI_INTENT_TRACING`, still decides.
+  cfgToolsIntentTracing.pinDefault(settings);
 
   const modelRegistry = new ModelRegistry(authStorage, undefined, { settings });
   const credentialScopedCaches = modelRegistry.hydrateCredentialScopedModelCaches();
@@ -259,8 +266,6 @@ export async function createChatSession(
     if (pendingToolWarning) notice(pendingToolWarning);
   }
   await pluginPreload;
-  const daemonPresence = registerDaemonProjectPresence(cwd);
-  daemonPresence.catch(() => undefined);
   scheduleMarketplaceAutoUpdate({
     autoUpdate: cfgMarketplaceAutoUpdate.get(settings),
     resolveActiveProjectRegistryPath,
@@ -295,7 +300,6 @@ export async function createChatSession(
       },
     );
   }
-  await daemonPresence;
   if (parsed.apiKey) {
     if (!sessionOptions.model && !sessionOptions.modelPattern) {
       throw new Error(

@@ -3385,11 +3385,34 @@ const OMP_18_22_2_TOUR: Tour = {
   ],
 };
 
+/** The app runs omp 19.0.0 (2026-11-19). */
+const OMP_19_0_0_TOUR: Tour = {
+  id: "omp-19-0-0",
+  title: "omp 19.0.0",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "omp 19.0.0",
+      text: "Your chats run on omp 19.0.0 now, up from 18.22.2: the app's automatic omp update tested it first, then moved your chats to it while they were paused. omp's own notes on what changed are in its changelog.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-19-omp-19-0-0",
+    when: "2026-11-19T17:36:30Z",
+    summary:
+      "Your chats run on omp 19.0.0 now, up from 18.22.2: the app's automatic omp update tested it first, then moved your chats to it while they were paused. omp's own notes on what changed are in its changelog.",
+    tours: [OMP_19_0_0_TOUR],
+  },
   {
     id: "2026-11-19-omp-18-22-2",
     when: "2026-11-19T02:16:19Z",

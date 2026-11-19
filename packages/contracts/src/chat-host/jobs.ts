@@ -61,8 +61,13 @@ export interface JobDetail {
   readonly output?: string;
   /** Whether the output was cut to its end. */
   readonly outputCut: boolean;
-  /** The artifact that keeps the full output, when omp kept one (`artifact://<id>`). */
+  /** The id of the file that keeps the full output, when omp kept one. */
   readonly artifactId?: string;
+  /**
+   * That file's address as the chat's omp spells it (`local://<id>.log` since omp 19). Absent from a chat host on an
+   * older omp, whose address is `artifact://<id>`.
+   */
+  readonly outputUrl?: string;
 }
 
 export const JobsParams = z.object({ recentLimit: z.int().min(0).max(100).optional() });

@@ -5,6 +5,7 @@
  * model to draw it.
  */
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { spillUrl } from "@oh-my-pi/pi-utils";
 import {
   JOB_OUTPUT_MAX_CHARS,
   type JobDetail,
@@ -68,7 +69,8 @@ export function inspectJob(session: AgentSession, jobId: string): JobDetail | nu
       ? {}
       : { output: cut ? output.slice(output.length - JOB_OUTPUT_MAX_CHARS) : output }),
     outputCut: cut,
-    ...(artifactId === undefined ? {} : { artifactId }),
+    // The address omp gives the file (omp 19 `spill-url.ts`: `local://<id>.log`).
+    ...(artifactId === undefined ? {} : { artifactId, outputUrl: spillUrl(artifactId) }),
   };
 }
 

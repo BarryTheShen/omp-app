@@ -444,7 +444,8 @@ function JobView({
             )}
             {detail?.artifactId !== undefined && (
               <Fact name="Full output" className="font-mono text-t1">
-                artifact://{detail.artifactId}
+                {/* As the chat's omp spells it; a chat on an omp before 19 sends only the id. */}
+                {detail.outputUrl ?? `artifact://${detail.artifactId}`}
               </Fact>
             )}
           </dl>

@@ -431,6 +431,14 @@ function reply(request: Request): Reply {
   if (nestedParent !== undefined) return nestedParent;
   const last = messages.at(-1);
   const lastUser = messages.findLastIndex((message) => message.role === "user");
+  // omp's handoff (19: a compaction mode) asks for a document and takes it only with a `## Goal` heading.
+  if (
+    lastUser >= 0 &&
+    text(messages[lastUser]?.content).includes(
+      "Write a handoff document for another instance of yourself.",
+    )
+  )
+    return { text: "## Goal\nGo on with the fake chat.\n\n## State\nNothing is open." };
   if (lastUser >= 0 && text(messages[lastUser]?.content).includes("long_loop")) {
     // One turn of many steps: a tool call per round, each with its own id, no thinking part.
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;

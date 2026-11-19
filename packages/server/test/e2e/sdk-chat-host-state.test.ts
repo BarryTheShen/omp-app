@@ -246,7 +246,7 @@ describe("the chat host's state methods", () => {
     );
 
     programTest(
-      `${program.name}: a reply is compacted into a summary, and a handoff is refused while a reply streams`,
+      `${program.name}: a reply is compacted into a summary, and a handoff compacts the chat in place and it goes on`,
       async () => {
         // omp keeps the most recent `keepRecentTokens` out of a summary (20000 by default); 1 leaves the first turn to it.
         const chat = await chats.start(command, { config: "compaction:\n  keepRecentTokens: 1\n" });
@@ -258,14 +258,15 @@ describe("the chat host's state methods", () => {
         const compacted = await chat.client.request("compact", {});
         expect(compacted.summary.length).toBeGreaterThan(0);
 
-        // The earlier replies already sent updates: wait for the held reply's own, so the handoff meets it.
-        const mark = chat.events.length;
-        await chat.client.request("prompt", { text: "stream_held" });
-        await chat.nextAfter(mark, (event) => event.type === "message_update");
-        await expect(chat.client.request("handoff", {})).rejects.toMatchObject({
-          message: "Cannot hand off while a response is in progress",
-        });
-        await chat.client.request("abort", {});
+        // omp 19's handoff is a compaction of this session (`compact(focus, { mode: "handoff" })`), not a new file; it
+        // needs something new since the last compaction.
+        await chat.client.request("prompt", { text: "one more" });
+        await chat.next(resultOf("4"));
+        const { sessionFile } = await chat.client.request("get_state", {});
+        expect(await chat.client.request("handoff", {})).toEqual({});
+        await chat.client.request("prompt", { text: "after the handoff" });
+        await chat.next(resultOf("7"));
+        expect((await chat.client.request("get_state", {})).sessionFile).toBe(sessionFile);
       },
       90_000,
     );

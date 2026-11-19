@@ -7,8 +7,11 @@ import { detailsRecord, display, isRecord, normalizeWs, num, resultTextOf, short
 /** Values safe to show unquoted in a `NAME=value` shell prefix. */
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
 
-/** Footer appended by the bash tool when long output was spilled to an artifact. */
-const ARTIFACT_NOTICE = /\[raw output: artifact:\/\/([\w-]+)\]/;
+/**
+ * Footer appended by the bash tool when long output was spilled: `local://N.log` since omp 19, `artifact://N` before
+ * (kept in older sessions).
+ */
+const RAW_OUTPUT_NOTICE = /\[raw output: (artifact:\/\/[\w-]+|local:\/\/\d+\.log)\]/;
 
 function envPrefix(env: Record<string, unknown>): string {
 	const parts: string[] = [];
@@ -50,7 +53,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const timeoutSeconds = num(args.timeout) ?? num(details?.timeoutSeconds);
 	const requestedTimeoutSeconds = num(details?.requestedTimeoutSeconds);
 	const job = asyncDetailsOf(details);
-	const artifactId = ARTIFACT_NOTICE.exec(resultTextOf(result))?.[1] ?? null;
+	const rawOutput = RAW_OUTPUT_NOTICE.exec(resultTextOf(result))?.[1] ?? null;
 
 	const stats: string[] = [];
 	if (wallTimeMs !== null) {
@@ -60,7 +63,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 		stats.push(`requested timeout ${requestedTimeoutSeconds}s clamped`);
 	}
 	if (job?.jobId) stats.push(`job ${job.jobId}`);
-	if (artifactId) stats.push(`artifact ${artifactId}`);
+	if (rawOutput) stats.push(`raw output ${rawOutput}`);
 
 	return (
 		<>

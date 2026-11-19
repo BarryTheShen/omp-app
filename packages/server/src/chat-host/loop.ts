@@ -635,10 +635,9 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     get_session_stats: async () => session.getSessionStats(),
     export_html: async ({ outputPath }) => ({ path: await session.exportToHtml(outputPath) }),
     handoff: async ({ customInstructions }) => {
-      // A handoff tears the session down: a live turn would keep writing into it (omp's `/handoff` guard).
-      if (session.isStreaming) throw new Error("Cannot hand off while a response is in progress");
-      const result = await session.handoff(customInstructions);
-      return result ? { savedPath: result.savedPath } : null;
+      // omp 19's handoff (`rpc-mode.ts`): a compaction of this session, in the background while a reply goes on.
+      await session.compact(customInstructions, { mode: "handoff" });
+      return {};
     },
     set_todos: async ({ phases }) => {
       session.setTodoPhases(phases);

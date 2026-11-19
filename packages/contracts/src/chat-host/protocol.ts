@@ -1150,12 +1150,14 @@ export interface ChatHostMethodMap {
     readonly params: ExportHtmlParams;
     readonly result: { readonly path: string };
   };
-  /** null when omp made no handoff. Refused while a reply streams. */
+  /**
+   * omp's handoff (omp 19: a compaction in the same session, `compact(focus, { mode: "handoff" })`, run in the background
+   * while a reply goes on). `savedPath` came from a chat host on an omp before 19, which saved the handoff to a file;
+   * null when that omp made none.
+   */
   readonly handoff: {
     readonly params: CustomInstructionsParams;
-    readonly result: {
-      readonly savedPath: NonNullable<Awaited<ReturnType<Session["handoff"]>>>["savedPath"];
-    } | null;
+    readonly result: { readonly savedPath?: string } | null;
   };
   readonly set_todos: {
     readonly params: SetTodosParams;
