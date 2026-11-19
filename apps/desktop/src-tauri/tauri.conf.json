@@ -27,9 +27,23 @@
     },
     "linux": {
       "deb": {
-        "recommends": ["xdg-utils", "gstreamer1.0-tools"],
+        "recommends": ["xdg-utils", "gstreamer1.0-tools", "libayatana-appindicator3-1"],
         "depends": ["libc6 (>= 2.39)"],
-        "desktopTemplate": "linux/omp-app-desktop.desktop.hbs"
+        "conflicts": ["omp-app-device"],
+        "replaces": ["omp-app-device"],
+        "desktopTemplate": "linux/omp-app-desktop.desktop.hbs",
+        "files": {
+          "/usr/lib/omp-app-device": "../../../dist/device-stage/usr/lib/omp-app-device",
+          "/usr/bin/omp-app-device": "../../../dist/device-stage/usr/bin/omp-app-device",
+          "/usr/lib/systemd/system/omp-app-device-guard.service": "../../../dist/device-stage/usr/lib/systemd/system/omp-app-device-guard.service",
+          "/usr/lib/systemd/system/omp-agent-access.slice": "../../../dist/device-stage/usr/lib/systemd/system/omp-agent-access.slice",
+          "/usr/lib/systemd/user/omp-app-device.service": "../../../dist/device-stage/usr/lib/systemd/user/omp-app-device.service",
+          "/usr/share/polkit-1/actions/dev.ompapp.device.policy": "../../../dist/device-stage/usr/share/polkit-1/actions/dev.ompapp.device.policy",
+          "/usr/share/doc/omp-app-device": "../../../dist/device-stage/usr/share/doc/omp-app-device"
+        },
+        "postInstallScript": "linux/postinst.sh",
+        "preRemoveScript": "linux/prerm.sh",
+        "postRemoveScript": "linux/postrm.sh"
       }
     }
   }

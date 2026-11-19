@@ -7,7 +7,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
-import { SecretName } from "@omp-app/contracts";
+import { AccessAlias, SecretName } from "@omp-app/contracts";
 import { z } from "zod";
 import { stateDirectory } from "../logging";
 import { type MaintenanceCommand, parseMaintenance } from "./maintenance-cli";
@@ -92,7 +92,8 @@ export type LauncherArgs = {
     | "secret"
     | "logs"
     | "debug-report"
-    | "maintenance";
+    | "maintenance"
+    | "device-ssh";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
@@ -106,6 +107,8 @@ export type LauncherArgs = {
   readonly secret?: SecretCommand;
   /** For `maintenance`: what to do to the running app for an omp update. */
   readonly maintenance?: MaintenanceCommand;
+  /** For `device-ssh <alias>`: the machine an agent's ssh reaches through the app (#20). */
+  readonly accessAlias?: string;
 };
 
 export type ParsedArgs =
@@ -119,6 +122,13 @@ function parsePort(text: string): number | undefined {
 }
 
 export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
+  // `device-ssh <alias>`: the ProxyCommand the app's ssh config gives each enrolled machine (#20).
+  if (argv[0] === "device-ssh") {
+    const alias = argv[1] ?? "";
+    return argv.length === 2 && AccessAlias.safeParse(alias).success
+      ? { ok: true, args: { ...NO_ARGS, command: "device-ssh", accessAlias: alias } }
+      : { ok: false, message: "Use omp-app device-ssh <machine>, as the app's ssh config does." };
+  }
   // `pair` and `devices` take nothing else: `devices remove <device>` names one device.
   if (argv[0] === "pair") {
     return argv.length === 1

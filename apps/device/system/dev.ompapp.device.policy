@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- One action for each thing the password is asked for, so the dialog says which one it is.
+     allow_active covers only a session at the computer's own console; a login without a seat (ssh, a server's only
+     way in) falls under allow_any. Both ask the person's own password; the guard asks only for a process of the
+     person's account, never of the agent account. An inactive console session (another user's in front) may not. -->
+<policyconfig>
+  <vendor>omp-app</vendor>
+  <action id="dev.ompapp.device.turn-on">
+    <description>Allow omp agents to work on this computer</description>
+    <message>Agents in omp-app will be able to run commands on this computer, as its agent account, until access is turned off. Every command is displayed and logged.</message>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.ompapp.device.extend">
+    <description>Extend omp agents' access to this computer</description>
+    <message>Agents in omp-app will keep their access to this computer for an additional period.</message>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.ompapp.device.sudo">
+    <description>Allow omp agents to use sudo on this computer</description>
+    <message>Agents in omp-app will be able to run commands as root (administrator) on this computer, without a password, for up to 30 minutes. Commands run as root are not checked afterwards.</message>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+  <action id="dev.ompapp.device.acknowledge">
+    <description>Confirm that this computer has been reviewed</description>
+    <message>By continuing, you confirm that you have reviewed this computer after agents had sudo access. Agent access may then be turned on again.</message>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+  <!-- Setup and remove run as root through pkexec, matched by the program's path and its first argument: an
+       administrator's password, every time. -->
+  <action id="dev.ompapp.device.setup">
+    <description>Set up omp agent access on this computer</description>
+    <message>Agent access will be set up on this computer: a separate omp-agent account and the omp-app guard service. Access remains off until you turn it on, which requires your password each time.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/omp-app-device/omp-app-device</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">setup</annotate>
+  </action>
+  <action id="dev.ompapp.device.remove">
+    <description>Remove omp agent access from this computer</description>
+    <message>Agent access will be turned off and removed from this computer: the omp-agent account, its files and the omp-app guard service.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/omp-app-device/omp-app-device</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">remove</annotate>
+  </action>
+</policyconfig>

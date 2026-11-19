@@ -9,6 +9,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { AppFailure, DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
 import { probeOmp } from "../src/capabilities/omp-version";
+import { runDeviceSsh } from "../src/devices/access/device-ssh";
+import { accessProxySocket, accessRuntimeFolder } from "../src/devices/access/paths";
 import { FRAME_ANCESTORS_ENV, parseFrameAncestors } from "../src/frame-ancestors";
 import { keepLaunchToken, launchTokenFile } from "../src/launch-token";
 import {
@@ -147,6 +149,23 @@ if (args.command === "help") {
 if (args.command === "version") {
   console.log(version);
   process.exit(0);
+}
+if (args.command === "device-ssh" && args.accessAlias !== undefined) {
+  // The ProxyCommand of an enrolled machine (#20): ssh's bytes through the running app to the machine.
+  const socketPath = accessProxySocket(
+    accessRuntimeFolder(Bun.env, appDataFolder(Bun.env, homedir())),
+  );
+  process.exit(
+    await runDeviceSsh({
+      alias: args.accessAlias,
+      socketPath,
+      stdin: Bun.stdin.stream(),
+      stdout: (bytes) => {
+        process.stdout.write(bytes);
+      },
+      stderr: (text) => process.stderr.write(text),
+    }),
+  );
 }
 
 const home = homedir();

@@ -517,8 +517,14 @@ function Shell({
     else showPanel(view.side);
   }, [phone, view]);
   const sidePane = useMemo(
-    () => ({ client, folder, chat: focusedChat, openGoal: setGoalFor }),
-    [client, folder, focusedChat],
+    () => ({
+      client,
+      folder,
+      chat: focusedChat,
+      openGoal: setGoalFor,
+      openChat: (target: ChatTarget) => openChat(target, "front"),
+    }),
+    [client, folder, focusedChat, openChat],
   );
   useHotkeys(
     KEYS.settings.hotkey,
@@ -637,6 +643,11 @@ function Shell({
             folder={folder}
             chat={focusedChat}
             openGoal={setGoalFor}
+            openChat={(target) => {
+              hidePanel();
+              setShowChat(true);
+              openChat(target, "front");
+            }}
             onBack={() => {
               hidePanel();
               setShowChat(true);

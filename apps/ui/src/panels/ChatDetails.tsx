@@ -4,7 +4,7 @@ import { cn } from "cn";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import type { ChatController } from "../chat/controller";
+import type { ChatController, ChatTarget } from "../chat/controller";
 import { useSidewaysRow } from "../sidewaysRow";
 import { showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
@@ -19,6 +19,7 @@ export function ChatDetails({
   folder,
   chat,
   openGoal,
+  openChat,
   onBack,
 }: {
   readonly client: AppClient;
@@ -26,6 +27,8 @@ export function ChatDetails({
   readonly chat: ChatController | null;
   /** Opens the goal dialog for a chat. */
   readonly openGoal: (chat: ChatController) => void;
+  /** Opens a chat in the details' place. */
+  readonly openChat: (target: ChatTarget) => void;
   readonly onBack: () => void;
 }): ReactNode {
   const { panel } = usePanelState();
@@ -73,7 +76,7 @@ export function ChatDetails({
         ))}
       </div>
       <div role="tabpanel" aria-label={chosen.title} className="min-h-0 flex-1 overflow-y-auto">
-        {chosen.render({ client, folder, chat, openGoal })}
+        {chosen.render({ client, folder, chat, openGoal, openChat })}
       </div>
     </section>
   );

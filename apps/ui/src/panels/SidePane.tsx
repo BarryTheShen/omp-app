@@ -2,7 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import type { FolderPath, WorkspaceRelativePath } from "@omp-app/contracts";
 import type { DockviewApi, IDockviewPanelProps } from "dockview-react";
 import { createContext, type ReactNode, use, useEffect } from "react";
-import type { ChatController } from "../chat/controller";
+import type { ChatController, ChatTarget } from "../chat/controller";
 import { usePhone } from "../phone";
 import { PaneModeOutline } from "../workspace/paneMode";
 import { FILE_PANE_COMPONENT, type FilePaneParams, filePaneId } from "./files/filePaneParams";
@@ -24,6 +24,8 @@ export interface SidePaneHost {
   /** The chat of the pane focused last in the shown tab; null when that tab has none. */
   readonly chat: ChatController | null;
   readonly openGoal: (chat: ChatController) => void;
+  /** Opens a chat in front (a record's chat in the Agent access panel). */
+  readonly openChat?: (target: ChatTarget) => void;
 }
 
 export const SidePaneContext = createContext<SidePaneHost | null>(null);

@@ -64,8 +64,13 @@ const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// The window's commands a page may call (see `clipboard.rs` and `commands.rs`): the pages of this computer's server and
 /// of the server on another computer a window opens get them from `grant_page_commands`, by their exact origin. The
 /// app's own pages (the page for a server that did not open) may call only the four that choose the window's server
-/// (`capabilities/app-pages.json`); no other page has any.
-const PAGE_PERMISSIONS: [&str; 10] = [
+/// (`capabilities/app-pages.json`); no other page has any. Agent access (#20) is a server's page's too, in the side bar's
+/// panel (`access.rs`): whether this computer is set up and linked, setting it up and linking it to that page's own
+/// server (an administrator's password; the address is the window's, never the page's), and the switch: its state,
+/// turning on, off, extending, sudo, the review, what sessions show, and Remove. Each of the switch's commands acts
+/// only for a window whose server is the one this computer is linked to, and each that grants anything asks the
+/// person's password in the system's dialog, worded by the agent's guard from what it grants.
+const PAGE_PERMISSIONS: [&str; 20] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",
     "allow-read-clipboard-file",
@@ -75,6 +80,16 @@ const PAGE_PERMISSIONS: [&str; 10] = [
     "allow-use-this-computer",
     "allow-notify",
     "allow-new-window",
+    "allow-access-here",
+    "allow-access-set-up-here",
+    "allow-access-status",
+    "allow-access-on",
+    "allow-access-off",
+    "allow-access-extend",
+    "allow-access-sudo",
+    "allow-access-acknowledge",
+    "allow-access-events",
+    "allow-access-remove",
     "core:webview:allow-set-webview-zoom",
 ];
 const WINDOW_TITLE: &str = "omp app";
@@ -479,6 +494,11 @@ fn note_local(app: &AppHandle, address: &Url) {
 /// The origin of this computer's server the windows open; None before one opened it.
 fn local_origin(app: &AppHandle) -> Option<String> {
     with_state(app, |state| state.local_origin.clone())
+}
+
+/// The origin of the server window `label` shows: another computer's, or this computer's own; None before one opened.
+pub fn window_origin(app: &AppHandle, label: &str) -> Option<String> {
+    remote_origin_of(app, label).or_else(|| local_origin(app))
 }
 
 /// Gives the window's page commands to the pages of `origin`, once per origin: this computer's server (`note_local`) or

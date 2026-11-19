@@ -16,6 +16,17 @@
         "@tauri-apps/cli": "^2.12.2",
       },
     },
+    "apps/device": {
+      "name": "@omp-app/device",
+      "version": "0.0.0",
+      "dependencies": {
+        "@omp-app/contracts": "workspace:*",
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.2",
+      },
+    },
     "apps/ui": {
       "name": "@omp-app/ui",
       "version": "0.0.0",
@@ -410,6 +421,8 @@
     "@omp-app/contracts": ["@omp-app/contracts@workspace:packages/contracts"],
 
     "@omp-app/desktop": ["@omp-app/desktop@workspace:apps/desktop"],
+
+    "@omp-app/device": ["@omp-app/device@workspace:apps/device"],
 
     "@omp-app/embed": ["@omp-app/embed@workspace:packages/embed"],
 

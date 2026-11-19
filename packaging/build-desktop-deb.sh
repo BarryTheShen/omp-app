@@ -40,8 +40,14 @@ bun packages/server/scripts/build-server.ts "$version" "$crate/binaries/omp-app-
 # the `bun` on PATH. The script refuses any other Bun.
 "${CHAT_HOST_BUN:-bun}" packages/server/scripts/build-chat-host.ts "$crate/resources/chat-host"
 
+# Agent access (#20), installed idle: packaging/stage-device.sh stages the computer part in dist/device-stage, which
+# tauri.conf.json's deb files carry, with the packages it needs added to the Depends.
+bash packaging/stage-device.sh "$root/dist/device-stage"
+depends=$(jq -R . "$root/dist/device-stage.depends" | jq -s -c '["libc6 (>= 2.39)", "pkexec"] + .')
+config=$(jq -c -n --arg v "$version" --argjson d "$depends" '{version: $v, bundle: {linux: {deb: {depends: $d}}}}')
+
 # Tauri builds the window and the .deb (the deb target only); the version comes from here.
-(cd "$desktop" && bun run tauri build --bundles deb --config "{\"version\": \"$version\"}")
+(cd "$desktop" && bun run tauri build --bundles deb --config "$config")
 
 target=${CARGO_TARGET_DIR:-$crate/target}
 built="$target/release/bundle/deb/$package"
@@ -65,12 +71,44 @@ cp "$built" "$out/$package"
 paths=$(dpkg-deb -c "$out/$package" | awk '{ print $NF }')
 for path in usr/bin/omp-app-desktop usr/bin/omp-app-desktop-server \
   usr/lib/omp-app-desktop/ui/index.html usr/lib/omp-app-desktop/chat-host \
-  usr/share/applications/omp-app-desktop.desktop; do
+  usr/share/applications/omp-app-desktop.desktop \
+  usr/bin/omp-app-device usr/lib/omp-app-device/omp-app-device \
+  usr/lib/omp-app-device/openssh/usr/sbin/sshd usr/lib/omp-app-device/openssh/usr/lib/openssh/sftp-server \
+  usr/lib/systemd/system/omp-app-device-guard.service usr/lib/systemd/system/omp-agent-access.slice \
+  usr/lib/systemd/user/omp-app-device.service usr/share/polkit-1/actions/dev.ompapp.device.policy; do
   grep -Fxq "$path" <<<"$paths" || {
     echo "the package has no $path" >&2
     exit 1
   }
 done
+# Agent access is installed idle (#20): nothing in /etc (no enabled unit, no account settings), the computer part's
+# packages in the Depends, one copy of it per computer, and the install creating nothing.
+! grep -Eq '^etc/' <<<"$paths" || {
+  echo "the package writes to /etc: agent access must be installed idle" >&2
+  exit 1
+}
+control=$(dpkg-deb -f "$out/$package" Depends Conflicts)
+for need in pkexec polkitd libwrap0 'Conflicts: omp-app-device'; do
+  grep -Fq "$need" <<<"$control" || {
+    echo "the package's control lacks $need" >&2
+    exit 1
+  }
+done
+[[ $(grep -o 'libc6[^,]*' <<<"$control" | grep -c .) == 1 ]] || {
+  echo "the package's Depends name libc6 more than once: only (>= 2.39) belongs there" >&2
+  exit 1
+}
+scripts=$(mktemp -d)
+dpkg-deb -e "$out/$package" "$scripts"
+if grep -v '^#' "$scripts/postinst" 2>/dev/null | grep -Eq 'useradd|systemctl enable|omp-app-device setup'; then
+  echo "the package's postinst sets up agent access: only the window's setup may" >&2
+  exit 1
+fi
+grep -Fq 'omp-app-device remove' "$scripts/prerm" || {
+  echo "the package's prerm does not remove agent access" >&2
+  exit 1
+}
+rm -rf "$scripts"
 # The omp-app command package owns these paths; this package must not touch them. Each pattern
 # ends where the file name ends, so omp-app-desktop is not mistaken for omp-app.
 clash=$(grep -E '^usr/(bin/omp-app$|share/omp-app(/|$)|share/applications/omp-app\.desktop$|share/icons/hicolor/scalable/apps/omp-app\.svg$)' <<<"$paths" || true)
@@ -85,7 +123,13 @@ grep -Fxq 'Name=omp app' <<<"$entry" || {
   exit 1
 }
 grep -Fxq 'Actions=new-window;' <<<"$entry" && grep -Eq '^Exec=.+ --new-window$' <<<"$entry" || {
-  echo "the applications-menu entry has no New Window action" >&2
+  echo "the applications-menu entry lacks its New Window action" >&2
+  exit 1
+}
+# The server package's launcher is also named "omp app": without its window class, GNOME may give the desktop app's
+# window to that one.
+grep -Fxq 'StartupWMClass=omp-app-desktop' <<<"$entry" || {
+  echo "the applications-menu entry does not name its window (StartupWMClass=omp-app-desktop)" >&2
   exit 1
 }
 

@@ -17,6 +17,8 @@ import {
   offeredProtocols,
   pairingRoute,
 } from "./devices";
+import type { AccessLink } from "./devices/access/link";
+import { type DeviceAccessServer, deviceAccessRoute } from "./devices/access/routes";
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
 import { liteFrameAncestors } from "./frame-ancestors";
 import { launchTokenDigest } from "./launch-history";
@@ -66,6 +68,8 @@ export interface AppServerOptions {
   readonly devices?: DevicePairing;
   /** Names the computer a pairing page is on, for the suggested name of a new device (`devices/machine.ts`); none by default. */
   readonly machineOf?: MachineNamer;
+  /** Agent access to enrolled machines (#20): enrollment, and each machine's access link. Off without it. */
+  readonly deviceAccess?: DeviceAccessServer;
 }
 
 export interface AppServer {
@@ -359,6 +363,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     readonly hadKey: boolean;
     readonly hadToken: boolean;
     session?: DispatcherSession;
+    /** A machine's access link (#20), not a page: it never reaches the dispatcher. */
+    readonly accessLink?: true;
+    access?: AccessLink;
   }
 
   let bunServer: Bun.Server<SocketData>;
@@ -381,6 +388,24 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         });
         if (answer !== undefined) return answer;
+      }
+      if (options.deviceAccess !== undefined) {
+        const answer = await deviceAccessRoute(request, url, options.deviceAccess, {
+          hostAllowed: (each) => hostAllowed(each, policy()),
+          upgrade: (each) =>
+            server.upgrade(each, {
+              data: {
+                id: randomId(),
+                deviceId: null,
+                client: (each.headers.get("user-agent") ?? "none").slice(0, CLIENT_CHARACTERS),
+                origin: "machine",
+                hadKey: false,
+                hadToken: false,
+                accessLink: true,
+              },
+            }),
+        });
+        if (answer !== undefined) return answer === "upgraded" ? undefined : answer;
       }
       if (url.pathname === "/ws") {
         const authorization = authorizeWebSocketUpgrade(request, policy());
@@ -450,6 +475,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       idleTimeout: LINK_SILENCE_LIMIT_SECONDS,
       sendPings: true,
       open: (socket) => {
+        if (socket.data.accessLink && options.deviceAccess !== undefined) {
+          socket.data.access = options.deviceAccess.hub.attach(
+            (frame) => {
+              socket.send(JSON.stringify(frame));
+            },
+            (code, reason) => socket.close(code, reason),
+          );
+          return;
+        }
         if (socket.data.authFailure) {
           // Who was refused and with what: a paired device refused by mistake shows here (Nov 2, an unnamed "not paired").
           options.logger?.warn("connection.rejected", {
@@ -483,6 +517,18 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
       },
       message: (socket, message) => {
+        if (socket.data.access !== undefined) {
+          try {
+            socket.data.access.receive(
+              typeof message === "string" ? message : Buffer.from(message).toString("utf8"),
+            );
+          } catch (error) {
+            options.logger?.error("device_access.frame_failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          return;
+        }
         // A frame that throws must not reach the process's last-resort handler, which ends the server.
         try {
           socket.data.session?.receive(message);
@@ -493,6 +539,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
       },
       close: (socket, code, reason) => {
+        if (socket.data.access !== undefined) {
+          options.deviceAccess?.hub.detached(socket.data.access);
+          return;
+        }
         if (socket.data.session !== undefined)
           dispatcher.close(socket.data.session, { code, reason });
         devices?.connections.remove(socket.data.id);

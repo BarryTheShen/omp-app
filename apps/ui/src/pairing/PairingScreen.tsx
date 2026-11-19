@@ -2,6 +2,7 @@ import { formatPairingCode, normalizePairingCode, type PairingAsked } from "@omp
 import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { WindowServerChoice } from "../desktop/ServerSection";
 import { embed, useEmbed } from "../lite/embed";
 import { guessThisDevice } from "./device-name";
 import { frameOfThisPage, pairingInsideNotice } from "./framed-by";
@@ -304,6 +305,7 @@ export function PairingScreen({
             {problem}
           </p>
         )}
+        <WindowServerChoice />
       </div>
     </main>
   );

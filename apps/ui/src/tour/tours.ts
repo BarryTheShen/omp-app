@@ -2951,6 +2951,30 @@ const PORTS_TOUR: Tour = {
   ],
 };
 
+const ACCESS_PANEL = part("access-panel");
+
+/** #20: the computers agents may reach through the app, their switches, and what ran on them. */
+const AGENT_ACCESS_TOUR: Tour = {
+  id: "agent-access-2026-11-16",
+  title: "Agent access to your computers",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "An Agent access panel",
+      text: "Click <b>Agent access</b> on this rail: the side panel lists the computers agents may reach through the app, and whether each is on.",
+      action: { kind: "appears", selector: ACCESS_PANEL },
+    },
+    {
+      target: ACCESS_PANEL,
+      title: "On only at the computer, off from anywhere",
+      text: "A computer is turned on at the computer itself, with its owner's password, for up to two hours. <b>Turn off</b> here ends its sessions at once, from any device. Each command that ran is listed with its chat, how it ended and when.",
+      action: next,
+    },
+  ],
+};
+
 /** #2836 D1: the chats' services first, the machine's other ports folded away; an ended share says so. */
 const SHARING_TOUR: Tour = {
   id: "sharing-2026-11-06",
@@ -3419,6 +3443,13 @@ export const UPDATES: readonly Update[] = [
     summary:
       "Your chats run on omp 18.22.2 now, up from 18.20.2: the app's automatic omp update tested it first, then moved your chats to it while they were paused. omp's own notes on what changed are in its changelog.",
     tours: [OMP_18_22_2_TOUR],
+  },
+  {
+    id: "2026-11-16-agent-access",
+    when: "2026-11-16T17:00:00-06:00",
+    summary:
+      "Agents can work on your other computers through the app: a computer you enroll is reached only while it is on, turned on at that computer with its owner's password for up to two hours, and off from any device. The computer shows that an agent is working on it, with each command and what it prints; the Agent access panel lists the computers and what ran.",
+    tours: [AGENT_ACCESS_TOUR],
   },
   {
     id: "2026-11-16-context-tag",

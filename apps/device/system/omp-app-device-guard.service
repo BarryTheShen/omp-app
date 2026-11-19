@@ -1,0 +1,25 @@
+# omp-app agent access: the root-owned guard (sessions as the agent account, the deadline, the log).
+[Unit]
+Description=omp-app agent access guard
+After=network.target
+# Installed with the app but idle: it runs only once `omp-app-device setup` wrote its settings (and enabled it).
+ConditionPathExists=/etc/omp-app-device/guard.json
+
+[Service]
+ExecStart=/usr/lib/omp-app-device/omp-app-device guard /etc/omp-app-device/guard.json
+Restart=on-failure
+RuntimeDirectory=omp-app-device
+RuntimeDirectoryMode=0755
+StateDirectory=omp-app-device
+StateDirectoryMode=0700
+LogsDirectory=omp-app-device
+LogsDirectoryMode=0750
+# A sudo grant never outlives the guard, also when it crashes or fails to start (the guard removes it too, at its start).
+ExecStartPre=-/usr/bin/rm -f /etc/sudoers.d/zz-omp-app-agent
+# Stopping the guard ends access: every process of every session at once, then the slice, then any sudo grant.
+ExecStopPost=-/usr/bin/systemctl kill --signal=SIGKILL --kill-whom=all omp-agent-access.slice
+ExecStopPost=-/usr/bin/systemctl stop omp-agent-access.slice
+ExecStopPost=-/usr/bin/rm -f /etc/sudoers.d/zz-omp-app-agent
+
+[Install]
+WantedBy=multi-user.target

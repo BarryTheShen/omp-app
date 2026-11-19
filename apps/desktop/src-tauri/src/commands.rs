@@ -82,17 +82,33 @@ pub async fn new_window(app: AppHandle, window: WebviewWindow) -> Result<(), Str
 #[tauri::command]
 pub fn notify(summary: String, body: String) {
     thread::spawn(move || {
-        if let Err(error) = send_notification(&summary, &body) {
+        if let Err(error) = send_notification(&summary, &body, false) {
             eprintln!("omp app: a notification could not be shown: {error}");
         }
     });
 }
 
-/// The freedesktop notification service's `Notify`, on the session bus.
-fn send_notification(summary: &str, body: &str) -> Result<(), gtk::glib::Error> {
+/// A notification that stays until the person dismisses it (urgency critical), as for an agent session on this
+/// computer (`access.rs`). Never from a page: no command reaches it.
+pub fn notify_lasting(summary: &str, body: &str) {
+    let (summary, body) = (summary.to_owned(), body.to_owned());
+    thread::spawn(move || {
+        if let Err(error) = send_notification(&summary, &body, true) {
+            eprintln!("omp app: a notification could not be shown: {error}");
+        }
+    });
+}
+
+/// The freedesktop notification service's `Notify`, on the session bus; `lasting` asks it to stay until dismissed.
+fn send_notification(summary: &str, body: &str, lasting: bool) -> Result<(), gtk::glib::Error> {
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     let mut hints: HashMap<String, Variant> = HashMap::new();
     hints.insert("desktop-entry".to_owned(), DESKTOP_ENTRY.to_variant());
+    if lasting {
+        // Critical urgency: the desktop keeps it until it is dismissed (the notification specification's `urgency` 2).
+        hints.insert("urgency".to_owned(), 2_u8.to_variant());
+        hints.insert("resident".to_owned(), true.to_variant());
+    }
     // app_name, replaces_id, app_icon, summary, body, actions, hints, expire_timeout (-1: the service decides).
     let message = (
         APP_NAME.to_owned(),

@@ -12,7 +12,11 @@
 //!
 //! `omp-app-desktop 'omp-app://chat/<chat id>?server=<origin>'`, as the system runs it for such a link (the lite view's
 //! "Open in the full app"), shows that chat in a window on that server (see `chat_link.rs`).
+//!
+//! Agent access on this computer (#20): the commands behind the side bar's Agent access panel, the tray icon while
+//! access is on and the notification during an agent session (see `access.rs`).
 
+mod access;
 mod address;
 mod chat_link;
 mod clipboard;
@@ -53,6 +57,16 @@ fn main() {
             commands::use_this_computer,
             commands::notify,
             commands::new_window,
+            access::access_status,
+            access::access_on,
+            access::access_off,
+            access::access_acknowledge,
+            access::access_extend,
+            access::access_sudo,
+            access::access_events,
+            access::access_remove,
+            access::access_here,
+            access::access_set_up_here,
         ])
         .on_window_event(|window, event| match event {
             // A window that is not the last closes alone. The last one hides at once, and the app ends (see
@@ -73,6 +87,7 @@ fn main() {
             app.manage(gstreamer::RegistryScan::start());
             signals::watch(app.handle().clone());
             server::start(app.handle().clone(), link);
+            access::watch(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

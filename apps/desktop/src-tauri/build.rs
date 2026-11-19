@@ -11,6 +11,18 @@ fn main() {
             "use_this_computer",
             "notify",
             "new_window",
+            // Agent access (#20), for the server's pages in the side bar's panel (server.rs PAGE_PERMISSIONS; each
+            // acts only for a window showing the server this computer is linked to, see access.rs).
+            "access_here",
+            "access_set_up_here",
+            "access_status",
+            "access_on",
+            "access_off",
+            "access_acknowledge",
+            "access_extend",
+            "access_sudo",
+            "access_events",
+            "access_remove",
         ]),
     ))
     .unwrap();

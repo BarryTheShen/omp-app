@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { arch, cpus, homedir, hostname, platform, release, totalmem, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -30,6 +30,8 @@ import {
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
 import { createMachineNames, openDevicePairing, tailscaleWhois } from "../src/devices";
+import { chatScopeOf } from "../src/devices/access/paths";
+import { openDeviceAccess } from "../src/devices/access/routes";
 import {
   FRAME_ANCESTORS_ENV,
   liteFrameAncestors,
@@ -100,6 +102,10 @@ import {
   TaskQueue,
   tasksFile,
 } from "../src/ports/A0";
+import {
+  createDeviceAccessPortRegistration,
+  deviceAccessPublishers,
+} from "../src/ports/A0/device-access";
 import {
   type ProbeCacheHit,
   type ProbeCacheIdentity,
@@ -799,6 +805,32 @@ export async function createCompositionServer(
   };
   // Device pairing: each device has a key of its own; the address a new device opens is known once the server listens.
   const devices = await openDevicePairing({ appDataDir, logger });
+  // Agent access to enrolled machines (#20): off unless `OMP_APP_DEVICE_ACCESS=1` and the app has its https address,
+  // which machines enroll with and sign into their answers.
+  const deviceAccess =
+    env.OMP_APP_DEVICE_ACCESS === "1" && remote !== undefined
+      ? await openDeviceAccess({
+          appDataDir,
+          env,
+          serverOrigin: remote.origin,
+          desk: devices.desk,
+          proxyCommand: [env.OMP_APP_BIN ?? Bun.which("omp-app") ?? "omp-app", "device-ssh"],
+          // The chat a chat process belongs to, by the systemd scope its process runs in (`/proc/<pid>/cgroup`).
+          threadOfScope: (scopeId) =>
+            processRegistry.list().find((entry) => {
+              if (entry.pid === undefined) return false;
+              try {
+                return chatScopeOf(readFileSync(`/proc/${entry.pid}/cgroup`, "utf8")) === scopeId;
+              } catch {
+                return false;
+              }
+            })?.threadId ?? null,
+          onMachinesChanged: (machines) =>
+            deviceAccessPublishers(publish).machinesChanged(machines),
+          onActivity: (activity) => deviceAccessPublishers(publish).activity(activity),
+          logger,
+        })
+      : undefined;
   let appAddress = "";
   let appPort: number | undefined;
   // omp's statistics page, run when the dashboard first opens it (#2836 D6).
@@ -993,6 +1025,9 @@ export async function createCompositionServer(
       address: () => appAddress,
       logger,
     }),
+    ...(deviceAccess === undefined
+      ? []
+      : [createDeviceAccessPortRegistration({ access: deviceAccess, publish, logger })]),
     shares.registration,
     runningChats.registration,
     todos.registration,
@@ -1021,6 +1056,7 @@ export async function createCompositionServer(
     ...(remote === undefined ? {} : { remote }),
     ...(frameAncestors.length === 0 ? {} : { frameAncestors }),
     devices,
+    ...(deviceAccess === undefined ? {} : { deviceAccess }),
     machineOf: createMachineNames({ whois: tailscaleWhois, hostname }),
   });
   appAddress = remote?.origin ?? server.url;
@@ -1083,6 +1119,7 @@ export async function createCompositionServer(
           sessionPinStore.dispose();
           memoryStore.dispose();
           devices.desk.dispose();
+          deviceAccess?.stop();
           shares.stop();
           ompStats.stop();
           usageLimitStore.dispose();

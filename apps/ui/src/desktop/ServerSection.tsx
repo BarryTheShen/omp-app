@@ -61,6 +61,21 @@ export function ServerSection({ focusLink }: { readonly focusLink: boolean }): R
   );
 }
 
+/**
+ * The desktop window's way out of a server it cannot use yet: on the pairing screen, the servers it opened before, each
+ * one click away (the App tab, where they otherwise are, opens only once this device is paired). Nothing in a browser.
+ */
+export function WindowServerChoice(): ReactNode {
+  const bridge = desktopBridge();
+  if (bridge === null) return null;
+  return (
+    <section aria-label="Other servers" className="border-t border-l1 pt-4">
+      <h2 className="text-xs font-medium text-t3">Or open another server</h2>
+      <WindowServers bridge={bridge} focusLink={false} />
+    </section>
+  );
+}
+
 /** In a browser: the server the page came from, and a field to go to another one. */
 function PageServer({ focusLink }: { readonly focusLink: boolean }): ReactNode {
   const [typed, setTyped] = useState("");

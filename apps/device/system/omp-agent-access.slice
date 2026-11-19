@@ -1,0 +1,7 @@
+# omp-app agent access: every agent session runs here, so stopping this slice ends them all.
+[Unit]
+Description=omp-app agent sessions
+
+[Slice]
+TasksMax=512
+MemoryMax=75%

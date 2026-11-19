@@ -1,0 +1,10 @@
+# omp-app agent access: the person's agent (the link, the switch). A user service: systemctl --user enable --now omp-app-device
+[Unit]
+Description=omp-app agent access (this machine)
+
+[Service]
+ExecStart=/usr/lib/omp-app-device/omp-app-device run
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -9,10 +9,12 @@ import {
   ListChecks,
   type LucideIcon,
   MessageCircleQuestion,
+  MonitorCog,
   Network,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ChatController } from "../chat/controller";
+import type { ChatController, ChatTarget } from "../chat/controller";
+import { AccessPanel } from "./access/AccessPanel";
 import { AgentsPanel } from "./agents/AgentsPanel";
 import { BrowserPanel } from "./browser/BrowserPanel";
 import { BtwPanel } from "./btw/BtwPanel";
@@ -32,6 +34,8 @@ export interface PanelContext {
   readonly chat: ChatController | null;
   /** Opens the goal dialog for a chat (the palette's "Set a goal for this chat…"). */
   readonly openGoal: (chat: ChatController) => void;
+  /** Opens a chat in front; none where the panel has no chats to open. */
+  readonly openChat?: (target: ChatTarget) => void;
   /** Opens a file of the folder as a pane beside the chats (the Files panel's Open as tab); none on a phone. */
   readonly openFileTab?: (path: WorkspaceRelativePath) => void;
 }
@@ -106,5 +110,11 @@ export const PANELS: readonly Panel[] = [
     title: "Browser",
     icon: Globe,
     render: ({ client }) => <BrowserPanel client={client} />,
+  },
+  {
+    id: "access",
+    title: "Agent access",
+    icon: MonitorCog,
+    render: ({ client, openChat }) => <AccessPanel client={client} openChat={openChat} />,
   },
 ];
