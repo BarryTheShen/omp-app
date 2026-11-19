@@ -1,33 +1,19 @@
 /**
- * Whether the session is done (SDK plan H5.2g1), as omp's settle report (18.12.6 `modes/rpc/rpc-session-settle.ts`).
- * "The agent yielded" (a terminal `agent_end`) is not "the session is done": that needs nothing live, admitted or
- * queued, and no background job or delivery that could wake the session again. It backs `get_state.isSettled`,
- * `prompt_result.sessionSettled` and the `session_settled` event.
+ * Whether the session is done (SDK plan H5.2g1), as omp's settle report (18.22 `modes/rpc/rpc-session-settle.ts`).
+ * "The agent yielded" (a yielded `agent_pause`, or the run's `agent_end`) is not "the session is done": that needs the
+ * run over (omp keeps it open while a background job, a child agent or a delivery can wake it) and nothing live,
+ * admitted, queued or scheduled. It backs `get_state.isSettled`, `prompt_result.sessionSettled` and the
+ * `session_settled` event. The predicate is omp's own (`session/session-settle.ts`).
  */
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
+import {
+  isSessionSettled,
+  type SessionSettleState,
+} from "@oh-my-pi/pi-coding-agent/session/session-settle";
 import type { SessionSettledEvent } from "@omp-app/contracts/chat-host";
-
-export type SettleSession = Pick<
-  AgentSession,
-  "isStreaming" | "hasAdmittedSubmission" | "queuedMessageCount" | "hasPendingAsyncWork"
->;
 
 /** A turn the host decided to start but has not admitted yet (a scheduled goal continuation): not settled. */
 export type ScheduledTurnProbe = () => boolean;
-
-export function isSessionSettled(
-  session: SettleSession,
-  scheduledTurn?: ScheduledTurnProbe,
-): boolean {
-  return (
-    !session.isStreaming &&
-    !session.hasAdmittedSubmission &&
-    session.queuedMessageCount === 0 &&
-    !session.hasPendingAsyncWork() &&
-    scheduledTurn?.() !== true
-  );
-}
 
 function nextMacrotask(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -36,11 +22,11 @@ function nextMacrotask(): Promise<void> {
 }
 
 /**
- * Sends `session_settled` once per stretch of agent activity, after the final run yields and the background work that
- * would wake the session has drained. Checked at every terminal `agent_end` and after session changes.
+ * Sends `session_settled` once per stretch of agent activity, after the run's `agent_end` and its prompt results.
+ * Checked at every `agent_end` and after session changes; an open run is left alone, as its own `agent_end` checks again.
  */
 export class SettleWatcher {
-  readonly #session: SettleSession & Pick<AgentSession, "settleAsyncWork">;
+  readonly #session: SessionSettleState;
   readonly #emit: (event: SessionSettledEvent) => void;
   readonly #log: (line: string) => void;
   readonly #scheduledTurn: ScheduledTurnProbe | undefined;
@@ -50,7 +36,7 @@ export class SettleWatcher {
   #recheck = false;
 
   constructor(
-    session: SettleSession & Pick<AgentSession, "settleAsyncWork">,
+    session: SessionSettleState,
     emit: (event: SessionSettledEvent) => void,
     log: (line: string) => void,
     scheduledTurn?: ScheduledTurnProbe,
@@ -63,7 +49,7 @@ export class SettleWatcher {
 
   observe(event: AgentSessionEvent): void {
     if (event.type === "agent_start") this.#active = true;
-    else if (event.type === "agent_end" && event.isTerminal !== false) void this.check();
+    else if (event.type === "agent_end") void this.check();
   }
 
   /** Activity no `agent_start` announces (a reported pending goal turn) still ends with `session_settled`. */
@@ -71,7 +57,7 @@ export class SettleWatcher {
     this.#active = true;
   }
 
-  /** Settles the stretch if the session is quiet, waiting out background work that will wake it. */
+  /** Settles the stretch if the session is quiet. */
   async check(): Promise<void> {
     if (this.#checking) {
       this.#recheck = true;
@@ -84,8 +70,6 @@ export class SettleWatcher {
         // Prompt results for this yield are written one macrotask after it; `session_settled` follows them.
         await nextMacrotask();
         await nextMacrotask();
-        while (this.#active && this.#canWaitOutBackgroundWork())
-          await this.#session.settleAsyncWork();
       } while (this.#recheck);
       if (!this.#active || !isSessionSettled(this.#session, this.#scheduledTurn)) return;
       this.#active = false;
@@ -97,10 +81,5 @@ export class SettleWatcher {
     } finally {
       this.#checking = false;
     }
-  }
-
-  #canWaitOutBackgroundWork(): boolean {
-    const session = this.#session;
-    return !session.isStreaming && !session.hasAdmittedSubmission && session.hasPendingAsyncWork();
   }
 }

@@ -217,7 +217,8 @@ export class GoalController {
       }
       return;
     }
-    if (event.type !== "agent_end" || event.isTerminal === false) return;
+    // The run's end (omp 18.21: one `agent_end` per run, after any pause on background work).
+    if (event.type !== "agent_end") return;
     if (this.#pendingContinuationTurns > 0) {
       this.#pendingContinuationTurns--;
       const activity = goalContinuationActivity(event.messages);

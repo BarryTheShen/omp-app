@@ -14,6 +14,7 @@ import type {
   UserMessage as SdkUserMessage,
 } from "@oh-my-pi/pi-ai";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
+import type { WireSessionEvent } from "@oh-my-pi/pi-coding-agent/session/loop-end-wire";
 import type {
   ChatHostCommand,
   ChatHostMethodMap,
@@ -66,13 +67,11 @@ export type MessageContent = SdkUserMessage["content"];
 // The session's events.
 /**
  * One of omp's session events as the chat host passes it on: a message's start, update or end carries the host's
- * `messageId` (`StampedMessageEvent`).
+ * `messageId` (`StampedMessageEvent`), and a stopped model loop is omp's wire `agent_end` (flagged `isTerminal`,
+ * `yielded`, `awaitingAsyncWork`; the session's `agent_pause` goes out as one too).
  */
 export type SessionEvent =
-  | Exclude<
-      AgentSessionEvent,
-      { readonly type: "message_start" | "message_update" | "message_end" }
-    >
+  | Exclude<WireSessionEvent, { readonly type: "message_start" | "message_update" | "message_end" }>
   | StampedMessageEvent;
 export type QueueUpdateEvent = SessionEventOf<"queue_update">;
 export type AutoCompactionStartEvent = SessionEventOf<"auto_compaction_start">;

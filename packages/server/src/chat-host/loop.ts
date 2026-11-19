@@ -45,6 +45,7 @@ import {
   SKILL_PROMPT_MESSAGE_TYPE,
   USER_INTERRUPT_LABEL,
 } from "@oh-my-pi/pi-coding-agent/session/messages";
+import { isSessionSettled } from "@oh-my-pi/pi-coding-agent/session/session-settle";
 import { executeAcpBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/acp-builtins";
 import { buildAvailableSlashCommands } from "@oh-my-pi/pi-coding-agent/slash-commands/available-commands";
 import {
@@ -114,7 +115,7 @@ import {
 import { QuestionsController } from "./questions";
 import { readSearchEngines, removeSearchKey, setSearchKey, testSearch } from "./search-engines";
 import type { ChatSession } from "./session-factory";
-import { isSessionSettled, SettleWatcher } from "./settle";
+import { SettleWatcher } from "./settle";
 import { SignIn } from "./sign-in";
 import { cancelSubagent, readSubagentTranscript, SubagentRoster, steerSubagent } from "./subagents";
 import { nameUntitledChat } from "./title";
@@ -1415,7 +1416,8 @@ function readState(session: AgentSession): ChatHostState {
     autoCompactionEnabled: session.autoCompactionEnabled,
     messageCount: session.messages.length,
     queuedMessageCount: session.queuedMessageCount,
-    hasPendingAsyncWork: session.hasPendingAsyncWork(),
+    // Background jobs, child agents or deliveries can still wake the run (omp 18.22 `rpc-mode.ts`).
+    hasPendingAsyncWork: session.wakeSources !== undefined,
     isSettled: isSessionSettled(session),
     queuedMessages: session.getQueuedMessages(),
     todoPhases: session.getTodoPhases(),

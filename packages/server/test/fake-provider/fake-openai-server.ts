@@ -1380,6 +1380,8 @@ await Bun.write(
     "        contextWindow: 200000",
     "      - id: claude-3-haiku-20240307",
     "        name: Claude Haiku 3",
+    // Said outright: omp 18.22 fills an unset field from its catalog, which marks this id as reasoning.
+    "        reasoning: false",
     "        contextWindow: 200000",
     "      - id: claude-fable-5",
     "        name: Claude Fable 5",

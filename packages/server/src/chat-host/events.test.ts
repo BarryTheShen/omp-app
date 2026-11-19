@@ -59,7 +59,7 @@ describe("the chat's event stream", () => {
     const { stream, sent } = streamOf();
     stream.forward(start());
     stream.forward(update("next"));
-    const whole = { ...update("next"), messageId: "msg-1" };
+    const whole = { ...update("next"), messageId: "msg-1" } as unknown as ChatEvent;
     expect(sent[1]).toEqual(whole);
   });
 
@@ -71,6 +71,29 @@ describe("the chat's event stream", () => {
     stream.forward(update("x"));
     stream.forward(end());
     expect(idsOf(sent)).toEqual(["msg-1", undefined, "msg-2", "msg-2", "msg-2"]);
+  });
+
+  test("a loop's pause and the run's end go out as the flagged agent_end chat hosts on an older omp send", () => {
+    const { stream, sent } = streamOf();
+    stream.forward(start());
+    // A retry after an error: the session works on by itself.
+    stream.forward(event({ type: "agent_pause", messages: [], yielded: false, awaiting: false }));
+    // The model finished its turn; only a background job can resume the run.
+    stream.forward(event({ type: "agent_pause", messages: [], yielded: true, awaiting: true }));
+    stream.forward(event({ type: "agent_end", messages: [] }));
+    stream.forward(start());
+    expect(sent.slice(1)).toEqual([
+      { type: "agent_end", messages: [], isTerminal: false, yielded: false },
+      {
+        type: "agent_end",
+        messages: [],
+        isTerminal: false,
+        yielded: true,
+        awaitingAsyncWork: true,
+      },
+      { type: "agent_end", messages: [], isTerminal: true, yielded: true },
+      { type: "message_start", message: assistant, messageId: "msg-2" },
+    ] as unknown as ChatEvent[]);
   });
 
   test("what is live: a message being written, with what omp has so far, until it ends", () => {

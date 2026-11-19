@@ -15,8 +15,12 @@ import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { stripRawHttpRequestDiagnostics } from "@oh-my-pi/pi-ai/utils/http-inspector";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
+import {
+  isSessionSettled,
+  type SessionSettleState,
+} from "@oh-my-pi/pi-coding-agent/session/session-settle";
 import type { PromptFailure, PromptResultEvent } from "@omp-app/contracts/chat-host";
-import { isSessionSettled, type ScheduledTurnProbe, type SettleSession } from "./settle";
+import type { ScheduledTurnProbe } from "./settle";
 
 /** A prompt whose result is still owed. */
 export interface PromptTicket {
@@ -24,7 +28,7 @@ export interface PromptTicket {
 }
 
 /** What the results read of the session: whether a run streams, what is still queued, and whether it settled. */
-export type PromptResultsSession = SettleSession;
+export type PromptResultsSession = SessionSettleState;
 
 interface RunOutcome {
   readonly status: PromptResultEvent["status"];
@@ -107,15 +111,16 @@ export class PromptResults {
     }
   }
 
-  /** Tracks run boundaries. Call after the event was written, so a result follows its `agent_end`. */
+  /** Tracks run boundaries. Call after the event was written, so a result follows its yield. */
   observe(event: AgentSessionEvent): void {
     if (event.type === "agent_start") {
       this.#agentStarts++;
       return;
     }
-    if (event.type !== "agent_end" || this.#open.size === 0) return;
-    // A session written by an older omp has no `yielded`; there only a terminal end was a yield.
-    if (!(event.yielded ?? event.isTerminal !== false)) return;
+    if (this.#open.size === 0) return;
+    // The agent yields at a loop that stops while the run goes on (`agent_pause` with `yielded`), or at the run's end
+    // (omp 18.22 `modes/rpc/rpc-prompt-results.ts`).
+    if (event.type !== "agent_end" && (event.type !== "agent_pause" || !event.yielded)) return;
     const outcome = runOutcome(event.messages);
     // A steer or follow-up still queued has not been read by the agent yet.
     const queueDrained = this.#session.queuedMessageCount === 0;

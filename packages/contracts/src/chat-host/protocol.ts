@@ -16,6 +16,7 @@ import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
+import type { WireSessionEvent } from "@oh-my-pi/pi-coding-agent/session/loop-end-wire";
 import type { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/utils/token-rate";
 import type { BtwHistoryRecord } from "@oh-my-pi/pi-tui/overlays/btw-history";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
@@ -1637,9 +1638,13 @@ export interface DeltaMessageUpdate {
   readonly assistantMessageEvent: OmitEach<AssistantMessageEvent, "partial">;
 }
 
-/** Every event the chat host writes: omp's session events, and the app's own. */
+/**
+ * Every event the chat host writes: omp's session events, and the app's own. A stopped model loop is omp's wire
+ * `agent_end` (`isTerminal`, `yielded`, `awaitingAsyncWork`; omp 18.21 `session/loop-end-wire.ts`), as chat hosts on an
+ * older omp send it too.
+ */
 export type ChatEvent =
-  | Exclude<AgentSessionEvent, { readonly type: MessageEventType }>
+  | Exclude<WireSessionEvent, { readonly type: MessageEventType }>
   | StampedMessageEvent
   | DeltaMessageUpdate
   | PromptResultEvent

@@ -8,8 +8,8 @@ function event(fields: Record<string, unknown>): AgentSessionEvent {
   return fields as unknown as AgentSessionEvent;
 }
 const agentStart = event({ type: "agent_start" });
-function agentEnd(stopReason: "stop" | "error" | "aborted", fields: Record<string, unknown> = {}) {
-  const reply = {
+function reply(stopReason: "stop" | "error" | "aborted") {
+  return {
     role: "assistant",
     stopReason,
     api: "openai-completions",
@@ -17,26 +17,30 @@ function agentEnd(stopReason: "stop" | "error" | "aborted", fields: Record<strin
     model: "fake-model",
     ...(stopReason === "error" ? { errorMessage: "The fake provider rejected this request." } : {}),
   };
+}
+/** The run's end (omp 18.21: one per run). */
+function agentEnd(stopReason: "stop" | "error" | "aborted") {
+  return event({ type: "agent_end", messages: [{ role: "user" }, reply(stopReason)] });
+}
+/** A model loop that stopped while the run goes on: `yielded` when the model finished its turn. */
+function loopPause(stopReason: "stop" | "error" | "aborted", yielded: boolean, awaiting = false) {
   return event({
-    type: "agent_end",
-    messages: [{ role: "user" }, reply],
-    yielded: true,
-    ...fields,
+    type: "agent_pause",
+    messages: [{ role: "user" }, reply(stopReason)],
+    yielded,
+    awaiting,
   });
 }
 
 /** A session with nothing running unless the test says so. */
 function results(
-  fields: { isStreaming?: boolean; queuedMessageCount?: number; pendingWork?: boolean } = {},
+  fields: { isStreaming?: boolean; queuedMessageCount?: number; runActive?: boolean } = {},
 ) {
   const state = {
     isStreaming: fields.isStreaming ?? false,
     queuedMessageCount: fields.queuedMessageCount ?? 0,
     hasAdmittedSubmission: false,
-    pendingWork: fields.pendingWork ?? false,
-    hasPendingAsyncWork(): boolean {
-      return this.pendingWork;
-    },
+    isRunActive: fields.runActive ?? false,
   };
   const sent: PromptResultEvent[] = [];
   return { results: new PromptResults(state, (result) => sent.push(result)), sent, state };
@@ -72,11 +76,12 @@ describe("prompt results", () => {
     ]);
   });
 
-  test("a result written while background work can still wake the session says it is not settled", async () => {
-    const { results: open, sent } = results({ pendingWork: true });
+  test("a result written while background work can still wake the run says the session is not settled", async () => {
+    // The model finished its turn and the run waits on a job: omp pauses it, and keeps it open.
+    const { results: open, sent } = results({ runActive: true });
     const ticket = open.begin("8");
     open.observe(agentStart);
-    open.observe(agentEnd("stop"));
+    open.observe(loopPause("stop", true, true));
     open.settle(ticket);
     await nextTurn();
     expect(sent).toMatchObject([{ requestId: "8", status: "completed", sessionSettled: false }]);
@@ -99,7 +104,7 @@ describe("prompt results", () => {
     const { results: open, sent } = results();
     const ticket = open.begin("1");
     open.observe(agentStart);
-    open.observe(agentEnd("error", { yielded: false }));
+    open.observe(loopPause("error", false));
     open.settle(ticket);
     open.observe(agentStart);
     open.observe(agentEnd("stop"));

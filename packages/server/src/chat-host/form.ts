@@ -1,8 +1,8 @@
 /**
  * omp's question form (its `ask` tool, omp 18.18.3) in the app. The HTML the model wrote is read with omp's own parser
  * (pi-tui `html-form/parse.ts`) into data a page draws (`FormDialog`): text, pictures and fields, never HTML, so no
- * script, handler or style in it reaches a page. Pictures are loaded here, as omp's terminal loads them
- * (`html-form/media.ts`), and sent as `data:` URLs, so no page fetches an address the form names. The page's answer
+ * script, handler or style in it reaches a page. Pictures are loaded here, as omp's terminal loads them (pi-tui
+ * `media.ts` since omp 18.22), and sent as `data:` URLs, so no page fetches an address the form names. The page's answer
  * becomes omp's form data by omp's own rules (`html-form/data.ts`).
  */
 
@@ -13,7 +13,6 @@ import {
   type HtmlFormData,
   textValue,
 } from "@oh-my-pi/pi-tui/html-form/data";
-import { type FormMedia, loadFormImage, svgMedia } from "@oh-my-pi/pi-tui/html-form/media";
 import {
   type HtmlForm,
   type FormBlock as OmpFormBlock,
@@ -21,6 +20,7 @@ import {
   type FormSpan as OmpFormSpan,
   parseHtmlForm,
 } from "@oh-my-pi/pi-tui/html-form/parse";
+import { loadMedia, type Media, svgMedia } from "@oh-my-pi/pi-tui/media";
 import type {
   FormAnswer,
   FormBlock,
@@ -78,7 +78,7 @@ function fieldOf(field: OmpFormField, question: string): FormField {
   };
 }
 
-const dataUrl = (media: FormMedia): string =>
+const dataUrl = (media: Media): string =>
   `data:${media.mime};base64,${Buffer.from(media.bytes).toString("base64")}`;
 
 async function blockOf(
@@ -102,7 +102,7 @@ async function blockOf(
       };
     case "image": {
       // omp loads only pictures (PNG, JPEG, GIF, WebP, SVG) up to 10 MiB; one it cannot load shows as its alt text.
-      const src = await loadFormImage(block.src, {
+      const src = await loadMedia(block.src, {
         cwd,
         ...(signal === undefined ? {} : { signal }),
       }).then(dataUrl, () => null);

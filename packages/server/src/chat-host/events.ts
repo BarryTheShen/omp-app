@@ -9,9 +9,14 @@
  *
  * For a server that attaches to a running chat (D2), it keeps what is live: each unfinished message as omp has it so
  * far, and each tool that runs. `live()` gives them as events that bring a new server up to date.
+ *
+ * A stopped model loop goes out as omp's wires carry it (omp 18.21 `session/loop-end-wire.ts`): the session's
+ * `agent_pause` (the run goes on) and its run-ending `agent_end` both become an `agent_end` flagged `isTerminal`,
+ * `yielded` and `awaitingAsyncWork`, the shape chat hosts on an older omp send, so the server and pages read both alike.
  */
 import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
+import { toWireEvent, type WireAgentEnd } from "@oh-my-pi/pi-coding-agent/session/loop-end-wire";
 import type { ChatEvent, DeltaMessageUpdate, EventOptions } from "@omp-app/contracts/chat-host";
 
 type MessageStart = Extract<AgentSessionEvent, { type: "message_start" }>;
@@ -79,12 +84,13 @@ export class SessionEventStream {
         this.#tools.delete(event.toolCallId);
         this.#emit(event);
         return;
+      case "agent_pause":
       case "agent_end":
-        // A run leaves no message open; an end the stream never saw must not shift later ids.
+        // A stopped loop leaves no message open; an end the stream never saw must not shift later ids.
         this.#open.length = 0;
         this.#messages.clear();
         this.#tools.clear();
-        this.#emit(event);
+        this.#emit(toWireEvent(event) as WireAgentEnd);
         return;
       default:
         this.#emit(event);

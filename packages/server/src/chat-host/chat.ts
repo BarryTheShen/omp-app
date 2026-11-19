@@ -19,6 +19,7 @@
  */
 
 import { SessionResolutionError } from "@oh-my-pi/pi-coding-agent/main";
+import { isSessionSettled } from "@oh-my-pi/pi-coding-agent/session/session-settle";
 import { VERSION } from "@oh-my-pi/pi-utils/dirs";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import { CHAT_HOST_SOCKET_ARG } from "@omp-app/contracts/chat-host/args";
@@ -27,7 +28,6 @@ import { linesOf } from "./input";
 import { runChatLoop } from "./loop";
 import { type LineWriter, takeOverStdout } from "./output";
 import { createChatSession } from "./session-factory";
-import { isSessionSettled } from "./settle";
 import { type HostSocket, openHostSocket } from "./socket";
 
 /** How long a host on a socket waits for its server's first connection before it gives up. */
