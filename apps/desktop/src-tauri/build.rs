@@ -9,6 +9,9 @@ fn main() {
             "connect_server",
             "open_server",
             "use_this_computer",
+            "rename_server",
+            "forget_server",
+            "check_server",
             "notify",
             "new_window",
             // Agent access (#20), for the server's pages in the side bar's panel (server.rs PAGE_PERMISSIONS; each

@@ -1,7 +1,15 @@
 import type { AppClient } from "@omp-app/client";
 import { cn } from "cn";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,44 +21,78 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { CONNECTION_LOOK, connectionKind, useConnectionState } from "../ConnectionDot";
+import { KEYS } from "../keys/table";
 import {
   type Bridge,
+  checkDesktopServer,
   type DesktopServers,
   desktopServers,
+  forgetDesktopServer,
   openDesktopServer,
   refusalText,
+  renameDesktopServer,
+  serverLabel,
 } from "./bridge";
+import { serverLink } from "./server-link";
 
 /** The menu's value for this computer's own server; a server on another computer is its host. */
 const LOCAL = "local";
 
-/** What the line names the window's server by: its host, or this computer. */
+/** Whether a server answered when the menu last opened: undefined while it is being checked. */
+type Reach = Readonly<Record<string, boolean | undefined>>;
+
+/** What the line names the window's server by: the name the person gave it, its host, or this computer. */
 export const serverName = (servers: DesktopServers | null): string =>
-  servers === null ? "" : (servers.current ?? "This computer");
+  servers === null
+    ? ""
+    : servers.current === null
+      ? "This computer"
+      : serverLabel(servers, servers.current);
+
+/** A server's reachability as a dot: checking (grey), reachable (green), no answer (red). */
+function ReachDot({ reach }: { readonly reach: boolean | undefined }): ReactNode {
+  const [colour, words] =
+    reach === undefined
+      ? ["bg-l2", "Checking"]
+      : reach
+        ? ["bg-ok", "Reachable"]
+        : ["bg-bad", "Not reachable"];
+  return (
+    <span
+      role="img"
+      aria-label={words}
+      title={words}
+      className={cn("size-2 shrink-0 rounded-full", colour)}
+    />
+  );
+}
 
 /**
  * The desktop window's server, in the sidebar's foot, where the connection line was: the link's state and which server
- * the window shows, and one click to another. The menu lists this computer's server and every server the window has
- * opened, the current one marked; picking one moves the window there (the window's own record, never the page's word).
- * Connect to another server opens Settings → App with its address field, for a server not opened before. Reconnect now
- * is the connection line's own click, kept here.
+ * the window shows, and one click (or Ctrl+Shift+S) to another. The menu lists this computer's server and every server
+ * the window has opened, by the name the person gave it, with whether it answers now; the current one is marked, and
+ * picking another moves the window there (the window's own record, never the page's word). Add a server opens a new
+ * one with its one-time code in one step; Manage servers names or forgets them; Reconnect now is the connection line's
+ * own click, kept here.
  */
 export function ServerMenu({
   client,
   bridge,
-  onServers,
 }: {
   readonly client: AppClient;
   readonly bridge: Bridge;
-  /** Opens Settings → App at the field for another server's address. */
-  readonly onServers: () => void;
 }): ReactNode {
   const event = useConnectionState(client);
   const kind = connectionKind(event);
   const look = CONNECTION_LOOK[kind];
   const [servers, setServers] = useState<DesktopServers | null>(null);
+  const [reach, setReach] = useState<Reach>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const read = useCallback(() => {
     desktopServers(bridge).then(setServers, (failure: unknown) =>
@@ -59,6 +101,17 @@ export function ServerMenu({
   }, [bridge]);
 
   useEffect(read, [read]);
+
+  /** Asks the window whether each server answers, as the menu opens. */
+  const check = (list: DesktopServers): void => {
+    setReach({});
+    for (const host of list.remote) {
+      if (host === list.current) continue;
+      void checkDesktopServer(bridge, host).then((answers) =>
+        setReach((was) => ({ ...was, [host]: answers })),
+      );
+    }
+  };
 
   const move = (value: unknown): void => {
     if (typeof value !== "string" || servers === null) return;
@@ -70,14 +123,35 @@ export function ServerMenu({
     ).catch((failure: unknown) => setProblem(refusalText(failure)));
   };
 
+  /** The menu opens (a click on the line, or Ctrl+Shift+S): the list is read again and each server checked. */
+  const opened = (): void => {
+    setProblem(null);
+    desktopServers(bridge).then(
+      (list) => {
+        setServers(list);
+        check(list);
+      },
+      (failure: unknown) => setProblem(`The servers could not be listed: ${refusalText(failure)}`),
+    );
+  };
+
+  useHotkeys(
+    KEYS.servers.hotkey,
+    () => {
+      setOpen(true);
+      opened();
+    },
+    { enableOnFormTags: true, preventDefault: true },
+  );
+
   const name = serverName(servers);
   return (
     <div className="flex min-w-0 flex-col">
       <DropdownMenu
-        onOpenChange={(open) => {
-          if (!open) return;
-          setProblem(null);
-          read();
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) opened();
         }}
       >
         <DropdownMenuTrigger
@@ -99,7 +173,7 @@ export function ServerMenu({
             </span>
           )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="w-auto min-w-60 max-w-96">
+        <DropdownMenuContent side="top" align="start" className="w-auto min-w-64 max-w-96">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Server</DropdownMenuLabel>
             {servers === null ? (
@@ -111,15 +185,36 @@ export function ServerMenu({
                   This computer
                 </DropdownMenuRadioItem>
                 {servers.remote.map((host) => (
-                  <DropdownMenuRadioItem key={host} value={host} closeOnClick>
-                    <span className="truncate font-mono text-xs">{host}</span>
+                  <DropdownMenuRadioItem
+                    key={host}
+                    value={host}
+                    closeOnClick
+                    aria-label={serverLabel(servers, host)}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      {host !== servers.current && <ReachDot reach={reach[host]} />}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{serverLabel(servers, host)}</span>
+                        {servers.names[host] !== undefined && (
+                          <span className="truncate font-mono text-[0.6875rem] text-t3">
+                            {host}
+                          </span>
+                        )}
+                      </span>
+                    </span>
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
             )}
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onServers}>Connect to another server…</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setAdding(true)}>Add a server…</DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={servers === null || servers.remote.length === 0}
+            onClick={() => setManaging(true)}
+          >
+            Manage servers…
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() =>
               event.state === "closed" ? window.location.reload() : client.reconnectNow()
@@ -134,6 +229,201 @@ export function ServerMenu({
           {problem}
         </p>
       )}
+      {servers !== null && (
+        <ManageServers
+          bridge={bridge}
+          servers={servers}
+          open={managing}
+          onOpenChange={setManaging}
+          onChanged={read}
+        />
+      )}
+      <AddServer bridge={bridge} open={adding} onOpenChange={setAdding} />
     </div>
+  );
+}
+
+/**
+ * Adds a server in one step: its address and, when this window has not paired with it, a one-time code from it. The
+ * window opens the server with the code, and its pairing screen pairs at once; without a code, the pairing screen asks.
+ * A refused address is said here, and the dialog stays.
+ */
+function AddServer({
+  bridge,
+  open,
+  onOpenChange,
+}: {
+  readonly bridge: Bridge;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}): ReactNode {
+  const [address, setAddress] = useState("");
+  const [code, setCode] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    const link = serverLink(address, code);
+    if (link === null) {
+      setProblem("Type the server's address, for example omp.example.com.");
+      return;
+    }
+    setProblem(null);
+    setMoving(true);
+    openDesktopServer(bridge, { kind: "link", link }).catch((failure: unknown) => {
+      setMoving(false);
+      setProblem(refusalText(failure));
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add a server</DialogTitle>
+          <DialogDescription>
+            The server's address, and a one-time code from it if this app has not paired with it. On
+            that server, the code is in Settings → App → Devices → Pair a new device.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <Input
+            value={address}
+            onChange={(change) => setAddress(change.target.value)}
+            aria-label="Server address"
+            placeholder="omp.example.com"
+            spellCheck={false}
+            autoComplete="off"
+            className="font-mono text-xs"
+          />
+          <Input
+            value={code}
+            onChange={(change) => setCode(change.target.value)}
+            aria-label="One-time code (optional)"
+            placeholder="One-time code (optional)"
+            spellCheck={false}
+            autoComplete="one-time-code"
+            className="font-mono text-xs uppercase"
+          />
+          {problem !== null && (
+            <p role="alert" className="text-xs text-bad-ink [overflow-wrap:anywhere]">
+              {problem}
+            </p>
+          )}
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" disabled={moving || address.trim() === ""}>
+              {moving ? "Opening…" : "Add and open"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** One server in Manage servers: its name, its address, and Forget (not for the server the window shows). */
+function ManagedServer({
+  bridge,
+  servers,
+  host,
+  onChanged,
+}: {
+  readonly bridge: Bridge;
+  readonly servers: DesktopServers;
+  readonly host: string;
+  readonly onChanged: () => void;
+}): ReactNode {
+  const [name, setName] = useState(servers.names[host] ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  const current = host === servers.current;
+
+  const save = (): void => {
+    if (name.trim() === (servers.names[host] ?? "")) return;
+    setProblem(null);
+    renameDesktopServer(bridge, host, name).then(onChanged, (failure: unknown) =>
+      setProblem(refusalText(failure)),
+    );
+  };
+
+  return (
+    <li className="border-b border-l1 py-3 last:border-b-0">
+      <div className="flex items-end gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="truncate font-mono text-xs text-t3">{host}</span>
+          <Input
+            value={name}
+            maxLength={40}
+            placeholder="Name (optional)"
+            aria-label={`Name of ${host}`}
+            onChange={(change) => setName(change.target.value)}
+            onBlur={save}
+            onKeyDown={(key) => {
+              if (key.key === "Enter") save();
+            }}
+          />
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={current}
+          title={current ? "This window shows this server; open another one first." : undefined}
+          onClick={() => {
+            setProblem(null);
+            forgetDesktopServer(bridge, host).then(onChanged, (failure: unknown) =>
+              setProblem(refusalText(failure)),
+            );
+          }}
+        >
+          Forget
+        </Button>
+      </div>
+      {current && <p className="mt-1 text-xs text-t3">Shown in this window.</p>}
+      {problem !== null && (
+        <p role="alert" className="mt-1 text-xs text-bad-ink">
+          {problem}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** Names or forgets the servers the window opened before. */
+function ManageServers({
+  bridge,
+  servers,
+  open,
+  onOpenChange,
+  onChanged,
+}: {
+  readonly bridge: Bridge;
+  readonly servers: DesktopServers;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onChanged: () => void;
+}): ReactNode {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Manage servers</DialogTitle>
+          <DialogDescription>
+            Name the servers this app has opened, or forget one. A forgotten server can be opened
+            again with its address.
+          </DialogDescription>
+        </DialogHeader>
+        <ul aria-label="Servers" className="max-h-80 overflow-y-auto">
+          {servers.remote.map((host) => (
+            <ManagedServer
+              key={host}
+              bridge={bridge}
+              servers={servers}
+              host={host}
+              onChanged={onChanged}
+            />
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
   );
 }

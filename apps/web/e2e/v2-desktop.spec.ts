@@ -7,10 +7,14 @@ import { expect, realTest, startNewChat } from "./real-omp";
 const PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-/** The window's `servers` answer: it shows a server on another computer, and knows one more. */
+/**
+ * The window's `servers` answer: it shows a server on another computer, and knows two more, one named. The lab answers
+ * the window's check; the old one does not.
+ */
 const SERVERS = {
   current: "devbox.tail1234.ts.net",
-  remote: ["devbox.tail1234.ts.net", "lab.tail1234.ts.net"],
+  remote: ["devbox.tail1234.ts.net", "lab.tail1234.ts.net", "old.tail1234.ts.net"],
+  names: { "lab.tail1234.ts.net": "Lab" },
 };
 /** The window's refusal of a link of another shape (`remote.rs`). */
 const LINK_SHAPE = "the address must be an https:// address, such as https://omp.example.com/";
@@ -44,6 +48,9 @@ const fakeWindow = (target: Page) =>
               return new TextEncoder().encode(file.text).buffer;
             }
             if (command === "servers") return servers;
+            if (command === "check_server") return args?.host === "lab.tail1234.ts.net";
+            if (command === "forget_server" && args?.host === servers.current)
+              throw "This window shows that server; open another one first.";
             if (command === "connect_server" && args?.link === "not a link") throw refusal;
             return null;
           },
@@ -244,12 +251,21 @@ realTest.describe("new UI in the desktop window", () => {
 
       await line.click();
       const menu = page.getByRole("menu");
-      // This computer and each server the window opened, the one it shows marked.
+      // This computer and each server the window opened, by the name given it, the one it shows marked; the others say
+      // whether they answer now.
       await expect(menu.getByRole("menuitemradio", { name: "This computer" })).not.toBeChecked();
       await expect(
         menu.getByRole("menuitemradio", { name: "devbox.tail1234.ts.net" }),
       ).toBeChecked();
-      await menu.getByRole("menuitemradio", { name: "lab.tail1234.ts.net" }).click();
+      const lab = menu.getByRole("menuitemradio", { name: "Lab" });
+      await expect(lab).toContainText("lab.tail1234.ts.net");
+      await expect(lab.getByRole("img", { name: "Reachable" })).toBeVisible();
+      await expect(
+        menu
+          .getByRole("menuitemradio", { name: "old.tail1234.ts.net" })
+          .getByRole("img", { name: "Not reachable" }),
+      ).toBeVisible();
+      await lab.click();
       await expect
         .poll(() => windowCalls(page))
         .toContainEqual(["open_server", { host: "lab.tail1234.ts.net" }]);
@@ -258,10 +274,36 @@ realTest.describe("new UI in the desktop window", () => {
       await menu.getByRole("menuitemradio", { name: "This computer" }).click();
       await expect.poll(() => windowCalls(page)).toContainEqual(["use_this_computer", null]);
 
-      // A server not opened before: its address goes in Settings → App.
+      // Manage servers: a name is kept on Enter; the server the window shows is not forgotten, another one is.
       await line.click();
-      await menu.getByRole("menuitem", { name: "Connect to another server…" }).click();
-      await expect(linkField(page)).toBeFocused();
+      await menu.getByRole("menuitem", { name: "Manage servers…" }).click();
+      const manage = page.getByRole("dialog", { name: "Manage servers" });
+      const oldName = manage.getByRole("textbox", { name: "Name of old.tail1234.ts.net" });
+      await oldName.fill("Old box");
+      await oldName.press("Enter");
+      await expect
+        .poll(() => windowCalls(page))
+        .toContainEqual(["rename_server", { host: "old.tail1234.ts.net", name: "Old box" }]);
+      const forgets = manage.getByRole("button", { name: "Forget" });
+      await expect(forgets.first()).toBeDisabled();
+      await forgets.nth(2).click();
+      await expect
+        .poll(() => windowCalls(page))
+        .toContainEqual(["forget_server", { host: "old.tail1234.ts.net" }]);
+      await page.keyboard.press("Escape");
+      await expect(manage).toHaveCount(0);
+
+      // A server not opened before, from the keyboard: Ctrl+Shift+S, Add a server, its address and one-time code in one
+      // dialog; the window opens it with the code for its pairing screen.
+      await page.keyboard.press("Control+Shift+S");
+      await menu.getByRole("menuitem", { name: "Add a server…" }).click();
+      const add = page.getByRole("dialog", { name: "Add a server" });
+      await add.getByRole("textbox", { name: "Server address" }).fill("new.tail1234.ts.net");
+      await add.getByRole("textbox", { name: "One-time code (optional)" }).fill("ab12 cd34");
+      await add.getByRole("button", { name: "Add and open" }).click();
+      await expect
+        .poll(() => windowCalls(page))
+        .toContainEqual(["connect_server", { link: "https://new.tail1234.ts.net/#pair=AB12CD34" }]);
 
       const browser = await realApp.open({ path: "/" });
       await expect(

@@ -70,7 +70,7 @@ const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// turning on, off, extending, sudo, the review, what sessions show, and Remove. Each of the switch's commands acts
 /// only for a window whose server is the one this computer is linked to, and each that grants anything asks the
 /// person's password in the system's dialog, worded by the agent's guard from what it grants.
-const PAGE_PERMISSIONS: [&str; 20] = [
+const PAGE_PERMISSIONS: [&str; 23] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",
     "allow-read-clipboard-file",
@@ -78,6 +78,9 @@ const PAGE_PERMISSIONS: [&str; 20] = [
     "allow-connect-server",
     "allow-open-server",
     "allow-use-this-computer",
+    "allow-rename-server",
+    "allow-forget-server",
+    "allow-check-server",
     "allow-notify",
     "allow-new-window",
     "allow-access-here",
@@ -282,6 +285,36 @@ pub fn remembered_servers() -> Vec<Url> {
     servers_file()
         .map(|file| remote::remembered(&file))
         .unwrap_or_default()
+}
+
+/// Where the window keeps the names the person gave servers (see `remote::set_name`).
+fn names_file() -> Option<PathBuf> {
+    let config = std::env::var_os("XDG_CONFIG_HOME");
+    let home = std::env::var_os("HOME");
+    remote::names_file(config.as_deref(), home.as_deref())
+}
+
+/// The names the person gave servers, by host.
+pub fn server_names() -> std::collections::BTreeMap<String, String> {
+    names_file()
+        .map(|file| remote::names(&file))
+        .unwrap_or_default()
+}
+
+/// Names the server on `host` (an empty name takes it away).
+pub fn name_server(host: &str, name: &str) -> Result<(), String> {
+    let file = names_file().ok_or("The app has no folder to keep names in.")?;
+    remote::set_name(&file, host, name)
+        .map_err(|error| format!("The name could not be kept: {error}"))
+}
+
+/// Forgets the server on `host` and its name; whether it was remembered.
+pub fn forget_remembered(host: &str) -> Result<bool, String> {
+    let file = servers_file().ok_or("The app has no folder of servers.")?;
+    let was = remote::forget_server(&file, host)
+        .map_err(|error| format!("The server could not be forgotten: {error}"))?;
+    let _ = name_server(host, "");
+    Ok(was)
 }
 
 /// Keeps or forgets the link the launch's arguments name (see `remote::choice`), and remembers a kept one among the

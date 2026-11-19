@@ -584,7 +584,7 @@ function Shell({
         connection={
           // In the desktop window the line also says which server it shows, and switches to another.
           desktopBridgeNow !== null && !phone ? (
-            <ServerMenu client={client} bridge={desktopBridgeNow} onServers={showServers} />
+            <ServerMenu client={client} bridge={desktopBridgeNow} />
           ) : (
             <ConnectionDot client={client} line={!phone} />
           )

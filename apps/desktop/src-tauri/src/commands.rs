@@ -21,7 +21,8 @@ const APP_NAME: &str = "omp app";
 const NOTIFY_WAIT_MS: i32 = 5_000;
 
 /// The servers the page offers: this computer's, and the servers on other computers the app opened, newest first, each
-/// by its computer's name. `current` names the one the asking window shows now; null is this computer's.
+/// by its computer's name. `current` names the one the asking window shows now; null is this computer's. `names` holds
+/// the names the person gave them, by host.
 #[tauri::command]
 pub fn servers(app: AppHandle, window: WebviewWindow) -> Value {
     let remote: Vec<String> = server::remembered_servers()
@@ -31,7 +32,43 @@ pub fn servers(app: AppHandle, window: WebviewWindow) -> Value {
     json!({
         "current": server::current_server(&app, window.label()),
         "remote": remote,
+        "names": server::server_names(),
     })
+}
+
+/// Names a server the app opened before (an empty name takes the name away).
+#[tauri::command]
+pub fn rename_server(host: String, name: String) -> Result<(), String> {
+    known(&host)?;
+    server::name_server(&host, &name)
+}
+
+/// Forgets a server the app opened before, and its name. The server the asking window shows is not forgotten: the
+/// window moves elsewhere first.
+#[tauri::command]
+pub fn forget_server(app: AppHandle, window: WebviewWindow, host: String) -> Result<(), String> {
+    if server::current_server(&app, window.label()).as_deref() == Some(host.as_str()) {
+        return Err("This window shows that server; open another one first.".to_owned());
+    }
+    known(&host)?;
+    server::forget_remembered(&host).map(|_| ())
+}
+
+/// Whether a server the app opened before accepts a connection now (within a few seconds); off the main thread.
+#[tauri::command]
+pub async fn check_server(host: String) -> Result<bool, String> {
+    let link = known(&host)?;
+    tauri::async_runtime::spawn_blocking(move || remote::reachable(&link))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// The remembered link of the server on `host`, or why there is none.
+fn known(host: &str) -> Result<tauri::Url, String> {
+    server::remembered_servers()
+        .into_iter()
+        .find(|link| remote::host(link) == host)
+        .ok_or_else(|| format!("{host} is not among the servers this app opened"))
 }
 
 /// Opens the server a pasted link names, as `omp-app-desktop --remote '<link>'` does: the link is remembered, and the

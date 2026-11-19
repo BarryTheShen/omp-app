@@ -87,20 +87,56 @@ export async function readDesktopClipboardFiles(maxBytes: number): Promise<{
 
 /**
  * The servers the desktop window can open: this computer's, and those on other computers it opened, newest first, by
- * computer name. `current` is the one it shows; null is this computer's.
+ * computer name. `current` is the one it shows; null is this computer's. `names` holds the names the person gave them,
+ * by host (none in a desktop app older than names).
  */
 export interface DesktopServers {
   readonly current: string | null;
   readonly remote: readonly string[];
+  readonly names: Readonly<Record<string, string>>;
 }
 
 export async function desktopServers(bridge: Bridge): Promise<DesktopServers> {
-  const found = (await bridge.invoke("servers")) as { current?: unknown; remote?: unknown } | null;
+  const found = (await bridge.invoke("servers")) as {
+    current?: unknown;
+    remote?: unknown;
+    names?: unknown;
+  } | null;
   const remote = Array.isArray(found?.remote) ? found.remote : [];
+  const names: Record<string, string> = {};
+  if (typeof found?.names === "object" && found.names !== null) {
+    for (const [host, name] of Object.entries(found.names)) {
+      if (typeof name === "string" && name !== "") names[host] = name;
+    }
+  }
   return {
     current: typeof found?.current === "string" ? found.current : null,
     remote: remote.filter((host): host is string => typeof host === "string"),
+    names,
   };
+}
+
+/** A server's name for people: the one they gave it, else its address. */
+export const serverLabel = (servers: DesktopServers, host: string): string =>
+  servers.names[host] ?? host;
+
+/** Names a server the window opened before; an empty name takes it away. */
+export function renameDesktopServer(bridge: Bridge, host: string, name: string): Promise<unknown> {
+  return bridge.invoke("rename_server", { host, name });
+}
+
+/** Forgets a server the window opened before (not the one it shows). */
+export function forgetDesktopServer(bridge: Bridge, host: string): Promise<unknown> {
+  return bridge.invoke("forget_server", { host });
+}
+
+/** Whether a server the window opened before accepts a connection now; false for a desktop app without the check. */
+export async function checkDesktopServer(bridge: Bridge, host: string): Promise<boolean> {
+  try {
+    return (await bridge.invoke("check_server", { host })) === true;
+  } catch {
+    return false;
+  }
 }
 
 /** Where the desktop window can go: a pasted link, a computer it opened before, or this computer's server. */

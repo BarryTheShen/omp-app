@@ -7,6 +7,7 @@
 //! as the server logged it before pairing, is kept as it is and opens the same way; the address is kept in a file only
 //! this account can read, and it is never logged.
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -24,6 +25,10 @@ const LINK_FILE: &str = "desktop-server";
 const SERVERS_FILE: &str = "desktop-servers";
 /// How many of them the window remembers.
 const REMEMBERED: usize = 8;
+/// The names the person gave those servers, beside them.
+const NAMES_FILE: &str = "desktop-server-names";
+/// The longest name a server may have, in characters.
+pub const NAME_LONGEST: usize = 40;
 /// The paths a link may name: the app's root, or `/v2/`, where the new UI was before it became the root.
 const LINK_PATHS: [&str; 2] = ["/", "/v2/"];
 /// How long the window waits for the other computer to accept a connection before it shows the error page.
@@ -119,9 +124,9 @@ fn write_private(file: &Path, text: &str) -> io::Result<()> {
     writeln!(out, "{text}")
 }
 
-/// Keeps `link` in `file`, which only this account can read or write.
+/// Keeps `link` in `file`, which only this account can read or write; a one-time pairing code is not kept.
 pub fn keep(file: &Path, link: &Url) -> io::Result<()> {
-    write_private(file, link.as_str())
+    write_private(file, without_pairing_code(link).as_str())
 }
 
 /// Where the window remembers the servers on other computers it opened: beside the kept link.
@@ -137,9 +142,23 @@ pub fn remembered(file: &Path) -> Vec<Url> {
         .unwrap_or_default()
 }
 
+/// The link as kept: without a one-time pairing code (`#pair=<code>`, which the page uses once to pair), so a later
+/// start or switch never offers a used code again. A link from before pairing keeps its token.
+pub fn without_pairing_code(link: &Url) -> Url {
+    let mut kept = link.clone();
+    if kept
+        .fragment()
+        .is_some_and(|fragment| fragment.starts_with("pair="))
+    {
+        kept.set_fragment(None);
+    }
+    kept
+}
+
 /// Remembers `link` first among the servers the window opened: one per computer (a newer link replaces an older one,
 /// whose token may have changed), at most `REMEMBERED`, in a file only this account can read.
 pub fn remember(file: &Path, link: &Url) -> io::Result<()> {
+    let link = &without_pairing_code(link);
     let mut links = vec![link.clone()];
     links.extend(
         remembered(file)
@@ -157,6 +176,70 @@ pub fn forget(file: &Path) -> io::Result<()> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         other => other,
     }
+}
+
+/// Where the window keeps the names the person gave servers: beside the kept link.
+pub fn names_file(config_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    Some(link_file(config_home, home)?.with_file_name(NAMES_FILE))
+}
+
+/// A name as kept: one line of at most `NAME_LONGEST` characters, no control characters, no spaces around it.
+pub fn clean_name(name: &str) -> String {
+    name.chars()
+        .filter(|each| !each.is_control())
+        .collect::<String>()
+        .trim()
+        .chars()
+        .take(NAME_LONGEST)
+        .collect::<String>()
+        .trim_end()
+        .to_owned()
+}
+
+/// The names the person gave servers, by the server's `host`: one `host<TAB>name` line each. A missing or damaged file
+/// means none; a line of another shape is skipped.
+pub fn names(file: &Path) -> BTreeMap<String, String> {
+    fs::read_to_string(file)
+        .map(|text| {
+            text.lines()
+                .filter_map(|line| line.split_once('\t'))
+                .map(|(host, name)| (host.to_owned(), clean_name(name)))
+                .filter(|(host, name)| !host.is_empty() && !name.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Names the server `host`, or takes its name away when `name` is empty once cleaned (see `clean_name`), in a file only
+/// this account can read.
+pub fn set_name(file: &Path, host: &str, name: &str) -> io::Result<()> {
+    let mut kept = names(file);
+    let name = clean_name(name);
+    if name.is_empty() {
+        kept.remove(host);
+    } else {
+        kept.insert(host.to_owned(), name);
+    }
+    let lines: Vec<String> = kept
+        .iter()
+        .map(|(host, name)| format!("{host}\t{name}"))
+        .collect();
+    write_private(file, &lines.join("\n"))
+}
+
+/// Forgets the remembered server on `host`; whether it was there.
+pub fn forget_server(file: &Path, host_name: &str) -> io::Result<bool> {
+    let all = remembered(file);
+    let left: Vec<&str> = all
+        .iter()
+        .filter(|link| host(link) != host_name)
+        .map(Url::as_str)
+        .collect();
+    if left.len() == all.len() {
+        return Ok(false);
+    }
+    write_private(file, &left.join("\n"))?;
+    Ok(true)
 }
 
 /// Whether the other computer accepts a connection on the link's port within `CONNECT_WAIT`: it is reachable, and
@@ -343,6 +426,63 @@ mod tests {
         assert_eq!(kept.len(), REMEMBERED);
         assert_eq!(kept[0], link("c9", "1"));
         assert!(!kept.contains(&link("a", "2")), "the oldest are forgotten");
+    }
+
+    #[test]
+    fn a_server_is_named_renamed_and_unnamed_and_a_name_is_one_short_line() {
+        let scratch = Scratch::new("names");
+        let file = scratch.0.join("omp-app").join(NAMES_FILE);
+        assert!(names(&file).is_empty());
+        set_name(&file, "a.tail1234.ts.net", "  home server  ").unwrap();
+        set_name(&file, "b.tail1234.ts.net:8445", "test\nserver\u{7}").unwrap();
+        assert_eq!(mode(&file), 0o600);
+        let kept = names(&file);
+        assert_eq!(kept["a.tail1234.ts.net"], "home server");
+        assert_eq!(kept["b.tail1234.ts.net:8445"], "testserver");
+        set_name(&file, "a.tail1234.ts.net", &"x".repeat(100)).unwrap();
+        assert_eq!(
+            names(&file)["a.tail1234.ts.net"].chars().count(),
+            NAME_LONGEST
+        );
+        // An empty name takes the name away.
+        set_name(&file, "a.tail1234.ts.net", "   ").unwrap();
+        assert!(!names(&file).contains_key("a.tail1234.ts.net"));
+        assert!(names(&file).contains_key("b.tail1234.ts.net:8445"));
+    }
+
+    #[test]
+    fn a_one_time_pairing_code_is_used_to_open_but_never_kept_and_a_token_is() {
+        let scratch = Scratch::new("pair-code");
+        let servers = scratch.0.join("omp-app").join(SERVERS_FILE);
+        let kept_file = scratch.0.join("omp-app").join(LINK_FILE);
+        let with_code = Url::parse("https://lab.tail1234.ts.net/#pair=K7F3QX9M").unwrap();
+        assert!(
+            parse_link(with_code.as_str()).is_some(),
+            "it opens like any address"
+        );
+        remember(&servers, &with_code).unwrap();
+        keep(&kept_file, &with_code).unwrap();
+        let plain = Url::parse("https://lab.tail1234.ts.net/").unwrap();
+        assert_eq!(remembered(&servers), vec![plain.clone()]);
+        assert_eq!(kept(&kept_file), Some(plain));
+        let with_token = Url::parse(LINK).unwrap();
+        assert_eq!(without_pairing_code(&with_token), with_token);
+    }
+
+    #[test]
+    fn a_forgotten_server_leaves_the_list_and_the_others_stay_in_order() {
+        let scratch = Scratch::new("forget");
+        let file = scratch.0.join("omp-app").join(SERVERS_FILE);
+        let link = |computer: &str| {
+            Url::parse(&format!("https://{computer}.tail1234.ts.net/#token=t")).unwrap()
+        };
+        for computer in ["c", "b", "a"] {
+            remember(&file, &link(computer)).unwrap();
+        }
+        assert!(forget_server(&file, "b.tail1234.ts.net").unwrap());
+        assert_eq!(remembered(&file), vec![link("a"), link("c")]);
+        assert!(!forget_server(&file, "b.tail1234.ts.net").unwrap());
+        assert_eq!(mode(&file), 0o600);
     }
 
     #[test]

@@ -201,6 +201,13 @@ const TABLE = {
     label: "New app window",
     desktopOnly: true,
   },
+  servers: {
+    hotkey: "ctrl+shift+s",
+    scope: "workspace",
+    group: "App",
+    label: "Switch server",
+    desktopOnly: true,
+  },
   zoomIn: {
     hotkey: "ctrl+equal, ctrl+shift+equal, ctrl+add",
     scope: "workspace",
