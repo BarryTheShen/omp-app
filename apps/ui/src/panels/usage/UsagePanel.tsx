@@ -154,13 +154,21 @@ const DURING_TURN_EVERY_MS = 10_000;
  */
 const WHOLE_DURING_TURN_EVERY_MS = 60_000;
 
+/**
+ * How long after the read at a turn's end the whole chat is read once more. The server waits up to 10 s for omp's
+ * statistics to read the turn, and answers with the reading before it otherwise (a busy computer); without a second read
+ * the numbers would stay a turn behind until the next turn (#31).
+ */
+const WHOLE_AFTER_TURN_AGAIN_MS = 20_000;
+
 /** A chat's whole history in omp's statistics, or why it could not be read. */
 type WholeChat = { readonly chat: StatsChat | null } | { readonly problem: string };
 
 /**
  * The chat's whole history (#19), its subagents' included, from omp's statistics: omp's /session counts only the
- * messages in the chat's context, which a compaction shortens. Read when it shows, every minute while a turn runs and
- * when a turn ends; omp's statistics page reads the chats first, which can take a minute the first time.
+ * messages in the chat's context, which a compaction shortens. Read when it shows, every minute while a turn runs, and
+ * when a turn ends, then once more `WHOLE_AFTER_TURN_AGAIN_MS` after that read; omp's statistics page reads the chats
+ * first, which can take a minute the first time.
  */
 function useWholeChat(
   client: AppClient,
@@ -174,7 +182,8 @@ function useWholeChat(
     if (file === undefined || file === "") return;
     let alive = true;
     let reading = false;
-    const readWhole = () => {
+    let again: number | undefined;
+    const readWhole = (then?: () => void) => {
       if (reading) return;
       reading = true;
       client
@@ -187,9 +196,17 @@ function useWholeChat(
         )
         .finally(() => {
           reading = false;
+          if (alive) then?.();
         });
     };
-    readWhole();
+    // Not working: the turn ended (or the chat just showed): read, and once more a little later.
+    readWhole(
+      working
+        ? undefined
+        : () => {
+            again = window.setTimeout(() => readWhole(), WHOLE_AFTER_TURN_AGAIN_MS);
+          },
+    );
     const timer = working
       ? window.setInterval(() => {
           if (document.visibilityState === "visible") readWhole();
@@ -198,6 +215,7 @@ function useWholeChat(
     return () => {
       alive = false;
       window.clearInterval(timer);
+      window.clearTimeout(again);
     };
   }, [client, file, working]);
   return read !== null && read.file === file ? read.whole : undefined;
