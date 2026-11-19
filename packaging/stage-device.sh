@@ -48,10 +48,28 @@ options=(-o "Dir::State::Lists=$apt/lists" -o "Dir::Cache=$apt/cache" -o Debug::
 apt-get "${options[@]}" update -qq
 # openssh-client only for OpenSSH's copyright (the server packages' docs link to it).
 # Only from Ubuntu's own archive (noble-updates or noble-security), or one of Ubuntu's own mirrors of it
-# (<country>.archive.ubuntu.com, azure.archive.ubuntu.com on GitHub's runners): never a package another source offers.
+# (<country>.archive.ubuntu.com; azure.archive.ubuntu.com or us-east-2.ec2.archive.ubuntu.com on GitHub's runners): never
+# a package another source offers.
+ubuntu='^https?://([a-z0-9-]+\.)*(archive|security)\.ubuntu\.com/ubuntu/?$'
 (cd "$apt" && apt-get "${options[@]}" download --print-uris openssh-server openssh-sftp-server openssh-client) |
   grep -o "'[^']*'" | tr -d "'" | while read -r uri; do
-  [[ $uri =~ ^https?://([a-z0-9-]+\.)?(archive|security)\.ubuntu\.com/ubuntu/pool/main/o/openssh/ ]] || {
+  # apt's mirror list (`mirror+file:<list>/<path>`, GitHub's runners): each mirror the list names must be Ubuntu's.
+  if [[ $uri =~ ^mirror\+file:(/.+)/(pool/main/o/openssh/[^/]+)$ ]]; then
+    list=${BASH_REMATCH[1]}
+    mirrors=$({ grep -v -E '^[[:space:]]*(#|$)' "$list" || true; } | awk '{ print $1 }')
+    [[ -n $mirrors ]] || {
+      echo "OpenSSH would come from the mirror list $list, which names no mirror" >&2
+      exit 1
+    }
+    while read -r mirror; do
+      [[ $mirror =~ $ubuntu ]] || {
+        echo "OpenSSH could come from $mirror (in $list), not Ubuntu's archive" >&2
+        exit 1
+      }
+    done <<<"$mirrors"
+    continue
+  fi
+  [[ $uri =~ ^https?://([a-z0-9-]+\.)*(archive|security)\.ubuntu\.com/ubuntu/pool/main/o/openssh/ ]] || {
     echo "OpenSSH would come from $uri, not Ubuntu's archive" >&2
     exit 1
   }
