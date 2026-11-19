@@ -129,12 +129,13 @@ function Lengths({
 const WRAPS = "h-auto min-h-7 whitespace-normal py-1 text-left max-sm:min-h-11";
 
 /**
- * Agent access on the computer this desktop window runs on (#20), all of it in the panel: one click sets it up (an
- * administrator's password, asked by the system) and links it to this window's server, with a one-time code this page
- * asks the server for; then the switch (on for a length, extend, sudo, off), the review the agent's guard holds after
- * an access, what each agent session runs and shows, and Remove. The desktop app acts only for a window showing the
- * server this computer is linked to, and the system asks the person's password for each grant, in a dialog whose words
- * the agent's guard writes. Nothing shows in a browser, or in a desktop app without agent access.
+ * Agent access on the computer this desktop window runs on (#20), all of it in the panel, from a window on any server:
+ * one click sets it up (an administrator's password, asked by the system) and links it to this window's server, with a
+ * one-time code this page asks the server for; a computer linked to another server shows that server's switch here
+ * too, and moves here with the administrator's password. Then the switch (on for a length, extend, sudo, off), the
+ * review the agent's guard holds after an access, what each agent session runs and shows, and Remove. The system asks
+ * the person's password for each grant, in a dialog whose words the agent's guard writes. Nothing shows in a browser,
+ * or in a desktop app without agent access.
  */
 export function ThisComputer({
   client,
@@ -181,6 +182,10 @@ export function ThisComputer({
   const alias = here?.here === true ? (here.linked?.alias ?? null) : null;
   const linkedHere = alias !== null && listed.includes(alias);
   const forgotten = alias !== null && !linkedHere;
+  // Linked to another server: this panel still controls it, and can move it here.
+  const elsewhere =
+    here?.setUp === true && here.linked !== null && !here.here ? here.linked.server : null;
+  const controls = linkedHere || elsewhere !== null;
 
   useEffect(() => onAlias(linkedHere ? alias : null), [onAlias, linkedHere, alias]);
 
@@ -191,9 +196,10 @@ export function ThisComputer({
       .catch((failure: unknown) => setFailed(refusalText(failure)));
   }, [bridge]);
 
-  // While linked here: the switch's state, then what the agent tells, read on from where the panel left off.
+  // While linked (here or to another server): the switch's state, then what the agent tells, read on from where the
+  // panel left off.
   useEffect(() => {
-    if (bridge === null || !linkedHere) return;
+    if (bridge === null || !controls) return;
     readStatus();
     let live = true;
     const take = (events: unknown): void => {
@@ -265,7 +271,7 @@ export function ThisComputer({
       clearInterval(poll);
       clearInterval(tick);
     };
-  }, [bridge, linkedHere, readStatus]);
+  }, [bridge, controls, readStatus]);
 
   if (bridge === null || here === null || !here.installed) return null;
 
@@ -290,16 +296,20 @@ export function ThisComputer({
     });
   };
 
-  const setUp = (): void => {
+  const setUp = (moving: boolean): void => {
     setBusy(SETTING_UP);
     setDone(null);
     setFailed(null);
     client
       .port(DevicesPort)
       .newCode({})
-      .then(({ code }) => bridge.invoke("access_set_up_here", { code }))
+      .then(({ code }) => bridge.invoke("access_set_up_here", { code, moving }))
       .then((answer) => {
-        finished("Setup is complete.", answer);
+        finished(moving ? "Agent access moved to this server." : "Setup is complete.", answer);
+        told.current.clear();
+        setSessions([]);
+        // The switch as the agent now says: a move keeps the panel in control, so nothing else reads it again.
+        readStatus();
         onLinked();
       })
       .catch((failure: unknown) => setFailed(refusalText(failure)))
@@ -333,9 +343,8 @@ export function ThisComputer({
   const state = status?.state ?? null;
   const reviewing = status?.review.pending === true;
   const waiting = busy !== null;
-  // Remove is for a computer linked here, forgotten here, or linked nowhere; one linked to another server is removed
-  // from that server's window.
-  const removable = here.setUp && (here.here || here.linked === null);
+  // Remove is for any computer set up here, whichever server it is linked to.
+  const removable = here.setUp;
 
   return (
     <section aria-label="This computer" className="border-b border-l1 px-4 pt-1 pb-3">
@@ -344,6 +353,15 @@ export function ThisComputer({
         <p className="mt-1 text-[0.8125rem] text-t2">
           <span className="font-medium text-t1">{alias}</span>
           {state === null ? "" : ` · ${stateText(state)}`}
+        </p>
+      ) : elsewhere !== null ? (
+        <p className="mt-1 text-[0.8125rem] text-t2 [overflow-wrap:anywhere]">
+          <span className="font-medium text-t1">{here.linked?.alias}</span>
+          {state === null ? "" : ` · ${stateText(state)}`}
+          <br />
+          Linked to {elsewhere}: its agents can work on this computer while agent access is on. To
+          let this server's agents work here instead, move agent access to this server; an
+          administrator password is required.
         </p>
       ) : forgotten ? (
         <p className="mt-1 text-[0.8125rem] text-t2">
@@ -354,11 +372,9 @@ export function ThisComputer({
         <p className="mt-1 text-[0.8125rem] text-t2">
           Allow this server's agents to work on this computer while agent access is turned on. Setup
           requires an administrator password once.
-          {here.linked !== null &&
-            ` This computer is currently linked to ${here.linked.server}; setting it up here links it to this server instead.`}
         </p>
       )}
-      {linkedHere && reviewing && (
+      {controls && reviewing && (
         <div className="mt-2 text-xs">
           <p className="text-t2">
             Review the changes made during the last session before turning access on again:
@@ -380,7 +396,7 @@ export function ThisComputer({
           </Button>
         </div>
       )}
-      {linkedHere && state !== null && !state.on && (
+      {controls && state !== null && !state.on && (
         <Lengths
           label="Turn on for"
           lengths={ON_FOR}
@@ -388,7 +404,7 @@ export function ThisComputer({
           onPick={(minutes) => act("access_on", WAITING_FOR_PASSWORD, { minutes })}
         />
       )}
-      {linkedHere && state?.on === true && (
+      {controls && state?.on === true && (
         <>
           <div className="mt-2">
             <Button
@@ -417,17 +433,25 @@ export function ThisComputer({
           )}
         </>
       )}
-      {linkedHere && state !== null && (
+      {controls && state !== null && (
         <p className="mt-2 text-xs text-t3">Each action requires your password.</p>
       )}
       {!linkedHere && (
         <div className="mt-2">
-          <Button size="sm" disabled={waiting} onClick={setUp} className={WRAPS}>
+          <Button
+            size="sm"
+            variant={elsewhere !== null ? "outline" : "default"}
+            disabled={waiting}
+            onClick={() => setUp(elsewhere !== null)}
+            className={WRAPS}
+          >
             {busy === SETTING_UP
               ? busy
-              : forgotten
-                ? "Link this computer again"
-                : "Set up agent access"}
+              : elsewhere !== null
+                ? "Move agent access to this server"
+                : forgotten
+                  ? "Link this computer again"
+                  : "Set up agent access"}
           </Button>
         </div>
       )}
@@ -441,7 +465,7 @@ export function ThisComputer({
           {failed}
         </p>
       )}
-      {linkedHere && sessions.length > 0 && (
+      {controls && sessions.length > 0 && (
         <div className="mt-3">
           <h4 className="text-xs font-medium text-t2">Agent sessions on this computer</h4>
           <ol aria-label="Agent sessions on this computer" className="mt-1 flex flex-col gap-2">
@@ -487,9 +511,9 @@ export function ThisComputer({
               className="mt-2 min-w-0 rounded-md border border-l2 px-3 py-2"
             >
               <p className="text-xs text-t2">
-                Remove agent access from this computer? This server will no longer list it, and the
-                account and settings created during setup will be deleted. An administrator password
-                is required.
+                Remove agent access from this computer? The server it is linked to will no longer
+                list it, and the account and settings created during setup will be deleted. An
+                administrator password is required.
               </p>
               <div className="mt-2 flex gap-2">
                 <Button

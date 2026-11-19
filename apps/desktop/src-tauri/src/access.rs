@@ -2,10 +2,10 @@
 //! panel, the red tray icon while access is on, and a notification that stays while an agent session runs.
 //!
 //! The app talks to this computer's agent (`omp-app-device run`, a user service) over its control socket,
-//! `$XDG_RUNTIME_DIR/omp-app-device/agent.sock`. The panel is a page of the server, so each command acts only for a
-//! window whose server, by the window's own record, is the one this computer is linked to (`refused_for`); turning
-//! access on, extending it, sudo and acknowledging a review then ask the person's password with the system's own
-//! dialog, whose words the agent's guard writes from what it grants. Lengths are capped here and by the guard.
+//! `$XDG_RUNTIME_DIR/omp-app-device/agent.sock`. The panel controls this computer's agent access from a window on any
+//! server, its page loaded from the server that window shows (`refused_for`); turning access on, extending it, sudo and
+//! acknowledging a review ask the person's password with the system's own dialog, whose words the agent's guard writes
+//! from what it grants (and which name the server whose agents get in). Lengths are capped here and by the guard.
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
@@ -101,10 +101,9 @@ fn ask(request: Value) -> Result<Value, String> {
         .to_owned())
 }
 
-/// Why a page may not act on this computer's agent access, or None when it may. Only a page of the server this
-/// computer is linked to may: the window's own record of its server (never the page's word) and the address the page
-/// was loaded from (`shown`) must both be that server, so a page of any other server, or of this computer's own, is
-/// refused before anything is asked and cannot even make the password dialog appear. `linked` is the agent's record of
+/// Why a page may not act on this computer's agent access, or None when it may. A page of any server a window shows
+/// may, as long as the window's own record of its server (never the page's word) and the address the page was loaded
+/// from (`shown`) agree, so a page that is not the window's server's own is refused. `linked` is the agent's record of
 /// the link, None when the agent did not answer (never taken as linked to nothing). `allow_unlinked` lets a computer
 /// whose agent says it is linked to no server be acted on (Remove only).
 fn refused_for(
@@ -126,12 +125,9 @@ fn refused_for(
         );
     };
     match linked["server"].as_str() {
-        Some(server) if server == origin => None,
-        Some(server) => Some(format!(
-            "This computer is linked to {server}, not to the server this window shows."
-        )),
+        Some(_) => None,
         None if allow_unlinked => None,
-        None => Some("This computer is not linked to the server this window shows.".to_owned()),
+        None => Some("This computer is not linked to any server.".to_owned()),
     }
 }
 
@@ -285,8 +281,8 @@ fn linked() -> Result<Value, String> {
     ask(json!({ "op": "status" })).map(|status| status["enrolled"].clone())
 }
 
-/// What the app's Agent access panel shows for this computer: whether the parts are installed, set up, and linked to
-/// the server of the window asking (`here`).
+/// What the app's Agent access panel shows for this computer: whether the parts are installed, set up, which server it
+/// is linked to, and whether that is the server of the window asking (`here`).
 #[tauri::command]
 pub async fn access_here(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
     let origin = crate::server::window_origin(&app, window.label());
@@ -314,16 +310,19 @@ pub async fn access_here(app: AppHandle, window: tauri::WebviewWindow) -> Result
 /// asked by the system), starts the person's agent, and links the computer to the server the asking window shows, with
 /// a one-time code that page asked its server for. The address is the window's own record, never the page's; the code
 /// only proves the link to that server. Access stays off: turning it on is the panel's, with the password each time.
-/// A computer linked to another server is never moved here (it is removed there first); one set up but linked to no
-/// server is linked only after an administrator's password again; one linked to this server is linked again without
-/// (its server forgot it). So no page links this computer to its server without a password.
+/// A computer linked to another server moves here only when the panel asks to (`moving`), after an administrator's
+/// password: the server it was linked to forgets it (`leave`), then it links here. One set up but linked to no server
+/// is linked only after an administrator's password again; one linked to this server is linked again without (its
+/// server forgot it). So no page links this computer to its server without a password.
 /// Answers `{ ok, problems, changes, linked }`.
 #[tauri::command]
 pub async fn access_set_up_here(
     app: AppHandle,
     window: tauri::WebviewWindow,
     code: String,
+    moving: Option<bool>,
 ) -> Result<Value, String> {
+    let moving = moving == Some(true);
     let origin = crate::server::window_origin(&app, window.label())
         .ok_or_else(|| "This window shows no server yet.".to_owned())?;
     let shown = window
@@ -371,9 +370,30 @@ pub async fn access_set_up_here(
         let was = linked().map_err(|reason| format!("Your agent did not answer: {reason}"))?;
         match was["server"].as_str() {
             Some(server) if server != origin => {
-                return Err(format!(
-                    "This computer is linked to {server}. Remove agent access in that server's Agent access panel first, then set it up here."
-                ));
+                if !moving {
+                    return Err(format!(
+                        "This computer is linked to {server}. Move agent access to this server to link it here instead."
+                    ));
+                }
+                // Moving: an administrator's password first, then the server it was linked to forgets it.
+                if !fresh {
+                    answer = as_administrator("setup")?;
+                    if answer["ok"] != json!(true) {
+                        return Ok(answer);
+                    }
+                }
+                let _ = ask(json!({ "op": "off" }));
+                match ask(json!({ "op": "leave" })) {
+                    Ok(_) => push(&mut answer, "changes", &format!("unlinked this computer from {server}")),
+                    Err(reason) => push(
+                        &mut answer,
+                        "changes",
+                        &format!(
+                            "unlinked this computer from {server}, which could not be told ({reason}): it may still list this computer"
+                        ),
+                    ),
+                }
+                forget_events();
             }
             // Linked to this server, which forgot it: linked again, no password.
             Some(_) => {}
@@ -390,9 +410,20 @@ pub async fn access_set_up_here(
         // does not list it (it was removed there), and the record alone cannot tell.
         {
             let name = computer_name();
-            match ask(
-                json!({ "op": "enroll", "server": origin, "code": code.trim(), "alias": name }),
-            ) {
+            // A setup just now restarted the guard: until it answers, the agent says so before it asks the server
+            // anything (the code is not spent), so the link is tried again for a while.
+            let enroll = || {
+                ask(json!({ "op": "enroll", "server": origin, "code": code.trim(), "alias": name }))
+            };
+            let started = Instant::now();
+            let mut linked_now = enroll();
+            while matches!(&linked_now, Err(reason) if reason.contains("the guard is not running"))
+                && started.elapsed() < Duration::from_secs(20)
+            {
+                thread::sleep(Duration::from_millis(500));
+                linked_now = enroll();
+            }
+            match linked_now {
                 Ok(_) => push(
                     &mut answer,
                     "changes",
@@ -478,8 +509,8 @@ fn agent_service(on: bool) -> bool {
 }
 
 /// Removes agent access from this computer: access off, then everything setup made (the remove asks the agent to tell
-/// its server to forget this computer first). Only for a page of the server this computer is linked to, or of any server
-/// when it is linked to none (a setup that never linked).
+/// its server to forget this computer first). From a window on any server, as is the rest of the panel; an
+/// administrator's password is asked.
 #[tauri::command]
 pub async fn access_remove(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
     for_linked_window(&app, &window, true, |_| {
@@ -493,7 +524,7 @@ pub async fn access_remove(app: AppHandle, window: tauri::WebviewWindow) -> Resu
 }
 
 /// The agent's events after number `after`, oldest first, with their numbers: each session's commands and what it
-/// shows, for the panel's live view. Only for a page of the server this computer is linked to.
+/// shows, for the panel's live view, in a window on any server.
 #[tauri::command]
 pub async fn access_events(
     app: AppHandle,
@@ -725,31 +756,27 @@ mod tests {
     use serde_json::{json, Value};
 
     #[test]
-    fn only_a_window_on_the_linked_server_acts_on_agent_access() {
+    fn a_window_on_any_server_controls_this_computers_agent_access() {
         let a = Some("https://a.example:8445");
         let linked = json!({ "server": "https://a.example:8445", "alias": "laptop" });
-        // The window on the linked server, its page loaded from there: allowed.
-        assert_eq!(refused_for(a, a, Some(&linked), false), None);
-        // Another server, the same host on another port, this computer's own server, or no server: refused, also for
-        // Remove.
+        // The window on the linked server, another server, the same host on another port, or this computer's own
+        // server, each with its page loaded from there: allowed.
         for origin in [
+            a,
             Some("https://b.example:8445"),
             Some("https://a.example:8446"),
             Some("http://127.0.0.1:4317"),
-            None,
         ] {
-            assert!(
-                refused_for(origin, origin, Some(&linked), false).is_some(),
-                "{origin:?}"
-            );
-            assert!(
-                refused_for(origin, origin, Some(&linked), true).is_some(),
+            assert_eq!(
+                refused_for(origin, origin, Some(&linked), false),
+                None,
                 "{origin:?}"
             );
         }
-        // The window's record says the linked server but the page came from elsewhere (it has not moved yet): refused.
+        // No server, or a page that did not come from the server its window shows: refused, also for Remove.
+        assert!(refused_for(None, None, Some(&linked), true).is_some());
         assert!(refused_for(a, Some("https://b.example:8445"), Some(&linked), false).is_some());
-        assert!(refused_for(a, None, Some(&linked), false).is_some());
+        assert!(refused_for(a, None, Some(&linked), true).is_some());
         // Linked to no server: only Remove goes ahead, and only from a window showing a server.
         assert!(refused_for(a, a, Some(&Value::Null), false).is_some());
         assert_eq!(refused_for(a, a, Some(&Value::Null), true), None);
