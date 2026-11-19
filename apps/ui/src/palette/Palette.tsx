@@ -28,6 +28,7 @@ import {
   openDesktopServer,
   refusalText,
   type ServerChoice,
+  serverLabel,
 } from "../desktop/bridge";
 import { LOCAL_SERVER_LABEL, remoteServerLabel } from "../desktop/ServerSection";
 import { KEYS, keycap } from "../keys/table";
@@ -157,14 +158,15 @@ function chatModes(
 }
 
 /**
- * The desktop window's servers, in the window only: connect to another by its link (in the settings' Server section),
- * this computer's server, and the servers on other computers the window opened, but the one it shows.
+ * The desktop window's servers, in the window only: add another (its address and one-time code, in the Add a server
+ * dialog), this computer's server, and the servers on other computers the window opened, but the one it shows, by the
+ * names given them.
  */
 function windowServers(
   bridge: Bridge | null,
   servers: DesktopServers | null,
   close: (then: () => void) => void,
-  onServers: () => void,
+  onAddServer: () => void,
   controller: ChatController | null,
 ): readonly Item[] {
   if (bridge === null) return [];
@@ -176,10 +178,10 @@ function windowServers(
     });
   const items: Item[] = [
     {
-      key: "server:connect",
+      key: "server:add",
       group: "Commands",
-      label: "Connect to another server…",
-      run: () => close(onServers),
+      label: "Add a server…",
+      run: () => close(onAddServer),
     },
   ];
   if (servers === null) return items;
@@ -196,7 +198,7 @@ function windowServers(
     items.push({
       key: `server:${host}`,
       group: "Commands",
-      label: remoteServerLabel(host),
+      label: remoteServerLabel(serverLabel(servers, host)),
       run: move({ kind: "host", host }),
     });
   }
@@ -219,7 +221,7 @@ export function Palette({
   onSetGoal,
   onSettings,
   onDashboard,
-  onServers,
+  onAddServer,
   onNewWindow,
   onInbox,
   onWhatsNew,
@@ -237,8 +239,8 @@ export function Palette({
   readonly onSettings: () => void;
   /** Opens the dashboard: usage windows, pace, rules and the queue (#2836). */
   readonly onDashboard: () => void;
-  /** Opens the settings at the desktop window's servers, the cursor in the link field. */
-  readonly onServers: () => void;
+  /** Opens the Add a server dialog: an address and its one-time code (desktop window). */
+  readonly onAddServer: () => void;
   /** Opens another desktop window, in the desktop window only. */
   readonly onNewWindow: () => void;
   /** Opens the inbox: the chats waiting for you, and what runs settled with while you were elsewhere. */
@@ -499,7 +501,7 @@ export function Palette({
             if (workspace.current !== null) startTour(tour, workspace.current);
           }),
       })),
-      ...windowServers(bridge, servers, close, onServers, controller),
+      ...windowServers(bridge, servers, close, onAddServer, controller),
       ...commands.map((command) => ({
         key: `omp:${command.name}`,
         group: "Commands" as const,

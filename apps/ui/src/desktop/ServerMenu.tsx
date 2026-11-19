@@ -1,6 +1,6 @@
 import type { AppClient } from "@omp-app/client";
 import { cn } from "cn";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,9 +81,12 @@ function ReachDot({ reach }: { readonly reach: boolean | undefined }): ReactNode
 export function ServerMenu({
   client,
   bridge,
+  onAddServer,
 }: {
   readonly client: AppClient;
   readonly bridge: Bridge;
+  /** Opens the Add a server dialog (the app's, which the palette opens too). */
+  readonly onAddServer: () => void;
 }): ReactNode {
   const event = useConnectionState(client);
   const kind = connectionKind(event);
@@ -92,7 +95,6 @@ export function ServerMenu({
   const [reach, setReach] = useState<Reach>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState(false);
 
   const read = useCallback(() => {
@@ -210,7 +212,7 @@ export function ServerMenu({
             )}
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setAdding(true)}>Add a server…</DropdownMenuItem>
+          <DropdownMenuItem onClick={onAddServer}>Add a server…</DropdownMenuItem>
           <DropdownMenuItem
             disabled={servers === null || servers.remote.length === 0}
             onClick={() => setManaging(true)}
@@ -240,7 +242,6 @@ export function ServerMenu({
           onChanged={read}
         />
       )}
-      <AddServer bridge={bridge} open={adding} onOpenChange={setAdding} />
     </div>
   );
 }
@@ -250,7 +251,7 @@ export function ServerMenu({
  * window opens the server with the code, and its pairing screen pairs at once; without a code, the pairing screen asks.
  * A refused address is said here, and the dialog stays.
  */
-function AddServer({
+export function AddServer({
   bridge,
   open,
   onOpenChange,
@@ -263,6 +264,7 @@ function AddServer({
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const ids = useId();
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -290,9 +292,12 @@ function AddServer({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-xs text-t2">
-            Server address
+          <div className="flex flex-col gap-1">
+            <label htmlFor={`${ids}-address`} className="text-xs text-t2">
+              Server address
+            </label>
             <Input
+              id={`${ids}-address`}
               value={address}
               onChange={(change) => setAddress(change.target.value)}
               placeholder="omp.example.com"
@@ -300,10 +305,13 @@ function AddServer({
               autoComplete="off"
               className="font-mono text-xs"
             />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-t2">
-            One-time code (optional)
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={`${ids}-code`} className="text-xs text-t2">
+              One-time code (optional)
+            </label>
             <Input
+              id={`${ids}-code`}
               value={code}
               onChange={(change) => setCode(change.target.value)}
               placeholder="ABCD 1234"
@@ -311,7 +319,7 @@ function AddServer({
               autoComplete="one-time-code"
               className="font-mono text-xs uppercase"
             />
-          </label>
+          </div>
           {problem !== null && (
             <p role="alert" className="text-xs text-bad-ink [overflow-wrap:anywhere]">
               {problem}

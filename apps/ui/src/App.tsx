@@ -36,7 +36,7 @@ import {
   useSettledNotifications,
   useWaitingNotifications,
 } from "./desktop/notify";
-import { ServerMenu } from "./desktop/ServerMenu";
+import { AddServer, ServerMenu } from "./desktop/ServerMenu";
 import { runUndoKeys } from "./desktop/undo";
 import { keptZoom, setDesktopZoom, stepZoom } from "./desktop/zoom";
 import { FolderMenu } from "./folders/FolderMenu";
@@ -364,6 +364,9 @@ function Shell({
   const showServers = useCallback(() => openSettings("server"), [openSettings]);
   // The desktop window's bridge (null in a browser); the page's globals do not change while it runs.
   const [desktopBridgeNow] = useState(desktopBridge);
+  // The Add a server dialog, opened from the side bar's server menu or the palette.
+  const [addingServer, setAddingServer] = useState(false);
+  const addServer = useCallback(() => setAddingServer(true), []);
   const openChat = useCallback((target: ChatTarget, how: OpenHow): void => {
     workspace.current?.open(target, how);
     setShowChat(true);
@@ -584,7 +587,7 @@ function Shell({
         connection={
           // In the desktop window the line also says which server it shows, and switches to another.
           desktopBridgeNow !== null && !phone ? (
-            <ServerMenu client={client} bridge={desktopBridgeNow} />
+            <ServerMenu client={client} bridge={desktopBridgeNow} onAddServer={addServer} />
           ) : (
             <ConnectionDot client={client} line={!phone} />
           )
@@ -703,11 +706,14 @@ function Shell({
         onSetGoal={setGoalFor}
         onSettings={showSettings}
         onDashboard={showDashboard}
-        onServers={showServers}
+        onAddServer={addServer}
         onNewWindow={newWindow}
         onInbox={showInbox}
         onWhatsNew={showWhatsNew}
       />
+      {desktopBridgeNow !== null && (
+        <AddServer bridge={desktopBridgeNow} open={addingServer} onOpenChange={setAddingServer} />
+      )}
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
       <WhatsNewList open={whatsNew} onOpenChange={setWhatsNew} workspace={workspace} />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />

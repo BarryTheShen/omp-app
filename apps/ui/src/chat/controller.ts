@@ -72,7 +72,7 @@ import { follow } from "../follow";
 import { type Attention, AttentionTracker } from "../inbox/attention";
 import { lastSeen } from "../lastSeen";
 import { embed } from "../lite/embed";
-import { pageHost } from "../lite/lite";
+import { isLiteView, pageHost } from "../lite/lite";
 import { ModelHubToggle } from "../models/hub";
 import { type ModelPreferencesStore, modelPreferencesFor } from "../models/preferences";
 import { keepBothName } from "../panels/files/names";
@@ -178,8 +178,11 @@ export class ChatController {
   readonly store = new ChatStore();
   /** omp's `/btw` side questions of the chat, and their sheet; omp's status lines about them show as toasts. */
   readonly btw = new BtwStore((text) => this.store.toast(text, "info"));
-  /** The questions the chat's agent asked without waiting (`ask_async`), for the Questions panel; a new one is said in a toast. */
-  readonly questions = new QuestionsStore((text) => this.store.toast(text, "info"));
+  /** The questions the chat's agent asked without waiting (`ask_async`), for the Questions panel; a new one is said in a
+   * toast, but in the lite view, which shows the questions themselves above its message box. */
+  readonly questions = new QuestionsStore((text) => {
+    if (!(typeof window !== "undefined" && isLiteView())) this.store.toast(text, "info");
+  });
   /** Whether this pane's Models dialog (omp's Alt+M) is open. */
   readonly modelHubToggle = new ModelHubToggle();
   /** Whether this pane's "Add a secret" dialog is open: its message box's key button, ＋ row, or the palette. */

@@ -161,13 +161,15 @@ realTest.describe("new UI in the desktop window", () => {
   );
 
   realTest(
-    "the App tab lists the window's servers: one click opens one, a pasted link connects, a refused link says why",
+    "the App tab lists the window's servers by name: one click opens one, a pasted link connects, a code pairs, a refused link says why",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       await settingsButton(page).click();
       const app = appSettings(page);
       await expect(app.getByRole("button", { name: "Use this computer's server" })).toBeVisible();
-      const lab = app.getByRole("button", { name: "Open the server on lab.tail1234.ts.net" });
+      // A named server shows its name over its address.
+      const lab = app.getByRole("button", { name: "Open the server on Lab" });
+      await expect(app.getByText("lab.tail1234.ts.net")).toBeVisible();
       await expect(lab).toBeVisible();
       // The server the window shows is named, without a button.
       await expect(app.getByText("devbox.tail1234.ts.net")).toBeVisible();
@@ -187,6 +189,16 @@ realTest.describe("new UI in the desktop window", () => {
       await page.keyboard.press("Escape");
       await expect(app).toHaveCount(0);
       await settingsButton(page).click();
+      // An address with a one-time code: the window opens it with `#pair=<code>` for its pairing screen.
+      await linkField(page).fill("new.tail1234.ts.net");
+      await app.getByRole("textbox", { name: "One-time code (optional)" }).fill("ab12 cd34");
+      await connect.click();
+      await expect
+        .poll(() => windowCalls(page))
+        .toContainEqual(["connect_server", { link: "https://new.tail1234.ts.net/#pair=AB12CD34" }]);
+      await page.keyboard.press("Escape");
+      await expect(app).toHaveCount(0);
+      await settingsButton(page).click();
       await lab.click();
       await expect
         .poll(() => windowCalls(page))
@@ -196,7 +208,7 @@ realTest.describe("new UI in the desktop window", () => {
   );
 
   realTest(
-    "the palette offers the window's servers and its link field; a browser has neither",
+    "the palette offers the window's servers by name and Add a server; a browser has neither",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       const palette = page.getByRole("dialog", { name: "Palette" });
@@ -208,27 +220,26 @@ realTest.describe("new UI in the desktop window", () => {
 
       await search(page);
       const local = palette.getByRole("option", { name: "Use this computer's server" });
-      await expect(
-        palette.getByRole("option", { name: "Connect to another server…" }),
-      ).toBeVisible();
+      await expect(palette.getByRole("option", { name: "Add a server…" })).toBeVisible();
       await expect(local).toBeVisible();
-      await expect(
-        palette.getByRole("option", { name: "Open the server on lab.tail1234.ts.net" }),
-      ).toBeVisible();
+      await expect(palette.getByRole("option", { name: "Open the server on Lab" })).toBeVisible();
       await expect(palette.getByRole("option", { name: /devbox/ })).toHaveCount(0);
       await local.click();
       await expect.poll(() => windowCalls(page)).toContainEqual(["use_this_computer", null]);
 
       await search(page);
-      await palette.getByRole("option", { name: "Connect to another server…" }).click();
-      await expect(linkField(page)).toBeFocused();
+      await palette.getByRole("option", { name: "Add a server…" }).click();
+      const add = page.getByRole("dialog", { name: "Add a server" });
+      await expect(add.getByRole("textbox", { name: "Server address" })).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(add).toHaveCount(0);
 
       const browser = await realApp.open({ path: "/" });
       await search(browser);
       // Only the window's server options: a tour's title can name a server ("Tour: Signing in to an MCP server").
       await expect(
         browser.getByRole("dialog", { name: "Palette" }).getByRole("option", {
-          name: /^(Connect to another server|Use this computer's server|Open the server on )/,
+          name: /^(Add a server|Use this computer's server|Open the server on )/,
         }),
       ).toHaveCount(0);
       await browser.keyboard.press("Escape");

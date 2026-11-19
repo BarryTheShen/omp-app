@@ -9,7 +9,9 @@ import {
   openDesktopServer,
   refusalText,
   type ServerChoice,
+  serverLabel,
 } from "./bridge";
+import { serverLink } from "./server-link";
 
 /** What the palette and the Server section call this computer's server and another computer's. */
 export const LOCAL_SERVER_LABEL = "Use this computer's server";
@@ -140,6 +142,7 @@ function WindowServers({
 }): ReactNode {
   const [servers, setServers] = useState<DesktopServers | null>(null);
   const [link, setLink] = useState("");
+  const [code, setCode] = useState("");
   /** A move asked for: the window leaves this page when it is done. */
   const [moving, setMoving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -171,7 +174,16 @@ function WindowServers({
   };
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    if (link.trim() !== "") open({ kind: "link", link: link.trim() });
+    if (link.trim() === "") return;
+    // Without a code the link goes as typed (a pasted launch link keeps its `#token=…`); with one, the address and
+    // `#pair=<code>`, which the server's pairing screen uses at once.
+    if (code.trim() === "") {
+      open({ kind: "link", link: link.trim() });
+      return;
+    }
+    const paired = serverLink(link, code);
+    if (paired === null) setProblem(`"${link.trim()}" is not an address.`);
+    else open({ kind: "link", link: paired });
   };
   const row = (
     key: string,
@@ -207,9 +219,16 @@ function WindowServers({
       {servers?.remote.map((host) =>
         row(
           `remote:${host}`,
-          <span className="font-mono text-xs">{host}</span>,
+          servers.names[host] === undefined ? (
+            <span className="font-mono text-xs">{host}</span>
+          ) : (
+            <span className="flex flex-col">
+              <span className="truncate">{servers.names[host]}</span>
+              <span className="truncate font-mono text-xs text-t3">{host}</span>
+            </span>
+          ),
           servers.current === host,
-          remoteServerLabel(host),
+          remoteServerLabel(serverLabel(servers, host)),
           { kind: "host", host },
         ),
       )}
@@ -218,7 +237,9 @@ function WindowServers({
           Connect to another server
         </label>
         <p className="mt-0.5 text-xs text-t3">
-          Type the other computer's address: this window pairs with its app the first time.
+          Type the other computer's address, and a one-time code from it if this window has not
+          paired with it: on that server, the code is in Settings → App → Devices → Pair a new
+          device.
         </p>
         <div className="mt-2 flex gap-2">
           <Input
@@ -235,6 +256,18 @@ function WindowServers({
             Connect
           </Button>
         </div>
+        <label htmlFor="server-code" className="mt-2 block text-xs text-t2">
+          One-time code (optional)
+        </label>
+        <Input
+          id="server-code"
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          placeholder="ABCD 1234"
+          spellCheck={false}
+          autoComplete="one-time-code"
+          className="mt-1 font-mono text-xs uppercase"
+        />
         {problem !== null && (
           <p role="alert" className="mt-2 text-sm text-bad-ink">
             {problem}

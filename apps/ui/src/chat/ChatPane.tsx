@@ -11,6 +11,7 @@ import {
 } from "react";
 import { AgentHub } from "../agents/AgentHub";
 import { KEYS } from "../keys/table";
+import { LiteQuestions } from "../lite/LiteQuestions";
 import { ModelHub } from "../models/ModelHub";
 import { PageShare } from "../panels/files/PageShare";
 import { PlanCard } from "../plan/PlanCard";
@@ -280,6 +281,8 @@ export function ChatPane({
         </div>
       </div>
       <HostRequests controller={controller} requests={snapshot.requests} />
+      {/* The lite view has no Questions panel: the questions asked without waiting show here, as omp's requests do. */}
+      <LiteQuestions controller={controller} />
       {/* omp proposed a plan: it waits for a decision while plan mode is on (a replayed, decided one never shows), above
           the message box as omp's other requests do, so the chat and the Questions panel (which lists it too) stay usable. */}
       {snapshot.proposal !== null && snapshot.planMode?.enabled === true && (

@@ -546,4 +546,62 @@ realTest.describe("questions omp asks without waiting", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "in the lite view, which has no Questions panel, they show above the message box: folded to one line, over the whole chat, and answered there",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/lite" });
+      await expect(box(page)).toHaveAttribute("placeholder", /^(Fake Model|Message omp)/, {
+        timeout: 120_000,
+      });
+      const one = {
+        questions: [
+          {
+            id: "store",
+            question: "Which database should the notes use?",
+            options: [{ label: "Postgres" }, { label: "SQLite" }],
+            recommended: 1,
+          },
+        ],
+      };
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(one)}`);
+      await box(page).press("Enter");
+      // The question itself shows, as one that stops the chat does: no notice pointing at a panel the lite view lacks.
+      const card = page.getByRole("region", { name: "Questions from omp", exact: true });
+      await expect(card).toContainText("1 question waits for you", { timeout: 90_000 });
+      await expect(card).toContainText("Which database should the notes use?");
+      await expect(page.getByText("omp asked you a question.", { exact: false })).toHaveCount(0);
+
+      // Folded to one line, and shown again.
+      await card.getByRole("button", { name: "Fold the questions" }).click();
+      await expect(card).toHaveCount(0);
+      const folded = page.getByRole("region", { name: "Questions from omp, folded" });
+      await expect(folded).toContainText("1 question waits for you");
+      await folded.getByRole("button", { name: "Show" }).click();
+      await expect(card).toBeVisible();
+
+      // Over the whole chat: the card covers the transcript from the top; back above the message box.
+      await card.getByRole("button", { name: "Show the questions over the chat" }).click();
+      const height = page.viewportSize()?.height ?? 0;
+      await expect
+        .poll(async () => {
+          const over = await card.boundingBox();
+          return over !== null && over.y < 120 && over.height > height * 0.6;
+        })
+        .toBe(true);
+      await card.getByRole("button", { name: "Show the questions above the message box" }).click();
+      await expect.poll(async () => (await card.boundingBox())?.y ?? 0).toBeGreaterThan(120);
+
+      // Answered here: the recommended choice is picked, and the answer goes to the chat.
+      await expect(card.getByRole("radio", { name: "SQLite" })).toBeChecked();
+      await card.getByRole("article").getByRole("button", { name: "Send answer" }).click();
+      await expect(
+        transcript(page).getByText(
+          /Answer to your question "Which database should the notes use\?" \(store\):\s*SQLite/,
+        ),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(card).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });
