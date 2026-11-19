@@ -77,9 +77,15 @@ pub fn origin(link: &Url) -> String {
     link.origin().ascii_serialization()
 }
 
-/// The computer to name in messages: the link without its token.
+/// The server's name in lists and messages: its computer's name, with the port when it is not the scheme's default. Two
+/// servers on one computer (the app's own, and another on a second port) must never look the same: by name alone the
+/// Server list showed both as the window's current server and offered no way back.
 pub fn host(link: &Url) -> String {
-    link.host_str().unwrap_or_default().to_owned()
+    let name = link.host_str().unwrap_or_default();
+    match link.port() {
+        Some(port) => format!("{name}:{port}"),
+        None => name.to_owned(),
+    }
 }
 
 /// Where the window keeps the link: `$XDG_CONFIG_HOME/omp-app/desktop-server` when that variable is an absolute path,
@@ -192,6 +198,25 @@ mod tests {
         assert!(parse_link(more).is_some(), "other fields may follow");
         let former = "https://devbox.tail1234.ts.net/v2/";
         assert!(parse_link(former).is_some(), "the new UI's former page");
+    }
+
+    #[test]
+    fn two_servers_on_one_computer_have_names_of_their_own() {
+        // The app's own server on the standard port and another on a second port: by computer name alone both were
+        // "the current server" in the Server list, which then offered no way back from either.
+        let own = parse_link("https://devbox.tail1234.ts.net/").unwrap();
+        let other = parse_link("https://devbox.tail1234.ts.net:8445/#token=t").unwrap();
+        assert_eq!(host(&own), "devbox.tail1234.ts.net");
+        assert_eq!(host(&other), "devbox.tail1234.ts.net:8445");
+        let scratch = Scratch::new("two-ports");
+        let file = scratch.0.join("omp-app").join(SERVERS_FILE);
+        remember(&file, &own).unwrap();
+        remember(&file, &other).unwrap();
+        let names: Vec<String> = remembered(&file).iter().map(host).collect();
+        assert_eq!(
+            names,
+            vec!["devbox.tail1234.ts.net:8445", "devbox.tail1234.ts.net"]
+        );
     }
 
     #[test]

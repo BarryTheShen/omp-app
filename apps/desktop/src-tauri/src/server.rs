@@ -431,10 +431,10 @@ fn remote_origin_of(app: &AppHandle, label: &str) -> Option<String> {
     with_state(app, |state| state.remote_origins.get(label).cloned())
 }
 
-/// The computer's name of the server on another computer that window `label` opens; None for this computer's server.
+/// The name (`remote::host`) of the server on another computer that window `label` opens; None for this computer's server.
 pub fn current_server(app: &AppHandle, label: &str) -> Option<String> {
     let origin = remote_origin_of(app, label)?;
-    Url::parse(&origin).ok()?.host_str().map(str::to_owned)
+    Url::parse(&origin).ok().map(|url| remote::host(&url))
 }
 
 /// Opens the server on another computer in window `label`, off the main thread. Its pages may call the window's
@@ -875,7 +875,7 @@ fn remote_page_failed(app: &AppHandle, label: &str, uri: &str, problem: &str) ->
 fn remote_page_host(uri: &str, remote: Option<&str>) -> Option<String> {
     let origin = remote?;
     let url = Url::parse(uri).ok()?;
-    let host = url.host_str()?.to_owned();
+    let host = url.host_str().map(|_| remote::host(&url))?;
     (url.origin().ascii_serialization() == origin).then_some(host)
 }
 

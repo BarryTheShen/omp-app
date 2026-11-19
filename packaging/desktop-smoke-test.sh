@@ -861,8 +861,9 @@ wait_handshakes() {
   done
   return 1
 }
-# How often the window said that the app on the other computer did not open; and a wait for that count.
-did_not_open() { cat "$work"/launch-*.log 2>/dev/null | grep -c 'the app on 127.0.0.1 did not open' || true; }
+# How often the window said that the app on the other computer did not open (it names it with its port, as the Server
+# list does); and a wait for that count.
+did_not_open() { cat "$work"/launch-*.log 2>/dev/null | grep -c -E 'the app on 127\.0\.0\.1:[0-9]+ did not open' || true; }
 wait_did_not_open() {
   for n in $(seq 1 40); do
     (($(did_not_open) >= $1)) && return 0
@@ -932,7 +933,7 @@ sleep 3
 is_alive "$p" || fail "T10: the app quit after the window went to the other computer"
 [[ $(window_ids | wc -l) == 1 ]] || fail "T10: $(window_ids | wc -l) windows after the window went to the other computer"
 shot "$wid" remote-page-failed
-note "T10 a second launch with --remote moved the open window to the other computer: the window began a TLS handshake there, the page did not load, and the window showed the error page ($(grep -h -o 'the app on 127.0.0.1 did not open: .*' "$work"/launch-*.log | head -n 1))"
+note "T10 a second launch with --remote moved the open window to the other computer: the window began a TLS handshake there, the page did not load, and the window showed the error page ($(grep -h -o -E 'the app on 127\.0\.0\.1:[0-9]+ did not open: .*' "$work"/launch-*.log | head -n 1))"
 launch "$app" --local
 second=$LAUNCHED
 wait_gone "$second" 30 || fail "T10: the last launch with --local did not exit"
