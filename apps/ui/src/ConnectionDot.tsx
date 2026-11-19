@@ -15,12 +15,17 @@ export function useConnectionState(client: AppClient): ConnectionStateEvent {
   return state;
 }
 
-const LOOK = {
+/** How each state of the link is shown: its word and its dot's colour. */
+export const CONNECTION_LOOK = {
   connected: { words: "Connected", dot: "bg-ok" },
   connecting: { words: "Connecting…", dot: "bg-warn" },
   reconnecting: { words: "Reconnecting…", dot: "bg-warn" },
   disconnected: { words: "Disconnected", dot: "bg-bad" },
 } as const;
+
+/** The link's state as one of `CONNECTION_LOOK`'s. */
+export const connectionKind = (event: ConnectionStateEvent): keyof typeof CONNECTION_LOOK =>
+  event.state === "open" ? "connected" : event.state === "closed" ? "disconnected" : event.state;
 
 /**
  * The link to the app's server, always in sight (#2789): a green dot while connected; amber while it connects or comes
@@ -36,9 +41,8 @@ export function ConnectionDot({
   readonly line?: boolean;
 }): ReactNode {
   const event = useConnectionState(client);
-  const kind =
-    event.state === "open" ? "connected" : event.state === "closed" ? "disconnected" : event.state;
-  const look = LOOK[kind];
+  const kind = connectionKind(event);
+  const look = CONNECTION_LOOK[kind];
   const worded = line || kind !== "connected";
   const tip =
     kind === "connected"

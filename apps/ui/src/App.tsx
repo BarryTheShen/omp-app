@@ -36,6 +36,7 @@ import {
   useSettledNotifications,
   useWaitingNotifications,
 } from "./desktop/notify";
+import { ServerMenu } from "./desktop/ServerMenu";
 import { runUndoKeys } from "./desktop/undo";
 import { keptZoom, setDesktopZoom, stepZoom } from "./desktop/zoom";
 import { FolderMenu } from "./folders/FolderMenu";
@@ -361,6 +362,8 @@ function Shell({
   }, []);
   const showSettings = useCallback(() => openSettings("app"), [openSettings]);
   const showServers = useCallback(() => openSettings("server"), [openSettings]);
+  // The desktop window's bridge (null in a browser); the page's globals do not change while it runs.
+  const [desktopBridgeNow] = useState(desktopBridge);
   const openChat = useCallback((target: ChatTarget, how: OpenHow): void => {
     workspace.current?.open(target, how);
     setShowChat(true);
@@ -572,7 +575,14 @@ function Shell({
         onWhatsNew={showWhatsNew}
         workspace={workspace}
         phone={phone}
-        connection={<ConnectionDot client={client} line={!phone} />}
+        connection={
+          // In the desktop window the line also says which server it shows, and switches to another.
+          desktopBridgeNow !== null && !phone ? (
+            <ServerMenu client={client} bridge={desktopBridgeNow} onServers={showServers} />
+          ) : (
+            <ConnectionDot client={client} line={!phone} />
+          )
+        }
         edge={phone ? undefined : <ListEdge width={chatList.width} onResize={chatList.resize} />}
         onHide={phone ? undefined : toggleList}
       />

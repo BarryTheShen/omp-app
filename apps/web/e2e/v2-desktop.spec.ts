@@ -82,7 +82,11 @@ realTest.describe("new UI in the desktop window", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       const box = await newChat(page);
-      const calls = async () => (await windowCalls(page)).map(([command]) => command);
+      // The clipboard's commands only: the side bar's server menu asks the window for its servers too.
+      const calls = async () =>
+        (await windowCalls(page))
+          .map(([command]) => command)
+          .filter((command) => command.includes("clipboard"));
       // WebKitGTK's paste event: text when text was copied, nothing at all for a copied picture.
       const paste = (text: string) =>
         box.evaluate((element, value) => {
@@ -108,7 +112,10 @@ realTest.describe("new UI in the desktop window", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       const box = await newChat(page);
-      const calls = async () => (await windowCalls(page)).map(([command]) => command);
+      const calls = async () =>
+        (await windowCalls(page))
+          .map(([command]) => command)
+          .filter((command) => command.includes("clipboard"));
       // WebKitGTK's paste event for a file manager's copy: the file's path as text, or nothing.
       const paste = (text: string) =>
         box.evaluate((element, value) => {
@@ -221,6 +228,48 @@ realTest.describe("new UI in the desktop window", () => {
       await settingsButton(browser).click();
       await expect(appSettings(browser)).toContainText("Connected to");
       await expect(linkField(browser)).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the side bar's foot names the window's server and switches to another in two clicks; a browser keeps the connection line",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
+      const line = page.getByRole("button", {
+        name: "Server: devbox.tail1234.ts.net. Connection: Connected",
+      });
+      await expect(line).toBeVisible({ timeout: 120_000 });
+      await expect(line).toContainText("devbox.tail1234.ts.net");
+
+      await line.click();
+      const menu = page.getByRole("menu");
+      // This computer and each server the window opened, the one it shows marked.
+      await expect(menu.getByRole("menuitemradio", { name: "This computer" })).not.toBeChecked();
+      await expect(
+        menu.getByRole("menuitemradio", { name: "devbox.tail1234.ts.net" }),
+      ).toBeChecked();
+      await menu.getByRole("menuitemradio", { name: "lab.tail1234.ts.net" }).click();
+      await expect
+        .poll(() => windowCalls(page))
+        .toContainEqual(["open_server", { host: "lab.tail1234.ts.net" }]);
+
+      await line.click();
+      await menu.getByRole("menuitemradio", { name: "This computer" }).click();
+      await expect.poll(() => windowCalls(page)).toContainEqual(["use_this_computer", null]);
+
+      // A server not opened before: its address goes in Settings → App.
+      await line.click();
+      await menu.getByRole("menuitem", { name: "Connect to another server…" }).click();
+      await expect(linkField(page)).toBeFocused();
+
+      const browser = await realApp.open({ path: "/" });
+      await expect(
+        browser.getByRole("button", { name: "Connection: Connected", exact: true }),
+      ).toBeVisible({
+        timeout: 120_000,
+      });
+      await expect(browser.getByRole("button", { name: /^Server: / })).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
     },
   );
