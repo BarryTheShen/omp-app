@@ -113,7 +113,7 @@ describe("the chat host's history and session changes", () => {
     );
 
     programTest(
-      `${program.name}: a rewind to the second prompt gives its text back, moves the leaf before it, and the chat goes on from there (#2692)`,
+      `${program.name}: a rewind to the second prompt gives its text back, moves the leaf before it, tells every viewer, and the chat goes on from there (#2692, #22)`,
       async () => {
         const chat = await chats.start(command);
         await chat.client.hello;
@@ -121,24 +121,37 @@ describe("the chat host's history and session changes", () => {
         await chat.next(resultOf("1"));
         await chat.client.request("prompt", { text: "second zebra" });
         await chat.next(resultOf("2"));
-        const { sessionFile } = await chat.client.request("get_state", {});
+        const before = await chat.client.request("get_state", {});
+        expect(before.leafAtEnd).toBe(true);
         const second = (await userPrompts(chat)).find((prompt) => prompt.text === "second zebra");
         expect(second).toBeDefined();
+        const mark = chat.events.length;
         const rewound = await chat.client.request("navigate_tree", { entryId: second?.id ?? "" });
         expect(rewound).toMatchObject({
           cancelled: false,
           editorText: "second zebra",
           leafId: second?.parentId,
         });
+        // Every window hears where omp now continues, not only the one that asked (#22).
+        expect(await chat.nextAfter(mark, (event) => event.type === "leaf_changed")).toEqual({
+          type: "leaf_changed",
+          leafId: second?.parentId ?? null,
+          atEnd: false,
+        });
         expect((await chat.client.request("get_entries", {})).leafId).toBe(
           second?.parentId ?? null,
         );
-        expect((await chat.client.request("get_state", {})).sessionFile).toBe(sessionFile);
+        // A window that opens now reads the same from the state.
+        const after = await chat.client.request("get_state", {});
+        expect(after).toMatchObject({ leafId: second?.parentId ?? null, leafAtEnd: false });
+        expect(after.sessionFile).toBe(before.sessionFile);
         await chat.client.request("prompt", { text: "context_has zebra" });
         await chat.next(resultOf("8"));
         expect(lastReply(chat)).toBe("context lacks zebra");
+        // The turn wrote on from the leaf: it is the file's end again.
+        expect((await chat.client.request("get_state", {})).leafAtEnd).toBe(true);
         await chat.client.request("prompt", { text: "context_has apple" });
-        await chat.next(resultOf("9"));
+        await chat.next(resultOf("10"));
         expect(lastReply(chat)).toBe("context has apple");
       },
       60_000,

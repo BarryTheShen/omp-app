@@ -714,6 +714,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         await goal.settled();
       }
       const { cancelled, editorText, editorImages } = moved;
+      // Every window shows the chat from where omp now continues, not only the one that asked.
+      if (!cancelled) {
+        const { leafId, leafAtEnd } = leafState(session);
+        emit({ type: "leaf_changed", leafId, atEnd: leafAtEnd });
+      }
       return {
         cancelled,
         ...(editorText !== undefined ? { editorText } : {}),
@@ -1378,6 +1383,18 @@ function modelsMatch(
   return a.provider === b.provider && a.id === b.id;
 }
 
+/**
+ * Where omp continues: its leaf, and whether that is the file's last entry. An Edit moves the leaf back in omp's memory
+ * only (the file gets nothing until the next turn writes on from it), so a window reads the file at the leaf.
+ */
+function leafState(session: AgentSession): {
+  readonly leafId: string | null;
+  readonly leafAtEnd: boolean;
+} {
+  const leafId = session.sessionManager.getLeafId();
+  return { leafId, leafAtEnd: leafId === (session.sessionManager.getEntries().at(-1)?.id ?? null) };
+}
+
 /** The chat's state, as omp's session reports it (the fields of omp's own `get_state`, `rpc-mode.ts:2064-2107`). */
 function readState(session: AgentSession): ChatHostState {
   const { model, thinkingLevel, sessionFile, sessionName } = session;
@@ -1419,6 +1436,7 @@ function readState(session: AgentSession): ChatHostState {
     ...(contextUsage ? { contextUsage } : {}),
     goal: session.getGoalModeState() ?? null,
     ...(agentPauseGate.pausedAt !== undefined ? { pausedAt: agentPauseGate.pausedAt } : {}),
+    ...leafState(session),
   };
 }
 

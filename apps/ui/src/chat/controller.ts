@@ -219,6 +219,11 @@ export class ChatController {
    * Undefined while the branch ends at the file's last entry, as it does again once omp writes the next turn.
    */
   #leaf: string | null | undefined = undefined;
+  /**
+   * Live turn starts and ends since the open (the replay of earlier turns not counted): a state read across one says
+   * nothing current about the leaf, since every turn writes on from it.
+   */
+  #liveTurns = 0;
   /** Whether the file's window has been read: what this browser kept is shown only until then. */
   #windowRead = false;
   /** The file the window was read from: a chat omp moved opens as its newest copy, another file, read again. */
@@ -961,8 +966,11 @@ export class ChatController {
   ): Promise<{ readonly text: string; readonly images: readonly ChatHostImage[] } | null> {
     const result = await this.#request("navigate_tree", { entryId });
     if (result.cancelled) return null;
-    this.#leaf = result.leafId;
-    await this.#reloadWindow();
+    // The host's `leaf_changed` may have come first and read the window from there already.
+    if (this.#leaf !== result.leafId) {
+      this.#leaf = result.leafId;
+      await this.#reloadWindow();
+    }
     return { text: result.editorText ?? "", images: result.editorImages ?? [] };
   }
 
@@ -1812,8 +1820,25 @@ export class ChatController {
 
   async #refreshState(): Promise<void> {
     const asked = this.store.activityMark;
+    const turns = this.#liveTurns;
     const state = await this.#request("get_state", {});
-    if (!this.#disposed) this.store.setState(state, asked);
+    if (this.#disposed) return;
+    this.store.setState(state, asked);
+    // An Edit made before this window opened (or before a reload) still decides where the chat continues. A host of
+    // before it says nothing of its leaf.
+    if (state.leafId !== undefined && state.leafAtEnd !== undefined && this.#liveTurns === turns)
+      this.#followLeaf(state.leafId, state.leafAtEnd);
+  }
+
+  /**
+   * Shows the chat from where omp continues: the file's last entry, or the entry an Edit moved back to, made in this
+   * window or another, so every window shows what the next message continues from.
+   */
+  #followLeaf(leafId: string | null, atEnd: boolean): void {
+    const next = atEnd ? undefined : leafId;
+    if (next === this.#leaf) return;
+    this.#leaf = next;
+    this.#refreshWindow();
   }
 
   #onEvent(payload: ChatSessionEvent): void {
@@ -1863,8 +1888,13 @@ export class ChatController {
       if (payload.event.type === "agent_end") this.#replayEndedTurn = true;
       return;
     }
+    if (payload.event.type === "agent_start" || payload.event.type === "agent_end")
+      this.#liveTurns += 1;
     // A finished turn is read back from the file, so every entry shows with omp's own id.
     if (payload.event.type === "agent_end") this.#refreshWindow();
+    // An Edit in any window moved where omp continues.
+    if (payload.event.type === "leaf_changed")
+      this.#followLeaf(payload.event.leafId, payload.event.atEnd);
     if (payload.event.type === "model_changed") {
       this.#refreshState().catch(() => undefined);
       this.#refreshRole().catch(() => undefined);

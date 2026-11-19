@@ -306,6 +306,13 @@ export interface ChatHostState {
   readonly goal: NonNullable<ReturnType<Session["getGoalModeState"]>> | null;
   /** The app's field, not omp's: when the chat's pause began (epoch ms); absent while it runs. */
   readonly pausedAt?: number;
+  /**
+   * The entry omp continues from (its leaf; null before the first entry). Absent from a chat host of before it (an
+   * update found the chat running).
+   */
+  readonly leafId?: LeafId;
+  /** The leaf is the file's last entry: false after an Edit moved it back, until the next turn writes on from it. */
+  readonly leafAtEnd?: boolean;
 }
 
 export interface ChatHostToolDescriptor {
@@ -1652,7 +1659,19 @@ export type ChatEvent =
   | BtwRecordEvent
   | QuestionRecordEvent
   | PauseChangedEvent
-  | PlanModeChangedEvent;
+  | PlanModeChangedEvent
+  | LeafChangedEvent;
+
+/**
+ * An Edit moved the entry omp continues from (`navigate_tree`), in whichever window it was made: every window shows the
+ * chat from there, as the next message continues from there.
+ */
+export interface LeafChangedEvent {
+  readonly type: "leaf_changed";
+  readonly leafId: LeafId;
+  /** The leaf is the file's last entry (an Edit of nothing later, or the newest turn). */
+  readonly atEnd: boolean;
+}
 
 /** omp's `/btw` answering: the next piece of a side question's answer (omp's `btw_delta`). */
 export interface BtwDeltaEvent {
