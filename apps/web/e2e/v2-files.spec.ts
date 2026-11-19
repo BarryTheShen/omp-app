@@ -2,7 +2,6 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
-import { drawnAfterClick } from "./timing";
 
 /** The WCAG contrast ratio of two computed `rgb(…)` colours. */
 function contrast(first: string, second: string): number {
@@ -91,22 +90,47 @@ realTest.describe("new UI: the Files panel", () => {
     "the code editor loads while the panel shows, so the first file opened draws in it at once",
     async ({ realApp }) => {
       await writeFile(join(realApp.folder, "app.ts"), "export const answer = 42;\n");
-      const fetched: string[] = [];
+      const loaded: string[] = [];
       const page = await realApp.open({
         path: "/",
         beforeLoad: async (opened) => {
-          opened.on("request", (request) => fetched.push(request.url()));
+          opened.on("requestfinished", (request) => loaded.push(request.url()));
         },
       });
       await openFiles(page);
       await expect
-        .poll(() => fetched.some((url) => /\/CodeEditor-[^/]+\.js$/.test(url)), { timeout: 15_000 })
+        .poll(() => loaded.some((url) => /\/CodeEditor-[^/]+\.js$/.test(url)), { timeout: 15_000 })
         .toBe(true);
-      // An editor whose first draw waits for its code shows no sooner than 300 ms after the click (React holds content
-      // that was loading that long after its fallback, "Loading the editor…").
-      const drawn = drawnAfterClick(page, ".cm-content");
+      // What the preload is for: the first file opened never waits for the editor's code, so "Loading the editor…" never
+      // shows between the click and the editor. (A time limit measured the file's read over the link too, which a busy
+      // machine stretched past it: #26.)
+      const first = page.evaluate(
+        () =>
+          new Promise<{ fallback: boolean; ms: number }>((resolve) => {
+            let clicked: number | undefined;
+            let fallback = false;
+            addEventListener("click", (event) => (clicked = event.timeStamp), {
+              capture: true,
+              once: true,
+            });
+            const observer = new MutationObserver(() => {
+              if (clicked === undefined) return;
+              if (document.body.innerText.includes("Loading the editor…")) fallback = true;
+              if (document.querySelector(".cm-content") === null) return;
+              observer.disconnect();
+              resolve({ fallback, ms: performance.now() - clicked });
+            });
+            observer.observe(document.body, {
+              childList: true,
+              subtree: true,
+              characterData: true,
+            });
+          }),
+      );
       await row(page, "app.ts").click();
-      expect(await drawn).toBeLessThan(250);
+      const drawn = await first;
+      expect(drawn.fallback).toBe(false);
+      expect(drawn.ms).toBeLessThan(5_000);
       await expect(editor(page)).toContainText("export const answer = 42;");
       expect(realApp.problems).toEqual([]);
     },

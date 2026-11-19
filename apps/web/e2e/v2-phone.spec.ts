@@ -20,6 +20,27 @@ realTest.describe("new UI on a phone", () => {
       ? null
       : [Math.round(bounds.x), Math.round(bounds.width), Math.round(bounds.y + bounds.height)];
   };
+  /**
+   * Scrolls `target` into view and waits until it stops moving. What's new lays a row out only once it scrolls into view
+   * (`content-visibility: auto`, 7rem until then): rows above the target grow as they appear at a phone's width, so a
+   * tap right after the scroll could land one row up and start that row's tour (#26).
+   */
+  const settled = async (target: Locator) => {
+    await target.scrollIntoViewIfNeeded();
+    let last = "";
+    let same = 0;
+    await expect
+      .poll(
+        async () => {
+          const now = JSON.stringify(await target.boundingBox());
+          same = now === last ? same + 1 : 0;
+          last = now;
+          return same;
+        },
+        { intervals: [150], timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(2);
+  };
 
   async function phone(
     realApp: { open: (options: { path: string; context: BrowserContext }) => Promise<Page> },
@@ -1245,7 +1266,9 @@ realTest.describe("new UI on a phone", () => {
       const settings = page.getByRole("dialog", { name: "Settings" });
       await settings.getByRole("button", { name: "App", exact: true }).tap();
       await settings.getByRole("button", { name: "What's new" }).tap();
-      await page.getByRole("button", { name: "Take the tour: Stop, or queue" }).tap();
+      const take = page.getByRole("button", { name: "Take the tour: Stop, or queue" });
+      await settled(take);
+      await take.tap();
       await expect(page.locator(".driver-popover")).toContainText("One button, three jobs");
       const highlighted = page.locator(".driver-active-element");
       await expect(highlighted).toHaveAttribute("data-tour", "send-button");
