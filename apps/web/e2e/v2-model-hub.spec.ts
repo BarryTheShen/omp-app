@@ -25,6 +25,35 @@ realTest.describe("new UI model hub, palette and tour", () => {
   });
 
   realTest(
+    "with the model menu open, Alt+M opens Models in its place and Models stays; Alt+M and Alt+P close what they opened",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const menu = page.locator("[data-tour='model-menu']");
+
+      await box(page).press("Alt+p");
+      await expect(menu).toBeVisible();
+      await page.keyboard.press("Alt+m");
+      await expect(hub(page)).toBeVisible();
+      await expect(menu).toBeHidden();
+      // Models flashed and closed (it opened while the menu still stood, and the two took the focus from each other).
+      await page.waitForTimeout(500);
+      await expect(hub(page)).toBeVisible();
+
+      await page.keyboard.press("Alt+m");
+      await expect(hub(page)).toBeHidden();
+
+      await box(page).press("Alt+p");
+      await expect(menu).toBeVisible();
+      await page.keyboard.press("Alt+p");
+      await expect(menu).toBeHidden();
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "the A model for each role tour waits for Alt+M and for the dialog to close",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });

@@ -253,9 +253,19 @@ export function ModelPicker({
     onOpenChange(false);
     controller.modelHubToggle.show(role ?? "default");
   };
-  // Alt+S and Alt+H act on the highlighted model while the search keeps the caret; a role's row has neither.
+  // Alt+S and Alt+H act on the highlighted model while the search keeps the caret; a role's row has neither. The
+  // shortcuts of the chat's own surfaces are this menu's too: Alt+P (which opened it) closes it, and Alt+M closes it,
+  // then opens Models, as its Models button does. The pane's Alt+M must not hear the key as well: Models opening while
+  // this menu still stood made the two take the focus from each other, and Models flashed and closed.
   const onKeyDown = (event: KeyboardEvent): void => {
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.code === "KeyM" || event.code === "KeyP") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.code === "KeyM") openPanel();
+      else onOpenChange(false);
+      return;
+    }
     if (
       highlighted === "" ||
       highlighted === HIDDEN_TOGGLE ||

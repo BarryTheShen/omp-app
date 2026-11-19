@@ -1044,6 +1044,20 @@ export function ModelHub({ controller }: { readonly controller: ChatController }
       <DialogContent
         data-tour="model-hub"
         showCloseButton={false}
+        // Alt+M, which opened Models, closes it again, as Ctrl+K does the palette.
+        onKeyDown={(event) => {
+          if (
+            event.altKey &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey &&
+            event.code === "KeyM"
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            controller.modelHubToggle.hide();
+          }
+        }}
         // The picked role takes the focus, else the header (the hub is still being read): never a button, whose
         // tooltip would take the first Esc.
         initialFocus={() =>
