@@ -588,6 +588,7 @@ fn take(app: &AppHandle, event: Value) {
                     show_tray(&app);
                 } else {
                     let _ = app.remove_tray_by_id(TRAY);
+                    *left_item().lock().expect("the tray line lock") = None;
                 }
             });
         }
@@ -637,13 +638,21 @@ fn tray_text() -> String {
     }
 }
 
+/// The tray menu's first line, the time left, kept to update it in place (the menu stays open while it changes).
+fn left_item() -> &'static Mutex<Option<MenuItem<tauri::Wry>>> {
+    static LEFT: OnceLock<Mutex<Option<MenuItem<tauri::Wry>>>> = OnceLock::new();
+    LEFT.get_or_init(|| Mutex::new(None))
+}
+
+/// The red icon, with no text beside it: GNOME's tray draws an indicator's label as a small dot next to the icon. The
+/// time left is the menu's first line and the tooltip.
 fn show_tray(app: &AppHandle) {
-    if let Some(tray) = app.tray_by_id(TRAY) {
-        let _ = tray.set_title(Some(tray_text()));
-        let _ = tray.set_tooltip(Some(tray_text()));
+    if app.tray_by_id(TRAY).is_some() {
+        refresh_tray(app);
         return;
     }
     let built = (|| -> tauri::Result<()> {
+        let left = MenuItem::with_id(app, "access-left", tray_text(), false, None::<&str>)?;
         let show = MenuItem::with_id(app, "access-show", "Show the app", true, None::<&str>)?;
         let sudo = MenuItem::with_id(
             app,
@@ -654,10 +663,10 @@ fn show_tray(app: &AppHandle) {
         )?;
         let extend = MenuItem::with_id(app, "access-extend", "Extend 1 h", true, None::<&str>)?;
         let off = MenuItem::with_id(app, "access-off", "Turn off", true, None::<&str>)?;
-        let menu = Menu::with_items(app, &[&show, &extend, &sudo, &off])?;
+        let menu = Menu::with_items(app, &[&left, &show, &extend, &sudo, &off])?;
+        *left_item().lock().expect("the tray line lock") = Some(left);
         TrayIconBuilder::with_id(TRAY)
             .icon(Image::from_bytes(include_bytes!("../icons/access-on.png"))?)
-            .title(tray_text())
             .tooltip(tray_text())
             .menu(&menu)
             .on_menu_event(|app, event| match event.id.as_ref() {
@@ -702,8 +711,10 @@ fn refresh_tray(app: &AppHandle) {
     let app = app.clone();
     let _ = app.clone().run_on_main_thread(move || {
         if let Some(tray) = app.tray_by_id(TRAY) {
-            let _ = tray.set_title(Some(tray_text()));
             let _ = tray.set_tooltip(Some(tray_text()));
+        }
+        if let Some(left) = left_item().lock().expect("the tray line lock").as_ref() {
+            let _ = left.set_text(tray_text());
         }
     });
 }
