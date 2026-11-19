@@ -114,6 +114,13 @@ pub async fn new_window(app: AppHandle, window: WebviewWindow) -> Result<(), Str
         .map_err(|error| error.to_string())?
 }
 
+/// Opens another window on a server on another computer the app opened before, by its computer's name; the asking
+/// window stays on its own server.
+#[tauri::command]
+pub async fn open_server_window(app: AppHandle, host: String) -> Result<(), String> {
+    server::open_server_window(&app, known(&host)?)
+}
+
 /// Shows a desktop notification with the app's name and launcher. It never waits on the page: the notification
 /// service is asked on a thread of its own, and a computer without one only logs why.
 #[tauri::command]

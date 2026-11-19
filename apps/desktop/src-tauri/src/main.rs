@@ -58,6 +58,7 @@ fn main() {
             commands::rename_server,
             commands::forget_server,
             commands::check_server,
+            commands::open_server_window,
             commands::notify,
             commands::new_window,
             access::access_status,

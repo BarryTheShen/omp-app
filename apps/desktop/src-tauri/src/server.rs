@@ -70,7 +70,7 @@ const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// turning on, off, extending, sudo, the review, what sessions show, and Remove. Each of the switch's commands acts
 /// only for a window whose server is the one this computer is linked to, and each that grants anything asks the
 /// person's password in the system's dialog, worded by the agent's guard from what it grants.
-const PAGE_PERMISSIONS: [&str; 23] = [
+const PAGE_PERMISSIONS: [&str; 24] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",
     "allow-read-clipboard-file",
@@ -81,6 +81,7 @@ const PAGE_PERMISSIONS: [&str; 23] = [
     "allow-rename-server",
     "allow-forget-server",
     "allow-check-server",
+    "allow-open-server-window",
     "allow-notify",
     "allow-new-window",
     "allow-access-here",
@@ -822,6 +823,18 @@ pub fn open_window_like(app: &AppHandle, source: &str) -> Result<(), String> {
     };
     let handle = app.clone();
     app.run_on_main_thread(move || open_window_on(&handle, &address, origin))
+        .map_err(|error| error.to_string())
+}
+
+/// Opens another window on the server on another computer whose remembered link is `link`, whatever server the
+/// asking window shows; the asking window stays where it is.
+pub fn open_server_window(app: &AppHandle, link: Url) -> Result<(), String> {
+    if with_state(app, |state| state.quitting) {
+        return Err("the app is quitting".to_owned());
+    }
+    let origin = remote::origin(&link);
+    let handle = app.clone();
+    app.run_on_main_thread(move || open_window_on(&handle, &link, Some(origin)))
         .map_err(|error| error.to_string())
 }
 

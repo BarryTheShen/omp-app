@@ -1,6 +1,6 @@
 {
   "identifier": "app-pages",
-  "description": "The app's own pages in its windows (the page for a server on another computer that did not open) may choose the window's server: the servers it opened before, another address, or this computer's server; and name, forget or check the servers it opened. Server pages get their commands by exact origin at run time (server.rs, grant_page_commands).",
+  "description": "The app's own pages in its windows (the page for a server on another computer that did not open) may choose the window's server: the servers it opened before, another address, or this computer's server; name, forget or check the servers it opened; and open one of them in a new window. Server pages get their commands by exact origin at run time (server.rs, grant_page_commands).",
   "local": true,
   "windows": ["main", "window-*"],
   "permissions": [
@@ -10,6 +10,7 @@
     "allow-use-this-computer",
     "allow-rename-server",
     "allow-forget-server",
-    "allow-check-server"
+    "allow-check-server",
+    "allow-open-server-window"
   ]
 }

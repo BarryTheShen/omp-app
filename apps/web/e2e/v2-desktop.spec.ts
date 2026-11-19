@@ -274,7 +274,8 @@ realTest.describe("new UI in the desktop window", () => {
       await menu.getByRole("menuitemradio", { name: "This computer" }).click();
       await expect.poll(() => windowCalls(page)).toContainEqual(["use_this_computer", null]);
 
-      // Manage servers: a name is kept on Enter; the server the window shows is not forgotten, another one is.
+      // Manage servers: a name is kept on Enter; a server opens in a new window, this one staying; the server the window
+      // shows is not forgotten, another one is.
       await line.click();
       await menu.getByRole("menuitem", { name: "Manage servers…" }).click();
       const manage = page.getByRole("dialog", { name: "Manage servers" });
@@ -284,6 +285,11 @@ realTest.describe("new UI in the desktop window", () => {
       await expect
         .poll(() => windowCalls(page))
         .toContainEqual(["rename_server", { host: "old.tail1234.ts.net", name: "Old box" }]);
+      await manage.getByRole("button", { name: "Open Lab in a new window" }).click();
+      await expect
+        .poll(() => windowCalls(page))
+        .toContainEqual(["open_server_window", { host: "lab.tail1234.ts.net" }]);
+      await expect(manage).toBeVisible();
       const forgets = manage.getByRole("button", { name: "Forget" });
       await expect(forgets.first()).toBeDisabled();
       await forgets.nth(2).click();

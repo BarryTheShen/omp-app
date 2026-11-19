@@ -130,6 +130,11 @@ export function forgetDesktopServer(bridge: Bridge, host: string): Promise<unkno
   return bridge.invoke("forget_server", { host });
 }
 
+/** Opens a server the window opened before in a new window; this window stays where it is. */
+export function openDesktopServerWindow(bridge: Bridge, host: string): Promise<unknown> {
+  return bridge.invoke("open_server_window", { host });
+}
+
 /** Whether a server the window opened before accepts a connection now; false for a desktop app without the check. */
 export async function checkDesktopServer(bridge: Bridge, host: string): Promise<boolean> {
   try {

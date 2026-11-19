@@ -12,6 +12,7 @@ fn main() {
             "rename_server",
             "forget_server",
             "check_server",
+            "open_server_window",
             "notify",
             "new_window",
             // Agent access (#20), for the server's pages in the side bar's panel (server.rs PAGE_PERMISSIONS; each

@@ -31,6 +31,7 @@ import {
   desktopServers,
   forgetDesktopServer,
   openDesktopServer,
+  openDesktopServerWindow,
   refusalText,
   renameDesktopServer,
   serverLabel,
@@ -166,12 +167,13 @@ export function ServerMenu({
           }
         >
           <span aria-hidden className={cn("size-2 shrink-0 rounded-full", look.dot)} />
-          <span className="shrink-0 text-xs">{look.words}</span>
+          {/* The server first: a long address is cut at its end, never the words that say which server it is. */}
           {name !== "" && (
             <span className="min-w-0 truncate text-xs" title={name}>
-              · {name}
+              {name}
             </span>
           )}
+          <span className="shrink-0 text-xs">{name === "" ? look.words : `· ${look.words}`}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="w-auto min-w-64 max-w-96">
           <DropdownMenuGroup>
@@ -288,24 +290,28 @@ function AddServer({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">
-          <Input
-            value={address}
-            onChange={(change) => setAddress(change.target.value)}
-            aria-label="Server address"
-            placeholder="omp.example.com"
-            spellCheck={false}
-            autoComplete="off"
-            className="font-mono text-xs"
-          />
-          <Input
-            value={code}
-            onChange={(change) => setCode(change.target.value)}
-            aria-label="One-time code (optional)"
-            placeholder="One-time code (optional)"
-            spellCheck={false}
-            autoComplete="one-time-code"
-            className="font-mono text-xs uppercase"
-          />
+          <label className="flex flex-col gap-1 text-xs text-t2">
+            Server address
+            <Input
+              value={address}
+              onChange={(change) => setAddress(change.target.value)}
+              placeholder="omp.example.com"
+              spellCheck={false}
+              autoComplete="off"
+              className="font-mono text-xs"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-t2">
+            One-time code (optional)
+            <Input
+              value={code}
+              onChange={(change) => setCode(change.target.value)}
+              placeholder="ABCD 1234"
+              spellCheck={false}
+              autoComplete="one-time-code"
+              className="font-mono text-xs uppercase"
+            />
+          </label>
           {problem !== null && (
             <p role="alert" className="text-xs text-bad-ink [overflow-wrap:anywhere]">
               {problem}
@@ -366,6 +372,19 @@ function ManagedServer({
         <Button
           variant="ghost"
           size="sm"
+          aria-label={`Open ${serverLabel(servers, host)} in a new window`}
+          onClick={() => {
+            setProblem(null);
+            openDesktopServerWindow(bridge, host).catch((failure: unknown) =>
+              setProblem(refusalText(failure)),
+            );
+          }}
+        >
+          New window
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           disabled={current}
           title={current ? "This window shows this server; open another one first." : undefined}
           onClick={() => {
@@ -408,8 +427,8 @@ function ManageServers({
         <DialogHeader>
           <DialogTitle>Manage servers</DialogTitle>
           <DialogDescription>
-            Name the servers this app has opened, or forget one. A forgotten server can be opened
-            again with its address.
+            Name the servers this app has opened, open one in a new window, or forget one. A
+            forgotten server can be opened again with its address.
           </DialogDescription>
         </DialogHeader>
         <ul aria-label="Servers" className="max-h-80 overflow-y-auto">
