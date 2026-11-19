@@ -25,6 +25,7 @@ import {
   type OmpProcessOptions,
   OmpProcessRegistry,
 } from "../../process";
+import type { Logger } from "../../logging";
 import type { PortHandlerContext as ServerPortHandlerContext } from "../../registry/ports";
 import { EventReplayHub } from "../../replay";
 import { type A0PortContext, createA0Runtime, type ThreadBootstrap } from "./index";
@@ -2834,6 +2835,52 @@ describe("the chat session runtime: a chat an earlier server left running, on an
     expect(created[0]?.args).toEqual(["--resume", spare.sessionFile]);
     expect(left.status).toBe("stopped");
     expect(registry.has(spare.threadId)).toBe(true);
+  });
+
+  test("its restart is not cut off by the idle close: the new omp, unwatched and settled at its hello, is not stopped before the restart is done", async () => {
+    // 2026-11-19, the omp update's switch: after the app's restart every adopted chat is unwatched, so the idle close asked
+    // the oldest whether they had settled while they restarted; the new omp said yes right at its hello and was stopped,
+    // and the restart failed ("omp stopped before it answered"), so the switch went back.
+    const created: FakeChatHost[] = [];
+    const warned: string[] = [];
+    const logger: Logger = {
+      path: "",
+      info: () => undefined,
+      warn: (event) => warned.push(event),
+      error: () => undefined,
+      addSecret: () => undefined,
+      tail: () => "",
+    };
+    const runtimeContext: A0PortContext = {
+      ...context(created, spare),
+      processRegistry: new OmpProcessRegistry({
+        idleCloseMs: 1,
+        createProcess: fakeHost(created, spare, { holdHello: true }),
+      }),
+      logger,
+    };
+    const left = new FakeChatHost({ threadId: spare.threadId, folder, args: [] }, spare);
+    createA0Runtime(runtimeContext).adopt(
+      left,
+      {
+        kind: "hello",
+        protocol: 1,
+        ompVersion: "18.12.5",
+        methods: [...CHAT_HOST_METHODS],
+        session: { id: spare.threadId, file: spare.sessionFile, cwd: folder },
+      },
+      { restartWhenSettled: true },
+    );
+    await until(() => created.length === 1);
+    const restarted = created[0];
+    if (restarted === undefined) throw new Error("the chat was not restarted");
+    // The idle wait runs out while the new omp starts; then it says hello, settled.
+    await Bun.sleep(20);
+    restarted.sendHello();
+    await until(() => paramsOf(restarted, "get_state").length > 0 || warned.length > 0);
+    await ticks(30);
+    expect(warned).not.toContain("chat_session.restart_failed");
+    await runtimeContext.processRegistry.closeAll();
   });
 
   test("one a page holds before its first reply keeps running, and is restarted once that reply is saved and settled", async () => {

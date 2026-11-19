@@ -2283,10 +2283,15 @@ export class ChatSessionPortRuntime {
     if (paused !== undefined) throw paused.error;
   }
 
-  /** Whether the chat's host says it has settled; a chat nothing holds counts as settled. */
+  /**
+   * Whether the chat's host says it has settled; a chat nothing holds counts as settled. A chat whose restart is under
+   * way has not: its new omp says it has at its hello, and the idle close would stop it under the restart (2026-11-19,
+   * the omp update's switch went back for it).
+   */
   async #isSettled(threadId: ThreadId): Promise<boolean> {
     const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined) return true;
+    if (entry.respawning !== undefined) return false;
     return (await entry.client.request("get_state", {})).isSettled;
   }
 
