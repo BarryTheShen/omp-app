@@ -65,6 +65,7 @@ import { traceFollow } from "./perf/followTrace";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
 import { isPhone, usePhone } from "./phone";
+import { registerWorker, useNotificationOpens } from "./push/push";
 import { SecretNotice } from "./secrets/SecretNotice";
 import type { SettingsPlace } from "./settings/SettingsPage";
 import { ListEdge } from "./sidebar/ListEdge";
@@ -373,6 +374,20 @@ function Shell({
     workspace.current?.open(target, how);
     setShowChat(true);
   }, []);
+  // The app's own notifications: the worker that shows them, and a tap while the app is open opens its chat here.
+  useEffect(registerWorker, []);
+  useNotificationOpens(
+    useCallback(
+      (id: ThreadId) => {
+        const saved = list.sessions.find((session) => session.id === id);
+        openChat(
+          { kind: "existing", threadId: id, sessionFile: saved?.sessionFile ?? null },
+          "front",
+        );
+      },
+      [list.sessions, openChat],
+    ),
+  );
   /** Stops a running chat (D1); its windows here go blank, as a deleted chat's do, and it stays in its folder's list. */
   const stopRunning = useCallback(
     async (id: ThreadId): Promise<void> => {

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ServerSection } from "../desktop/ServerSection";
 import { KeyList } from "../palette/Shortcuts";
 import { usePhone } from "../phone";
+import { PushSection } from "../push/PushSection";
 import { ThemeGallery } from "../theme/ThemeGallery";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { AppVersionSection } from "./AppVersionSection";
@@ -65,6 +66,7 @@ export function AppPage({
       <div className="border-b border-l1 pb-5">
         <ThemeGallery />
       </div>
+      <PushSection client={client} />
       {phone && <QuickPromptsSection />}
       <ServerSection focusLink={focusServerLink} />
       <OmpSection client={client} />

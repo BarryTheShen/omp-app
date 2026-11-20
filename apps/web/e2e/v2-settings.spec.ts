@@ -127,7 +127,8 @@ realTest.describe("new UI settings", () => {
           );
           return scroller?.scrollTop ?? -1;
         });
-      const text = sheet(page).getByText("How this app looks");
+      // A line on the App page to scroll from (its description; #40 rewrote the one this test used before).
+      const text = sheet(page).getByText("Its version, how it looks", { exact: false });
       const at = await text.boundingBox();
       if (at === null) throw new Error("the App page is not drawn");
       await page.mouse.move(at.x + 20, at.y + at.height / 2);

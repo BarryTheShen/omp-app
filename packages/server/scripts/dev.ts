@@ -128,6 +128,8 @@ import {
   spawnOmpProcess,
   systemdUserScopes,
 } from "../src/process";
+import { createPushRegistration, PushService } from "../src/push/service";
+import { watchForPush } from "../src/push/triggers";
 import { OpenQuestions, SCAN_DAYS, scanSessionQuestions } from "../src/questions/open-questions";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
@@ -1030,6 +1032,34 @@ export async function createCompositionServer(
   chatIndex.start();
   // A chat's new talk is searchable a few seconds after its turn ends.
   a0Runtime.tasks.onTurnEnd(() => chatIndex.nudge());
+  // The app's own notifications (Web Push): a tap opens the app, also the iPhone's Home Screen app.
+  const push = new PushService({
+    file: join(appDataDir, "push.json"),
+    log: (kind, fields) => logger.info(kind, fields),
+  });
+  // Pushed: a chat that starts waiting for you, or a turn that ends, while no page shows that chat.
+  watchForPush({
+    send: (message) => push.send(message),
+    running: () => processRegistry.held(),
+    waitingFor: (threadId) => a0Runtime.waiting.waitingFor(threadId),
+    onWaitingChange: (listener) => a0Runtime.waiting.onWaitingChange(listener),
+    onTurnEnd: (listener) => a0Runtime.tasks.onTurnEnd(listener),
+    watchers: (threadId) => a0Runtime.views.watcherCount(threadId),
+    titleOf: (threadId) =>
+      runningChatTitle(threadId, {
+        sessionFileOf: (id) => a0Runtime.sessionFileOf(id),
+        readFile: (sessionFile) => sessionFileStore.readSessionRow(sessionFile),
+        findById: (id) => sessionFileStore.findSession(id),
+        display: sessionDisplayTitle,
+      }),
+    // omp's `completion.notify` (on unless set off), as the desktop window reads it.
+    completionOn: async () => {
+      const entry = await configStore
+        .read({ key: "completion.notify", folder: null })
+        .catch(() => null);
+      return entry === null || entry.secret || entry.value !== "off";
+    },
+  });
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
     createDevicesPortRegistration({
@@ -1048,6 +1078,7 @@ export async function createCompositionServer(
     questions.registration,
     // omp's statistics in brief for the dashboard, read from the page the shares run (#2836 D6).
     createStatsRegistration({ stats: ompStats }),
+    createPushRegistration(push),
     browserRuntime.registration,
     chatSearch,
     ...createA1PortRegistrations(a1Context),
