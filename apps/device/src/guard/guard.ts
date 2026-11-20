@@ -93,12 +93,18 @@ export interface GuardOptions {
  */
 const ServerName = z.string().max(260).regex(SERVER_NAME);
 
+/**
+ * The longest access may last at once, in minutes: 8 hours, picked at turn-on with the password, as any length is; two
+ * hours is the default.
+ */
+export const LONGEST_ON_MINUTES = 480;
+
 const Control = z.discriminatedUnion("op", [
   z.strictObject({
     op: z.literal("on"),
     /** The agent's process: the password dialog is asked for it. */
     pid: z.number().int().positive(),
-    minutes: z.number().int().min(1).max(240),
+    minutes: z.number().int().min(1).max(LONGEST_ON_MINUTES),
     publicKey: z.string().max(200),
     server: ServerName.optional(),
   }),
@@ -116,7 +122,7 @@ const Control = z.discriminatedUnion("op", [
   z.strictObject({
     op: z.literal("extend"),
     pid: z.number().int().positive(),
-    minutes: z.number().int().min(1).max(240),
+    minutes: z.number().int().min(1).max(LONGEST_ON_MINUTES),
     server: ServerName.optional(),
   }),
   /** Sudo for the agent account while access is on, for `minutes` (the person's password again). */

@@ -5,13 +5,7 @@
       "id": "appearance",
       "label": "Appearance",
       "lead": "Theme, composer, status line and how the transcript renders.",
-      "groups": [
-        "Theme",
-        "Composer",
-        "Status Line",
-        "Display",
-        "Images"
-      ]
+      "groups": ["Theme", "Composer", "Status Line", "Display", "Images"]
     },
     {
       "id": "model",
@@ -50,44 +44,25 @@
       "id": "context",
       "label": "Context",
       "lead": "What the model sees, and when and how the conversation compacts.",
-      "groups": [
-        "General",
-        "Compaction",
-        "Rules (TTSR)",
-        "Experimental"
-      ]
+      "groups": ["General", "Compaction", "Rules (TTSR)", "Experimental"]
     },
     {
       "id": "memory",
       "label": "Memory",
       "lead": "What omp remembers across sessions and where it keeps it.",
-      "groups": [
-        "General",
-        "Auto-Learn",
-        "Mnemopi",
-        "Hindsight",
-        "Sharpshooter"
-      ]
+      "groups": ["General", "Auto-Learn", "Mnemopi", "Hindsight", "Sharpshooter"]
     },
     {
       "id": "files",
       "label": "Files",
       "lead": "How files are read, summarized and edited, and the language servers.",
-      "groups": [
-        "Editing",
-        "Reading",
-        "Read Summaries",
-        "LSP"
-      ]
+      "groups": ["Editing", "Reading", "Read Summaries", "LSP"]
     },
     {
       "id": "shell",
       "label": "Shell",
       "lead": "The bash tool and the eval runtimes.",
-      "groups": [
-        "Bash",
-        "Eval & Runtimes"
-      ]
+      "groups": ["Bash", "Eval & Runtimes"]
     },
     {
       "id": "tools",
@@ -114,25 +89,13 @@
       "id": "tasks",
       "label": "Tasks",
       "lead": "Modes, subagents, isolation and custom commands.",
-      "groups": [
-        "Modes",
-        "Subagents",
-        "Isolation",
-        "Commands & Skills"
-      ]
+      "groups": ["Modes", "Subagents", "Isolation", "Commands & Skills"]
     },
     {
       "id": "providers",
       "label": "Providers",
       "lead": "Services, provider protocols, timeouts and privacy.",
-      "groups": [
-        "Services",
-        "Fireworks",
-        "Tiny Model",
-        "Protocol",
-        "Timeouts",
-        "Privacy"
-      ]
+      "groups": ["Services", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"]
     }
   ],
   "settings": [
@@ -162,11 +125,7 @@
       "label": "Symbol Preset",
       "description": "Glyph set for icons and symbols (Unicode, Nerd Font, or ASCII)",
       "default": "unicode",
-      "values": [
-        "unicode",
-        "nerd",
-        "ascii"
-      ],
+      "values": ["unicode", "nerd", "ascii"],
       "choices": [
         {
           "value": "unicode",
@@ -224,15 +183,7 @@
       "label": "Status Line Preset",
       "description": "Pre-built status line configurations",
       "default": "default",
-      "values": [
-        "default",
-        "minimal",
-        "compact",
-        "full",
-        "nerd",
-        "ascii",
-        "custom"
-      ],
+      "values": ["default", "minimal", "compact", "full", "nerd", "ascii", "custom"],
       "choices": [
         {
           "value": "default",
@@ -280,15 +231,7 @@
       "label": "Status Line Separator",
       "description": "Style of separators between segments",
       "default": "powerline-thin",
-      "values": [
-        "powerline",
-        "powerline-thin",
-        "slash",
-        "pipe",
-        "block",
-        "none",
-        "ascii"
-      ],
+      "values": ["powerline", "powerline-thin", "slash", "pipe", "block", "none", "ascii"],
       "choices": [
         {
           "value": "powerline",
@@ -336,12 +279,7 @@
       "label": "Context-Reactive Line",
       "description": "How the line between the left and right segments reflects context usage (box composer only)",
       "default": "embedded",
-      "values": [
-        "off",
-        "percentage",
-        "annotated",
-        "embedded"
-      ],
+      "values": ["off", "percentage", "annotated", "embedded"],
       "choices": [
         {
           "value": "off",
@@ -442,11 +380,7 @@
       "label": "Resize Scrollback",
       "description": "How a settled terminal resize refreshes transcript rows retained in terminal scrollback",
       "default": "rebuild",
-      "values": [
-        "append",
-        "rebuild",
-        "preserve"
-      ],
+      "values": ["append", "rebuild", "preserve"],
       "choices": [
         {
           "value": "append",
@@ -553,12 +487,7 @@
       "label": "Auto-Graph Tables",
       "description": "Draw a chart under numeric tables in the agent's answers, in your theme's colors, on terminals that show graphics",
       "default": "auto",
-      "values": [
-        "auto",
-        "smart",
-        "always",
-        "off"
-      ],
+      "values": ["auto", "smart", "always", "off"],
       "choices": [
         {
           "value": "auto",
@@ -620,12 +549,7 @@
       "label": "Terminal Title Spinner",
       "description": "Glyph set for the working-state spinner in the terminal title — braille sweep, filling moon, single-dot cycle, or ASCII-safe line",
       "default": "braille",
-      "values": [
-        "braille",
-        "pulse",
-        "dots",
-        "line"
-      ],
+      "values": ["braille", "pulse", "dots", "line"],
       "choices": [
         {
           "value": "braille",
@@ -720,11 +644,7 @@
       "label": "Terminal Hyperlinks",
       "description": "Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional)",
       "default": "auto",
-      "values": [
-        "off",
-        "auto",
-        "always"
-      ],
+      "values": ["off", "auto", "always"],
       "terminalOnly": true
     },
     {
@@ -755,11 +675,7 @@
       "label": "Shimmer",
       "description": "Animation style for working/loading messages; off under reduced or no Motion",
       "default": "classic",
-      "values": [
-        "classic",
-        "kitt",
-        "disabled"
-      ],
+      "values": ["classic", "kitt", "disabled"],
       "choices": [
         {
           "value": "classic",
@@ -787,11 +703,7 @@
       "label": "Motion",
       "description": "One switch over spinners, shimmer, and decorative blink/fade. Streaming text is unaffected (see Max Frames Per Second). A spinner interval you set still wins",
       "default": "full",
-      "values": [
-        "full",
-        "reduced",
-        "none"
-      ],
+      "values": ["full", "reduced", "none"],
       "choices": [
         {
           "value": "full",
@@ -819,11 +731,7 @@
       "label": "Pinned Agents",
       "description": "Pinned live-agent jump list above the editor (off hides it; collapsed shows a few rows with an expander; full lists all)",
       "default": "collapsed",
-      "values": [
-        "off",
-        "collapsed",
-        "full"
-      ],
+      "values": ["off", "collapsed", "full"],
       "choices": [
         {
           "value": "off",
@@ -993,11 +901,7 @@
       "label": "Title Icons",
       "description": "Icon and short code that head new generated or /rename session titles",
       "default": "nf+emoji",
-      "values": [
-        "nf+emoji",
-        "emoji",
-        "boring"
-      ],
+      "values": ["nf+emoji", "emoji", "boring"],
       "choices": [
         {
           "value": "nf+emoji",
@@ -1024,10 +928,7 @@
       "label": "Model Role Storage",
       "description": "Where model selector role assignments are saved",
       "default": "global",
-      "values": [
-        "global",
-        "project"
-      ],
+      "values": ["global", "project"],
       "choices": [
         {
           "value": "global",
@@ -1076,11 +977,7 @@
       "label": "Auto Prewalk",
       "description": "Ask the native judge resolved through the 'judge' role whether each new top-level user task front-loads its hard reasoning. Needs a native judge; without one nothing is classified. Independent of Enable Prewalk.",
       "default": "off",
-      "values": [
-        "off",
-        "suggest",
-        "on"
-      ],
+      "values": ["off", "suggest", "on"],
       "choices": [
         {
           "value": "off",
@@ -1125,15 +1022,7 @@
       "label": "Thinking Level",
       "description": "Reasoning depth for thinking-capable models",
       "default": "high",
-      "values": [
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max",
-        "auto"
-      ],
+      "values": ["minimal", "low", "medium", "high", "xhigh", "max", "auto"],
       "choices": [
         {
           "value": "auto",
@@ -1273,9 +1162,7 @@
       "type": "array",
       "label": "Tool-Call Loop Exempt Tools",
       "description": "Tool names, or xd:// device names of write dispatches (for example mcp__peers_wait), that may repeat consecutively without triggering the cross-turn loop guard",
-      "default": [
-        "wait"
-      ]
+      "default": ["wait"]
     },
     {
       "key": "inlineToolDescriptors",
@@ -1285,11 +1172,7 @@
       "label": "Inline Tool Descriptors",
       "description": "Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto enables this for Gemini models and disables it otherwise",
       "default": "auto",
-      "values": [
-        "auto",
-        "on",
-        "off"
-      ],
+      "values": ["auto", "on", "off"],
       "choices": [
         {
           "value": "auto",
@@ -1352,12 +1235,7 @@
       "label": "Personality",
       "description": "Communication style rendered into the system prompt's personality block",
       "default": "default",
-      "values": [
-        "default",
-        "friendly",
-        "pragmatic",
-        "none"
-      ],
+      "values": ["default", "friendly", "pragmatic", "none"],
       "choices": [
         {
           "value": "default",
@@ -1615,11 +1493,7 @@
       "label": "Text Verbosity",
       "description": "OpenAI Responses and Codex response verbosity (low, medium, or high)",
       "default": "low",
-      "values": [
-        "low",
-        "medium",
-        "high"
-      ],
+      "values": ["low", "medium", "high"],
       "choices": [
         {
           "value": "low",
@@ -1646,15 +1520,7 @@
       "label": "Service Tier — OpenAI",
       "description": "Processing tier for OpenAI / OpenAI-Codex requests, and OpenAI-family models routed via OpenRouter (none = omit). Sent as `service_tier`.",
       "default": "none",
-      "values": [
-        "none",
-        "auto",
-        "default",
-        "flex",
-        "scale",
-        "priority",
-        "ultrafast"
-      ],
+      "values": ["none", "auto", "default", "flex", "scale", "priority", "ultrafast"],
       "choices": [
         {
           "value": "none",
@@ -1701,10 +1567,7 @@
       "label": "Service Tier — Anthropic",
       "description": "Processing tier for Claude requests. `priority` realizes fast mode (`speed: \"fast\"`) on supported direct Anthropic models; ignored on Bedrock/Vertex Claude and via OpenRouter.",
       "default": "none",
-      "values": [
-        "none",
-        "priority"
-      ],
+      "values": ["none", "priority"],
       "choices": [
         {
           "value": "none",
@@ -1726,11 +1589,7 @@
       "label": "Service Tier — Google",
       "description": "Processing tier for Gemini (Google AI Studio + Vertex) requests, and Google-family models routed via OpenRouter (none = omit). Sent as the top-level `serviceTier` field.",
       "default": "none",
-      "values": [
-        "none",
-        "flex",
-        "priority"
-      ],
+      "values": ["none", "flex", "priority"],
       "choices": [
         {
           "value": "none",
@@ -1757,16 +1616,7 @@
       "label": "Service Tier — Subagent",
       "description": "Service Tier for spawned task/eval subagents. Inherit = match the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
       "default": "inherit",
-      "values": [
-        "inherit",
-        "none",
-        "auto",
-        "default",
-        "flex",
-        "scale",
-        "priority",
-        "ultrafast"
-      ],
+      "values": ["inherit", "none", "auto", "default", "flex", "scale", "priority", "ultrafast"],
       "choices": [
         {
           "value": "inherit",
@@ -1818,16 +1668,7 @@
       "label": "Service Tier — Advisor",
       "description": "Service Tier for the advisor model. None = standard processing; Inherit = match the main agent's live per-family tiers; pick a value to apply it to the advisor model's family.",
       "default": "none",
-      "values": [
-        "inherit",
-        "none",
-        "auto",
-        "default",
-        "flex",
-        "scale",
-        "priority",
-        "ultrafast"
-      ],
+      "values": ["inherit", "none", "auto", "default", "flex", "scale", "priority", "ultrafast"],
       "choices": [
         {
           "value": "inherit",
@@ -1956,11 +1797,7 @@
       "label": "Fallback Trigger",
       "description": "Which failed requests may switch to a configured fallback model",
       "default": "any",
-      "values": [
-        "any",
-        "usage-limit",
-        "except-usage-limit"
-      ],
+      "values": ["any", "usage-limit", "except-usage-limit"],
       "choices": [
         {
           "value": "any",
@@ -2042,11 +1879,7 @@
       "label": "Reserve Policy",
       "description": "What to do when every same-provider coding-plan account is inside the reserve margin.",
       "default": "confirm",
-      "values": [
-        "confirm",
-        "auto",
-        "fail-closed"
-      ],
+      "values": ["confirm", "auto", "fail-closed"],
       "choices": [
         {
           "value": "confirm",
@@ -2083,10 +1916,7 @@
       "label": "Fallback Revert Policy",
       "description": "When to return to the primary model after a fallback",
       "default": "cooldown-expiry",
-      "values": [
-        "cooldown-expiry",
-        "never"
-      ],
+      "values": ["cooldown-expiry", "never"],
       "choices": [
         {
           "value": "cooldown-expiry",
@@ -2117,10 +1947,7 @@
       "label": "Auto Thinking Ceiling",
       "description": "Highest effort the `auto` classifier may resolve. `xhigh` keeps the classifier one tier below the top, so only an explicit `ultrathink` reaches `max`; `max` lets a turn the classifier judges exceptional bill the top tier on models that expose it.",
       "default": "xhigh",
-      "values": [
-        "xhigh",
-        "max"
-      ],
+      "values": ["xhigh", "max"],
       "choices": [
         {
           "value": "xhigh",
@@ -2152,13 +1979,7 @@
       "label": "Advisor Sync Backlog",
       "description": "Pause main agent until advisor backlog falls below threshold. Numeric values cap wait at 30 seconds; strict waits for all scheduled reviews without a wall-clock cap. Off disables catch-up delays. Abort, failure, and disposal release waits.",
       "default": "off",
-      "values": [
-        "off",
-        "1",
-        "3",
-        "5",
-        "strict"
-      ],
+      "values": ["off", "1", "3", "5", "strict"],
       "condition": "advisorEnabled"
     },
     {
@@ -2207,11 +2028,7 @@
       "label": "Advisor Continue Severity",
       "description": "Minimum severity of an advisor note that wakes the agent after it finished with a final answer. Lower-severity notes stay as a card at the end of the transcript and reach the agent with your next message.",
       "default": "concern",
-      "values": [
-        "nit",
-        "concern",
-        "blocker"
-      ],
+      "values": ["nit", "concern", "blocker"],
       "choices": [
         {
           "value": "nit",
@@ -2239,10 +2056,7 @@
       "label": "Advisor Review Mode",
       "description": "Default advisor cadence when no WATCHDOG.yml roster is present. turn reviews every primary turn; agent-end reviews only final yields.",
       "default": "turn",
-      "values": [
-        "turn",
-        "agent-end"
-      ],
+      "values": ["turn", "agent-end"],
       "choices": [
         {
           "value": "turn",
@@ -2350,12 +2164,7 @@
       "type": "array",
       "label": "Image URL Backends",
       "description": "Ordered destinations tried when publishing images for provider access",
-      "default": [
-        "provider-files",
-        "tailscale",
-        "cloudflared",
-        "litterbox"
-      ],
+      "default": ["provider-files", "tailscale", "cloudflared", "litterbox"],
       "choices": [
         {
           "value": "imgur",
@@ -2688,10 +2497,7 @@
       "label": "Steering Mode",
       "description": "How to process queued messages while agent is working",
       "default": "one-at-a-time",
-      "values": [
-        "all",
-        "one-at-a-time"
-      ]
+      "values": ["all", "one-at-a-time"]
     },
     {
       "key": "followUpMode",
@@ -2701,10 +2507,7 @@
       "label": "Follow-Up Mode",
       "description": "How to drain follow-up messages after a turn completes",
       "default": "one-at-a-time",
-      "values": [
-        "all",
-        "one-at-a-time"
-      ]
+      "values": ["all", "one-at-a-time"]
     },
     {
       "key": "interruptMode",
@@ -2714,10 +2517,7 @@
       "label": "Interrupt Mode",
       "description": "When steering messages interrupt tool execution",
       "default": "immediate",
-      "values": [
-        "immediate",
-        "wait"
-      ]
+      "values": ["immediate", "wait"]
     },
     {
       "key": "btw.inject",
@@ -2747,11 +2547,7 @@
       "label": "Vim Mode Indicator",
       "description": "How the current Vim mode appears in the status line",
       "default": "text",
-      "values": [
-        "text",
-        "icon",
-        "none"
-      ],
+      "values": ["text", "icon", "none"],
       "choices": [
         {
           "value": "text",
@@ -2780,11 +2576,7 @@
       "label": "Loop Mode",
       "description": "What happens between /loop iterations before re-submitting the prompt",
       "default": "prompt",
-      "values": [
-        "prompt",
-        "compact",
-        "reset"
-      ],
+      "values": ["prompt", "compact", "reset"],
       "choices": [
         {
           "value": "prompt",
@@ -2850,11 +2642,7 @@
       "label": "Double-Escape Action",
       "description": "What pressing Esc twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing",
       "default": "rewind",
-      "values": [
-        "rewind",
-        "tree",
-        "none"
-      ],
+      "values": ["rewind", "tree", "none"],
       "terminalOnly": true
     },
     {
@@ -2885,13 +2673,7 @@
       "label": "Session Tree Filter",
       "description": "Default filter mode when opening the session tree",
       "default": "default",
-      "values": [
-        "default",
-        "no-tools",
-        "user-only",
-        "labeled-only",
-        "all"
-      ],
+      "values": ["default", "no-tools", "user-only", "labeled-only", "all"],
       "terminalOnly": true
     },
     {
@@ -2948,13 +2730,7 @@
       "label": "Word Autocomplete",
       "description": "Show predicted word completions as inline hints: Tab accepts with a space, Right without",
       "default": "auto",
-      "values": [
-        "off",
-        "auto",
-        "ngram",
-        "smollm",
-        "apple"
-      ],
+      "values": ["off", "auto", "ngram", "smollm", "apple"],
       "choices": [
         {
           "value": "off",
@@ -3099,10 +2875,7 @@
       "label": "Update Channel",
       "description": "Update channel used by omp update and the startup update check",
       "default": "stable",
-      "values": [
-        "stable",
-        "canary"
-      ],
+      "values": ["stable", "canary"],
       "choices": [
         {
           "value": "stable",
@@ -3122,11 +2895,7 @@
       "label": "Marketplace Auto-Update",
       "description": "Check for plugin updates on startup",
       "default": "notify",
-      "values": [
-        "off",
-        "notify",
-        "auto"
-      ],
+      "values": ["off", "notify", "auto"],
       "choices": [
         {
           "value": "off",
@@ -3153,11 +2922,7 @@
       "label": "Startup Changelog",
       "description": "Choose whether update notes start as a summary, full details, or stay hidden",
       "default": "summary",
-      "values": [
-        "summary",
-        "expanded",
-        "hidden"
-      ],
+      "values": ["summary", "expanded", "hidden"],
       "choices": [
         {
           "value": "summary",
@@ -3238,10 +3003,7 @@
       "label": "Completion Notification",
       "description": "Notify when the agent finishes a turn",
       "default": "on",
-      "values": [
-        "on",
-        "off"
-      ]
+      "values": ["on", "off"]
     },
     {
       "key": "error.notify",
@@ -3251,10 +3013,7 @@
       "label": "Error Notification",
       "description": "Notify when the agent stops with an error",
       "default": "off",
-      "values": [
-        "on",
-        "off"
-      ]
+      "values": ["on", "off"]
     },
     {
       "key": "ask.timeout",
@@ -3295,10 +3054,7 @@
       "label": "Ask Notification",
       "description": "Notify when the ask tool is waiting for input",
       "default": "on",
-      "values": [
-        "on",
-        "off"
-      ]
+      "values": ["on", "off"]
     },
     {
       "key": "recap.enabled",
@@ -3350,10 +3106,7 @@
       "label": "Resume Worktree Scope",
       "description": "Choose whether the resume picker's current folder includes sessions from other repository worktrees",
       "default": "repo",
-      "values": [
-        "directory",
-        "repo"
-      ],
+      "values": ["directory", "repo"],
       "choices": [
         {
           "value": "directory",
@@ -3376,12 +3129,7 @@
       "label": "Sleep Prevention",
       "description": "Prevent the system sleeping while the agent is running a turn; an idle session, including one waiting on background jobs, does not hold it. Each level is cumulative — it adds the flags of all lower levels.",
       "default": "idle",
-      "values": [
-        "off",
-        "idle",
-        "display",
-        "system"
-      ],
+      "values": ["off", "idle", "display", "system"],
       "choices": [
         {
           "value": "off",
@@ -3413,11 +3161,7 @@
       "label": "Unexpected Stops",
       "description": "Automatically recover when the assistant stops without a visible message. Smart also classifies text-only stops with a small model.",
       "default": "mechanical",
-      "values": [
-        "none",
-        "mechanical",
-        "smart"
-      ],
+      "values": ["none", "mechanical", "smart"],
       "choices": [
         {
           "value": "none",
@@ -3453,12 +3197,7 @@
       "label": "Tool Approval",
       "description": "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Ask and remember' also asks before file reads, and can remember a file or folder. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
       "default": "yolo",
-      "values": [
-        "always-ask",
-        "always-ask-cached",
-        "write",
-        "yolo"
-      ],
+      "values": ["always-ask", "always-ask-cached", "write", "yolo"],
       "choices": [
         {
           "value": "always-ask",
@@ -3520,12 +3259,7 @@
       "label": "Speech-to-Text Submit Trigger",
       "description": "Choose when speech dictation automatically submits: Never, Release (2+ words), Release with complete sentence, or When I Say Submit.",
       "default": "never",
-      "values": [
-        "never",
-        "release",
-        "release-complete",
-        "say-submit"
-      ],
+      "values": ["never", "release", "release-complete", "say-submit"],
       "choices": [
         {
           "value": "never",
@@ -3584,11 +3318,7 @@
       "label": "Auto Start",
       "description": "Host every interactive session via collab.relayUrl as it starts and publish it to the local registry (omp collab list); rooms rotate on session switch",
       "default": "off",
-      "values": [
-        "off",
-        "view",
-        "control"
-      ],
+      "values": ["off", "view", "control"],
       "choices": [
         {
           "value": "off",
@@ -3624,10 +3354,7 @@
       "label": "Share Store",
       "description": "Where /share uploads the encrypted session blob",
       "default": "blob",
-      "values": [
-        "blob",
-        "gist"
-      ],
+      "values": ["blob", "gist"],
       "choices": [
         {
           "value": "blob",
@@ -3740,13 +3467,7 @@
       "type": "array",
       "label": "Compaction Method Order",
       "description": "Preferred fallback order for automatic context maintenance; unavailable or failed methods advance to the next choice",
-      "default": [
-        "remote",
-        "snapcompact",
-        "handoff",
-        "shake",
-        "soft"
-      ],
+      "default": ["remote", "snapcompact", "handoff", "shake", "soft"],
       "choices": [
         {
           "value": "remote",
@@ -4050,11 +3771,7 @@
       "label": "Snapcompact System Prompt",
       "description": "Experimental: render selected system prompt text as dense PNG image(s) and attach to the first user message (vision models only). Saves tokens; loses prompt caching for imaged text.",
       "default": "none",
-      "values": [
-        "none",
-        "agents-md",
-        "all"
-      ],
+      "values": ["none", "agents-md", "all"],
       "choices": [
         {
           "value": "none",
@@ -4321,11 +4038,7 @@
       "label": "Judged Rules",
       "description": "Ask the judge model role each `question` rule about completed replies, reasoning, and tool calls; a yes injects the rule as a warning",
       "default": "auto",
-      "values": [
-        "auto",
-        "on",
-        "off"
-      ],
+      "values": ["auto", "on", "off"],
       "choices": [
         {
           "value": "auto",
@@ -4352,10 +4065,7 @@
       "label": "TTSR Context Mode",
       "description": "What to do with partial output when TTSR triggers",
       "default": "discard",
-      "values": [
-        "discard",
-        "keep"
-      ]
+      "values": ["discard", "keep"]
     },
     {
       "key": "ttsr.interruptMode",
@@ -4365,12 +4075,7 @@
       "label": "TTSR Interrupt Mode",
       "description": "When to interrupt mid-stream vs inject warning after completion",
       "default": "always",
-      "values": [
-        "never",
-        "prose-only",
-        "tool-only",
-        "always"
-      ],
+      "values": ["never", "prose-only", "tool-only", "always"],
       "choices": [
         {
           "value": "always",
@@ -4402,10 +4107,7 @@
       "label": "TTSR Repeat Mode",
       "description": "How rules can repeat: once per session or after a message gap",
       "default": "once",
-      "values": [
-        "once",
-        "after-gap"
-      ]
+      "values": ["once", "after-gap"]
     },
     {
       "key": "ttsr.repeatGap",
@@ -4464,13 +4166,7 @@
       "label": "Memory Backend",
       "description": "Off, local summary pipeline, Mnemopi SQLite, Hindsight remote memory, or Sharpshooter",
       "default": "off",
-      "values": [
-        "off",
-        "local",
-        "hindsight",
-        "mnemopi",
-        "sharpshooter"
-      ],
+      "values": ["off", "local", "hindsight", "mnemopi", "sharpshooter"],
       "choices": [
         {
           "value": "off",
@@ -4552,11 +4248,7 @@
       "label": "Mnemopi Scoping",
       "description": "global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = project-local writes plus global recall visibility",
       "default": "per-project",
-      "values": [
-        "global",
-        "per-project",
-        "per-project-tagged"
-      ],
+      "values": ["global", "per-project", "per-project-tagged"],
       "choices": [
         {
           "value": "global",
@@ -4584,10 +4276,7 @@
       "label": "Embedding variant",
       "description": "Local embedding model family. en = stronger English model; multilingual = cross-language model. Changing this rebuilds existing memory embeddings on next start.",
       "default": "en",
-      "values": [
-        "en",
-        "multilingual"
-      ],
+      "values": ["en", "multilingual"],
       "choices": [
         {
           "value": "en",
@@ -4620,11 +4309,7 @@
       "label": "Mnemopi Recall Relevance",
       "description": "Ask the judge model role whether each automatically recalled memory is relevant to the task before injecting it",
       "default": "off",
-      "values": [
-        "auto",
-        "on",
-        "off"
-      ],
+      "values": ["auto", "on", "off"],
       "choices": [
         {
           "value": "auto",
@@ -4749,11 +4434,7 @@
       "label": "Mnemopi LLM Mode",
       "description": "Use no LLM, the online tiny model (the TINY role from /models, else @smol), or a remote OpenAI-compatible endpoint",
       "default": "smol",
-      "values": [
-        "none",
-        "smol",
-        "remote"
-      ],
+      "values": ["none", "smol", "remote"],
       "choices": [
         {
           "value": "none",
@@ -4838,11 +4519,7 @@
       "label": "Hindsight Scoping",
       "description": "global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = shared bank with project tags so global + project memories merge on recall",
       "default": "per-project-tagged",
-      "values": [
-        "global",
-        "per-project",
-        "per-project-tagged"
-      ],
+      "values": ["global", "per-project", "per-project-tagged"],
       "choices": [
         {
           "value": "global",
@@ -4900,10 +4577,7 @@
       "label": "Hindsight Retain Mode",
       "description": "full-session = upsert one document per session, last-turn = chunked",
       "default": "full-session",
-      "values": [
-        "full-session",
-        "last-turn"
-      ],
+      "values": ["full-session", "last-turn"],
       "choices": [
         {
           "value": "full-session",
@@ -4946,14 +4620,7 @@
       "label": "Edit Mode",
       "description": "Select the edit tool variant (replace, patch, hashline, or apply_patch); none removes the edit tool and keeps bash enabled",
       "default": "hashline",
-      "values": [
-        "apply_patch",
-        "hashline",
-        "patch",
-        "replace",
-        "sloppy",
-        "none"
-      ]
+      "values": ["apply_patch", "hashline", "patch", "replace", "sloppy", "none"]
     },
     {
       "key": "edit.fuzzyMatch",
@@ -5341,10 +5008,7 @@
       "label": "direnv Auto-Load",
       "description": "Auto-load a repo's direnv/devenv `.envrc` into the bash session so devenv tools and env vars are present without manual `direnv exec`. Honors direnv's allow list: an `.envrc` you haven't `direnv allow`ed is never executed",
       "default": "auto",
-      "values": [
-        "auto",
-        "off"
-      ]
+      "values": ["auto", "off"]
     },
     {
       "key": "bash.direnvLoadTimeoutMs",
@@ -5372,10 +5036,7 @@
       "label": "Shell Minimizer Source Outline",
       "description": "Source outline mode for cat/read of source files: default or aggressive",
       "default": "default",
-      "values": [
-        "default",
-        "aggressive"
-      ]
+      "values": ["default", "aggressive"]
     },
     {
       "key": "eval.py",
@@ -5439,10 +5100,7 @@
       "label": "Python Kernel Mode",
       "description": "Keep the IPython kernel alive across eval calls or start fresh each time",
       "default": "session",
-      "values": [
-        "session",
-        "per-call"
-      ]
+      "values": ["session", "per-call"]
     },
     {
       "key": "python.interpreter",
@@ -5810,11 +5468,7 @@
       "label": "Mid-Run Todo Nudges",
       "description": "How often a long turn is reminded to update its todo list while it keeps changing things",
       "default": "capped",
-      "values": [
-        "off",
-        "capped",
-        "backoff"
-      ],
+      "values": ["off", "capped", "backoff"],
       "choices": [
         {
           "value": "off",
@@ -5841,11 +5495,7 @@
       "label": "Create Todos Automatically",
       "description": "How strongly to push automatic todo-list creation after the first message",
       "default": "default",
-      "values": [
-        "default",
-        "preferred",
-        "always"
-      ],
+      "values": ["default", "preferred", "always"],
       "choices": [
         {
           "value": "default",
@@ -6023,11 +5673,7 @@
       "label": "Find (semantic grep)",
       "description": "Enable the find tool: natural-language search for files and line ranges, judged by the judge model role. Auto enables it only when the judge role resolves to a native TypeSafe jev model",
       "default": "auto",
-      "values": [
-        "auto",
-        "on",
-        "off"
-      ],
+      "values": ["auto", "on", "off"],
       "choices": [
         {
           "value": "auto",
@@ -6153,10 +5799,7 @@
       "label": "Computer Background Fallback",
       "description": "What window input does when its background route is unavailable: rerun it in takeover and return focus to your app (macOS; elsewhere plain takeover), or refuse, which also keeps the agent from taking the foreground or opening macOS menus itself",
       "default": "takeover",
-      "values": [
-        "takeover",
-        "refuse"
-      ],
+      "values": ["takeover", "refuse"],
       "choices": [
         {
           "value": "takeover",
@@ -6443,11 +6086,7 @@
       "label": "xd:// Prompt Docs",
       "description": "Choose which mounted-device docs and schemas are inlined in the system prompt. Built-ins keeps core tools inline while MCP and extension tools stay on-demand.",
       "default": "catalog",
-      "values": [
-        "inline",
-        "builtins",
-        "catalog"
-      ],
+      "values": ["inline", "builtins", "catalog"],
       "choices": [
         {
           "value": "inline",
@@ -6671,12 +6310,7 @@
       "label": "Disassembler",
       "description": "Backend for analysis selectors in read and eval's dsm namespace; bare executable reads show metadata only. Auto uses IDA Pro when installed, else Ghidra (downloaded on first analysis)",
       "default": "auto",
-      "values": [
-        "auto",
-        "ghidra",
-        "ida",
-        "none"
-      ],
+      "values": ["auto", "ghidra", "ida", "none"],
       "choices": [
         {
           "value": "auto",
@@ -6969,11 +6603,7 @@
       "label": "Worktree on Start",
       "description": "Whether fresh interactive sessions start in a new linked worktree",
       "default": "off",
-      "values": [
-        "off",
-        "ask",
-        "create"
-      ],
+      "values": ["off", "ask", "create"],
       "choices": [
         {
           "value": "off",
@@ -7001,12 +6631,7 @@
       "label": "Worktree on Exit",
       "description": "What to do on exit with worktrees created since omp started (on start or with `/wt`)",
       "default": "keep",
-      "values": [
-        "keep",
-        "ask",
-        "remove",
-        "force"
-      ],
+      "values": ["keep", "ask", "remove", "force"],
       "choices": [
         {
           "value": "keep",
@@ -7056,10 +6681,7 @@
       "label": "Isolation Merge Strategy",
       "description": "How isolated task changes are integrated (patch apply or branch merge)",
       "default": "patch",
-      "values": [
-        "patch",
-        "branch"
-      ],
+      "values": ["patch", "branch"],
       "choices": [
         {
           "value": "patch",
@@ -7081,10 +6703,7 @@
       "label": "Isolation Commit Style",
       "description": "Commit message style for nested repo changes (generic or AI-generated)",
       "default": "generic",
-      "values": [
-        "generic",
-        "ai"
-      ],
+      "values": ["generic", "ai"],
       "choices": [
         {
           "value": "generic",
@@ -7114,11 +6733,7 @@
       "label": "Prefer Task Delegation",
       "description": "How strongly to push the main agent to delegate work; subagents keep the model's own policy",
       "default": "default",
-      "values": [
-        "default",
-        "preferred",
-        "always"
-      ],
+      "values": ["default", "preferred", "always"],
       "choices": [
         {
           "value": "default",
@@ -7145,11 +6760,7 @@
       "label": "Auto Parallel",
       "description": "Ask the native judge resolved through the 'judge' role which parts of each new top-level prompt can run concurrently. Needs a native judge and the task tool; without them nothing is judged.",
       "default": "off",
-      "values": [
-        "off",
-        "suggest",
-        "on"
-      ],
+      "values": ["off", "suggest", "on"],
       "choices": [
         {
           "value": "off",
@@ -7221,11 +6832,7 @@
       "label": "Per-Call Model",
       "description": "Whether a subagent call may pick its model with one exact provider/model-id[@upstream][:level] selector. An @upstream pin is part of the model identity and is supported only by aggregators. Only models the configuration already routes to are accepted. Project settings can turn it off but not on, and never approve a model.",
       "default": "off",
-      "values": [
-        "off",
-        "eval",
-        "on"
-      ],
+      "values": ["off", "eval", "on"],
       "choices": [
         {
           "value": "off",
@@ -7474,14 +7081,7 @@
       "label": "Maximum Per-Spawn Effort",
       "description": "Maximum reasoning effort allowed for the task tool's per-spawn effort hint or a per-call model. An explicit `:level` is clamped to the highest supported effort at or below this ceiling, and an omitted `:level` inherits the agent's thinking level capped at this value; cold revival re-applies the cap. Unset, `:inherit` and `:off` keep their existing meaning. A per-call model must support an effort at or below this ceiling; the default preserves the model's full range.",
       "default": "max",
-      "values": [
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max"
-      ],
+      "values": ["minimal", "low", "medium", "high", "xhigh", "max"],
       "choices": [
         {
           "value": "minimal",
@@ -7643,9 +7243,7 @@
       "type": "array",
       "label": "Goal Continuation Modes",
       "description": "Run modes where active goals may auto-continue between turns (\"interactive\", \"rpc\")",
-      "default": [
-        "interactive"
-      ]
+      "default": ["interactive"]
     },
     {
       "key": "title.generator",
@@ -7655,10 +7253,7 @@
       "label": "Title Generator",
       "description": "What names an untitled session from the user's messages",
       "default": "fork",
-      "values": [
-        "fork",
-        "tiny"
-      ],
+      "values": ["fork", "tiny"],
       "choices": [
         {
           "value": "fork",
@@ -7832,11 +7427,7 @@
       "label": "Antigravity Endpoint Mode",
       "description": "Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery)",
       "default": "auto",
-      "values": [
-        "auto",
-        "production",
-        "sandbox"
-      ],
+      "values": ["auto", "production", "sandbox"],
       "choices": [
         {
           "value": "auto",
@@ -7863,10 +7454,7 @@
       "label": "Fireworks Tier",
       "description": "Serving path for Fireworks requests. Priority sends `service_tier: \"priority\"` for higher reliability during peak traffic at a higher price; Standard omits it. Fast (`-fast`) models ignore this — Fast is its own serving path.",
       "default": "standard",
-      "values": [
-        "standard",
-        "priority"
-      ],
+      "values": ["standard", "priority"],
       "choices": [
         {
           "value": "standard",
@@ -8088,11 +7676,7 @@
       "label": "Kimi API Format",
       "description": "API format for Kimi Code provider (auto follows live model metadata)",
       "default": "auto",
-      "values": [
-        "auto",
-        "openai",
-        "anthropic"
-      ],
+      "values": ["auto", "openai", "anthropic"],
       "choices": [
         {
           "value": "auto",
@@ -8119,11 +7703,7 @@
       "label": "OpenAI Codex WebSockets",
       "description": "WebSocket policy for OpenAI Codex models only",
       "default": "auto",
-      "values": [
-        "auto",
-        "off",
-        "on"
-      ],
+      "values": ["auto", "off", "on"],
       "choices": [
         {
           "value": "auto",
@@ -8186,12 +7766,7 @@
       "label": "Prompt Cache Retention",
       "description": "Prompt-cache retention forwarded to providers that support it (Anthropic, Bedrock, OpenRouter, OpenAI)",
       "default": "auto",
-      "values": [
-        "auto",
-        "short",
-        "long",
-        "none"
-      ],
+      "values": ["auto", "short", "long", "none"],
       "choices": [
         {
           "value": "auto",
@@ -8223,11 +7798,7 @@
       "label": "Cache Warming",
       "description": "Refresh the last request's prompt-cache entry shortly before it expires (Anthropic max_tokens 0 pre-warm, else a one-token replay)",
       "default": "idle",
-      "values": [
-        "off",
-        "streaming",
-        "idle"
-      ],
+      "values": ["off", "streaming", "idle"],
       "choices": [
         {
           "value": "off",
@@ -8254,11 +7825,7 @@
       "label": "Cache Warming Strategy",
       "description": "How a long tool call is bridged once refreshing stops paying: compact the history before the cache expires, or let it expire",
       "default": "auto",
-      "values": [
-        "auto",
-        "keepalive",
-        "compact"
-      ],
+      "values": ["auto", "keepalive", "compact"],
       "choices": [
         {
           "value": "auto",
@@ -8413,13 +7980,7 @@
       "label": "OpenRouter Routing",
       "description": "Default routing-variant suffix appended to OpenRouter model IDs (overridden when the selector already names a variant)",
       "default": "default",
-      "values": [
-        "default",
-        "nitro",
-        "floor",
-        "online",
-        "exacto"
-      ],
+      "values": ["default", "nitro", "floor", "online", "exacto"],
       "choices": [
         {
           "value": "default",
@@ -8637,11 +8198,7 @@
       "label": "Speech Vocalization Mode",
       "description": "What to speak: all = assistant messages + thinking; assistant = messages only; yield = only the final message at turn end",
       "default": "assistant",
-      "values": [
-        "all",
-        "assistant",
-        "yield"
-      ],
+      "values": ["all", "assistant", "yield"],
       "choices": [
         {
           "value": "all",
@@ -8783,15 +8340,7 @@
       "label": "Fetch Provider",
       "description": "Reader backend priority for the fetch/read URL tool",
       "default": "auto",
-      "values": [
-        "auto",
-        "native",
-        "trafilatura",
-        "lynx",
-        "parallel",
-        "firecrawl",
-        "jina"
-      ],
+      "values": ["auto", "native", "trafilatura", "lynx", "parallel", "firecrawl", "jina"],
       "choices": [
         {
           "value": "auto",
@@ -8847,11 +8396,7 @@
       "label": "Codex Auto-Redeem Saved Resets (5h)",
       "description": "Spend saved Codex resets on 5-hour-only blocks and on expiring credits whose fullest chat window is 5h. unset asks before spending and never spends without a prompt; yes spends without asking; no never spends.",
       "default": "unset",
-      "values": [
-        "unset",
-        "yes",
-        "no"
-      ],
+      "values": ["unset", "yes", "no"],
       "choices": [
         {
           "value": "unset",
@@ -8878,11 +8423,7 @@
       "label": "Codex Auto-Redeem Saved Resets (Weekly)",
       "description": "Spend saved Codex resets on weekly blocks and on expiring credits whose fullest chat window is weekly. A block known only from a short 429 wait needs both Codex windows. unset asks before spending and never spends without a prompt; yes spends without asking; no never spends.",
       "default": "unset",
-      "values": [
-        "unset",
-        "yes",
-        "no"
-      ],
+      "values": ["unset", "yes", "no"],
       "choices": [
         {
           "value": "unset",
@@ -8936,11 +8477,7 @@
       "label": "Claude Auto-Redeem Saved Resets (5h)",
       "description": "Spend Claude Cedar or Juniper resets on 5-hour-only blocks and on expiring grants whose fullest covered limit is 5h. unset asks before spending and never spends without a prompt; yes spends without asking; no never spends.",
       "default": "unset",
-      "values": [
-        "unset",
-        "yes",
-        "no"
-      ],
+      "values": ["unset", "yes", "no"],
       "choices": [
         {
           "value": "unset",
@@ -8967,11 +8504,7 @@
       "label": "Claude Auto-Redeem Saved Resets (Weekly)",
       "description": "Spend Claude Cedar resets on weekly or model-scoped blocks and on expiring grants whose fullest covered limit is weekly. unset asks before spending and never spends without a prompt; yes spends without asking; no never spends.",
       "default": "unset",
-      "values": [
-        "unset",
-        "yes",
-        "no"
-      ],
+      "values": ["unset", "yes", "no"],
       "choices": [
         {
           "value": "unset",
@@ -8998,11 +8531,7 @@
       "label": "Claude Auto-Redeem Fable Resets",
       "description": "Spend Claude Fable launch resets, which restore Fable weekly usage plus the 5h window. Only this setting governs them. unset asks before spending and never spends without a prompt; yes spends without asking; no never spends.",
       "default": "unset",
-      "values": [
-        "unset",
-        "yes",
-        "no"
-      ],
+      "values": ["unset", "yes", "no"],
       "choices": [
         {
           "value": "unset",
@@ -9056,11 +8585,7 @@
       "label": "Append-Only Context",
       "description": "Cache system prompt + tool specs and keep an append-only message log so provider prefix caches (DeepSeek, Xiaomi/SGLang, Anthropic) hit at maximum rate. Auto enables for known prefix-cache providers.",
       "default": "auto",
-      "values": [
-        "auto",
-        "on",
-        "off"
-      ],
+      "values": ["auto", "on", "off"],
       "choices": [
         {
           "value": "auto",

@@ -172,7 +172,7 @@ fn one_dialog(request: Value) -> Result<Value, String> {
 }
 
 /// The longest access at once, in minutes (the guard caps it too, and says the capped length in its password dialog).
-const LONGEST_ON: u32 = 120;
+const LONGEST_ON: u32 = 480;
 /// The longest sudo grant, in minutes.
 const LONGEST_SUDO: u32 = 30;
 
@@ -181,7 +181,7 @@ pub async fn access_status(app: AppHandle, window: tauri::WebviewWindow) -> Resu
     for_linked_window(&app, &window, false, |_| ask(json!({ "op": "status" }))).await
 }
 
-/// Turns access on for `minutes` (1 to 120): the system asks the person's password for this app's process first, in a
+/// Turns access on for `minutes` (1 to 480): the system asks the person's password for this app's process first, in a
 /// dialog whose words the guard writes from the length it grants.
 #[tauri::command]
 pub async fn access_on(
@@ -215,7 +215,7 @@ pub async fn access_acknowledge(
     .await
 }
 
-/// `minutes` (1 to 120) more while on, never past two hours from now (the system asks the person's password again).
+/// `minutes` (1 to 480) more while on, never past eight hours from now (the system asks the person's password again).
 #[tauri::command]
 pub async fn access_extend(
     app: AppHandle,

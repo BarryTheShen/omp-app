@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import {
@@ -12,6 +12,7 @@ import {
   type Share,
   type SharesList,
   SharesPort,
+  type SharesSettings,
   type StreamKey,
   streamKey,
   type WorkspaceRelativePath,
@@ -74,6 +75,8 @@ export interface SharesPortContext {
   readonly stats?: { readonly start: () => Promise<number> };
   /** For tests: the range random ports are handed out of, instead of the machine's. */
   readonly randomPorts?: { readonly low: number; readonly high: number };
+  /** Where the sharing setting is kept (`shares-settings.json` in the app's data folder); absent: on, not kept. */
+  readonly settingsFile?: string;
 }
 
 /** The machine's Tailscale address: an IPv4 address in 100.64.0.0/10. */
@@ -103,6 +106,31 @@ interface Held {
   readonly startedAt: number | null;
 }
 
+/**
+ * Whether a chat's service is shared by itself, from `shares-settings.json` (`{ version: 1, autoShare }`): on when the
+ * file is absent or unreadable, as before the setting.
+ */
+async function readAutoShare(file: string | undefined): Promise<boolean> {
+  if (file === undefined) return true;
+  try {
+    const saved = JSON.parse(await readFile(file, "utf8")) as {
+      version?: unknown;
+      autoShare?: unknown;
+    };
+    return !(saved.version === 1 && saved.autoShare === false);
+  } catch {
+    return true;
+  }
+}
+
+/** Writes the setting whole, through a file of its own beside it, so nothing reads half of one. */
+async function writeAutoShare(file: string, autoShare: boolean): Promise<void> {
+  await mkdir(dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify({ version: 1, autoShare })}\n`);
+  await rename(temporary, file);
+}
+
 export interface SharesRuntime {
   readonly registration: PortRegistration;
   /** Looks at the listening sockets now (what the timer does). */
@@ -124,6 +152,11 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
   /** A chat's service shared by itself: its port was picked, not handed out at random, and is no debugger's. */
   const opensByItself = (port: number): boolean =>
     !DEBUGGER_PORTS.has(port) && (port < random.low || port > random.high);
+  /** Whether a chat's service is shared by itself at all (`settings`); the poll waits for its file to be read. */
+  let autoShare = true;
+  const settingsRead = readAutoShare(context.settingsFile).then((value) => {
+    autoShare = value;
+  });
   const held = new Map<string, Held>();
   /** Services stopped by hand, by port and start: not shared again by themselves. */
   const stoppedByHand = new Set<string>();
@@ -216,6 +249,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
     if (polling) return;
     polling = true;
     try {
+      await settingsRead;
       for (const entry of [...held.values()])
         if (now() - entry.gate.lastUsedAt() > SHARE_IDLE_MS)
           end(entry.share.id, "unused for 12 hours");
@@ -241,6 +275,7 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
         if (
           service.threadId === null ||
           service.neverShare ||
+          !autoShare ||
           !opensByItself(service.port) ||
           sharedPort(service.port) !== undefined
         )
@@ -397,6 +432,19 @@ export function createSharesRuntime(context: SharesPortContext): SharesRuntime {
       if (entry === undefined) throw failure("not_found", "That share has ended.");
       if (entry.share.port !== null) stoppedByHand.add(`${entry.share.port}:${entry.startedAt}`);
       return null;
+    },
+    settings: async (): Promise<SharesSettings> => {
+      await settingsRead;
+      return { autoShare };
+    },
+    setSettings: async (args: unknown): Promise<SharesSettings> => {
+      const next = (args as SharesSettings).autoShare;
+      await settingsRead;
+      if (context.settingsFile !== undefined) await writeAutoShare(context.settingsFile, next);
+      autoShare = next;
+      context.logger?.info("share.settings", { auto_share: next ? 1 : 0 });
+      announce();
+      return { autoShare };
     },
   };
 

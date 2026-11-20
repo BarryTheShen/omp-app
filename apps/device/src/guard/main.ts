@@ -2,7 +2,7 @@
  * `omp-app-device guard` (#20), run as root by `omp-app-device-guard.service`. Its settings are in a root-owned file,
  * `/etc/omp-app-device/guard.json` (or the path given as its one argument):
  *
- *   { "person": "<the person's account>", "account": "omp-agent", "maxOnMinutes": 120,
+ *   { "person": "<the person's account>", "account": "omp-agent",
  *     "hostKey": "/var/lib/omp-app-device/host_ed25519", "stateDir": "/var/lib/omp-app-device",
  *     "runDir": "/run/omp-app-device", "logFile": "/var/log/omp-app-device/access.log",
  *     "sshd": "/usr/lib/omp-app-device/openssh/sshd", "sshdSession": "...", "sshdAuth": "...",
@@ -24,7 +24,7 @@ import {
   uidRangeOf,
 } from "../install/plan";
 import { SystemAgentAccount, systemSshdProblem } from "./account";
-import { Guard, type GuardAction } from "./guard";
+import { Guard, type GuardAction, LONGEST_ON_MINUTES } from "./guard";
 import { SliceLauncher } from "./launcher";
 import { HOME_STARTUP_PATHS, persistencePaths } from "./persistence";
 import { SudoersFile } from "./sudo";
@@ -36,7 +36,8 @@ const Settings = z.strictObject({
   /** The person's uid when setup named them: an account renamed or reused since does not become the person. */
   personUid: z.number().int().min(1).optional(),
   account: z.string().regex(/^[a-z_][a-z0-9_-]{0,31}$/),
-  maxOnMinutes: z.number().int().min(1).max(240),
+  /** Written by setups before the longest access became the program's own (`LONGEST_ON_MINUTES`): read, not used. */
+  maxOnMinutes: z.number().int().min(1).optional(),
   hostKey: z.string().startsWith("/"),
   stateDir: z.string().startsWith("/"),
   runDir: z.string().startsWith("/"),
@@ -203,7 +204,7 @@ const guard = new Guard({
   ...(settings.sshdAuth === undefined ? {} : { sshdAuth: settings.sshdAuth }),
   launcher: new SliceLauncher([settings.sshd], settings.account),
   verify,
-  maxOnMs: settings.maxOnMinutes * 60_000,
+  maxOnMs: LONGEST_ON_MINUTES * 60_000,
   log,
   stateDir: settings.stateDir,
   watchPaths: persistencePaths(settings.account, agent.home),

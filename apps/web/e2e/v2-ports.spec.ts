@@ -121,6 +121,41 @@ realTest.describe("new UI: ports and pages on your devices", () => {
   );
 
   realTest(
+    "with Share services that chats start turned off in Settings, a chat's service on a picked port is only listed",
+    async ({ realApp }) => {
+      const port = await pickedPort();
+      const page = await realApp.open({ path: "/" });
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const sharing = page.getByRole("region", { name: "Sharing" });
+      const toggle = sharing.getByRole("switch", { name: "Share services that chats start" });
+      await expect(toggle).toBeChecked({ timeout: 30_000 });
+      await toggle.click();
+      await expect(toggle).not.toBeChecked();
+      await page.keyboard.press("Escape");
+
+      await newChat(page);
+      await box(page).fill(`serve_probe ${port}`);
+      await box(page).press("Enter");
+      await page.getByRole("button", { name: "Ports", exact: true }).click();
+      const row = ports(page).getByRole("listitem", { name: `Port ${port}` });
+      await expect(row).toContainText("Started by a chat", { timeout: 90_000 });
+      // Well past the 5 s a picked port waits, it is only listed, and the chat has no line for it.
+      await page.waitForTimeout(8_000);
+      await expect(row).not.toContainText("Shared by itself.");
+      await expect(
+        page.getByRole("status").filter({ hasText: `is listening on port ${port}.` }),
+      ).toHaveCount(0);
+      await expect(row.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+
+      // The setting stays after a reload.
+      await page.reload();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(toggle).not.toBeChecked({ timeout: 30_000 });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "a service a chat starts on a port handed out at random is only listed: no line in the chat, Share opens it",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });

@@ -6,6 +6,7 @@
  */
 import { chmod, rm } from "node:fs/promises";
 import { z } from "zod";
+import { LONGEST_ON_MINUTES } from "../guard/guard";
 import type { Agent } from "./agent";
 
 const Request = z.discriminatedUnion("op", [
@@ -13,14 +14,14 @@ const Request = z.discriminatedUnion("op", [
   z.strictObject({
     op: z.literal("on"),
     pid: z.number().int().positive(),
-    minutes: z.number().int().min(1).max(240),
+    minutes: z.number().int().min(1).max(LONGEST_ON_MINUTES),
   }),
   z.strictObject({ op: z.literal("off") }),
   z.strictObject({ op: z.literal("acknowledge"), pid: z.number().int().positive() }),
   z.strictObject({
     op: z.literal("extend"),
     pid: z.number().int().positive(),
-    minutes: z.number().int().min(1).max(240),
+    minutes: z.number().int().min(1).max(LONGEST_ON_MINUTES),
   }),
   z.strictObject({
     op: z.literal("sudo"),

@@ -7,7 +7,7 @@
  *   omp-app-device off                      turn access off: every session ends
  *   omp-app-device status                   on or off, until when, what changed last time
  *   omp-app-device acknowledge              you looked at what changed during the last access; asks your password
- *   omp-app-device extend [--for <minutes>] more time while on (default 60; never past two hours from now); asks your password
+ *   omp-app-device extend [--for <minutes>] more time while on (default 60; never past eight hours from now); asks your password
  *   omp-app-device sudo [--for <minutes>]   let the agent account use sudo while on (default 30, at most 30)
  *   omp-app-device watch                    what each session shows, live
  */

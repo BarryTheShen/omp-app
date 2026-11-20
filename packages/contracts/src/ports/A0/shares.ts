@@ -70,6 +70,10 @@ export const SharesList = z
   .strict();
 export type SharesList = z.infer<typeof SharesList>;
 
+/** How this server shares: whether a service a chat starts on a port someone picked is shared by itself (on unless set). */
+export const SharesSettings = z.object({ autoShare: z.boolean() }).strict();
+export type SharesSettings = z.infer<typeof SharesSettings>;
+
 const ShareIdArgs = z.object({ id: z.string().min(1) }).strict();
 
 export const SharesPort = definePort({
@@ -91,6 +95,10 @@ export const SharesPort = definePort({
     /** A one-time address that signs this device in to the share and opens it. */
     open: { args: ShareIdArgs, result: z.object({ url: z.string() }).strict() },
     stop: { args: ShareIdArgs, result: z.null() },
+    /** How this server shares (its own methods, so a page older than them still reads `list`). */
+    settings: { args: EmptyArgs, result: SharesSettings },
+    /** Changes how this server shares; services shared already stay shared, and any can still be shared by hand. */
+    setSettings: { args: SharesSettings, result: SharesSettings },
   },
   events: {
     /** The services or the shares changed. */

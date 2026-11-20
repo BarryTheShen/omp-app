@@ -37,8 +37,8 @@ interface Session {
   readonly text: string;
 }
 
-/** The lengths offered, in minutes: one click each, the system asking the password. */
-const ON_FOR = [30, 60, 120] as const;
+/** The lengths offered, in minutes: one click each, the system asking the password; two hours up to eight. */
+const ON_FOR = [30, 60, 120, 240, 480] as const;
 const EXTEND_BY = [15, 30, 60] as const;
 const SUDO_FOR = [5, 15, 30] as const;
 /** The most of a session's terminal text kept on screen. */

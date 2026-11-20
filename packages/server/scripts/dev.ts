@@ -851,6 +851,8 @@ export async function createCompositionServer(
       ? {}
       : { address: () => env.OMP_APP_SHARE_ADDRESS ?? null }),
     stats: ompStats,
+    // Whether a chat's service is shared by itself (Settings → App → Sharing).
+    settingsFile: join(appDataDir, "shares-settings.json"),
     logger,
   });
   // The chats that run, from every folder, and an event each time that changes (D1).

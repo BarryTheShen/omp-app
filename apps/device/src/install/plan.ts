@@ -137,7 +137,6 @@ export function guardSettings(
     person,
     personUid,
     account: AGENT_ACCOUNT,
-    maxOnMinutes: 120,
     hostKey: PATHS.hostKey,
     stateDir: PATHS.stateDir,
     runDir: "/run/omp-app-device",

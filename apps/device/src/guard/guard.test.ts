@@ -9,7 +9,14 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { SystemAgentAccount } from "./account";
-import { Guard, type GuardAction, lengthText, reviewText, type WrapperEvent } from "./guard";
+import {
+  Guard,
+  type GuardAction,
+  LONGEST_ON_MINUTES,
+  lengthText,
+  reviewText,
+  type WrapperEvent,
+} from "./guard";
 import { ChildLauncher } from "./launcher";
 import { REQUIRED_SETTINGS, sessionConfig } from "./sshd-config";
 
@@ -74,7 +81,7 @@ async function setUp(
       : {}),
     launcher: new ChildLauncher(SSHD),
     verify: typeof verify === "function" ? verify : async () => verify,
-    maxOnMs: 2 * 3_600_000,
+    maxOnMs: LONGEST_ON_MINUTES * 60_000,
     log: (line) => logged.push(line),
     stateDir: join(dir, "state"),
     watchPaths: [join(dir, "home", ".bashrc"), join(dir, "home", ".ssh")],
@@ -429,9 +436,9 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     expect(await h.guard.extend(process.pid, 60)).toBeNull();
     expect(left()).toBeGreaterThan(104 * 60_000);
     expect(left()).toBeLessThanOrEqual(105 * 60_000);
-    expect(await h.guard.extend(process.pid, 120)).toBeNull();
-    expect(left()).toBeGreaterThan(119 * 60_000);
-    expect(left()).toBeLessThanOrEqual(120 * 60_000);
+    expect(await h.guard.extend(process.pid, 480)).toBeNull();
+    expect(left()).toBeGreaterThan(479 * 60_000);
+    expect(left()).toBeLessThanOrEqual(480 * 60_000);
   });
 
   test("the password dialog states what will be granted, after the limits, whatever was asked", async () => {
@@ -440,11 +447,11 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
       said.push(message);
       return true;
     });
-    await h.guard.on(process.pid, 240, h.clientPublic, "server.example:8445");
+    await h.guard.on(process.pid, 600, h.clientPublic, "server.example:8445");
     await h.guard.extend(process.pid, 200, "server.example:8445");
     await h.guard.sudo(process.pid, 30, "server.example:8445");
-    expect(said[0]).toContain("for 2 hours.");
-    expect(said[1]).toContain("for an additional 2 hours, up to 2 hours from now");
+    expect(said[0]).toContain("for 8 hours.");
+    expect(said[1]).toContain("for an additional 3 hours 20 minutes, up to 8 hours from now");
     expect(said[2]).toContain("for 30 minutes, never past the end of access");
     // Each names whose agents get it.
     for (const each of said)
@@ -461,6 +468,7 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
 
   test("lengthText reads as words", () => {
     expect(lengthText(120)).toBe("2 hours");
+    expect(lengthText(480)).toBe("8 hours");
     expect(lengthText(90)).toBe("1 hour 30 minutes");
     expect(lengthText(1)).toBe("1 minute");
     expect(lengthText(45)).toBe("45 minutes");

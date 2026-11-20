@@ -46,7 +46,7 @@ const ELSEWHERE = { low: 61_000, high: 61_999 };
 function runtime(
   listed: { services: ListeningService[] },
   clock = { at: 1_000_000 },
-  extra: Pick<SharesPortContext, "stats" | "randomPorts"> = {},
+  extra: Pick<SharesPortContext, "stats" | "randomPorts" | "settingsFile"> = {},
 ) {
   let removed: ((deviceId: string) => void) | null = null;
   const events: { stream: string; payload: unknown }[] = [];
@@ -178,6 +178,36 @@ describe("shares (#2788)", () => {
     clock.at += SHARE_AFTER_MS;
     await shares.poll();
     expect(((await call("list", {})) as SharesList).shares).toEqual([]);
+  });
+
+  test("with sharing by itself turned off, a chat's service is only listed; the setting is kept and read at the next start", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "omp-app-shares-"));
+    cleanups.push(() => rm(folder, { recursive: true, force: true }));
+    const settingsFile = join(folder, "shares-settings.json");
+    const port = upstream();
+    const listed = { services: [service(port, { threadId: T1 })] };
+    const clock = { at: 1_000_000 };
+    const first = runtime(listed, clock, { settingsFile });
+    expect(await first.call("settings", {})).toEqual({ autoShare: true });
+    expect(await first.call("setSettings", { autoShare: false })).toEqual({ autoShare: false });
+    await first.shares.poll();
+    clock.at += SHARE_AFTER_MS * 2;
+    await first.shares.poll();
+    expect(first.events.filter((event) => event.stream === "A0.shares/sharedForChat")).toEqual([]);
+    expect(((await first.call("list", {})) as SharesList).shares).toEqual([]);
+    // Shared by hand still.
+    expect(((await first.call("share", { port })) as Share).automatic).toBe(false);
+    // The next start reads it off; turned on again, the chat's service is shared by itself.
+    const listedAgain = { services: [service(port, { threadId: T1, startedAt: 2 })] };
+    const second = runtime(listedAgain, clock, { settingsFile });
+    expect(await second.call("settings", {})).toEqual({ autoShare: false });
+    await second.call("setSettings", { autoShare: true });
+    await second.shares.poll();
+    clock.at += SHARE_AFTER_MS;
+    await second.shares.poll();
+    expect(
+      second.events.filter((event) => event.stream === "A0.shares/sharedForChat"),
+    ).toHaveLength(1);
   });
 
   test("a chat's service on a port handed out at random, or a debugger's, is only listed: never shared by itself, shared by hand", async () => {
