@@ -29,6 +29,7 @@ import {
   probeOmpPatiently,
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
+import { ACCESS_SSH_CONFIG_ENV } from "../src/chat-host/access-note";
 import { createMachineNames, openDevicePairing, tailscaleWhois } from "../src/devices";
 import { chatScopeOf } from "../src/devices/access/paths";
 import { openDeviceAccess } from "../src/devices/access/routes";
@@ -831,6 +832,8 @@ export async function createCompositionServer(
           logger,
         })
       : undefined;
+  // Chats started from now on are told which computers they reach and how (the chat host reads this file).
+  if (deviceAccess !== undefined) Bun.env[ACCESS_SSH_CONFIG_ENV] = deviceAccess.files.configPath;
   let appAddress = "";
   let appPort: number | undefined;
   // omp's statistics page, run when the dashboard first opens it (#2836 D6).

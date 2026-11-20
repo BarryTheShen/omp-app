@@ -127,6 +127,7 @@ import {
 } from "@oh-my-pi/pi-utils/dirs";
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
+import { readAccessNote, withAccessNote } from "./access-note";
 import { LiveSecrets } from "./live-secrets";
 import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
@@ -281,6 +282,12 @@ export async function createChatSession(
   );
   sessionOptions.authStorage = authStorage;
   sessionOptions.modelRegistry = modelRegistry;
+  // The computers agent access reaches, after what omp itself appends (PLAN §7e).
+  const appended = withAccessNote(
+    sessionOptions.appendSystemPrompt,
+    await readAccessNote(process.env),
+  );
+  if (appended !== undefined) sessionOptions.appendSystemPrompt = appended;
   // The values omp gives a `--mode rpc-ui` launch: a UI exists (the app), and nothing terminal-only runs.
   sessionOptions.hasUI = true;
   sessionOptions.allowSessionModelFallback = false;

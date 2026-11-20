@@ -62,6 +62,8 @@ export interface ChatOptions {
   readonly nativeDiscovery?: boolean;
   /** omp settings as YAML, added to the `config.yml` the fake provider writes (top-level keys it does not set). */
   readonly config?: string;
+  /** Variables added to the chat's environment (as the server sets them for its chats). */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /** A chat's folders, prepared with the fake model provider: for chats a test starts its own way (a process registry). */
@@ -144,7 +146,7 @@ export function chatHostChats() {
         homeDir: home,
         chatCommand: [...command, CHAT_HOST_CHAT_ARG],
         args: ["--model", "fake/fake-model", ...(options.args ?? [])],
-        env,
+        env: { ...env, ...options.env },
       });
       processes.push(chatProcess);
       const client = new ChatHostClient(chatProcess);
