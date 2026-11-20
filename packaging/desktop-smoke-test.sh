@@ -583,7 +583,7 @@ cwd=$(readlink "/proc/$omp_pid/cwd" 2>/dev/null || echo "already ended")
 note "T8 New chat started omp (pid $omp_pid), working in the workspace folder: $cwd"
 sleep 4
 outcome=$(grep 'omp.process' "$state/omp-app.log" | tail -n 1 | grep -o 'status=[a-z]*')
-note "T8 omp reported $outcome for the new chat (without a model or key, omp stops; the window says so)"
+note "T8 omp reported $outcome for the new chat"
 shot "$wid" new-chat
 # The app's pane keys are kitty's and hold Super, and WebKitGTK never tells the page about Super: unless the window
 # hands those keys to the page (keys.rs), Super+Ctrl+Shift+Left reaches it as Ctrl+Shift+Left, the previous tab. A

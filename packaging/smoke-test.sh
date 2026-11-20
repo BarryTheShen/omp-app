@@ -5,8 +5,8 @@
 # `omp-app debug-report` read it, `omp-app tui` finds the chat host (and, with no terminal here, stops
 # there), stopping it removes its record, and a restart keeps its link. The chat host the package
 # holds is omp's own command line at the pinned release with the app's chat program in front: it passes omp's own
-# smoke test, as a chat (`__omp_app_chat`) it stops at omp's model check, as omp does without a model, and the server
-# and `omp-app debug-report` run omp's commands with it. Nothing outside the temporary folder is touched.
+# smoke test, as a chat (`__omp_app_chat`) with no model it starts, says how to set one up, and ends with its input, and
+# the server and `omp-app debug-report` run omp's commands with it. Nothing outside the temporary folder is touched.
 #
 #   packaging/smoke-test.sh dist/release/omp-app_0.1.451_amd64.deb
 set -euo pipefail
@@ -40,8 +40,9 @@ dpkg-deb -I "$package" prerm | grep -q 'systemctl --global disable omp-app.servi
 
 # The chat host every chat runs: omp's own command line, compiled from the pinned package into this one, with the app's
 # chat program in front of it (its `__omp_app_chat` command, packages/contracts/src/chat-host/args.ts). It answers omp's
-# commands as omp does, and a chat reaches omp's own model check; this run has no model and no key, so it stops there,
-# with the sentence the server reads (src/ports/A0/startup-reason.ts). No key includes AWS's: omp counts a machine that
+# commands as omp does. This run has no model and no key: a chat still starts (sign-in runs inside a chat), sends its
+# `hello`, prints how to set a model up in the app (packages/server/src/chat-host/no-model.ts), and ends when its input
+# does. No key includes AWS's: omp counts a machine that
 # looks like an EC2 server as having an instance role (pi-ai `hasAwsCredentialSource`, `isEc2Host`), and some of
 # GitHub's runners do (2026-11-16: it picked Bedrock's Claude with no key), so AWS's own switch turns that lookup off.
 chat_host="$work/root/usr/lib/omp-app/chat-host"
@@ -60,8 +61,9 @@ status=0
   -u AWS_ROLE_ARN -u AWS_SHARED_CREDENTIALS_FILE -u AWS_CONFIG_FILE -u AWS_EC2_METADATA_SERVICE_ENDPOINT \
   -u AWS_BEDROCK_SKIP_AUTH AWS_EC2_METADATA_DISABLED=true \
   timeout 60 "$chat_host" __omp_app_chat </dev/null >"$work/chat-host.out" 2>"$work/chat-host.err") || status=$?
-[[ $status == 1 ]] && grep -q -E 'No default model selected|No models available|No model selected' "$work/chat-host.err" || {
-  echo "FAIL: the chat host did not start and stop at omp's model check (exit $status)" >&2
+[[ $status == 0 ]] && grep -q '^{"kind":"hello"' "$work/chat-host.out" &&
+  grep -q -F 'No model is set up yet. Sign in to a provider under Settings' "$work/chat-host.err" || {
+  echo "FAIL: the chat host did not start with no model and say how to set one up (exit $status)" >&2
   tail -n 5 "$work/chat-host.err" >&2
   exit 1
 }

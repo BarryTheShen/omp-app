@@ -12,7 +12,7 @@ notes=${3:?usage: packaging/release-notes.sh <version> <last tag, or empty> <not
 {
   echo "## Install"
   echo
-  echo "Two packages of the same version. Take the one you want. Each brings the omp release the app runs, so omp needs no separate install. If omp has no model set up yet, run \`omp-app tui\` and choose one with /model, or sign in with /login."
+  echo "Two packages of the same version. Take the one you want. Each brings the omp release the app runs, so omp needs no separate install. If omp has no model set up yet, open a chat, then sign in to a provider (or set an API key) under Settings → Providers → Sign-in and choose a model in the message box."
   echo
   echo "**The window** (\"omp app\" in the applications menu): \`omp-app-desktop_${version}_amd64.deb\`"
   echo
