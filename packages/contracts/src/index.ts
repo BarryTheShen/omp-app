@@ -1,3 +1,4 @@
+export * from "./core/app-notice";
 export * from "./core/attached-files";
 export * from "./core/capabilities";
 export * from "./core/embed";

@@ -9,6 +9,7 @@ import {
 	describeHostContext,
 	type SentFile,
 	type SentHostContext,
+	splitAppNotice,
 	splitAttached,
 	splitHostContext,
 } from "@omp-app/contracts";
@@ -371,7 +372,9 @@ function Note({
 	}, [fold.epoch, fold.open]);
 	const note = describeNotice(customType, details, contentText(content));
 	const images = typeof content === "string" ? [] : content.filter(block => block.type === "image");
-	const folds = note.body.length > NOTE_FOLD_CHARS || note.body.split("\n").length > NOTE_FOLD_LINES;
+	const folds =
+		note.whole !== true &&
+		(note.body.length > NOTE_FOLD_CHARS || note.body.split("\n").length > NOTE_FOLD_LINES);
 	return (
 		<div className="tr-custom" data-custom-type={customType}>
 			{!note.known && <span className="tr-chip">{customType}</span>}
@@ -411,9 +414,17 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 				case "user": {
 					// omp-app: the files a message names (#2830) are drawn as chips under its text, not as the paragraph; what
 					// was open in the app that embeds the panel is a tag over the message.
-					const { content, files, context } = withoutAdded(
-						(msg as Extract<typeof msg, { role: "user" }>).content,
-					);
+					const sent = (msg as Extract<typeof msg, { role: "user" }>).content;
+					// omp-app: a message something other than the person put into the chat (a watcher, a scheduled
+					// wake-up) is a notice under its source's name, never the person's message.
+					const notice = splitAppNotice(typeof sent === "string" ? sent : contentText(sent));
+					if (notice !== null)
+						return (
+							<Row kind="custom" gutter="" title={entry.timestamp}>
+								<Note customType="app-notice" details={{ source: notice.source }} content={notice.text} />
+							</Row>
+						);
+					const { content, files, context } = withoutAdded(sent);
 					return (
 						<Row
 							kind="user"

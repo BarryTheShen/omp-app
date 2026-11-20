@@ -12,6 +12,7 @@ import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { TSchema } from "@oh-my-pi/pi-ai";
 import type { ToolDefinition } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { withAppNotice } from "@omp-app/contracts/app-notice";
 import {
   type AnswerQuestionParams,
   ASK_ASYNC_TOOL,
@@ -33,7 +34,8 @@ const RESERVED_LABELS = new Set(["Other (type your own)", "Chat about this", "Ne
 export const ASK_ASYNC_DESCRIPTION = [
   "Ask the user questions without waiting for the answers. Each question appears in the app's Questions panel beside",
   "this chat, with your context; the user answers when they have time. The answers arrive later in this chat as one",
-  'message from the user that starts with "Answers to your questions" ("Answer to your question" for one): they wait',
+  'notice from the Questions panel (an <app-notice source="questions"> block, the user\'s answers, not a message they',
+  'typed) whose text starts with "Answers to your questions" ("Answer to your question" for one): they wait',
   "until every open question in this chat has an answer or a skip, or until the user sends the ones ready so far, so",
   "one message may answer questions from several of your calls, and a question may stay open for a while. A question",
   "the user skips gets no answer: nothing comes back for it, so decide it yourself.",
@@ -337,7 +339,8 @@ export class QuestionsController {
    */
   async #deliver(records: readonly QuestionRecord[], sequence: number): Promise<QuestionRecord[]> {
     if (records.some((record) => record.answer !== null && !record.answer.skipped))
-      await this.#send(answersMessage(records), sequence);
+      // The person's answers, not a message they typed: a notice from the Questions panel (`withAppNotice`).
+      await this.#send(withAppNotice("questions", answersMessage(records)), sequence);
     const sentAt = Date.now();
     this.#session.sessionManager.appendCustomEntry(SENT_ENTRY, {
       ids: records.map((record) => record.id),

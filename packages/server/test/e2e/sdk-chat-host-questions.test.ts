@@ -6,6 +6,7 @@
  * waiting answers early; the questions not answered stay open. Runs from source and compiled (`sdk-chat-host-harness.ts`).
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { withAppNotice } from "@omp-app/contracts";
 import type { ChatEvent, QuestionRecord } from "@omp-app/contracts/chat-host";
 import {
   type Chat,
@@ -17,6 +18,8 @@ import {
 } from "./sdk-chat-host-harness";
 
 const chats = chatHostChats();
+/** The answers as they reach the agent: a notice from the Questions panel, never a message the person typed. */
+const answers = (text: string): string => withAppNotice("questions", text);
 afterEach(() => chats.stopAll(), 60_000);
 
 const ASK = {
@@ -123,7 +126,9 @@ describe("the chat host's questions without waiting", () => {
         expect(skipped.record.answer?.sentAt).toBeNumber();
         await chat.nextAfter(mark, agentEnd);
         expect(userTexts(chat).slice(sentBefore)).toEqual([
-          'Answer to your question "Publish" (publish):\nPublic copy\nNote: keep issues off',
+          answers(
+            'Answer to your question "Publish" (publish):\nPublic copy\nNote: keep issues off',
+          ),
         ]);
         expect(lastReply(chat)).toBe("pong");
 
@@ -176,8 +181,8 @@ describe("the chat host's questions without waiting", () => {
         expect(record.answer?.sentAt).toBeNumber();
         await chat.nextAfter(late, agentEnd);
         expect(userTexts(chat).slice(sentBefore)).toEqual([
-          'Answer to your question "Which color?" (color):\nGreen',
-          'Answer to your question "Which size?" (size):\nLarge',
+          answers('Answer to your question "Which color?" (color):\nGreen'),
+          answers('Answer to your question "Which size?" (size):\nLarge'),
         ]);
       },
       60_000,
@@ -222,7 +227,9 @@ describe("the chat host's questions without waiting", () => {
         expect(last.record.answer?.sentAt).toBeNumber();
         await chat.nextAfter(mark, agentEnd);
         expect(answerTexts()).toEqual([
-          'Answers to your questions:\n\n"Which color?" (color):\nGreen\n\n"Which size?" (size):\nLarge',
+          answers(
+            'Answers to your questions:\n\n"Which color?" (color):\nGreen\n\n"Which size?" (size):\nLarge',
+          ),
         ]);
 
         // Two more asks: Send answers sends the one answered; the other question stays open, then goes alone.
@@ -249,7 +256,7 @@ describe("the chat host's questions without waiting", () => {
         await chat.client.request("prompt", { text: "ping" });
         await chat.nextAfter(late, agentEnd);
         expect(answerTexts().slice(1)).toEqual([
-          'Answer to your question "Which shape?" (shape):\nRound',
+          answers('Answer to your question "Which shape?" (shape):\nRound'),
           "ping",
         ]);
       },
@@ -285,7 +292,7 @@ describe("the chat host's questions without waiting", () => {
         expect(toolEnd).toBeGreaterThan(-1);
         expect(answered).toBeGreaterThan(toolEnd);
         expect(userTexts(chat).at(-1)).toBe(
-          'Answer to your question "Which color?" (color):\nGreen',
+          answers('Answer to your question "Which color?" (color):\nGreen'),
         );
         expect(lastReply(chat)).toBe("pong");
       },

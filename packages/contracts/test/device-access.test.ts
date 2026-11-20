@@ -36,10 +36,14 @@ describe("agent access to a machine (#20)", () => {
 
   test("the server can send no frame that turns access on, extends it or grants sudo", () => {
     const types = ServerAccessFrame.options.map((option) => option.shape.type.value).sort();
-    expect(types).toEqual(["ack", "challenge", "close", "data", "off", "open", "ping"]);
+    // `ask` (#41) only tells the machine that a chat asks for access: the person allows it there, with their password.
+    expect(types).toEqual(["ack", "ask", "challenge", "close", "data", "off", "open", "ping"]);
     expect(ServerAccessFrame.safeParse({ type: "state", state: { on: true } }).success).toBe(false);
     expect(
       ServerAccessFrame.safeParse({ type: "off", until: "2030-01-01T00:00:00Z" }).success,
+    ).toBe(false);
+    expect(
+      ServerAccessFrame.safeParse({ type: "ask", threadId: "t", chat: "c", granted: true }).success,
     ).toBe(false);
   });
 
