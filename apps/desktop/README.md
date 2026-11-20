@@ -45,7 +45,7 @@ CHAT_HOST_BUN=/path/to/bun-1.4.4/bun bash packaging/build-desktop-deb.sh 0.1.451
 
 The package lands in `dist/desktop/omp-app-desktop_0.1.451_amd64.deb`, with `SHA256SUMS` next to it.
 
-The Rust build needs three inputs that the build script creates and git ignores: the server (`src-tauri/binaries/`), the web app (`src-tauri/resources/ui`) and the chat host (`src-tauri/resources/chat-host`). So on a fresh checkout, run the build script once before the Rust checks:
+The Rust build needs inputs that the build script creates and git ignores, all in `src-tauri/resources/`: the server (`omp-app-desktop-server`), the web app (`ui`), the chat host (`chat-host`) and omp's native addon files beside them. So on a fresh checkout, run the build script once before the Rust checks:
 
 ```
 cd apps/desktop/src-tauri

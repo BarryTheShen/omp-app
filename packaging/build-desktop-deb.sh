@@ -3,11 +3,11 @@
 #
 #   packaging/build-desktop-deb.sh <version>      for example 0.1.451
 #
-# The package holds the "omp app" window (/usr/bin/omp-app-desktop), the server that window starts
-# (/usr/bin/omp-app-desktop-server: the omp-app command's server, compiled with Bun), the chat host that runs every
-# chat and answers omp's own commands (omp's own command line, built from the pinned package:
-# /usr/lib/omp-app-desktop/chat-host), the built web app (/usr/lib/omp-app-desktop/ui) and an
-# applications-menu entry. The server runs the omp it holds, so omp needs no separate install. The
+# The package holds the "omp app" window (/usr/bin/omp-app-desktop) and, in /usr/lib/omp-app-desktop, the server that
+# window starts (omp-app-desktop-server: the omp-app command's server, compiled with Bun), the chat host that runs every
+# chat and answers omp's own commands (chat-host: omp's own command line, built from the pinned package), omp's native
+# addon, one file per CPU variant, which both load from their own folder (packages/server/scripts/native-addon.ts), the
+# built web app (ui), and an applications-menu entry. The server runs the omp it holds, so omp needs no separate install. The
 # package shares no file with the omp-app command package (packaging/build-deb.sh), so both can be
 # installed. The prerequisites are in apps/desktop/README.md.
 # CARGO_TARGET_DIR, if set, must be an absolute path.
@@ -26,14 +26,13 @@ package="omp-app-desktop_${version}_amd64.deb"
 out="$root/dist/desktop"
 cd "$root"
 
-# The web app and the server come from this checkout. Tauri bundles them: the web app as a resource (resources/ui),
-# the server as the sidecar named by tauri.conf.json (binaries/...-<target triple>).
+# The web app, the server and the chat host come from this checkout, as Tauri resources (resources/, installed in
+# /usr/lib/omp-app-desktop): each build script writes omp's native addon files next to the program it compiles.
 bun run build
-triple=$(rustc -vV | sed -n 's/^host: //p')
-rm -rf "$crate/resources" "$crate/binaries"
-mkdir -p "$crate/resources" "$crate/binaries"
+rm -rf "$crate/resources"
+mkdir -p "$crate/resources"
 cp -r apps/ui/dist "$crate/resources/ui"
-bun packages/server/scripts/build-server.ts "$version" "$crate/binaries/omp-app-desktop-server-$triple"
+bun packages/server/scripts/build-server.ts "$version" "$crate/resources/omp-app-desktop-server"
 
 # The chat host every chat runs (packages/server/scripts/build-chat-host.ts) is a resource too (resources/chat-host),
 # compiled by the Bun omp's release is built with: CHAT_HOST_BUN names it (desktop.yml and release.yml install it), else
@@ -56,10 +55,15 @@ built="$target/release/bundle/deb/$package"
   exit 1
 }
 mkdir -p "$out"
-cp "$built" "$out/$package"
+# Tauri compresses the package with gzip; xz makes the download smaller (2026-11-20). The contents, control files and
+# scripts are kept as Tauri wrote them.
+repack=$(mktemp -d)
+dpkg-deb -R "$built" "$repack/root"
+dpkg-deb --root-owner-group -Zxz -z6 -b "$repack/root" "$out/$package" >/dev/null
+rm -rf "$repack"
 
-# The package must have its own name and hold what the desktop app needs. dpkg-deb lists paths
-# without a leading ./, and so does the tar stream of its control-less file system.
+# The package must have its own name and hold what the desktop app needs. The repacked package's file system lists
+# its paths with a leading ./ (dpkg-deb -b), which the checks below take off.
 [[ $(dpkg-deb -f "$out/$package" Package) == omp-app-desktop ]] || {
   echo "the package is not named omp-app-desktop" >&2
   exit 1
@@ -68,9 +72,10 @@ cp "$built" "$out/$package"
   echo "the package version is not $version" >&2
   exit 1
 }
-paths=$(dpkg-deb -c "$out/$package" | awk '{ print $NF }')
-for path in usr/bin/omp-app-desktop usr/bin/omp-app-desktop-server \
+paths=$(dpkg-deb -c "$out/$package" | awk '{ print $NF }' | sed 's#^\./##')
+for path in usr/bin/omp-app-desktop usr/lib/omp-app-desktop/omp-app-desktop-server \
   usr/lib/omp-app-desktop/ui/index.html usr/lib/omp-app-desktop/chat-host \
+  usr/lib/omp-app-desktop/pi_natives.linux-x64-modern.node usr/lib/omp-app-desktop/pi_natives.linux-x64-baseline.node \
   usr/share/applications/omp-app-desktop.desktop \
   usr/bin/omp-app-device usr/lib/omp-app-device/omp-app-device \
   usr/lib/omp-app-device/openssh/usr/sbin/sshd usr/lib/omp-app-device/openssh/usr/lib/openssh/sftp-server \
@@ -117,7 +122,7 @@ clash=$(grep -E '^usr/(bin/omp-app$|share/omp-app(/|$)|share/applications/omp-ap
   echo "$clash" >&2
   exit 1
 }
-entry=$(dpkg-deb --fsys-tarfile "$out/$package" | tar -xOf - usr/share/applications/omp-app-desktop.desktop)
+entry=$(dpkg-deb --fsys-tarfile "$out/$package" | tar -xOf - ./usr/share/applications/omp-app-desktop.desktop)
 grep -Fxq 'Name=omp app' <<<"$entry" || {
   echo "the applications-menu entry is not named omp app" >&2
   exit 1

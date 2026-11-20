@@ -3,9 +3,10 @@
 #
 #   packaging/build-deb.sh <version>      for example 0.1.451
 #
-# The package holds one self-contained command (/usr/bin/omp-app: Bun's runtime plus the server,
-# compiled from packages/server/scripts/omp-app.ts), the chat host that runs every chat and answers omp's own commands
-# (omp's own command line, built from the pinned package: /usr/lib/omp-app/chat-host), the built web app
+# The package holds one self-contained command (/usr/lib/omp-app/omp-app, run as /usr/bin/omp-app, a link to it: Bun's
+# runtime plus the server, compiled from packages/server/scripts/omp-app.ts), the chat host that runs every chat and
+# answers omp's own commands (omp's own command line, built from the pinned package: /usr/lib/omp-app/chat-host), omp's
+# native addon beside both, one file per CPU variant (packages/server/scripts/native-addon.ts), the built web app
 # (/usr/share/omp-app/ui), a desktop entry, an icon, and a user service (/usr/lib/systemd/user/omp-app.service) that its
 # postinst enables for every user, so the server starts at login. omp needs no separate install.
 set -euo pipefail
@@ -26,8 +27,10 @@ bun run build
 
 install -d "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/omp-app" "$stage/usr/share/omp-app" \
   "$stage/usr/lib/systemd/user" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/scalable/apps"
-# The app's command (packages/server/scripts/build-server.ts), with omp's native addon embedded.
-bun packages/server/scripts/build-server.ts "$version" "$stage/usr/bin/omp-app"
+# The app's command (packages/server/scripts/build-server.ts), beside the chat host and omp's native addon, which the
+# build writes next to it; /usr/bin/omp-app links to it (the command finds its files from the resolved path).
+bun packages/server/scripts/build-server.ts "$version" "$stage/usr/lib/omp-app/omp-app"
+ln -s ../lib/omp-app/omp-app "$stage/usr/bin/omp-app"
 # The chat host every chat runs (packages/server/scripts/build-chat-host.ts), compiled by the Bun omp's release is built
 # with: CHAT_HOST_BUN names it (release.yml installs it), else the `bun` on PATH. The script refuses any other Bun.
 "${CHAT_HOST_BUN:-bun}" packages/server/scripts/build-chat-host.ts "$stage/usr/lib/omp-app/chat-host"

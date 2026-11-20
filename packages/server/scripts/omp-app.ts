@@ -71,11 +71,15 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** The built web app (served at the root): next to the installed command, or in a source checkout. */
+/**
+ * The built web app (served at the root): the installed one, or in a source checkout. The package installs the command
+ * in /usr/lib/omp-app (with /usr/bin/omp-app linking to it; `process.execPath` is the resolved file) and the web app in
+ * /usr/share/omp-app/ui.
+ */
 function uiRoot(): string {
   const candidates = [
     Bun.env.OMP_APP_UI_ROOT,
-    resolve(dirname(process.execPath), "../share/omp-app/ui"),
+    resolve(dirname(process.execPath), "../../share/omp-app/ui"),
     resolve(import.meta.dir, "../../../apps/ui/dist"),
   ];
   for (const candidate of candidates) {
@@ -86,8 +90,11 @@ function uiRoot(): string {
   );
 }
 
-/** The chat host the packages install beside the command: omp's own command line, built by the app (#2586). */
-const INSTALLED_CHAT_HOST = resolve(dirname(process.execPath), "../lib/omp-app/chat-host");
+/**
+ * The chat host the package installs beside the command (/usr/lib/omp-app/chat-host, with omp's native addon files that
+ * both load from that folder): omp's own command line, built by the app (#2586).
+ */
+const INSTALLED_CHAT_HOST = resolve(dirname(process.execPath), "chat-host");
 /** A compiled command holds its sources in Bun's in-memory folder, where they cannot run as omp. */
 const COMPILED = import.meta.dir.startsWith("/$bunfs/");
 

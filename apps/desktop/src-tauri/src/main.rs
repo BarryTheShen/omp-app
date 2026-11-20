@@ -1,4 +1,4 @@
-//! omp app as a desktop window. The window opens the app on the app's own server (bundled as a sidecar): on the
+//! omp app as a desktop window. The window opens the app on the app's own server (in its resource folder): on the
 //! one that already runs, or on one it starts itself, detached (see `server.rs`). Closing a window, or quitting
 //! the app, never stops a server, so running chats keep going. The app can have several windows (see `windows.rs`):
 //! closing one that is not the last closes it alone, and the last one's close ends the app. A second launch focuses

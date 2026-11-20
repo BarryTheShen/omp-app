@@ -32,6 +32,7 @@ import { CHAT_HOST_BUN_VERSION } from "../../../packages/server/scripts/chat-hos
  */
 const APP_ROOT = resolve(process.cwd(), "../..");
 const BUILD_SCRIPT = join(APP_ROOT, "packages/server/scripts/build-chat-host.ts");
+const NATIVE_ADDON_SCRIPT = join(APP_ROOT, "packages/server/scripts/native-addon.ts");
 const BUN_VERSION_FILE = join(APP_ROOT, "packages/server/scripts/chat-host-bun.ts");
 const LOCK_STALE_MS = 15 * 60_000;
 
@@ -108,19 +109,25 @@ function hashProgramSources(hash: Hash): Hash {
   return hash;
 }
 
-/** The compiled chat host for this checkout's lockfile, build script and program sources, built once and then reused. */
+/**
+ * The compiled chat host for this checkout's lockfile, build script and program sources, built once and then reused.
+ * Each build has a folder of its own (`chat-host-<key>/chat-host`), because the build writes omp's native addon files
+ * next to the program, and builds of different omp versions share the cache folder.
+ */
 async function compiledChatHost(): Promise<string> {
   const key = hashProgramSources(
     createHash("sha256")
       .update(readFileSync(join(APP_ROOT, "bun.lock")))
       .update(readFileSync(BUILD_SCRIPT))
+      .update(readFileSync(NATIVE_ADDON_SCRIPT))
       .update(readFileSync(BUN_VERSION_FILE)),
   )
     .digest("hex")
     .slice(0, 16);
   const dir = process.env.OMP_APP_CHAT_HOST_DIR ?? join(APP_ROOT, ".data", "chat-host");
-  const target = join(dir, `chat-host-${key}`);
-  const lock = `${target}.lock`;
+  const folder = join(dir, `chat-host-${key}`);
+  const target = join(folder, "chat-host");
+  const lock = `${folder}.lock`;
   mkdirSync(dir, { recursive: true });
   for (;;) {
     if (existsSync(target)) return target;
@@ -136,19 +143,23 @@ async function compiledChatHost(): Promise<string> {
     try {
       if (existsSync(target)) return target;
       const bun = await chatHostBun(dir);
-      const partial = `${target}.${process.pid}.partial`;
-      const built = spawnSync(bun, [BUILD_SCRIPT, partial], {
+      const partial = `${folder}.${process.pid}.partial`;
+      rmSync(partial, { recursive: true, force: true });
+      mkdirSync(partial);
+      const built = spawnSync(bun, [BUILD_SCRIPT, join(partial, "chat-host")], {
         cwd: APP_ROOT,
         encoding: "utf8",
         timeout: 10 * 60_000,
       });
-      if (built.status !== 0 || !existsSync(partial)) {
-        rmSync(partial, { force: true });
+      if (built.status !== 0 || !existsSync(join(partial, "chat-host"))) {
+        rmSync(partial, { recursive: true, force: true });
         throw new Error(
           `The chat host did not build (exit ${built.status}): ${`${built.stdout}${built.stderr}`.trim().slice(-2_000)}`,
         );
       }
-      renameSync(partial, target);
+      // A folder left without its program (emptied by hand) is replaced whole.
+      rmSync(folder, { recursive: true, force: true });
+      renameSync(partial, folder);
       return target;
     } finally {
       rmSync(lock, { recursive: true, force: true });

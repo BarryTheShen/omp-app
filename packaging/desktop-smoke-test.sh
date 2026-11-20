@@ -50,7 +50,7 @@ root="$work/root"
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 requests="$work/requests.jsonl"
 app="$root/usr/bin/omp-app-desktop"
-sidecar_bin="$root/usr/bin/omp-app-desktop-server"
+sidecar_bin="$root/usr/lib/omp-app-desktop/omp-app-desktop-server"
 state="$work/state/omp-app"
 link_file="$XDG_CONFIG_HOME/omp-app/desktop-server"
 results=()
@@ -480,7 +480,7 @@ for variant in web server; do
   if [[ $variant == web ]]; then
     rm -f "$broken/usr/lib/omp-app-desktop/ui/index.html"
   else
-    rm -f "$broken/usr/bin/omp-app-desktop-server"
+    rm -f "$broken/usr/lib/omp-app-desktop/omp-app-desktop-server"
   fi
   launch "$broken/usr/bin/omp-app-desktop"
   p=$LAUNCHED

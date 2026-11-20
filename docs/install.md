@@ -12,7 +12,7 @@ Each release has two packages of the same version:
 
 | Package | Take it if you want | What it installs |
 |---|---|---|
-| `omp-app-desktop_<version>_amd64.deb` | the app in a window of its own, opened from the applications menu | The window `omp-app-desktop`, the server it starts (`omp-app-desktop-server`), the chat host and the web app under `/usr/lib/omp-app-desktop`, and the applications-menu entry "omp app", which also offers "New Window" |
+| `omp-app-desktop_<version>_amd64.deb` | the app in a window of its own, opened from the applications menu | The window `omp-app-desktop`, the server it starts (`omp-app-desktop-server`), the chat host, omp's native addon and the web app under `/usr/lib/omp-app-desktop`, and the applications-menu entry "omp app", which also offers "New Window" |
 | `omp-app_<version>_amd64.deb` | the app in your browser, started from a terminal or at login | The command `omp-app`, the chat host (`/usr/lib/omp-app/chat-host`), the web app (`/usr/share/omp-app/ui`), the user service `omp-app.service`, an icon, and a menu entry "omp app" that runs `omp-app` in a terminal window |
 
 The two packages share no file, so you can install both. Both recommend `xdg-utils` (it opens your browser). The terminal command's package also recommends `tmux`, which `omp-app tui` needs (see [Using the app](using.md#omp-in-the-terminal-on-the-same-chats)), and the window's package recommends `gstreamer1.0-tools`. apt installs recommended packages unless you tell it not to.
