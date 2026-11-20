@@ -6,6 +6,14 @@ GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Pages this far below or above the view are drawn ahead, so scrolling meets drawn pages. */
 const DRAW_AHEAD = "600px 0px";
+/** Pixels per CSS pixel a page is drawn with at least: sharp on a 1x screen too, and when pinch-zoomed. */
+const MIN_PIXEL_RATIO = 2;
+/** The most pixels one page's canvas gets: WebKit (iOS) draws nothing on a canvas above about 16.7 million. */
+const MAX_CANVAS_PIXELS = 16_000_000;
+/** How long the panel's width and the screen's density must hold before drawn pages are drawn again. */
+const REDRAW_AFTER_MS = 200;
+/** A drawn page is drawn again when its canvas has less than this share of the pixels its place needs now. */
+const REDRAW_BELOW = 0.95;
 
 /** The element that scrolls the pages: the viewer's own scrolling area, or the page itself. */
 function scrollParentOf(element: HTMLElement): HTMLElement | null {
@@ -19,7 +27,8 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
 /**
  * A PDF drawn by the app with PDF.js (#2785), the same in every window: the desktop window showed a frame with the
  * file blank, and iOS shows no PDF inside a page. Each page is a canvas as wide as the panel, drawn when it comes
- * near the view; until then it holds its place at the first page's shape.
+ * near the view; until then it holds its place at the first page's shape. A drawn page is drawn again when the panel
+ * grows or the screen's density changes (zoom, another screen): one drawn for a narrower panel was stretched, blurred.
  */
 export default function PdfView({
   bytes,
@@ -39,24 +48,58 @@ export default function PdfView({
     if (element === null) return;
     let stopped = false;
     let observer: IntersectionObserver | null = null;
+    let resized: ResizeObserver | null = null;
+    let redrawTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Each drawn page's latest draw: an older one that ends later does not replace it. */
+    const draws = new Map<number, number>();
+    const ratio = (): number => Math.max(window.devicePixelRatio, MIN_PIXEL_RATIO);
     const draw = async (
       pdf: PDFDocumentProxy,
       number: number,
       slot: HTMLElement,
     ): Promise<void> => {
+      const turn = (draws.get(number) ?? 0) + 1;
+      draws.set(number, turn);
       const page = await pdf.getPage(number);
-      if (stopped) return;
+      if (stopped || draws.get(number) !== turn) return;
       const width = Math.max(1, slot.clientWidth);
-      const scale = (width / page.getViewport({ scale: 1 }).width) * window.devicePixelRatio;
+      const natural = page.getViewport({ scale: 1 });
+      let scale = (width / natural.width) * ratio();
+      const pixels = natural.width * natural.height * scale * scale;
+      if (pixels > MAX_CANVAS_PIXELS) scale *= Math.sqrt(MAX_CANVAS_PIXELS / pixels);
       const viewport = page.getViewport({ scale });
       const canvas = window.document.createElement("canvas");
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
       canvas.className = "block h-auto w-full";
       await page.render({ canvas, viewport }).promise;
-      if (stopped) return;
+      if (stopped || draws.get(number) !== turn) return;
       slot.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
       slot.replaceChildren(canvas);
+    };
+    /** Draws again each drawn page whose canvas has too few pixels for its place now. */
+    const redrawSharp = (pdf: PDFDocumentProxy): void => {
+      for (const slot of element.querySelectorAll<HTMLElement>("[data-page]")) {
+        const canvas = slot.querySelector("canvas");
+        if (canvas === null) continue;
+        const needed = Math.min(slot.clientWidth * ratio(), Math.sqrt(MAX_CANVAS_PIXELS));
+        if (canvas.width >= needed * REDRAW_BELOW) continue;
+        draw(pdf, Number(slot.dataset.page), slot).catch((failure: unknown) => {
+          if (!stopped) onFailed(failure instanceof Error ? failure.message : String(failure));
+        });
+      }
+    };
+    const watchDensity = (pdf: PDFDocumentProxy): void => {
+      // Fires once when the density leaves this value (zoom, another screen); then it watches the new one.
+      window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
+        "change",
+        () => {
+          if (stopped) return;
+          redrawSharp(pdf);
+          watchDensity(pdf);
+        },
+        { once: true },
+      );
     };
     // PDF.js hands the bytes to its worker: it gets a copy, so the viewer keeps its own.
     const loading = getDocument({ data: bytes.slice() });
@@ -92,6 +135,19 @@ export default function PdfView({
         });
         element.replaceChildren(...slots);
         for (const slot of slots) observer.observe(slot);
+        // The panel grew (or the window, or the app's zoom changed its width): drawn pages are drawn again once it holds.
+        let width = element.clientWidth;
+        resized = new ResizeObserver(() => {
+          if (element.clientWidth <= width) return;
+          width = element.clientWidth;
+          if (redrawTimer !== null) clearTimeout(redrawTimer);
+          redrawTimer = setTimeout(() => {
+            redrawTimer = null;
+            if (!stopped) redrawSharp(pdf);
+          }, REDRAW_AFTER_MS);
+        });
+        resized.observe(element);
+        watchDensity(pdf);
       })
       .catch((failure: unknown) => {
         if (!stopped) onFailed(failure instanceof Error ? failure.message : String(failure));
@@ -99,6 +155,8 @@ export default function PdfView({
     return () => {
       stopped = true;
       observer?.disconnect();
+      resized?.disconnect();
+      if (redrawTimer !== null) clearTimeout(redrawTimer);
       void loading.destroy();
       // Destroying the loading task closes the document and its worker.
     };
