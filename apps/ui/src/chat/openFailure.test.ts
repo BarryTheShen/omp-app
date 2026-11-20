@@ -11,11 +11,12 @@ const failed = (startup?: "no_model" | "no_credentials" | "other") =>
   });
 
 describe("why a chat could not open", () => {
-  test("omp stopped for want of a model: the words say so and where to choose one, not to try again", () => {
+  test("omp stopped for want of a model: the words say so and where to set it up in the app, not to try again", () => {
     const text = openFailureText(failed("no_model"));
-    expect(text).toContain("no model is set up");
-    expect(text).toContain("omp-app tui");
+    expect(text).toContain("model is not set up");
+    expect(text).toContain("Settings → Providers → Sign-in");
     expect(text).not.toContain("Try again");
+    expect(openFailureText(failed("no_credentials"))).toContain("Settings → Providers → Sign-in");
   });
 
   test("each startup reason gets its own words; a failure without one keeps its own", () => {

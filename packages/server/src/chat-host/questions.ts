@@ -394,7 +394,7 @@ export class AskAsyncTool {
         content: [
           {
             type: "text",
-            text: `Asked ${records.length === 1 ? "1 question" : `${records.length} questions`} (${ids}). The answers come later, together, as one message from the user in this chat. Keep working; do not wait for them, and do not ask again.`,
+            text: `Asked ${records.length === 1 ? "1 question" : `${records.length} questions`} (${ids}). The answers come later, together, as one notice from the Questions panel (<app-notice source="questions">). Keep working; do not wait for them, and do not ask again.`,
           },
         ],
         details: { questions: records },

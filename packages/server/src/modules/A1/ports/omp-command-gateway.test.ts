@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppFailure, RequestId, ThreadId } from "@omp-app/contracts";
+import { RequestId, ThreadId } from "@omp-app/contracts";
 import type { PortHandlerContext } from "../../../registry/ports";
 import { BackgroundJobStopStoreService } from "../background-jobs";
 import type { A1PortContext } from "./context";
@@ -47,115 +47,27 @@ function handlerContext(): PortHandlerContext {
   };
 }
 
-async function expectInternalFailure(run: () => unknown): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    if (error instanceof AppFailure) {
-      expect(error.appError).toMatchObject({ code: "internal", retryable: false });
-      return;
-    }
-    throw error;
-  }
-  throw new Error("the handler resolved where an internal failure was expected");
-}
-
-describe("OmpCommandGateway typed share and dump handlers", () => {
-  test("share runs /share and returns the parsed link", async () => {
-    const url = "https://share.example.test/abc1234567#key";
-    const { handlers, commands } = handlersAnswering(() => ({ url, truncated: false }));
-    const share = handlers.share;
-    if (share === undefined) throw new Error("the share handler is not registered");
-    await expect(share({ threadId }, handlerContext())).resolves.toEqual({
-      url,
-      truncated: false,
-    });
-    expect(commands).toEqual(["/share"]);
-  });
-
-  test("dump runs /dump for the session scope and /dump all for the all scope", async () => {
-    const { handlers, commands } = handlersAnswering((command) => ({
-      scope: command === "/dump all" ? "all" : "session",
-      text: `report for ${command}`,
-      empty: false,
+describe("OmpCommandGateway typed tools handler", () => {
+  test("runs /tools and returns its parsed availability rows", async () => {
+    const { handlers, commands } = handlersAnswering(() => ({
+      tools: [
+        { tool: "ast_edit", state: "fallback" },
+        { tool: "debug", state: "fallback" },
+        { tool: "lsp", state: "fallback" },
+        { tool: "read", state: "available" },
+      ],
     }));
-    const dump = handlers.dump;
-    if (dump === undefined) throw new Error("the dump handler is not registered");
-    await expect(dump({ threadId, scope: "session" }, handlerContext())).resolves.toEqual({
-      scope: "session",
-      text: "report for /dump",
-      empty: false,
+    const tools = handlers.tools;
+    if (tools === undefined) throw new Error("the tools handler is not registered");
+    await expect(tools({ threadId }, handlerContext())).resolves.toEqual({
+      tools: [
+        { tool: "ast_edit", state: "fallback" },
+        { tool: "debug", state: "fallback" },
+        { tool: "lsp", state: "fallback" },
+        { tool: "read", state: "available" },
+      ],
     });
-    await expect(dump({ threadId, scope: "all" }, handlerContext())).resolves.toEqual({
-      scope: "all",
-      text: "report for /dump all",
-      empty: false,
-    });
-    expect(commands).toEqual(["/dump", "/dump all"]);
-  });
-
-  test("dump runs /dump anon for the anon scope", async () => {
-    const { handlers, commands } = handlersAnswering((command) => ({
-      scope: "anon",
-      text: `report for ${command}`,
-      empty: false,
-    }));
-    const dump = handlers.dump;
-    if (dump === undefined) throw new Error("the dump handler is not registered");
-    await expect(dump({ threadId, scope: "anon" }, handlerContext())).resolves.toEqual({
-      scope: "anon",
-      text: "report for /dump anon",
-      empty: false,
-    });
-    expect(commands).toEqual(["/dump anon"]);
-  });
-
-  describe("OmpCommandGateway typed tools handler", () => {
-    test("runs /tools and returns its parsed availability rows", async () => {
-      const { handlers, commands } = handlersAnswering(() => ({
-        tools: [
-          { tool: "ast_edit", state: "fallback" },
-          { tool: "debug", state: "fallback" },
-          { tool: "lsp", state: "fallback" },
-          { tool: "read", state: "available" },
-        ],
-      }));
-      const tools = handlers.tools;
-      if (tools === undefined) throw new Error("the tools handler is not registered");
-      await expect(tools({ threadId }, handlerContext())).resolves.toEqual({
-        tools: [
-          { tool: "ast_edit", state: "fallback" },
-          { tool: "debug", state: "fallback" },
-          { tool: "lsp", state: "fallback" },
-          { tool: "read", state: "available" },
-        ],
-      });
-      expect(commands).toEqual(["/tools"]);
-    });
-  });
-
-  test("a command with no parser (raw frames) is never returned as a typed reply", async () => {
-    const raw = {
-      command: "/share",
-      agentInvoked: false,
-      outputs: [],
-      sessionUpdates: [],
-      configUpdates: [],
-    };
-    const { handlers } = handlersAnswering(() => raw);
-    const share = handlers.share;
-    if (share === undefined) throw new Error("the share handler is not registered");
-    await expectInternalFailure(() => share({ threadId }, handlerContext()));
-  });
-
-  test("a share result that is not an https link is an internal failure", async () => {
-    const { handlers } = handlersAnswering(() => ({
-      url: "http://share.example.test/x",
-      truncated: false,
-    }));
-    const share = handlers.share;
-    if (share === undefined) throw new Error("the share handler is not registered");
-    await expectInternalFailure(() => share({ threadId }, handlerContext()));
+    expect(commands).toEqual(["/tools"]);
   });
 });
 

@@ -127,8 +127,9 @@ import {
 } from "@oh-my-pi/pi-utils/dirs";
 import { $env, setInteractiveHost } from "@oh-my-pi/pi-utils/env";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
-import { readAccessNote, withAccessNote } from "./access-note";
+import { MESSAGES_NOTE, readAccessNote, withNote } from "./access-note";
 import { LiveSecrets } from "./live-secrets";
+import { NO_MODEL_HINT } from "./no-model";
 import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
 
@@ -282,9 +283,9 @@ export async function createChatSession(
   );
   sessionOptions.authStorage = authStorage;
   sessionOptions.modelRegistry = modelRegistry;
-  // The computers agent access reaches, after what omp itself appends (PLAN §7e).
-  const appended = withAccessNote(
-    sessionOptions.appendSystemPrompt,
+  // How messages in omp-app are made, and the computers agent access reaches, after what omp itself appends (PLAN §7e).
+  const appended = withNote(
+    withNote(sessionOptions.appendSystemPrompt, MESSAGES_NOTE),
     await readAccessNote(process.env),
   );
   if (appended !== undefined) sessionOptions.appendSystemPrompt = appended;
@@ -407,11 +408,14 @@ export async function createChatSession(
     watchScopedModelSettings(session, parsed, modelRegistry, settings);
     for (const warning of modelRegistry.drainConfigWarnings()) notice(`Warning: ${warning}`);
     if (!session.model) {
-      throw new Error(
+      // A model that cannot be read or one that was asked for and is missing stops the chat, as in omp. A chat with no
+      // model at all opens, as omp's own terminal does, so that a new user can sign in from the app (Settings →
+      // Providers), which runs inside a chat; until then a message gets the sign-in hint (`NO_MODEL_HINT`).
+      const problem =
         modelRegistry.getError()?.message ??
-          created.modelFallbackMessage ??
-          "No models available. Set an API key, or pick a model that omp can use.",
-      );
+        (parsed.model !== undefined ? created.modelFallbackMessage : undefined);
+      if (problem !== undefined) throw new Error(problem);
+      notice(NO_MODEL_HINT);
     }
   } catch (error) {
     await session.dispose().catch(() => undefined);

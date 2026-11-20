@@ -12,17 +12,19 @@ Warning: omp could not start. The app opens, but chats cannot start. Run `omp-ap
 
 The first sentence is the app's reason. It is one of "omp was not found.", "omp could not start.", "omp did not answer in time.", "omp started but did not answer the app's checks.", "omp started but did not answer the app's checks in time." and "omp has no model to chat with, so no chat can start."
 
+In a new chat with no model at all, the chat opens; a message you send is answered with "No model is set up yet. Sign in to a provider under Settings → Providers → Sign-in (or set an API key there), choose a model in the message box, then send the message again."
+
 In a chat that cannot open, the page says "Could not open this chat:" and one of these:
 
-- "no model is set up yet. Open a terminal, run “omp-app tui”, and choose a model with /model or sign in with /login there, then start a new chat."
-- "omp cannot sign in to its model. Open a terminal, run “omp-app tui”, and sign in with /login there, then start a new chat."
+- "its model is not set up. Sign in to a provider under Settings → Providers → Sign-in, choose a model in the message box, then start a new chat."
+- "omp cannot sign in to its model. Sign in again under Settings → Providers → Sign-in, then start a new chat."
 - "omp stopped as it started. Open a terminal and run “omp-app tui” to see why, then start a new chat."
 
-**Why.** Every chat runs on the omp the package holds, started without its terminal. omp stops when no model is set up or when it cannot sign in to the model's provider. omp's terminal app starts anyway and offers `/model` and `/login`. Any other reason, such as a damaged install or a computer that is too busy to start omp in time, appears in the app's log.
+**Why.** Every chat runs on the omp the package holds, started without its terminal. A chat with no model opens, so that you can sign in from the app (omp signs in inside a chat); a chat whose chosen model is missing, or whose provider refuses the sign-in, stops. Any other reason, such as a damaged install or a computer that is too busy to start omp in time, appears in the app's log.
 
 **What to do.**
 
-1. Run `omp-app tui` in a terminal. In omp, choose a model with `/model`, or sign in with `/login`. Then start a new chat in the app.
+1. Open Settings → Providers → Sign-in and sign in to a provider (or set an API key there), choose a model in the message box, then start a new chat. `omp-app tui` in a terminal works too: `/login` and `/model`.
 2. If the reason is anything else, run `omp-app debug-report`; it records omp's start and checks.
 3. If `omp-app` says "the app's chat host is missing", with a path, the package's own file is gone: reinstall the package ([Installing](install.md#how-do-i-install-it)). The same goes for "the app's web files were not found. Reinstall the package, or run `bun run build` in a source checkout."
 

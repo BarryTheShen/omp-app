@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ACCESS_SSH_CONFIG_ENV, readAccessNote, withAccessNote } from "./access-note";
+import { ACCESS_SSH_CONFIG_ENV, readAccessNote, withNote } from "./access-note";
 
 let dir: string | null = null;
 afterEach(async () => {
@@ -49,9 +49,9 @@ describe("what a chat is told about the computers agent access reaches (PLAN §7
   });
 
   test("the note comes after what omp appends anyway, which it never replaces", () => {
-    expect(withAccessNote("From APPEND_SYSTEM.md", "NOTE")).toBe("From APPEND_SYSTEM.md\n\nNOTE");
-    expect(withAccessNote(undefined, "NOTE")).toBe("NOTE");
-    expect(withAccessNote("Kept", null)).toBe("Kept");
-    expect(withAccessNote(undefined, null)).toBeUndefined();
+    expect(withNote("From APPEND_SYSTEM.md", "NOTE")).toBe("From APPEND_SYSTEM.md\n\nNOTE");
+    expect(withNote(undefined, "NOTE")).toBe("NOTE");
+    expect(withNote("Kept", null)).toBe("Kept");
+    expect(withNote(undefined, null)).toBeUndefined();
   });
 });

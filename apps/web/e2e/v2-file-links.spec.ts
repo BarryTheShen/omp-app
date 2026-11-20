@@ -12,8 +12,11 @@ const transcript = (page: Page) => page.getByRole("region", { name: "Transcript"
 
 function seedFiles(folder: string): void {
   mkdirSync(join(folder, "reports"), { recursive: true });
-  writeFileSync(join(folder, "reports", "report.md"), "# Lab matrix\n\nFunding per lab.\n");
-  writeFileSync(join(folder, "reports", "summary.csv"), "school,pi,funding\nWashU,Huang,119300\n");
+  writeFileSync(join(folder, "reports", "report.md"), "# Team matrix\n\nBudget per team.\n");
+  writeFileSync(
+    join(folder, "reports", "summary.csv"),
+    "team,lead,budget\nNorthwind,Avery,119300\n",
+  );
 }
 
 realTest.describe("new UI: a reply's links to files", () => {
@@ -34,15 +37,18 @@ realTest.describe("new UI: a reply's links to files", () => {
 
       await report.click();
       const file = page.getByRole("region", { name: "File report.md" });
-      await expect(file).toContainText("Lab matrix", { timeout: 30_000 });
+      await expect(file).toContainText("Team matrix", { timeout: 30_000 });
       // The same link again brings the open file forward instead of a second pane.
       await report.click();
       await expect(page.getByRole("region", { name: "File report.md" })).toHaveCount(1);
 
       await transcript(page).getByRole("link", { name: "Compact CSV" }).click();
-      await expect(page.getByRole("region", { name: "File summary.csv" })).toContainText("WashU", {
-        timeout: 30_000,
-      });
+      await expect(page.getByRole("region", { name: "File summary.csv" })).toContainText(
+        "Northwind",
+        {
+          timeout: 30_000,
+        },
+      );
 
       await transcript(page).getByRole("link", { name: "Elsewhere" }).click();
       await expect(page.getByText(/outside\.md is outside this chat's folder/)).toBeVisible({
@@ -76,7 +82,7 @@ realTest.describe("new UI: a reply's links to files", () => {
 
       await csv.tap();
       const file = page.getByRole("region", { name: "File summary.csv" });
-      await expect(file).toContainText("WashU", { timeout: 30_000 });
+      await expect(file).toContainText("Northwind", { timeout: 30_000 });
       await page.getByRole("button", { name: "Chat", exact: true }).tap();
       await expect(file).toHaveCount(0);
       await expect(csv).toBeVisible();

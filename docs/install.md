@@ -78,6 +78,8 @@ The link opens the app on this computer only, and it stays the same when the app
 
 If the app is already running, `omp-app` prints "omp app <version> is already running." with the running server's version and its link, and opens the browser on it. `omp-app --no-open` prints the link without opening a browser, which is how you get it again when the service started the app. `omp-app <folder>` opens the running app on that folder.
 
+**Signing in, the first time.** A new install has no model. Start a new chat (it opens without a model), open Settings → Providers → Sign-in, and sign in to a provider, or set an API key there. Then choose a model in the message box and send your message. A message sent before that is answered with these same steps. If you already use omp on this computer, the app uses its sign-ins and models (`~/.omp/agent`), and there is nothing to set up.
+
 If omp cannot start, the terminal prints a warning, and chats say why they could not open. See [Troubleshooting](troubleshooting.md#omp-cannot-start-or-has-no-model).
 
 ## How does the user service work?

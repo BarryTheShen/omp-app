@@ -999,14 +999,18 @@ export class ChatStore {
       case "prompt_result": {
         // A result while the message shown at Send is still only ours: its turn never started. A command took it
         // (`agentInvoked` false), its setup failed, or Stop came before omp started the turn (`aborted` with no run: omp
-        // drops the message and hands it back, as its own editor gets it again), and then it goes back to the box.
+        // drops the message and hands it back, as its own editor gets it again), and then it goes back to the box. A setup
+        // that failed (`error`: no model yet, a provider refusing) says why, and the message goes back to the box too, so
+        // it is neither lost nor shown as sent.
         const pending = this.#pending;
         if (pending === null) return false;
         this.#dropPending();
         this.#turnMark += 1;
         this.#stopWorking();
-        if (event.status === "aborted")
+        if (event.status === "aborted" || event.status === "error")
           for (const listener of this.#sendDropped) listener(pending.sent);
+        if (event.status === "error" && event.error !== undefined)
+          this.#notify(`Not sent: ${event.error.message}`, "error");
         return false;
       }
       case "thinking_level_changed":

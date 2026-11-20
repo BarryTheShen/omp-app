@@ -112,6 +112,7 @@ import {
   type PromptTicket,
   startPrompt,
 } from "./prompt-results";
+import { NO_MODEL_HINT } from "./no-model";
 import { QuestionsController } from "./questions";
 import { readSearchEngines, removeSearchKey, setSearchKey, testSearch } from "./search-engines";
 import type { ChatSession } from "./session-factory";
@@ -1138,6 +1139,15 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     notifyConfigChanged: () => emit(configUpdate(session)),
   });
 
+  /**
+   * A prompt that fails while the chat has no model gets how to set one up in the app instead of omp's words, which
+   * name its terminal commands and its data files (`no-model.ts`); before or after admission alike.
+   */
+  const withNoModelHint = <T>(prompt: Promise<T>): Promise<T> =>
+    prompt.catch((error: unknown) => {
+      throw session.model ? error : new Error(NO_MODEL_HINT);
+    });
+
   const admitPrompt = async (
     params: PromptParams,
     ticket: PromptTicket,
@@ -1158,21 +1168,23 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         results,
         tracker,
         run: (onPromptAdmitted) =>
-          session.promptCustomMessage(
-            {
-              customType: SKILL_PROMPT_MESSAGE_TYPE,
-              content: images?.length
-                ? [{ type: "text", text: built.message }, ...images]
-                : built.message,
-              display: true,
-              details: built.details,
-              attribution: "user",
-            },
-            {
-              streamingBehavior: params.streamingBehavior ?? "steer",
-              queueChipText: text,
-              onPromptAdmitted,
-            },
+          withNoModelHint(
+            session.promptCustomMessage(
+              {
+                customType: SKILL_PROMPT_MESSAGE_TYPE,
+                content: images?.length
+                  ? [{ type: "text", text: built.message }, ...images]
+                  : built.message,
+                display: true,
+                details: built.details,
+                attribution: "user",
+              },
+              {
+                streamingBehavior: params.streamingBehavior ?? "steer",
+                queueChipText: text,
+                onPromptAdmitted,
+              },
+            ),
           ),
       });
       return start.admitted ? { kind: "admitted" } : { kind: "failed", error: start.error };
@@ -1217,11 +1229,13 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
       results,
       tracker,
       run: (onPromptAdmitted) =>
-        session.prompt(text, {
-          images,
-          ...(params.streamingBehavior ? { streamingBehavior: params.streamingBehavior } : {}),
-          onPromptAdmitted,
-        }),
+        withNoModelHint(
+          session.prompt(text, {
+            images,
+            ...(params.streamingBehavior ? { streamingBehavior: params.streamingBehavior } : {}),
+            onPromptAdmitted,
+          }),
+        ),
     });
     return start.admitted ? { kind: "admitted" } : { kind: "failed", error: start.error };
   };

@@ -4,15 +4,12 @@ import {
   CommandOutputEvent,
   type CommandRunResult,
   CompactionEvent,
-  DumpReport,
-  type DumpScope,
   ModeChangeResult,
   modeChangeCommand,
   OmpCommandGateway,
   SessionDeleteCommandResult,
   SessionFileChanged,
   SessionFileStore,
-  ShareResult,
   streamKey,
   ToolsAvailabilityResult,
 } from "@omp-app/contracts";
@@ -40,13 +37,6 @@ function backgroundJobStopOf(
     return { jobId, status: "finished" };
   return undefined;
 }
-
-/** The command each dump scope runs in omp: `/dump`, `/dump all`, and `/dump anon` (the anonymized archive). */
-const DUMP_COMMANDS: Readonly<Record<DumpScope, string>> = {
-  session: "/dump",
-  all: "/dump all",
-  anon: "/dump anon",
-};
 
 export function createOmpCommandGatewayRegistration(context: A1PortContext): PortRegistration {
   const bindings = [
@@ -82,21 +72,6 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
       backgroundJobStops: async (args) => ({
         stops: [...(await context.backgroundJobStopStore.list(args.threadId))],
       }),
-      share: async (args, handlerContext) => {
-        const { data } = await context.ompCommandGateway.runWithParser<ShareResult>(
-          { threadId: args.threadId, command: "/share" },
-          { signal: handlerContext.signal },
-        );
-        return typedReply(data, (value) => ShareResult.parse(value), "/share");
-      },
-      dump: async (args, handlerContext) => {
-        const command = DUMP_COMMANDS[args.scope];
-        const { data } = await context.ompCommandGateway.runWithParser<DumpReport>(
-          { threadId: args.threadId, command },
-          { signal: handlerContext.signal },
-        );
-        return typedReply(data, (value) => DumpReport.parse(value), command);
-      },
       modeChange: async (args, handlerContext): Promise<ModeChangeResult> => {
         const command = modeChangeCommand(args.request);
         try {

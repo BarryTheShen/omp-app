@@ -45,9 +45,17 @@ describe("the computers a chat reaches through agent access", () => {
         expect(prompt.indexOf("Words the person appends.")).toBeLessThan(
           prompt.indexOf("Computers you can reach (omp-app agent access)"),
         );
+        // Every chat is told how the app's messages are made, after the person's own append prompt.
+        expect(prompt.indexOf("Words the person appends.")).toBeLessThan(
+          prompt.indexOf("## Messages in omp-app"),
+        );
+        expect(prompt).toContain("`<app-notice source=");
 
         const untold = await chats.start(command);
-        expect(await promptOf(untold)).not.toContain("omp-app agent access");
+        const plain = await promptOf(untold);
+        expect(plain).not.toContain("omp-app agent access");
+        expect(plain).toContain("## Messages in omp-app");
+        expect(plain).toContain("`<host-context host=");
       },
       120_000,
     );

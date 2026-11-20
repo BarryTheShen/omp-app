@@ -164,12 +164,35 @@ describe("ChatStore", () => {
         type: "prompt_result",
         requestId: "r1",
         agentInvoked: false,
-        status: "error",
+        status: "completed",
         sessionSettled: true,
       }),
     );
     expect(store.getSnapshot().entries).toEqual([]);
     expect(store.getSnapshot().working).toBe(false);
+  });
+
+  test("a message whose setup failed (no model yet) says why and goes back to the box, neither lost nor shown as sent", () => {
+    const store = new ChatStore();
+    const back: unknown[] = [];
+    store.onSendDropped((sent) => back.push(sent));
+    store.sendStarted("hi", []);
+    store.apply(
+      event({
+        type: "prompt_result",
+        requestId: "r1",
+        agentInvoked: false,
+        status: "error",
+        error: { message: "No model is set up yet.", retryable: false },
+        sessionSettled: true,
+      }),
+    );
+    expect(store.getSnapshot().entries).toEqual([]);
+    expect(store.getSnapshot().working).toBe(false);
+    expect(back).toEqual([{ text: "hi", images: [] }]);
+    expect(store.getSnapshot().notices.map(({ text, level }) => `${level}: ${text}`)).toEqual([
+      "error: Not sent: No model is set up yet.",
+    ]);
   });
 
   test("Stop before omp started the turn: the chat stops working and the message goes back to the box (#2828)", () => {
