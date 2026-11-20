@@ -94,6 +94,12 @@ export interface ChatNotice {
   readonly share?: { readonly id: string; readonly url: string | null; readonly ended: boolean };
   /** The chat could not open: the row offers Try again (`reopen`) or New chat (`new-chat`). */
   readonly action?: "reopen" | "new-chat";
+  /**
+   * Notices of one group replace each other: the chat keeps only the latest. omp re-announces the tools it mounts under
+   * `xd://` (`source: "xdev"`, a list of every MCP tool) whenever its tools change, which filled a chat with dozens of
+   * identical rows.
+   */
+  readonly group?: "xdev";
 }
 
 /**
@@ -1052,9 +1058,11 @@ export class ChatStore {
         return false;
       case "notice": {
         // omp's out-of-band notices, as its TUI shows them: an error (the session or a side answer could not be saved)
-        // stays in the transcript until dismissed; anything else passes as a toast, unless it is too long for one.
+        // stays in the transcript until dismissed; the tools omp mounts under `xd://` are one dim line, replaced by its
+        // next announcement; anything else passes as a toast, unless it is too long for one.
         const text = event.source ? `${event.source}: ${event.message}` : event.message;
         if (event.level === "error") this.#notify(text, "error");
+        else if (event.source === "xdev") this.#notify(text, "status", "xdev");
         else this.#showToast(text, event.level);
         return false;
       }
@@ -1118,8 +1126,18 @@ export class ChatStore {
     }
   }
 
-  #notify(text: string, level: ChatNotice["level"]): void {
-    this.#notices = [...this.#notices, { id: (this.#notices.at(-1)?.id ?? 0) + 1, text, level }];
+  #notify(text: string, level: ChatNotice["level"], group?: ChatNotice["group"]): void {
+    const kept =
+      group === undefined
+        ? this.#notices
+        : this.#notices.filter((notice) => notice.group !== group);
+    const notice: ChatNotice = {
+      id: (this.#notices.at(-1)?.id ?? 0) + 1,
+      text,
+      level,
+      ...(group ? { group } : {}),
+    };
+    this.#notices = [...kept, notice];
   }
 
   /** Adds a finished message from the live stream, unless the transcript already holds it (read from the file). */

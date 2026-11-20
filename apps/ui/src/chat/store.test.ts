@@ -600,6 +600,28 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().notices).toHaveLength(3);
   });
 
+  test("omp's re-announced mounted tools stay one line, the latest, and leave the chat's other notices alone", () => {
+    const store = new ChatStore();
+    const calendar = "mounted mcp__google_calendar_create_event, mcp__google_calendar_delete_event";
+    const siyuan = `mounted ${Array.from({ length: 30 }, (_, index) => `mcp__siyuan_tool_${index}`).join(", ")}`;
+    store.apply(event({ type: "command_output", text: "Active tools: bash, read" }));
+    for (let round = 0; round < 6; round += 1) {
+      store.apply(event({ type: "notice", level: "info", message: calendar, source: "xdev" }));
+      store.apply(event({ type: "notice", level: "info", message: siyuan, source: "xdev" }));
+    }
+    expect(store.getSnapshot().notices.map(({ text, level }) => `${level}: ${text}`)).toEqual([
+      "output: Active tools: bash, read",
+      `status: xdev: ${siyuan}`,
+    ]);
+    // A short announcement is a row too, so a long one before it never lingers.
+    store.apply(
+      event({ type: "notice", level: "info", message: "unmounted mcp__x", source: "xdev" }),
+    );
+    expect(store.getSnapshot().notices.at(-1)?.text).toBe("xdev: unmounted mcp__x");
+    expect(store.getSnapshot().notices).toHaveLength(2);
+    expect(store.getSnapshot().toast).toBeNull();
+  });
+
   test("one toast at a time: a newer one takes its place, and only its own time ends it", () => {
     const store = new ChatStore();
     store.apply(event({ type: "ui_notify", message: "Reloaded" }));
