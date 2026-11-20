@@ -1,4 +1,5 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
+import { splitAppNotice } from "@omp-app/contracts";
 import { Check, Copy, Pencil } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,15 +13,21 @@ import { writeClipboard } from "../clipboard";
 import { useLongPress } from "../longPress";
 import { usePhone } from "../phone";
 
-/** The text of one of your messages; null for every other entry. */
+/**
+ * The text of one of your messages; null for every other entry, notices included: a message something else put into
+ * the chat (`splitAppNotice`) is not yours to copy, edit, recall with Up or name the chat by.
+ */
 export function userText(entry: SessionEntry): string | null {
   if (entry.type !== "message" || entry.message.role !== "user") return null;
   const { content } = entry.message;
-  if (typeof content === "string") return content;
-  return content
-    .flatMap((block) => (block.type === "text" ? [block.text] : []))
-    .join("\n")
-    .trim();
+  const text =
+    typeof content === "string"
+      ? content
+      : content
+          .flatMap((block) => (block.type === "text" ? [block.text] : []))
+          .join("\n")
+          .trim();
+  return splitAppNotice(text) === null ? text : null;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
+import { withAppNotice } from "@omp-app/contracts";
 import { FoldContext, NO_FOLDS } from "../../lib/fold";
 import { EntryRow } from "./Transcript";
 
@@ -55,5 +56,33 @@ describe("an agent's message in the transcript", () => {
 		expect(opened).toContain("chat_list_switch");
 		const folded = draw(agentMessage(LONG), { open: false, epoch: 2 });
 		expect(folded).not.toContain("chat_list_switch");
+	});
+});
+
+/** A user message as omp's file holds it. */
+function userMessage(text: string): SessionEntry {
+	return {
+		type: "message",
+		id: "entry-2",
+		parentId: null,
+		timestamp: "2026-11-20T06:00:00.000Z",
+		message: { role: "user", content: [{ type: "text", text }], timestamp: 0 },
+	} as unknown as SessionEntry;
+}
+
+describe("a notice put into the chat by something other than the person", () => {
+	test("is a notice under its source's name, not the person's message", () => {
+		const html = draw(userMessage(withAppNotice("issue-watch", "New issue #43 & <more>")));
+		expect(html).toContain("From the issue watcher");
+		expect(html).toContain("New issue #43 &amp; &lt;more&gt;");
+		expect(html).toContain("tr-row--custom");
+		expect(html).not.toContain("tr-row--user");
+		expect(html).not.toContain("app-notice source");
+	});
+
+	test("the person's own message stays theirs, also when it quotes a notice", () => {
+		const html = draw(userMessage(`look:\n\n${withAppNotice("wake", "hi")}`));
+		expect(html).toContain("tr-row--user");
+		expect(html).not.toContain("Scheduled wake-up");
 	});
 });

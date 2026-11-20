@@ -101,13 +101,18 @@ realTest.describe("questions omp asks without waiting", () => {
         transcript(page).getByText("Answers to your questions", { exact: false }),
       ).toHaveCount(0);
 
-      // One message from the person: the recommended choice as it was left, its note and the days; the skipped
-      // question has no line in it (the message names each question it answers as `"<question>" (<id>):`).
+      // One notice with the person's answers, not a message they typed: the recommended choice as it was left, its
+      // note and the days; the skipped question has no line in it (the notice names each question it answers as
+      // `"<question>" (<id>):`).
       await send.click();
       const message = transcript(page)
         .locator(".tl-item")
         .filter({ hasText: "Answers to your questions:" });
       await expect(message).toHaveCount(1, { timeout: 60_000 });
+      await expect(message).toContainText("Your answers from Questions");
+      await expect(message.locator(".tr-row--custom")).toHaveCount(1);
+      await expect(message.locator(".tr-row--user")).toHaveCount(0);
+      await expect(message.getByRole("button", { name: "Edit" })).toHaveCount(0);
       await expect(message).toContainText('"Publish" (publish):');
       await expect(message).toContainText("Public copy");
       await expect(message).toContainText("Note: keep issues off");

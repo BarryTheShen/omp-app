@@ -1,5 +1,6 @@
 import {
   type SentFile,
+  splitAppNotice,
   splitAttached,
   splitHostContext,
   type TaskWhen,
@@ -431,13 +432,16 @@ export const Composer = memo(function Composer({
 
   /**
    * Messages that came back to the box (Edit, Stop's queue, a queued message taken back, a message Stop dropped): their
-   * text joins what the box holds, and their pictures and files come back as attachments, not as text.
+   * text joins what the box holds, and their pictures and files come back as attachments, not as text. A notice
+   * (`splitAppNotice`) that Stop took out of the queue does not: it is not yours to send again as your words.
    */
   const restoreMessages = (
     messages: readonly { readonly text: string; readonly images?: readonly ChatHostImage[] }[],
   ): void => {
     // What was open in the app that embeds the panel goes again with the next message: only what was typed comes back.
-    const parts = messages.map((message) => splitAttached(splitHostContext(message.text).text));
+    const parts = messages
+      .filter((message) => splitAppNotice(message.text) === null)
+      .map((message) => splitAttached(splitHostContext(message.text).text));
     update(
       withRestored(
         parts.map((part) => part.text),

@@ -113,16 +113,33 @@ export interface NoticeView {
 	readonly rows: readonly ProcessRow[];
 	/** Markdown under the heading. */
 	readonly body: string;
+	/** Shown whole however long: a notice's text is meant to be read (the person's answers among them). */
+	readonly whole?: boolean;
 }
 
 /** omp's cut for a tangent's work (`packages/tui/src/chat/background-tan-message.ts`): 56 characters, an ellipsis last. */
 const TANGENT_PREVIEW = 56;
+
+/** omp-app: the headings of notices from known sources (`splitAppNotice`); others read "Notice from <source>". */
+const APP_NOTICE_SOURCES: Readonly<Record<string, string>> = {
+	questions: "Your answers from Questions",
+	"issue-watch": "From the issue watcher",
+	wake: "Scheduled wake-up",
+};
 
 export function describeNotice(customType: string, details: unknown, text: string): NoticeView {
 	const record = asRecord(details);
 	const said = (key: string): string | undefined => textOf(record?.[key])?.trim() || undefined;
 	const note = (heading: string, body: string): NoticeView => ({ known: true, heading, rows: [], body });
 	switch (customType) {
+		case "app-notice": {
+			// omp-app: a message put into the chat by something other than the person (`splitAppNotice`).
+			const source = said("source") ?? "";
+			return {
+				...note(APP_NOTICE_SOURCES[source] ?? `Notice from ${source || "the app"}`, text),
+				whole: true,
+			};
+		}
 		case "irc:incoming": {
 			const from = said("from");
 			return note(

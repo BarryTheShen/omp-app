@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ids": "./src/core/ids.ts",
+    "./app-notice": "./src/core/app-notice.ts",
     "./chat-host": "./src/chat-host/protocol.ts",
     "./chat-host/args": "./src/chat-host/args.ts"
   },
