@@ -49,8 +49,9 @@ use crate::remote;
 use crate::webdata;
 use crate::windows;
 
-/// The sidecar's file name: the bundler installs it next to the window binary under this name.
-const SIDECAR: &str = "omp-app-desktop-server";
+/// The server's file name in the app's resource folder (`/usr/lib/omp-app-desktop`), beside the chat host and omp's
+/// native addon files, which both load from their own folder.
+const SERVER: &str = "omp-app-desktop-server";
 /// The port the server is asked for: 4317, the one the `omp-app` command and the user service ask for, so the window's
 /// address, and with it the web app's stored settings, is the same whichever of them started the server. If it is busy,
 /// the server picks a free port itself, as it does for the command.
@@ -583,6 +584,7 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
     let resources = paths.resource_dir().map_err(|error| error.to_string())?;
     let ui_root = resources.join("ui");
     let chat_host = resources.join("chat-host");
+    let server = resources.join(SERVER);
     // The server would fall back to other folders if these were missing; that must not happen.
     if !ui_root.join("index.html").is_file() {
         return Err(format!("the web app is not in {}", ui_root.display()));
@@ -593,12 +595,10 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
             chat_host.display()
         ));
     }
-    let sidecar = std::env::current_exe()
-        .map_err(|error| error.to_string())?
-        .parent()
-        .ok_or("the app's folder was not found")?
-        .join(SIDECAR);
-    let mut command = StdCommand::new(&sidecar);
+    if !server.is_file() {
+        return Err(format!("the app's server is not at {}", server.display()));
+    }
+    let mut command = StdCommand::new(&server);
     command
         .args([folder.as_os_str(), OsStr::new("--no-open")])
         .current_dir(&folder)

@@ -4,8 +4,9 @@
  * - precompiled bytecode, code splitting, names kept, omp's JSON-parse plugin and fetch user agent;
  * - omp's build constants: `PI_COMPILED` and `PI_DOCS_EMBED` (the package's shipped docs index);
  * - omp's external runtime dependencies (`COMPILED_EXTERNAL_DEPENDENCIES`), which omp installs on demand;
- * - the native addon embedded, as omp's `natives/scripts/embed-native.ts` does, read from the installed
- *   `@oh-my-pi/pi-natives-linux-x64` (`native-addon.ts`), and the stats dashboard embedded, as omp's `gen:stats` does;
+ * - omp's native addon written next to the program (`native-addon.ts`: one file per CPU variant, loaded from the
+ *   program's folder; omp's own binary embeds it, which put four copies in the desktop package), and the stats
+ *   dashboard embedded, as omp's `gen:stats` does;
  * - omp's legacy-module registry (`omp-legacy-pi-modules`), which a compiled omp loads before any extension: built from
  *   the installed packages, as omp's `scripts/legacy-pi-virtual-module.ts` builds it from its monorepo;
  * - on the Bun omp's release is built with. On the test machine's Bun 1.3.14 each chat kept about 130 MB more memory (SDK plan, H0).
@@ -20,7 +21,7 @@ import { readdir, readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { CHAT_HOST_BUN_VERSION } from "./chat-host-bun";
-import { embeddedNativeAddon } from "./native-addon";
+import { installNativeAddons } from "./native-addon";
 
 if (Bun.version !== CHAT_HOST_BUN_VERSION) {
   console.error(
@@ -244,7 +245,7 @@ const output = await Bun.build({
   entrypoints: [join(import.meta.dir, "../src/chat-host/main.ts")],
   // omp's own (COMPILED_EXTERNAL_DEPENDENCIES): native runtime dependencies come from omp's on-demand install.
   external: ["@huggingface/transformers", "fastembed", "onnxruntime-node"],
-  files: { ...(await embeddedNativeAddon(packageDir)), ...(await embeddedStatsDashboard()) },
+  files: await embeddedStatsDashboard(),
   define: {
     "process.env.PI_COMPILED": JSON.stringify("true"),
     "process.env.PI_DOCS_EMBED": JSON.stringify(docsEmbed),
@@ -271,3 +272,4 @@ if (!output.success) {
   process.exit(1);
 }
 console.log(`chat host compiled: ${outfile}`);
+await installNativeAddons(packageDir, dirname(outfile));
