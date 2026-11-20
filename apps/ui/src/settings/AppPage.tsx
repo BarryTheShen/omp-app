@@ -6,6 +6,7 @@ import { KeyList } from "../palette/Shortcuts";
 import { usePhone } from "../phone";
 import { ThemeGallery } from "../theme/ThemeGallery";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
+import { AppVersionSection } from "./AppVersionSection";
 import { DebugLog } from "./DebugLog";
 import { Devices } from "./Devices";
 import { OmpSection } from "./OmpSection";
@@ -34,9 +35,10 @@ export function AppPage({
       <p className="pt-5 text-xs text-t3">App</p>
       <h2 className="mt-1 text-lg font-medium text-t1">App</h2>
       <p className="mt-1 text-sm text-t2">
-        How this app looks, the server it is connected to, the omp it runs, the devices paired with
-        it, its debug log, and its keys.
+        Its version, how it looks, the server it is connected to, the omp it runs, the devices
+        paired with it, its debug log, and its keys.
       </p>
+      <AppVersionSection client={client} />
       {phone && (
         <button
           type="button"

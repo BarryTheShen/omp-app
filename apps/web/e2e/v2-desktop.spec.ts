@@ -48,6 +48,7 @@ const fakeWindow = (target: Page) =>
               return new TextEncoder().encode(file.text).buffer;
             }
             if (command === "servers") return servers;
+            if (command === "plugin:app|version") return "0.3.1675";
             if (command === "check_server") return args?.host === "lab.tail1234.ts.net";
             if (command === "forget_server" && args?.host === servers.current)
               throw "This window shows that server; open another one first.";
@@ -156,6 +157,28 @@ realTest.describe("new UI in the desktop window", () => {
         "list_clipboard_files",
         "read_clipboard_file",
       ]);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "Settings → App says first which omp-app the server runs, and in the window which the desktop app is",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
+      await settingsButton(page).click();
+      const version = appSettings(page).getByRole("region", { name: "omp-app" });
+      // The test server runs from source; the desktop app answers its release.
+      await expect(version).toContainText("This server runs a development build of omp-app.");
+      await expect(version).toContainText("This desktop app is omp-app 0.3.1675.");
+      expect(await windowCalls(page)).toContainEqual(["plugin:app|version", null]);
+      // Outside the window, only the server's.
+      const browser = await realApp.open({ path: "/" });
+      await browser.getByRole("button", { name: "Settings", exact: true }).click();
+      const plain = browser
+        .getByRole("dialog", { name: "Settings" })
+        .getByRole("region", { name: "omp-app" });
+      await expect(plain).toContainText("This server runs a development build of omp-app.");
+      await expect(plain).not.toContainText("desktop app");
       expect(realApp.problems).toEqual([]);
     },
   );
