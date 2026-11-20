@@ -62,7 +62,36 @@ const GuardStateBody = z.object({
   changed: z.array(z.string()),
   removed: z.array(z.string()).default([]),
   sudoUntil: z.string().nullable(),
+  /** Agents' folder requests waiting for the person, and the shared folders (PLAN §7d); a guard before them has none. */
+  asks: z
+    .array(
+      z.object({
+        id: z.string(),
+        path: z.string(),
+        write: z.boolean(),
+        why: z.string(),
+        server: z.string().nullable(),
+      }),
+    )
+    .default([]),
+  shared: z
+    .array(
+      z.object({
+        path: z.string(),
+        place: z.string(),
+        write: z.boolean(),
+        server: z.string().nullable(),
+        grantedAt: z.string(),
+      }),
+    )
+    .default([]),
 });
+
+/** Agents' folder requests waiting for the person, and the folders shared with agents. */
+export interface Folders {
+  readonly asks: z.infer<typeof GuardStateBody>["asks"];
+  readonly shared: z.infer<typeof GuardStateBody>["shared"];
+}
 
 /** What the wrapper told the guard, as the guard passes it on. */
 const WrapperEvent = z.discriminatedUnion("type", [
@@ -104,8 +133,9 @@ export interface AgentOptions {
 export type AgentEvent =
   | { readonly type: "state"; readonly state: AccessState; readonly linked: boolean }
   | { readonly type: "wrapper"; readonly event: WrapperEvent }
-  /** Something the person should hear about: sudo allowed, the summary when access turns off. */
-  | { readonly type: "notice"; readonly text: string };
+  /** Something the person should hear about: sudo allowed, a folder request, the summary when access turns off. */
+  | { readonly type: "notice"; readonly text: string }
+  | { readonly type: "folders"; readonly folders: Folders };
 
 /** What happened while access was on, for the summary at off. */
 interface Tally {
@@ -157,6 +187,9 @@ export class Agent {
   #sudoTold: string | null = null;
   /** What this computer can reach, read when access turned on; empty while off. */
   #reach: readonly string[] = [];
+  #folders: Folders = { asks: [], shared: [] };
+  /** Folder requests already told about. */
+  #asksTold = new Set<string>();
 
   private constructor(options: AgentOptions) {
     this.#options = options;
@@ -339,6 +372,11 @@ export class Agent {
     return this.#review;
   }
 
+  /** Agents' folder requests waiting for the person, and the shared folders, as the guard last said. */
+  get folders(): Folders {
+    return this.#folders;
+  }
+
   /**
    * The linked server's host, for the guard to name in its password dialog: from this agent's own record of the link,
    * never from whoever asks. Left out when it is not in the letters the guard takes (the dialog then says "omp-app"),
@@ -429,6 +467,27 @@ export class Agent {
     return answer.ok ? null : answer.reason;
   }
 
+  /** Allows an agent's folder request (`callerPid` asks the password), to read it or also to change it. */
+  async allowFolder(callerPid: number, id: string, write: boolean): Promise<string | null> {
+    const answer = await guardRequest(
+      this.#options.guardSocket,
+      { op: "allow-folder", pid: callerPid, id, write, ...this.#server() },
+      PASSWORD_WAIT_MS,
+    );
+    return answer.ok ? null : answer.reason;
+  }
+
+  async denyFolder(id: string): Promise<string | null> {
+    const answer = await guardRequest(this.#options.guardSocket, { op: "deny-folder", id });
+    return answer.ok ? null : answer.reason;
+  }
+
+  /** Stops sharing a folder; unmounted at once. */
+  async removeFolder(path: string): Promise<string | null> {
+    const answer = await guardRequest(this.#options.guardSocket, { op: "remove-folder", path });
+    return answer.ok ? null : answer.reason;
+  }
+
   /** Hears every state change and what each session shows; returns what stops it. */
   watch(listener: (event: AgentEvent) => void): () => void {
     this.#watchers.add(listener);
@@ -444,6 +503,22 @@ export class Agent {
     this.#tell({ type: "notice", text });
     const tell = this.#options.tellTerminals ?? tellTerminals;
     void tell(text);
+  }
+
+  /** The guard's requests and shared folders: watchers hear of a change, and the person of each new request. */
+  #takeFolders(folders: Folders): void {
+    if (JSON.stringify(folders) === JSON.stringify(this.#folders)) return;
+    this.#folders = folders;
+    this.#tell({ type: "folders", folders });
+    for (const ask of folders.asks) {
+      if (this.#asksTold.has(ask.id)) continue;
+      this.#asksTold.add(ask.id);
+      this.#notice(
+        `An agent asks to ${ask.write ? "read and change" : "read"} ${ask.path}${ask.why === "" ? "" : `: ${ask.why}`}. Allow or deny it in Agent access.`,
+      );
+    }
+    const waiting = new Set(folders.asks.map((ask) => ask.id));
+    for (const id of this.#asksTold) if (!waiting.has(id)) this.#asksTold.delete(id);
   }
 
   #setState(state: AccessState): void {
@@ -534,6 +609,7 @@ export class Agent {
       const review = { pending: state.data.reviewPending, changed: state.data.changed };
       const reviewChanged = review.pending !== this.#review.pending;
       this.#review = review;
+      this.#takeFolders({ asks: state.data.asks, shared: state.data.shared });
       if (!state.data.on) this.#stopping = false;
       // On at the guard, but neither on here nor being turned on or off here: this agent restarted while access was on.
       // Nothing here shows or controls that access any more, so it goes off.

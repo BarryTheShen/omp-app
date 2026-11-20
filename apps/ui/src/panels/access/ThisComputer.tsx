@@ -16,10 +16,31 @@ interface Here {
   readonly name: string;
 }
 
-/** What this computer's agent says of itself (`access_status`): the switch, and the review its guard holds. */
+/** An agent's request for one of the person's folders, waiting for them (PLAN §7d). */
+interface FolderAsk {
+  readonly id: string;
+  readonly path: string;
+  readonly write: boolean;
+  readonly why: string;
+}
+
+/** A folder shared with agents: reachable while access is on. */
+interface SharedFolder {
+  readonly path: string;
+  readonly write: boolean;
+}
+
+/**
+ * What this computer's agent says of itself (`access_status`): the switch, the review its guard holds, and agents'
+ * folder requests and shared folders (an agent of before has none).
+ */
 interface Status {
   readonly state: AccessState;
   readonly review: { readonly pending: boolean; readonly changed: readonly string[] };
+  readonly folders?: {
+    readonly asks: readonly FolderAsk[];
+    readonly shared: readonly SharedFolder[];
+  };
 }
 
 /** What setup or remove did: what stands in the way, and each change made to the computer. */
@@ -207,7 +228,7 @@ export function ThisComputer({
       let stateChanged = false;
       for (const { n, event } of events as { n: number; event: Record<string, unknown> }[]) {
         after.current = n;
-        if (event.type === "state") stateChanged = true;
+        if (event.type === "state" || event.type === "folders") stateChanged = true;
         if (event.type !== "wrapper") continue;
         const each = event.event as {
           type: string;
@@ -342,6 +363,8 @@ export function ThisComputer({
 
   const state = status?.state ?? null;
   const reviewing = status?.review.pending === true;
+  const asks = controls ? (status?.folders?.asks ?? []) : [];
+  const shared = controls ? (status?.folders?.shared ?? []) : [];
   const waiting = busy !== null;
   // Remove is for any computer set up here, whichever server it is linked to.
   const removable = here.setUp;
@@ -373,6 +396,73 @@ export function ThisComputer({
           Allow this server's agents to work on this computer while agent access is turned on. Setup
           requires an administrator password once.
         </p>
+      )}
+      {asks.length > 0 && (
+        <div className="mt-2">
+          <h4 className="text-xs font-medium text-t2">Folder requests</h4>
+          <ul aria-label="Folder requests" className="mt-1 flex flex-col gap-2">
+            {asks.map((ask) => (
+              <li
+                key={ask.id}
+                aria-label={`Request for ${ask.path}`}
+                className="rounded-md border border-l2 px-3 py-2 text-xs"
+              >
+                <p className="text-t2 [overflow-wrap:anywhere]">
+                  An agent asks to {ask.write ? "read and change" : "read"} the files in{" "}
+                  <code className="text-t1">{ask.path.replace(REORDERING, "")}</code>.
+                </p>
+                {ask.why !== "" && (
+                  <p className="mt-1 text-t3 [overflow-wrap:anywhere]">
+                    Reason given: {ask.why.replace(REORDERING, "")}
+                  </p>
+                )}
+                {ask.write && (
+                  <p className="mt-1 text-t3">
+                    Changed files can include ones that run later, such as a project's scripts or
+                    Git hooks.
+                  </p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    className={WRAPS}
+                    disabled={waiting}
+                    onClick={() =>
+                      act("access_allow_folder", WAITING_FOR_PASSWORD, { id: ask.id, write: false })
+                    }
+                  >
+                    {ask.write ? "Allow reading only" : "Allow"}
+                  </Button>
+                  {ask.write && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={WRAPS}
+                      disabled={waiting}
+                      onClick={() =>
+                        act("access_allow_folder", WAITING_FOR_PASSWORD, {
+                          id: ask.id,
+                          write: true,
+                        })
+                      }
+                    >
+                      Allow reading and changes
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="max-sm:h-11"
+                    disabled={waiting}
+                    onClick={() => act("access_deny_folder", "Denying…", { id: ask.id })}
+                  >
+                    Deny
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {controls && reviewing && (
         <div className="mt-2 text-xs">
@@ -490,6 +580,38 @@ export function ThisComputer({
               </li>
             ))}
           </ol>
+        </div>
+      )}
+      {shared.length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-xs font-medium text-t2">Shared folders</h4>
+          <p className="mt-0.5 text-xs text-t3">
+            Agents can use these folders while agent access is on.
+          </p>
+          <ul aria-label="Shared folders" className="mt-1 flex flex-col gap-1">
+            {shared.map((folder) => (
+              <li key={folder.path} className="flex items-center gap-2 text-xs">
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                  <code className="block text-t1">{folder.path.replace(REORDERING, "")}</code>
+                  <span className="block text-t3">
+                    {folder.write ? "Read and change" : "Read only"}
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="max-sm:h-11"
+                  aria-label={`Stop sharing ${folder.path}`}
+                  disabled={waiting}
+                  onClick={() =>
+                    act("access_remove_folder", "Removing the folder…", { path: folder.path })
+                  }
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {removable && state?.on !== true && (

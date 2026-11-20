@@ -15,6 +15,8 @@ export const PATHS = {
   hostKeyDir: "/etc/omp-app-device-host",
   hostKey: "/etc/omp-app-device-host/host_ed25519",
   stateDir: "/var/lib/omp-app-device",
+  /** The person's shared folders (the guard's `shared.json`): removing agent access forgets them. */
+  sharedFolders: "/var/lib/omp-app-device/shared.json",
   logDir: "/var/log/omp-app-device",
   logrotate: "/etc/logrotate.d/omp-app-device",
   agentHome: "/var/lib/omp-agent",

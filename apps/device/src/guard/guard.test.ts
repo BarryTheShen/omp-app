@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { SystemAgentAccount } from "./account";
@@ -18,6 +18,7 @@ import {
   type WrapperEvent,
 } from "./guard";
 import { ChildLauncher } from "./launcher";
+import { SharedFolders } from "./shared";
 import { REQUIRED_SETTINGS, sessionConfig } from "./sshd-config";
 
 const OPENSSH = process.env.OMP_APP_DEVICE_TEST_OPENSSH ?? "";
@@ -45,12 +46,16 @@ const keygen = async (path: string) => {
   return (await readFile(`${path}.pub`, "utf8")).trim();
 };
 
-/** `verify` answers the password check (a function to hold it); `grantMs` makes writing a sudo grant take that long. */
+/**
+ * `verify` answers the password check (a function to hold it); `grantMs` makes writing a sudo grant take that long;
+ * `askMs` gives the guard folder sharing, with a person's home of the test's own and mounts only noted.
+ */
 async function setUp(
   verify:
     | boolean
     | ((pid: number, action: GuardAction, message: string) => Promise<boolean>) = true,
   grantMs = 0,
+  askMs?: number,
 ) {
   dir = await mkdtemp(join(BASE, "guard-"));
   const hostKey = join(dir, "host_ed25519");
@@ -65,6 +70,39 @@ async function setUp(
   // atrm, loginctl) are only noted: they would act on the test runner's own account.
   const commands: string[] = [];
   const passwd = join(dir, "passwd");
+  // The person's home, with a folder to share and a secret one; mounts are only noted (they need root).
+  const personHome = join(dir, "person");
+  for (const each of ["projects/app", ".ssh"])
+    await mkdir(join(personHome, each), { recursive: true });
+  const shareRoot = join(dir, "run", "shared");
+  const mounted = new Set<string>();
+  const mountCalls: string[] = [];
+  const folders =
+    askMs === undefined
+      ? {}
+      : {
+          folders: {
+            shared: new SharedFolders(join(dir, "state", "shared.json")),
+            person: { home: await realpath(personHome), uid: process.getuid?.() ?? 0 },
+            root: shareRoot,
+            askMs,
+            mounter: {
+              mount: async (source: string, target: string, write: boolean) => {
+                mountCalls.push(`mount ${source} ${target} ${write ? "rw" : "ro"}`);
+                mounted.add(target);
+                return null;
+              },
+              unmount: async (target: string) => {
+                mountCalls.push(`unmount ${target}`);
+                mounted.delete(target);
+              },
+              mounted: async (root: string) =>
+                [...mounted]
+                  .filter((each) => each.startsWith(`${root}/`))
+                  .sort((a, b) => b.length - a.length),
+            },
+          },
+        };
   await Bun.write(passwd, `${account}:x:1000:1000::${join(dir, "home")}:/bin/sh\n`);
   guard = new Guard({
     runDir: join(dir, "run"),
@@ -109,6 +147,7 @@ async function setUp(
       sleepLock.push("held");
       return () => sleepLock.push("released");
     },
+    ...folders,
   });
   await guard.start();
   await Bun.write(join(dir, "known_hosts"), `device ${hostPublic}\n`);
@@ -161,6 +200,9 @@ async function setUp(
       stderr: "pipe",
     });
   return {
+    personHome: await realpath(personHome),
+    shareRoot,
+    mountCalls,
     clientPublic,
     events,
     logged,
@@ -614,5 +656,102 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     expect(refused).toContain("omp-app-device acknowledge");
     expect(await h.guard.acknowledge(process.pid)).toBeNull();
     expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
+  });
+
+  test("an agent asks for a folder from its session: it waits for the person, is mounted while on, and covered, secret, denied, ended and removed requests are answered (PLAN §7d)", async () => {
+    const messages: string[] = [];
+    const h = await setUp(
+      async (_pid, action, message) => {
+        messages.push(`${action}: ${message}`);
+        return true;
+      },
+      0,
+      60_000,
+    );
+    const ASK = `${BUN} ${join(import.meta.dir, "../main.ts")} ask-folder`;
+    /** `omp-app-device ask-folder` run in a session, as an agent runs it. */
+    const ask = (stream: number, args: string) => {
+      const proc = h.ssh(stream, `${ASK} ${args}`);
+      return (async () => {
+        const [out, err, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        return { code, out: out.trim(), err };
+      })();
+    };
+    const waiting = async () => {
+      for (let tries = 0; tries < 100 && h.guard.state().asks.length === 0; tries += 1)
+        await Bun.sleep(100);
+      const [asked] = h.guard.state().asks;
+      if (asked === undefined) throw new Error("no request reached the guard");
+      return asked;
+    };
+    const workspace = join(h.personHome, "projects");
+    const mountedAt = join(h.shareRoot, "projects");
+    expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
+
+    // Asked to change files, with a control character in the reason; the person allows reading only.
+    const first = ask(1, `'~/projects' --write --why 'Read the build'$'\\a'' logs'`);
+    const asked = await waiting();
+    expect(asked).toMatchObject({ path: workspace, write: true, why: "Read the build  logs" });
+    expect(await h.guard.allowFolder(process.pid, asked.id, false, "server.example")).toBeNull();
+    expect(messages.at(-1)).toBe(
+      `share-folder: Agents of the omp-app server server.example will be able to read the files in ${workspace} whenever agent access is on, until you remove it from Shared folders.`,
+    );
+    const allowed = await first;
+    expect(allowed).toMatchObject({ code: 0, out: mountedAt });
+    expect(allowed.err).toContain("(read only)");
+    expect(h.mountCalls).toEqual([`mount ${workspace} ${mountedAt} ro`]);
+    expect(h.guard.state().shared).toMatchObject([
+      { path: workspace, place: "projects", write: false },
+    ]);
+
+    // A folder inside it is reachable already; to change it, or a secret folder, is refused at once.
+    expect(await ask(2, `${workspace}/app`)).toMatchObject({
+      code: 0,
+      out: join(mountedAt, "app"),
+    });
+    const inside = await ask(2, `${workspace}/app --write`);
+    expect(inside.code).toBe(1);
+    expect(inside.err).toContain("shared read only");
+    const secret = await ask(3, "'~/.ssh'");
+    expect(secret.code).toBe(1);
+    expect(secret.err).toContain("~/.ssh");
+    expect(h.mountCalls).toHaveLength(1);
+
+    // Off unmounts it, and the next turn-on mounts it again before any session.
+    await h.guard.off();
+    expect(h.mountCalls.at(-1)).toBe(`unmount ${mountedAt}`);
+    expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
+    expect(h.mountCalls.at(-1)).toBe(`mount ${workspace} ${mountedAt} ro`);
+
+    // Denied; then a request still waiting at off is answered.
+    const denied = ask(4, `${workspace} --write`);
+    expect(h.guard.denyFolder((await waiting()).id)).toBeNull();
+    expect(await denied).toMatchObject({ code: 1 });
+    expect((await denied).err).toContain("did not allow");
+    // A request still waiting at off: the session ends with it, and the request is gone.
+    const ended = ask(5, `${workspace} --write`);
+    await waiting();
+    await h.guard.off();
+    expect((await ended).code).not.toBe(0);
+    expect(h.guard.state().asks).toEqual([]);
+
+    // To change files, allowed: mounted again, for writing; Remove unmounts it and forgets it.
+    expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
+    const writes = ask(6, `${workspace} --write`);
+    expect(await h.guard.allowFolder(process.pid, (await waiting()).id, true)).toBeNull();
+    expect(messages.at(-1)).toContain("will be able to read and change the files in");
+    expect((await writes).err).toContain("(read and change)");
+    expect(h.mountCalls.slice(-2)).toEqual([
+      `unmount ${mountedAt}`,
+      `mount ${workspace} ${mountedAt} rw`,
+    ]);
+    expect(await h.guard.removeFolder(workspace)).toBeNull();
+    expect(h.mountCalls.at(-1)).toBe(`unmount ${mountedAt}`);
+    expect(h.guard.state().shared).toEqual([]);
+    expect(await h.guard.removeFolder(workspace)).toBe("that folder is not shared");
   });
 });

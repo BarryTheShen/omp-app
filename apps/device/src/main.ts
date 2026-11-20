@@ -11,10 +11,14 @@
 export {};
 
 const part = process.argv[2];
-if (part === "guard" || part === "wrapper") {
+if (part === "guard" || part === "wrapper" || part === "ask-folder") {
   // The part reads its own arguments from argv[2] on, as when it ran alone.
   process.argv.splice(2, 1);
-  await (part === "guard" ? import("./guard/main") : import("./wrapper/main"));
+  await (part === "guard"
+    ? import("./guard/main")
+    : part === "wrapper"
+      ? import("./wrapper/main")
+      : import("./ask/main"));
 } else if (part === "setup" || part === "remove") {
   await import("./install/main");
 } else {

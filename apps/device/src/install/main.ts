@@ -444,12 +444,13 @@ if (foreign === null)
     }
   }
 // What setup made, except the access log and any pending review (state): the record of what agents did, and the
-// hold on the next turn-on after a sudo grant, stay until the package is purged. The sudo rule always goes; the
-// account's home only with the account.
+// hold on the next turn-on after a sudo grant, stay until the package is purged. The sudo rule and the shared folders
+// always go (the guard unmounted them when it stopped); the account's home only with the account.
 for (const path of [
   PATHS.settingsDir,
   PATHS.hostKeyDir,
   PATHS.sudoersDropIn,
+  PATHS.sharedFolders,
   ...(foreign === null ? [PATHS.agentHome] : []),
 ]) {
   // A link in place of one of them is removed itself, never followed.

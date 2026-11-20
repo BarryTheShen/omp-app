@@ -28,6 +28,17 @@ const Request = z.discriminatedUnion("op", [
     pid: z.number().int().positive(),
     minutes: z.number().int().min(1).max(30),
   }),
+  z.strictObject({
+    op: z.literal("allow-folder"),
+    pid: z.number().int().positive(),
+    id: z.string().regex(/^[0-9a-f]{16}$/),
+    write: z.boolean(),
+  }),
+  z.strictObject({ op: z.literal("deny-folder"), id: z.string().regex(/^[0-9a-f]{16}$/) }),
+  z.strictObject({
+    op: z.literal("remove-folder"),
+    path: z.string().startsWith("/").max(4_096),
+  }),
   z.strictObject({ op: z.literal("watch") }),
   /** Enrolls the running agent itself, so it links at the next turn-on without a restart. */
   z.strictObject({
@@ -55,6 +66,7 @@ export function agentStatus(agent: Agent): object {
     leftSeconds: leftSeconds(agent.state),
     linked: agent.linked,
     review: agent.review,
+    folders: agent.folders,
   };
 }
 
@@ -105,6 +117,15 @@ export async function serveControl(path: string, agent: Agent): Promise<() => vo
             return;
           case "sudo":
             void agent.sudo(request.pid, request.minutes).then(answer);
+            return;
+          case "allow-folder":
+            void agent.allowFolder(request.pid, request.id, request.write).then(answer);
+            return;
+          case "deny-folder":
+            void agent.denyFolder(request.id).then(answer);
+            return;
+          case "remove-folder":
+            void agent.removeFolder(request.path).then(answer);
             return;
           case "enroll":
             void agent

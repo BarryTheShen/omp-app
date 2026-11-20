@@ -27,6 +27,9 @@ fn main() {
             "access_sudo",
             "access_events",
             "access_remove",
+            "access_allow_folder",
+            "access_deny_folder",
+            "access_remove_folder",
         ]),
     ))
     .unwrap();

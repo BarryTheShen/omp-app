@@ -14,6 +14,7 @@
  */
 import { appendFileSync, readFileSync, statSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
 import { watchLock } from "../agent/lock-watch";
 import {
@@ -27,6 +28,7 @@ import { SystemAgentAccount, systemSshdProblem } from "./account";
 import { Guard, type GuardAction, LONGEST_ON_MINUTES } from "./guard";
 import { SliceLauncher } from "./launcher";
 import { HOME_STARTUP_PATHS, persistencePaths } from "./persistence";
+import { IdmapMounter, SharedFolders } from "./shared";
 import { SudoersFile } from "./sudo";
 
 const Settings = z.strictObject({
@@ -219,6 +221,16 @@ const guard = new Guard({
   }),
   sudo: new SudoersFile(settings.sudoersDropIn),
   holdSleep,
+  // The person's shared folders, mounted for the agent account while on (PLAN §7d).
+  folders: {
+    shared: new SharedFolders(join(settings.stateDir, "shared.json")),
+    mounter: new IdmapMounter(
+      { uid: person.uid, gid: person.gid },
+      { uid: agent.uid, gid: agent.gid },
+    ),
+    person: { home: person.home, uid: person.uid },
+    root: join(settings.runDir, "shared"),
+  },
 });
 await guard.start({ person: { uid: person.uid, gid: person.gid }, agentGid: agent.gid });
 log(JSON.stringify({ type: "started" }));

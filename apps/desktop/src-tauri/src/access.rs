@@ -245,6 +245,49 @@ pub async fn access_sudo(
     .await
 }
 
+/// Allows an agent's request for one of the person's folders (#20, PLAN §7d): the system asks the person's password, in
+/// a dialog whose words the guard writes from the folder and whether its files may be changed (`write`, only when the
+/// agent asked for that).
+#[tauri::command]
+pub async fn access_allow_folder(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+    write: bool,
+) -> Result<Value, String> {
+    let pid = std::process::id();
+    for_linked_window(&app, &window, false, move |_| {
+        one_dialog(json!({ "op": "allow-folder", "pid": pid, "id": id, "write": write }))
+    })
+    .await
+}
+
+/// Turns an agent's folder request down (no password: it grants nothing).
+#[tauri::command]
+pub async fn access_deny_folder(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+) -> Result<Value, String> {
+    for_linked_window(&app, &window, false, move |_| {
+        ask(json!({ "op": "deny-folder", "id": id }))
+    })
+    .await
+}
+
+/// Stops sharing a folder; the guard unmounts it at once (no password: it only takes away).
+#[tauri::command]
+pub async fn access_remove_folder(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    path: String,
+) -> Result<Value, String> {
+    for_linked_window(&app, &window, false, move |_| {
+        ask(json!({ "op": "remove-folder", "path": path }))
+    })
+    .await
+}
+
 /// The program the app installs for agent access (idle until set up).
 const PROGRAM: &str = "/usr/lib/omp-app-device/omp-app-device";
 

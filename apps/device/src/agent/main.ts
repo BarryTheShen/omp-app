@@ -10,9 +10,13 @@
  *   omp-app-device extend [--for <minutes>] more time while on (default 60; never past eight hours from now); asks your password
  *   omp-app-device sudo [--for <minutes>]   let the agent account use sudo while on (default 30, at most 30)
  *   omp-app-device watch                    what each session shows, live
+ *   omp-app-device allow-folder <id> [--write]  allow an agent's folder request (status lists them); asks your password
+ *   omp-app-device deny-folder <id>         turn a folder request down
+ *   omp-app-device remove-folder <path>     stop sharing a folder (status lists them)
  */
 import { existsSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
+import { LONGEST_ON_MINUTES } from "../guard/guard";
 import { Agent } from "./agent";
 import { serveControl } from "./control";
 import { guardRequest } from "./guard-client";
@@ -182,8 +186,8 @@ switch (command) {
   case "on": {
     const at = args.indexOf("--for");
     const minutes = at === -1 ? 120 : Number(args[at + 1]);
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) {
-      process.stderr.write("--for takes minutes, 1 to 240.\n");
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > LONGEST_ON_MINUTES) {
+      process.stderr.write(`--for takes minutes, 1 to ${LONGEST_ON_MINUTES}.\n`);
       process.exit(2);
     }
     process.exit(await withTerminalPassword(() => ask({ op: "on", pid: process.pid, minutes })));
@@ -201,8 +205,8 @@ switch (command) {
   case "extend": {
     const at = args.indexOf("--for");
     const minutes = at === -1 ? 60 : Number(args[at + 1]);
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) {
-      process.stderr.write("--for takes minutes, 1 to 240.\n");
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > LONGEST_ON_MINUTES) {
+      process.stderr.write(`--for takes minutes, 1 to ${LONGEST_ON_MINUTES}.\n`);
       process.exit(2);
     }
     process.exit(
@@ -220,6 +224,20 @@ switch (command) {
     process.exit(await withTerminalPassword(() => ask({ op: "sudo", pid: process.pid, minutes })));
     break;
   }
+  case "allow-folder": {
+    const id = args.find((arg) => !arg.startsWith("--")) ?? "";
+    const write = args.includes("--write");
+    process.exit(
+      await withTerminalPassword(() => ask({ op: "allow-folder", pid: process.pid, id, write })),
+    );
+    break;
+  }
+  case "deny-folder":
+    process.exit(await ask({ op: "deny-folder", id: args[0] ?? "" }));
+    break;
+  case "remove-folder":
+    process.exit(await ask({ op: "remove-folder", path: args[0] ?? "" }));
+    break;
   case "watch": {
     let buffer = "";
     // A session's output as text (a character split across events is kept whole), with only its colours as escapes.
@@ -290,7 +308,7 @@ switch (command) {
   }
   default:
     process.stderr.write(
-      "Use omp-app-device run | enroll <server> <alias> | on [--for <minutes>] | off | status | acknowledge | extend [--for <minutes>] | sudo [--for <minutes>] | watch\n",
+      "Use omp-app-device run | enroll <server> <alias> | on [--for <minutes>] | off | status | acknowledge | extend [--for <minutes>] | sudo [--for <minutes>] | watch | allow-folder <id> [--write] | deny-folder <id> | remove-folder <path>\nIn an agent session: omp-app-device ask-folder <folder> [--write] [--why <text>] asks the person for one of their folders (--help for more).\n",
     );
     process.exit(2);
 }

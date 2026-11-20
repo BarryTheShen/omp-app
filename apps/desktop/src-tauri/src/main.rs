@@ -69,6 +69,9 @@ fn main() {
             access::access_sudo,
             access::access_events,
             access::access_remove,
+            access::access_allow_folder,
+            access::access_deny_folder,
+            access::access_remove_folder,
             access::access_here,
             access::access_set_up_here,
         ])

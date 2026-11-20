@@ -15,7 +15,9 @@ import { join } from "node:path";
 import { z } from "zod";
 import { SERVER_NAME } from "../agent/guard-client";
 import type { AgentAccount } from "./account";
+import { checkFolder, sharedAt } from "./folders";
 import { changedSince, type Snapshot, snapshot } from "./persistence";
+import type { FolderMounter, SharedFolder, SharedFolders } from "./shared";
 import { authorizedKeyLine, sessionConfig } from "./sshd-config";
 import type { SudoGrants } from "./sudo";
 
@@ -35,7 +37,7 @@ export interface SessionLauncher {
 }
 
 /** What the password is asked for: each its own polkit action (`dev.ompapp.device.<action>`), with its own message. */
-export type GuardAction = "turn-on" | "extend" | "sudo" | "acknowledge";
+export type GuardAction = "turn-on" | "extend" | "sudo" | "acknowledge" | "share-folder";
 
 /**
  * Asks the person, on the machine, for their password for `action`; true once given. `message` is what the dialog
@@ -84,6 +86,19 @@ export interface GuardOptions {
    */
   readonly holdSleep?: () => () => void;
   readonly now?: () => number;
+  /** Folders of the person's that agents may ask for (PLAN §7d); without it, every request is refused. */
+  readonly folders?: FolderSharing;
+}
+
+export interface FolderSharing {
+  readonly shared: SharedFolders;
+  readonly mounter: FolderMounter;
+  /** The person whose folders are shared. */
+  readonly person: { readonly home: string; readonly uid: number };
+  /** Where shared folders are mounted: the guard's own, never in the agent account's home (`sharedAt`). */
+  readonly root: string;
+  /** How long a request waits for the person: 10 minutes. */
+  readonly askMs?: number;
 }
 
 /**
@@ -92,6 +107,8 @@ export interface GuardOptions {
  * host's letters, so nothing else can be written into the dialog.
  */
 const ServerName = z.string().max(260).regex(SERVER_NAME);
+/** An agent's folder request, as the asking session names it. */
+const AskId = z.string().regex(/^[0-9a-f]{16}$/);
 
 /**
  * The longest access may last at once, in minutes: 8 hours, picked at turn-on with the password, as any length is; two
@@ -132,18 +149,34 @@ const Control = z.discriminatedUnion("op", [
     minutes: z.number().int().min(1).max(30),
     server: ServerName.optional(),
   }),
+  /** The person allows an agent's folder request (their password), to read it or also to change it. */
+  z.strictObject({
+    op: z.literal("allow-folder"),
+    pid: z.number().int().positive(),
+    id: AskId,
+    write: z.boolean(),
+    server: ServerName.optional(),
+  }),
+  z.strictObject({ op: z.literal("deny-folder"), id: AskId }),
+  /** Stops sharing a folder: no password, it only takes away. */
+  z.strictObject({ op: z.literal("remove-folder"), path: z.string().startsWith("/").max(4_096) }),
 ]);
 
 /** Who gets the access, as a password dialog says it: the server's agents when the agent named it. */
 const whose = (server: string | undefined): string =>
   server === undefined ? "Agents in omp-app" : `Agents of the omp-app server ${server}`;
 
+/** Text an agent wrote, as one line for the person: control and direction characters become spaces. */
+const oneLine = (text: string): string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: removing control characters is the point
+  text.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ");
+
 /** At most `count` of the review's entries, each one line of at most 100 characters, for a password dialog. */
 export function reviewText(review: readonly string[], count = 5): string {
   const shown = review
     .slice(0, count)
     .map((each) => {
-      const line = each.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ");
+      const line = oneLine(each);
       return line.length > 100 ? `${line.slice(0, 99)}…` : line;
     })
     .join("; ");
@@ -175,6 +208,15 @@ const WrapperEvent = z.discriminatedUnion("type", [
     exitCode: z.number().int().nullable(),
     endedAt: z.string(),
   }),
+  /** An agent asks for a folder of the person's (`omp-app-device ask-folder`), answered on the same connection. */
+  z.strictObject({
+    type: z.literal("ask-folder"),
+    stream: z.number().int().min(1),
+    request: AskId,
+    path: z.string().max(4_096),
+    write: z.boolean(),
+    why: z.string().max(300),
+  }),
 ]);
 export type WrapperEvent = z.infer<typeof WrapperEvent>;
 
@@ -190,6 +232,23 @@ export interface GuardState {
   readonly removed: readonly string[];
   /** When the agent account's sudo grant ends; null without one. */
   readonly sudoUntil: string | null;
+  /** Agents' folder requests waiting for the person. */
+  readonly asks: readonly FolderAsk[];
+  /** The folders shared with agents, mounted while on. */
+  readonly shared: readonly SharedFolder[];
+}
+
+/** An agent's request for a folder, as the person is shown it. */
+export interface FolderAsk {
+  readonly id: string;
+  /** The folder's real path. */
+  readonly path: string;
+  /** Whether the agent asked to change files too. */
+  readonly write: boolean;
+  /** Why, as the agent said it (one line). */
+  readonly why: string;
+  /** The server whose agents have access now. */
+  readonly server: string | null;
 }
 
 export class Guard {
@@ -217,6 +276,16 @@ export class Guard {
   #offs = 0;
   /** Releases logind's delay lock on sleep, held while on (`holdSleep`). */
   #sleepRelease: (() => void) | null = null;
+  /** The server named at the last turn-on: whose agents ask for folders. */
+  #server: string | undefined;
+  /** Folder requests waiting for the person, each answered on its own connection. */
+  readonly #asks = new Map<
+    string,
+    FolderAsk & { readonly place: string; readonly reply: (answer: object) => void }
+  >();
+  /** The shared folders, as `folders.shared` keeps them. */
+  #shared: readonly SharedFolder[] = [];
+  #access: { readonly agentGid: number } | undefined;
 
   constructor(options: GuardOptions) {
     this.#options = options;
@@ -240,6 +309,10 @@ export class Guard {
     readonly agentGid: number;
   }): Promise<void> {
     await mkdir(this.#options.runDir, { recursive: true, mode: 0o755 });
+    this.#access = access;
+    if (this.#options.folders !== undefined)
+      this.#shared = await this.#options.folders.shared.list();
+    // Also unmounts what a crash left mounted.
     await this.off();
     // A review left pending by the last access (also across a reboot) still holds the next turn-on.
     const kept = await readFile(this.#reviewFile, "utf8").catch(() => null);
@@ -287,6 +360,14 @@ export class Guard {
       changed: this.#review,
       removed: this.#removed,
       sudoUntil: this.#sudoUntil === null ? null : new Date(this.#sudoUntil).toISOString(),
+      asks: [...this.#asks.values()].map(({ id, path, write, why, server }) => ({
+        id,
+        path,
+        write,
+        why,
+        server,
+      })),
+      shared: this.#shared,
     };
   }
 
@@ -320,6 +401,7 @@ export class Guard {
       return "the changes made during the last session must be reviewed first";
     const problem = await this.#options.agentAccount.problem();
     if (problem !== null) return problem;
+    const turningOn = this.#until === null;
     if (this.#until === null) {
       // Whatever the account kept since the last access goes before this one starts.
       await this.#options.agentAccount.reset();
@@ -328,6 +410,9 @@ export class Guard {
     const now = (this.#options.now ?? Date.now)();
     const until = now + Math.min(minutes * 60_000, this.#options.maxOnMs);
     await writeFile(this.#path("authorized_keys"), line, { mode: 0o644 });
+    this.#server = server;
+    // Before access starts: no session of the agent account runs while the guard mounts.
+    if (turningOn) await this.#mountShared();
     this.#until = until;
     this.#sleepRelease ??= this.#options.holdSleep?.() ?? null;
     if (this.#deadline !== null) clearTimeout(this.#deadline);
@@ -378,6 +463,8 @@ export class Guard {
     for (const session of this.#sessions) session.kill();
     this.#sessions.clear();
     await this.#options.launcher.stopAll();
+    this.#endAsks("agent access turned off");
+    await this.#unmountAll();
     const changed = wasOn && this.#snapshot !== null ? await changedSince(this.#snapshot) : [];
     this.#snapshot = null;
     // At the guard's start too: whatever a crash or a reboot left.
@@ -482,6 +569,223 @@ export class Guard {
     return null;
   }
 
+  /**
+   * An agent's request for a folder of the person's, on a session's own records connection. Refused at once when the
+   * folder may not be shared (`checkFolder`), when access is off, or when three requests already wait; answered at once
+   * when a shared folder covers it already; else it waits for the person (`allowFolder`, `denyFolder`) up to 10 minutes,
+   * and is withdrawn when its connection closes. A folder inside a shared one that does not cover it is refused, so
+   * mount points never nest: each stays a folder of the guard's own.
+   */
+  #ask(
+    event: Extract<WrapperEvent, { type: "ask-folder" }>,
+    socket: Bun.Socket<ConnectionData>,
+  ): void {
+    if (
+      socket.data.run !== null ||
+      !this.#openStreams.has(event.stream) ||
+      this.#asks.has(event.request)
+    ) {
+      socket.end();
+      return;
+    }
+    // Bound, so the records socket does not close it before the person answers; its run is no wrapper's.
+    socket.data.run = { stream: event.stream, run: `ask-${event.request}` };
+    const id = event.request;
+    let gone = false;
+    socket.data.closed = () => {
+      gone = true;
+      if (this.#asks.delete(id)) this.#tell({ type: "state", state: this.state() });
+    };
+    const answer = (reply: object) => socket.end(`${JSON.stringify(reply)}\n`);
+    const folders = this.#options.folders;
+    if (folders === undefined) {
+      answer({ answer: "refused", reason: "this computer does not share folders" });
+      return;
+    }
+    void (async () => {
+      const check = await checkFolder(event.path, folders.person);
+      if (gone) return;
+      if ("problem" in check) return answer({ answer: "refused", reason: check.problem });
+      const covering = this.#shared.find(
+        (each) => each.path === check.path || check.path.startsWith(`${each.path}/`),
+      );
+      if (covering !== undefined) {
+        const at = `${sharedAt(covering.place, folders.root)}${check.path.slice(covering.path.length)}`;
+        if (covering.write || !event.write)
+          return answer({ answer: "allowed", at, write: covering.write });
+        if (covering.path !== check.path)
+          return answer({
+            answer: "refused",
+            reason: `${check.path} is inside ${covering.path}, which is shared read only (at ${at}): ask for ${covering.path} itself to change files`,
+          });
+      }
+      if (this.#until === null) return answer({ answer: "refused", reason: "agent access is off" });
+      if (this.#asks.size >= 3)
+        return answer({
+          answer: "refused",
+          reason: "three requests are already waiting for the person: ask again once they answer",
+        });
+      const timer = setTimeout(
+        () =>
+          this.#answer(id, {
+            answer: "no answer",
+            reason: "the person did not answer within 10 minutes",
+          }),
+        folders.askMs ?? 600_000,
+      );
+      this.#asks.set(id, {
+        id,
+        path: check.path,
+        place: check.place,
+        write: event.write,
+        why: oneLine(event.why).trim(),
+        server: this.#server ?? null,
+        reply: (reply) => {
+          clearTimeout(timer);
+          answer(reply);
+        },
+      });
+      this.#options.log(
+        JSON.stringify({
+          type: "folder-request",
+          stream: event.stream,
+          path: check.path,
+          write: event.write,
+        }),
+      );
+      this.#tell({ type: "state", state: this.state() });
+    })();
+  }
+
+  /** Answers a waiting request on its connection, and takes it off the list. */
+  #answer(id: string, reply: object): void {
+    const ask = this.#asks.get(id);
+    if (ask === undefined) return;
+    this.#asks.delete(id);
+    ask.reply(reply);
+    this.#tell({ type: "state", state: this.state() });
+  }
+
+  #endAsks(reason: string): void {
+    for (const id of [...this.#asks.keys()]) this.#answer(id, { answer: "no answer", reason });
+  }
+
+  /**
+   * The person allows a waiting request, with their password: the folder is shared from now on, to read it, or also to
+   * change it when `write` and the agent asked for that; mounted at once while on. Shared folders inside it give way to
+   * it. Returns why not, or null.
+   */
+  async allowFolder(
+    pid: number,
+    id: string,
+    write: boolean,
+    server?: string,
+  ): Promise<string | null> {
+    const folders = this.#options.folders;
+    const ask = this.#asks.get(id);
+    if (folders === undefined || ask === undefined) return "that request is no longer waiting";
+    const writes = write && ask.write;
+    const given = await this.#options.verify(
+      pid,
+      "share-folder",
+      `${whose(server)} will be able to ${writes ? "read and change" : "read"} the files in ${ask.path} whenever agent access is on, until you remove it from Shared folders.`,
+    );
+    if (!given) return "the password was not given";
+    if (!this.#asks.has(id)) return "that request is no longer waiting";
+    for (const inner of this.#shared.filter((each) => each.path.startsWith(`${ask.path}/`)))
+      await this.#unshare(inner);
+    const folder: SharedFolder = {
+      path: ask.path,
+      place: ask.place,
+      write: writes,
+      server: ask.server,
+      grantedAt: new Date((this.#options.now ?? Date.now)()).toISOString(),
+    };
+    await folders.shared.add(folder);
+    this.#shared = await folders.shared.list();
+    this.#options.log(JSON.stringify({ type: "folder-shared", path: folder.path, write: writes }));
+    const problem = this.#until === null ? null : await this.#mount(folder);
+    this.#answer(
+      id,
+      problem === null
+        ? { answer: "allowed", at: sharedAt(folder.place, folders.root), write: writes }
+        : {
+            answer: "refused",
+            reason: `the person allowed it, but it could not be mounted: ${problem}`,
+          },
+    );
+    return null;
+  }
+
+  /** The person turns a waiting request down (no password: it grants nothing). Returns why not, or null. */
+  denyFolder(id: string): string | null {
+    if (!this.#asks.has(id)) return "that request is no longer waiting";
+    this.#options.log(JSON.stringify({ type: "folder-denied", path: this.#asks.get(id)?.path }));
+    this.#answer(id, { answer: "denied" });
+    return null;
+  }
+
+  /** Stops sharing a folder, unmounting it at once (no password: it only takes away). Returns why not, or null. */
+  async removeFolder(path: string): Promise<string | null> {
+    const folder = this.#shared.find((each) => each.path === path);
+    if (folder === undefined) return "that folder is not shared";
+    await this.#unshare(folder);
+    this.#tell({ type: "state", state: this.state() });
+    return null;
+  }
+
+  async #unshare(folder: SharedFolder): Promise<void> {
+    const folders = this.#options.folders;
+    if (folders === undefined) return;
+    await folders.shared.remove(folder.path);
+    this.#shared = await folders.shared.list();
+    const at = sharedAt(folder.place, folders.root);
+    if ((await folders.mounter.mounted(folders.root)).includes(at))
+      await folders.mounter.unmount(at);
+    this.#options.log(JSON.stringify({ type: "folder-removed", path: folder.path }));
+  }
+
+  /** Mounts a shared folder, checked again first (it may lead elsewhere since): null, or why not. */
+  async #mount(folder: SharedFolder): Promise<string | null> {
+    const folders = this.#options.folders;
+    if (folders === undefined) return "this computer does not share folders";
+    const check = await checkFolder(folder.path, folders.person);
+    const problem =
+      "problem" in check
+        ? check.problem
+        : check.path !== folder.path
+          ? `${folder.path} now leads to ${check.path}`
+          : await (async () => {
+              // The guard's folder for mounts: root's; the agent account's group may enter it.
+              await mkdir(folders.root, { recursive: true, mode: 0o750 });
+              await chmod(folders.root, 0o750);
+              if (this.#access !== undefined) await chown(folders.root, 0, this.#access.agentGid);
+              const at = sharedAt(folder.place, folders.root);
+              if ((await folders.mounter.mounted(folders.root)).includes(at))
+                await folders.mounter.unmount(at);
+              return folders.mounter.mount(folder.path, at, folder.write);
+            })();
+    this.#options.log(
+      JSON.stringify(
+        problem === null
+          ? { type: "folder-mounted", path: folder.path }
+          : { type: "folder-not-mounted", path: folder.path, problem },
+      ),
+    );
+    return problem;
+  }
+
+  async #mountShared(): Promise<void> {
+    for (const folder of this.#shared) await this.#mount(folder);
+  }
+
+  async #unmountAll(): Promise<void> {
+    const folders = this.#options.folders;
+    if (folders === undefined) return;
+    for (const point of await folders.mounter.mounted(folders.root))
+      await folders.mounter.unmount(point);
+  }
+
   get #reviewFile(): string {
     return join(this.#options.stateDir, "review.json");
   }
@@ -582,6 +886,32 @@ export class Guard {
         );
         return;
       }
+      case "allow-folder": {
+        const refused = await this.allowFolder(
+          request.pid,
+          request.id,
+          request.write,
+          request.server,
+        );
+        socket.end(
+          refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,
+        );
+        return;
+      }
+      case "deny-folder": {
+        const refused = this.denyFolder(request.id);
+        socket.end(
+          refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,
+        );
+        return;
+      }
+      case "remove-folder": {
+        const refused = await this.removeFolder(request.path);
+        socket.end(
+          refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,
+        );
+        return;
+      }
     }
   }
 
@@ -670,6 +1000,10 @@ export class Guard {
     try {
       event = WrapperEvent.parse(JSON.parse(line));
     } catch {
+      return;
+    }
+    if (event.type === "ask-folder") {
+      this.#ask(event, socket);
       return;
     }
     const bound = socket.data.run;
