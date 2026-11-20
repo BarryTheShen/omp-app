@@ -165,3 +165,111 @@ test("the computer keeps the chats allowed to reach it: others are refused and a
   expect(events.filter((event) => event.type === "chats").length).toBeGreaterThanOrEqual(4);
   await agent.stop();
 });
+
+test("while no window watches, the agent shows a chat's request itself; an answer or a window takes it away", async () => {
+  dir = await mkdtemp(join(tmpdir(), "omp-agent-popups-"));
+  const data = join(dir, "data");
+  await mkdir(data, { recursive: true });
+  await writeFile(
+    join(data, "machine.json"),
+    JSON.stringify({ serverOrigin: SERVER, machineId: "m-1", alias: "laptop" }),
+  );
+  const { privateKey } = generateKeyPairSync("ed25519");
+  await writeFile(join(data, "identity.pem"), privateKey.export({ format: "pem", type: "pkcs8" }));
+  // A guard that is on and answers every request.
+  const guardSocket = join(dir, "guard.sock");
+  const on = {
+    on: true,
+    until: new Date(Date.now() + 3_600_000).toISOString(),
+    sessions: 0,
+    hostKey: join(dir, "host"),
+    reviewPending: false,
+    changed: [],
+    removed: [],
+    sudoUntil: null,
+  };
+  const listener = Bun.listen<{ buffer: string }>({
+    unix: guardSocket,
+    socket: {
+      open(socket) {
+        socket.data = { buffer: "" };
+      },
+      data(socket, chunk) {
+        socket.data.buffer += new TextDecoder().decode(chunk);
+        const at = socket.data.buffer.indexOf("\n");
+        if (at === -1) return;
+        const request = JSON.parse(socket.data.buffer.slice(0, at)) as Record<string, unknown>;
+        socket.data.buffer = "";
+        if (request.op === "watch")
+          return void socket.write(`${JSON.stringify({ type: "state", state: on })}\n`);
+        socket.end(`ok ${JSON.stringify(on)}\n`);
+      },
+    },
+  });
+  stop = () => listener.stop(true);
+  const shown: { summary: string; body: string; open: boolean; click: () => void }[] = [];
+  let opened = 0;
+  const links: FakeLink[] = [];
+  const agent = await Agent.open({
+    dataDir: data,
+    runtimeDir: join(dir, "run"),
+    guardSocket,
+    tellTerminals: async () => undefined,
+    readReach: async () => [],
+    socket: () => {
+      const link = new FakeLink();
+      links.push(link);
+      return link as unknown as WebSocket;
+    },
+    showPopup: (summary, body, clicked) => {
+      const popup = { summary, body, open: true, click: clicked };
+      shown.push(popup);
+      return {
+        close: () => {
+          popup.open = false;
+        },
+      };
+    },
+    openApp: () => {
+      opened += 1;
+    },
+  });
+  await agent.start();
+  await Bun.sleep(100);
+  // The link to the server opens once access is on.
+  expect(await agent.on(4242, 30)).toBeNull();
+  const link = links[0];
+  if (link === undefined) throw new Error("no link opened");
+  link.frame({ type: "challenge", nonce: "n".repeat(43) });
+  await Bun.sleep(50);
+
+  // No window: the agent shows the request, once, and a click starts the desktop app.
+  link.frame({ type: "ask", threadId: "t-1", chat: "Fix the build" });
+  link.frame({ type: "ask", threadId: "t-1", chat: "Fix the build" });
+  await Bun.sleep(50);
+  expect(shown).toMatchObject([
+    {
+      summary: "A chat asks to reach this computer",
+      body: "\u201cFix the build\u201d on server.example. Click to open Agent access, where Allow asks your password.",
+      open: true,
+    },
+  ]);
+  shown[0]?.click();
+  expect(opened).toBe(1);
+  // Answered (here denied): its notification goes.
+  expect(agent.denyChat("t-1")).toBeNull();
+  expect(shown[0]?.open).toBe(false);
+
+  // Another request, then a window starts watching: the window shows it now, so the agent's own goes, and the agent
+  // shows none while the window watches.
+  link.frame({ type: "ask", threadId: "t-2", chat: "Other" });
+  await Bun.sleep(50);
+  expect(shown.at(-1)).toMatchObject({ body: expect.stringContaining("Other"), open: true });
+  const unwatch = agent.watch(() => undefined);
+  expect(shown.at(-1)?.open).toBe(false);
+  link.frame({ type: "ask", threadId: "t-3", chat: "Third" });
+  await Bun.sleep(50);
+  expect(shown).toHaveLength(2);
+  unwatch();
+  await agent.stop();
+});

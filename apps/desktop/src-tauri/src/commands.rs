@@ -126,7 +126,7 @@ pub async fn open_server_window(app: AppHandle, host: String) -> Result<(), Stri
 #[tauri::command]
 pub fn notify(summary: String, body: String) {
     thread::spawn(move || {
-        if let Err(error) = send_notification(&summary, &body, false) {
+        if let Err(error) = send_notification(&summary, &body, Style::Plain) {
             eprintln!("omp app: a notification could not be shown: {error}");
         }
     });
@@ -137,22 +137,105 @@ pub fn notify(summary: String, body: String) {
 pub fn notify_lasting(summary: &str, body: &str) {
     let (summary, body) = (summary.to_owned(), body.to_owned());
     thread::spawn(move || {
-        if let Err(error) = send_notification(&summary, &body, true) {
+        if let Err(error) = send_notification(&summary, &body, Style::Lasting) {
             eprintln!("omp app: a notification could not be shown: {error}");
         }
     });
 }
 
-/// The freedesktop notification service's `Notify`, on the session bus; `lasting` asks it to stay until dismissed.
-fn send_notification(summary: &str, body: &str, lasting: bool) -> Result<(), gtk::glib::Error> {
+/// An agent's request (a chat or a folder asks to reach this computer): a notification that stays
+/// until it is clicked or dismissed, with the desktop's question sound, and no buttons. A click (the `default` action,
+/// see `on_notification_click`) opens the app's Agent access panel, where Allow asks the person's password; nothing
+/// here ever opens a password dialog. Returns the notification's id, to withdraw it once the request is answered. Asks
+/// the service on the calling thread: call it off the main thread. Never from a page.
+pub fn notify_request(summary: &str, body: &str) -> Option<u32> {
+    match send_notification(summary, body, Style::Request) {
+        Ok(id) => Some(id),
+        Err(error) => {
+            eprintln!("omp app: a notification could not be shown: {error}");
+            None
+        }
+    }
+}
+
+/// Takes a notification away (the freedesktop `CloseNotification`), on a thread of its own.
+pub fn close_notification(id: u32) {
+    thread::spawn(move || {
+        let closed = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).and_then(|bus| {
+            bus.call_sync(
+                Some("org.freedesktop.Notifications"),
+                "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications",
+                "CloseNotification",
+                Some(&(id,).to_variant()),
+                None,
+                gio::DBusCallFlags::NONE,
+                NOTIFY_WAIT_MS,
+                gio::Cancellable::NONE,
+            )
+        });
+        if let Err(error) = closed {
+            eprintln!("omp app: a notification could not be taken away: {error}");
+        }
+    });
+}
+
+/// Calls `clicked` with a notification's id whenever the person clicks a notification (its `default` action). Call it
+/// on the main thread: the bus delivers the signal through the main loop that runs there.
+pub fn on_notification_click(clicked: impl Fn(u32) + 'static) {
+    match gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) {
+        Ok(bus) => {
+            // The subscription lives as long as the app: its id is never needed to end it.
+            let _ = bus.signal_subscribe(
+                Some("org.freedesktop.Notifications"),
+                Some("org.freedesktop.Notifications"),
+                Some("ActionInvoked"),
+                Some("/org/freedesktop/Notifications"),
+                None,
+                gio::DBusSignalFlags::NONE,
+                move |_, _, _, _, _, parameters| {
+                    if let Some((id, action)) = parameters.get::<(u32, String)>() {
+                        if action == "default" {
+                            clicked(id);
+                        }
+                    }
+                },
+            );
+        }
+        Err(error) => eprintln!("omp app: notification clicks cannot be followed: {error}"),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Style {
+    /// Shown and gone, as the desktop decides.
+    Plain,
+    /// Stays until dismissed: an agent session at work.
+    Lasting,
+    /// Stays until clicked or dismissed, with a sound; a click is its `default` action.
+    Request,
+}
+
+/// The freedesktop notification service's `Notify`, on the session bus; returns the notification's id.
+fn send_notification(summary: &str, body: &str, style: Style) -> Result<u32, gtk::glib::Error> {
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     let mut hints: HashMap<String, Variant> = HashMap::new();
     hints.insert("desktop-entry".to_owned(), DESKTOP_ENTRY.to_variant());
-    if lasting {
+    if style != Style::Plain {
         // Critical urgency: the desktop keeps it until it is dismissed (the notification specification's `urgency` 2).
         hints.insert("urgency".to_owned(), 2_u8.to_variant());
         hints.insert("resident".to_owned(), true.to_variant());
     }
+    if style == Style::Request {
+        // The specification's sound theme name for a question to the person.
+        hints.insert("sound-name".to_owned(), "dialog-question".to_variant());
+    }
+    // A `default` action is what a click on the notification itself invokes; it shows no button.
+    let actions = if style == Style::Request {
+        vec!["default".to_owned(), "Open Agent access".to_owned()]
+    } else {
+        Vec::new()
+    };
     // app_name, replaces_id, app_icon, summary, body, actions, hints, expire_timeout (-1: the service decides).
     let message = (
         APP_NAME.to_owned(),
@@ -160,12 +243,12 @@ fn send_notification(summary: &str, body: &str, lasting: bool) -> Result<(), gtk
         String::new(),
         summary.to_owned(),
         body.to_owned(),
-        Vec::<String>::new(),
+        actions,
         hints,
         -1_i32,
     );
     let parameters = message.to_variant();
-    bus.call_sync(
+    let reply = bus.call_sync(
         Some("org.freedesktop.Notifications"),
         "/org/freedesktop/Notifications",
         "org.freedesktop.Notifications",
@@ -176,5 +259,5 @@ fn send_notification(summary: &str, body: &str, lasting: bool) -> Result<(), gtk
         NOTIFY_WAIT_MS,
         gio::Cancellable::NONE,
     )?;
-    Ok(())
+    Ok(reply.get::<(u32,)>().map_or(0, |(id,)| id))
 }

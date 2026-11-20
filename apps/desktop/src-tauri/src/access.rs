@@ -1,5 +1,6 @@
 //! Agent access on this computer (#20), as the desktop app shows it: the commands behind the side bar's Agent access
-//! panel, the red tray icon while access is on, and a notification that stays while an agent session runs.
+//! panel, the red tray icon while access is on, a notification that stays while an agent session runs, and one that
+//! stays for each agent's request until it is answered (a click opens the panel).
 //!
 //! The app talks to this computer's agent (`omp-app-device run`, a user service) over its control socket,
 //! `$XDG_RUNTIME_DIR/omp-app-device/agent.sock`. The panel controls this computer's agent access from a window on any
@@ -7,7 +8,7 @@
 //! acknowledging a review ask the person's password with the system's own dialog, whose words the agent's guard writes
 //! from what it grants (and which name the server whose agents get in). Lengths are capped here and by the guard.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -643,9 +644,20 @@ fn show_app(app: &AppHandle) {
     }
 }
 
-/// Follows the agent: keeps its events for the panel, shows the tray while access is on, and when a session starts,
-/// says so in a notification that stays. Waits for an agent that is not running yet.
+/// Follows the agent: keeps its events for the panel, shows the tray while access is on, when a session starts says so
+/// in a notification that stays, and keeps one notification for each request waiting for the person (a click opens the
+/// Agent access panel). Waits for an agent that is not running yet.
 pub fn watch(app: AppHandle) {
+    let _ = started().set(Instant::now());
+    let clicks = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        commands::on_notification_click(move |id| {
+            let ours = requests().lock().expect("the requests lock").values().any(|each| *each == id);
+            if ours {
+                open_access_panel(&clicks);
+            }
+        });
+    });
     let ticker = app.clone();
     thread::spawn(move || loop {
         if let Ok(stream) = UnixStream::connect(socket_path()) {
@@ -661,11 +673,12 @@ pub fn watch(app: AppHandle) {
                     }
                 }
             }
-            // The agent stopped: access is off with it.
+            // The agent stopped: access is off with it, and its requests are gone.
             take(
                 &app,
                 json!({ "type": "state", "state": { "on": false }, "linked": false }),
             );
+            keep_request_notifications("", Vec::new());
         }
         thread::sleep(Duration::from_secs(3));
     });
@@ -712,12 +725,134 @@ fn take(app: &AppHandle, event: Value) {
             let command = notification_text(event["event"]["command"].as_str().unwrap_or(""), 200);
             commands::notify_lasting("omp agent is controlling this computer", &command);
         }
+        // A request's own notification comes from the `chats` and `folders` events below, so its notice is not shown.
+        Some("notice") if event["kind"].as_str() == Some("request") => {}
         // Sudo allowed, and the summary when access turns off.
         Some("notice") => {
             let text = notification_text(event["text"].as_str().unwrap_or(""), 600);
             commands::notify("Agent access".to_string(), text);
         }
+        Some("chats") => {
+            let waiting = chat_requests(&event["chats"]);
+            open_if_just_started(app, !waiting.is_empty());
+            keep_request_notifications("chat:", waiting);
+        }
+        Some("folders") => {
+            let waiting = folder_requests(&event["folders"]);
+            open_if_just_started(app, !waiting.is_empty());
+            keep_request_notifications("folder:", waiting);
+        }
         _ => {}
+    }
+}
+
+/// The notifications shown for requests that wait for the person, by request (`chat:<thread>`, `folder:<id>`).
+fn requests() -> &'static Mutex<HashMap<String, u32>> {
+    static REQUESTS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+    REQUESTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// One request as its notification says it: its key, the summary and the body.
+type RequestNotice = (String, String, String);
+
+/// The chats asking to reach this computer, as the agent's `chats` event lists them.
+fn chat_requests(chats: &Value) -> Vec<RequestNotice> {
+    let empty = Vec::new();
+    chats["requests"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .filter_map(|request| {
+            let thread = request["threadId"].as_str()?;
+            let chat = notification_text(request["chat"].as_str().unwrap_or("A chat"), 120);
+            let server = request["server"].as_str().unwrap_or("");
+            let host = notification_text(server.split("://").nth(1).unwrap_or(server).trim_end_matches('/'), 80);
+            Some((
+                format!("chat:{thread}"),
+                "A chat asks to reach this computer".to_owned(),
+                format!("\u{201c}{chat}\u{201d} on {host}. Click to open Agent access, where Allow asks your password."),
+            ))
+        })
+        .collect()
+}
+
+/// The agents' folder requests, as the agent's `folders` event lists them.
+fn folder_requests(folders: &Value) -> Vec<RequestNotice> {
+    let empty = Vec::new();
+    folders["asks"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .filter_map(|ask| {
+            let id = ask["id"].as_str()?;
+            let path = notification_text(ask["path"].as_str().unwrap_or(""), 200);
+            let how = if ask["write"].as_bool().unwrap_or(false) { "read and change" } else { "read" };
+            let why = notification_text(ask["why"].as_str().unwrap_or(""), 300);
+            let reason = if why.is_empty() { String::new() } else { format!(": {why}") };
+            Some((
+                format!("folder:{id}"),
+                format!("An agent asks to {how} a folder"),
+                format!("{path}{reason}. Click to open Agent access, where Allow asks your password."),
+            ))
+        })
+        .collect()
+}
+
+/// Shows a notification for each request of this kind (`prefix`) that has none yet, and takes away the notifications
+/// of requests no longer waiting (answered in the panel, given up, or the agent stopped). An empty prefix is every kind.
+fn keep_request_notifications(prefix: &str, waiting: Vec<RequestNotice>) {
+    let gone: Vec<u32> = {
+        let mut shown = requests().lock().expect("the requests lock");
+        let keys: Vec<String> = shown
+            .keys()
+            .filter(|key| key.starts_with(prefix) && !waiting.iter().any(|(each, _, _)| each == *key))
+            .cloned()
+            .collect();
+        keys.iter().filter_map(|key| shown.remove(key)).collect()
+    };
+    for id in gone {
+        commands::close_notification(id);
+    }
+    for (key, summary, body) in waiting {
+        if requests().lock().expect("the requests lock").contains_key(&key) {
+            continue;
+        }
+        // Off the lock: the notification service is asked on this (the watcher's) thread.
+        if let Some(id) = commands::notify_request(&summary, &body) {
+            requests().lock().expect("the requests lock").insert(key, id);
+        }
+    }
+}
+
+/// When the app started (`watch`).
+fn started() -> &'static OnceLock<Instant> {
+    static STARTED: OnceLock<Instant> = OnceLock::new();
+    &STARTED
+}
+
+/// The app was started while a request waits, most likely from the agent's own notification of it (`omp-app-device`
+/// shows one while no window watches, and a click starts the app): it opens on the Agent access panel, once, a few
+/// seconds in so its page is there to hear it.
+fn open_if_just_started(app: &AppHandle, waiting: bool) {
+    static OPENED: AtomicBool = AtomicBool::new(false);
+    let just = started().get().is_some_and(|at| at.elapsed() < Duration::from_secs(20));
+    if waiting && just && !OPENED.swap(true, Ordering::SeqCst) {
+        let app = app.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(4));
+            open_access_panel(&app);
+        });
+    }
+}
+
+/// Brings the app's window forward on its Agent access panel: the page opens the panel it is told of
+/// (`omp-app:show-panel`, `apps/ui/src/panels/panel-state.ts`).
+fn open_access_panel(app: &AppHandle) {
+    show_app(app);
+    if let Some(window) = app.get_webview_window(crate::windows::MAIN) {
+        let _ = window.eval(
+            "window.dispatchEvent(new CustomEvent(\"omp-app:show-panel\", { detail: \"access\" }))",
+        );
     }
 }
 
@@ -836,7 +971,7 @@ fn refresh_tray(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{notification_text, refused_for};
+    use super::{chat_requests, folder_requests, notification_text, refused_for};
     use serde_json::{json, Value};
 
     #[test]
@@ -876,5 +1011,33 @@ mod tests {
             "curl &lt;a href=\"x\"&gt;a &amp; b&lt;/a&gt;[2J"
         );
         assert_eq!(notification_text("abcdef", 3), "abc");
+    }
+
+    #[test]
+    fn each_waiting_request_is_one_notification_keyed_by_its_request_and_shown_as_text() {
+        let chats = json!({ "requests": [
+            { "threadId": "t1", "chat": "Fix <b>it</b>", "server": "https://server.example:8443/", "askedAt": "x" },
+            { "chat": "no thread id: skipped" },
+        ], "granted": [] });
+        let listed = chat_requests(&chats);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].0, "chat:t1");
+        assert_eq!(listed[0].1, "A chat asks to reach this computer");
+        assert!(listed[0].2.starts_with("\u{201c}Fix &lt;b&gt;it&lt;/b&gt;\u{201d} on server.example:8443."));
+        assert!(listed[0].2.ends_with("Click to open Agent access, where Allow asks your password."));
+
+        let folders = json!({ "asks": [
+            { "id": "a1", "path": "~/Documents", "write": false, "why": "read the notes", "server": null },
+            { "id": "a2", "path": "~/code", "write": true, "why": "", "server": null },
+        ], "shared": [] });
+        let asked = folder_requests(&folders);
+        assert_eq!(asked.iter().map(|each| each.0.as_str()).collect::<Vec<_>>(), ["folder:a1", "folder:a2"]);
+        assert_eq!(asked[0].1, "An agent asks to read a folder");
+        assert!(asked[0].2.starts_with("~/Documents: read the notes. Click"));
+        assert_eq!(asked[1].1, "An agent asks to read and change a folder");
+        assert!(asked[1].2.starts_with("~/code. Click"));
+        // A guard before folder requests sends none: no notifications.
+        assert!(folder_requests(&json!({})).is_empty());
+        assert!(chat_requests(&json!({})).is_empty());
     }
 }

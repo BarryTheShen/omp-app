@@ -55,6 +55,17 @@ export const showPanel = (panel: string): void => update({ open: true, panel });
 export const hidePanel = (): void => update({ ...current(), open: false });
 
 /**
+ * The desktop window opens a panel by name with this page event: a click on its notification of an agent's request
+ * opens Agent access (`apps/desktop/src-tauri/src/access.rs`, `open_access_panel`).
+ */
+export const SHOW_PANEL_EVENT = "omp-app:show-panel";
+if (typeof window !== "undefined")
+  window.addEventListener(SHOW_PANEL_EVENT, (event) => {
+    const panel = (event as CustomEvent<unknown>).detail;
+    if (typeof panel === "string" && panel !== "") showPanel(panel);
+  });
+
+/**
  * Opens something a panel shows in the chat's own pane, the Agent Hub (#18): on a phone the panel is a screen in the
  * chat's place (`ChatDetails`), so it steps aside for the chat, where what it opened is; on a desktop it stays beside it.
  */

@@ -29,6 +29,7 @@ import {
   SERVER_NAME,
 } from "./guard-client";
 import { MachineLink } from "./link";
+import { openDesktopApp, type Popup, type ShowPopup, showPopup } from "./popup";
 import { readReach } from "./reach";
 import { tellTerminals } from "./terminals";
 
@@ -128,14 +129,22 @@ export interface AgentOptions {
   readonly tellTerminals?: (text: string) => Promise<unknown>;
   /** What this computer can reach (`readReach`), replaced in tests. */
   readonly readReach?: () => Promise<string[]>;
+  /** Shows a request's notification while no window watches (`popup.ts`), replaced in tests. */
+  readonly showPopup?: ShowPopup;
+  /** Starts the desktop app when such a notification is clicked, replaced in tests. */
+  readonly openApp?: () => void;
 }
 
 /** What the agent tells its watchers (the desktop window, `omp-app-device watch`). */
 export type AgentEvent =
   | { readonly type: "state"; readonly state: AccessState; readonly linked: boolean }
   | { readonly type: "wrapper"; readonly event: WrapperEvent }
-  /** Something the person should hear about: sudo allowed, a folder request, the summary when access turns off. */
-  | { readonly type: "notice"; readonly text: string }
+  /**
+   * Something the person should hear about: sudo allowed, a folder or chat request, the summary when access turns off.
+   * `request` marks a chat's or folder's request: the desktop window shows its own lasting notification for each
+   * request (it reads them from the `chats` and `folders` events), so it does not show this one too.
+   */
+  | { readonly type: "notice"; readonly text: string; readonly kind?: "request" }
   | { readonly type: "folders"; readonly folders: Folders }
   | { readonly type: "chats"; readonly chats: Chats };
 
@@ -198,6 +207,8 @@ export class Agent {
   #folders: Folders = { asks: [], shared: [] };
   /** Folder requests already told about. */
   #asksTold = new Set<string>();
+  /** The requests this agent shows itself while no window watches, by request (`chat:<thread>`, `folder:<id>`). */
+  readonly #popups = new Map<string, Popup>();
   /** The chats allowed to reach this computer (`chat-grants.json`). */
   #chats: ChatGrants | null = null;
 
@@ -437,6 +448,12 @@ export class Agent {
     const asked = this.#chats.requests.find((each) => each.threadId === threadId);
     this.#notice(
       `The chat "${asked?.chat ?? chat}" on ${new URL(server).host} asks to reach this computer. Allow or deny it in Agent access.`,
+      "request",
+    );
+    this.#popup(
+      `chat:${threadId}`,
+      "A chat asks to reach this computer",
+      `\u201c${asked?.chat ?? chat}\u201d on ${new URL(server).host}. Click to open Agent access, where Allow asks your password.`,
     );
     this.#chatsChanged();
   }
@@ -445,6 +462,27 @@ export class Agent {
   #chatsChanged(): void {
     this.#tell({ type: "chats", chats: this.chats });
     this.#link?.sendState();
+    this.#closePopups("chat:", new Set(this.chats.requests.map((each) => `chat:${each.threadId}`)));
+  }
+
+  /**
+   * A request's notification shown by this agent itself, while no window watches (the desktop app is closed): a window
+   * shows its own for every request it hears of, so the agent shows one only when none would.
+   */
+  #popup(key: string, summary: string, body: string): void {
+    if (this.#watchers.size > 0 || this.#popups.has(key)) return;
+    const show = this.#options.showPopup ?? showPopup;
+    const openApp = this.#options.openApp ?? openDesktopApp;
+    this.#popups.set(key, show(summary, body, openApp));
+  }
+
+  /** Takes away this agent's notifications of one kind (`prefix`) whose requests no longer wait; "" is every kind. */
+  #closePopups(prefix: string, waiting: ReadonlySet<string>): void {
+    for (const [key, popup] of this.#popups)
+      if (key.startsWith(prefix) && !waiting.has(key)) {
+        popup.close();
+        this.#popups.delete(key);
+      }
   }
 
   /**
@@ -564,6 +602,8 @@ export class Agent {
   watch(listener: (event: AgentEvent) => void): () => void {
     this.#watchers.add(listener);
     listener({ type: "state", state: this.#state, linked: this.linked });
+    // A window shows the requests now: this agent's own notifications of them go.
+    this.#closePopups("", new Set());
     return () => this.#watchers.delete(listener);
   }
 
@@ -571,8 +611,8 @@ export class Agent {
     for (const watcher of this.#watchers) watcher(event);
   }
 
-  #notice(text: string): void {
-    this.#tell({ type: "notice", text });
+  #notice(text: string, kind?: "request"): void {
+    this.#tell(kind === undefined ? { type: "notice", text } : { type: "notice", text, kind });
     const tell = this.#options.tellTerminals ?? tellTerminals;
     void tell(text);
   }
@@ -587,10 +627,17 @@ export class Agent {
       this.#asksTold.add(ask.id);
       this.#notice(
         `An agent asks to ${ask.write ? "read and change" : "read"} ${ask.path}${ask.why === "" ? "" : `: ${ask.why}`}. Allow or deny it in Agent access.`,
+        "request",
+      );
+      this.#popup(
+        `folder:${ask.id}`,
+        `An agent asks to ${ask.write ? "read and change" : "read"} a folder`,
+        `${ask.path}${ask.why === "" ? "" : `: ${ask.why}`}. Click to open Agent access, where Allow asks your password.`,
       );
     }
     const waiting = new Set(folders.asks.map((ask) => ask.id));
     for (const id of this.#asksTold) if (!waiting.has(id)) this.#asksTold.delete(id);
+    this.#closePopups("folder:", new Set([...waiting].map((id) => `folder:${id}`)));
   }
 
   #setState(state: AccessState): void {
