@@ -40,8 +40,13 @@ describe("what a host has open, in a person's message", () => {
     expect(splitHostContext(withHostContext("", "zen", { kind: "file", title: "a.ts" }))).toEqual({
       text: "",
       context: { host: "zen", kind: "file", title: "a.ts" },
+      mentions: null,
     });
-    expect(splitHostContext("plain words")).toEqual({ text: "plain words", context: null });
+    expect(splitHostContext("plain words")).toEqual({
+      text: "plain words",
+      context: null,
+      mentions: null,
+    });
   });
 
   test("text that only looks like the block, typed or in the middle, stays text", () => {

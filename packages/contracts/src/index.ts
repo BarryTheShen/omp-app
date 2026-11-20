@@ -7,6 +7,7 @@ export * from "./core/errors";
 export * from "./core/fixtures";
 export * from "./core/host-context";
 export * from "./core/ids";
+export * from "./core/mentions";
 export * from "./core/message-host";
 export * from "./core/omp";
 export * from "./core/pasted-block";

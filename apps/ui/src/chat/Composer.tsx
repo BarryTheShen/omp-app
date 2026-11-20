@@ -51,6 +51,7 @@ import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
 import { ExtensionWidgets } from "./ExtensionWidgets";
 import { ModelPicker } from "./ModelPicker";
+import { expandMentions, shortenMentions } from "./mentionLabels";
 import { PausedRow } from "./PausedRow";
 import { PlusMenu } from "./PlusMenu";
 import { QueuedMessages } from "./QueuedMessages";
@@ -195,6 +196,8 @@ export const Composer = memo(function Composer({
 }): ReactNode {
   const [text, setText] = useState("");
   const textRef = useRef(text);
+  /** What each mention's label in the box stands for (`mentionLabels.ts`): the link the message goes out with. */
+  const mentionLinks = useRef(new Map<string, string>());
   const [caret, setCaret] = useState(0);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   /**
@@ -483,7 +486,7 @@ export const Composer = memo(function Composer({
 
   const send = (mode: "auto" | "followUp"): void => {
     const sent = textRef.current;
-    const value = sent.trim();
+    const value = expandMentions(sent.trim(), mentionLinks.current);
     const images = attachmentsRef.current;
     const attachedFiles = filesRef.current;
     if ((value.length === 0 && images.length === 0 && attachedFiles.length === 0) || sending)
@@ -561,7 +564,7 @@ export const Composer = memo(function Composer({
   /** Queue for later (#14): the typed message becomes a task for this chat; only what was queued leaves the box. */
   const queueLater = async (when: TaskWhen): Promise<void> => {
     const sent = textRef.current;
-    const value = sent.trim();
+    const value = expandMentions(sent.trim(), mentionLinks.current);
     if (value === "") return;
     await controller.queueTask(value, when);
     const now = textRef.current;
@@ -632,11 +635,12 @@ export const Composer = memo(function Composer({
     if (next instanceof Promise) {
       const typed = textRef.current;
       void next.then((later) => {
-        if (later !== null && textRef.current === typed) put(later);
+        if (later !== null && textRef.current === typed)
+          put(shortenMentions(later.text, later.caret, mentionLinks.current));
       });
       return;
     }
-    put(next);
+    put(shortenMentions(next.text, next.caret, mentionLinks.current));
   };
 
   /**

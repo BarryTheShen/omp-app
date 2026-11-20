@@ -6,6 +6,7 @@
  * apart. Values are written with `&`, `<`, `>` and `"` as entities, so a page's text can never close the block early.
  */
 import { z } from "zod";
+import { type SentMentions, splitMentions } from "./mentions";
 import { MESSAGE_HOST_PATTERN } from "./message-host";
 
 /** What kind of thing it is: `page`, `file`, `note` and so on (lowercase letters and dashes). */
@@ -109,17 +110,23 @@ function contextOf(block: string): SentHostContext | null {
   return { host, ...parsed.data };
 }
 
-/** A message read back: what was written before the block, and the context; a message without the block is all text. */
+/**
+ * A message read back: what was written before the blocks, the context, and what it mentioned (`mentions.ts`, the block
+ * an extension adds right before the context); a message without them is all text.
+ */
 export function splitHostContext(message: string): {
   readonly text: string;
   readonly context: SentHostContext | null;
+  readonly mentions: SentMentions | null;
 } {
-  const whole = { text: message, context: null };
   const at = message.lastIndexOf(OPEN);
-  if (at === -1 || (at > 0 && !message.slice(0, at).endsWith("\n\n"))) return whole;
-  const context = contextOf(message.slice(at));
-  if (context === null) return whole;
-  return { text: at === 0 ? "" : message.slice(0, at - 2), context };
+  const context =
+    at === -1 || (at > 0 && !message.slice(0, at).endsWith("\n\n"))
+      ? null
+      : contextOf(message.slice(at));
+  const rest = context === null ? message : at === 0 ? "" : message.slice(0, at - 2);
+  const { text, mentions } = splitMentions(rest);
+  return { text, context, mentions };
 }
 
 /**

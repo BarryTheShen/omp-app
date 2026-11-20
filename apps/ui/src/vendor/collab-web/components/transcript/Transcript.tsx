@@ -1,5 +1,5 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { Check, ChevronRight, Eye, FileText, X } from "lucide-react";
+import { AtSign, Check, ChevronRight, Eye, FileText, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FoldContext } from "../../lib/fold";
@@ -9,6 +9,7 @@ import {
 	describeHostContext,
 	type SentFile,
 	type SentHostContext,
+	type SentMentions,
 	splitAppNotice,
 	splitAttached,
 	splitHostContext,
@@ -158,27 +159,28 @@ function MsgContent({ content }: { content: string | readonly (TextContent | Ima
 type UserContent = string | readonly (TextContent | ImageContent)[];
 
 /**
- * omp-app: the files a message names (`lib/attached.ts`, #2830) and what was open in the app that embeds the panel
- * (`withHostContext`), taken off its last text, and the message without them.
+ * omp-app: the files a message names (`lib/attached.ts`, #2830), what was open in the app that embeds the panel
+ * (`withHostContext`) and what it mentioned (`withMentions`), taken off its last text, and the message without them.
  */
 function withoutAdded(content: UserContent): {
 	content: UserContent;
 	files: readonly SentFile[];
 	context: SentHostContext | null;
+	mentions: SentMentions | null;
 } {
 	const split = (message: string) => {
-		const { text: rest, context } = splitHostContext(message);
-		return { ...splitAttached(rest), context };
+		const { text: rest, context, mentions } = splitHostContext(message);
+		return { ...splitAttached(rest), context, mentions };
 	};
 	if (typeof content === "string") {
-		const { text, files, context } = split(content);
-		return { content: text, files, context };
+		const { text, files, context, mentions } = split(content);
+		return { content: text, files, context, mentions };
 	}
 	const last = content.findLastIndex(block => block.type === "text");
 	const block = content[last];
-	if (block?.type !== "text") return { content, files: [], context: null };
-	const { text, files, context } = split(block.text);
-	if (files.length === 0 && context === null) return { content, files, context };
+	if (block?.type !== "text") return { content, files: [], context: null, mentions: null };
+	const { text, files, context, mentions } = split(block.text);
+	if (files.length === 0 && context === null && mentions === null) return { content, files, context, mentions };
 	return {
 		content:
 			text === ""
@@ -186,21 +188,38 @@ function withoutAdded(content: UserContent): {
 				: content.map((part, index) => (index === last ? { ...block, text } : part)),
 		files,
 		context,
+		mentions,
 	};
 }
 
 /**
- * omp-app: what was open in the app that embeds the panel when the message was sent, as a quiet tag over the message
- * (as Notion tags the page it read), not inside it; its address in a tip.
+ * omp-app: over the message, quiet tags for what was added to it (as Notion tags the page it read), not inside it: what
+ * was open in the app that embeds the panel, and each page or block it mentioned, its address in a tip.
  */
-function SentContext({ context }: { context: SentHostContext }): ReactNode {
-	const what = describeHostContext(context);
+function SentContext({
+	context,
+	mentions,
+}: {
+	context: SentHostContext | null;
+	mentions: SentMentions | null;
+}): ReactNode {
 	return (
-		<ul className="tr-above" aria-label={`Sent with what was open in ${context.host}`}>
-			<li className="tr-context" title={context.uri ?? context.title}>
-				<Eye size={13} aria-hidden />
-				<span className="tr-context-name">{what}</span>
-			</li>
+		<ul
+			className="tr-above"
+			aria-label={context !== null ? `Sent with what was open in ${context.host}` : "Sent with what it mentions"}
+		>
+			{context !== null && (
+				<li className="tr-context" title={context.uri ?? context.title}>
+					<Eye size={13} aria-hidden />
+					<span className="tr-context-name">{describeHostContext(context)}</span>
+				</li>
+			)}
+			{mentions?.items.map((item, index) => (
+				<li key={`${index} ${item.uri ?? item.title}`} className="tr-context" title={item.uri ?? item.title}>
+					<AtSign size={13} aria-hidden />
+					<span className="tr-context-name">{item.title}</span>
+				</li>
+			))}
 		</ul>
 	);
 }
@@ -424,13 +443,17 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 								<Note customType="app-notice" details={{ source: notice.source }} content={notice.text} />
 							</Row>
 						);
-					const { content, files, context } = withoutAdded(sent);
+					const { content, files, context, mentions } = withoutAdded(sent);
 					return (
 						<Row
 							kind="user"
 							gutter="host"
 							title={entry.timestamp}
-							above={context === null ? undefined : <SentContext context={context} />}
+							above={
+								context === null && mentions === null ? undefined : (
+									<SentContext context={context} mentions={mentions} />
+								)
+							}
 						>
 							<MsgContent content={content} />
 							{files.length > 0 && <AttachedFiles files={files} host={host} />}
