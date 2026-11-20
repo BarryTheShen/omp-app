@@ -78,5 +78,40 @@ export function definePdfChecks(engine: "chromium" | "webkit"): void {
         expect(realApp.problems).toEqual([]);
       },
     );
+
+    realTest("a drawn page is drawn again, sharp, when the panel grows", async ({ realApp }) => {
+      await writeFile(join(realApp.folder, "two-pages.pdf"), twoPagePdf());
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        { timeout: 120_000 },
+      );
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+      await page
+        .getByRole("tree", { name: "Files" })
+        .getByRole("treeitem", { name: "two-pages.pdf", exact: true })
+        .click();
+      const first = page.getByRole("img", { name: "Page 1 of 2" });
+      await expect(first.locator("canvas")).toBeVisible({ timeout: 30_000 });
+      // Its canvas's pixels for each pixel of its place on screen, by the screen's own pixels (at least 2).
+      const sharpness = (): Promise<number> =>
+        first.evaluate((slot) => {
+          const canvas = slot.querySelector("canvas");
+          const needed = slot.clientWidth * Math.max(window.devicePixelRatio, 2);
+          return canvas === null ? 0 : canvas.width / needed;
+        });
+      await expect.poll(sharpness, { timeout: 10_000 }).toBeGreaterThanOrEqual(0.95);
+      const before = await first.evaluate((slot) => slot.clientWidth);
+      const viewport = page.viewportSize();
+      if (viewport === null) throw new Error("no viewport");
+      await page.setViewportSize({ width: viewport.width + 500, height: viewport.height });
+      await expect.poll(() => first.evaluate((slot) => slot.clientWidth)).toBeGreaterThan(before);
+      // Stretched, the canvas of the narrower panel was blurred: it is drawn again for the wider one.
+      await expect.poll(sharpness, { timeout: 10_000 }).toBeGreaterThanOrEqual(0.95);
+      await expect.poll(() => inked(first), { timeout: 10_000 }).toBe(true);
+      expect(realApp.problems).toEqual([]);
+    });
   });
 }
