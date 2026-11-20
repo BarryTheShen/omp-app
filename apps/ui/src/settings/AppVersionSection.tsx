@@ -10,10 +10,14 @@ const versionWords = (version: string): string =>
     : `omp-app ${version}`;
 
 /**
- * Settings → App → omp-app: the release the server runs, and in the desktop window, the desktop app's own (its pages
- * come from the server, so the two can differ). A desktop app without the version command says nothing of its own.
+ * The release the server runs, and in the desktop window, the desktop app's own (its pages come from the server, so the
+ * two can differ); null until known, and the desktop's stays null outside the window or in a desktop app without the
+ * version command.
  */
-export function AppVersionSection({ client }: { readonly client: AppClient }): ReactNode {
+export function useAppVersions(client: AppClient): {
+  readonly server: string | null;
+  readonly desktop: string | null;
+} {
   const [server, setServer] = useState<string | null>(null);
   const [desktop, setDesktop] = useState<string | null>(null);
   useEffect(() => {
@@ -35,6 +39,15 @@ export function AppVersionSection({ client }: { readonly client: AppClient }): R
       alive = false;
     };
   }, [client]);
+  return { server, desktop };
+}
+
+/** A version as the Settings list's last line says it: short, "dev" for a server run from its source. */
+export const shortVersion = (version: string): string => (version === "0.0.0" ? "dev" : version);
+
+/** Settings → App → omp-app: which omp-app the server runs, and in the desktop window, which the desktop app is. */
+export function AppVersionSection({ client }: { readonly client: AppClient }): ReactNode {
+  const { server, desktop } = useAppVersions(client);
   return (
     <section aria-label="omp-app">
       <h3 className="mt-6 text-xs font-medium text-t3">omp-app</h3>

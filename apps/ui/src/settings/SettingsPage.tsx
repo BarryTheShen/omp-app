@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ChatController } from "../chat/controller";
 import { SavedSecrets } from "../secrets/SavedSecrets";
 import { AppPage } from "./AppPage";
+import { shortVersion, useAppVersions } from "./AppVersionSection";
 import {
   loadSettingsData,
   type SettingDef,
@@ -108,6 +109,7 @@ function SettingsSheet({
   const [thisFolder, setThisFolder] = useState(false);
   const layer: ConfigWriteLayer = thisFolder ? "project" : "global";
   const config = useConfig(client, thisFolder ? { layer, folder } : { layer, folder: null });
+  const versions = useAppVersions(client);
   // On a phone the tab list comes first, then the chosen tab; elsewhere, or for the Server section, the app's own tab.
   const [tabId, setTabId] = useState<string | null>(phone && place === "app" ? null : APP_TAB);
   const [query, setQuery] = useState("");
@@ -202,7 +204,18 @@ function SettingsSheet({
       })}
     </ul>
   );
-  const version = data !== null && <p className="px-1 text-xs text-t3">omp {data.omp}</p>;
+  // What runs, at a glance for troubleshooting: omp, the server's omp-app, and in the desktop window the desktop app.
+  const version = data !== null && (
+    <p className="px-1 text-xs text-t3">
+      {[
+        `omp ${data.omp}`,
+        versions.server !== null && `omp-app ${shortVersion(versions.server)}`,
+        versions.desktop !== null && `desktop ${shortVersion(versions.desktop)}`,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+    </p>
+  );
   /** Whose settings a change goes to: omp's own, for every folder, or this folder's. */
   const scope = (
     <>

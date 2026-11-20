@@ -162,7 +162,7 @@ realTest.describe("new UI in the desktop window", () => {
   );
 
   realTest(
-    "Settings → App says first which omp-app the server runs, and in the window which the desktop app is",
+    "Settings → App says first which omp-app the server runs, and in the window which the desktop app is; so does the list's last line",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeWindow });
       await settingsButton(page).click();
@@ -171,6 +171,8 @@ realTest.describe("new UI in the desktop window", () => {
       await expect(version).toContainText("This server runs a development build of omp-app.");
       await expect(version).toContainText("This desktop app is omp-app 0.3.1675.");
       expect(await windowCalls(page)).toContainEqual(["plugin:app|version", null]);
+      // Under the list of tabs, all three at a glance.
+      await expect(page.getByText(/^omp \S+ · omp-app dev · desktop 0\.3\.1675$/)).toBeVisible();
       // Outside the window, only the server's.
       const browser = await realApp.open({ path: "/" });
       await browser.getByRole("button", { name: "Settings", exact: true }).click();
@@ -179,6 +181,7 @@ realTest.describe("new UI in the desktop window", () => {
         .getByRole("region", { name: "omp-app" });
       await expect(plain).toContainText("This server runs a development build of omp-app.");
       await expect(plain).not.toContainText("desktop app");
+      await expect(browser.getByText(/^omp \S+ · omp-app dev$/)).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );
