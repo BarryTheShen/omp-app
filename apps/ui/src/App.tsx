@@ -46,6 +46,7 @@ import { GoalDialog } from "./goal/GoalDialog";
 import { inbox, setInboxOpen, useInbox } from "./inbox/inbox";
 import { KEYS, keycap } from "./keys/table";
 import { watchLink } from "./linkCheck";
+import { watchStuckLink } from "./linkRescue";
 import { embed } from "./lite/embed";
 import { LiteShell } from "./lite/LiteShell";
 import { isLiteView } from "./lite/lite";
@@ -282,6 +283,7 @@ function Shell({
   useSettledNotifications(useInbox(), useNotifySettings(client, folder));
   // A link that stopped answering shows as such and is opened again (#2789).
   useEffect(() => watchLink(client), [client]);
+  useEffect(() => watchStuckLink(client), [client]);
   // How smoothly this page scrolls, measured on a sample of scrolls and kept in the server's debug log.
   useEffect(
     () =>

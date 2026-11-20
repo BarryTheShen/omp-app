@@ -1,5 +1,5 @@
 import type { Page, WebSocketRoute } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, type RealApp, realTest } from "./real-omp";
 
 /** The connection dot in the sidebar's foot, by the state it says. */
 const dot = (page: Page, words: string) =>
@@ -287,6 +287,69 @@ realTest.describe("new UI: the connection to the app", () => {
       await field.fill(other);
       await page.getByRole("button", { name: "Open", exact: true }).click();
       await expect(page).toHaveURL(other, { timeout: 30_000 });
+    },
+  );
+
+  /**
+   * A page whose every new link hangs while its server answers (seen on an iPhone and in the desktop window, 2026-11-20:
+   * only reopening the app got back): Reconnect now, then the page reloads itself, and the new page connects.
+   */
+  async function stuckPage(realApp: RealApp) {
+    realApp.allowProblem(/WebSocket/i);
+    const state = { stuck: false, first: null as WebSocketRoute | null, hung: 0 };
+    const page = await realApp.open({
+      path: "/",
+      beforeLoad: (opened) =>
+        opened.routeWebSocket(/\/ws/, (socket: WebSocketRoute) => {
+          state.first ??= socket;
+          // While stuck, this page's links reach nothing; a new page's do (the reload clears it below).
+          if (state.stuck) {
+            state.hung += 1;
+            socket.onMessage(() => {});
+            return;
+          }
+          socket.connectToServer();
+        }),
+    });
+    // A new document (the reload) gets through, from its first link on.
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) state.stuck = false;
+    });
+    await expect(dot(page, "Connected")).toBeVisible({ timeout: 60_000 });
+    await page.evaluate(() => {
+      (window as unknown as { before: boolean }).before = true;
+    });
+    state.stuck = true;
+    await state.first?.close({ code: 1006, reason: "gone" });
+    return { page, state };
+  }
+
+  realTest(
+    "a page whose new links all hang: Reconnect now reloads it when its server answers, and it connects",
+    async ({ realApp }) => {
+      const { page, state } = await stuckPage(realApp);
+      const reconnect = page.getByRole("button", { name: "Reconnect now" });
+      await expect(reconnect).toBeVisible({ timeout: 15_000 });
+      await reconnect.click();
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 30_000 });
+      expect(state.hung).toBeGreaterThanOrEqual(1);
+      // A new page: the mark of the old one is gone.
+      expect(
+        await page.evaluate(() => (window as unknown as { before?: boolean }).before),
+      ).toBeUndefined();
+    },
+  );
+
+  realTest(
+    "a page whose new links all hang reloads itself after 15 seconds shown, without a click",
+    async ({ realApp }) => {
+      const { page, state } = await stuckPage(realApp);
+      await expect(dot(page, "Reconnecting…")).toBeVisible({ timeout: 10_000 });
+      await expect(dot(page, "Connected")).toBeVisible({ timeout: 45_000 });
+      expect(state.hung).toBeGreaterThanOrEqual(2);
+      expect(
+        await page.evaluate(() => (window as unknown as { before?: boolean }).before),
+      ).toBeUndefined();
     },
   );
 });

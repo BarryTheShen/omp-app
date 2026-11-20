@@ -2,6 +2,7 @@ import type { AppClient, ConnectionStateEvent } from "@omp-app/client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { lastReturnAt, onReturn } from "./linkCheck";
+import { reconnectOrReload } from "./linkRescue";
 import { reloadKeepingChat } from "./reloadKeepsChat";
 import { useAppUpdated } from "./update";
 
@@ -100,7 +101,7 @@ export function ConnectionBanner({
             : "The connection to the app has closed."}
       </span>
       {reconnecting && (
-        <Button size="xs" variant="secondary" onClick={() => client.reconnectNow()}>
+        <Button size="xs" variant="secondary" onClick={() => reconnectOrReload(client)}>
           Reconnect now
         </Button>
       )}

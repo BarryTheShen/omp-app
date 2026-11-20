@@ -28,6 +28,7 @@ import { firstPromptOf } from "../chat/firstPrompts";
 import { LinkReopens } from "../chat/reopens";
 import { useFolder } from "../folders/useFolder";
 import { watchLink } from "../linkCheck";
+import { watchStuckLink } from "../linkRescue";
 import { titleOf } from "../sidebar/title";
 import { type ChatList, useChatList } from "../sidebar/useChatList";
 import { setLiteThemeMode } from "../theme/theme";
@@ -115,6 +116,7 @@ export function LiteShell({
   }, [settings]);
   // A link that stopped answering shows as such and is opened again (#2789), as in the full app.
   useEffect(() => watchLink(client), [client]);
+  useEffect(() => watchStuckLink(client), [client]);
   return (
     <div data-app-root="true" className="flex h-full min-w-0 flex-col bg-panel">
       <ConnectionBanner client={client} />

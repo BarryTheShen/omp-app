@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { REFUSED_WORDS } from "./ConnectionBanner";
+import { reconnectOrReload } from "./linkRescue";
 
 /** The link's state as the client told it last; the client tells the current one at once. */
 export function useConnectionState(client: AppClient): ConnectionStateEvent {
@@ -65,7 +66,7 @@ export function ConnectionDot({
               line && "h-7 w-full justify-start font-normal tablet:h-11",
             )}
             onClick={() =>
-              event.state === "closed" ? window.location.reload() : client.reconnectNow()
+              event.state === "closed" ? window.location.reload() : reconnectOrReload(client)
             }
           />
         }
