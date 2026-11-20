@@ -551,8 +551,11 @@ export class ChatController {
     this.#live = true;
     this.#mark("subscribed_ms");
     // A turn that ended after the file's window was read came in the replay with no omp entry ids: the window is read
-    // once more for it. Turns the window held already need nothing (#2768).
-    if (this.#replayEndedTurn && this.store.beyondWindow) this.#refreshWindow();
+    // once more for it. Turns the window held already need nothing (#2768). A long chat's history is gone from the
+    // server's replay (it keeps the last events only): what was written between the window's read and this subscription
+    // (a reply that ended just then) came neither in the window nor in a replay, so the window is read once more too.
+    if (this.#subscription.historyLost || (this.#replayEndedTurn && this.store.beyondWindow))
+      this.#refreshWindow();
     await setup;
     if (this.#disposed) return;
     this.store.setPhase("live");

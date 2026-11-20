@@ -494,9 +494,13 @@ export function bindChat(endpoint: EmbedEndpoint, chat: EmbedChat): () => void {
     stopHeld();
     // The reply of a chat the panel no longer shows holds the host's tools no longer.
     endpoint.hide(chat);
-    // A chat kept open behind the panel keeps no tool whose calls nothing here would hear.
+    // A chat kept open behind the panel keeps no tool whose calls nothing here would hear. One no longer held for this
+    // page (kept, its view let go) lost them with its view on the server, which refuses a change from a page not
+    // holding it.
     if (registered !== null) {
-      void writes.then(() => chat.setHostTools(endpoint.owner, [])).catch(() => undefined);
+      void writes
+        .then(() => (chat.held ? chat.setHostTools(endpoint.owner, []) : undefined))
+        .catch(() => undefined);
     }
   };
 }

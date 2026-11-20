@@ -528,7 +528,7 @@ describe("createAppClient", () => {
     client.dispose();
   });
 
-  test("a first subscribe the server cannot replay from zero is live-only, with no resync", async () => {
+  test("a first subscribe the server cannot replay from zero is live-only, with no resync, and says its history was lost", async () => {
     const server = new FakeServer();
     server.resyncConflicts.add(0);
     const client = await openClient(server);
@@ -545,6 +545,14 @@ describe("createAppClient", () => {
     server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
     await eventually(() => seqs.length === 1);
     expect(subscription.lastSeq).toBe(1);
+    // What happened before it reached this page neither by replay nor live: the caller reads it again (a chat's window).
+    expect(subscription.historyLost).toBe(true);
+    server.resyncConflicts.delete(0);
+    const replayed = await client.subscribe(EventPort, "updated", {
+      scope: "thread-2",
+      afterSeq: 0,
+    });
+    expect(replayed.historyLost).toBe(false);
     client.dispose();
   });
 

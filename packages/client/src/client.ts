@@ -136,6 +136,12 @@ export interface CreateAppClientOptions {
 export interface AppClientSubscription<Payload> {
   readonly stream: StreamKey;
   readonly lastSeq: number;
+  /**
+   * The server no longer held the history this subscription asked for (it keeps a stream's last events only): nothing
+   * from before the subscription was replayed, so what happened between a read made before it and the subscription
+   * reached neither.
+   */
+  readonly historyLost: boolean;
   onEvent(listener: (payload: Payload, seq: number) => void): () => void;
   unsubscribe(): Promise<void>;
 }
@@ -233,6 +239,8 @@ interface SubscriptionRecord {
   active: boolean;
   subscribed: boolean;
   hasCursor: boolean;
+  /** The first subscribe found the asked history gone (`historyLost`). */
+  historyLost: boolean;
 }
 
 interface OpenWaiter {
@@ -888,6 +896,7 @@ class AppClientImpl implements AppClient {
     record.lastSeq = lastSeq;
     record.hasCursor = hasCursor;
     record.subscribed = false;
+    record.historyLost = false;
     record.active = true;
     return record;
   }
@@ -913,6 +922,9 @@ class AppClientImpl implements AppClient {
       },
       get lastSeq() {
         return record.lastSeq;
+      },
+      get historyLost() {
+        return record.historyLost;
       },
       onEvent: (listener: (payload: unknown, seq: number) => void) => {
         if (holder.released) return () => undefined;
@@ -991,6 +1003,7 @@ class AppClientImpl implements AppClient {
         // subscription from zero had none, so it follows live events without a resync.
         if (record.lastSeq > 0) this.emitResync({ reason: "stale-resume", stream: record.stream });
         record.lastSeq = 0;
+        record.historyLost = true;
         const retryId = this.nextRequestId();
         const retry = SubscribeFrame.parse({
           type: "subscribe",
