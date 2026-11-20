@@ -21,6 +21,10 @@ const words = (failure: unknown): string =>
 const dayOf = (at: string): string =>
   new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
+/** "3:45 PM": when the server last looked for a newer release, in this browser's time. */
+const timeOf = (at: string): string =>
+  new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
 /**
  * The release the server runs, and in the desktop window, the desktop app's own (its pages come from the server, so the
  * two can differ); null until known, and the desktop's stays null outside the window or in a desktop app without the
@@ -83,14 +87,18 @@ export function AppVersionSection({ client }: { readonly client: AppClient }): R
     { readonly kind: "installing" } | { readonly kind: "by-hand"; readonly why: string } | null
   >(null);
 
+  /** Look for a newer release now: the button says so until the server's look is done. */
+  const [looking, setLooking] = useState(false);
   const read = (check: boolean): void => {
+    if (check) setLooking(true);
     client
       .port(AppPort)
       .appUpdates(check ? { check } : {})
       .then(
         (next) => setUpdates(next),
         () => undefined,
-      );
+      )
+      .finally(() => check && setLooking(false));
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once per client; `read` is this render's
   useEffect(() => read(false), [client]);
@@ -191,7 +199,10 @@ export function AppVersionSection({ client }: { readonly client: AppClient }): R
             </div>
           )}
           {newer === null && latest !== null && updates.checkProblem === undefined && (
-            <p className="text-xs text-t3">This is the newest release.</p>
+            <p className="text-xs text-t3">
+              This is the newest release
+              {updates.checkedAt === null ? "" : `, as of ${timeOf(updates.checkedAt)}`}.
+            </p>
           )}
           {updates.checkProblem !== undefined && (
             <p className="text-xs text-t3">{updates.checkProblem}</p>
@@ -286,8 +297,14 @@ export function AppVersionSection({ client }: { readonly client: AppClient }): R
             </div>
           )}
           <div>
-            <Button size="sm" variant="ghost" className="-ml-2 text-t3" onClick={() => read(true)}>
-              Look for a newer release
+            <Button
+              size="sm"
+              variant="ghost"
+              className="-ml-2 text-t3"
+              disabled={looking}
+              onClick={() => read(true)}
+            >
+              {looking ? "Looking…" : "Look for a newer release"}
             </Button>
           </div>
         </div>
