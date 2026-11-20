@@ -37,7 +37,13 @@ export interface SessionLauncher {
 }
 
 /** What the password is asked for: each its own polkit action (`dev.ompapp.device.<action>`), with its own message. */
-export type GuardAction = "turn-on" | "extend" | "sudo" | "acknowledge" | "share-folder";
+export type GuardAction =
+  | "turn-on"
+  | "extend"
+  | "sudo"
+  | "acknowledge"
+  | "share-folder"
+  | "grant-chat";
 
 /**
  * Asks the person, on the machine, for their password for `action`; true once given. `message` is what the dialog
@@ -160,6 +166,13 @@ const Control = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("deny-folder"), id: AskId }),
   /** Stops sharing a folder: no password, it only takes away. */
   z.strictObject({ op: z.literal("remove-folder"), path: z.string().startsWith("/").max(4_096) }),
+  /** The person's password for allowing one chat to reach this computer (PLAN §7f); the grant is kept by their agent. */
+  z.strictObject({
+    op: z.literal("grant-chat"),
+    pid: z.number().int().positive(),
+    chat: z.string().max(120),
+    server: ServerName.optional(),
+  }),
 ]);
 
 /** Who gets the access, as a password dialog says it: the server's agents when the agent named it. */
@@ -725,6 +738,21 @@ export class Guard {
     return null;
   }
 
+  /**
+   * Asks the person's password for allowing the chat `chat` to reach this computer; the dialog's words are the guard's,
+   * with the chat's name as one plain line. Returns why not, or null.
+   */
+  async grantChat(pid: number, chat: string, server?: string): Promise<string | null> {
+    const name = oneLine(chat).trim().slice(0, 120) || "A chat";
+    const where = server === undefined ? "in omp-app" : `on the omp-app server ${server}`;
+    const given = await this.#options.verify(
+      pid,
+      "grant-chat",
+      `The chat "${name}" ${where} will be able to run commands on this computer, as its agent account, whenever agent access is on, until you remove it from Chats with access.`,
+    );
+    return given ? null : "the password was not given";
+  }
+
   /** Stops sharing a folder, unmounting it at once (no password: it only takes away). Returns why not, or null. */
   async removeFolder(path: string): Promise<string | null> {
     const folder = this.#shared.find((each) => each.path === path);
@@ -910,6 +938,11 @@ export class Guard {
         socket.end(
           refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,
         );
+        return;
+      }
+      case "grant-chat": {
+        const refused = await this.grantChat(request.pid, request.chat, request.server);
+        socket.end(refused === null ? "ok {}\n" : `error ${refused}\n`);
         return;
       }
     }

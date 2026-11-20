@@ -28,7 +28,7 @@ export function accessNote(configPath: string, hosts: readonly string[]): string
   return [
     "## Computers you can reach (omp-app agent access)",
     "",
-    `Linked to this omp-app server: ${hosts.join(", ")}. Run a command on one with \`${ssh} <name> '<command>'\` (without a command for a shell). A computer answers only while its owner has agent access turned on; when the connection is refused, ask the owner to turn it on.`,
+    `Linked to this omp-app server: ${hosts.join(", ")}. Run a command on one with \`${ssh} <name> '<command>'\` (without a command for a shell). A computer answers only while its owner has agent access turned on, and only chats the owner allowed: the first time this chat connects, it is refused and the owner is asked on the computer; tell the user and try again once they have allowed it. When the connection is refused because access is off, ask the owner to turn it on.`,
     "",
     "There you work as a separate account (omp-agent) that cannot read the owner's files. To use one of the owner's folders, run on that computer `omp-app-device ask-folder '~/<folder>' --why '<one line>'`, adding `--write` only when files must change. It waits until the owner answers (up to 10 minutes) and prints the path to use. Secret folders and the whole home folder are always refused.",
   ].join("\n");

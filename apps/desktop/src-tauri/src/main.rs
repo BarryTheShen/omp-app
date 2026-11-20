@@ -72,6 +72,9 @@ fn main() {
             access::access_allow_folder,
             access::access_deny_folder,
             access::access_remove_folder,
+            access::access_allow_chat,
+            access::access_deny_chat,
+            access::access_remove_chat,
             access::access_here,
             access::access_set_up_here,
         ])

@@ -30,6 +30,8 @@ interface ProxyData {
   closed: boolean;
   /** Ends once the queue for the client has drained. */
   ending: boolean;
+  /** Bytes from `ssh` that came while the session was being opened: forwarded once it is. */
+  early: Uint8Array[] | null;
 }
 
 /** Listens at `path` (any stale socket there is replaced); returns what stops it. */
@@ -49,12 +51,17 @@ export async function listenAccessProxy(
           queue: [],
           closed: false,
           ending: false,
+          early: null,
         };
       },
       data(socket, chunk) {
         const state = socket.data;
         if (state.closed) return;
         if (state.handle !== null) return forward(socket, state.handle, chunk);
+        if (state.early !== null) {
+          state.early.push(chunk.slice());
+          return;
+        }
         const head = new Uint8Array(state.head.length + chunk.length);
         head.set(state.head);
         head.set(chunk, state.head.length);
@@ -72,28 +79,45 @@ export async function listenAccessProxy(
         }
         const rest = head.subarray(newline + 1);
         state.head = new Uint8Array(0);
+        // While the session opens (the chat's name is looked up), what else comes waits here.
+        state.early = rest.length > 0 ? [rest.slice()] : [];
+        socket.pause();
         let answered = false;
-        const opened = hub.openStream(hello.alias, hello.scope, {
-          opened: () => {
-            answered = true;
-            send(socket, new TextEncoder().encode("ok\n"));
-          },
-          data: (bytes) => send(socket, bytes),
-          close: (reason) => {
-            if (!answered) {
+        void hub
+          .openStream(hello.alias, hello.scope, {
+            opened: () => {
               answered = true;
-              return refuse(socket, reason);
+              send(socket, new TextEncoder().encode("ok\n"));
+            },
+            data: (bytes) => send(socket, bytes),
+            close: (reason) => {
+              if (!answered) {
+                answered = true;
+                return refuse(socket, reason);
+              }
+              end(socket);
+            },
+          })
+          .then((opened) => {
+            if (typeof opened === "string") return refuse(socket, opened);
+            if (state.closed) return opened.close();
+            state.handle = opened;
+            logger?.info("device_access.session", {
+              machine: hello.alias,
+              chat_process: hello.scope !== null,
+            });
+            const early = state.early ?? [];
+            state.early = null;
+            const waiting = early.reduce((sum, each) => sum + each.length, 0);
+            if (waiting === 0) return socket.resume();
+            const bytes = new Uint8Array(waiting);
+            let at = 0;
+            for (const each of early) {
+              bytes.set(each, at);
+              at += each.length;
             }
-            end(socket);
-          },
-        });
-        if (typeof opened === "string") return refuse(socket, opened);
-        state.handle = opened;
-        logger?.info("device_access.session", {
-          machine: hello.alias,
-          chat_process: hello.scope !== null,
-        });
-        if (rest.length > 0) forward(socket, opened, rest);
+            forward(socket, opened, bytes);
+          });
       },
       drain(socket) {
         flush(socket);

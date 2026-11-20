@@ -88,6 +88,8 @@ export class AccessLink {
   #reviewPending = false;
   #reach: readonly string[] = [];
   #sessionKey: string | null = null;
+  /** The chats the machine allows (PLAN §7f); null for a machine that does not keep chat grants (an older release). */
+  #grants: ReadonlySet<string> | null = null;
   #nonce = "";
   #nextStream = 1;
   readonly #streams = new Map<number, OpenStream>();
@@ -122,6 +124,11 @@ export class AccessLink {
   /** What the machine says it can reach while on; empty while off. */
   get reach(): readonly string[] {
     return this.#reach;
+  }
+
+  /** The chats the machine allows; null when it does not keep chat grants. */
+  get grants(): readonly string[] | null {
+    return this.#grants === null ? null : [...this.#grants];
   }
 
   /** The private key the machine made for this turn-on; null while off. Never written to disk. */
@@ -210,6 +217,13 @@ export class AccessLink {
           this.#sessionKey = frame.sessionKey;
         }
         if (frame.state.on && frame.reach !== undefined) this.#reach = frame.reach;
+        if (frame.grants !== undefined) {
+          this.#grants = new Set(frame.grants);
+          // A chat whose access was taken away: its sessions end here too.
+          for (const [id, stream] of this.#streams)
+            if (stream.threadId === null || !this.#grants.has(stream.threadId))
+              this.closeStream(id, "this chat's access to this computer was removed");
+        }
         this.#deps.onState(this);
         return undefined;
       }
@@ -305,17 +319,30 @@ export class AccessLink {
 
   /**
    * Opens a session stream for an `ssh` (its chat, or null). Refused while the machine is off, has a review pending, or
-   * runs the most streams already.
+   * runs the most streams already. A machine that keeps chat grants (PLAN §7f) gets streams only for the chats it allows:
+   * none for an `ssh` outside the app's chats, and for another chat no stream but an `ask`, so its person is asked.
    */
-  openStream(threadId: string | null, sink: StreamSink): StreamHandle | string {
+  openStream(threadId: string | null, sink: StreamSink, chat?: string): StreamHandle | string {
     if (this.#machine === null || this.#closed) return "the machine is not connected";
     if (!this.#state.on) return "agent access is off";
     if (this.#reviewPending) return "a review is pending on the machine";
+    const name = chat?.trim().slice(0, 120) || "A chat";
+    if (this.#grants !== null) {
+      if (threadId === null) return "only a chat in omp-app can reach this computer";
+      if (!this.#grants.has(threadId)) {
+        this.#deps.send({ type: "ask", threadId, chat: name });
+        return "this chat has no access to this computer yet: its owner was asked to allow it there; try again once they have";
+      }
+    }
     if (this.#streams.size >= ACCESS_LIMITS.streams) return "too many sessions";
     const stream = this.#nextStream;
     this.#nextStream += 1;
     this.#streams.set(stream, { sink, threadId, unacked: 0, waiting: [], opened: false });
-    this.#deps.send({ type: "open", stream, threadId });
+    this.#deps.send(
+      this.#grants === null
+        ? { type: "open", stream, threadId }
+        : { type: "open", stream, threadId, chat: name },
+    );
     return {
       stream,
       write: (bytes) => this.#write(stream, bytes),
@@ -323,13 +350,13 @@ export class AccessLink {
     };
   }
 
-  closeStream(stream: number): void {
+  closeStream(stream: number, reason = "closed"): void {
     const open = this.#streams.get(stream);
     if (open === undefined) return;
     this.#streams.delete(stream);
     for (const each of open.waiting) each.failed(new Error("the stream closed"));
     if (!this.#closed) this.#deps.send({ type: "close", stream });
-    open.sink.close("closed");
+    open.sink.close(reason);
   }
 
   /** Asks the machine to turn access off now. */

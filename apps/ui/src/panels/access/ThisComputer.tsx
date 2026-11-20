@@ -30,6 +30,13 @@ interface SharedFolder {
   readonly write: boolean;
 }
 
+/** A chat asking to reach this computer, or one allowed to (PLAN §7f). */
+interface ChatEntry {
+  readonly threadId: string;
+  readonly chat: string;
+  readonly server: string;
+}
+
 /**
  * What this computer's agent says of itself (`access_status`): the switch, the review its guard holds, and agents'
  * folder requests and shared folders (an agent of before has none).
@@ -41,7 +48,20 @@ interface Status {
     readonly asks: readonly FolderAsk[];
     readonly shared: readonly SharedFolder[];
   };
+  readonly chats?: {
+    readonly requests: readonly ChatEntry[];
+    readonly granted: readonly ChatEntry[];
+  };
 }
+
+/** A server's address as a host, for a line of text. */
+const hostOf = (server: string): string => {
+  try {
+    return new URL(server).host;
+  } catch {
+    return server;
+  }
+};
 
 /** What setup or remove did: what stands in the way, and each change made to the computer. */
 interface Done {
@@ -228,7 +248,8 @@ export function ThisComputer({
       let stateChanged = false;
       for (const { n, event } of events as { n: number; event: Record<string, unknown> }[]) {
         after.current = n;
-        if (event.type === "state" || event.type === "folders") stateChanged = true;
+        if (event.type === "state" || event.type === "folders" || event.type === "chats")
+          stateChanged = true;
         if (event.type !== "wrapper") continue;
         const each = event.event as {
           type: string;
@@ -365,6 +386,8 @@ export function ThisComputer({
   const reviewing = status?.review.pending === true;
   const asks = controls ? (status?.folders?.asks ?? []) : [];
   const shared = controls ? (status?.folders?.shared ?? []) : [];
+  const chatRequests = controls ? (status?.chats?.requests ?? []) : [];
+  const chatsAllowed = controls ? (status?.chats?.granted ?? []) : [];
   const waiting = busy !== null;
   // Remove is for any computer set up here, whichever server it is linked to.
   const removable = here.setUp;
@@ -396,6 +419,52 @@ export function ThisComputer({
           Allow this server's agents to work on this computer while agent access is turned on. Setup
           requires an administrator password once.
         </p>
+      )}
+      {chatRequests.length > 0 && (
+        <div className="mt-2">
+          <h4 className="text-xs font-medium text-t2">Chat requests</h4>
+          <ul aria-label="Chat requests" className="mt-1 flex flex-col gap-2">
+            {chatRequests.map((request) => (
+              <li
+                key={request.threadId}
+                aria-label={`Request from ${request.chat}`}
+                className="rounded-md border border-l2 px-3 py-2 text-xs"
+              >
+                <p className="text-t2 [overflow-wrap:anywhere]">
+                  The chat <span className="text-t1">{request.chat.replace(REORDERING, "")}</span>{" "}
+                  on {hostOf(request.server)} asks to reach this computer.
+                </p>
+                <p className="mt-1 text-t3">
+                  Once allowed, it can run commands here whenever agent access is on, until you
+                  remove it.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    className={WRAPS}
+                    disabled={waiting}
+                    onClick={() =>
+                      act("access_allow_chat", WAITING_FOR_PASSWORD, { threadId: request.threadId })
+                    }
+                  >
+                    Allow
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="max-sm:h-11"
+                    disabled={waiting}
+                    onClick={() =>
+                      act("access_deny_chat", "Denying…", { threadId: request.threadId })
+                    }
+                  >
+                    Deny
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {asks.length > 0 && (
         <div className="mt-2">
@@ -580,6 +649,38 @@ export function ThisComputer({
               </li>
             ))}
           </ol>
+        </div>
+      )}
+      {chatsAllowed.length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-xs font-medium text-t2">Chats with access</h4>
+          <p className="mt-0.5 text-xs text-t3">
+            Only these chats can run commands here while agent access is on.
+          </p>
+          <ul aria-label="Chats with access" className="mt-1 flex flex-col gap-1">
+            {chatsAllowed.map((grant) => (
+              <li key={grant.threadId} className="flex items-center gap-2 text-xs">
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                  <span className="block text-t1">{grant.chat.replace(REORDERING, "")}</span>
+                  <span className="block text-t3">{hostOf(grant.server)}</span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="max-sm:h-11"
+                  aria-label={`Take access away from ${grant.chat}`}
+                  disabled={waiting}
+                  onClick={() =>
+                    act("access_remove_chat", "Removing the chat's access…", {
+                      threadId: grant.threadId,
+                    })
+                  }
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {shared.length > 0 && (

@@ -32,6 +32,15 @@ export interface LinkDeps {
     stream: number,
     handlers: { data(bytes: Uint8Array): void; close(reason: string): void },
   ) => Promise<GuardStream | string>;
+  /**
+   * The chats allowed to reach this machine (PLAN §7f), sent with the state so the server enforces them too; undefined
+   * for a link that carries no sessions (a leave).
+   */
+  readonly grants?: () => readonly string[];
+  /** Whether a stream for this chat may open (null: an `ssh` outside the app's chats, never). */
+  readonly allowed?: (threadId: string | null) => boolean;
+  /** A chat without a grant tried to reach the machine: its person is asked. */
+  readonly onAsk?: (threadId: string, chat: string) => void;
   /** The server (any paired page) asked access off. */
   readonly onOff: () => void;
   readonly onClosed: (code: number, reason: string) => void;
@@ -42,6 +51,8 @@ export interface LinkDeps {
 }
 
 interface Stream {
+  /** The chat the stream is for. */
+  threadId: string | null;
   guard: GuardStream | null;
   /** Bytes sent to the server not yet acknowledged. */
   unacked: number;
@@ -89,13 +100,25 @@ export class MachineLink {
   sendState(): void {
     if (!this.#authed) return;
     const { state, reviewPending, sessionKey, reach } = this.#deps.state();
+    const grants = this.#deps.grants?.();
     this.#send({
       type: "state",
       state,
       reviewPending,
       ...(sessionKey === undefined ? {} : { sessionKey }),
       ...(state.on && reach !== undefined ? { reach: [...reach] } : {}),
+      ...(grants === undefined ? {} : { grants: [...grants] }),
     });
+  }
+
+  /** Ends every stream of this chat (its grant was removed). */
+  endChat(threadId: string): void {
+    for (const [id, stream] of this.#streams) {
+      if (stream.threadId !== threadId) continue;
+      this.#streams.delete(id);
+      stream.guard?.end();
+      this.#send({ type: "close", stream: id });
+    }
   }
 
   /** Sends a record; false when the link cannot carry it now (not authenticated, or closed). */
@@ -161,7 +184,10 @@ export class MachineLink {
         this.#deps.onAuthenticated?.();
         return;
       case "open":
-        void this.#open(frame.stream);
+        void this.#open(frame.stream, frame.threadId, frame.chat);
+        return;
+      case "ask":
+        this.#deps.onAsk?.(frame.threadId, frame.chat);
         return;
       case "data": {
         const stream = this.#streams.get(frame.stream);
@@ -207,12 +233,28 @@ export class MachineLink {
     }
   }
 
-  async #open(id: number): Promise<void> {
+  async #open(id: number, threadId: string | null, chat: string | undefined): Promise<void> {
     const { state, reviewPending } = this.#deps.state();
     if (!state.on)
       return this.#send({ type: "refused", stream: id, reason: "agent access is off" });
     if (reviewPending)
       return this.#send({ type: "refused", stream: id, reason: "a review is pending" });
+    // Only chats the person allowed (PLAN §7f); another chat's try asks them.
+    if (this.#deps.allowed !== undefined && !this.#deps.allowed(threadId)) {
+      if (threadId === null)
+        return this.#send({
+          type: "refused",
+          stream: id,
+          reason: "only a chat in omp-app can reach this computer",
+        });
+      this.#deps.onAsk?.(threadId, chat ?? "A chat");
+      return this.#send({
+        type: "refused",
+        stream: id,
+        reason:
+          "this chat has no access to this computer yet: its owner was asked to allow it there; try again once they have",
+      });
+    }
     if (this.#streams.size >= ACCESS_LIMITS.streams || this.#streams.has(id)) {
       return this.#send({ type: "refused", stream: id, reason: "too many sessions" });
     }
@@ -223,6 +265,7 @@ export class MachineLink {
     }
     this.#opens.count += 1;
     const stream: Stream = {
+      threadId,
       guard: null,
       unacked: 0,
       queue: [],

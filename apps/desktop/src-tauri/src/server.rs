@@ -70,7 +70,7 @@ const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// turning on, off, extending, sudo, the review, what sessions show, and Remove. Each of the switch's commands acts
 /// only for a window whose server is the one this computer is linked to, and each that grants anything asks the
 /// person's password in the system's dialog, worded by the agent's guard from what it grants.
-const PAGE_PERMISSIONS: [&str; 28] = [
+const PAGE_PERMISSIONS: [&str; 31] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",
     "allow-read-clipboard-file",
@@ -97,6 +97,9 @@ const PAGE_PERMISSIONS: [&str; 28] = [
     "allow-access-allow-folder",
     "allow-access-deny-folder",
     "allow-access-remove-folder",
+    "allow-access-allow-chat",
+    "allow-access-deny-chat",
+    "allow-access-remove-chat",
     "core:webview:allow-set-webview-zoom",
     // The desktop app's version, for Settings → App → omp-app (read only).
     "core:app:allow-version",

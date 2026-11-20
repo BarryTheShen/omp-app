@@ -816,6 +816,8 @@ export async function createCompositionServer(
           serverOrigin: remote.origin,
           desk: devices.desk,
           proxyCommand: [env.OMP_APP_BIN ?? Bun.which("omp-app") ?? "omp-app", "device-ssh"],
+          // The chat's name, as the chat list shows it, for the computer's person to recognise it.
+          chatName: (threadId) => chatTitle(ThreadId.parse(threadId)),
           // The chat a chat process belongs to, by the systemd scope its process runs in (`/proc/<pid>/cgroup`).
           threadOfScope: (scopeId) =>
             processRegistry.list().find((entry) => {

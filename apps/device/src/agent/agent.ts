@@ -19,6 +19,7 @@ import {
   DEVICE_ACCESS_PATHS,
 } from "@omp-app/contracts";
 import { z } from "zod";
+import { type ChatGrant, ChatGrants, type ChatRequest } from "./chat-grants";
 import {
   GUARD_WAIT_MS,
   guardOpen,
@@ -135,7 +136,14 @@ export type AgentEvent =
   | { readonly type: "wrapper"; readonly event: WrapperEvent }
   /** Something the person should hear about: sudo allowed, a folder request, the summary when access turns off. */
   | { readonly type: "notice"; readonly text: string }
-  | { readonly type: "folders"; readonly folders: Folders };
+  | { readonly type: "folders"; readonly folders: Folders }
+  | { readonly type: "chats"; readonly chats: Chats };
+
+/** Chats asking to reach this computer, and the chats allowed to (PLAN §7f), for the linked server. */
+export interface Chats {
+  readonly requests: readonly ChatRequest[];
+  readonly granted: readonly ChatGrant[];
+}
 
 /** What happened while access was on, for the summary at off. */
 interface Tally {
@@ -190,6 +198,8 @@ export class Agent {
   #folders: Folders = { asks: [], shared: [] };
   /** Folder requests already told about. */
   #asksTold = new Set<string>();
+  /** The chats allowed to reach this computer (`chat-grants.json`). */
+  #chats: ChatGrants | null = null;
 
   private constructor(options: AgentOptions) {
     this.#options = options;
@@ -207,6 +217,7 @@ export class Agent {
     if (identity !== null) agent.#identity = createPrivateKey(identity);
     agent.#seq =
       Number((await readFile(join(options.dataDir, "seq"), "utf8").catch(() => "0")).trim()) || 0;
+    agent.#chats = await ChatGrants.open(join(options.dataDir, "chat-grants.json"));
     return agent;
   }
 
@@ -377,6 +388,65 @@ export class Agent {
     return this.#folders;
   }
 
+  /** Chats asking to reach this computer, and the chats allowed to, for the server it is linked to. */
+  get chats(): Chats {
+    const server = this.#machine?.serverOrigin ?? "";
+    return {
+      requests: (this.#chats?.requests ?? []).filter((each) => each.server === server),
+      granted: this.#chats?.of(server) ?? [],
+    };
+  }
+
+  /** Allows a chat that asked (`callerPid` asks the person's password); its streams may open from now on. */
+  async allowChat(callerPid: number, threadId: string): Promise<string | null> {
+    const request = this.chats.requests.find((each) => each.threadId === threadId);
+    if (request === undefined || this.#chats === null) return "that chat is no longer asking";
+    const answer = await guardRequest(
+      this.#options.guardSocket,
+      { op: "grant-chat", pid: callerPid, chat: request.chat, ...this.#server() },
+      PASSWORD_WAIT_MS,
+    );
+    if (!answer.ok) return answer.reason;
+    if ((await this.#chats.allow(threadId, new Date())) === null)
+      return "that chat is no longer asking";
+    this.#chatsChanged();
+    return null;
+  }
+
+  /** Turns a chat's request down (no password: it grants nothing). */
+  denyChat(threadId: string): string | null {
+    if (this.#chats === null || !this.#chats.deny(threadId)) return "that chat is no longer asking";
+    this.#chatsChanged();
+    return null;
+  }
+
+  /** Takes a chat's access away (no password); its open sessions end. */
+  async removeChat(threadId: string): Promise<string | null> {
+    if (this.#chats === null || !(await this.#chats.remove(threadId)))
+      return "that chat has no access";
+    this.#link?.endChat(threadId);
+    this.#chatsChanged();
+    return null;
+  }
+
+  /** A chat without a grant tried to reach this computer: the person is asked, once while it waits. */
+  #chatAsked(threadId: string, chat: string): void {
+    const server = this.#machine?.serverOrigin;
+    if (server === undefined || this.#chats === null) return;
+    if (!this.#chats.ask(server, threadId, chat, new Date())) return;
+    const asked = this.#chats.requests.find((each) => each.threadId === threadId);
+    this.#notice(
+      `The chat "${asked?.chat ?? chat}" on ${new URL(server).host} asks to reach this computer. Allow or deny it in Agent access.`,
+    );
+    this.#chatsChanged();
+  }
+
+  /** Watchers hear the chats; the server hears the grants (it enforces them too). */
+  #chatsChanged(): void {
+    this.#tell({ type: "chats", chats: this.chats });
+    this.#link?.sendState();
+  }
+
   /**
    * The linked server's host, for the guard to name in its password dialog: from this agent's own record of the link,
    * never from whoever asks. Left out when it is not in the letters the guard takes (the dialog then says "omp-app"),
@@ -442,6 +512,8 @@ export class Agent {
     this.#closeLink();
     await rm(join(this.#options.dataDir, "machine.json"), { force: true });
     await rm(join(this.#options.dataDir, "identity.pem"), { force: true });
+    // Removing agent access forgets which chats were allowed.
+    await this.#chats?.clear();
     this.#machine = null;
     this.#identity = null;
     return told;
@@ -572,6 +644,10 @@ export class Agent {
             setTimeout(() => this.#endRuns(open.map(([run]) => run)), 2_000);
           },
         }),
+      // Only the chats the person allowed may open sessions (PLAN §7f); the server checks the same list.
+      grants: () => (this.#chats?.of(machine.serverOrigin) ?? []).map((grant) => grant.threadId),
+      allowed: (threadId) => this.#chats?.allowed(machine.serverOrigin, threadId) ?? false,
+      onAsk: (threadId, chat) => this.#chatAsked(threadId, chat),
       onOff: () => void this.off(),
       onClosed: (code, reason) => {
         if (this.#link !== link) return;

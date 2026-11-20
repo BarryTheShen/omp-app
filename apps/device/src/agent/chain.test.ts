@@ -117,7 +117,8 @@ async function chain() {
     desk,
     proxyCommand: [BUN, join(import.meta.dir, "test-device-ssh.ts")],
     sessionAccount: account,
-    threadOfScope: () => null,
+    // Every ssh here comes from one chat (as a chat process's scope would say).
+    threadOfScope: () => CHAT,
     onMachinesChanged: () => undefined,
     onActivity: (each) => heard.push(each),
   });
@@ -141,8 +142,19 @@ async function chain() {
       await Bun.sleep(25);
     }
   };
-  return { agent, guard, access: opened, desk, origin, heard, ssh, until, dir, told };
+  /** The chat's first try is refused and asks the machine's person, who allows it (PLAN §7f). */
+  const grant = async () => {
+    const first = ssh("true");
+    expect(await first.exited).toBe(255);
+    expect(await new Response(first.stderr).text()).toContain("its owner was asked");
+    await until("the request", () => agent.chats.requests.length === 1);
+    expect(await agent.allowChat(process.pid, CHAT)).toBeNull();
+  };
+  return { agent, guard, access: opened, desk, origin, heard, ssh, until, dir, told, grant };
 }
+
+/** The chat every agent ssh in these tests comes from. */
+const CHAT = "thread-chain";
 
 describe.skipIf(!ready)("agent access end to end (#20)", () => {
   test("enrolled and on, an agent's ssh runs a command on the machine; the machine's signed records reach the server", async () => {
@@ -162,11 +174,12 @@ describe.skipIf(!ready)("agent access end to end (#20)", () => {
       "the internet (via eth0)",
       "192.168.1.0/24 (via eth0)",
     ]);
+    await c.grant();
     const session = c.ssh("echo hello from the machine; exit 3");
     expect(await session.exited).toBe(3);
     expect(await new Response(session.stdout).text()).toBe("hello from the machine\n");
     await c.until("both records", () => c.heard.length >= 2);
-    expect(c.told).toEqual([
+    expect(c.told.filter((each) => each.startsWith("omp agent session"))).toEqual([
       "omp agent session on this computer: echo hello from the machine; exit 3 (omp-app-device watch shows it)",
     ]);
     expect(
@@ -228,6 +241,7 @@ describe.skipIf(!ready)("agent access end to end (#20)", () => {
       "turn agent access off first",
     );
     await Bun.sleep(100);
+    await c.grant();
     const long = c.ssh("sleep 600");
     // The open session is in the machine's state on the server (the panel's "1 session").
     await c.until("the server counts the session", () => {

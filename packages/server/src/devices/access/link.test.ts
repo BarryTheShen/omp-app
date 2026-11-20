@@ -194,6 +194,44 @@ describe("a machine's access link (#20)", () => {
     expect(h.link.sessionKey).toBe("session-key-for-this-turn-on");
   });
 
+  test("a machine that keeps chat grants gets streams only for chats it allows: none outside a chat, an ask for another chat, and a removed chat's sessions end (PLAN §7f)", () => {
+    const h = harness();
+    h.auth();
+    const grants = (list: string[]) =>
+      h.frame({
+        type: "state",
+        state: { on: true, until: "2026-11-16T22:00:00Z", sessions: 0, sudoUntil: null },
+        reviewPending: false,
+        grants: list,
+      });
+    grants([]);
+    expect(h.link.openStream(null, sink().value)).toBe(
+      "only a chat in omp-app can reach this computer",
+    );
+    expect(h.link.openStream("thread-1", sink().value, "Fix the build")).toContain(
+      "its owner was asked",
+    );
+    // No stream: the machine is asked instead.
+    expect(h.sent.at(-1)).toEqual({ type: "ask", threadId: "thread-1", chat: "Fix the build" });
+    grants(["thread-1"]);
+    const allowed = sink();
+    expect(typeof h.link.openStream("thread-1", allowed.value, "Fix the build")).toBe("object");
+    expect(h.sent.at(-1)).toEqual({
+      type: "open",
+      stream: 1,
+      threadId: "thread-1",
+      chat: "Fix the build",
+    });
+    // An unnamed chat is still named for the person.
+    grants(["thread-1", "thread-2"]);
+    h.link.openStream("thread-2", sink().value);
+    expect(h.sent.at(-1)).toMatchObject({ type: "open", threadId: "thread-2", chat: "A chat" });
+    // Its access taken away on the machine: its session ends here too.
+    grants(["thread-2"]);
+    expect(allowed.events).toContain("close: this chat's access to this computer was removed");
+    expect(h.link.grants).toEqual(["thread-2"]);
+  });
+
   test("bytes wait for the machine to open the session, then go within its window until it acknowledges", async () => {
     const h = harness();
     h.auth();

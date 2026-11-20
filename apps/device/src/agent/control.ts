@@ -39,6 +39,14 @@ const Request = z.discriminatedUnion("op", [
     op: z.literal("remove-folder"),
     path: z.string().startsWith("/").max(4_096),
   }),
+  /** Chats asking to reach this computer, and those allowed (PLAN §7f). */
+  z.strictObject({
+    op: z.literal("allow-chat"),
+    pid: z.number().int().positive(),
+    threadId: z.string().min(1).max(200),
+  }),
+  z.strictObject({ op: z.literal("deny-chat"), threadId: z.string().min(1).max(200) }),
+  z.strictObject({ op: z.literal("remove-chat"), threadId: z.string().min(1).max(200) }),
   z.strictObject({ op: z.literal("watch") }),
   /** Enrolls the running agent itself, so it links at the next turn-on without a restart. */
   z.strictObject({
@@ -67,6 +75,7 @@ export function agentStatus(agent: Agent): object {
     linked: agent.linked,
     review: agent.review,
     folders: agent.folders,
+    chats: agent.chats,
   };
 }
 
@@ -126,6 +135,15 @@ export async function serveControl(path: string, agent: Agent): Promise<() => vo
             return;
           case "remove-folder":
             void agent.removeFolder(request.path).then(answer);
+            return;
+          case "allow-chat":
+            void agent.allowChat(request.pid, request.threadId).then(answer);
+            return;
+          case "deny-chat":
+            answer(agent.denyChat(request.threadId));
+            return;
+          case "remove-chat":
+            void agent.removeChat(request.threadId).then(answer);
             return;
           case "enroll":
             void agent

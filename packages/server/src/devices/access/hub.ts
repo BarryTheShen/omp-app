@@ -18,6 +18,8 @@ export interface AccessHubDeps {
   readonly serverOrigin: string;
   /** The chat a chat process's systemd scope id belongs to (`omp-app-chat-<id>.scope`), or null. */
   readonly threadOfScope: (scopeId: string) => string | null;
+  /** A chat's name, for the machine's person to recognise it (PLAN §7f); null when unknown. */
+  readonly chatName?: (threadId: string) => Promise<string | null>;
   readonly onMachinesChanged: (machines: AccessMachine[]) => void;
   readonly onActivity: (activity: AccessActivity) => void;
   readonly logger?: Logger;
@@ -141,14 +143,24 @@ export class AccessHub {
     return true;
   }
 
-  /** Opens a session for an agent's `ssh <alias>`, from a chat process's scope (or none); a reason when refused. */
-  openStream(alias: string, scopeId: string | null, sink: StreamSink): StreamHandle | string {
+  /**
+   * Opens a session for an agent's `ssh <alias>`, from a chat process's scope (or none); a reason when refused. The
+   * chat's name goes with it, so a machine that keeps chat grants can name the chat to its person.
+   */
+  async openStream(
+    alias: string,
+    scopeId: string | null,
+    sink: StreamSink,
+  ): Promise<StreamHandle | string> {
     const machine = this.#deps.store.byAlias(alias);
     if (machine === undefined) return `${alias}: no machine has that name`;
+    const threadId = scopeId === null ? null : this.#deps.threadOfScope(scopeId);
+    const chat =
+      threadId === null ? null : await (this.#deps.chatName?.(threadId) ?? Promise.resolve(null));
+    // Looked up after the name: the link may have gone meanwhile.
     const link = this.#links.get(machine.id);
     if (link === undefined) return `${alias}: agent access is off`;
-    const threadId = scopeId === null ? null : this.#deps.threadOfScope(scopeId);
-    const handle = link.openStream(threadId, sink);
+    const handle = link.openStream(threadId, sink, chat ?? undefined);
     return typeof handle === "string" ? `${alias}: ${handle}` : handle;
   }
 

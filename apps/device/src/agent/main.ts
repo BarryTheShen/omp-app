@@ -13,6 +13,9 @@
  *   omp-app-device allow-folder <id> [--write]  allow an agent's folder request (status lists them); asks your password
  *   omp-app-device deny-folder <id>         turn a folder request down
  *   omp-app-device remove-folder <path>     stop sharing a folder (status lists them)
+ *   omp-app-device allow-chat <chat id>     allow a chat that asked to reach this computer (status lists them); asks your password
+ *   omp-app-device deny-chat <chat id>      turn a chat's request down
+ *   omp-app-device remove-chat <chat id>    take a chat's access away
  */
 import { existsSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -238,6 +241,19 @@ switch (command) {
   case "remove-folder":
     process.exit(await ask({ op: "remove-folder", path: args[0] ?? "" }));
     break;
+  case "allow-chat":
+    process.exit(
+      await withTerminalPassword(() =>
+        ask({ op: "allow-chat", pid: process.pid, threadId: args[0] ?? "" }),
+      ),
+    );
+    break;
+  case "deny-chat":
+    process.exit(await ask({ op: "deny-chat", threadId: args[0] ?? "" }));
+    break;
+  case "remove-chat":
+    process.exit(await ask({ op: "remove-chat", threadId: args[0] ?? "" }));
+    break;
   case "watch": {
     let buffer = "";
     // A session's output as text (a character split across events is kept whole), with only its colours as escapes.
@@ -308,7 +324,7 @@ switch (command) {
   }
   default:
     process.stderr.write(
-      "Use omp-app-device run | enroll <server> <alias> | on [--for <minutes>] | off | status | acknowledge | extend [--for <minutes>] | sudo [--for <minutes>] | watch | allow-folder <id> [--write] | deny-folder <id> | remove-folder <path>\nIn an agent session: omp-app-device ask-folder <folder> [--write] [--why <text>] asks the person for one of their folders (--help for more).\n",
+      "Use omp-app-device run | enroll <server> <alias> | on [--for <minutes>] | off | status | acknowledge | extend [--for <minutes>] | sudo [--for <minutes>] | watch | allow-folder <id> [--write] | deny-folder <id> | remove-folder <path> | allow-chat <chat id> | deny-chat <chat id> | remove-chat <chat id>\nIn an agent session: omp-app-device ask-folder <folder> [--write] [--why <text>] asks the person for one of their folders (--help for more).\n",
     );
     process.exit(2);
 }

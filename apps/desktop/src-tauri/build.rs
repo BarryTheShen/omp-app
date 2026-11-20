@@ -30,6 +30,9 @@ fn main() {
             "access_allow_folder",
             "access_deny_folder",
             "access_remove_folder",
+            "access_allow_chat",
+            "access_deny_chat",
+            "access_remove_chat",
         ]),
     ))
     .unwrap();

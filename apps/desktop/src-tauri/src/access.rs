@@ -288,6 +288,47 @@ pub async fn access_remove_folder(
     .await
 }
 
+/// Allows a chat that asked to reach this computer (PLAN §7f): the system asks the person's password, in a dialog whose
+/// words the guard writes from the chat's name and the server.
+#[tauri::command]
+pub async fn access_allow_chat(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    thread_id: String,
+) -> Result<Value, String> {
+    let pid = std::process::id();
+    for_linked_window(&app, &window, false, move |_| {
+        one_dialog(json!({ "op": "allow-chat", "pid": pid, "threadId": thread_id }))
+    })
+    .await
+}
+
+/// Turns a chat's request down (no password: it grants nothing).
+#[tauri::command]
+pub async fn access_deny_chat(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    thread_id: String,
+) -> Result<Value, String> {
+    for_linked_window(&app, &window, false, move |_| {
+        ask(json!({ "op": "deny-chat", "threadId": thread_id }))
+    })
+    .await
+}
+
+/// Takes a chat's access away; its sessions end (no password: it only takes away).
+#[tauri::command]
+pub async fn access_remove_chat(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    thread_id: String,
+) -> Result<Value, String> {
+    for_linked_window(&app, &window, false, move |_| {
+        ask(json!({ "op": "remove-chat", "threadId": thread_id }))
+    })
+    .await
+}
+
 /// The program the app installs for agent access (idle until set up).
 const PROGRAM: &str = "/usr/lib/omp-app-device/omp-app-device";
 

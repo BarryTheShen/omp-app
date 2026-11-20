@@ -172,11 +172,24 @@ const StreamId = z
 export const ServerAccessFrame = z.discriminatedUnion("type", [
   /** First, on every link: the machine signs `accessChallengeSigningText` with this nonce. */
   z.strictObject({ type: z.literal("challenge"), nonce: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }),
-  /** Open a session stream for a chat (null: an `ssh` run outside the app's chats). */
+  /**
+   * Open a session stream for a chat (null: an `ssh` run outside the app's chats). `chat` is the chat's name, sent only
+   * to a machine that keeps chat grants (its state carries `grants`).
+   */
   z.strictObject({
     type: z.literal("open"),
     stream: StreamId,
     threadId: z.string().max(200).nullable(),
+    chat: z.string().max(120).optional(),
+  }),
+  /**
+   * A chat without a grant tried to reach the machine (no stream was opened): the machine asks its person whether to
+   * allow it. Sent only to a machine that keeps chat grants.
+   */
+  z.strictObject({
+    type: z.literal("ask"),
+    threadId: z.string().min(1).max(200),
+    chat: z.string().max(120),
   }),
   z.strictObject({ type: z.literal("data"), stream: StreamId, bytes: StreamBytes }),
   /** The receiver took this many more bytes of the stream: the sender may send that many more. */
@@ -209,6 +222,11 @@ export const MachineAccessFrame = z.discriminatedUnion("type", [
     sessionKey: z.string().max(1_000).optional(),
     /** What the machine can reach while on: networks per interface, summed up on the machine. */
     reach: z.array(z.string().max(120)).max(24).optional(),
+    /**
+     * The chats the machine's person allowed to reach it (chat ids). A machine that sends it keeps chat grants: the
+     * server then opens streams only for these chats and asks the machine for the others.
+     */
+    grants: z.array(z.string().max(200)).max(500).optional(),
   }),
   /** The stream is open: its sshd runs. */
   z.strictObject({ type: z.literal("opened"), stream: StreamId }),

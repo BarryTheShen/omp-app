@@ -52,6 +52,15 @@
       <allow_active>auth_self</allow_active>
     </defaults>
   </action>
+  <action id="dev.ompapp.device.grant-chat">
+    <description>Allow a chat to reach this computer</description>
+    <message>A chat in omp-app will be able to run commands on this computer, as its agent account, whenever agent access is on, until you remove it from Chats with access.</message>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
   <!-- Setup and remove run as root through pkexec, matched by the program's path and its first argument: an
        administrator's password, every time. -->
   <action id="dev.ompapp.device.setup">

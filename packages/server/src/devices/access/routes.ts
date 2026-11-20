@@ -46,6 +46,8 @@ export async function openDeviceAccess(options: {
   /** The account sessions log in as on every machine (`omp-agent`). */
   readonly sessionAccount?: string;
   readonly threadOfScope: (scopeId: string) => string | null;
+  /** A chat's name, as the chat list shows it (PLAN §7f); null when unknown. */
+  readonly chatName?: (threadId: string) => Promise<string | null>;
   readonly onMachinesChanged: (machines: AccessMachine[]) => void;
   readonly onActivity: (activity: AccessActivity) => void;
   readonly logger?: Logger;
@@ -69,6 +71,7 @@ export async function openDeviceAccess(options: {
     files,
     serverOrigin: options.serverOrigin,
     threadOfScope: options.threadOfScope,
+    ...(options.chatName === undefined ? {} : { chatName: options.chatName }),
     onMachinesChanged: options.onMachinesChanged,
     onActivity: options.onActivity,
     ...(options.logger === undefined ? {} : { logger: options.logger }),
