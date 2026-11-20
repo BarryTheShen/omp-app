@@ -134,6 +134,81 @@ export const SetOmpUpdatesArgs = z
   .refine((args) => Object.keys(args).length > 0, { message: "Name a setting to change." });
 export type SetOmpUpdatesArgs = z.infer<typeof SetOmpUpdatesArgs>;
 
+/** Where omp-app's releases are published: `<this>/download/v<version>/<file>`. */
+export const APP_RELEASES = "https://github.com/BarryTheShen/omp-app/releases";
+
+/** A release of omp-app as its version says it: three numbers (`0.3.1684`). */
+export const AppVersion = z
+  .string()
+  .regex(/^\d+\.\d+\.\d+$/, "A version is three numbers, as 0.3.1684.");
+
+/** Whether release `a` is newer than release `b` (three numbers each). */
+export function isNewerRelease(a: string, b: string): boolean {
+  const [x, y] = [a.split(".").map(Number), b.split(".").map(Number)];
+  for (let i = 0; i < 3; i += 1) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  }
+  return false;
+}
+
+/**
+ * Settings → App → omp-app's updates: the release the server runs and the newest one published, whether this server can
+ * install one itself (and why not, with the command to run instead), an update under way or the last one that failed,
+ * and the update that brought this release (its Go back).
+ */
+export const AppUpdates = z
+  .object({
+    installed: z.string().min(1),
+    /** The newest release published; null until a check succeeded. */
+    latest: z
+      .object({ version: AppVersion, at: z.string().min(1) })
+      .strict()
+      .nullable(),
+    /** When the newest release was last looked for; null before the first look. */
+    checkedAt: z.string().min(1).nullable(),
+    /** Why the last look failed, while it did. */
+    checkProblem: z.string().min(1).optional(),
+    install: z.discriminatedUnion("possible", [
+      z.object({ possible: z.literal(true) }).strict(),
+      z
+        .object({
+          possible: z.literal(false),
+          reason: z.string().min(1),
+          /** What to run on the server's computer instead, when there is such a command. */
+          command: z.string().min(1).optional(),
+        })
+        .strict(),
+    ]),
+    /** An update this server started, while it goes on, or the last one that did not install. */
+    job: z
+      .object({
+        version: AppVersion,
+        step: z.enum(["downloading", "installing", "failed"]),
+        at: z.string().min(1),
+        detail: z.string().min(1).optional(),
+      })
+      .strict()
+      .nullable(),
+    /** The update that brought the release running now: Go back installs `from`. */
+    last: z
+      .object({ from: AppVersion, to: AppVersion, at: z.string().min(1) })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type AppUpdates = z.infer<typeof AppUpdates>;
+
+export const AppUpdatesArgs = z
+  .object({
+    /** Look for a newer release now, not only when the last look is an hour old. */
+    check: z.boolean().optional(),
+  })
+  .strict();
+export type AppUpdatesArgs = z.infer<typeof AppUpdatesArgs>;
+
+export const UpdateAppArgs = z.object({ version: AppVersion }).strict();
+export type UpdateAppArgs = z.infer<typeof UpdateAppArgs>;
+
 export const AppPort = definePort({
   name: "A0.app",
   methods: {
@@ -177,6 +252,19 @@ export const AppPort = definePort({
     requestOmpUpdate: {
       args: EmptyArgs,
       result: OmpUpdates,
+    },
+    appUpdates: {
+      args: AppUpdatesArgs,
+      result: AppUpdates,
+    },
+    /**
+     * Installs a release of omp-app on the server's computer (a newer one, or the one before for Go back): downloads its
+     * package, checks it against the release's checksums, installs it and restarts the server. Returns at once, the
+     * download started; the server restarts when it is installed.
+     */
+    updateApp: {
+      args: UpdateAppArgs,
+      result: AppUpdates,
     },
   },
   events: {},

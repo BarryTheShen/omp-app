@@ -33,6 +33,8 @@ fn main() {
             "access_allow_chat",
             "access_deny_chat",
             "access_remove_chat",
+            // Settings → App → omp-app → Update this app (update.rs).
+            "update_desktop_app",
         ]),
     ))
     .unwrap();

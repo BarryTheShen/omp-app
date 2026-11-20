@@ -3,6 +3,8 @@ import {
   AppHealth,
   AppPort,
   AppServerInfo,
+  type AppUpdates,
+  type AppUpdatesArgs,
   CapabilityMap,
   type ClientErrorReport,
   type ClientTraceReport,
@@ -11,6 +13,7 @@ import {
   OMP_UPDATE_NIGHTS,
   type OmpUpdates,
   type SetOmpUpdatesArgs,
+  type UpdateAppArgs,
   UsableModels,
 } from "@omp-app/contracts";
 import { truncate } from "../../logging";
@@ -86,6 +89,30 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
       requestOmpUpdate: async (_args: unknown, _call: PortHandlerContext): Promise<OmpUpdates> => {
         const after = await requestOmpUpdate(updateFiles(context), new Date());
         context.logger?.info("omp_updates.requested", { at: after.request?.at ?? "taken" });
+        return after;
+      },
+      appUpdates: async (args: unknown, _call: PortHandlerContext): Promise<AppUpdates> =>
+        context.appUpdates === undefined
+          ? {
+              installed: context.serverInfo.serverVersion,
+              latest: null,
+              checkedAt: null,
+              install: { possible: false, reason: "This run of the app does not update itself." },
+              job: null,
+              last: null,
+            }
+          : await context.appUpdates.read(args as AppUpdatesArgs),
+      updateApp: async (args: unknown, _call: PortHandlerContext): Promise<AppUpdates> => {
+        const { version } = args as UpdateAppArgs;
+        if (context.appUpdates === undefined) {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "This run of the app does not update itself.",
+            retryable: false,
+          });
+        }
+        const after = await context.appUpdates.update(version);
+        context.logger?.info("app_update.started", { from: after.installed, to: version });
         return after;
       },
       reportClientError: (args: unknown, _call: PortHandlerContext): null => {

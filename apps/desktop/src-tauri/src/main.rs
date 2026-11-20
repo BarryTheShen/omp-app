@@ -27,6 +27,7 @@ mod keys;
 mod remote;
 mod server;
 mod signals;
+mod update;
 mod webdata;
 mod windows;
 
@@ -75,6 +76,7 @@ fn main() {
             access::access_allow_chat,
             access::access_deny_chat,
             access::access_remove_chat,
+            update::update_desktop_app,
             access::access_here,
             access::access_set_up_here,
         ])

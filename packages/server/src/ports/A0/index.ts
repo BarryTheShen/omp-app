@@ -13,6 +13,7 @@ import type { A0PortContext, ThreadBootstrap } from "./context";
 import type { TaskDelivery } from "./tasks";
 
 export * from "./app";
+export * from "./app-updates";
 export * from "./browser/browser";
 export * from "./chat-search/index";
 export * from "./chat-search/port";

@@ -63,6 +63,7 @@ import { InboxButton } from "../inbox/InboxButton";
 import { isImeEnter } from "../keys/ime";
 import { KEYS, keycap } from "../keys/table";
 import { useLongPress } from "../longPress";
+import { useUpdateAvailable } from "../settings/appUpdates";
 import { useSwipe } from "../swipe";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
@@ -171,6 +172,11 @@ export function Sidebar({
   readonly onHide?: () => void;
 }): ReactNode {
   const [query, setQuery] = useState("");
+  /** A newer omp-app is out: a dot on the Settings button, whose App tab updates it. */
+  const updateAvailable = useUpdateAvailable(client);
+  const updateDot = updateAvailable && (
+    <span aria-hidden="true" className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+  );
   const [problem, setProblem] = useState<string | null>(null);
   /** What the last action did, for a moment: "Added “X” to the to-do list." */
   const [notice, setNotice] = useState<string | null>(null);
@@ -486,10 +492,12 @@ export function Sidebar({
             variant="ghost"
             size="icon"
             aria-label="Settings"
-            className="text-t2"
+            aria-description={updateAvailable ? "A newer omp-app is out" : undefined}
+            className="relative text-t2"
             onClick={onSettings}
           >
             <Settings />
+            {updateDot}
           </Button>
         </div>
       ) : (
@@ -525,15 +533,20 @@ export function Sidebar({
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Settings"
+                      aria-description={updateAvailable ? "A newer omp-app is out" : undefined}
                       aria-keyshortcuts="Control+,"
-                      className="text-t3 hover:text-t1 tablet:size-11"
+                      className="relative text-t3 hover:text-t1 tablet:size-11"
                       onClick={onSettings}
                     />
                   }
                 >
                   <Settings />
+                  {updateDot}
                 </TooltipTrigger>
-                <TooltipContent side="top">Settings · {keycap(KEYS.settings)}</TooltipContent>
+                <TooltipContent side="top">
+                  Settings · {keycap(KEYS.settings)}
+                  {updateAvailable ? " · a newer omp-app is out" : ""}
+                </TooltipContent>
               </Tooltip>
             </div>
           </div>

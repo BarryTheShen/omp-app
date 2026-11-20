@@ -84,6 +84,7 @@ import { createWorkspaceFiles } from "../src/modules/A1/workspace-files";
 import { chatHostCommand, ompCommand } from "../src/omp-host/chat-command";
 import {
   type A0PortContext,
+  AppUpdater,
   createA0Runtime,
   createBrowserRuntime,
   createChatIndex,
@@ -523,6 +524,11 @@ export async function createCompositionServer(
       settings: join(appDataDir, "omp-update-settings.json"),
       request: join(appDataDir, "omp-update-request.json"),
     },
+    appUpdates: new AppUpdater({
+      dir: join(appDataDir, "updates"),
+      installed: serverVersion,
+      ompStatus: join(appDataDir, "omp-update.json"),
+    }),
     usagePauseFile: join(appDataDir, "usage-pause.json"),
     usagePauseExtrasFile: join(appDataDir, "usage-pause-extras.json"),
     usageShares,
