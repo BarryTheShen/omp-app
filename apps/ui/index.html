@@ -41,6 +41,9 @@
         }
         document.documentElement.dataset.theme = theme;
         document.documentElement.classList.toggle("dark", dark);
+        // The kept style (src/theme/style.ts); none is Tern's own look. The lite view keeps its framing app's look.
+        const style = lite ? null : read("omp-app.ui.style");
+        if (style !== null && style !== "tern") document.documentElement.dataset.style = style;
         // The framing app's background from the first paint (#2844), by src/lite/hostLook.ts's rule for `bg`; the rest of
         // its look follows when the app starts.
         const bg = lite ? (new URLSearchParams(location.search).get("bg") ?? "").trim() : "";

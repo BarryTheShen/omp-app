@@ -1621,4 +1621,388 @@
   --syn-operator: #cf222e;
 }
 
+/* Paper: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-paper"] {
+  color-scheme: light;
+
+  --t1: #2a2521;
+  --t2: #5c5249;
+  --t3: #6e6358;
+  --t4: #8c8073;
+  --ink: #2a2521;
+  --l1: rgb(42 37 33 / 6%);
+  --l2: rgb(42 37 33 / 9%);
+  --l3: rgb(42 37 33 / 14%);
+  --l4: rgb(42 37 33 / 22%);
+  --accent: #a3502c;
+  --accent-ink: #91401b;
+  --accent-fill: #a3502c;
+  --ok: #3d7a4a;
+  --warn: #825709;
+  --bad: #a8332b;
+  --live: #2f6f8f;
+  --ok-ink: #286537;
+  --warn-ink: #7a5000;
+  --bad-ink: #a12c25;
+  --ok-fill: #3d7a4a;
+  --bad-fill: #a8332b;
+  --live-fill: #2f6f8f;
+  --ink-pen: #8b3fa0;
+  --ink-pen-fill: #8b3fa0;
+  --page: #f3eee4;
+  --panel: #faf6ee;
+  --card: #fffdf8;
+  --raise: #eae3d5;
+  --code-bg: #f3eee4;
+  --tbl-head: #eae3d5;
+  --chip-bg: rgb(42 37 33 / 5.5%);
+  --pop-bg: #fffdf8;
+  --dim: rgb(243 238 228 / 50%);
+  --syn-keyword: #a3502c;
+  --syn-string: #397646;
+  --syn-number: #8b5a00;
+  --syn-comment: #73675b;
+  --syn-function: #2f5f8f;
+  --syn-type: #7a4f9a;
+  --syn-property: #6b4e2e;
+  --syn-variable: #2a2521;
+  --syn-operator: #5c5249;
+}
+
+/* Ink & Ivory: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-ink-ivory"] {
+  color-scheme: light;
+
+  --t1: #0a0a0a;
+  --t2: #333333;
+  --t3: #555555;
+  --t4: #767676;
+  --ink: #0a0a0a;
+  --l1: rgb(10 10 10 / 6%);
+  --l2: rgb(10 10 10 / 9%);
+  --l3: rgb(10 10 10 / 14%);
+  --l4: rgb(10 10 10 / 22%);
+  --accent: #0044cc;
+  --accent-ink: #0044cc;
+  --accent-fill: #0044cc;
+  --ok: #006b2d;
+  --warn: #7a4a00;
+  --bad: #b00020;
+  --live: #5b21b6;
+  --ok-ink: #00662b;
+  --warn-ink: #7a4a00;
+  --bad-ink: #ae001f;
+  --ok-fill: #006b2d;
+  --bad-fill: #b00020;
+  --live-fill: #5b21b6;
+  --ink-pen: #a1007a;
+  --ink-pen-fill: #a1007a;
+  --page: #f2f2f2;
+  --panel: #ffffff;
+  --card: #ffffff;
+  --raise: #e4e4e4;
+  --code-bg: #f5f5f5;
+  --tbl-head: #e4e4e4;
+  --chip-bg: rgb(10 10 10 / 5.5%);
+  --pop-bg: #ffffff;
+  --dim: rgb(242 242 242 / 50%);
+  --syn-keyword: #0044cc;
+  --syn-string: #006b2d;
+  --syn-number: #7a4a00;
+  --syn-comment: #6b6b6b;
+  --syn-function: #5b21b6;
+  --syn-type: #6a1b9a;
+  --syn-property: #00535c;
+  --syn-variable: #0a0a0a;
+  --syn-operator: #333333;
+}
+
+/* Terminal Contrast: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-terminal"] {
+  color-scheme: dark;
+
+  --t1: #f2f2f2;
+  --t2: #c8c8c8;
+  --t3: #9a9a9a;
+  --t4: #6e6e6e;
+  --ink: #f2f2f2;
+  --l1: rgb(242 242 242 / 7%);
+  --l2: rgb(242 242 242 / 10%);
+  --l3: rgb(242 242 242 / 15%);
+  --l4: rgb(242 242 242 / 24%);
+  --accent: #ffb000;
+  --accent-ink: #ffb000;
+  --accent-fill: #9e6b00;
+  --ok: #62e36b;
+  --warn: #ff7a00;
+  --bad: #ff4d4d;
+  --live: #4fc3f7;
+  --ok-ink: #62e36b;
+  --warn-ink: #ff7a00;
+  --bad-ink: #ff5a57;
+  --ok-fill: #008a21;
+  --bad-fill: #e22d35;
+  --live-fill: #007ea9;
+  --ink-pen: #ff6ad5;
+  --ink-pen-fill: #ca36a5;
+  --page: #000000;
+  --panel: #0a0a0a;
+  --card: #141414;
+  --raise: #1e1e1e;
+  --code-bg: #0f0f0f;
+  --tbl-head: #1e1e1e;
+  --chip-bg: rgb(242 242 242 / 7%);
+  --pop-bg: #141414;
+  --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ffb000;
+  --syn-string: #62e36b;
+  --syn-number: #ff9e64;
+  --syn-comment: #8a8a8a;
+  --syn-function: #4fc3f7;
+  --syn-type: #ffd866;
+  --syn-property: #b39dff;
+  --syn-variable: #f2f2f2;
+  --syn-operator: #ffb000;
+}
+
+/* Warm Low-Light: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-warm-night"] {
+  color-scheme: dark;
+
+  --t1: #f1e6d6;
+  --t2: #cdbba5;
+  --t3: #a4927d;
+  --t4: #7a6a58;
+  --ink: #f1e6d6;
+  --l1: rgb(241 230 214 / 7%);
+  --l2: rgb(241 230 214 / 10%);
+  --l3: rgb(241 230 214 / 15%);
+  --l4: rgb(241 230 214 / 24%);
+  --accent: #e0a458;
+  --accent-ink: #e0a458;
+  --accent-fill: #a26a13;
+  --ok: #9dba6a;
+  --warn: #e88a4a;
+  --bad: #e0655a;
+  --live: #c9a0dc;
+  --ok-ink: #9dba6a;
+  --warn-ink: #f29354;
+  --bad-ink: #ff887b;
+  --ok-fill: #657f2f;
+  --bad-fill: #c84f46;
+  --live-fill: #8f68a1;
+  --ink-pen: #e0a458;
+  --ink-pen-fill: #a26a13;
+  --page: #1b1511;
+  --panel: #221b16;
+  --card: #2b221c;
+  --raise: #372c24;
+  --code-bg: #1f1813;
+  --tbl-head: #372c24;
+  --chip-bg: rgb(241 230 214 / 7%);
+  --pop-bg: #2b221c;
+  --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #e88a4a;
+  --syn-string: #9dba6a;
+  --syn-number: #e0a458;
+  --syn-comment: #a28e7a;
+  --syn-function: #e6c27a;
+  --syn-type: #d4a373;
+  --syn-property: #c9a0dc;
+  --syn-variable: #f1e6d6;
+  --syn-operator: #cdbba5;
+}
+
+/* Glass Night: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-glass-night"] {
+  color-scheme: dark;
+
+  --t1: #eef2ff;
+  --t2: #b7c2e0;
+  --t3: #8492b7;
+  --t4: #5d6a90;
+  --ink: #eef2ff;
+  --l1: rgb(238 242 255 / 7%);
+  --l2: rgb(238 242 255 / 10%);
+  --l3: rgb(238 242 255 / 15%);
+  --l4: rgb(238 242 255 / 24%);
+  --accent: #7ab8ff;
+  --accent-ink: #7ab8ff;
+  --accent-fill: #3c78ba;
+  --ok: #5ee6b0;
+  --warn: #ffc46b;
+  --bad: #ff7a8a;
+  --live: #b79cff;
+  --ok-ink: #5ee6b0;
+  --warn-ink: #ffc46b;
+  --bad-ink: #ff7a8a;
+  --ok-fill: #00875f;
+  --bad-fill: #ca4a5e;
+  --live-fill: #8266c4;
+  --ink-pen: #ff9bd2;
+  --ink-pen-fill: #b3568b;
+  --page: #0b0e1a;
+  --panel: #111629;
+  --card: #171e36;
+  --raise: #20294a;
+  --code-bg: #0e1222;
+  --tbl-head: #20294a;
+  --chip-bg: rgb(238 242 255 / 7%);
+  --pop-bg: #171e36;
+  --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #b79cff;
+  --syn-string: #5ee6b0;
+  --syn-number: #ffc46b;
+  --syn-comment: #7f8db6;
+  --syn-function: #7ab8ff;
+  --syn-type: #7fe3ff;
+  --syn-property: #ff9bd2;
+  --syn-variable: #eef2ff;
+  --syn-operator: #b7c2e0;
+}
+
+/* Graphite Mono: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-graphite"] {
+  color-scheme: dark;
+
+  --t1: #ededed;
+  --t2: #b0b0b0;
+  --t3: #929292;
+  --t4: #5e5e5e;
+  --ink: #ededed;
+  --l1: rgb(237 237 237 / 7%);
+  --l2: rgb(237 237 237 / 10%);
+  --l3: rgb(237 237 237 / 15%);
+  --l4: rgb(237 237 237 / 24%);
+  --accent: #f5f5f5;
+  --accent-ink: #f5f5f5;
+  --accent-fill: #767676;
+  --ok: #a8d5a2;
+  --warn: #e6d28a;
+  --bad: #f0a0a0;
+  --live: #cfcfcf;
+  --ok-ink: #a8d5a2;
+  --warn-ink: #e6d28a;
+  --bad-ink: #f0a0a0;
+  --ok-fill: #578052;
+  --bad-fill: #aa6062;
+  --live-fill: #767676;
+  --ink-pen: #e6d28a;
+  --ink-pen-fill: #87752c;
+  --page: #121212;
+  --panel: #181818;
+  --card: #1f1f1f;
+  --raise: #2a2a2a;
+  --code-bg: #161616;
+  --tbl-head: #2a2a2a;
+  --chip-bg: rgb(237 237 237 / 7%);
+  --pop-bg: #1f1f1f;
+  --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #ffffff;
+  --syn-string: #bdbdbd;
+  --syn-number: #d9d9d9;
+  --syn-comment: #8e8e8e;
+  --syn-function: #ededed;
+  --syn-type: #cfcfcf;
+  --syn-property: #b0b0b0;
+  --syn-variable: #ededed;
+  --syn-operator: #9e9e9e;
+}
+
+/* Rose Dusk: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-rose-dusk"] {
+  color-scheme: dark;
+
+  --t1: #f7eef5;
+  --t2: #d2c1cf;
+  --t3: #a38f9f;
+  --t4: #7a6878;
+  --ink: #f7eef5;
+  --l1: rgb(247 238 245 / 7%);
+  --l2: rgb(247 238 245 / 10%);
+  --l3: rgb(247 238 245 / 15%);
+  --l4: rgb(247 238 245 / 24%);
+  --accent: #f472b6;
+  --accent-ink: #ff7cc0;
+  --accent-fill: #c5478c;
+  --ok: #86d9a0;
+  --warn: #f5c56b;
+  --bad: #ff5a5f;
+  --live: #c4a7ff;
+  --ok-ink: #86d9a0;
+  --warn-ink: #f5c56b;
+  --bad-ink: #ff8684;
+  --ok-fill: #318551;
+  --bad-fill: #db3642;
+  --live-fill: #8467b9;
+  --ink-pen: #f5c56b;
+  --ink-pen-fill: #996e00;
+  --page: #1a1419;
+  --panel: #211a21;
+  --card: #2a212a;
+  --raise: #352a35;
+  --code-bg: #1d161c;
+  --tbl-head: #352a35;
+  --chip-bg: rgb(247 238 245 / 7%);
+  --pop-bg: #2a212a;
+  --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #f472b6;
+  --syn-string: #86d9a0;
+  --syn-number: #f5c56b;
+  --syn-comment: #a18c9d;
+  --syn-function: #c4a7ff;
+  --syn-type: #ffb4d9;
+  --syn-property: #8fd3ff;
+  --syn-variable: #f7eef5;
+  --syn-operator: #d2c1cf;
+}
+
+/* Forest Ledger: omp-app's own (.data/docs/ui-explore/research-landscape.md §4, 2026-11-20) */
+[data-theme="omp-forest"] {
+  color-scheme: dark;
+
+  --t1: #e9f1ea;
+  --t2: #b8c9bb;
+  --t3: #87998b;
+  --t4: #627566;
+  --ink: #e9f1ea;
+  --l1: rgb(233 241 234 / 7%);
+  --l2: rgb(233 241 234 / 10%);
+  --l3: rgb(233 241 234 / 15%);
+  --l4: rgb(233 241 234 / 24%);
+  --accent: #c8d96f;
+  --accent-ink: #c8d96f;
+  --accent-fill: #707d00;
+  --ok: #6fcf97;
+  --warn: #f2c15c;
+  --bad: #eb6f62;
+  --live: #7fc8d9;
+  --ok-ink: #6fcf97;
+  --warn-ink: #f2c15c;
+  --bad-ink: #fe8072;
+  --ok-fill: #1c8653;
+  --bad-fill: #c64e43;
+  --live-fill: #368090;
+  --ink-pen: #e8a87c;
+  --ink-pen-fill: #a3683d;
+  --page: #0e1511;
+  --panel: #131d17;
+  --card: #19251e;
+  --raise: #223026;
+  --code-bg: #101914;
+  --tbl-head: #223026;
+  --chip-bg: rgb(233 241 234 / 7%);
+  --pop-bg: #19251e;
+  --dim: rgb(0 0 0 / 55%);
+  --syn-keyword: #c8d96f;
+  --syn-string: #6fcf97;
+  --syn-number: #f2c15c;
+  --syn-comment: #819682;
+  --syn-function: #7fc8d9;
+  --syn-type: #e8a87c;
+  --syn-property: #a9d4b0;
+  --syn-variable: #e9f1ea;
+  --syn-operator: #b8c9bb;
+}
+
 /* palette themes: end */

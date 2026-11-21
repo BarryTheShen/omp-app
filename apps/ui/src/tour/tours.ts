@@ -3425,11 +3425,58 @@ const OMP_19_0_0_TOUR: Tour = {
   ],
 };
 
+/** Styles (how the app is drawn) and eight new colour themes, in Settings → App → Look (2026-11-21). */
+const STYLES_TOUR: Tour = {
+  id: "styles-2026-11-21",
+  title: "Styles and new themes",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "Styles and themes are under <b>App</b>. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("style"),
+      title: "Style",
+      text: "A style is how the app is drawn: its type, shapes and spacing. <b>Paper</b> sets answers in a serif reading column, <b>Console</b> is dense and flat, <b>Blocks</b> reads like a terminal, <b>Glass</b> floats translucent panes, <b>Roomy</b> has phone-size text and bubbles. <b>Tern</b> is the look you know. Click one to see it at once.",
+      action: next,
+    },
+    {
+      target: part("theme-gallery"),
+      title: "Themes",
+      text: "A theme is the colours, and any theme goes with any style. Eight are new, made to go with the styles: omp-paper, omp-ink-ivory, omp-terminal, omp-warm-night, omp-glass-night, omp-graphite, omp-rose-dusk and omp-forest.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-21-styles",
+    when: "2026-11-21T07:15:00Z",
+    summary:
+      "Styles: in Settings → App → Look, pick how the app is drawn apart from its colours (Paper, Console, Blocks, Glass, Roomy, or Tern as before), and eight new colour themes made to go with them. On a phone your own messages now sit at the right, as on a computer.",
+    tours: [STYLES_TOUR],
+  },
   {
     id: "2026-11-19-omp-19-0-0",
     when: "2026-11-19T17:36:30Z",

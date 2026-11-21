@@ -59,8 +59,9 @@ export function MessageActions({
   };
   if (phone) {
     return (
-      // The hold opens the menu, not the phone's own text selection and its callout.
-      <div {...hold} className="select-none [-webkit-touch-callout:none]">
+      // The hold opens the menu, not the phone's own text selection and its callout. `tl-hold`: the transcript's row
+      // rules reach the message through this box (index.css).
+      <div {...hold} className="tl-hold select-none [-webkit-touch-callout:none]">
         {children}
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "./themes.css";
+@import "./looks.css";
 
 @custom-variant dark (&:is(.dark *));
 /* A tablet: a touch screen as the main pointer, wider than a phone (#2779 D1 part 4). Its targets are a finger's size. */
@@ -315,8 +316,11 @@
   font-size: calc(var(--host-text-size, 14px) * 13 / 14);
 }
 
-/* A grid at every width: collab-web turns rows into flex columns under 640 px, where the bubbles would not align. */
-.tl-item > .tr-row {
+/*
+ * A grid at every width: collab-web turns rows into flex columns under 640 px, where the bubbles would not align. On a
+ * phone a message sits in its long-press box (`.tl-hold`, MessageActions.tsx), so the rule reaches through it.
+ */
+:is(.tl-item, .tl-hold) > .tr-row {
   display: grid;
   max-width: 720px;
   margin-inline: auto;

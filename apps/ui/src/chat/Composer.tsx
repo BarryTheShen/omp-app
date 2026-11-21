@@ -1020,7 +1020,7 @@ export const Composer = memo(function Composer({
         <ExtensionWidgets widgets={widgets} placement="aboveEditor" />
         <form
           data-tour="message-box"
-          className={`relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
+          className={`composer-box relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
           onSubmit={(event) => {
             event.preventDefault();
             send("auto");

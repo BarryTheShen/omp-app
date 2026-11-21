@@ -5,6 +5,7 @@ import { ServerSection } from "../desktop/ServerSection";
 import { KeyList } from "../palette/Shortcuts";
 import { usePhone } from "../phone";
 import { PushSection } from "../push/PushSection";
+import { StylePicker } from "../theme/StylePicker";
 import { ThemeGallery } from "../theme/ThemeGallery";
 import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { AppVersionSection } from "./AppVersionSection";
@@ -62,6 +63,13 @@ export function AppPage({
           </p>
         </div>
         <ThemeSwitch />
+      </div>
+      <div className="pt-1">
+        <p className="text-sm text-t1">Style</p>
+        <p className="mt-0.5 text-xs text-t3">
+          How the app is drawn: its type, shapes and spacing. Any style goes with any theme.
+        </p>
+        <StylePicker />
       </div>
       <div className="border-b border-l1 pb-5">
         <ThemeGallery />

@@ -34,6 +34,43 @@ realTest.describe("new UI look", () => {
     },
   );
 
+  realTest(
+    "a style applies at once, keeps after a reload, and Tern takes the app back to its own look",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(120_000);
+      const page = await realApp.open({ path: "/" });
+      const html = page.locator("html");
+      const prose = () =>
+        page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--prose"));
+      await expect(html).not.toHaveAttribute("data-style", /.+/);
+
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.locator('[data-tour="settings-tab-app"]').click();
+      const styles = page.getByRole("group", { name: "Style" });
+      await styles.getByRole("button", { name: /^Paper/ }).click();
+      await expect(html).toHaveAttribute("data-style", "paper");
+      expect(await prose()).toContain("Source Serif");
+      await expect(styles.getByRole("button", { name: /^Paper/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      await page.reload();
+      await expect(html).toHaveAttribute("data-style", "paper");
+      expect(await prose()).toContain("Source Serif");
+
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.locator('[data-tour="settings-tab-app"]').click();
+      await page
+        .getByRole("group", { name: "Style" })
+        .getByRole("button", { name: /^Tern/ })
+        .click();
+      await expect(html).not.toHaveAttribute("data-style", /.+/);
+      expect(await prose()).not.toContain("Source Serif");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
   realTest.describe("on a phone", () => {
     realTest.use({ seedSessions: 1, seedLongTurn: 4 });
 
