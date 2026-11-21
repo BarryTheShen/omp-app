@@ -443,38 +443,42 @@ describe("streaming session summary", () => {
     ]);
   });
 
-  test("a file named with characters JSON escapes still pages, and its cursor stays under the 512-character limit", async () => {
-    const root = await tempRoot();
-    const sessionsRoot = path.join(root, "sessions");
-    const bucket = path.join(sessionsRoot, "-w");
-    await mkdir(bucket, { recursive: true });
-    // Each quotation mark is escaped as two characters in JSON. The name is 247 bytes: a file system allows 255.
-    const quoted = (index: number) => `${index}${'"'.repeat(240)}.jsonl`;
-    for (let index = 0; index < 2; index += 1) {
-      const file = path.join(bucket, quoted(index));
-      await writeFile(
-        file,
-        `${[header(`q${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `quoted ${index}`)].join("\n")}\n`,
-      );
-      await utimes(
-        file,
-        new Date(Date.UTC(2026, 9, 1 + index)),
-        new Date(Date.UTC(2026, 9, 1 + index)),
-      );
-    }
-    const store = new SessionFileStore({
-      sessionsRoot,
-      home: root,
-      tempRoot: path.join(root, "tmp"),
-    });
+  // Every character JSON escapes (a quotation mark, a backslash, a control character) is barred from Windows file names.
+  test.skipIf(process.platform === "win32")(
+    "a file named with characters JSON escapes still pages, and its cursor stays under the 512-character limit",
+    async () => {
+      const root = await tempRoot();
+      const sessionsRoot = path.join(root, "sessions");
+      const bucket = path.join(sessionsRoot, "-w");
+      await mkdir(bucket, { recursive: true });
+      // Each quotation mark is escaped as two characters in JSON. The name is 247 bytes: a file system allows 255.
+      const quoted = (index: number) => `${index}${'"'.repeat(240)}.jsonl`;
+      for (let index = 0; index < 2; index += 1) {
+        const file = path.join(bucket, quoted(index));
+        await writeFile(
+          file,
+          `${[header(`q${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `quoted ${index}`)].join("\n")}\n`,
+        );
+        await utimes(
+          file,
+          new Date(Date.UTC(2026, 9, 1 + index)),
+          new Date(Date.UTC(2026, 9, 1 + index)),
+        );
+      }
+      const store = new SessionFileStore({
+        sessionsRoot,
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+      });
 
-    const first = await store.listSessions({ limit: 1 });
-    expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["quoted 1"]);
-    expect(first.nextCursor?.length ?? 0).toBeLessThan(512);
-    const second = await store.listSessions({ limit: 1, cursor: first.nextCursor ?? undefined });
-    expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["quoted 0"]);
-    expect(second.nextCursor).toBeNull();
-  });
+      const first = await store.listSessions({ limit: 1 });
+      expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["quoted 1"]);
+      expect(first.nextCursor?.length ?? 0).toBeLessThan(512);
+      const second = await store.listSessions({ limit: 1, cursor: first.nextCursor ?? undefined });
+      expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["quoted 0"]);
+      expect(second.nextCursor).toBeNull();
+    },
+  );
 
   test("notices a file that changed since it was remembered", async () => {
     const root = await tempRoot();

@@ -97,8 +97,10 @@ describe("the to-do list's copy in SiYuan", () => {
     });
     const [block] = [...siyuan.blocks.keys()];
     expect(siyuan.blocks.get(block ?? "")).toContain("- [ ] Write the plan · doing");
-    // The token stays in the server's own file, readable by its owner only.
-    expect((await stat(join(root, "siyuan-copy.json"))).mode & 0o077).toBe(0);
+    // The token stays in the server's own file, readable by its owner only (by mode bits off Windows; by the data
+    // folder's access list on Windows).
+    if (process.platform !== "win32")
+      expect((await stat(join(root, "siyuan-copy.json"))).mode & 0o077).toBe(0);
 
     await store.add({ title: "Read chapter 4", list: "School" }, YOU);
     await Bun.sleep(30);

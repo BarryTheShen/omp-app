@@ -1,6 +1,7 @@
 import { access, constants } from "node:fs/promises";
 import { isAbsolute, normalize, resolve } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
+import { programOf } from "../../../omp-host/chat-command";
 
 export const DEFAULT_GIT_TIMEOUT_MS = 5_000;
 
@@ -391,7 +392,7 @@ async function runGit(
   let child: Bun.Subprocess;
   try {
     // A folder's own `.git/config` may name programs git runs (an fsmonitor, hooks): reading a folder never runs them.
-    child = Bun.spawn([command, ...GIT_SAFE_CONFIG, ...args], {
+    child = Bun.spawn([...programOf(command), ...GIT_SAFE_CONFIG, ...args], {
       cwd,
       env,
       stdout: "pipe",

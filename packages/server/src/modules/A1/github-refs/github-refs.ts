@@ -7,6 +7,7 @@ import {
   type GithubReferenceSearchArgs,
   type GithubReferenceSearchResult,
 } from "@omp-app/contracts";
+import { programOf } from "../../../omp-host/chat-command";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -129,7 +130,7 @@ async function runGh(
   const maxOutputBytes = Math.max(1, Math.floor(options.maxOutputBytes ?? MAX_OUTPUT_BYTES));
   let child: Bun.Subprocess;
   try {
-    child = Bun.spawn([options.ghBinary ?? "gh", ...args], {
+    child = Bun.spawn([...programOf(options.ghBinary ?? "gh"), ...args], {
       cwd: folder,
       env: copyEnvironment(options.env),
       stdout: "pipe",

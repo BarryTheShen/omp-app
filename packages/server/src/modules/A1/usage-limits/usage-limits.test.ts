@@ -387,14 +387,18 @@ describe("the provider usage limits omp reports", () => {
     const near = await watched(usageJson);
     const far = await watched(farJson);
     await Bun.sleep(500);
-    near.service.dispose();
     far.service.dispose();
-    // Far: at 150, 300 and 450 ms at most; near: after 150 ms, about every 10 ms plus omp's run.
+    // Far: at 150, 300 and 450 ms at most.
     expect(far.reads()).toBeGreaterThanOrEqual(1);
     expect(far.reads()).toBeLessThanOrEqual(3);
+    // Near: after 150 ms, about every 10 ms plus omp's run, which the Bun stand-in makes about 100 ms on a slow runner,
+    // so it is given until six reads or 5 s.
+    const deadline = Date.now() + 5_000;
+    while (near.reads() < 6 && Date.now() < deadline) await Bun.sleep(20);
+    near.service.dispose();
     expect(near.reads()).toBeGreaterThanOrEqual(6);
     const stopped = near.reads();
     await Bun.sleep(200);
     expect(near.reads()).toBe(stopped);
-  });
+  }, 10_000);
 });

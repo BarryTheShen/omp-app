@@ -19,39 +19,43 @@ const config = (aliases: readonly string[]) =>
     )
     .join("\n")}`;
 
-describe("what a chat is told about the computers agent access reaches (PLAN §7e)", () => {
-  test("the linked computers by name, the ssh that reaches them, and how to ask for a folder", async () => {
-    dir = await mkdtemp(join(tmpdir(), "omp-access-note-"));
-    const path = join(dir, "ssh_config");
-    await writeFile(path, config(["laptop", "lab-2"]));
-    const note = await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path });
-    expect(note).toContain("Linked to this omp-app server: laptop, lab-2.");
-    expect(note).toContain(`\`ssh -F ${path} <name> '<command>'\``);
-    expect(note).toContain("omp-app-device ask-folder '~/<folder>' --why '<one line>'");
-  });
+// Agent access reaches computers over ssh from Linux servers only (platforms PLAN): the note's shell quoting is Linux's.
+describe.skipIf(process.platform === "win32")(
+  "what a chat is told about the computers agent access reaches (PLAN §7e)",
+  () => {
+    test("the linked computers by name, the ssh that reaches them, and how to ask for a folder", async () => {
+      dir = await mkdtemp(join(tmpdir(), "omp-access-note-"));
+      const path = join(dir, "ssh_config");
+      await writeFile(path, config(["laptop", "lab-2"]));
+      const note = await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path });
+      expect(note).toContain("Linked to this omp-app server: laptop, lab-2.");
+      expect(note).toContain(`\`ssh -F ${path} <name> '<command>'\``);
+      expect(note).toContain("omp-app-device ask-folder '~/<folder>' --why '<one line>'");
+    });
 
-  test("nothing without agent access on (no file named), without the file, or without computers", async () => {
-    dir = await mkdtemp(join(tmpdir(), "omp-access-note-"));
-    const path = join(dir, "ssh_config");
-    expect(await readAccessNote({})).toBeNull();
-    expect(await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path })).toBeNull();
-    await writeFile(path, config([]));
-    expect(await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path })).toBeNull();
-  });
+    test("nothing without agent access on (no file named), without the file, or without computers", async () => {
+      dir = await mkdtemp(join(tmpdir(), "omp-access-note-"));
+      const path = join(dir, "ssh_config");
+      expect(await readAccessNote({})).toBeNull();
+      expect(await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path })).toBeNull();
+      await writeFile(path, config([]));
+      expect(await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path })).toBeNull();
+    });
 
-  test("a path with a space is quoted for the shell", async () => {
-    dir = await mkdtemp(join(tmpdir(), "omp access note "));
-    const path = join(dir, "ssh_config");
-    await writeFile(path, config(["laptop"]));
-    expect(await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path })).toContain(
-      `ssh -F '${path}' <name>`,
-    );
-  });
+    test("a path with a space is quoted for the shell", async () => {
+      dir = await mkdtemp(join(tmpdir(), "omp access note "));
+      const path = join(dir, "ssh_config");
+      await writeFile(path, config(["laptop"]));
+      expect(await readAccessNote({ [ACCESS_SSH_CONFIG_ENV]: path })).toContain(
+        `ssh -F '${path}' <name>`,
+      );
+    });
 
-  test("the note comes after what omp appends anyway, which it never replaces", () => {
-    expect(withNote("From APPEND_SYSTEM.md", "NOTE")).toBe("From APPEND_SYSTEM.md\n\nNOTE");
-    expect(withNote(undefined, "NOTE")).toBe("NOTE");
-    expect(withNote("Kept", null)).toBe("Kept");
-    expect(withNote(undefined, null)).toBeUndefined();
-  });
-});
+    test("the note comes after what omp appends anyway, which it never replaces", () => {
+      expect(withNote("From APPEND_SYSTEM.md", "NOTE")).toBe("From APPEND_SYSTEM.md\n\nNOTE");
+      expect(withNote(undefined, "NOTE")).toBe("NOTE");
+      expect(withNote("Kept", null)).toBe("Kept");
+      expect(withNote(undefined, null)).toBeUndefined();
+    });
+  },
+);

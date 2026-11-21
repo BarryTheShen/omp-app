@@ -3286,10 +3286,12 @@ describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
     expect(paramsOf(host, "pause")).toEqual([]);
 
     read(fiveHour("anthropic", 91, reset));
-    await ticks();
+    // Waited for, not a fixed number of turns: the pause goes out after the rule's state is saved, which a slower runner
+    // (GitHub's macOS) took longer than ten turns to do.
+    await until(() => paramsOf(host, "pause").length > 0);
     expect(paramsOf(host, "pause")).toEqual([{}]);
     host.emitEvent({ type: "pause_changed", pausedAt: clock.now });
-    await ticks();
+    await until(() => runtime.usagePauses.usagePausesIn(folder)[0]?.hold != null);
     const hold = {
       providerId: "anthropic",
       until: reset + 60_000,
@@ -3303,7 +3305,7 @@ describe("the chat session runtime: the usage pause (#2781 part 3)", () => {
     // The timer fires a minute after the reset, and the clock says so.
     clock.now = reset + 60_000;
     timer.fireAll();
-    await ticks();
+    await until(() => paramsOf(host, "resume").length > 0);
     expect(paramsOf(host, "resume")).toEqual([{}]);
     expect(heard).toEqual([
       [authorityThread, folder, 90, null],

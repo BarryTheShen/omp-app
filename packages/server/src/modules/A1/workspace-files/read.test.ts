@@ -56,19 +56,23 @@ describe("the Files panel's reading (#2782)", () => {
     ).toBe("permission");
   });
 
-  test("a FIFO is refused at once, not waited on", async () => {
-    const fifo = join(folder, "pipe");
-    const made = Bun.spawnSync(["mkfifo", fifo]);
-    expect(made.exitCode).toBe(0);
-    const started = performance.now();
-    expect(
-      await failureCode(readChunk({ folder, path: path("pipe"), offset: 0, length: 64 })),
-    ).toBe("invalid_args");
-    expect(performance.now() - started).toBeLessThan(1000);
-    const { entries } = await listEntries({ folder, showIgnored: false });
-    expect(entries.find((entry) => entry.name === "pipe")?.kind).toBe("other");
-    await rm(fifo);
-  });
+  // Windows has no FIFOs (named pipes there are not files in a folder).
+  test.skipIf(process.platform === "win32")(
+    "a FIFO is refused at once, not waited on",
+    async () => {
+      const fifo = join(folder, "pipe");
+      const made = Bun.spawnSync(["mkfifo", fifo]);
+      expect(made.exitCode).toBe(0);
+      const started = performance.now();
+      expect(
+        await failureCode(readChunk({ folder, path: path("pipe"), offset: 0, length: 64 })),
+      ).toBe("invalid_args");
+      expect(performance.now() - started).toBeLessThan(1000);
+      const { entries } = await listEntries({ folder, showIgnored: false });
+      expect(entries.find((entry) => entry.name === "pipe")?.kind).toBe("other");
+      await rm(fifo);
+    },
+  );
 
   test("a 3 MiB binary read in chunks is the same file, byte for byte", async () => {
     const bytes = randomBytes(3 * 1024 * 1024);

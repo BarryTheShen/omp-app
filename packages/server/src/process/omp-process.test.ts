@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
 import { programOf } from "../omp-host/chat-command";
 import type { ProcessTimer } from "./omp-process";
@@ -224,7 +224,8 @@ describe("OmpProcess spawn and stdio", () => {
 
     process.start();
     const notice = await waitForFrame(process, (frame) => frame.type === "notice");
-    const configFiles = String(notice.configFiles).split(":");
+    // The list's separator is the system's: `:`, or `;` on Windows, where `:` is in every `C:\…` path.
+    const configFiles = String(notice.configFiles).split(delimiter);
     const policy = configFiles.at(-1);
     expect(configFiles[0]).toBe(configured);
     expect(policy).toMatch(/omp-app-usage-reset-policy\.yml$/);
@@ -250,7 +251,7 @@ describe("OmpProcess spawn and stdio", () => {
     process.start();
     const notice = await waitForFrame(process, (frame) => frame.type === "notice");
     const policy = join(appData, "omp-app-usage-reset-policy.yml");
-    expect(String(notice.configFiles).split(":").at(-1)).toBe(policy);
+    expect(String(notice.configFiles).split(delimiter).at(-1)).toBe(policy);
     expect(await readFile(policy, "utf8")).toBe(
       "codexResets:\n  autoRedeem: no\nclaudeResets:\n  autoRedeem: no\n",
     );

@@ -8,6 +8,13 @@ import {
 } from "./atomic-file";
 import type { FileWatchRegistry, WatchDirectory } from "./file-watch-registry";
 
+/**
+ * A directory watch that opens checks the file once more this soon after: on macOS a watch starts listening a moment
+ * after it returns, and a change in that moment raises no event (as for the Files panel's watches, `WATCH_SETTLE_MS` in
+ * workspace-files/watch.ts). The check compares the content's hash, so an unchanged file tells nothing.
+ */
+const WATCH_SETTLE_MS = 300;
+
 export interface FileChangeEvent {
   readonly path: string;
   readonly hash: string | null;
@@ -203,6 +210,9 @@ export function watchFile(
       }
       armFailureReported = false;
       options.registry?.clear(token);
+      setTimeout(() => {
+        if (watcher === started) schedule();
+      }, WATCH_SETTLE_MS).unref?.();
       if (poll !== undefined) {
         stopPolling();
         schedule();

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, rm, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
+import { fakeProgramFile } from "../../../test-fixtures/fake-program";
 import { readWorkspaceState, type WorkspaceState } from "./git";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../../.data");
@@ -102,8 +103,11 @@ describe("readWorkspaceState", () => {
 
     await git(folder, ["worktree", "add", "-q", "-b", "side", linked, "HEAD"]);
     await Bun.write(join(folder, "tracked.txt"), "working-tree change\n");
-    const newlinePath = "odd\nname.txt";
-    const spacePath = " leading and trailing .txt ";
+    // Names Git prints quoted unless its output is NUL-separated. Windows allows no line break and no trailing space in
+    // a name: there a non-ASCII name (quoted too) and a leading space stand in.
+    const windows = process.platform === "win32";
+    const newlinePath = windows ? "naïve ünicode.txt" : "odd\nname.txt";
+    const spacePath = windows ? " leading space.txt" : " leading and trailing .txt ";
     await Bun.write(join(folder, newlinePath), "newline\n");
     await Bun.write(join(folder, spacePath), "spaces\n");
 
@@ -161,9 +165,7 @@ describe("readWorkspaceState", () => {
 
   test("times out and terminates a slow git executable", async () => {
     const folder = await temporaryDirectory();
-    const slowGit = join(folder, "slow-git");
-    await Bun.write(slowGit, "#!/bin/sh\nexec sleep 2\n");
-    await chmod(slowGit, 0o755);
+    const slowGit = await fakeProgramFile(folder, "slow-git", { sleepMs: 2_000 });
     const started = performance.now();
     let thrown: unknown;
     try {
@@ -182,9 +184,10 @@ describe("readWorkspaceState", () => {
 
   test("throws an internal AppFailure for an unexpected git error", async () => {
     const folder = await temporaryDirectory();
-    const failingGit = join(folder, "failing-git");
-    await Bun.write(failingGit, "#!/bin/sh\nprintf 'synthetic failure' >&2\nexit 42\n");
-    await chmod(failingGit, 0o755);
+    const failingGit = await fakeProgramFile(folder, "failing-git", {
+      stderr: "synthetic failure",
+      exitCode: 42,
+    });
 
     let thrown: unknown;
     try {
@@ -214,7 +217,7 @@ describe("readWorkspaceState", () => {
 
   test("runs no program a repository's own config names (an fsmonitor, hooks) while reading it", async () => {
     const folder = await committedRepository();
-    const ran = join(folder, "..", `${folder.split("/").at(-1)}-ran`);
+    const ran = join(folder, "..", `${basename(folder)}-ran`);
     temporaryRoots.push(ran);
     const program = join(folder, "monitor.sh");
     await Bun.write(program, `#!/bin/sh\ntouch '${ran}'\n`);

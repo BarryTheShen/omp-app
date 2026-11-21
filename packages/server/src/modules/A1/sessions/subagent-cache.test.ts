@@ -109,7 +109,9 @@ describe("SubagentScanCache", () => {
     expect(
       cache.transcript(worker.file, { ...identity, mtimeMs: identity.mtimeMs + 1 }),
     ).toBeUndefined();
-    expect(cache.transcript(worker.file, { ...identity, ino: identity.ino + 1 })).toBeUndefined();
+    // Another inode for sure: NTFS file ids pass 2^53, where adding 1 to a number can leave it unchanged.
+    const otherIno = identity.ino === 1 ? 2 : 1;
+    expect(cache.transcript(worker.file, { ...identity, ino: otherIno })).toBeUndefined();
     expect(cache.transcript(`${worker.file}.other`, identity)).toBeUndefined();
   });
 

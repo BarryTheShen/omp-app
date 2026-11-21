@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
+import { removeTree } from "../../src/modules/A1/fs";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
@@ -41,12 +42,8 @@ for await (const _chunk of Bun.stdin.stream()) {
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
-  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: retried.
-  await Promise.all(
-    roots
-      .splice(0)
-      .map((root) => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })),
-  );
+  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: removeTree waits.
+  await Promise.all(roots.splice(0).map((root) => removeTree(root)));
 });
 
 async function startServer(): Promise<{ server: CompositionServer; folder: FolderPath }> {

@@ -263,10 +263,14 @@ describe("debug report", () => {
 
 describe("stateDirectory", () => {
   test("uses an absolute XDG_STATE_HOME, otherwise ~/.local/state", () => {
-    expect(stateDirectory({ XDG_STATE_HOME: "/var/state" }, "/home/me")).toBe("/var/state/omp-app");
-    expect(stateDirectory({ XDG_STATE_HOME: "relative" }, "/home/me")).toBe(
-      "/home/me/.local/state/omp-app",
+    // Paths as the system writes them (`\var\state\omp-app` on Windows).
+    const home = "/home/me";
+    expect(stateDirectory({ XDG_STATE_HOME: "/var/state" }, home)).toBe(
+      join("/var/state", "omp-app"),
     );
-    expect(stateDirectory({}, "/home/me")).toBe("/home/me/.local/state/omp-app");
+    expect(stateDirectory({ XDG_STATE_HOME: "relative" }, home)).toBe(
+      join(home, ".local", "state", "omp-app"),
+    );
+    expect(stateDirectory({}, home)).toBe(join(home, ".local", "state", "omp-app"));
   });
 });

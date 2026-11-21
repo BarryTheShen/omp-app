@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import {
@@ -16,6 +16,7 @@ import {
   type CompositionServerOptions,
   createCompositionServer,
 } from "../../scripts/dev";
+import { removeTree } from "../../src/modules/A1/fs";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
@@ -156,12 +157,8 @@ async function welcomeFor(server: CompositionServer) {
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
-  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: retried.
-  await Promise.all(
-    roots
-      .splice(0)
-      .map((root) => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })),
-  );
+  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: removeTree waits.
+  await Promise.all(roots.splice(0).map((root) => removeTree(root)));
 });
 
 describe("the omp the app runs", () => {

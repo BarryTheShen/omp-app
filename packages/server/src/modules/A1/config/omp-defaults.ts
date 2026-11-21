@@ -1,7 +1,9 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
+import { stopProcessTree } from "../../../process/process-tree";
+import { removeTree } from "../fs/remove-tree";
 import {
   type ConfigStoreOptions,
   type ConfigStoreService,
@@ -159,7 +161,8 @@ async function loadOmpDefaults(
   let leftover = false;
   if (temporaryRoot !== undefined) {
     try {
-      await rm(temporaryRoot, { recursive: true, force: true });
+      // Windows refuses to remove a folder while the stopped omp still has it open, a moment after it is told to end.
+      await removeTree(temporaryRoot, 1_000);
     } catch {
       leftover = true;
     }
@@ -198,7 +201,7 @@ async function runConfigList(
   }
 
   // Disposing the store stops a retry still waiting for omp, and the process group with it.
-  const stop = () => stopProcessGroup(child);
+  const stop = () => stopProcessTree(child);
   signal?.addEventListener("abort", stop, { once: true });
   if (signal?.aborted) stop();
 
@@ -228,16 +231,7 @@ async function runConfigList(
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", stop);
-    stopProcessGroup(child);
-  }
-}
-
-/** Stops omp and whatever it started. A group that has already gone is not an error. */
-function stopProcessGroup(child: Bun.Subprocess<"pipe", "pipe", "pipe">): void {
-  try {
-    process.kill(-child.pid, "SIGKILL");
-  } catch {
-    // The group has already exited.
+    stopProcessTree(child);
   }
 }
 

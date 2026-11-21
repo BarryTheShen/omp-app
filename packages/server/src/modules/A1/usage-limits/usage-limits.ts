@@ -1,5 +1,6 @@
 import type { UsageLimitAccount, UsageLimitProvider, UsageLimitsResult } from "@omp-app/contracts";
 import { z } from "zod";
+import { stopProcessTree } from "../../../process/process-tree";
 
 /** How long one `omp usage` read is current; after that a page's read starts a fresh one. */
 export const USAGE_LIMITS_CACHE_MS = 60_000;
@@ -255,15 +256,6 @@ function parseUsageOutput(text: string, fetchedAt: number): UsageLimitsResult {
   };
 }
 
-/** Stops omp and whatever it started. A group that has already gone is not an error. */
-function stopProcessGroup(child: Bun.Subprocess<"pipe", "pipe", "pipe">): void {
-  try {
-    process.kill(-child.pid, "SIGKILL");
-  } catch {
-    // The group has already exited.
-  }
-}
-
 /**
  * Runs `omp usage --json` once, bounded by the deadline. Its stderr is read and never returned or logged,
  * since it can carry credentials. The process group is stopped when the read ends, however it ends.
@@ -319,7 +311,7 @@ async function runOmpUsage(
     return { kind: "output", text: outcome.stdout };
   } finally {
     clearTimeout(timer);
-    stopProcessGroup(child);
+    stopProcessTree(child);
   }
 }
 

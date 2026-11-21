@@ -46,7 +46,13 @@ async function waitMs(milliseconds: number): Promise<void> {
 }
 
 async function tempRoot(name: string): Promise<string> {
-  const root = join(process.cwd(), ".data", `checkpoint-${name}-${crypto.randomUUID()}`);
+  // A short unique part: Git for Windows refuses a repository path past 260 characters ("'$GIT_DIR' too big"), and the
+  // shadow repository lies four folders down from here.
+  const root = join(
+    process.cwd(),
+    ".data",
+    `checkpoint-${name}-${crypto.randomUUID().slice(0, 8)}`,
+  );
   await fs.mkdir(root, { recursive: true });
   return root;
 }

@@ -273,8 +273,8 @@ export async function createCompositionServer(
   const hostsDir = hostsFolder(appDataDir, env);
   const newChatsReady = options.newChatsReady ?? env.OMP_APP_NEW_CHATS_READY === "1";
   const systemdScope = detachedHosts && systemdUserScopes(env);
-  const ompCmd =
-    options.ompBin === undefined ? ompCommand({ binary: chatHostBinary }) : [options.ompBin];
+  // A given program is started as `ompCommand` starts any: a `.ts`/`.js` script under Bun on Windows (`programOf`).
+  const ompCmd = ompCommand({ binary: options.ompBin ?? chatHostBinary });
   logger.info("start", {
     version: serverVersion,
     pid: process.pid,

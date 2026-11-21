@@ -79,32 +79,39 @@ describe("the debug report's omp processes", () => {
     );
   });
 
-  test("lists a real omp-named child of this process, and not another child", async () => {
-    const omp = namedProcess("omp");
-    const other = namedProcess("not-omp");
-    try {
-      await untilOutput(omp.stdout, (text) => text.includes("ready"));
-      await untilOutput(other.stdout, (text) => text.includes("ready"));
+  // The report reads processes from /proc or `ps`; Windows has neither, and its report lists none (platforms PLAN).
+  test.skipIf(process.platform === "win32")(
+    "lists a real omp-named child of this process, and not another child",
+    async () => {
+      const omp = namedProcess("omp");
+      const other = namedProcess("not-omp");
+      try {
+        await untilOutput(omp.stdout, (text) => text.includes("ready"));
+        await untilOutput(other.stdout, (text) => text.includes("ready"));
 
-      const pids = await listedPids(process.pid);
-      expect(pids).toContain(omp.pid);
-      expect(pids).not.toContain(other.pid);
-    } finally {
-      omp.kill();
-      other.kill();
-    }
-  });
+        const pids = await listedPids(process.pid);
+        expect(pids).toContain(omp.pid);
+        expect(pids).not.toContain(other.pid);
+      } finally {
+        omp.kill();
+        other.kill();
+      }
+    },
+  );
 
-  test("does not list an omp process that another process started", async () => {
-    const omp = namedProcess("omp");
-    try {
-      await untilOutput(omp.stdout, (text) => text.includes("ready"));
-      // The child is alive and listed for its own parent (this test process), so the check below is not empty.
-      expect(await listedPids(process.pid)).toContain(omp.pid);
-      // The process that started this test run did not start the child, so its listing leaves the child out.
-      expect(await listedPids(process.ppid)).not.toContain(omp.pid);
-    } finally {
-      omp.kill();
-    }
-  });
+  test.skipIf(process.platform === "win32")(
+    "does not list an omp process that another process started",
+    async () => {
+      const omp = namedProcess("omp");
+      try {
+        await untilOutput(omp.stdout, (text) => text.includes("ready"));
+        // The child is alive and listed for its own parent (this test process), so the check below is not empty.
+        expect(await listedPids(process.pid)).toContain(omp.pid);
+        // The process that started this test run did not start the child, so its listing leaves the child out.
+        expect(await listedPids(process.ppid)).not.toContain(omp.pid);
+      } finally {
+        omp.kill();
+      }
+    },
+  );
 });

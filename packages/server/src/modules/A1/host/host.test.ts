@@ -98,20 +98,26 @@ describe("readHostMetadata", () => {
     );
   });
 
-  test("asks for a path that starts with /, in plain words, for a relative or Windows drive path", async () => {
-    for (const path of ["relative/folder", "C:\\Users\\me\\project"]) {
+  test("asks for a full path, in plain words, for a relative path, and off Windows for a drive path too", async () => {
+    const windows = process.platform === "win32";
+    // A drive path is a full path only on Windows; elsewhere it names a folder relative to the server's own.
+    const paths = windows ? ["relative\\folder"] : ["relative/folder", "C:\\Users\\me\\project"];
+    for (const path of paths) {
       const error = await readHostMetadata(path, { homeDir: dataRoot }).catch(
         (cause: unknown) => cause,
       );
       expect(error).toBeInstanceOf(AppFailure);
       expect((error as AppFailure).appError.code).toBe("invalid_args");
       expect((error as AppFailure).appError.message).toBe(
-        "Enter a folder path that starts with /.",
+        windows
+          ? "Enter a full folder path, such as C:\\Users\\you\\project."
+          : "Enter a folder path that starts with /.",
       );
     }
   });
 
-  test.skipIf(process.getuid?.() === 0)(
+  // A mode that refuses reading binds neither root nor anyone on Windows, whose folders follow their access lists.
+  test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
     "says a folder that cannot be read is a permission problem, in plain words",
     async () => {
       const root = await temporaryDirectory();
@@ -134,17 +140,21 @@ describe("readHostMetadata", () => {
     },
   );
 
-  test("says any other failure to open a folder, in plain words", async () => {
-    const root = await temporaryDirectory();
-    const file = join(root, "file.txt");
-    await Bun.write(file, "content");
-    const error = await readHostMetadata(join(file, "inside"), { homeDir: root }).catch(
-      (cause: unknown) => cause,
-    );
-    expect(error).toBeInstanceOf(AppFailure);
-    expect((error as AppFailure).appError.code).toBe("internal");
-    expect((error as AppFailure).appError.message).toBe("That folder couldn't be opened.");
-  });
+  // Windows reports a path through a file as missing, so there is no other failure to bring about this way.
+  test.skipIf(process.platform === "win32")(
+    "says any other failure to open a folder, in plain words",
+    async () => {
+      const root = await temporaryDirectory();
+      const file = join(root, "file.txt");
+      await Bun.write(file, "content");
+      const error = await readHostMetadata(join(file, "inside"), { homeDir: root }).catch(
+        (cause: unknown) => cause,
+      );
+      expect(error).toBeInstanceOf(AppFailure);
+      expect((error as AppFailure).appError.code).toBe("internal");
+      expect((error as AppFailure).appError.message).toBe("That folder couldn't be opened.");
+    },
+  );
 });
 
 async function temporaryDirectory(): Promise<string> {

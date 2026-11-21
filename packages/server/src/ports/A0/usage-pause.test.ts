@@ -61,8 +61,12 @@ class FakeTimer implements ProcessTimer {
   }
 }
 
+/**
+ * Lets what a timer's handler started run. `setImmediate`, not `setTimeout(0)`: Windows and macOS hold a zero timeout for
+ * a millisecond or more, and hours of minute timers each settled five times passed the test's 5 s.
+ */
 async function settle(): Promise<void> {
-  for (let round = 0; round < 5; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  for (let round = 0; round < 5; round += 1) await new Promise((resolve) => setImmediate(resolve));
 }
 
 const NOTHING_KEPT: UsagePauseKept = {

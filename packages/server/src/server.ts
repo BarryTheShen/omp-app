@@ -493,7 +493,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             has_key: socket.data.hadKey,
             has_token: socket.data.hadToken,
           });
-          socket.close(socket.data.authFailure.closeCode, socket.data.authFailure.reason);
+          // Closed after the open handler, not in it: on macOS a close sent while the upgrade is still being opened
+          // reached the client as a dropped connection (1006) rather than the refusal's code, once another
+          // connection had come and gone.
+          const { closeCode, reason } = socket.data.authFailure;
+          setTimeout(() => socket.close(closeCode, reason), 0);
           return;
         }
         const dispatcherSocket = {

@@ -41,7 +41,8 @@ class FakeTimer implements ProcessTimer {
       this.timers.delete(due[0]);
       this.now = due[1].at;
       due[1].handler();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Not `setTimeout(0)`, which Windows and macOS hold for a millisecond or more on every timer.
+      await new Promise((resolve) => setImmediate(resolve));
     }
     this.now = end;
   }

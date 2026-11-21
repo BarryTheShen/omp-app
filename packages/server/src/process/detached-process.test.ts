@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
@@ -182,7 +182,8 @@ describe("adoptRunningHosts", () => {
       },
     });
     expect(found).toEqual({ adopted: 0, handedBack: 0 });
-    expect(existsSync(held.socketPath)).toBe(true);
+    // Listed, not stat'ed: Windows lists a socket's file but refuses to stat it (EACCES), so existsSync says false there.
+    expect(await readdir(dir)).toContain("a.sock");
   }, 10_000);
 });
 

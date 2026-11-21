@@ -1,4 +1,5 @@
 import type { Logger } from "../../../logging/logger";
+import { stopProcessTree } from "../../../process/process-tree";
 
 /** How long omp's stats page may take to start listening: its first start builds its page. */
 export const STATS_START_MS = 120_000;
@@ -49,11 +50,7 @@ export class OmpStats {
     this.#child = null;
     this.#port = null;
     if (child === null || child.exitCode !== null) return;
-    try {
-      process.kill(-child.pid, "SIGTERM");
-    } catch {
-      child.kill();
-    }
+    stopProcessTree(child, "SIGTERM");
   }
 
   async #spawn(): Promise<number> {

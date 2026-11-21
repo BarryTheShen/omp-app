@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { appendFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FolderPath, SessionFilePath, ThreadId } from "@omp-app/contracts";
+import { removeTree } from "../../../modules/A1/fs";
 import { createChatIndex, type IndexedChat } from "./index";
 import { messageText, OVERLAP_CHARS, PASSAGE_CHARS, passagesOf, windows } from "./passages";
 import type { ChatSearchConfig } from "./settings";
@@ -12,12 +13,8 @@ const indexes: { stop(): void }[] = [];
 afterEach(async () => {
   for (const index of indexes.splice(0)) index.stop();
   await Bun.sleep(5);
-  // Windows refuses to remove the index's database while it is still open (EBUSY): retried as its handle closes.
-  await Promise.all(
-    dirs
-      .splice(0)
-      .map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })),
-  );
+  // Windows refuses to remove the index's database while it is still open (EBUSY): removeTree waits for its close.
+  await Promise.all(dirs.splice(0).map((dir) => removeTree(dir)));
 });
 
 const line = (role: string, content: unknown) =>

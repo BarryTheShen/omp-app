@@ -244,13 +244,13 @@ describe("the one-instance record", () => {
   });
 
   test("keeps the record under the user's state folder", () => {
-    expect(instanceFile({}, "/home/u")).toBe("/home/u/.local/state/omp-app/instance.json");
+    // Paths as the system writes them (`\home\u\...` on Windows).
+    const underHome = join("/home/u", ".local", "state", "omp-app", "instance.json");
+    expect(instanceFile({}, "/home/u")).toBe(underHome);
     expect(instanceFile({ XDG_STATE_HOME: "/state" }, "/home/u")).toBe(
-      "/state/omp-app/instance.json",
+      join("/state", "omp-app", "instance.json"),
     );
-    expect(instanceFile({ XDG_STATE_HOME: "relative" }, "/home/u")).toBe(
-      "/home/u/.local/state/omp-app/instance.json",
-    );
+    expect(instanceFile({ XDG_STATE_HOME: "relative" }, "/home/u")).toBe(underHome);
   });
 });
 

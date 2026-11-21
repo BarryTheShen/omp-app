@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { AppFailure, FileSearchResult } from "@omp-app/contracts";
+import { fakeProgramFile } from "../../../test-fixtures/fake-program";
 import { searchWorkspaceFiles } from "./index";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../../.data");
@@ -167,9 +168,7 @@ describe("searchWorkspaceFiles", () => {
 
   test("cancels an in-flight git probe", async () => {
     const folder = await temporaryDirectory();
-    const slowGit = join(folder, "slow-git");
-    await write(slowGit, "#!/bin/sh\nsleep 2\n");
-    await chmod(slowGit, 0o755);
+    const slowGit = await fakeProgramFile(folder, "slow-git", { sleepMs: 2_000 });
     const controller = new AbortController();
     const pending = searchWorkspaceFiles(
       { folder, query: "anything" },
@@ -185,9 +184,7 @@ describe("searchWorkspaceFiles", () => {
 
   test("turns a slow git probe into a timeout AppFailure", async () => {
     const folder = await temporaryDirectory();
-    const slowGit = join(folder, "slow-git");
-    await write(slowGit, "#!/bin/sh\nsleep 2\n");
-    await chmod(slowGit, 0o755);
+    const slowGit = await fakeProgramFile(folder, "slow-git", { sleepMs: 2_000 });
     const started = performance.now();
 
     const error = await searchWorkspaceFiles(
@@ -202,9 +199,7 @@ describe("searchWorkspaceFiles", () => {
 
   test("a budget that expires while Git starts leaks no unhandled rejection", async () => {
     const folder = await temporaryDirectory();
-    const slowGit = join(folder, "slow-git");
-    await write(slowGit, "#!/bin/sh\nsleep 2\n");
-    await chmod(slowGit, 0o755);
+    const slowGit = await fakeProgramFile(folder, "slow-git", { sleepMs: 2_000 });
     const leaked: unknown[] = [];
     const recordLeak = (reason: unknown) => leaked.push(reason);
     process.on("unhandledRejection", recordLeak);

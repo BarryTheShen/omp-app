@@ -250,8 +250,8 @@ describe("probeCapabilities", () => {
       readonly args: readonly string[];
     };
     expect(record.cwd).toContain(".omp-capability-probe-");
-    expect(record.home).toContain(`${record.cwd}/home`);
-    expect(record.agentDir).toContain(`${record.cwd}/agent`);
+    expect(record.home).toContain(join(record.cwd, "home"));
+    expect(record.agentDir).toContain(join(record.cwd, "agent"));
     // omp's own flag: the check writes no session file.
     expect(record.args).toContain("--no-session");
   });

@@ -56,7 +56,8 @@ describe("the session file port deletes a chat and publishes it as removed", () 
     }
   });
 
-  test.skipIf(process.getuid?.() === 0)(
+  // A mode that refuses removal binds neither root nor anyone on Windows, whose folders follow their access lists.
+  test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
     "a delete whose artifacts cannot be removed still succeeds, and publishes one removed change",
     async () => {
       await mkdir(WORKTREE_DATA, { recursive: true });

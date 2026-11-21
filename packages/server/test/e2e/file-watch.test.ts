@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { watch } from "node:fs";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
-import { FileWatchRegistry } from "../../src/modules/A1/fs";
+import { FileWatchRegistry, removeTree } from "../../src/modules/A1/fs";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
@@ -52,12 +52,8 @@ async function temporaryRoot(): Promise<string> {
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
-  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: retried.
-  await Promise.all(
-    roots
-      .splice(0)
-      .map((root) => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })),
-  );
+  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: removeTree waits.
+  await Promise.all(roots.splice(0).map((root) => removeTree(root)));
 });
 
 /** A composition server whose watches start unavailable, then recover when watcher slots are freed. */

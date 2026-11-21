@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { removeTree } from "../modules/A1/fs";
 import { type FakeProgram, writeFakeProgram } from "../test-fixtures/fake-program";
 import {
   listUsableModels,
@@ -14,9 +15,8 @@ const dataRoot = resolve(import.meta.dir, "../../../../.data");
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    temporaryRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })),
-  );
+  // Windows refuses to remove a folder a killed stand-in still holds, a moment after it is told to end: removeTree waits.
+  await Promise.all(temporaryRoots.splice(0).map((path) => removeTree(path)));
 });
 
 /** A stand-in for omp that does `does` whatever it is asked; the command that starts it, and its folder. */
