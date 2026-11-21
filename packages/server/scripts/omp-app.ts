@@ -90,13 +90,19 @@ function uiRoot(): string {
   );
 }
 
+/** A program's file name ends in `.exe` on Windows. */
+const EXE = process.platform === "win32" ? ".exe" : "";
 /**
  * The chat host the package installs beside the command (/usr/lib/omp-app/chat-host, with omp's native addon files that
  * both load from that folder): omp's own command line, built by the app (#2586).
  */
-const INSTALLED_CHAT_HOST = resolve(dirname(process.execPath), "chat-host");
-/** A compiled command holds its sources in Bun's in-memory folder, where they cannot run as omp. */
-const COMPILED = import.meta.dir.startsWith("/$bunfs/");
+const INSTALLED_CHAT_HOST = resolve(dirname(process.execPath), `chat-host${EXE}`);
+/**
+ * A compiled command holds its sources in Bun's in-memory folder (`/$bunfs/…`; `B:\~BUN\…` on Windows), where they cannot
+ * run as omp.
+ */
+const COMPILED =
+  import.meta.dir.startsWith("/$bunfs/") || /^[A-Za-z]:[\\/]~BUN[\\/]/.test(import.meta.dir);
 
 /**
  * The chat host that runs omp's commands and every chat: `OMP_APP_CHAT_HOST_BIN`, else the installed one. A source

@@ -1,15 +1,20 @@
 # omp-app off Linux (P2 of the platforms plan): the typecheck, the contracts' tests and the server's tests on macOS and
-# Windows, as GitHub's own runners have them. It shows what breaks there; each fix makes a step pass for good. Runs by
-# hand and on pushes to ci/platforms; once the server's tests pass on both, pull requests that change the server or the
-# contracts run it too. Only GitHub-owned actions are used, so Bun comes from its official release, checked against the
-# release's checksum file, as release.yml installs it.
-# First run (2026-11-20): typecheck and contracts pass on both; server tests: macOS 1465 pass / 7 fail, Windows 1110 /
-# 362.
+# Windows, as GitHub's own runners have them, then the app's command and chat host built for that system and started.
+# Runs on pushes to main that change the server, the contracts, the lockfile or this file, on pushes to ci/platforms
+# (for trying a fix there first), and by hand. Only GitHub-owned actions are used, so Bun comes from its official
+# release, checked against the release's checksum file, as release.yml installs it.
+# First run (2026-11-20): typecheck and contracts passed on both; server tests: macOS 1465 pass / 7 fail, Windows 1110 /
+# 362. All pass since #60 (2026-11-21).
 name: platforms
 
 on:
   push:
-    branches: [ci/platforms]
+    branches: [main, ci/platforms]
+    paths:
+      - packages/server/**
+      - packages/contracts/**
+      - bun.lock
+      - .github/workflows/platforms.yml
   workflow_dispatch:
 
 permissions:
@@ -64,6 +69,29 @@ jobs:
       - name: Server's tests
         run: bun test 2>&1 | tee "$RUNNER_TEMP/server-tests.txt"
         working-directory: packages/server
+
+      - name: Install Bun 1.4.4 for the chat host
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ matrix.bun }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chat-host-bun"
+          cd "$RUNNER_TEMP/chat-host-bun"
+          gh release download bun-v1.4.4 --repo oven-sh/bun --pattern "$ASSET.zip" --pattern SHASUMS256.txt
+          grep " $ASSET.zip\$" SHASUMS256.txt | (command -v sha256sum >/dev/null && sha256sum -c - || shasum -a 256 -c -)
+          unzip -q "$ASSET.zip"
+          echo "CHAT_HOST_BUN=$RUNNER_TEMP/chat-host-bun/$ASSET/bun" >>"$GITHUB_ENV"
+
+      - name: Build the app's command and its chat host for this system
+        run: |
+          set -euo pipefail
+          "$CHAT_HOST_BUN" packages/server/scripts/build-chat-host.ts "$RUNNER_TEMP/app/chat-host"
+          bun packages/server/scripts/build-server.ts 0.0.0-ci "$RUNNER_TEMP/app/omp-app"
+          ls -la "$RUNNER_TEMP/app"
+
+      - name: Start the built app and load its page
+        run: bun packages/server/scripts/smoke-compiled.ts "$RUNNER_TEMP/app" 0.0.0-ci
 
       - name: What failed, in the run's summary
         if: always()

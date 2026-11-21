@@ -21,7 +21,7 @@ import { readdir, readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { CHAT_HOST_BUN_VERSION } from "./chat-host-bun";
-import { installNativeAddons } from "./native-addon";
+import { COMPILE_TARGET, installNativeAddons } from "./native-addon";
 
 if (Bun.version !== CHAT_HOST_BUN_VERSION) {
   console.error(
@@ -259,7 +259,7 @@ const output = await Bun.build({
   compile: {
     execArgv: [`--user-agent=${USER_AGENT}`],
     outfile,
-    target: "bun-linux-x64",
+    target: COMPILE_TARGET,
     autoloadBunfig: false,
     autoloadDotenv: false,
     autoloadTsconfig: false,

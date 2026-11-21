@@ -15,6 +15,13 @@ import type { FileWatchRegistry, WatchDirectory } from "./file-watch-registry";
  */
 const WATCH_SETTLE_MS = 300;
 
+/**
+ * On macOS the file is also checked this often while it is watched: Bun's directory watch there now and then raises no
+ * event for a change (seen on GitHub's macOS runner, 2026-11-21: of an outside edit's two writes, the second never
+ * arrived). The check compares the content's hash, so an unchanged file tells nothing; the files watched are small.
+ */
+const MACOS_CHECK_MS = 1_000;
+
 export interface FileChangeEvent {
   readonly path: string;
   readonly hash: string | null;
@@ -235,6 +242,13 @@ export function watchFile(
     unregisterSelfWriteConsumer();
     throw error;
   }
+  const backstop =
+    process.platform === "darwin"
+      ? setInterval(() => {
+          if (poll === undefined) void flush();
+        }, MACOS_CHECK_MS)
+      : undefined;
+  backstop?.unref?.();
 
   return {
     dispose: () => {
@@ -245,6 +259,7 @@ export function watchFile(
         timer = undefined;
       }
       stopPolling();
+      if (backstop !== undefined) clearInterval(backstop);
       closeWatcher();
       options.registry?.clear(token);
       unregisterSelfWriteConsumer();

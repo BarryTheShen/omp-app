@@ -1,13 +1,14 @@
 /**
- * Compiles the app's command (`scripts/omp-app.ts`), on the Bun that runs this script: the server the packages install
- * as `omp-app` and the one the desktop app bundles. omp's native addon is written next to it (`native-addon.ts`): the
- * browser relay's server (omp's `tools/browser/relay/server`, `src/browser/edge-relay.ts`) loads it as it is imported
- * since omp 18.18, from the program's own folder. A package installs the program and the addon in one folder.
+ * Compiles the app's command (`scripts/omp-app.ts`), on the Bun that runs this script, for the system it runs on (each
+ * OS's packages are built on that OS): the server the packages install as `omp-app` and the one the desktop app bundles.
+ * omp's native addon is written next to it (`native-addon.ts`): the browser relay's server (omp's
+ * `tools/browser/relay/server`, `src/browser/edge-relay.ts`) loads it as it is imported since omp 18.18, from the
+ * program's own folder. A package installs the program and the addon in one folder.
  *
  *   bun packages/server/scripts/build-server.ts <version> <outfile>
  */
 import { dirname, join, resolve } from "node:path";
-import { installNativeAddons } from "./native-addon";
+import { COMPILE_TARGET, installNativeAddons } from "./native-addon";
 
 const [version, outfile] = process.argv.slice(2);
 if (version === undefined || outfile === undefined) {
@@ -28,7 +29,7 @@ const output = await Bun.build({
   external: ["omp-legacy-pi-modules"],
   minify: true,
   define: { OMP_APP_VERSION: JSON.stringify(version) },
-  compile: { target: "bun-linux-x64", outfile: resolve(outfile) },
+  compile: { target: COMPILE_TARGET, outfile: resolve(outfile) },
 });
 if (!output.success) {
   for (const log of output.logs) console.error(log);

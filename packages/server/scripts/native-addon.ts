@@ -11,8 +11,15 @@
 import { copyFile, readdir, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-/** The platform the packages ship for. */
-export const PLATFORM_TAG = "linux-x64";
+/**
+ * The platform a build is for: the one it runs on (each OS's packages are built on that OS), as omp's native packages
+ * name it: `linux-x64`, `darwin-arm64`, `win32-x64`.
+ */
+export const PLATFORM_TAG = `${process.platform}-${process.arch}`;
+
+/** Bun's compile target for `PLATFORM_TAG`: `bun-linux-x64`, `bun-darwin-arm64`, `bun-windows-x64`. */
+export const COMPILE_TARGET =
+  `bun-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}` as Bun.Build.CompileTarget;
 
 /**
  * Copies the addon variants of the `@oh-my-pi/pi-natives` that `fromDir` resolves into `outDir` (the compiled program's
@@ -31,9 +38,11 @@ export async function installNativeAddons(fromDir: string, outDir: string): Prom
     Bun.resolveSync(`@oh-my-pi/pi-natives-${PLATFORM_TAG}/package.json`, nativeDir),
   );
   const present = new Set(await readdir(addonDir));
+  // x64 builds come as a modern and a baseline variant (CPUs without the modern one's instructions); others as one file.
   const filenames = [
     `pi_natives.${PLATFORM_TAG}-modern.node`,
     `pi_natives.${PLATFORM_TAG}-baseline.node`,
+    `pi_natives.${PLATFORM_TAG}.node`,
   ].filter((filename) => present.has(filename));
   if (filenames.length === 0) throw new Error(`No native addon for ${PLATFORM_TAG} in ${addonDir}`);
   const written: string[] = [];
