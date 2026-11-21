@@ -25,3 +25,9 @@ gtk = "0.18"
 # The window's own webview (the one Tauri uses on Linux), to show the error page when a page does not open (see
 # `watch_page_loads` in server.rs). `v2_6` brings the signal for a certificate that is not accepted.
 webkit2gtk = { version = "2", features = ["v2_6"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tauri-plugin-notification = "2"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }

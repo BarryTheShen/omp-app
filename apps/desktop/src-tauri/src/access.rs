@@ -730,7 +730,7 @@ fn take(app: &AppHandle, event: Value) {
         // Sudo allowed, and the summary when access turns off.
         Some("notice") => {
             let text = notification_text(event["text"].as_str().unwrap_or(""), 600);
-            commands::notify("Agent access".to_string(), text);
+            commands::notify(app.clone(), "Agent access".to_string(), text);
         }
         Some("chats") => {
             let waiting = chat_requests(&event["chats"]);

@@ -7,6 +7,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -94,10 +95,13 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 /// Makes `folder` if it is missing, then this account's alone (0700): it holds the cookie with the key a server paired
-/// the window with, which another account on this computer must not read. A folder made before is changed too.
+/// the window with, which another account on this computer must not read. A folder made before is changed too. On
+/// Windows the folder lies in the account's own profile, which only it (and the administrators) may open.
 pub fn make_private(folder: &Path) -> io::Result<()> {
     fs::create_dir_all(folder)?;
-    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
+    #[cfg(unix)]
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -112,6 +116,7 @@ mod tests {
         folder
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_windows_folder_is_this_accounts_alone_also_one_made_before() {
         let root = scratch("private");

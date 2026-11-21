@@ -501,6 +501,23 @@ describe("A0.6 upgrade and static serving", () => {
       await app.stop();
     }
   });
+  test("refuses a page path that leaves the UI's folder, by either separator (Windows takes a backslash for one)", async () => {
+    const app = createAppServer({
+      port: 0,
+      uiRoot: `${import.meta.dir}/test-fixtures/ui`,
+      origins: ["http://allowed.test"],
+    });
+    try {
+      for (const path of ["/..%2Fserver.ts", "/..%5Cserver.ts", "/assets/..%5C..%5Cserver.ts"]) {
+        expect({ path, status: (await fetch(`${app.url}${path}`)).status }).toEqual({
+          path,
+          status: 400,
+        });
+      }
+    } finally {
+      await app.stop();
+    }
+  });
   test("sends the removed old UI's addresses (/old and everything under it) and the former /v2 ones on to the root, with their query", async () => {
     const fixtures = `${import.meta.dir}/test-fixtures`;
     const app = createAppServer({

@@ -82,6 +82,7 @@ async fn on_main_thread<T: Send + 'static>(
 }
 
 /// Reads the clipboard's picture as PNG bytes. Runs on the GTK main thread.
+#[cfg(target_os = "linux")]
 fn read_png() -> Result<Vec<u8>, String> {
     let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
     match clipboard.wait_for_image() {
@@ -92,8 +93,16 @@ fn read_png() -> Result<Vec<u8>, String> {
     }
 }
 
+/// No picture: macOS's and Windows' webviews give the page a pasted picture in its own paste event, so the composer
+/// never needs this there.
+#[cfg(not(target_os = "linux"))]
+fn read_png() -> Result<Vec<u8>, String> {
+    Ok(Vec::new())
+}
+
 /// The local files on the clipboard (its `text/uri-list`), folders and other addresses left out. Runs on the GTK main
 /// thread.
+#[cfg(target_os = "linux")]
 fn copied_files() -> Vec<PathBuf> {
     let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
     clipboard
@@ -103,4 +112,10 @@ fn copied_files() -> Vec<PathBuf> {
         .map(|(path, _host)| path)
         .filter(|path| path.is_file())
         .collect()
+}
+
+/// None yet off Linux: files a file manager copied paste as the webview hands them to the page (platforms PLAN, P3).
+#[cfg(not(target_os = "linux"))]
+fn copied_files() -> Vec<PathBuf> {
+    Vec::new()
 }

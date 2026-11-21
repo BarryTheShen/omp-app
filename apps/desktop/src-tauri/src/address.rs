@@ -6,7 +6,7 @@
 
 use std::ffi::OsStr;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
@@ -63,11 +63,47 @@ pub fn instance_file(state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option
 }
 
 /// Whether a process with this pid exists. Signal 0 checks that without sending anything; EPERM means the
-/// process exists and belongs to someone else.
-fn is_alive(pid: libc::pid_t) -> bool {
+/// process exists and belongs to someone else. A pid of 0 or below is no process: `kill` would signal a whole group.
+#[cfg(unix)]
+fn is_alive(pid: i64) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    if pid <= 0 {
+        return false;
+    }
     // SAFETY: `kill` with signal 0 sends nothing; it only reports whether the process exists.
     let result = unsafe { libc::kill(pid, 0) };
-    result == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+/// Whether a process with this pid still runs: it opens, and has no exit code yet. A process another account runs
+/// cannot be opened (access denied), and exists.
+#[cfg(windows)]
+fn is_alive(pid: i64) -> bool {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let Ok(pid) = u32::try_from(pid) else {
+        return false;
+    };
+    if pid == 0 {
+        return false;
+    }
+    // SAFETY: the handle is checked before use and closed once read; nothing else holds it.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return GetLastError() == ERROR_ACCESS_DENIED;
+        }
+        let mut code = 0_u32;
+        let read = GetExitCodeProcess(handle, &mut code);
+        CloseHandle(handle);
+        read != 0 && code == STILL_ACTIVE as u32
+    }
 }
 
 /// The address in `record`, if the record parses and the process it names is alive. A missing or corrupt record,
@@ -76,11 +112,6 @@ pub fn read_live_instance(record: &Path) -> Option<LaunchAddress> {
     let text = fs::read_to_string(record).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     let pid = value.get("pid")?.as_i64()?;
-    let pid = libc::pid_t::try_from(pid).ok()?;
-    // A pid of 0 or below would make `kill` signal a whole group instead of one process.
-    if pid <= 0 {
-        return None;
-    }
     let address = find(value.get("url")?.as_str()?)?;
     is_alive(pid).then_some(address)
 }

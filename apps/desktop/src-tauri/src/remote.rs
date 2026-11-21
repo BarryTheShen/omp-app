@@ -12,6 +12,7 @@ use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -116,10 +117,15 @@ fn write_private(file: &Path, text: &str) -> io::Result<()> {
     if let Some(folder) = file.parent() {
         fs::create_dir_all(folder)?;
     }
+    // This account's alone: by its mode on Unix; on Windows the file lies in the account's own profile folder, which only
+    // it (and the administrators) may open.
     let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true).mode(0o600);
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
     let mut out = options.open(file)?;
     // A file that was there before keeps its old mode when it is opened: set it.
+    #[cfg(unix)]
     fs::set_permissions(file, fs::Permissions::from_mode(0o600))?;
     writeln!(out, "{text}")
 }
@@ -366,8 +372,15 @@ mod tests {
         }
     }
 
-    fn mode(file: &Path) -> u32 {
-        fs::metadata(file).unwrap().permissions().mode() & 0o777
+    /// The file is this account's alone, by its mode (Unix); Windows keeps it so by the profile folder's access list.
+    fn assert_private(file: &Path) {
+        #[cfg(unix)]
+        assert_eq!(
+            fs::metadata(file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        #[cfg(not(unix))]
+        let _ = file;
     }
 
     #[test]
@@ -378,12 +391,13 @@ mod tests {
         let link = Url::parse(LINK).unwrap();
         keep(&file, &link).unwrap();
         assert_eq!(kept(&file), Some(link));
-        assert_eq!(mode(&file), 0o600);
+        assert_private(&file);
         forget(&file).unwrap();
         assert_eq!(kept(&file), None);
         forget(&file).unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_link_kept_over_a_readable_file_makes_it_private() {
         let scratch = Scratch::new("mode");
@@ -391,7 +405,7 @@ mod tests {
         fs::write(&file, "old").unwrap();
         fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
         keep(&file, &Url::parse(LINK).unwrap()).unwrap();
-        assert_eq!(mode(&file), 0o600);
+        assert_private(&file);
     }
 
     #[test]
@@ -418,7 +432,7 @@ mod tests {
         // The same computer again, with a new token: it moves first, and its old link goes.
         remember(&file, &link("a", "2")).unwrap();
         assert_eq!(remembered(&file), vec![link("a", "2"), link("b", "1")]);
-        assert_eq!(mode(&file), 0o600);
+        assert_private(&file);
         for n in 0..10 {
             remember(&file, &link(&format!("c{n}"), "1")).unwrap();
         }
@@ -435,7 +449,7 @@ mod tests {
         assert!(names(&file).is_empty());
         set_name(&file, "a.tail1234.ts.net", "  home server  ").unwrap();
         set_name(&file, "b.tail1234.ts.net:8445", "test\nserver\u{7}").unwrap();
-        assert_eq!(mode(&file), 0o600);
+        assert_private(&file);
         let kept = names(&file);
         assert_eq!(kept["a.tail1234.ts.net"], "home server");
         assert_eq!(kept["b.tail1234.ts.net:8445"], "testserver");
@@ -482,7 +496,7 @@ mod tests {
         assert!(forget_server(&file, "b.tail1234.ts.net").unwrap());
         assert_eq!(remembered(&file), vec![link("a"), link("c")]);
         assert!(!forget_server(&file, "b.tail1234.ts.net").unwrap());
-        assert_eq!(mode(&file), 0o600);
+        assert_private(&file);
     }
 
     #[test]

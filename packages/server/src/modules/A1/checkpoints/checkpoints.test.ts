@@ -191,6 +191,7 @@ describe("CheckpointStore", () => {
     }
   });
 
+  // Three snapshots and two restores run Git a dozen times; on Windows that once took 5.2 s, past bun's 5 s default.
   test("restores the exact pre-restore tree through the undo snapshot", async () => {
     const workspace = await tempRoot("undo");
     const appData = await tempRoot("undo-data");
@@ -240,7 +241,7 @@ describe("CheckpointStore", () => {
       await fs.rm(workspace, { recursive: true, force: true });
       await fs.rm(appData, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   test("expires plans and bounds pending plans per workspace", async () => {
     const workspace = await tempRoot("plans");

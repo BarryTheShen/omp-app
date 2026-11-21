@@ -65,6 +65,21 @@ sudo apt remove omp-app-desktop
 
 Removing the package removes its bundled omp too, and leaves the `omp-app` command package alone.
 
+## macOS and Windows
+
+The window also builds for macOS (Apple silicon, a `.dmg`) and Windows (x64, an installer, `omp-app-desktop_<version>_x64-setup.exe`, which installs for you without administrator rights), on that system, with Rust and the two Bun versions above (the Bun downloads named `bun-darwin-aarch64.zip` and `bun-windows-x64.zip`); on Windows, run the script in Git Bash. From the repository root:
+
+```
+bun install --frozen-lockfile
+CHAT_HOST_BUN=/path/to/bun-1.4.4/bun bash packaging/build-desktop-bundle.sh 0.1.451
+```
+
+The bundle lands in `dist/desktop/`, with `SHA256SUMS` next to it. The platforms workflow builds both on GitHub's runners, starts each window with `packaging/smoke-desktop.ts` (the window must start its server, whose page then loads), and keeps the bundles with the run for a week.
+
+The bundles are not signed yet, so the first start needs a confirmation: on macOS, right-click the app and choose Open; on Windows, choose "More info" and then "Run anyway" in SmartScreen's dialog.
+
+On these systems some parts are Linux's for now: agent access (its panel says so), "Update this app" (it names the release to download instead), a remote server's own error page when its page does not open (the webview shows its own), and pasting files a file manager copied (pictures paste as the page receives them).
+
 ## Checks by hand
 
 These three need a person at a real desktop: the automated runs use a virtual display, where the input method and the window manager differ.

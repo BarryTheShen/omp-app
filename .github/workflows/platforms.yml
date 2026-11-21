@@ -1,10 +1,11 @@
-# omp-app off Linux (P2 of the platforms plan): the typecheck, the contracts' tests and the server's tests on macOS and
-# Windows, as GitHub's own runners have them, then the app's command and chat host built for that system and started.
-# Runs on pushes to main that change the server, the contracts, the lockfile or this file, on pushes to ci/platforms
-# (for trying a fix there first), and by hand. Only GitHub-owned actions are used, so Bun comes from its official
-# release, checked against the release's checksum file, as release.yml installs it.
+# omp-app off Linux (P2 and P3 of the platforms plan), on GitHub's own macOS and Windows runners: the typecheck, the
+# contracts' tests and the server's tests, the app's command and chat host built for that system and started, and the
+# desktop window built into its bundle (.dmg; an NSIS installer on Windows) and started. Runs on pushes to main that
+# change the server, the contracts, the desktop crate, its packaging, the lockfile or this file, on pushes to
+# ci/platforms (for trying a fix there first), and by hand. Only GitHub-owned actions are used, so Bun comes from its
+# official release, checked against the release's checksum file, as release.yml installs it.
 # First run (2026-11-20): typecheck and contracts passed on both; server tests: macOS 1465 pass / 7 fail, Windows 1110 /
-# 362. All pass since #60 (2026-11-21).
+# 362. All pass since #60 (2026-11-21); the window builds and starts on both since P3.
 name: platforms
 
 on:
@@ -13,6 +14,9 @@ on:
     paths:
       - packages/server/**
       - packages/contracts/**
+      - apps/desktop/src-tauri/**
+      - packaging/build-desktop-bundle.sh
+      - packaging/smoke-desktop.ts
       - bun.lock
       - .github/workflows/platforms.yml
   workflow_dispatch:
@@ -101,3 +105,86 @@ jobs:
             grep -E '^\(fail\)' "$RUNNER_TEMP/server-tests.txt" | sed 's/^/- /' | head -200 || true
             grep -E '^ *[0-9]+ (pass|fail)$' "$RUNNER_TEMP/server-tests.txt" || true
           } >>"$GITHUB_STEP_SUMMARY"
+
+  # P3 of the platforms plan: the desktop window on macOS and Windows, built into its bundle and started: the window must
+  # start its server, whose page then loads.
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            bun: bun-darwin-aarch64
+            window: omp-app-desktop
+          - os: windows-latest
+            bun: bun-windows-x64
+            window: omp-app-desktop.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun 1.3.14, and 1.4.4 for the chat host
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ matrix.bun }}
+        run: |
+          set -euo pipefail
+          for version in 1.3.14 1.4.4; do
+            mkdir -p "$RUNNER_TEMP/bun-$version"
+            cd "$RUNNER_TEMP/bun-$version"
+            gh release download "bun-v$version" --repo oven-sh/bun --pattern "$ASSET.zip" --pattern SHASUMS256.txt
+            grep " $ASSET.zip\$" SHASUMS256.txt | (command -v sha256sum >/dev/null && sha256sum -c - || shasum -a 256 -c -)
+            unzip -q "$ASSET.zip"
+          done
+          echo "$RUNNER_TEMP/bun-1.3.14/$ASSET" >>"$GITHUB_PATH"
+          echo "CHAT_HOST_BUN=$RUNNER_TEMP/bun-1.4.4/$ASSET/bun" >>"$GITHUB_ENV"
+
+      - name: Install Rust (stable, with clippy)
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal -c clippy
+          rustup default stable
+          rustc --version
+
+      - name: Cache the Cargo registry and the desktop build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: platforms-desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            platforms-desktop-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the bundle
+        run: bash packaging/build-desktop-bundle.sh 0.0.1
+
+      - name: Lint the crate
+        working-directory: apps/desktop/src-tauri
+        run: |
+          # tauri.conf.json names Linux's resources; the bundle script names this system's instead, so stand-ins under
+          # Linux's names let the build script run for the lint (the window already built above uses the real ones).
+          # Made with Bun, not `touch`: Git Bash on Windows takes `chat-host` for the `chat-host.exe` beside it.
+          bun -e 'const fs = require("node:fs");
+            for (const name of ["chat-host", "omp-app-desktop-server", "pi_natives.linux-x64-modern.node", "pi_natives.linux-x64-baseline.node"])
+              if (!fs.existsSync(`resources/${name}`)) fs.writeFileSync(`resources/${name}`, "");'
+          cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Start the window and see it start its server
+        run: bun packaging/smoke-desktop.ts "apps/desktop/src-tauri/target/release/${{ matrix.window }}"
+
+      - name: Keep the bundle with the run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: omp-app-desktop-${{ runner.os }}
+          path: dist/desktop/
+          retention-days: 7

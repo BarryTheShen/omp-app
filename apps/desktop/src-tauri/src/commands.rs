@@ -3,21 +3,31 @@
 //! window opens (`server::grant_page_commands`), in every window; the window's own page for a server that did not open
 //! may call the four that choose the window's server (`capabilities/app-pages.json`); no other site gets them.
 
+#[cfg(target_os = "linux")]
 use std::collections::HashMap;
+#[cfg(target_os = "linux")]
 use std::thread;
 
+#[cfg(target_os = "linux")]
 use gtk::gio;
+#[cfg(target_os = "linux")]
 use gtk::glib::{ToVariant, Variant};
 use serde_json::{json, Value};
 use tauri::{AppHandle, WebviewWindow};
 
 use crate::{remote, server};
 
+// The freedesktop notification service, on Linux. The other systems' notifications go through Tauri's notification
+// plugin (`notify`); the lasting and request kinds belong to agent access, which is Linux's alone (platforms PLAN, P4).
+
 /// The app's launcher, which the notification names: clicking the notification starts it, and a second launch only
 /// brings the open window forward.
+#[cfg(target_os = "linux")]
 const DESKTOP_ENTRY: &str = "omp-app-desktop";
+#[cfg(target_os = "linux")]
 const APP_NAME: &str = "omp app";
 /// How long the notification service may take to answer.
+#[cfg(target_os = "linux")]
 const NOTIFY_WAIT_MS: i32 = 5_000;
 
 /// The servers the page offers: this computer's, and the servers on other computers the app opened, newest first, each
@@ -124,16 +134,34 @@ pub async fn open_server_window(app: AppHandle, host: String) -> Result<(), Stri
 /// Shows a desktop notification with the app's name and launcher. It never waits on the page: the notification
 /// service is asked on a thread of its own, and a computer without one only logs why.
 #[tauri::command]
-pub fn notify(summary: String, body: String) {
-    thread::spawn(move || {
-        if let Err(error) = send_notification(&summary, &body, Style::Plain) {
+pub fn notify(app: AppHandle, summary: String, body: String) {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        thread::spawn(move || {
+            if let Err(error) = send_notification(&summary, &body, Style::Plain) {
+                eprintln!("omp app: a notification could not be shown: {error}");
+            }
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        use tauri_plugin_notification::NotificationExt;
+        if let Err(error) = app
+            .notification()
+            .builder()
+            .title(summary)
+            .body(body)
+            .show()
+        {
             eprintln!("omp app: a notification could not be shown: {error}");
         }
-    });
+    }
 }
 
 /// A notification that stays until the person dismisses it (urgency critical), as for an agent session on this
 /// computer (`access.rs`). Never from a page: no command reaches it.
+#[cfg(target_os = "linux")]
 pub fn notify_lasting(summary: &str, body: &str) {
     let (summary, body) = (summary.to_owned(), body.to_owned());
     thread::spawn(move || {
@@ -148,6 +176,7 @@ pub fn notify_lasting(summary: &str, body: &str) {
 /// see `on_notification_click`) opens the app's Agent access panel, where Allow asks the person's password; nothing
 /// here ever opens a password dialog. Returns the notification's id, to withdraw it once the request is answered. Asks
 /// the service on the calling thread: call it off the main thread. Never from a page.
+#[cfg(target_os = "linux")]
 pub fn notify_request(summary: &str, body: &str) -> Option<u32> {
     match send_notification(summary, body, Style::Request) {
         Ok(id) => Some(id),
@@ -159,6 +188,7 @@ pub fn notify_request(summary: &str, body: &str) -> Option<u32> {
 }
 
 /// Takes a notification away (the freedesktop `CloseNotification`), on a thread of its own.
+#[cfg(target_os = "linux")]
 pub fn close_notification(id: u32) {
     thread::spawn(move || {
         let closed = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).and_then(|bus| {
@@ -182,6 +212,7 @@ pub fn close_notification(id: u32) {
 
 /// Calls `clicked` with a notification's id whenever the person clicks a notification (its `default` action). Call it
 /// on the main thread: the bus delivers the signal through the main loop that runs there.
+#[cfg(target_os = "linux")]
 pub fn on_notification_click(clicked: impl Fn(u32) + 'static) {
     match gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) {
         Ok(bus) => {
@@ -206,6 +237,7 @@ pub fn on_notification_click(clicked: impl Fn(u32) + 'static) {
     }
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Clone, Copy, PartialEq)]
 enum Style {
     /// Shown and gone, as the desktop decides.
@@ -217,6 +249,7 @@ enum Style {
 }
 
 /// The freedesktop notification service's `Notify`, on the session bus; returns the notification's id.
+#[cfg(target_os = "linux")]
 fn send_notification(summary: &str, body: &str, style: Style) -> Result<u32, gtk::glib::Error> {
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     let mut hints: HashMap<String, Variant> = HashMap::new();

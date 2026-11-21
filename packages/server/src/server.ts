@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { CapabilityMap as CapabilityMapType, ServerFrame } from "@omp-app/contracts";
 import {
   APP_PROTOCOL,
@@ -209,6 +210,12 @@ function fromThisComputer(request: Request, port: number): boolean {
   );
 }
 
+/**
+ * The file a static request names under `root`, or undefined for a path that could leave it. A `..` between either
+ * separator is refused: Windows takes a backslash for one too. The path is joined as the system writes paths, which a
+ * Windows folder given as `\\?\D:\…` (as the desktop window resolves its resources) needs: Windows does not read a `/`
+ * inside such a path as a separator.
+ */
 function safeStaticPath(root: string, pathname: string): string | undefined {
   let decoded: string;
   try {
@@ -217,9 +224,9 @@ function safeStaticPath(root: string, pathname: string): string | undefined {
     return undefined;
   }
   if (decoded.includes("\0")) return undefined;
-  const relative = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "");
-  if (relative.split("/").includes("..")) return undefined;
-  return `${root.replace(/\/+$/, "")}/${relative}`;
+  const relative = decoded === "/" ? "index.html" : decoded.replace(/^[\\/]+/, "");
+  if (relative.split(/[\\/]/).includes("..")) return undefined;
+  return join(root, relative);
 }
 
 /** Sent with every static response: the app must not be framed by another page, sniffed or referred. */
@@ -284,9 +291,9 @@ async function serveStatic(
   if (path === undefined) return new Response("Bad path", { status: 400, headers: framing });
   const file = Bun.file(path);
   if (!(await file.exists())) return new Response("Not found", { status: 404, headers: framing });
-  const cache = path.endsWith("/index.html")
+  const cache = /[\\/]index\.html$/.test(path)
     ? { "Cache-Control": "no-store" }
-    : /\/assets\/[^/]+$/.test(path)
+    : /[\\/]assets[\\/][^\\/]+$/.test(path)
       ? KEPT_FOR_GOOD
       : {};
   if (!COMPRESSIBLE.test(path)) return new Response(file, { headers: { ...framing, ...cache } });

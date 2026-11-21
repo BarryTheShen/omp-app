@@ -25,7 +25,7 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command as StdCommand, Stdio};
@@ -36,6 +36,7 @@ use std::time::Duration;
 use tauri::ipc::CapabilityBuilder;
 use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+#[cfg(target_os = "linux")]
 use webkit2gtk::{
     LoadEvent, NetworkError, PolicyError, URIResponseExt, WebResourceExt, WebViewExt,
 };
@@ -43,15 +44,27 @@ use webkit2gtk::{
 use crate::address;
 use crate::chat_link::{self, ChatLink};
 use crate::downloads;
+#[cfg(target_os = "linux")]
 use crate::gstreamer::RegistryScan;
+#[cfg(target_os = "linux")]
 use crate::keys;
 use crate::remote;
 use crate::webdata;
 use crate::windows;
 
 /// The server's file name in the app's resource folder (`/usr/lib/omp-app-desktop`), beside the chat host and omp's
-/// native addon files, which both load from their own folder.
-const SERVER: &str = "omp-app-desktop-server";
+/// native addon files, which both load from their own folder. Programs end in `.exe` on Windows.
+const SERVER: &str = if cfg!(windows) {
+    "omp-app-desktop-server.exe"
+} else {
+    "omp-app-desktop-server"
+};
+/// The chat host's file name beside it.
+const CHAT_HOST: &str = if cfg!(windows) {
+    "chat-host.exe"
+} else {
+    "chat-host"
+};
 /// The port the server is asked for: 4317, the one the `omp-app` command and the user service ask for, so the window's
 /// address, and with it the web app's stored settings, is the same whichever of them started the server. If it is busy,
 /// the server picks a free port itself, as it does for the command.
@@ -113,6 +126,7 @@ const WINDOW_TITLE: &str = "omp app";
 /// folder), which on a busy computer took more than 30 s; the window shows the starting page meanwhile.
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 /// How long the app page waits for the launch scan of GStreamer's plugin cache (see `gstreamer.rs`).
+#[cfg(target_os = "linux")]
 const REGISTRY_SCAN_WAIT: Duration = Duration::from_secs(60);
 
 /// What the threads share. Only ever locked for a moment.
@@ -259,10 +273,22 @@ impl LaunchSteps for AppSteps {
     }
 }
 
+/// The account's home folder as the server finds it (Bun's `os.homedir()`): `HOME`, or on Windows, which sets no
+/// `HOME`, `USERPROFILE`.
+fn home_var() -> Option<OsString> {
+    std::env::var_os("HOME").or_else(|| {
+        if cfg!(windows) {
+            std::env::var_os("USERPROFILE")
+        } else {
+            None
+        }
+    })
+}
+
 /// Where the server records itself, by the variables the server reads (see `address::instance_file`).
 fn instance_record() -> Option<PathBuf> {
     let state = std::env::var_os("XDG_STATE_HOME");
-    let home = std::env::var_os("HOME");
+    let home = home_var();
     address::instance_file(state.as_deref(), home.as_deref())
 }
 
@@ -276,7 +302,7 @@ fn running_server() -> Option<Url> {
 /// Where the window keeps the link of a server on another computer, by the variables the config folder follows.
 fn link_file() -> Option<PathBuf> {
     let config = std::env::var_os("XDG_CONFIG_HOME");
-    let home = std::env::var_os("HOME");
+    let home = home_var();
     remote::link_file(config.as_deref(), home.as_deref())
 }
 
@@ -288,7 +314,7 @@ pub fn kept_link() -> Option<Url> {
 /// Where the window remembers the servers on other computers it opened (see `remote::remember`).
 fn servers_file() -> Option<PathBuf> {
     let config = std::env::var_os("XDG_CONFIG_HOME");
-    let home = std::env::var_os("HOME");
+    let home = home_var();
     remote::servers_file(config.as_deref(), home.as_deref())
 }
 
@@ -302,7 +328,7 @@ pub fn remembered_servers() -> Vec<Url> {
 /// Where the window keeps the names the person gave servers (see `remote::set_name`).
 fn names_file() -> Option<PathBuf> {
     let config = std::env::var_os("XDG_CONFIG_HOME");
-    let home = std::env::var_os("HOME");
+    let home = home_var();
     remote::names_file(config.as_deref(), home.as_deref())
 }
 
@@ -542,6 +568,8 @@ fn local_origin(app: &AppHandle) -> Option<String> {
 }
 
 /// The origin of the server window `label` shows: another computer's, or this computer's own; None before one opened.
+/// Agent access asks it (`access.rs`, Linux's alone).
+#[cfg(target_os = "linux")]
 pub fn window_origin(app: &AppHandle, label: &str) -> Option<String> {
     remote_origin_of(app, label).or_else(|| local_origin(app))
 }
@@ -578,14 +606,15 @@ fn grant_page_commands(app: &AppHandle, origin: &str) {
 /// (and so a process group) of its own, and no input or output, so nothing that happens to this process reaches it.
 /// It logs to its own file and records its address itself, so its output is not needed.
 fn spawn(app: &AppHandle) -> Result<Child, String> {
-    let folder = std::env::var_os("HOME")
-        .map(PathBuf::from)
+    let paths = app.path();
+    let folder = paths
+        .home_dir()
+        .ok()
         .filter(|path| path.is_dir())
         .ok_or("the home folder was not found")?;
-    let paths = app.path();
     let resources = paths.resource_dir().map_err(|error| error.to_string())?;
     let ui_root = resources.join("ui");
-    let chat_host = resources.join("chat-host");
+    let chat_host = resources.join(CHAT_HOST);
     let server = resources.join(SERVER);
     // The server would fall back to other folders if these were missing; that must not happen.
     if !ui_root.join("index.html").is_file() {
@@ -614,14 +643,23 @@ fn spawn(app: &AppHandle) -> Result<Child, String> {
         .stderr(Stdio::null());
     // SAFETY: the closure runs in the child between fork and exec. It makes one system call and allocates
     // nothing, which is all that is allowed at that point.
+    #[cfg(unix)]
     unsafe {
         command.pre_exec(|| {
             // A session of its own, and so a process group of its own, with no controlling terminal.
             if libc::setsid() == -1 {
-                return Err(io::Error::last_os_error());
+                return Err(std::io::Error::last_os_error());
             }
             Ok(())
         });
+    }
+    // Windows: a process group of its own and no console, so it outlives the window as it does elsewhere.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
     command.spawn().map_err(|error| error.to_string())
 }
@@ -732,7 +770,7 @@ fn web_data_folder(app: &AppHandle) -> Option<PathBuf> {
     WEB_DATA_FOLDER
         .get_or_init(|| {
             let data_home = std::env::var_os("XDG_DATA_HOME");
-            let home = std::env::var_os("HOME");
+            let home = home_var();
             let folder = webdata::folder(data_home.as_deref(), home.as_deref())?;
             // It holds the cookie with the key a server paired the window with: this account's alone.
             if let Err(error) = webdata::make_private(&folder) {
@@ -742,7 +780,10 @@ fn web_data_folder(app: &AppHandle) -> Option<PathBuf> {
                 );
             }
             let identifier = app.config().identifier.clone();
+            #[cfg(target_os = "linux")]
             let program = gtk::glib::prgname().map(|name| name.to_string());
+            #[cfg(not(target_os = "linux"))]
+            let program: Option<String> = None;
             let executable = std::env::current_exe().ok().and_then(|path| {
                 path.file_name()
                     .map(|name| name.to_string_lossy().into_owned())
@@ -813,6 +854,7 @@ fn new_window<'a>(
 fn build_window(app: &AppHandle, label: &str, page: WebviewUrl) -> tauri::Result<WebviewWindow> {
     let window = new_window(app, label, page).build()?;
     watch_page_loads(&window);
+    #[cfg(target_os = "linux")]
     keys::forward_super_keys(&window);
     Ok(window)
 }
@@ -895,7 +937,9 @@ fn window_url(address: &Url, label: &str) -> Url {
 /// did not load (a failed TLS handshake, a reset connection, a certificate that is not accepted), or what answered is not
 /// the app (an error status, as a proxy answers while the app behind it is stopped). A load cancelled because
 /// another page opens is no failure. Pages of this computer's server are left to the server's watch, which shows the
-/// error page when the server ends (see `watch`).
+/// error page when the server ends (see `watch`). WebKitGTK's signals tell these; off Linux the webview shows its own
+/// page for now (platforms PLAN, P3).
+#[cfg(target_os = "linux")]
 fn watch_page_loads(window: &WebviewWindow) {
     let app = window.app_handle().clone();
     let label = window.label().to_owned();
@@ -934,8 +978,12 @@ fn watch_page_loads(window: &WebviewWindow) {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
+fn watch_page_loads(_window: &WebviewWindow) {}
+
 /// Shows the error page in window `label` when `uri` is a page of the server on another computer that the window
 /// opens and that did not open, and logs why. Returns whether it was one.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn remote_page_failed(app: &AppHandle, label: &str, uri: &str, problem: &str) -> bool {
     let remote = remote_origin_of(app, label);
     let Some(host) = remote_page_host(uri, remote.as_deref()) else {
@@ -948,6 +996,7 @@ fn remote_page_failed(app: &AppHandle, label: &str, uri: &str, problem: &str) ->
 
 /// The computer to name when `uri` is a page of the server on another computer (`remote`, its origin); None for any
 /// other address.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn remote_page_host(uri: &str, remote: Option<&str>) -> Option<String> {
     let origin = remote?;
     let url = Url::parse(uri).ok()?;
@@ -957,6 +1006,7 @@ fn remote_page_host(uri: &str, remote: Option<&str>) -> Option<String> {
 
 /// What an error status of the start page says: what answered is not the app, whose start page answers with success. A
 /// proxy answers so when the app behind it is stopped. None below 400.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn answer_problem(status: u32) -> Option<String> {
     (status >= 400).then(|| format!("it answered with HTTP {status}"))
 }
@@ -1006,7 +1056,8 @@ fn open_server_page(app: &AppHandle, label: &str, url: Url) {
         other => (url, other),
     };
     // The app page is where the command palette opens. Without GStreamer's plugin cache, the first palette
-    // open would stall while the scan runs, so the page waits here for the launch scan to finish.
+    // open would stall while the scan runs, so the page waits here for the launch scan to finish (WebKitGTK only).
+    #[cfg(target_os = "linux")]
     app.state::<RegistryScan>().wait(REGISTRY_SCAN_WAIT);
     let handle = app.clone();
     let label = label.to_owned();
@@ -1112,12 +1163,20 @@ fn is_app_address(url: &Url, remote: Option<&str>, local: Option<&str>) -> bool 
     }
 }
 
-/// Opens a web or mail link in the default app, the way a browser tab would.
+/// Opens a web or mail link in the default app, the way a browser tab would: through `xdg-open`, macOS's `open`, or
+/// Windows' `explorer`.
 fn open_externally(url: &Url) {
     if !matches!(url.scheme(), "http" | "https" | "mailto") {
         return;
     }
-    match StdCommand::new("xdg-open")
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    match StdCommand::new(opener)
         .arg(url.as_str())
         .stdin(Stdio::null())
         .stdout(Stdio::null())

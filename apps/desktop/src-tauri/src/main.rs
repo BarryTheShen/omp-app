@@ -16,17 +16,29 @@
 //! Agent access on this computer (#20): the commands behind the side bar's Agent access panel, the tray icon while
 //! access is on and the notification during an agent session (see `access.rs`).
 
+// Agent access and the app's own update are Linux's (sshd, polkit, a `.deb`); elsewhere their commands answer in words.
+#[cfg(target_os = "linux")]
+mod access;
+#[cfg(not(target_os = "linux"))]
+#[path = "access_elsewhere.rs"]
 mod access;
 mod address;
 mod chat_link;
 mod clipboard;
 mod commands;
 mod downloads;
+// WebKitGTK's own needs: its GStreamer plugin cache and its Super key. Other systems' webviews have neither problem.
+#[cfg(target_os = "linux")]
 mod gstreamer;
+#[cfg(target_os = "linux")]
 mod keys;
 mod remote;
 mod server;
 mod signals;
+#[cfg(target_os = "linux")]
+mod update;
+#[cfg(not(target_os = "linux"))]
+#[path = "update_elsewhere.rs"]
 mod update;
 mod webdata;
 mod windows;
@@ -42,12 +54,16 @@ fn main() {
     }
     // A link to a chat that started the app opens with the first window (see `chat_link.rs`).
     let link = chat_link::find(&args);
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // The second launch's own arguments, its program's name left out.
             server::second_launch(app, args.get(1..).unwrap_or_default());
         }))
-        .manage(server::Shared::default())
+        .manage(server::Shared::default());
+    // Notifications through the system's own service off Linux (Linux's go over D-Bus, see `commands.rs`).
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_notification::init());
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             clipboard::read_clipboard_png,
             clipboard::list_clipboard_files,
@@ -96,6 +112,7 @@ fn main() {
             _ => {}
         })
         .setup(move |app| {
+            #[cfg(target_os = "linux")]
             app.manage(gstreamer::RegistryScan::start());
             signals::watch(app.handle().clone());
             server::start(app.handle().clone(), link);
