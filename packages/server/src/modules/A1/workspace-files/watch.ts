@@ -16,6 +16,12 @@ import { folderItself, folderRoot, followInside } from "./paths";
 export const CHANGE_DEBOUNCE_MS = 200;
 /** A path that cannot be watched is checked this often instead. */
 export const WATCH_POLL_MS = 5_000;
+/**
+ * A watch that opens looks over its path once more this soon after: on macOS a watch starts listening a moment after it
+ * returns, and a change in that moment is never told (seen on GitHub's macOS runner, 2026-11-20: a file made right after
+ * the watch opened was not). Where nothing changed meanwhile, the look tells nothing.
+ */
+export const WATCH_SETTLE_MS = 300;
 
 type Change = WorkspaceFileChanged["change"];
 
@@ -185,6 +191,9 @@ export class WorkspaceWatches {
       });
       watcher.on("error", (error) => this.#poll(watched, error));
       watched.watcher = watcher;
+      this.#timer.setTimeout(() => {
+        if (watched.watcher === watcher) void this.#look(watched, null);
+      }, WATCH_SETTLE_MS);
       return true;
     } catch (error) {
       this.#poll(watched, error);

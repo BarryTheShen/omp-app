@@ -12,7 +12,12 @@ const indexes: { stop(): void }[] = [];
 afterEach(async () => {
   for (const index of indexes.splice(0)) index.stop();
   await Bun.sleep(5);
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  // Windows refuses to remove the index's database while it is still open (EBUSY): retried as its handle closes.
+  await Promise.all(
+    dirs
+      .splice(0)
+      .map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })),
+  );
 });
 
 const line = (role: string, content: unknown) =>

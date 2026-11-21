@@ -41,7 +41,12 @@ for await (const _chunk of Bun.stdin.stream()) {
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  // Windows refuses to remove a file still open (EBUSY) while the stopped server's handles close: retried.
+  await Promise.all(
+    roots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })),
+  );
 });
 
 async function startServer(): Promise<{ server: CompositionServer; folder: FolderPath }> {

@@ -365,8 +365,12 @@ async function writeTempFile(
   }
 }
 
-/** Puts a folder's entries on disk, so a file renamed into it is there after a crash. */
+/**
+ * Puts a folder's entries on disk, so a file renamed into it is there after a crash. Windows cannot flush a folder
+ * (opening one to flush it fails with EPERM) and needs not: NTFS records the rename in its journal.
+ */
 export async function syncDirectory(directory: string): Promise<void> {
+  if (process.platform === "win32") return;
   const handle = await fs.open(directory, "r");
   try {
     await handle.sync();
