@@ -87,6 +87,15 @@ describe("why omp app's page did not open in the sidebar", () => {
     expect(framesSidebar("default-src 'self'", EXTENSION)).toBe(true);
   });
 
+  test("in Chrome and Edge, the rule that names every Chrome extension lets the side panel in, Firefox's does not", () => {
+    const chrome = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+    expect(framesSidebar("frame-ancestors 'self' chrome-extension: moz-extension:", chrome)).toBe(
+      true,
+    );
+    expect(framesSidebar("frame-ancestors 'self' moz-extension:", chrome)).toBe(false);
+    expect(framesSidebar(`frame-ancestors ${chrome}`, chrome)).toBe(true);
+  });
+
   test("an app that answers as it should leaves the sidebar a next step, not a reason", () => {
     expect(noAnswerText("https://omp.example.com", null)).toBe(
       "omp app at https://omp.example.com answers, but its page didn't open in this sidebar. Click Try again; if it stays like this, open https://omp.example.com in a tab to see whether it opens there.",

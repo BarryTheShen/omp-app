@@ -225,7 +225,7 @@ describe("the tools", () => {
 
     const closed = standIn(() => {
       throw new Error(
-        "Firefox does not let extensions into this page (its own pages and the add-ons site).",
+        "This browser does not let extensions into this page (its own pages and its add-ons store).",
       );
     });
     await toolOf(pageTools(scopeOf(), closed.api, APP), "screenshot").run({}, never);
@@ -319,7 +319,7 @@ describe("the tools", () => {
     expect(scriptFailureText(new Error(OFF_LIMITS))).toBe(OFF_LIMITS);
     expect(scriptFailureText({ message: `Error: ${OFF_LIMITS}` })).toBe(OFF_LIMITS);
     expect(scriptFailureText(new Error("Missing host permission for the tab"))).toContain(
-      "Firefox does not let extensions into this page",
+      "This browser does not let extensions into this page",
     );
     expect(scriptFailureText({ message: "the tab closed" })).toBe(
       "The page could not be reached: the tab closed",

@@ -49,8 +49,14 @@ declare namespace browser {
       openerTabId?: number;
       windowId?: number;
     }): Promise<Tab>;
+    /** Firefox only: any tab, in front or not. */
     function captureTab(
       tabId: number,
+      options: { format: "png" | "jpeg"; quality?: number },
+    ): Promise<string>;
+    /** Chrome and Edge: only the tab in front of a window. */
+    function captureVisibleTab(
+      windowId: number,
       options: { format: "png" | "jpeg"; quality?: number },
     ): Promise<string>;
     const onUpdated: Listener<(tabId: number, change: ChangeInfo, tab: Tab) => void>;
@@ -89,8 +95,14 @@ declare namespace browser {
     >;
   }
 
+  /** Firefox only. */
   namespace sidebarAction {
     function open(): Promise<void>;
+  }
+
+  /** Chrome and Edge only (`chrome.sidePanel`; the Chrome build makes `browser` its `chrome`, `scripts/build.ts`). */
+  namespace sidePanel {
+    function setPanelBehavior(behavior: { openPanelOnActionClick: boolean }): Promise<void>;
   }
 
   namespace windows {

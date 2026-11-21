@@ -347,11 +347,11 @@ export function scriptFailureText(error: unknown): string {
   const message = typeof said === "string" ? said : String(error);
   if (message.includes(OFF_LIMITS)) return OFF_LIMITS;
   if (/missing host permission|cannot access|not allowed|restricted/i.test(message))
-    return "Firefox does not let extensions into this page (its own pages and the add-ons site).";
+    return "This browser does not let extensions into this page (its own pages and its add-ons store).";
   return `The page could not be reached: ${message}`;
 }
 
-/** The tools' browser: Firefox's own APIs. */
+/** The tools' browser: the browser's own APIs (Firefox's, or Chrome's under the same name in the Chrome build). */
 export const firefoxTabs: TabsApi = {
   async run(tabId, func, args) {
     let results: browser.scripting.InjectionResult<unknown>[];
@@ -366,7 +366,16 @@ export const firefoxTabs: TabsApi = {
     return first.result as never;
   },
   get: (tabId) => browser.tabs.get(tabId),
-  capture: (tabId) => browser.tabs.captureTab(tabId, { format: "png" }),
+  capture: async (tabId) => {
+    if ("captureTab" in browser.tabs) return browser.tabs.captureTab(tabId, { format: "png" });
+    // Chrome and Edge take only the tab in front of its window.
+    const tab = await browser.tabs.get(tabId);
+    if (!tab.active)
+      throw new Error(
+        "Chrome can take a picture only of the tab in front: bring it to the front first.",
+      );
+    return browser.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+  },
   navigate: (tabId, url) => browser.tabs.update(tabId, { url }),
   // Beside the tab that asked, in its window: the panel's own window is the sidebar's, which need not be that one.
   open: async (url, opener) => {

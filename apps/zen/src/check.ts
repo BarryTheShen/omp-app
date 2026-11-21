@@ -10,7 +10,8 @@ export const CHECK_MS = 8_000;
 
 /**
  * Whether a `Content-Security-Policy` lets this extension's pages frame the app: no `frame-ancestors`, or one naming
- * every Firefox extension (`moz-extension:`), this one (`moz-extension://<uuid>`) or any page (`*`).
+ * every extension of this browser's kind (`moz-extension:` in Firefox, `chrome-extension:` in Chrome and Edge), this
+ * one (`moz-extension://<uuid>`, `chrome-extension://<id>`) or any page (`*`).
  */
 export function framesSidebar(policy: string | null, extension: string): boolean {
   if (policy === null) return true;
@@ -20,7 +21,8 @@ export function framesSidebar(policy: string | null, extension: string): boolean
     .find(([name]) => name?.toLowerCase() === "frame-ancestors");
   if (directive === undefined) return true;
   const sources = new Set(directive.slice(1).map((source) => source.toLowerCase()));
-  return sources.has("*") || sources.has("moz-extension:") || sources.has(extension.toLowerCase());
+  const scheme = `${new URL(extension).protocol}`;
+  return sources.has("*") || sources.has(scheme) || sources.has(extension.toLowerCase());
 }
 
 /** Why the app's page did not open: `text` says so in words for the sidebar. */
