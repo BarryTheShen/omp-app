@@ -1,6 +1,8 @@
 import type { AppClient } from "@omp-app/client";
 import { ChevronRight, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
+import { Switch } from "@/components/ui/switch";
+import { setGroupTools, useGroupTools } from "../chat/groupTools";
 import { ServerSection } from "../desktop/ServerSection";
 import { KeyList } from "../palette/Shortcuts";
 import { usePhone } from "../phone";
@@ -32,6 +34,7 @@ export function AppPage({
   readonly onWhatsNew: () => void;
 }): ReactNode {
   const phone = usePhone();
+  const groupTools = useGroupTools();
   return (
     <section aria-label="App settings">
       <p className="pt-5 text-xs text-t3">App</p>
@@ -70,6 +73,20 @@ export function AppPage({
           How the app is drawn: its type, shapes and spacing. Any style goes with any theme.
         </p>
         <StylePicker />
+      </div>
+      <div data-tour="group-tools" className="flex items-center gap-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-t1">Group tool calls</p>
+          <p className="mt-0.5 text-xs text-t3">
+            Two or more tool calls in a row show as one line: how many, by which tools, and the one
+            running now. Click it to see each call.
+          </p>
+        </div>
+        <Switch
+          aria-label="Group tool calls"
+          checked={groupTools}
+          onCheckedChange={(next) => setGroupTools(next)}
+        />
       </div>
       <div className="border-b border-l1 pb-5">
         <ThemeGallery />

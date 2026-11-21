@@ -489,7 +489,12 @@ export function defineScrollChecks(engine: string): void {
       "rows added while the reader is up sit right under each other once Jump to latest reaches them (#2839)",
       async ({ realApp }, testInfo) => {
         testInfo.setTimeout(360_000);
-        const page = await realApp.open({ path: "/" });
+        // Rows added one by one: each loop step its own card (Settings → App → Look → Group tool calls, off).
+        const page = await realApp.open({
+          path: "/",
+          beforeLoad: (opened) =>
+            opened.addInitScript(() => localStorage.setItem("omp-app.ui.group-tools", "off")),
+        });
         await openLongChat(page);
         const box = page.getByRole("textbox", { name: "Message" });
         await box.fill("Please run the long_loop job.");

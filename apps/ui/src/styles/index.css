@@ -341,6 +341,19 @@
   border-radius: var(--r-card);
 }
 
+/* A run of tool calls folded into one card (chat/ToolGroup.tsx): opened, the calls' own cards inside it. */
+.tv-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--tv-border);
+}
+
+.tv-group-failed {
+  color: var(--tv-err);
+}
+
 /* What was open in the panel's app when you sent it: a tag over your message, at its right edge, as Notion's. */
 .tl-item .tr-row--user > .tr-above {
   grid-column: 1 / -1;

@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, test } from "vitest";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
-import { buildRows } from "./rows";
+import { buildRows, groupToolRuns, type TranscriptRow } from "./rows";
 
 const T = 1_790_000_000_000;
 
@@ -232,5 +232,142 @@ describe("buildRows", () => {
       input: "print(2)",
       running: true,
     });
+  });
+});
+
+describe("groupToolRuns", () => {
+  const call = (id: string, name = "bash") => ({
+    type: "toolCall",
+    id,
+    name,
+    arguments: {},
+    intent: `do ${id}`,
+  });
+  const said = (text: string) => ({ type: "text", text });
+  const reply = (id: string, at: number, content: unknown[], extra: Record<string, unknown> = {}) =>
+    message(id, { role: "assistant", content, timestamp: T + at, stopReason: "toolUse", ...extra });
+  const result = (id: string, callId: string, at: number) =>
+    message(id, { role: "toolResult", toolCallId: callId, content: [], timestamp: T + at });
+  const shape = (rows: readonly TranscriptRow[]) =>
+    rows.map((row) =>
+      row.kind === "toolgroup"
+        ? `group[${row.items.map((item) => (item.kind === "call" ? item.id : "think")).join(",")}]`
+        : row.kind === "entry" && row.entry.type === "message"
+          ? `${row.entry.message.role}:${JSON.stringify((row.entry.message as { content: unknown }).content).length}`
+          : row.kind,
+    );
+
+  test("calls across replies with no text between are one group; the text before them keeps its row and key", () => {
+    const entries = [
+      message("u1", { role: "user", content: "go", timestamp: T }),
+      reply("a1", 1, [said("Checking."), call("c1")]),
+      result("r1", "c1", 2),
+      reply("a2", 3, [{ type: "thinking", thinking: "hm" }, call("c2", "read")]),
+      result("r2", "c2", 4),
+      reply("a3", 5, [said("Done.")], { stopReason: "stop" }),
+    ];
+    const plain = buildRows({ ...idle, entries });
+    const rows = groupToolRuns(plain);
+    expect(rows.map((row) => row.kind)).toEqual(["entry", "entry", "toolgroup", "entry"]);
+    const group = rows[2];
+    expect(group?.kind === "toolgroup" ? group.items.map((item) => item.kind) : []).toEqual([
+      "call",
+      "thinking",
+      "call",
+    ]);
+    // The reply's text is drawn alone under the reply's own key; the last reply is the same row as before.
+    expect(rows[1]?.key).toBe(plain[1]?.key);
+    const first = rows[1];
+    expect(
+      first?.kind === "entry" && first.entry.type === "message"
+        ? first.entry.message.content
+        : null,
+    ).toEqual([said("Checking.")]);
+    expect(rows[3]).toBe(plain[3]);
+  });
+
+  test("one call alone, or calls with text between them, stay as they are", () => {
+    const entries = [
+      reply("a1", 1, [call("c1")]),
+      result("r1", "c1", 2),
+      reply("a2", 3, [said("Now the next."), call("c2")]),
+      result("r2", "c2", 4),
+    ];
+    const plain = buildRows({ ...idle, entries });
+    expect(groupToolRuns(plain)).toBe(plain);
+  });
+
+  test("a group keeps its key when older calls of its run load in front of it", () => {
+    const steps = [1, 2, 3, 4].flatMap((n) => [
+      reply(`a${n}`, n * 2, [call(`c${n}`)]),
+      result(`r${n}`, `c${n}`, n * 2 + 1),
+    ]);
+    const keys = new Map<string, string>();
+    const window = groupToolRuns(
+      buildRows({ ...idle, hasOlder: true, entries: steps.slice(4) }),
+      keys,
+    );
+    const whole = groupToolRuns(buildRows({ ...idle, entries: steps }), keys);
+    expect(shape(window)).toEqual(["group[c3,c4]"]);
+    expect(shape(whole)).toEqual(["group[c1,c2,c3,c4]"]);
+    expect(whole[0]?.key).toBe(window[0]?.key);
+  });
+
+  test("a group keeps its key while its calls go from running to saved", () => {
+    const saved = [reply("a1", 1, [call("c1")]), result("r1", "c1", 2)];
+    const live = groupToolRuns(
+      buildRows({
+        ...idle,
+        entries: saved,
+        working: true,
+        stream: { role: "assistant", content: [call("c2")], timestamp: T + 3 } as never,
+        activeTools: new Map([
+          ["c3", { toolCallId: "c3", toolName: "read", args: {}, startedAt: T }],
+        ]),
+      }),
+    );
+    const done = groupToolRuns(
+      buildRows({
+        ...idle,
+        entries: [
+          ...saved,
+          reply("a2", 3, [call("c2"), call("c3", "read")]),
+          result("r2", "c2", 4),
+        ],
+      }),
+    );
+    expect(shape(live)).toEqual(["group[c1,c2,c3]"]);
+    expect(shape(done)).toEqual(["group[c1,c2,c3]"]);
+    expect(live[0]?.key).toBe(done[0]?.key);
+  });
+
+  test("text after the calls in the same reply gets a row of its own after the group", () => {
+    const rows = groupToolRuns(
+      buildRows({
+        ...idle,
+        entries: [reply("a1", 1, [said("Before."), call("c1"), call("c2"), said("After.")])],
+      }),
+    );
+    expect(rows.map((row) => row.kind)).toEqual(["entry", "toolgroup", "entry"]);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(3);
+    const after = rows[2];
+    expect(
+      after?.kind === "entry" && after.entry.type === "message"
+        ? after.entry.message.content
+        : null,
+    ).toEqual([said("After.")]);
+  });
+
+  test("a reply that failed stays whole, its calls with it", () => {
+    const entries = [
+      reply("a1", 1, [call("c1")]),
+      result("r1", "c1", 2),
+      reply("a2", 3, [call("c2")], { stopReason: "error", errorMessage: "overloaded" }),
+    ];
+    expect(shape(groupToolRuns(buildRows({ ...idle, entries })))).toEqual([
+      expect.stringMatching(/^assistant:/),
+      expect.stringMatching(/^assistant:/),
+      "failure",
+    ]);
   });
 });

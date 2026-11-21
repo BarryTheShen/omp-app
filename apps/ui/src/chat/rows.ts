@@ -42,7 +42,26 @@ export type TranscriptRow =
     }
   | { readonly kind: "working"; readonly key: string }
   | { readonly kind: "shell"; readonly key: string; readonly run: ShellRunView }
-  | { readonly kind: "notice"; readonly key: string; readonly notice: ChatNotice };
+  | { readonly kind: "notice"; readonly key: string; readonly notice: ChatNotice }
+  | { readonly kind: "toolgroup"; readonly key: string; readonly items: readonly GroupItem[] };
+
+/** One thing a group of tool calls holds, in order: a call, or the thinking between calls. */
+export type GroupItem =
+  | {
+      readonly kind: "call";
+      readonly id: string;
+      readonly name: string;
+      readonly intent?: string;
+      readonly args: unknown;
+      /** From a reply still being written: the call runs until its result comes. */
+      readonly pending: boolean;
+    }
+  | {
+      readonly kind: "thinking";
+      readonly key: string;
+      readonly text: string;
+      readonly redacted: boolean;
+    };
 
 /** A `!` or `$` run omp saved in the session (its `bashExecution` and `pythonExecution` messages). */
 function savedShellRun(entry: SessionEntry): ShellRunView | null {
@@ -240,4 +259,209 @@ export function buildRows(
   for (const notice of snapshot.notices)
     rows.push({ kind: "notice", key: `notice:${notice.id}`, notice });
   return rows;
+}
+
+type ReplyBlock = AssistantMessage["content"][number];
+
+/** A piece of the list as grouping sees it: a row it leaves whole, or one block of a reply (or one running tool). */
+type Piece =
+  | { readonly whole: TranscriptRow }
+  | { readonly source: TranscriptRow; readonly index: number; readonly item: GroupItem | null };
+
+function blockItem(block: ReplyBlock, key: string, pending: boolean): GroupItem | null {
+  switch (block.type) {
+    case "toolCall":
+      return {
+        kind: "call",
+        id: block.id,
+        name: block.name,
+        ...(block.intent === undefined ? {} : { intent: block.intent }),
+        args: block.arguments,
+        pending,
+      };
+    case "thinking":
+      return { kind: "thinking", key, text: block.thinking, redacted: false };
+    case "redactedThinking":
+      return { kind: "thinking", key, text: "", redacted: true };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The reply a row draws, when its blocks may go in a group: a saved reply or the one being written. A reply that
+ * failed or was stopped stays whole, as its stop chip speaks for all of it.
+ */
+function replyOf(
+  row: TranscriptRow,
+): { readonly message: AssistantMessage; readonly pending: boolean } | null {
+  if (row.kind === "stream") return { message: row.message, pending: row.pending };
+  if (
+    row.kind !== "entry" ||
+    row.entry.type !== "message" ||
+    row.entry.message.role !== "assistant"
+  )
+    return null;
+  const message = row.entry.message as AssistantMessage;
+  return message.stopReason === "error" || message.stopReason === "aborted"
+    ? null
+    : { message, pending: false };
+}
+
+function piecesOf(row: TranscriptRow): Piece[] {
+  if (row.kind === "tools")
+    return row.tools.map((tool, index) => ({
+      source: row,
+      index,
+      item: {
+        kind: "call",
+        id: tool.toolCallId,
+        name: tool.toolName,
+        ...(tool.intent === undefined ? {} : { intent: tool.intent }),
+        args: tool.args,
+        pending: true,
+      },
+    }));
+  const reply = replyOf(row);
+  const pieces: Piece[] = [];
+  reply?.message.content.forEach((block, index) => {
+    // A blank text block draws nothing; it neither breaks a run nor needs a row.
+    if (block.type === "text" && block.text.trim() === "") return;
+    pieces.push({
+      source: row,
+      index,
+      item: blockItem(block, `${row.key}:${index}`, reply.pending),
+    });
+  });
+  return pieces.length === 0 ? [{ whole: row }] : pieces;
+}
+
+/** Derived replies by their entry and the blocks they keep, so a row redrawn with the same blocks keeps its object. */
+const kept = new WeakMap<SessionEntry, Map<string, SessionEntry>>();
+
+function keptEntry(entry: SessionEntry, indices: readonly number[]): SessionEntry {
+  const sign = indices.join(",");
+  const byEntry = kept.get(entry) ?? new Map<string, SessionEntry>();
+  kept.set(entry, byEntry);
+  const known = byEntry.get(sign);
+  if (known !== undefined) return known;
+  const message = (entry as Extract<SessionEntry, { type: "message" }>).message as AssistantMessage;
+  const derived = {
+    ...entry,
+    message: { ...message, content: indices.map((index) => message.content[index]) },
+  } as SessionEntry;
+  byEntry.set(sign, derived);
+  return derived;
+}
+
+/** A row drawing only some of its source's blocks (or running tools), under a key of its own past the first. */
+function partRow(source: TranscriptRow, indices: readonly number[], key: string): TranscriptRow {
+  switch (source.kind) {
+    case "tools":
+      return {
+        ...source,
+        key,
+        tools: indices.map((index) => source.tools[index]).filter((tool) => tool !== undefined),
+      };
+    case "stream":
+      return {
+        ...source,
+        key,
+        message: {
+          ...source.message,
+          content: indices.flatMap((index) => source.message.content[index] ?? []),
+        },
+      };
+    case "entry":
+      return { ...source, key, entry: keptEntry(source.entry, indices) };
+    default:
+      return source;
+  }
+}
+
+/**
+ * The transcript with each run of tool calls drawn as one group: two calls or more with no text, message or notice
+ * between them (thinking may sit inside). A run can cross replies, the reply being written and the tools running now.
+ * A reply's text around a group stays in rows of its own, the first under the reply's key.
+ *
+ * A group keeps the key it was first drawn under while it grows at either end: calls added as omp works, and older
+ * calls in front once older entries load above it. `keys` (call id → group key, kept by the caller across draws)
+ * remembers them; a new group takes its first call's id.
+ */
+export function groupToolRuns(
+  rows: readonly TranscriptRow[],
+  keys: Map<string, string> = new Map(),
+): readonly TranscriptRow[] {
+  const pieces = rows.flatMap(piecesOf);
+  const itemAt = (at: number): GroupItem | null => {
+    const piece = pieces[at];
+    return piece === undefined || "whole" in piece ? null : piece.item;
+  };
+  const grouped = new Set<number>();
+  let start = 0;
+  for (let at = 0; at <= pieces.length; at++) {
+    if (itemAt(at) !== null) continue;
+    let calls = 0;
+    for (let inRun = start; inRun < at; inRun++) if (itemAt(inRun)?.kind === "call") calls += 1;
+    if (calls >= 2) for (let inRun = start; inRun < at; inRun++) grouped.add(inRun);
+    start = at + 1;
+  }
+  if (grouped.size === 0) return rows;
+
+  const split = new Set<TranscriptRow>();
+  for (const at of grouped) {
+    const piece = pieces[at];
+    if (piece !== undefined && "source" in piece) split.add(piece.source);
+  }
+  const out: TranscriptRow[] = [];
+  const partsMade = new Map<TranscriptRow, number>();
+  let part: { readonly source: TranscriptRow; readonly indices: number[] } | null = null;
+  let group: GroupItem[] = [];
+  const flushPart = (): void => {
+    if (part === null) return;
+    const { source, indices } = part;
+    part = null;
+    if (!split.has(source)) {
+      out.push(source);
+      return;
+    }
+    const made = partsMade.get(source) ?? 0;
+    partsMade.set(source, made + 1);
+    out.push(partRow(source, indices, made === 0 ? source.key : `${source.key}:p${made}`));
+  };
+  const used = new Set<string>();
+  const flushGroup = (): void => {
+    if (group.length === 0) return;
+    const ids = group.flatMap((item) => (item.kind === "call" ? [item.id] : []));
+    const known = ids.map((id) => keys.get(id)).find((key) => key !== undefined && !used.has(key));
+    let key = known ?? `group:${ids[0] ?? ""}`;
+    // A run split in two (a message now between its calls) leaves the second half a key of its own.
+    while (used.has(key)) key = `${key}+`;
+    used.add(key);
+    for (const id of ids) keys.set(id, key);
+    out.push({ kind: "toolgroup", key, items: group });
+    group = [];
+  };
+  pieces.forEach((piece, at) => {
+    if ("whole" in piece) {
+      flushPart();
+      flushGroup();
+      out.push(piece.whole);
+      return;
+    }
+    if (grouped.has(at) && piece.item !== null) {
+      flushPart();
+      group.push(piece.item);
+      return;
+    }
+    flushGroup();
+    if (part?.source !== piece.source) {
+      flushPart();
+      part = { source: piece.source, indices: [] };
+    }
+    part.indices.push(piece.index);
+  });
+  flushPart();
+  flushGroup();
+  return out;
 }

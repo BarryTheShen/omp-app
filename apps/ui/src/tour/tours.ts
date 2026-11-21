@@ -3465,11 +3465,58 @@ const STYLES_TOUR: Tour = {
   ],
 };
 
+/** Runs of tool calls drawn as one card, and the setting that turns it off (2026-11-21). */
+const TOOL_GROUPS_TOUR: Tour = {
+  id: "tool-groups-2026-11-21",
+  title: "Tool calls, grouped",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Tool calls, grouped",
+      text: "Two or more tool calls in a row now show as one card: how many, by which tools, and while omp works, the call running now. Click it to see each call; a red dot means one failed. Text omp writes between calls stays where it was.",
+      action: next,
+    },
+    {
+      target: part("settings"),
+      title: "Settings",
+      text: "{settings} or this gear opens settings. Open them.",
+      action: { kind: "appears", selector: SETTINGS_SHEET },
+    },
+    {
+      target: part("settings-tab-app"),
+      title: "App",
+      text: "The setting is under <b>App</b>. Click it.",
+      action: { kind: "click" },
+    },
+    {
+      target: part("group-tools"),
+      title: "Group tool calls",
+      text: "Turn this off to see every call as its own card again, as before. It is kept in this browser.",
+      action: next,
+    },
+    {
+      target: SETTINGS_SHEET,
+      title: "Close settings",
+      text: "{stop} closes settings.",
+      action: { kind: "disappears", selector: SETTINGS_SHEET },
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-21-tool-groups",
+    when: "2026-11-21T07:50:00Z",
+    summary:
+      "Two or more tool calls in a row show as one card: how many, by which tools, and the call running now; click it for each call. Settings → App → Look → Group tool calls turns it off.",
+    tours: [TOOL_GROUPS_TOUR],
+  },
   {
     id: "2026-11-21-styles",
     when: "2026-11-21T07:15:00Z",

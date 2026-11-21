@@ -33,10 +33,12 @@ import {
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { FailureRow } from "./FailureRow";
+import { useGroupTools } from "./groupTools";
 import { MessageActions, userText } from "./MessageActions";
-import { buildRows, type TranscriptRow, toolResults } from "./rows";
+import { buildRows, groupToolRuns, type TranscriptRow, toolResults } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
+import { ToolGroup } from "./ToolGroup";
 
 /**
  * A first guess at a row's height; every row is measured once drawn. A guess too large is harmless at the end, where the
@@ -623,11 +625,33 @@ export function TranscriptList({
       lite ? snapshot.notices.filter((notice) => notice.level !== "status") : snapshot.notices,
     [lite, snapshot.notices],
   );
-  const rows = useMemo(
-    () =>
-      buildRows({ entries, stream, streamDone, activeTools, working, shell, notices, hasOlder }),
-    [entries, stream, streamDone, activeTools, working, shell, notices, hasOlder],
-  );
+  const grouping = useGroupTools();
+  // Each group's key, by its calls, across draws: a group keeps its row as it grows at either end (`groupToolRuns`).
+  const groupKeys = useRef(new Map<string, string>()).current;
+  const rows = useMemo(() => {
+    const plain = buildRows({
+      entries,
+      stream,
+      streamDone,
+      activeTools,
+      working,
+      shell,
+      notices,
+      hasOlder,
+    });
+    return grouping ? groupToolRuns(plain, groupKeys) : plain;
+  }, [
+    entries,
+    stream,
+    streamDone,
+    activeTools,
+    working,
+    shell,
+    notices,
+    hasOlder,
+    grouping,
+    groupKeys,
+  ]);
   const results = useMemo(() => toolResults(entries, jobs), [entries, jobs]);
   const firstHeight = useFirstHeights(rows, measured);
   // A phone's screen is small: the chat starts right under its top bar (each row keeps its own 10 px).
@@ -1144,6 +1168,18 @@ function RowView({
       return (
         <Row kind="assistant" gutter="">
           <ShellBlock run={row.run} onStop={actions.onStopShell} />
+        </Row>
+      );
+    case "toolgroup":
+      return (
+        <Row kind="assistant" gutter="">
+          <ToolGroup
+            groupKey={row.key}
+            items={row.items}
+            results={results}
+            active={active}
+            host={host}
+          />
         </Row>
       );
     case "notice":

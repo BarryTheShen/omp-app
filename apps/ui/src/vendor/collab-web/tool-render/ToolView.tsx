@@ -26,7 +26,8 @@ export interface ToolViewProps {
 	host?: ToolRenderHost;
 }
 
-function normalizeArgs(raw: unknown): { args: Record<string, unknown>; intent: string | undefined } {
+/** A call's arguments without the model's intent (`i`), and that intent. */
+export function normalizeArgs(raw: unknown): { args: Record<string, unknown>; intent: string | undefined } {
 	if (!isRecord(raw)) return { args: {}, intent: undefined };
 	const intent = typeof raw[INTENT_FIELD] === "string" ? (raw[INTENT_FIELD] as string).trim() : undefined;
 	if (!(INTENT_FIELD in raw)) return { args: raw, intent };
