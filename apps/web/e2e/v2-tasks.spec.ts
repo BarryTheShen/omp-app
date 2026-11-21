@@ -130,6 +130,47 @@ realTest.describe("new UI: queued tasks", () => {
   );
 
   realTest(
+    "a task a program queued as a notice shows its source and text, not the tag, and stays a notice when edited",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+        "placeholder",
+        "Message omp",
+        { timeout: 120_000 },
+      );
+      await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+      const tasks = dashboard(page).getByRole("region", { name: "Tasks" });
+      // The text a wake-up writes (`withAppNotice("wake", …)`), queued for an hour from now.
+      await tasks.getByRole("button", { name: "New task" }).click();
+      const form = tasks.getByRole("form", { name: "New task" });
+      await form
+        .getByLabel("Message")
+        .fill('<app-notice source="wake">\nMemory merge check\n</app-notice>');
+      await form.getByRole("radio", { name: "At a time" }).click();
+      await form.getByRole("button", { name: "Queue it" }).click();
+      const card = tasks.getByRole("list", { name: "Waiting tasks" }).getByRole("listitem");
+      await expect(card).toHaveCount(1, { timeout: 30_000 });
+      await expect(card).toContainText("Scheduled wake-up");
+      await expect(card).toContainText("Memory merge check");
+      await expect(card).not.toContainText("app-notice");
+
+      await card.getByRole("button", { name: "Edit task" }).click();
+      const edit = tasks.getByRole("form", { name: "Edit task" });
+      const message = edit.getByLabel(/^Message/);
+      await expect(edit.getByText("Message · Scheduled wake-up")).toBeVisible();
+      await expect(message).toHaveValue("Memory merge check");
+      await message.fill("Memory merge check, again");
+      await edit.getByRole("button", { name: "Save task" }).click();
+      await expect(edit).toHaveCount(0);
+      await expect(card).toContainText("Scheduled wake-up");
+      await expect(card).toContainText("Memory merge check, again");
+      await expect(card).not.toContainText("app-notice");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "on a phone, Queue for later is a row of ＋ once words are typed, and its sheet queues the message",
     async ({ realApp, browser }) => {
       const context = await browser.newContext({

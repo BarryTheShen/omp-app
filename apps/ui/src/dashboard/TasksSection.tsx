@@ -2,11 +2,13 @@ import type { AppClient } from "@omp-app/client";
 import {
   type QueuedTask,
   type RunningChat,
+  splitAppNotice,
   TASK_TEXT_MAX,
   TaskListResult,
   TasksPort,
   type TaskTarget,
   type TaskWhen,
+  withAppNotice,
 } from "@omp-app/contracts";
 import { ArrowDown, ArrowUp, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
@@ -26,7 +28,45 @@ import { inAnHour, WhenPicker } from "../chat/WhenPicker";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
 import { usePhone } from "../phone";
+import { describeNotice } from "../vendor/collab-web/lib/notices";
 import { problemWords } from "./problems";
+
+/**
+ * What a task's message reads as: a notice (`splitAppNotice`: a wake-up, a watcher, a script put it there) shows its
+ * source's heading, as the chat does, and its text without the tag; the person's own message shows as written.
+ */
+function taskWords(text: string): {
+  readonly heading: string | null;
+  readonly text: string;
+  readonly source: string | null;
+} {
+  const notice = splitAppNotice(text);
+  if (notice === null) return { heading: null, text, source: null };
+  const heading = describeNotice("app-notice", { source: notice.source }, notice.text).heading;
+  return { heading: heading ?? null, text: notice.text, source: notice.source };
+}
+
+/** A waiting task's message on its card: a notice's heading over its text. */
+function TaskCardText({ text }: { readonly text: string }): ReactNode {
+  const words = taskWords(text);
+  return (
+    <>
+      {words.heading !== null && <p className="text-xs font-medium text-t2">{words.heading}</p>}
+      <p className="line-clamp-2 text-[0.8125rem] whitespace-pre-wrap text-t1">{words.text}</p>
+    </>
+  );
+}
+
+/** A sent or failed task's message on one line: a notice's heading before its text. */
+function TaskLineText({ text }: { readonly text: string }): ReactNode {
+  const words = taskWords(text);
+  return (
+    <span className="truncate text-[0.8125rem] text-t1">
+      {words.heading !== null && <span className="text-t3">{words.heading}: </span>}
+      {words.text}
+    </span>
+  );
+}
 
 const LATER = "Tasks come with the next server update.";
 
@@ -152,7 +192,9 @@ function TaskForm({
   const textId = useId();
   const phone = usePhone();
   const choices = targetChoices(running);
-  const [text, setText] = useState(task?.text ?? "");
+  // A notice is edited as its text; saving puts it back in its block, so it still reaches the chat as a notice.
+  const notice = task === undefined ? null : taskWords(task.text);
+  const [text, setText] = useState(notice?.text ?? "");
   const [picked, setPicked] = useState(choices[0]?.value ?? "");
   const [when, setWhen] = useState<TaskWhen["kind"]>(task?.when.kind ?? "free");
   const [at, setAt] = useState(() =>
@@ -188,7 +230,7 @@ function TaskForm({
     setProblem(null);
     try {
       await onSave({
-        text: text.trim(),
+        text: notice?.source != null ? withAppNotice(notice.source, text.trim()) : text.trim(),
         target,
         name: task?.label ?? choice?.name ?? null,
         when: goes,
@@ -210,7 +252,7 @@ function TaskForm({
     >
       <div className="flex flex-col gap-1">
         <label htmlFor={textId} className="text-xs text-t3">
-          Message
+          {notice?.heading != null ? `Message · ${notice.heading}` : "Message"}
         </label>
         <Textarea
           id={textId}
@@ -365,9 +407,7 @@ export function TasksSection({
                 key={task.id}
                 className="flex flex-col gap-1 rounded-lg border border-l2 px-3 py-2"
               >
-                <p className="line-clamp-2 text-[0.8125rem] whitespace-pre-wrap text-t1">
-                  {task.text}
-                </p>
+                <TaskCardText text={task.text} />
                 <p className="text-xs text-t3">
                   {targetWords(task, running)} · {whenWords(task)}
                 </p>
@@ -457,7 +497,7 @@ export function TasksSection({
                 className="flex flex-wrap items-center gap-2 border-b border-l2 py-1.5 last:border-b-0"
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-[0.8125rem] text-t1">{task.text}</span>
+                  <TaskLineText text={task.text} />
                   <span
                     className={`text-xs ${task.state === "failed" ? "text-bad-ink" : "text-t3"}`}
                   >
