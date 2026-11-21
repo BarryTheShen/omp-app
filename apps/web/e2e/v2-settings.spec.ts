@@ -174,11 +174,18 @@ realTest.describe("new UI settings", () => {
       ).toBeVisible();
 
       const file = join(realApp.agentDir, "config.yml");
-      await expect.poll(async () => readFile(file, "utf8")).toMatch(/goal:\n {2}enabled: false/);
-      const written = await readFile(file, "utf8");
-      expect(written).toContain("textVerbosity: high");
-      expect(written).toContain("personality: pragmatic");
-      expect(written).toMatch(/ttlHours: 48/);
+      // Each change is its own write, the lifetime's last: wait until all four are in the file.
+      await expect
+        .poll(async () => {
+          const written = await readFile(file, "utf8");
+          return [
+            /goal:\n {2}enabled: false/.test(written),
+            written.includes("textVerbosity: high"),
+            written.includes("personality: pragmatic"),
+            /ttlHours: 48/.test(written),
+          ];
+        })
+        .toEqual([true, true, true, true]);
 
       // The page goes first: a page left open would try its old link while the server is down (an expected error).
       await page.close();
